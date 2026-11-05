@@ -69,9 +69,25 @@ export interface PortfolioPersistenceStatus {
   message: string | null;
 }
 
+interface PendingPortfolioSnapshotRecord {
+  schemaVersion: 1;
+  revision: number;
+  parentRevision: number;
+  commitId: string;
+  originId: string;
+  committedAt: number;
+  state: Record<string, unknown>;
+  /** Omitted when the preceding generation's history is unchanged. */
+  history?: ClosedHistorySnapshot;
+  /** Omitted when the preceding generation's broker rules are unchanged. */
+  brokerRules?: unknown | null;
+  /** Omitted when the preceding generation's device preference is unchanged. */
+  deviceActiveView?: string | null;
+}
+
 type PendingPortfolioSnapshot = {
   key: string;
-  record: PortfolioStateSnapshotRecord;
+  record: PendingPortfolioSnapshotRecord;
 };
 
 const persistenceOriginId = createPersistenceId();
@@ -126,6 +142,61 @@ function parseSnapshotRecord(raw: string | null): PortfolioStateSnapshotRecord |
   } catch {
     return null;
   }
+}
+
+function isPendingPortfolioSnapshotRecord(value: unknown): value is PendingPortfolioSnapshotRecord {
+  if (!isPlainObject(value)) return false;
+  const hasHistory = !Object.prototype.hasOwnProperty.call(value, 'history') ||
+    (isPlainObject(value.history) &&
+      Array.isArray(value.history.brokerExecutedTrades) &&
+      Array.isArray(value.history.cashflows));
+  const hasRules = !Object.prototype.hasOwnProperty.call(value, 'brokerRules') ||
+    value.brokerRules === null || value.brokerRules !== undefined;
+  const hasDeviceView = !Object.prototype.hasOwnProperty.call(value, 'deviceActiveView') ||
+    value.deviceActiveView === null || typeof value.deviceActiveView === 'string';
+  return value.schemaVersion === 1 &&
+    Number.isInteger(value.revision) && Number(value.revision) > 0 &&
+    Number.isInteger(value.parentRevision) && Number(value.parentRevision) >= 0 &&
+    Number(value.revision) === Number(value.parentRevision) + 1 &&
+    typeof value.commitId === 'string' && value.commitId.length > 0 &&
+    typeof value.originId === 'string' &&
+    Number.isFinite(Number(value.committedAt)) &&
+    isPlainObject(value.state) &&
+    hasHistory && hasRules && hasDeviceView;
+}
+
+function parsePendingPortfolioSnapshotRecord(raw: string | null): PendingPortfolioSnapshotRecord | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isPendingPortfolioSnapshotRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function materializePendingPortfolioSnapshot(
+  parent: PortfolioStateSnapshotRecord,
+  pending: PendingPortfolioSnapshotRecord
+): PortfolioStateSnapshotRecord {
+  return {
+    schemaVersion: 1,
+    revision: pending.revision,
+    parentRevision: pending.parentRevision,
+    commitId: pending.commitId,
+    originId: pending.originId,
+    committedAt: pending.committedAt,
+    state: pending.state,
+    history: pending.history
+      ? cloneHistory(pending.history)
+      : cloneHistory(parent.history),
+    brokerRules: Object.prototype.hasOwnProperty.call(pending, 'brokerRules')
+      ? pending.brokerRules ?? null
+      : parent.brokerRules,
+    deviceActiveView: Object.prototype.hasOwnProperty.call(pending, 'deviceActiveView')
+      ? pending.deviceActiveView ?? null
+      : parent.deviceActiveView
+  };
 }
 
 function cloneHistory(history: ClosedHistorySnapshot): ClosedHistorySnapshot {
@@ -227,7 +298,7 @@ function readPendingPortfolioSnapshots(storage: Storage): PendingPortfolioSnapsh
       if (!key || !key.startsWith(STORAGE_KEY_PENDING_PREFIX)) continue;
       try {
         const raw = storage.getItem(key);
-        const record = parseSnapshotRecord(raw);
+        const record = parsePendingPortfolioSnapshotRecord(raw);
         if (record) pending.push({ key, record });
       } catch {
         // Leave malformed recovery entries untouched for manual inspection.
@@ -278,7 +349,7 @@ function resolveLocalPortfolioSnapshot(storage: Storage): {
       break;
     }
     if (candidates.length === 0) break;
-    record = candidates[0].record;
+    record = materializePendingPortfolioSnapshot(record, candidates[0].record);
     consumed.add(candidates[0].key);
   }
 
@@ -522,13 +593,14 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
       }
 
       const candidate = candidates[0];
-      const result = await database.compareAndCommit(candidate.record, current.revision);
+      const completeRecord = materializePendingPortfolioSnapshot(current, candidate.record);
+      const result = await database.compareAndCommit(completeRecord, current.revision);
       if (result === 'conflict') {
         hasConflict = true;
         current = await database.readCurrent() || current;
         break;
       }
-      current = candidate.record;
+      current = completeRecord;
       committedKeys.add(candidate.key);
     }
 
@@ -970,7 +1042,19 @@ function persistPortfolioSnapshot(
   let stateChanged = true;
   try {
     record = makePortfolioSnapshotRecord(state, history, options, parent, savedAt);
-    serializedRecord = JSON.stringify(record);
+    const journalRecord: PendingPortfolioSnapshotRecord = {
+      schemaVersion: record.schemaVersion,
+      revision: record.revision,
+      parentRevision: record.parentRevision,
+      commitId: record.commitId,
+      originId: record.originId,
+      committedAt: record.committedAt,
+      state: record.state,
+      ...(history !== null ? { history: record.history } : {}),
+      ...(Object.prototype.hasOwnProperty.call(options, 'brokerRules') ? { brokerRules: record.brokerRules } : {}),
+      ...(typeof options.deviceActiveView === 'string' ? { deviceActiveView: record.deviceActiveView } : {})
+    };
+    serializedRecord = JSON.stringify(journalRecord);
     if (parent) {
       stateChanged = JSON.stringify(parent.state, (key, value) =>
         key === 'lastUpdated' ? undefined : value
