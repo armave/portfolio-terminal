@@ -487,7 +487,7 @@ export class PortfolioStore {
     return this.update((state) => ({
       ...state,
       ...newState
-    }), persist);
+    }), persist, persist ? 'durable' : 'derived');
   }
 
   /**
