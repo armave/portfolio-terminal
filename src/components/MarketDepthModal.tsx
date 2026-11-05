@@ -138,7 +138,7 @@ export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): Ma
 export function isShallowMarketDepthSnapshot(snapshot: MarketDepthSnapshot): boolean {
   const bidRows = snapshot.providerBidRowCount ?? snapshot.bids.length;
   const askRows = snapshot.providerAskRowCount ?? snapshot.asks.length;
-  return bidRows <= 1 && askRows <= 1;
+  return bidRows === 1 && askRows === 1;
 }
 
 export function summarizeMarketDepth(snapshot: MarketDepthSnapshot): MarketDepthSummary {
@@ -352,7 +352,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
 
         {liveSnapshot && summary && <>
           {hasShallowBook && <p role="note" class="mb-3 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-3 text-xs text-amber-200">
-            {depthText('TradeNet returned only one bid and one ask price level. This view already displays every level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.')}
+            {depthText('TradeNet returned only one bid price and one ask price in this snapshot. This view combines orders at identical prices and displays every distinct price level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.')}
           </p>}
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
             <span>{liveSnapshot.symbol} · {depthText('Last depth update')} {new Date(liveSnapshot.updatedAt).toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
