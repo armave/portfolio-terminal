@@ -102,7 +102,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
 }
 
 /** Resolve an explicit execution collection; null means the provider envelope is incomplete. */
-export function extractFreedomTradeHistoryRows(response: unknown): unknown[] | null {
+function extractFreedomTradeHistoryRows(response: unknown): unknown[] | null {
   const asRecord = (value: unknown): Record<string, unknown> | null =>
     value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
   const responseRecord = asRecord(response);
