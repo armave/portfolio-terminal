@@ -87,6 +87,7 @@ import {
   saveGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
+  hydratePortfolioPersistence,
 } from './src/services/storage';
 import {
   clearTerminalLog,
@@ -2152,6 +2153,12 @@ function hideAuthContainer() {
 }
 
 const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartupRuntime({
+  hydrateLocalPortfolioState: async () => {
+    const status = await hydratePortfolioPersistence();
+    if (status.state === 'degraded' || status.state === 'conflict') {
+      showToast(status.message || PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, 'error');
+    }
+  },
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
@@ -2161,7 +2168,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     currentAccountId = null;
     canWriteCloudState = false;
   },
-  setGatewaySecret: (secret) => { portfolioStore.setState({ gatewaySecret: secret }); },
+  setGatewaySecret: (secret) => { portfolioStore.setState({ gatewaySecret: secret }, false); },
   getAccountRole: () => currentAccountRole,
   pullGuestPortfolioSnapshot,
   importSavedAdminWorkspace: () => {
