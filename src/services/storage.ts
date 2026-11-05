@@ -163,8 +163,9 @@ function readLegacyPortfolioSnapshot(storage: Storage): PortfolioStateSnapshotRe
         };
       }
     }
-  } catch {
+  } catch (error) {
     // Keep damaged evidence intact and fall back to embedded legacy history.
+    console.warn('Failed to parse saved closed history:', error);
   }
 
   if (!history && sourceState) {
