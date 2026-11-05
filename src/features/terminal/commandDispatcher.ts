@@ -130,7 +130,74 @@ function parseRelativeExitDays(rawDate: string): number {
   return amount * (unit.startsWith('w') ? 7 : 1);
 }
 
+export type TerminalTradeCommand =
+  | { action: 'buy'; ticker: string; shares: number; price: number; pt: number | null; date: string | null }
+  | { action: 'sell'; ticker: string; shares: number | null; price: number };
+
 export class CommandDispatcher {
+
+  /**
+   * Parses supported buy/sell commands for a confirmation preview without
+   * changing portfolio state. execute() remains the only command mutation path.
+   */
+  static previewTradeAction(input: string): TerminalTradeCommand | null {
+    const raw = input.trim().replace(/,\s*(?:pt|target)\s+\[[^\]]+\]/gi, '').trim();
+    if (!raw || /\[[^\]]+\]/.test(raw)) return null;
+
+    const buyMatch = raw.match(
+      /^(?:bought|buy|add)\s+([0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)(.*)$/i
+    );
+    if (buyMatch) {
+      const shares = cleanNumber(buyMatch[1]);
+      const ticker = buyMatch[2].toUpperCase();
+      const price = cleanNumber(buyMatch[3]);
+      let tail = (buyMatch[4] || '').trim();
+      if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) ||
+        price <= 0 || !Number.isFinite(shares * price)) return null;
+
+      let pt: number | null = null;
+      const ptExtract = tail.match(/(?:^|,|\s)(?:pt|target)\s+([$0-9.,]+)/i);
+      if (ptExtract) {
+        const parsedTarget = cleanNumber(ptExtract[1]);
+        if (Number.isFinite(parsedTarget) && parsedTarget > 0) pt = parsedTarget;
+        tail = tail.replace(ptExtract[0], ' ').trim();
+      }
+
+      tail = tail.replace(/^[,\s]+|[,\s]+$/g, '');
+      let date: string | null = null;
+      if (tail) {
+        try {
+          const dateExtract = tail.match(/^(?:on\s+)?(.+)$/i);
+          if (!dateExtract) return null;
+          date = parsePurchaseDate(dateExtract[1]);
+        } catch {
+          return null;
+        }
+      }
+
+      return { action: 'buy', ticker, shares, price, pt, date };
+    }
+
+    const sellMatch = raw.match(/^(?:sold|sell|close)\s+(all|[0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)$/i);
+    if (!sellMatch) return null;
+
+    const ticker = sellMatch[2].toUpperCase();
+    const price = cleanNumber(sellMatch[3]);
+    const state = portfolioStore.getState();
+    const position = state.positions?.[ticker];
+    const availableShares = Number(position?.shares) ||
+      (position?.tranches || []).reduce((sum: number, tranche: any) =>
+        sum + Number(tranche.qty ?? tranche.shares ?? 0), 0);
+    const shares = sellMatch[1].toLowerCase() === 'all' ? null : cleanNumber(sellMatch[1]);
+    const requestedShares = shares === null ? availableShares : shares;
+
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(availableShares) ||
+      availableShares <= 0 || !Number.isFinite(requestedShares) ||
+      requestedShares <= 0 || requestedShares - availableShares > 1e-8 ||
+      !Number.isFinite(requestedShares * price)) return null;
+
+    return { action: 'sell', ticker, shares, price };
+  }
 
   static execute(input: string): CommandOutput {
     // An untouched optional target-price placeholder means "use the default".
@@ -273,7 +340,7 @@ export class CommandDispatcher {
         const sym = sellMatch[2].toUpperCase();
         const price = cleanNumber(sellMatch[3]);
 
-        if (isNaN(price) || price <= 0) {
+        if (!Number.isFinite(price) || price <= 0) {
           throw new Error('Usage: sold <shares|all> <ticker> for <price>');
         }
 
@@ -289,6 +356,10 @@ export class CommandDispatcher {
 
         const qty = qtyRaw === 'all' ? availableShares : cleanNumber(qtyRaw);
         if (!Number.isFinite(qty) || qty <= 0) throw new Error('Enter a valid positive share quantity.');
+        if (qty - availableShares > 1e-8) {
+          throw new Error(`Cannot sell ${qty} ${sym}; only ${availableShares} shares are available.`);
+        }
+        if (!Number.isFinite(qty * price)) throw new Error('Sale value must be a finite amount.');
         if (!portfolioStore.sellStock(sym, qty, price, new Date().toISOString().split('T')[0])) {
           throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         }
@@ -389,7 +460,8 @@ export class CommandDispatcher {
         const price = cleanNumber(buyMatch[3]);
         let tail = (buyMatch[4] || '').trim();
 
-        if (isNaN(qty) || qty <= 0 || !sym || isNaN(price) || price <= 0) {
+        if (!Number.isFinite(qty) || qty <= 0 || !sym || !Number.isFinite(price) ||
+          price <= 0 || !Number.isFinite(qty * price)) {
           throw new Error(
             'Usage: bought <shares> <ticker> for <price> [, pt <target>] [on <date>]'
           );
