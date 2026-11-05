@@ -1053,6 +1053,11 @@ function persistPortfolioSnapshot(
 ): PortfolioSnapshotPersistResult {
   const storage = getBrowserStorage();
   if (!storage) return { success: false, stateChanged: false, savedAt: null };
+  if (readClearMarker(storage) !== null) {
+    updatePortfolioPersistenceStatus('degraded', hydratedPortfolioSnapshot?.revision ?? 0,
+      'Portfolio reset is still being finalized; retry this change after local recovery completes.');
+    return { success: false, stateChanged: false, savedAt: null };
+  }
 
   let local: ReturnType<typeof resolveLocalPortfolioSnapshot>;
   try {
