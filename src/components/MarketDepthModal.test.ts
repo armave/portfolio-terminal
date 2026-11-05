@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getMarketDepthDisplayState, normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
+import { getMarketDepthDisplayState, isShallowMarketDepthSnapshot, normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
 import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
 
 const response = {
@@ -69,6 +69,23 @@ describe('Market Depth live-only display policy', () => {
   });
 });
 
+describe('Market Depth provider depth indication', () => {
+  it('flags a one-price-per-side book without treating a multi-level book as shallow', () => {
+    const shallow = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [response.data.bids[0]],
+        asks: [response.data.asks[0]]
+      }
+    }, 'AAPL');
+    const multiLevel = normalizeMarketDepthSnapshot(response, 'AAPL');
+
+    expect(isShallowMarketDepthSnapshot(shallow)).toBe(true);
+    expect(isShallowMarketDepthSnapshot(multiLevel)).toBe(false);
+  });
+});
+
 describe('Market Depth book summary', () => {
   it('calculates best prices, spread, visible quantities, and size imbalance', () => {
     const snapshot = normalizeMarketDepthSnapshot(response, 'AAPL.US');
@@ -131,6 +148,8 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
     expect(modalSource).toContain("TradeNet reported book depth:");
     expect(modalSource).toContain("total positions in the combined book");
+    expect(modalSource).toContain("TradeNet returned only one bid and one ask price level.");
+    expect(modalSource).toContain("isShallowMarketDepthSnapshot(liveSnapshot)");
     expect(modalSource).not.toContain("provider metadata, not a UI level target");
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
