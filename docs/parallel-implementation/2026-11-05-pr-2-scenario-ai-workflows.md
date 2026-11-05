@@ -1,6 +1,6 @@
 # PR 2 — Complete scenarios, AI confirmation and decision-support workflows
 
-**Status:** Draft execution plan; implementation not yet started.  
+**Status:** Implementation committed in PR #324; focused AI browser journey remains open.  
 **Base:** `main` at `056211e03fcc4154538c45f969bc608268120dac` (2026-11-05).  
 **Branch:** `work/scenario-ai-workflows-2026-11-05`  
 **Priority:** Critical  
@@ -9,6 +9,23 @@
 ## Goal
 
 Make the decision-support experience dependable from the user's scenario command through read-only projection, comparison/report presentation, and any explicitly confirmed mutation. No preview or AI-generated result may mutate portfolio state before the user accepts a validated action.
+
+## Implementation delivered in PR #324
+
+- Read-only Gemini `simulation`, `comparison`, and `fetch_quote` intents are converted into the existing deterministic terminal command grammar rather than being reported as a generic completed action.
+- Portfolio-changing AI intents continue through the existing synchronous confirmation helper; read-only intent routing never mutates portfolio state directly.
+- New requests supersede older pending responses. Non-AI terminal commands invalidate pending AI work. A stable in-memory snapshot of positions, selected view, balance, cash cushion and broker assumptions is compared after the provider response; outdated results are discarded.
+- AI scenario horizons and labels are validated against the local scenario command constraints.
+- Scenario comparison, scenario report and Margin Intelligence labels/statuses are routed explicitly through the English/Russian localization service. Dynamic feed counts, fetched-time labels and source counts have dedicated formatting tests.
+- Margin Intelligence refresh/close controls have touch-sized hit areas and visible keyboard focus.
+- Focused Vitest coverage is added for command routing, request lifecycle, context freshness, intent validation, localization formatting and application wiring.
+
+## Remaining before ready
+
+- [ ] Add a dedicated authenticated-browser journey that drives deterministic Gemini simulation/comparison/quote responses through the rendered UI and verifies the scenario modal/quote result.
+- [ ] Re-run the dedicated journey against the final integrated head after PRs #323 and #325 land.
+
+Current PR head `f7e1911e8090dc4a03fbc08c5c9f5720525c9f6b` passes the repository CI pipeline: typecheck, Vitest, production build, existing Chromium browser smoke, dead-code validation and both dependency audits. The existing browser smoke is not a substitute for the focused AI journey listed above.
 
 ## Confirmed baseline
 
