@@ -421,6 +421,24 @@ describe('storage service', () => {
       });
     });
 
+    it('does not commit a delayed history save after its account session becomes stale', async () => {
+      await hydratePortfolioPersistence();
+      let checks = 0;
+      const saved = await savePortfolioSnapshotAfterFlush(
+        { activeView: 'CLOSED_HISTORY', closedTrades: [{ id: 'closed-a' }] },
+        { brokerExecutedTrades: [{ id: 'execution-a' }], cashflows: [] },
+        {},
+        () => ++checks === 1
+      );
+
+      expect(saved).toBe(false);
+      expect(checks).toBe(2);
+      expect(databaseFixture.getCurrent()?.revision).toBe(0);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(false);
+    });
+
     it('flushes an earlier pending journal before writing a large closed-history snapshot', async () => {
       databaseFixture.setFailure(new Error('temporary IndexedDB interruption'));
       expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
