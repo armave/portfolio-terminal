@@ -712,8 +712,30 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
       // During a flush, the previous atomic checkpoint still matches the last
       // known durable generation. Reclaim only its verified compatibility
       // mirrors and retry the checkpoint write once.
-      if (!isQuotaExceededError(error) || !hasVerifiedLocalPortfolioCheckpoint(storage)) throw error;
-      removeLegacyPortfolioMirrors(storage);
+      if (!isQuotaExceededError(error)) throw error;
+      if (hasVerifiedLocalPortfolioCheckpoint(storage)) {
+        removeLegacyPortfolioMirrors(storage);
+      } else {
+        // The record just read/committed to IndexedDB is the durable recovery
+        // source even on the first migration, before a local checkpoint exists.
+        // Re-check its identity before reclaiming the redundant legacy copies.
+        const durable = await database.readCurrent();
+        if (
+          !current ||
+          !durable ||
+          !isPortfolioSnapshotRecord(durable) ||
+          durable.revision !== current.revision ||
+          durable.commitId !== current.commitId ||
+          durable.originId !== current.originId
+        ) {
+          throw error;
+        }
+        removeStoredKeys(storage, [
+          STORAGE_KEY_STATE,
+          STORAGE_KEY_LEGACY_STATE,
+          STORAGE_KEY_CLOSED_HISTORY
+        ]);
+      }
       storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, serializedCheckpoint);
     }
     hydratedPortfolioSnapshot = current;
@@ -1474,22 +1496,11 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
   if (resolved.record) {
     const history = cloneHistory(resolved.record.history);
     lastPersistedHistory = history;
-    // Migrate inline legacy history to the established sidecar only when no
-    // sidecar exists. A malformed sidecar is forensic evidence and is never
-    // overwritten by an automatic fallback.
-    try {
-      if (
-        storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null &&
-        !hasVerifiedLocalPortfolioCheckpoint(storage)
-      ) {
-        // Preserve the old sidecar only for legacy/local-only snapshots. A
-        // verified IndexedDB-backed atomic checkpoint already owns this history;
-        // recreating the sidecar would duplicate megabytes on every mount.
-        storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(history));
-      }
-    } catch (error) {
-      console.warn('Could not migrate legacy closed history to its sidecar:', error);
-    }
+    // The resolved snapshot already is the history source. Do not backfill the
+    // legacy sidecar during a read: duplicating a possibly multi-megabyte payload
+    // can exhaust localStorage before IndexedDB has a chance to checkpoint and
+    // reclaim the legacy mirrors. Writes still update the sidecar best-effort
+    // through writeLegacyCompatibilityMirrors().
     if (resolved.conflict) {
       updatePortfolioPersistenceStatus('conflict', resolved.record.revision,
         'Conflicting local portfolio journal entries were preserved for recovery.');

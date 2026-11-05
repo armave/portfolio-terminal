@@ -325,6 +325,71 @@ describe('storage service', () => {
       expect(storageMap.has('portfolio_terminal_state_snapshot_v1')).toBe(true);
     });
 
+    it('reads inline legacy history without recreating a missing sidecar', () => {
+      const history = {
+        brokerExecutedTrades: [{ id: 'inline-trade', ticker: 'AAPL' }],
+        cashflows: [{ id: 'inline-cashflow', amount: -2 }]
+      };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -1250,
+        ...history
+      }));
+      localStorageMock.setItem.mockClear();
+
+      expect(loadSavedHistory()).toEqual(history);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    });
+
+    it('reclaims legacy mirrors after the first IndexedDB commit when the initial checkpoint hits quota', async () => {
+      const history = {
+        brokerExecutedTrades: Array.from({ length: 80 }, (_, index) => ({
+          id: `legacy-execution-${index}`,
+          ticker: 'AAPL'
+        })),
+        cashflows: Array.from({ length: 80 }, (_, index) => ({
+          id: `legacy-cashflow-${index}`,
+          amount: -(index + 1)
+        }))
+      };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -1250,
+        ...history
+      }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify(history));
+
+      let rejectedCheckpoint = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_terminal_state_snapshot_v1' && !rejectedCheckpoint) {
+          rejectedCheckpoint = true;
+          throw new DOMException('Initial atomic checkpoint exceeded quota', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const status = await hydratePortfolioPersistence();
+      const durable = databaseFixture.getCurrent();
+
+      expect(rejectedCheckpoint).toBe(true);
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
+      expect(durable).toMatchObject({
+        revision: 0,
+        state: { activeView: 'AAPL', balance: -1250 },
+        history
+      });
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_state')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(JSON.parse(storageMap.get('portfolio_terminal_state_snapshot_v1')!)).toMatchObject({
+        revision: 0,
+        state: { activeView: 'AAPL', balance: -1250 },
+        history
+      });
+    });
+
     it('chains multiple first-run synchronous writes into consecutive revisions', async () => {
       expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
       expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
@@ -1109,7 +1174,7 @@ describe('storage service', () => {
   });
 
   describe('separate closed history persistence', () => {
-    it('migrates history embedded in a legacy portfolio snapshot when the sidecar is absent', () => {
+    it('reads history embedded in a legacy portfolio snapshot without duplicating it into a sidecar', () => {
       const expected = {
         brokerExecutedTrades: [{ id: 'legacy-trade', ticker: 'AAPL' }],
         cashflows: [{ id: 'legacy-fee', amount: -2 }]
@@ -1117,7 +1182,7 @@ describe('storage service', () => {
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
 
       expect(loadSavedHistory()).toEqual(expected);
-      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual(expected);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
     it('recovers embedded history without overwriting an unreadable sidecar', () => {
