@@ -46,7 +46,13 @@ export interface PortfolioSnapshotOptions {
 
 /** Returns browser storage only when it is available to the current runtime. */
 function getBrowserStorage(): Storage | null {
-  return typeof localStorage !== 'undefined' && localStorage ? localStorage : null;
+  try {
+    return typeof localStorage !== 'undefined' && localStorage ? localStorage : null;
+  } catch {
+    // Accessing the browser storage getter itself may throw in privacy or
+    // sandboxed contexts before any Storage method can be called.
+    return null;
+  }
 }
 
 function createPersistenceId(): string {
