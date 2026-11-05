@@ -617,7 +617,17 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
     storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
-    if (clearing) storage.removeItem(STORAGE_KEY_CLEAR_MARKER);
+    if (clearing) {
+      // A clear operation intentionally leaves only the empty atomic snapshot;
+      // remove any legacy mirrors that a concurrently completing prior write
+      // may have restored while the clear transaction was in flight.
+      removeStoredKeys(storage, [
+        STORAGE_KEY_STATE,
+        STORAGE_KEY_LEGACY_STATE,
+        STORAGE_KEY_CLOSED_HISTORY
+      ]);
+      storage.removeItem(STORAGE_KEY_CLEAR_MARKER);
+    }
     hydratedPortfolioSnapshot = current;
     lastScheduledRevision = current.revision;
     committedKeys.forEach((key) => {
@@ -1157,11 +1167,10 @@ export function saveState<TState extends object>(
     : [];
   const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
   const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
-  const historyChanged = hasHistory && (
-    !lastPersistedHistory ||
-    lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
-    lastPersistedHistory.cashflows !== cashflows
-  );
+  const historyChanged = lastPersistedHistory
+    ? lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
+      lastPersistedHistory.cashflows !== cashflows
+    : hasHistory;
 
   const result = persistPortfolioSnapshot(
     mutableState,
