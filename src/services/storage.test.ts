@@ -168,15 +168,24 @@ describe('storage service', () => {
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
 
-    it('returns false when persistence fails and does not trigger a sync callback', () => {
+    it('returns false without deleting legacy data when quota is exceeded before a checkpoint is verified', () => {
       const onPushToGist = vi.fn();
+      const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
+      const previousHistory = JSON.stringify({
+        brokerExecutedTrades: [{ id: 'recoverable-trade' }],
+        cashflows: [{ id: 'recoverable-cashflow' }]
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousState);
+      storageMap.set('portfolio_closed_history_v1', previousHistory);
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       localStorageMock.setItem.mockImplementationOnce(() => {
-        throw new Error('quota exceeded');
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
       });
 
       expect(saveState({ activeView: 'AAPL' }, onPushToGist)).toBe(false);
       expect(onPushToGist).not.toHaveBeenCalled();
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
 
       errorSpy.mockRestore();
     });
@@ -359,6 +368,72 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
       expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
       expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
+    });
+
+    it('reclaims verified duplicate localStorage mirrors and retries a quota-blocked journal write', async () => {
+      const initialized = await hydratePortfolioPersistence();
+      expect(initialized.state).toBe('ready');
+      const committedBefore = databaseFixture.getCurrent();
+      expect(committedBefore).not.toBeNull();
+
+      // Simulate the large compatibility mirrors observed on the affected device.
+      const previousStateMirror = JSON.stringify({
+        activeView: 'CLOSED_HISTORY',
+        closedTrades: Array.from({ length: 120 }, (_, index) => ({ id: `closed-${index}`, ticker: 'AAPL' }))
+      });
+      const previousHistoryMirror = JSON.stringify({
+        brokerExecutedTrades: Array.from({ length: 120 }, (_, index) => ({ id: `execution-${index}`, ticker: 'AAPL' })),
+        cashflows: Array.from({ length: 120 }, (_, index) => ({ id: `cashflow-${index}`, amount: -1 }))
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousStateMirror);
+      storageMap.set('portfolio_closed_history_v1', previousHistoryMirror);
+
+      let rejectedFirstJournalWrite = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key.startsWith('portfolio_terminal_state_pending_v1:') && !rejectedFirstJournalWrite) {
+          rejectedFirstJournalWrite = true;
+          throw new DOMException('Setting the value exceeded the quota', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const executions = Array.from({ length: 160 }, (_, index) => ({
+        id: `updated-execution-${index}`,
+        ticker: 'AAPL',
+        marginFeeAllocations: [{ trancheId: `tranche-${index}`, amount: index / 10 }]
+      }));
+      const cashflows = Array.from({ length: 160 }, (_, index) => ({
+        id: `updated-cashflow-${index}`,
+        amount: -index
+      }));
+      const state = {
+        activeView: 'CLOSED_HISTORY',
+        closedTrades: Array.from({ length: 80 }, (_, index) => ({
+          id: `closed-${index}`,
+          ticker: 'AAPL',
+          netProfit: index
+        }))
+      };
+
+      expect(savePortfolioSnapshot(state, {
+        brokerExecutedTrades: executions,
+        cashflows
+      })).toBe(true);
+      expect(rejectedFirstJournalWrite).toBe(true);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_state')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(true);
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: executions,
+        cashflows
+      });
+      expect(databaseFixture.getCurrent()?.revision).toBe((committedBefore?.revision ?? 0) + 1);
     });
 
     it('persists an explicit empty history after reload when the in-memory history cache is empty', async () => {
