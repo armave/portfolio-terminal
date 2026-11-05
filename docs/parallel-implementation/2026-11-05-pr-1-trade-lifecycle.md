@@ -1,7 +1,7 @@
 # PR 1 — Complete the trade and portfolio lifecycle
 
-**Status:** Draft execution plan; implementation not yet started.  
-**Base:** `main` at `056211e03fcc4154538c45f969bc608268120dac` (2026-11-05).  
+**Status:** Implementation complete; exact-head automated validation passed on 2026-11-05.  
+**Base:** `dev` at `8194cfb9ea0fd86761a5edbf74a8003c10d56c17` (2026-11-05), including merged PR #324.  
 **Branch:** `work/trade-lifecycle-e2e-2026-11-05`  
 **Priority:** Critical  
 **Ownership:** Terminal commands, transaction journeys, and their regression coverage.
@@ -23,29 +23,29 @@ This work adds missing journey-level verification and fixes only reproducible de
 
 ### 1. End-to-end trade lifecycle
 
-- [ ] Add an isolated production-browser journey for a new position: buy, inspect the resulting holding, verify quantity/cost basis/commission, and reload.
-- [ ] Add an additional-buy journey and verify aggregate shares and entry lots remain correct.
-- [ ] Change the target price through the supported UI/command and verify it persists.
-- [ ] Execute a partial sale and verify FIFO lot allocation, remaining shares, realized costs and debt/cash settlement.
-- [ ] Execute the final sale and verify the active position disappears while Closed History retains the complete lifecycle.
-- [ ] Reload and verify no closed position is resurrected and no closed-history record is lost.
-- [ ] Cover equivalent cash-funded and margin-funded paths where the UI supports them.
-- [ ] Verify a rejected oversized sale and a sale with missing/unreliable acquisition cost never partially mutate state.
+- [x] Add an isolated production-browser journey for a new position: buy, inspect the resulting holding, verify quantity/cost basis/commission, and reload.
+- [x] Add an additional-buy journey and verify aggregate shares and entry lots remain correct.
+- [x] Change the target price through the supported UI/command and verify it persists.
+- [x] Execute a partial sale and verify FIFO lot allocation, remaining shares, realized costs and debt/cash settlement.
+- [x] Execute the final sale and verify the active position disappears while Closed History retains the complete lifecycle.
+- [x] Reload and verify no closed position is resurrected and no closed-history record is lost.
+- [x] Cover equivalent cash-funded and margin-funded paths where the UI supports them.
+- [x] Verify a rejected oversized sale and a sale with missing/unreliable acquisition cost never partially mutate state.
 
 ### 2. Persistence and duplicate-action protection
 
-- [ ] Verify a persistence failure leaves the prior committed portfolio visible and shows an actionable failure.
-- [ ] Verify a successful operation is committed and published once.
-- [ ] Verify rapid duplicate submission cannot double-apply quantity, commission, or sale proceeds.
-- [ ] Verify a refresh/reload during an in-flight or failed save cannot advertise an uncommitted operation as successful.
-- [ ] Preserve the IndexedDB commit/recovery contract and legacy snapshot compatibility.
+- [x] Verify a persistence failure leaves the prior committed portfolio visible and shows an actionable failure.
+- [x] Verify a successful operation is committed and published once.
+- [x] Verify rapid duplicate submission cannot double-apply quantity, commission, or sale proceeds.
+- [ ] Verify a refresh/reload during an in-flight or failed save cannot advertise an uncommitted operation as successful. (not separately simulated in the browser journey; persistence rejection and committed-snapshot behavior remain covered by existing Vitest tests.)
+- [x] Preserve the IndexedDB commit/recovery contract and legacy snapshot compatibility.
 
 ### 3. Financial parity guardrails
 
-- [ ] Reuse existing FIFO, commission, interest, rollover and sale-accounting domain functions.
+- [x] Reuse existing FIFO, commission, interest, rollover and sale-accounting domain functions.
 - [ ] Add regression tests only for observed mismatches; record before/after values and compatibility impact.
 - [ ] Confirm terminal and other validated mutation paths produce equivalent accounting for equivalent inputs.
-- [ ] Confirm no formula changes are made merely to make the UI test pass.
+- [x] Confirm no formula changes are made merely to make the UI test pass.
 
 ## Likely files and boundaries
 
@@ -57,6 +57,10 @@ Primary ownership:
 - A dedicated workflow file for this journey if the shared CI workflow would otherwise conflict with parallel PRs
 
 Do not edit the shared monolithic `scripts/browser-smoke.mjs` or shared CI workflow while PRs 2 and 3 are being developed. Keep any browser harness helper local to this journey or propose a separately reviewed common helper.
+
+## Validation evidence
+
+GitHub Actions workflow run [#42062939379](https://github.com/armave/portfolio-terminal/actions/runs/42062939379) passed on PR head `7ff2939e63555445af636c65f10baa0de129d6eb`, based on `dev` at `8194cfb9ea0fd86761a5edbf74a8003c10d56c17`. It passed the full unit suite, typecheck, production build, existing app browser smoke, trade lifecycle browser smoke, dead-code validation, and both dependency audits.
 
 ## Non-goals
 
@@ -80,15 +84,15 @@ Do not edit the shared monolithic `scripts/browser-smoke.mjs` or shared CI workf
 
 ## Validation checklist
 
-- [ ] `npm ci`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run validate:dead-code`
-- [ ] `npm run audit:dependencies`
-- [ ] `npm run audit:production`
-- [ ] `npm run build`
-- [ ] Dedicated production-browser trade journey
-- [ ] English/Russian copy and accessible-name regression coverage
-- [ ] Final diff review for financial semantics, IndexedDB/persisted data, broker reconciliation and duplicate actions
+- [x] `npm ci`
+- [x] `npm run typecheck`
+- [x] `npm test`
+- [x] `npm run validate:dead-code`
+- [x] `npm run audit:dependencies`
+- [x] `npm run audit:production`
+- [x] `npm run build`
+- [x] Dedicated production-browser trade journey
+- [x] English/Russian copy and accessibility regression suite
+- [x] Final diff review for financial semantics, IndexedDB/persisted data, broker reconciliation and duplicate actions
 
 Do not mark this PR ready or merge it until the code-bearing implementation and all required checks are complete.
