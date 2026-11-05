@@ -426,10 +426,8 @@ try {
   const rowForUser = (name) => page.locator('#settingsDesk tbody tr')
     .filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) });
   const deleteRow = rowForUser('Browser Guest Delete');
-  const deleteDialogPromise = page.waitForEvent('dialog');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await deleteRow.getByRole('button', { name: 'Delete' }).click();
-  const deleteDialog = await deleteDialogPromise;
-  await deleteDialog.accept();
   await deleteRow.waitFor({ state: 'detached', timeout: 10_000 });
 
   const keepRow = rowForUser('Browser Guest Keep');
