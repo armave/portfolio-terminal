@@ -117,7 +117,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
     const history = recentUpdates.map(entry =>
       `n${entry.sequence}[d:${entry.del};i:${entry.ins};u:${entry.upd}]`
     ).join("|");
-    const message = `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${Number.isSafeInteger(update.n) ? update.n : "unknown"}, del=[${compactRows(update.del, true)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}], history=[${history}]`;
+    const message = `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${normalizePosition(update.m ?? update.n) ?? "unknown"}, del=[${compactRows(update.del, true)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}], history=[${history}]`;
     return message.length > 5000 ? message.slice(0, 4997) + "..." : message;
   };
 
@@ -162,7 +162,8 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         throw new Error("TradeNet market-depth update did not match the requested symbol.");
       }
 
-      const updateSequence = normalizePosition(update.n);
+      // Current DomInfoBlock uses m; accept legacy n as well.
+      const updateSequence = normalizePosition(update.m ?? update.n);
       const updateDepth = normalizePosition(update.cnt);
       const rawDeletions = rows(update.del);
       const deletions = rawDeletions.map(normalizeDeletion);
