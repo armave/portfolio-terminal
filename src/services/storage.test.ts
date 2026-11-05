@@ -24,8 +24,11 @@ import {
   saveApiKeys,
   hasFreedomCashflowHistoryBaseline,
   hasFreedomTradeHistoryBaseline,
+  hasPendingBackupCloudSync,
   markFreedomCashflowHistoryBaseline,
   markFreedomTradeHistoryBaseline,
+  markPendingBackupCloudSync,
+  clearPendingBackupCloudSync,
   configurePortfolioStateDatabaseForTesting,
   resetPortfolioStateDatabaseForTesting,
   flushPortfolioPersistence,
@@ -1236,6 +1239,22 @@ describe('storage service', () => {
       expect(hasFreedomCashflowHistoryBaseline('admin-a')).toBe(true);
       expect(hasFreedomTradeHistoryBaseline('admin-b')).toBe(false);
       expect(hasFreedomCashflowHistoryBaseline('admin-b')).toBe(false);
+    });
+
+    it('keeps a pending backup cloud replacement scoped to its administrator account', () => {
+      expect(hasPendingBackupCloudSync('admin-a')).toBe(false);
+      expect(markPendingBackupCloudSync('admin-a')).toBe(true);
+      expect(hasPendingBackupCloudSync('admin-a')).toBe(true);
+      expect(hasPendingBackupCloudSync('admin-b')).toBe(false);
+
+      expect(clearPendingBackupCloudSync('admin-a')).toBe(true);
+      expect(hasPendingBackupCloudSync('admin-a')).toBe(false);
+    });
+
+    it('does not create or clear a pending backup marker without an account identity', () => {
+      expect(markPendingBackupCloudSync('')).toBe(false);
+      expect(hasPendingBackupCloudSync('')).toBe(false);
+      expect(clearPendingBackupCloudSync('')).toBe(false);
     });
 
     it('does not mark a missing account identity as complete', () => {
