@@ -1,6 +1,7 @@
 const PORTFOLIO_STATE_DATABASE_NAME = 'portfolio-terminal-state';
-const PORTFOLIO_STATE_DATABASE_VERSION = 1;
+const PORTFOLIO_STATE_DATABASE_VERSION = 2;
 const PORTFOLIO_STATE_OBJECT_STORE = 'snapshots';
+const PORTFOLIO_RECOVERY_OBJECT_STORE = 'recovery';
 const PORTFOLIO_STATE_CURRENT_KEY = 'current';
 
 export interface PortfolioStateSnapshotRecord {
@@ -21,6 +22,14 @@ export interface PortfolioStateSnapshotRecord {
 
 type PortfolioStateCommitResult = 'committed' | 'already-committed' | 'conflict';
 
+export interface PortfolioRecoveryArchiveRecord {
+  id: string;
+  originalKey: string;
+  archivedAt: number;
+  reason: 'superseded-by-committed-checkpoint';
+  payload: unknown;
+}
+
 export interface PortfolioStateDatabase {
   readCurrent(): Promise<PortfolioStateSnapshotRecord | null>;
   compareAndCommit(
@@ -28,6 +37,8 @@ export interface PortfolioStateDatabase {
     expectedRevision: number | null
   ): Promise<PortfolioStateCommitResult>;
   clear(): Promise<void>;
+  archiveRecoveryRecords(records: PortfolioRecoveryArchiveRecord[]): Promise<void>;
+  readRecoveryRecords(): Promise<PortfolioRecoveryArchiveRecord[]>;
 }
 
 function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
@@ -38,6 +49,9 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains(PORTFOLIO_STATE_OBJECT_STORE)) {
         database.createObjectStore(PORTFOLIO_STATE_OBJECT_STORE);
+      }
+      if (!database.objectStoreNames.contains(PORTFOLIO_RECOVERY_OBJECT_STORE)) {
+        database.createObjectStore(PORTFOLIO_RECOVERY_OBJECT_STORE);
       }
     };
     request.onsuccess = () => {
@@ -76,7 +90,9 @@ export function createIndexedDbPortfolioStateDatabase(
     return {
       readCurrent: async () => { throw new Error('IndexedDB is unavailable.'); },
       compareAndCommit: async () => { throw new Error('IndexedDB is unavailable.'); },
-      clear: async () => { throw new Error('IndexedDB is unavailable.'); }
+      clear: async () => { throw new Error('IndexedDB is unavailable.'); },
+      archiveRecoveryRecords: async () => { throw new Error('IndexedDB is unavailable.'); },
+      readRecoveryRecords: async () => { throw new Error('IndexedDB is unavailable.'); }
     };
   }
 
@@ -171,6 +187,60 @@ export function createIndexedDbPortfolioStateDatabase(
         transaction.onabort = () => {
           database.close();
           reject(transaction.error || new Error('Portfolio state clear transaction was aborted.'));
+        };
+      });
+    },
+
+    /**
+     * Preserve superseded local write-ahead journals in IndexedDB before their
+     * localStorage copies are removed. The archive is a separate object store:
+     * it never changes the authoritative current portfolio generation.
+     */
+    async archiveRecoveryRecords(records: PortfolioRecoveryArchiveRecord[]): Promise<void> {
+      if (records.length === 0) return;
+      const database = await openDatabase(factory);
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(PORTFOLIO_RECOVERY_OBJECT_STORE, 'readwrite');
+        const store = transaction.objectStore(PORTFOLIO_RECOVERY_OBJECT_STORE);
+        records.forEach((record) => store.put(record, record.id));
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => {
+          database.close();
+          reject(transaction.error || new Error('Could not archive superseded portfolio recovery journals.'));
+        };
+        transaction.onabort = () => {
+          database.close();
+          reject(transaction.error || new Error('Portfolio recovery archive transaction was aborted.'));
+        };
+      });
+    },
+
+    async readRecoveryRecords(): Promise<PortfolioRecoveryArchiveRecord[]> {
+      const database = await openDatabase(factory);
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(PORTFOLIO_RECOVERY_OBJECT_STORE, 'readonly');
+        const request = transaction.objectStore(PORTFOLIO_RECOVERY_OBJECT_STORE).getAll();
+        request.onsuccess = () => {
+          // Resolve only after the readonly transaction completes.
+        };
+        request.onerror = () => {
+          database.close();
+          reject(request.error || new Error('Could not read archived portfolio recovery journals.'));
+        };
+        transaction.oncomplete = () => {
+          database.close();
+          resolve((request.result || []) as PortfolioRecoveryArchiveRecord[]);
+        };
+        transaction.onerror = () => {
+          database.close();
+          reject(transaction.error || new Error('Portfolio recovery archive read failed.'));
+        };
+        transaction.onabort = () => {
+          database.close();
+          reject(transaction.error || new Error('Portfolio recovery archive read was aborted.'));
         };
       });
     }
