@@ -1202,11 +1202,22 @@ export function saveState<TState extends object>(
     ? mutableState.brokerExecutedTrades
     : [];
   const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
-  const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
-  const historyChanged = lastPersistedHistory
-    ? lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
-      lastPersistedHistory.cashflows !== cashflows
-    : hasHistory;
+  let persistedHistory = lastPersistedHistory;
+  try {
+    const storage = getBrowserStorage();
+    const currentSnapshot = storage ? resolveLocalPortfolioSnapshot(storage).record : null;
+    persistedHistory = currentSnapshot?.history ?? persistedHistory;
+  } catch (error) {
+    console.error('Failed to inspect persisted portfolio history before saving:', error);
+    return false;
+  }
+  const baselineHistory = persistedHistory || {
+    brokerExecutedTrades: [],
+    cashflows: []
+  };
+  const historyChanged =
+    JSON.stringify(baselineHistory.brokerExecutedTrades) !== JSON.stringify(brokerExecutedTrades) ||
+    JSON.stringify(baselineHistory.cashflows) !== JSON.stringify(cashflows);
 
   const result = persistPortfolioSnapshot(
     mutableState,
