@@ -350,6 +350,35 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
     });
 
+    it('persists an explicit empty history after reload when the in-memory history cache is empty', async () => {
+      expect(saveState({
+        activeView: 'AAPL',
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      })).toBe(true);
+      await flushPortfolioPersistence();
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      });
+
+      // Simulate a new page runtime: the IndexedDB/current snapshot survives,
+      // but the module-local history reference cache is reset.
+      configurePortfolioStateDatabaseForTesting(databaseFixture.database);
+      expect(saveState({
+        activeView: 'COMBINED',
+        brokerExecutedTrades: [],
+        cashflows: []
+      })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+    });
+
     it('keeps a failed IndexedDB transaction journaled and recovers it on retry', async () => {
       databaseFixture.setFailure(new Error('IndexedDB quota exceeded'));
 
