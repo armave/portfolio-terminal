@@ -170,7 +170,7 @@ describe('storage service', () => {
       errorSpy.mockRestore();
     });
 
-    it('rolls back the portfolio state when its changed history sidecar cannot be saved', () => {
+    it('keeps the journal commit recoverable when a legacy history mirror cannot be updated', () => {
       const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
       const previousHistory = JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
@@ -191,11 +191,17 @@ describe('storage service', () => {
         storageMap.set(key, String(value));
       });
 
-      expect(saveState(state, onPushToGist)).toBe(false);
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      // The single journal record is the synchronous commit boundary. The
+      // legacy sidecar is only a compatibility mirror and may lag safely.
+      expect(saveState(state, onPushToGist)).toBe(true);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).not.toBe(previousState);
       expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
-      expect(state.lastUpdated).toBe(123);
-      expect(onPushToGist).not.toHaveBeenCalled();
+      expect(state.lastUpdated).toBeGreaterThan(123);
+      expect(loadSavedHistory()).toEqual({
+        brokerExecutedTrades: [{ id: 'new-trade' }],
+        cashflows: [{ id: 'new-fee' }]
+      });
+      expect(onPushToGist).toHaveBeenCalledWith(false);
     });
 
     it('commits blank portfolio, explicit empty history, and device view together', () => {
@@ -255,6 +261,122 @@ describe('storage service', () => {
     it('does not throw when localStorage is undefined', () => {
       vi.stubGlobal('localStorage', undefined);
       expect(() => saveState({ activeView: 'TSLA' })).not.toThrow();
+    });
+  });
+
+  describe('IndexedDB portfolio snapshot migration and recovery', () => {
+    it('migrates the existing local snapshot, history, broker rules, and desk preference without deleting legacy evidence', async () => {
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -1250,
+        gatewaySecret: 'must-not-be-migrated',
+        brokerExecutedTrades: [{ id: 'inline-trade' }],
+        cashflows: [{ id: 'inline-cashflow' }]
+      }));
+      const history = {
+        brokerExecutedTrades: [{ id: 'sidecar-trade' }],
+        cashflows: [{ id: 'sidecar-cashflow' }]
+      };
+      const brokerRules = { annualBorrowRate: 0.15, dayCountBasis: '365' };
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify(history));
+      storageMap.set('tradernet_rules_v1', JSON.stringify(brokerRules));
+      storageMap.set('portfolio_active_view', 'AAPL');
+
+      const status = await hydratePortfolioPersistence();
+      const migrated = databaseFixture.getCurrent();
+
+      expect(status.state).toBe('ready');
+      expect(migrated).toMatchObject({
+        schemaVersion: 1,
+        revision: 0,
+        state: { activeView: 'AAPL', balance: -1250 },
+        history,
+        brokerRules,
+        deviceActiveView: 'AAPL'
+      });
+      expect(migrated?.state).not.toHaveProperty('gatewaySecret');
+      expect(migrated?.state).not.toHaveProperty('brokerExecutedTrades');
+      expect(loadSavedState({})).toMatchObject({ activeView: 'AAPL', balance: -1250 });
+      expect(loadSavedHistory()).toEqual(history);
+      expect(loadBrokerRules()).toEqual(brokerRules);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(true);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(true);
+      expect(storageMap.has('portfolio_terminal_state_snapshot_v1')).toBe(true);
+    });
+
+    it('chains multiple first-run synchronous writes into consecutive revisions', async () => {
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
+
+      const status = await flushPortfolioPersistence();
+      const committed = databaseFixture.getCurrent();
+
+      expect(status.state).toBe('ready');
+      expect(committed?.revision).toBe(2);
+      expect(committed?.parentRevision).toBe(1);
+      expect(committed?.state).toMatchObject({ activeView: 'MSFT', balance: 250 });
+      expect(status.pendingWrites).toBe(0);
+      expect(Array.from(storageMap.keys()).filter((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toHaveLength(0);
+    });
+
+    it('keeps a failed IndexedDB transaction journaled and recovers it on retry', async () => {
+      databaseFixture.setFailure(new Error('IndexedDB quota exceeded'));
+
+      expect(saveState({ activeView: 'NVDA', balance: 400 })).toBe(true);
+      const failed = await flushPortfolioPersistence();
+
+      expect(failed.state).toBe('degraded');
+      expect(failed.pendingWrites).toBe(1);
+      expect(loadSavedState({})).toMatchObject({ activeView: 'NVDA', balance: 400 });
+      expect(databaseFixture.getCurrent()).toBeNull();
+
+      databaseFixture.setFailure(null);
+      const recovered = await flushPortfolioPersistence();
+
+      expect(recovered.state).toBe('ready');
+      expect(recovered.pendingWrites).toBe(0);
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'NVDA', balance: 400 });
+    });
+
+    it('preserves a stale-tab journal when IndexedDB has advanced to a newer revision', async () => {
+      await hydratePortfolioPersistence();
+      const initial = databaseFixture.getCurrent();
+      expect(initial?.revision).toBe(0);
+      databaseFixture.setCurrent({
+        ...initial!,
+        revision: 7,
+        parentRevision: 6,
+        commitId: 'newer-tab-commit',
+        originId: 'other-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'TSLA', balance: 700 }
+      });
+
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('conflict');
+      expect(status.pendingWrites).toBe(1);
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'TSLA', balance: 700 });
+      expect(loadSavedState({})).toMatchObject({ activeView: 'TSLA', balance: 700 });
+      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(true);
+    });
+
+    it('writes a durable empty generation when local portfolio data is cleared', async () => {
+      expect(saveState({ activeView: 'AAPL', balance: -300 })).toBe(true);
+      await flushPortfolioPersistence();
+
+      clearLocalData();
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.state).toEqual({});
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_state')).toBe(false);
     });
   });
 
