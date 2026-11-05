@@ -88,7 +88,7 @@ describe('app localization', () => {
       'Bid liquidity ladder', 'Ask liquidity ladder',
       'Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.',
       'Visible levels:', 'TradeNet reported book depth:', 'total positions in the combined book', 'Changes captured:',
-      'TradeNet returned only one bid and one ask price level. This view already displays every level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.',
+      'TradeNet returned only one bid price and one ask price in this snapshot. This view combines orders at identical prices and displays every distinct price level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.',
       'Current provider rows:', 'First payload:', 'raw rows', 'accepted', 'ignored', 'Initial provider depth:'
     ];
     for (const copy of marketDepthCopy) {
