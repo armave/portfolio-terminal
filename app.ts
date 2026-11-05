@@ -2069,7 +2069,7 @@ async function executeCommand(commandText: string, preserveAiRequest = false) {
       brokerAssumptions: latestState.brokerAssumptions
     });
     if (
-      aiIntentRequiresFreshPortfolioContext(parsed.intent, parsed.intent === 'chat' ? null : parsed.ticker) &&
+      aiIntentRequiresFreshPortfolioContext(parsed.intent, 'ticker' in parsed ? parsed.ticker : null) &&
       latestContextFingerprint !== contextFingerprint
     ) {
       logTerminal(`[AI Advisor]: ${translateText('Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.', getAppLanguage())}`);
