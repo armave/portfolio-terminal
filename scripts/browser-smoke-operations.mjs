@@ -422,6 +422,11 @@ try {
   await emptyState.getByRole('button', { name: 'Quick Buy' }).click();
   const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
   await terminalCommand.fill('bought 5 AAPL for 10');
+  let tradeConfirmationMessage = '';
+  page.once('dialog', async (dialog) => {
+    tradeConfirmationMessage = dialog.message();
+    await dialog.accept();
+  });
   await terminalCommand.press('Enter');
   // Wait for the synchronous portfolio-store mutation to persist. The command's
   // quote/cloud follow-up and the broker snapshot are independent of this local write.
@@ -436,7 +441,11 @@ try {
   }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
   if (!positionSaved) {
     const terminalOutput = await page.locator('#terminalLog').innerText();
-    throw new Error('Quick Buy seed command did not persist AAPL: ' + terminalOutput.slice(-1200));
+    throw new Error('Quick Buy seed command did not persist AAPL: ' + terminalOutput.slice(-1200) +
+      (tradeConfirmationMessage ? ' | Confirmation: ' + tradeConfirmationMessage.slice(0, 500) : ' | No trade confirmation dialog was shown.'));
+  }
+  if (!/apply this change\?/i.test(tradeConfirmationMessage) || !/no broker order is submitted/i.test(tradeConfirmationMessage)) {
+    throw new Error('Quick Buy did not show the expected local-only trade confirmation: ' + tradeConfirmationMessage.slice(0, 700));
   }
 
   // Market Insights: provider outages must be visible and recoverable; deep data
