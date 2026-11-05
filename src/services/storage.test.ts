@@ -483,6 +483,25 @@ describe('storage service', () => {
   });
 
   describe('loadSavedState', () => {
+    it('falls back safely when accessing the browser localStorage getter throws', () => {
+      const fallback = { activeView: 'COMBINED', balance: 0 };
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new Error('localStorage access is blocked');
+        }
+      });
+
+      try {
+        expect(loadSavedState(fallback)).toEqual(fallback);
+        expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(false);
+      } finally {
+        if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+        else delete (globalThis as { localStorage?: Storage }).localStorage;
+      }
+    });
+
     it('handles missing payload gracefully and returns fallback state', () => {
       const fallback = { activeView: 'COMBINED', balance: 0 };
       const loaded = loadSavedState(fallback);
