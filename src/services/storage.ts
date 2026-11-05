@@ -2,7 +2,8 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import {
   createIndexedDbPortfolioStateDatabase,
   type PortfolioStateDatabase,
-  type PortfolioStateSnapshotRecord
+  type PortfolioStateSnapshotRecord,
+  type PortfolioRecoveryArchiveRecord
 } from './portfolioStateDatabase';
 import {
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -418,6 +419,11 @@ export function getPortfolioPersistenceStatus(): PortfolioPersistenceStatus {
   return { ...portfolioPersistenceStatus };
 }
 
+/** Reads preserved superseded recovery branches without changing the active portfolio. */
+export async function getArchivedPortfolioRecoveryRecords(): Promise<PortfolioRecoveryArchiveRecord[]> {
+  return getPortfolioStateDatabase().readRecoveryRecords();
+}
+
 export function subscribePortfolioPersistenceStatus(
   listener: (status: PortfolioPersistenceStatus) => void
 ): () => void {
@@ -623,7 +629,13 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
       }
       if (candidates.length === 0) {
         const unresolved = pending.filter((item) => !committedKeys.has(item.key));
-        hasConflict = unresolved.some((item) => item.record.parentRevision < current!.revision);
+        // Old branches are archived after the current IndexedDB generation is
+        // checkpointed below. Only a journal that still points into the middle
+        // of a future revision chain is an active conflict.
+        hasConflict = unresolved.some((item) =>
+          item.record.revision > current!.revision &&
+          item.record.parentRevision < current!.revision
+        );
         hasGap = unresolved.some((item) => item.record.parentRevision > current!.revision);
         break;
       }
@@ -643,6 +655,37 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
     storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
+
+    // Any older journal not consumed by the active commit chain is a preserved
+    // recovery branch, not a reason to block the current portfolio. Archive its
+    // full payload in a separate IndexedDB transaction before deleting its
+    // localStorage copy. If the archive fails, the local copy remains for retry.
+    const checkpoint = readAtomicPortfolioSnapshot(storage);
+    if (
+      current && checkpoint &&
+      checkpoint.revision === current.revision &&
+      checkpoint.commitId === current.commitId &&
+      checkpoint.originId === current.originId
+    ) {
+      const superseded = readPendingPortfolioSnapshots(storage).filter((item) =>
+        !committedKeys.has(item.key) &&
+        item.record.commitId !== current!.commitId &&
+        item.record.revision <= current!.revision
+      );
+      if (superseded.length > 0) {
+        const archivedAt = Date.now();
+        const archiveRecords: PortfolioRecoveryArchiveRecord[] = superseded.map((item) => ({
+          id: item.record.commitId,
+          originalKey: item.key,
+          archivedAt,
+          reason: 'superseded-by-committed-checkpoint',
+          payload: item.record
+        }));
+        await database.archiveRecoveryRecords(archiveRecords);
+        removeStoredKeys(storage, superseded.map((item) => item.key));
+      }
+    }
+
     if (clearing) {
       // A clear operation intentionally leaves only the empty atomic snapshot;
       // remove any legacy mirrors that a concurrently completing prior write

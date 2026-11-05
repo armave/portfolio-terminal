@@ -29,9 +29,10 @@ import {
   resetPortfolioStateDatabaseForTesting,
   flushPortfolioPersistence,
   hydratePortfolioPersistence,
-  getPortfolioPersistenceStatus
+  getPortfolioPersistenceStatus,
+  getArchivedPortfolioRecoveryRecords
 } from './storage.ts';
-import type { PortfolioStateDatabase, PortfolioStateSnapshotRecord } from './portfolioStateDatabase';
+import type { PortfolioRecoveryArchiveRecord, PortfolioStateDatabase, PortfolioStateSnapshotRecord } from './portfolioStateDatabase';
 
 describe('storage service', () => {
   const storageMap = new Map<string, string>();
@@ -40,6 +41,7 @@ describe('storage service', () => {
   function createMemoryPortfolioDatabase() {
     let current: PortfolioStateSnapshotRecord | null = null;
     let failure: Error | null = null;
+    const recoveryRecords = new Map<string, PortfolioRecoveryArchiveRecord>();
     const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
     const database: PortfolioStateDatabase = {
       async readCurrent() {
@@ -56,12 +58,21 @@ describe('storage service', () => {
       async clear() {
         if (failure) throw failure;
         current = null;
+      },
+      async archiveRecoveryRecords(records) {
+        if (failure) throw failure;
+        records.forEach((record) => recoveryRecords.set(record.id, clone(record)));
+      },
+      async readRecoveryRecords() {
+        if (failure) throw failure;
+        return clone(Array.from(recoveryRecords.values()));
       }
     };
     return {
       database,
       getCurrent: () => current ? clone(current) : null,
       setCurrent: (record: PortfolioStateSnapshotRecord | null) => { current = record ? clone(record) : null; },
+      getRecoveryRecords: () => clone(Array.from(recoveryRecords.values())),
       setFailure: (error: Error | null) => { failure = error; }
     };
   }
@@ -419,7 +430,70 @@ describe('storage service', () => {
       )).toBe(true);
     });
 
-    it('preserves a stale-tab journal when IndexedDB has advanced to a newer revision', async () => {
+    it('archives older divergent journals after the IndexedDB and local checkpoints are confirmed identical', async () => {
+      await hydratePortfolioPersistence();
+      const baseline = databaseFixture.getCurrent()!;
+      const committed = {
+        ...baseline,
+        revision: 95,
+        parentRevision: 94,
+        commitId: 'committed-revision-95',
+        originId: 'current-tab-origin',
+        committedAt: Date.now(),
+        state: { activeView: 'TSLA', balance: 700 }
+      };
+      databaseFixture.setCurrent(committed);
+      storageMap.set('portfolio_terminal_state_snapshot_v1', JSON.stringify(committed));
+
+      for (let revision = 86; revision <= 90; revision += 1) {
+        const commitId = `stale-commit-${revision}`;
+        storageMap.set(`portfolio_terminal_state_pending_v1:${commitId}`, JSON.stringify({
+          schemaVersion: 1,
+          revision,
+          parentRevision: revision - 1,
+          commitId,
+          originId: 'previous-tab-origin',
+          committedAt: Date.now(),
+          state: { activeView: 'AAPL', balance: revision }
+        }));
+      }
+
+      const hydrated = await hydratePortfolioPersistence();
+
+      expect(hydrated.state).toBe('ready');
+      expect(hydrated.pendingWrites).toBe(0);
+      expect(databaseFixture.getCurrent()?.commitId).toBe('committed-revision-95');
+      expect(Array.from(storageMap.keys()).filter((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toHaveLength(0);
+
+      const archived = databaseFixture.getRecoveryRecords();
+      expect(archived).toHaveLength(5);
+      await expect(getArchivedPortfolioRecoveryRecords()).resolves.toHaveLength(5);
+      expect(archived.map((entry) => entry.id).sort()).toEqual([
+        'stale-commit-86',
+        'stale-commit-87',
+        'stale-commit-88',
+        'stale-commit-89',
+        'stale-commit-90'
+      ]);
+      expect(archived[0]).toMatchObject({
+        reason: 'superseded-by-committed-checkpoint',
+        payload: { originId: 'previous-tab-origin' }
+      });
+
+      // A subsequent cloud pull/local mutation can now append to revision 95.
+      expect(saveState({ activeView: 'GOOGL', balance: 800 })).toBe(true);
+      const saved = await flushPortfolioPersistence();
+      expect(saved.state).toBe('ready');
+      expect(databaseFixture.getCurrent()).toMatchObject({
+        revision: 96,
+        state: { activeView: 'GOOGL', balance: 800 }
+      });
+      expect(databaseFixture.getRecoveryRecords()).toHaveLength(5);
+    });
+
+    it('archives a stale-tab journal without overwriting the newer IndexedDB generation', async () => {
       await hydratePortfolioPersistence();
       const initial = databaseFixture.getCurrent();
       expect(initial?.revision).toBe(0);
@@ -436,11 +510,16 @@ describe('storage service', () => {
       expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
       const status = await flushPortfolioPersistence();
 
-      expect(status.state).toBe('conflict');
-      expect(status.pendingWrites).toBe(1);
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'TSLA', balance: 700 });
       expect(loadSavedState({})).toMatchObject({ activeView: 'TSLA', balance: 700 });
-      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(true);
+      expect(databaseFixture.getRecoveryRecords()).toHaveLength(1);
+      expect(databaseFixture.getRecoveryRecords()[0]).toMatchObject({
+        reason: 'superseded-by-committed-checkpoint',
+        payload: { revision: 1, originId: expect.any(String), state: { activeView: 'AAPL', balance: 100 } }
+      });
+      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(false);
     });
 
     it('keeps a clear tombstone authoritative if legacy-key removal is interrupted', async () => {
