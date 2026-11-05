@@ -1,0 +1,65 @@
+name: Operations Browser Journey
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operations-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  operations-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit and Worker tests
+        run: npm test
+
+      - name: Build production site
+        run: npm run build
+
+      - name: Install isolated browser runner
+        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.56.1-chromium
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Exercise account and Settings journeys in production browser
+        run: node scripts/browser-smoke-operations.mjs
+
+      - name: Validate dead code
+        run: npm run validate:dead-code
+
+      - name: Audit all dependencies
+        run: npm run audit:dependencies
+
+      - name: Audit production dependencies
+        run: npm run audit:production
