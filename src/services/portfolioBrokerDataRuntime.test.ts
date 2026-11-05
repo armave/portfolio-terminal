@@ -69,7 +69,11 @@ function createFixture(overrides: Partial<PortfolioBrokerDataRuntimeDependencies
         refresh.onError();
         return;
       }
-      refresh.onSuccess(refresh.normalizeActiveOrders(await refresh.fetchActiveOrders()));
+      try {
+        refresh.onSuccess(refresh.normalizeActiveOrders(await refresh.fetchActiveOrders()));
+      } catch {
+        refresh.onError();
+      }
     }),
     emit: ((type: string, payload?: unknown) => { events.push({ type, payload }); }) as PortfolioBrokerDataRuntimeDependencies['emit'],
     logError: vi.fn(),
@@ -391,4 +395,81 @@ describe('portfolio broker data runtime', () => {
     await expect(stale.runtime.refreshAccountInfo(stale.session)).resolves.toBe(false);
     expect(stale.events).toEqual([]);
   });
+  
+  it('does not commit or baseline a malformed trade-history response', async () => {
+    const markHistoryBaseline = vi.fn(() => true);
+    const fixture = createFixture({
+      hasHistoryBaseline: vi.fn(() => false),
+      markHistoryBaseline,
+      fetchExecutedTrades: vi.fn(async () => ({ data: { trades: 'not-an-array' } }))
+    });
+    fixture.setSaved([trade('saved-execution')]);
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(false);
+    expect(fixture.dependencies.setBrokerExecutions).not.toHaveBeenCalled();
+    expect(markHistoryBaseline).not.toHaveBeenCalled();
+    expect(fixture.events).toContainEqual({ type: 'broker:executed-trades-error' });
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:executed-trades' }));
+  });
+
+  it('does not treat a row with missing execution facts as complete history', async () => {
+    const markHistoryBaseline = vi.fn(() => true);
+    const fixture = createFixture({
+      hasHistoryBaseline: vi.fn(() => false),
+      markHistoryBaseline,
+      fetchExecutedTrades: vi.fn(async () => ({
+        data: { trades: { trade: [{
+          id: 'partial-execution', instr_nm: 'AAPL.US', type: '2', q: 1, date: '2026-11-03T10:00:00Z'
+        }] } }
+      }))
+    });
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(false);
+    expect(fixture.dependencies.setBrokerExecutions).not.toHaveBeenCalled();
+    expect(markHistoryBaseline).not.toHaveBeenCalled();
+    expect(fixture.events).toContainEqual({ type: 'broker:executed-trades-error' });
+  });
+
+  it('preserves a live execution updated while an older REST history page is in flight', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const original = trade('shared-execution', 'sell', '2026-11-03T10:00:00.000Z', { price: 100, profit: 0 });
+    const fixture = createFixture({
+      fetchExecutedTrades: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    fixture.setSaved([original]);
+    const request = fixture.runtime.loadExecutedTrades(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1));
+    const liveUpdate = trade('shared-execution', 'sell', '2026-11-03T10:00:00.000Z', { price: 105, profit: 5 });
+    const liveOnly = trade('live-only-fill', 'buy', '2026-11-03T10:01:00.000Z');
+    fixture.setPortfolioExecutions([liveUpdate, liveOnly]);
+    resolveFetch?.([original, trade('rest-only-fill', 'buy', '2026-11-03T10:02:00.000Z')]);
+    await expect(request).resolves.toBe(true);
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'shared-execution', price: 105, profit: 5 }),
+      expect.objectContaining({ id: 'live-only-fill' }),
+      expect.objectContaining({ id: 'rest-only-fill' })
+    ]));
+  });
+
+  it('rejects malformed active-order snapshots and keeps prior targets untouched', async () => {
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(async () => ({ data: { orders: 'not-an-array' } }))
+    });
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(false);
+    expect(fixture.events).toContainEqual({ type: 'broker:active-orders-error' });
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:active-orders' }));
+  });
+
+  it('keeps valid orders but marks history stale when the optional fills collection is malformed', async () => {
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(async () => ({
+        orders: { order: [{ order_id: 'order-1', instr: 'AAPL.US' }] },
+        trades: { trade: [{ id: 'partial-fill', instr: 'AAPL.US', side: 'BUY', q: 1 }] }
+      })),
+      normalizeActiveOrders: vi.fn(() => [{ id: 'order-1', ticker: 'AAPL.US' }] as never)
+    });
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+    expect(fixture.events).toContainEqual({ type: 'broker:active-orders', payload: [{ id: 'order-1', ticker: 'AAPL.US' }] });
+    expect(fixture.events).toContainEqual({ type: 'broker:executed-trades-error' });
+    expect(fixture.dependencies.setBrokerExecutions).not.toHaveBeenCalled();
+  });
+
 });
