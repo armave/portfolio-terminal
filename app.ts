@@ -2154,10 +2154,7 @@ function hideAuthContainer() {
 
 const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartupRuntime({
   hydrateLocalPortfolioState: async () => {
-    const status = await hydratePortfolioPersistence();
-    if (status.state === 'degraded' || status.state === 'conflict') {
-      showToast(status.message || PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, 'error');
-    }
+    await hydratePortfolioPersistence();
   },
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
