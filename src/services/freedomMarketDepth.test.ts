@@ -47,10 +47,78 @@ describe('TradeNet Market Depth accumulator', () => {
     const snapshot = book.snapshot();
     expect(snapshot.sequence).toBe(1);
     expect(snapshot.updateCount).toBe(2);
+    expect(snapshot).toMatchObject({
+      providerLevelCount: 20,
+      providerBidRowCount: 10,
+      providerAskRowCount: 10,
+      initialSequence: 0,
+      initialReportedDepth: 20,
+      initialRawInsertionCount: 20,
+      initialAcceptedInsertionCount: 20,
+      initialRejectedInsertionCount: 0,
+      initialBidInsertionCount: 10,
+      initialAskInsertionCount: 10
+    });
     expect(snapshot.asks[0]).toMatchObject({ position: 0, price: 291.21, quantity: 25 });
     expect(snapshot.bids[0]).toMatchObject({ position: 10, price: 291.11, quantity: 28 });
     expect(snapshot.bids).toHaveLength(10);
     expect(snapshot.asks).toHaveLength(10);
+  });
+
+  it('accepts numeric-string positions/prices/quantities and numeric or boolean side markers', () => {
+    const book = createFreedomMarketDepthBook('GOOGL.US');
+    book.apply({
+      i: 'GOOGL.US',
+      n: 0,
+      cnt: 4,
+      ins: [
+        { k: '0', p: '101.10', q: '10', s: 'S' },
+        { k: '1', p: '101.00', q: '11', s: -1 },
+        { k: '2', p: '100.90', q: '12', s: 1 },
+        { k: '3', p: '100.80', q: '13', s: true }
+      ]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      reportedDepth: 4,
+      providerLevelCount: 4,
+      providerBidRowCount: 2,
+      providerAskRowCount: 2,
+      initialRawInsertionCount: 4,
+      initialAcceptedInsertionCount: 4,
+      initialRejectedInsertionCount: 0,
+      bids: [
+        { position: 2, price: 100.9, quantity: 12 },
+        { position: 3, price: 100.8, quantity: 13 }
+      ],
+      asks: [
+        { position: 0, price: 101.1, quantity: 10 },
+        { position: 1, price: 101, quantity: 11 }
+      ]
+    });
+
+    book.apply({
+      i: 'GOOGL.US',
+      n: 1,
+      del: [{ k: '1', s: -1 }],
+      ins: [{ k: '1', p: '101.20', q: '14', s: false }],
+      upd: [{ k: '2', p: '100.95', q: '15', s: 1 }]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      sequence: 1,
+      providerLevelCount: 4,
+      providerBidRowCount: 2,
+      providerAskRowCount: 2,
+      bids: [
+        { position: 2, price: 100.95, quantity: 15 },
+        { position: 3, price: 100.8, quantity: 13 }
+      ],
+      asks: [
+        { position: 0, price: 101.1, quantity: 10 },
+        { position: 1, price: 101.2, quantity: 14 }
+      ]
+    });
   });
 
   it('supports an array containing one or more dom envelopes', () => {
