@@ -405,6 +405,15 @@ describe('storage service', () => {
       }));
       storageMap.set('tradernet_rules_v1', JSON.stringify(previousRules));
       storageMap.set('portfolio_active_view', 'AAPL');
+      storageMap.set('portfolio_terminal_state_pending_v1:pre-clear', JSON.stringify({
+        schemaVersion: 1,
+        revision: 1,
+        parentRevision: 0,
+        commitId: 'pre-clear-portfolio-write',
+        originId: 'previous-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'AAPL', balance: -999 }
+      }));
       localStorageMock.removeItem.mockImplementation((key: string) => {
         if (key === 'margin_portfolio_state_dynamic_v2') throw new Error('tab interrupted while clearing legacy keys');
         storageMap.delete(key);
@@ -431,6 +440,8 @@ describe('storage service', () => {
       expect(status.state).toBe('ready');
       expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(false);
       expect(databaseFixture.getCurrent()?.state).toEqual({});
+      expect(databaseFixture.getCurrent()?.state).not.toHaveProperty('balance');
+      expect(storageMap.has('portfolio_terminal_state_pending_v1:pre-clear')).toBe(false);
       expect(databaseFixture.getCurrent()?.brokerRules).toEqual(previousRules);
       expect(databaseFixture.getCurrent()?.deviceActiveView).toBe('AAPL');
       expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
