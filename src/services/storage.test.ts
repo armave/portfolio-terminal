@@ -493,7 +493,7 @@ describe('storage service', () => {
       expect(databaseFixture.getRecoveryRecords()).toHaveLength(5);
     });
 
-    it('preserves a stale-tab journal when IndexedDB has advanced to a newer revision', async () => {
+    it('archives a stale-tab journal without overwriting the newer IndexedDB generation', async () => {
       await hydratePortfolioPersistence();
       const initial = databaseFixture.getCurrent();
       expect(initial?.revision).toBe(0);
@@ -510,12 +510,16 @@ describe('storage service', () => {
       expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
       const status = await flushPortfolioPersistence();
 
-      expect(status.state).toBe('conflict');
-      expect(status.pendingWrites).toBe(1);
-      expect(databaseFixture.getRecoveryRecords()).toHaveLength(0);
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'TSLA', balance: 700 });
       expect(loadSavedState({})).toMatchObject({ activeView: 'TSLA', balance: 700 });
-      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(true);
+      expect(databaseFixture.getRecoveryRecords()).toHaveLength(1);
+      expect(databaseFixture.getRecoveryRecords()[0]).toMatchObject({
+        reason: 'superseded-by-committed-checkpoint',
+        payload: { revision: 1, originId: expect.any(String), state: { activeView: 'AAPL', balance: 100 } }
+      });
+      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(false);
     });
 
     it('keeps a clear tombstone authoritative if legacy-key removal is interrupted', async () => {
