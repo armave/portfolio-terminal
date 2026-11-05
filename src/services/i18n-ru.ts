@@ -221,6 +221,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Freedom API keys are not configured in this Worker.': 'API-ключи Freedom не настроены в Cloudflare Worker.',
   'Freedom active orders are unavailable — existing position targets are unchanged.': 'Активные заявки Freedom недоступны — целевые цены позиций оставлены без изменений.',
   '[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.': '[Предупреждение Freedom] Не удалось обновить активные заявки; целевые цены позиций оставлены без изменений.',
+  'Freedom trade history is unavailable — saved executions are being retained.': 'История сделок Freedom недоступна — сохранённые исполнения остаются без изменений.',
+  '[Freedom Warning] Trade history refresh failed; retained executions may be out of date.': '[Предупреждение Freedom] Не удалось обновить историю сделок; сохранённые исполнения могут быть устаревшими.',
   'Syncing fresh news and regenerating the review…': 'Загрузка свежих новостей и обновление анализа…',
   'No news articles were returned by the connected provider. Treat any news-dependent conclusions as limited.': 'Подключённый провайдер не вернул новости. Выводы, зависящие от новостей, следует считать ограниченными.',
   'What-if analysis': 'Анализ сценария',
