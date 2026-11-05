@@ -9,7 +9,7 @@ const response = {
   data: {
     symbol: 'AAPL.US',
     sequence: 12,
-    reportedDepth: 2,
+    reportedDepth: 4,
     updateCount: 3,
     insertionsApplied: 2,
     rowUpdatesApplied: 1,
@@ -41,7 +41,7 @@ describe('Market Depth response normalization', () => {
     expect(normalizeMarketDepthSnapshot(response, ' aapl ')).toMatchObject({
       symbol: 'AAPL.US',
       sequence: 12,
-      reportedDepth: 2,
+      reportedDepth: 4,
       providerLevelCount: 4,
       providerBidRowCount: 2,
       providerAskRowCount: 2,
@@ -93,7 +93,10 @@ describe('Market Depth provider depth indication', () => {
       data: {
         ...response.data,
         bids: [response.data.bids[0]],
-        asks: [response.data.asks[0]]
+        asks: [response.data.asks[0]],
+        providerLevelCount: 2,
+        providerBidRowCount: 1,
+        providerAskRowCount: 1
       }
     }, 'AAPL');
     const multiLevel = normalizeMarketDepthSnapshot(response, 'AAPL');
@@ -108,7 +111,7 @@ describe('Market Depth provider depth indication', () => {
       }
     }, 'AAPL');
 
-    expect(isShallowMarketDepthSnapshot(shallow)).toBe(false); // response fixture has 2 raw rows per side
+    expect(isShallowMarketDepthSnapshot(shallow)).toBe(true);
     expect(isShallowMarketDepthSnapshot(multiLevel)).toBe(false);
     expect(isShallowMarketDepthSnapshot(groupedButManyProviderRows)).toBe(false);
   });
@@ -181,6 +184,7 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain("Current provider rows:");
     expect(modalSource).toContain("First payload:");
     expect(modalSource).toContain("Initial provider depth:");
+    expect(modalSource).toContain("providerBidRowCount ?? snapshot.bids.length");
     expect(modalSource).not.toContain("provider metadata, not a UI level target");
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
