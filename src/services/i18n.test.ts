@@ -87,7 +87,8 @@ describe('app localization', () => {
       'Price-grouped liquidity ladder', 'Buyers · bids', 'Sellers · asks', 'Detailed level table',
       'Bid liquidity ladder', 'Ask liquidity ladder',
       'Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.',
-      'Visible levels:', 'TradeNet reported book depth:', 'total positions in the combined book', 'Changes captured:'
+      'Visible levels:', 'TradeNet reported book depth:', 'total positions in the combined book', 'Changes captured:',
+      'TradeNet returned only one bid and one ask price level. This view already displays every level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.'
     ];
     for (const copy of marketDepthCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
