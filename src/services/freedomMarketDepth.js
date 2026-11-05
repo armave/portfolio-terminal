@@ -205,7 +205,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       });
       if (recentUpdates.length > 12) recentUpdates.shift();
 
-      // n is a per-ticker ordinal. A gap means deltas were missed and the book is unsafe.
+      // m is the current per-ticker ordinal; n is accepted for legacy payloads. A gap means deltas were missed and the book is unsafe.
       if (updateSequence !== null) {
         if (sequence !== undefined && updateSequence !== sequence + 1) {
           throw new Error("TradeNet Market Depth sequence gap detected; a fresh snapshot is required.");
