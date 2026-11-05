@@ -162,6 +162,8 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         throw new Error("TradeNet market-depth update did not match the requested symbol.");
       }
 
+      const updateSequence = normalizePosition(update.n);
+      const updateDepth = normalizePosition(update.cnt);
       const rawDeletions = rows(update.del);
       const deletions = rawDeletions.map(normalizeDeletion);
       if (deletions.some(row => row === null)) {
@@ -175,8 +177,8 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       // Capture the first provider snapshot before any normalization/aggregation so a shallow
       // account feed can be distinguished from rows rejected by the parser or grouped by price.
       if (updateCount === 0) {
-        initialSequence = Number.isSafeInteger(update.n) ? update.n : undefined;
-        initialReportedDepth = Number.isSafeInteger(update.cnt) && update.cnt >= 0 ? update.cnt : undefined;
+        initialSequence = updateSequence ?? undefined;
+        initialReportedDepth = updateDepth ?? undefined;
         initialRawInsertionCount = rawInsertions.length;
         initialAcceptedInsertionCount = insertions.length;
         initialRejectedInsertionCount = rawInsertions.length - insertions.length;
@@ -195,7 +197,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
           : "invalid";
       }).join(",");
       recentUpdates.push({
-        sequence: Number.isSafeInteger(update.n) ? update.n : "?",
+        sequence: updateSequence ?? "?",
         del: historyRows(update.del, true),
         ins: historyRows(update.ins),
         upd: historyRows(update.upd)
@@ -203,17 +205,19 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       if (recentUpdates.length > 12) recentUpdates.shift();
 
       // n is a per-ticker ordinal. A gap means deltas were missed and the book is unsafe.
-      if (Number.isSafeInteger(update.n)) {
-        if (sequence !== undefined && update.n !== sequence + 1) {
+      if (updateSequence !== null) {
+        if (sequence !== undefined && updateSequence !== sequence + 1) {
           throw new Error("TradeNet Market Depth sequence gap detected; a fresh snapshot is required.");
         }
       }
 
       updateCount += 1;
       applied += 1;
-      if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
-      if (Number.isFinite(update.min_step) && update.min_step > 0) minStep = update.min_step;
-      if (Number.isFinite(update.step_price) && update.step_price > 0) stepPrice = update.step_price;
+      if (updateDepth !== null) reportedDepth = updateDepth;
+      const nextMinStep = finiteNumber(update.min_step);
+      const nextStepPrice = finiteNumber(update.step_price);
+      if (nextMinStep !== null && nextMinStep > 0) minStep = nextMinStep;
+      if (nextStepPrice !== null && nextStepPrice > 0) stepPrice = nextStepPrice;
 
       // TradeNet specifies del -> ins -> upd. Delete from highest k downward.
       deletions.sort((left, right) => right.position - left.position);
@@ -272,7 +276,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       }
 
       // Commit the ordinal only after the entire delta was applied successfully.
-      if (Number.isSafeInteger(update.n)) sequence = update.n;
+      if (updateSequence !== null) sequence = updateSequence;
     }
     return applied;
   };
