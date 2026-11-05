@@ -94,6 +94,7 @@ import {
   saveGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
+  flushPortfolioPersistence,
   hydratePortfolioPersistence,
 } from './src/services/storage';
 import {
@@ -1691,6 +1692,17 @@ async function importBackupFile(file: File) {
       return;
     }
 
+    // Drain older recovery journals before adding a potentially large imported
+    // snapshot. This lets IndexedDB checkpoint the previous generation and safely
+    // reclaim duplicate legacy state/history mirrors before the import is written.
+    const persistenceBeforeImport = await flushPortfolioPersistence();
+    if (persistenceBeforeImport.state === 'conflict') {
+      throw new Error(
+        persistenceBeforeImport.message ||
+        'Local portfolio storage has a revision conflict. Reload and reconcile before importing a backup.'
+      );
+    }
+
     const backupAccountId = currentAccountRole === 'admin' ? (currentAccountId || '') : '';
     if (backupAccountId && !markPendingBackupCloudSync(backupAccountId)) {
       throw new Error('Could not protect the imported backup from an older cloud snapshot. No portfolio changes were applied.');
@@ -1703,7 +1715,12 @@ async function importBackupFile(file: File) {
         importedState,
         previousState,
         (snapshot) => {
-          portfolioStore.importState(snapshot as any);
+          // Stage the candidate in memory. commitPortfolioBackupImport performs
+          // the one durable save below; persisting inside importState as well
+          // would create two full-size recovery journals back-to-back.
+          if (!portfolioStore.importState(snapshot as any, false)) {
+            throw new Error('Could not apply the imported backup to the portfolio store.');
+          }
           state = portfolioStore.getState();
         },
         () => saveState(state)
