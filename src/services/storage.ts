@@ -348,7 +348,9 @@ export function resetPortfolioStateDatabaseForTesting(): void {
   portfolioStateDatabase = null;
   hydratedPortfolioSnapshot = null;
   lastScheduledRevision = null;
+  lastPersistedHistory = null;
   portfolioPersistenceFlush = null;
+  portfolioPersistenceFlushRequested = false;
   updatePortfolioPersistenceStatus('idle', 0, null);
 }
 
