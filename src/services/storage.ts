@@ -251,10 +251,14 @@ function resolveLocalPortfolioSnapshot(storage: Storage): {
   record: PortfolioStateSnapshotRecord | null;
   conflict: boolean;
 } {
+  const pending = readPendingPortfolioSnapshots(storage);
   let record = readPortfolioSnapshotBase(storage);
+  // A first-run save has no legacy or atomic checkpoint. Treat the empty
+  // workspace as revision zero so consecutive synchronous store mutations can
+  // build one ordered journal chain before the first IndexedDB flush finishes.
+  if (!record && pending.length > 0) record = makeEmptyPortfolioSnapshot();
   if (!record) return { record: null, conflict: false };
 
-  const pending = readPendingPortfolioSnapshots(storage);
   const consumed = new Set<string>();
   let conflict = false;
 
