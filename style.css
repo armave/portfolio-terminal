@@ -2359,7 +2359,10 @@ summary:focus-visible {
   }
 
   .table-scroll-wrapper {
+    width: 100%;
+    min-width: 0;
     max-width: 100%;
+    box-sizing: border-box;
     overscroll-behavior-x: contain;
   }
 }
@@ -2436,7 +2439,11 @@ summary:focus-visible {
   .cash-holdings-table .cash-holdings-body,
   .active-tranches-table .active-tranches-body {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.7rem;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 0.625rem;
   }
 
@@ -2506,6 +2513,9 @@ summary:focus-visible {
   .cash-holdings-table .cash-holding-empty-row,
   .active-tranches-table .active-tranche-empty-row {
     display: block;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .cash-holdings-table .cash-holding-group-row td,
@@ -2513,6 +2523,10 @@ summary:focus-visible {
   .active-tranches-table .active-tranche-empty-row td {
     display: block;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
     padding: 0.75rem !important;
   }
 
