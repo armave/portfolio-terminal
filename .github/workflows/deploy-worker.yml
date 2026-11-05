@@ -9,6 +9,8 @@ on:
       - "src/services/freedomTradeNet.ts"
       - "state-store.js"
       - "src/services/freedomMarketDepth.js"
+      - "worker.test.js"
+      - ".github/workflows/deploy-worker.yml"
       - "wrangler.jsonc"
   workflow_dispatch:
 
