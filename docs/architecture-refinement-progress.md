@@ -316,3 +316,17 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Run final exact-head CI on the integrated head and update the PR checklist.
 
 Earlier integrated-head validation checkpoint passed on `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54` in [Pull Request CI run 41775241690](https://github.com/armave/portfolio-terminal/actions/runs/41775241690): TypeScript, 117 Vitest files, production build, production browser smoke, dead-code validation, full dependency audit at the configured high-severity threshold, and production-only audit (0 vulnerabilities). The production entry bundle was 435,336 raw bytes / 134,747 gzip bytes. Four low-severity development dependency advisories remain through `deepmerge`. The latest exact-head validation is recorded in the PR description.
+
+## PR #313 — margin-risk input validity and scenario coverage
+
+**Status:** Implementation committed; exact-head validation is pending.
+
+- [x] Validate finite non-negative debt, position value, and collateral inputs.
+- [x] Validate configured maintenance and stop-out ratios, including their ordering and denominator boundaries.
+- [x] Return explicit unavailable results for invalid inputs, invalid assumptions, and numeric overflow.
+- [x] Represent undefined zero-denominator equity ratios and position buffers as `null`, not NaN or infinity.
+- [x] Preserve valid-input margin-risk calculations and current configured threshold semantics.
+- [x] Update application/AI context and Summary Metrics consumers to preserve unavailable risk status.
+- [x] Add deterministic Vitest coverage for zero debt/assets, negative equity, threshold equality, invalid inputs/ratios, and overflow.
+- [x] Add English/Russian copy and localization assertions.
+- [ ] Complete exact-head TypeScript, full Vitest, dead-code validation, dependency audits, production build, and browser smoke on the final PR head.
