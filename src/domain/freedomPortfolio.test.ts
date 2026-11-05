@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, mergeFreedomPortfolioRefresh, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -469,13 +469,43 @@ describe('active broker tranches', () => {
     expect(result[0]).toMatchObject({ quantity: 3, buyCommission: 0.85 });
   });
 
-  it('retains an existing cost basis when the broker omits average price', () => {
+  it('retains all imported margin lots when the broker omits average price and quantity is unchanged', () => {
+    const importedTranches = [
+      { qty: 2, price: 95, date: '2025-01-10', buyCommission: 0.8 },
+      { qty: 3, price: 105, date: '2025-04-12', buyCommission: 1.2 }
+    ];
     const result = classifyFreedomPortfolio({ loaded: true, balances: [], positions: [
-      { ticker: 'NVDA', quantity: 2, marketPrice: 120 }
+      { ticker: 'NVDA', quantity: 5, marketPrice: 120 }
     ] }, {
-      NVDA: { ticker: 'NVDA', shares: 2, currentPrice: 110, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] }
+      NVDA: { ticker: 'NVDA', shares: 5, currentPrice: 110, pt: 150, commBuy: 2, tranches: importedTranches }
     }, [], { NVDA: 'margin' });
-    expect(result.positions.NVDA).toMatchObject({ shares: 2, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] });
+    expect(result.positions.NVDA).toMatchObject({
+      shares: 5,
+      pt: 150,
+      commBuy: 2,
+      tranches: importedTranches
+    });
+  });
+
+  it('keeps a saved cash average price when a snapshot-only refresh reports the same quantity', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'MSFT.US', quantity: 5, marketPrice: 120 }]
+    }, {}, [{
+      ticker: 'MSFT',
+      shares: 5,
+      currentPrice: 115,
+      price: 115,
+      averagePrice: 96
+    }]);
+    expect(result.cashStocks).toHaveLength(1);
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'MSFT',
+      shares: 5,
+      currentPrice: 120,
+      averagePrice: 96
+    });
   });
 });
 
@@ -596,6 +626,81 @@ describe('active limit sell target synchronization', () => {
       { ticker: 'AAPL', operation: 3, orderType: 1, limitPrice: 353, remainingQuantity: 50 },
       { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 0 }
     ])).toEqual({});
+  });
+});
+
+
+describe('partial broker portfolio refresh', () => {
+  it('updates reported tickers without deleting other imported holdings', () => {
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [
+        { ticker: 'GOOGL.US', quantity: 5, marketPrice: 300 },
+        { ticker: 'MSFT.US', quantity: 4, marketPrice: 420 }
+      ]
+    };
+    const sourcePositions = {
+      AAPL: {
+        ticker: 'AAPL', shares: 3, currentPrice: 190, pt: 220, commBuy: 1,
+        tranches: [{ qty: 3, price: 180, date: '2025-02-01' }]
+      },
+      MSFT: {
+        ticker: 'MSFT', shares: 4, currentPrice: 400, pt: 450, commBuy: 2,
+        tranches: [{ qty: 4, price: 390, date: '2025-03-01' }]
+      }
+    };
+    const sourceCashHoldings = [
+      { ticker: 'WDC', shares: 8, currentPrice: 65, price: 65, averagePrice: 55 },
+      { ticker: 'GOOGL', shares: 2, currentPrice: 290, price: 290, averagePrice: 250 }
+    ];
+    const classified = {
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL', shares: 5, currentPrice: 300, pt: 330, commBuy: 0,
+          tranches: [{ qty: 5, price: 295 }]
+        }
+      },
+      cashStocks: [{
+        ticker: 'MSFT', shares: 4, currentPrice: 420, price: 420, averagePrice: 390
+      }]
+    };
+
+    const merged = mergeFreedomPortfolioRefresh(
+      snapshot,
+      sourcePositions,
+      sourceCashHoldings,
+      classified
+    );
+
+    expect(merged.positions).toMatchObject({
+      AAPL: sourcePositions.AAPL,
+      GOOGL: classified.positions.GOOGL
+    });
+    expect(merged.positions).not.toHaveProperty('MSFT');
+    expect(merged.cashStocks).toEqual([
+      sourceCashHoldings[0],
+      classified.cashStocks[0]
+    ]);
+    // GOOGL changed from cash to margin in this broker snapshot, so it cannot
+    // survive in both ledgers after the same refresh.
+    expect(merged.cashStocks.map((holding) => holding.ticker)).not.toContain('GOOGL');
+  });
+
+  it('retains all prior rows when the broker response contains no positions', () => {
+    const priorPosition = {
+      ticker: 'AAPL', shares: 3, currentPrice: 190, pt: 220, commBuy: 1,
+      tranches: [{ qty: 3, price: 180 }]
+    };
+    const priorCash = { ticker: 'WDC', shares: 8, currentPrice: 65, price: 65, averagePrice: 55 };
+    const merged = mergeFreedomPortfolioRefresh(
+      { loaded: true, balances: [], positions: [] },
+      { AAPL: priorPosition },
+      [priorCash],
+      { positions: {}, cashStocks: [] }
+    );
+    expect(merged.positions).toEqual({ AAPL: priorPosition });
+    expect(merged.cashStocks).toEqual([priorCash]);
   });
 });
 
