@@ -416,6 +416,10 @@ try {
 
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
+  await waitForCondition(
+    () => worker.findCalls('GET', '/').some((call) => call.action === 'freedom-positions' && call.responseStatus === 200),
+    'broker positions snapshot for Market Insights'
+  );
   await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(() => document.querySelector('#marketInsightsTicker')?.textContent?.includes('AAPL'), null, { timeout: 20_000 });
   await waitForCondition(() => worker.findCalls('GET', '/') .some((call) => call.action === 'news' && call.responseStatus === 503), 'initial News provider failure');
