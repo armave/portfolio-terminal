@@ -408,8 +408,9 @@ try {
   await createUser('Browser Guest Keep', 'keep-guest-password');
 
   const deleteRow = page.getByRole('row', { name: /Browser Guest Delete/ });
+  const deleteDialogPromise = page.waitForEvent('dialog');
   await deleteRow.getByRole('button', { name: 'Delete' }).click();
-  const deleteDialog = await page.waitForEvent('dialog');
+  const deleteDialog = await deleteDialogPromise;
   await deleteDialog.accept();
   await deleteRow.waitFor({ state: 'detached', timeout: 10_000 });
 
@@ -475,6 +476,7 @@ try {
 
   // A guest sees the account preference and manual sync controls, never admin-only user,
   // backup or broker-rule management. The shared owner workspace is not read.
+  const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   await page.getByRole('button', { name: 'Sign out' }).click();
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
@@ -494,8 +496,8 @@ try {
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
     throw new Error('Guest sign-in did not hydrate its assigned projection.');
   }
-  if (worker.count('GET', '/api/state') !== worker.calls.filter((call) => call.method === 'GET' && call.pathname === '/api/state').length) {
-    throw new Error('Guest shared-workspace access accounting was inconsistent.');
+  if (worker.count('GET', '/api/state') !== sharedWorkspaceReadsBeforeGuest) {
+    throw new Error('Guest sign-in attempted to read the administrator shared workspace.');
   }
   if (worker.calls.some((call) => call.method === 'GET' && call.pathname === '/api/state' && call.token === 'operations-session-operations-user-2')) {
     throw new Error('Guest session attempted to read the administrator shared workspace.');
