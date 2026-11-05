@@ -576,6 +576,17 @@ describe('app localization', () => {
     expect(translateText('Synced', 'ru')).toBe('Синхронизировано');
   });
 
+  it('localizes local portfolio persistence recovery warnings', () => {
+    expect(translateText(
+      'Local portfolio data could not be fully synchronized to durable browser storage. Your recovery journal has been kept; retry before clearing browser data.',
+      'ru'
+    )).toBe('Не удалось полностью синхронизировать данные портфеля с постоянным хранилищем браузера. Журнал восстановления сохранён; повторите попытку, прежде чем очищать данные браузера.');
+    expect(translateText(
+      'Another browser tab has a newer portfolio snapshot. Your local recovery data has been preserved; reload and reconcile before continuing.',
+      'ru'
+    )).toBe('В другой вкладке сохранена более новая версия портфеля. Локальные данные восстановления сохранены; перезагрузите страницу и согласуйте изменения перед продолжением.');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));

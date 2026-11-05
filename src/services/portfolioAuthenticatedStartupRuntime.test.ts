@@ -9,6 +9,7 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
   const calls: string[] = [];
   let currentRole = role;
   const dependencies: PortfolioAuthenticatedStartupDependencies = {
+    hydrateLocalPortfolioState: vi.fn(async () => { calls.push('hydrate-local-storage'); }),
     loadBrokerRules: vi.fn(() => calls.push('load-rules')),
     publishCurrentUser: vi.fn(async () => { calls.push('publish-user'); }),
     clearAccountIdentity: vi.fn(() => { calls.push('clear-identity'); currentRole = null; }),
@@ -49,7 +50,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'publish-user', 'secret:valid-secret',
+      'publish-user', 'secret:valid-secret', 'hydrate-local-storage', 'load-rules',
       'import-admin-workspace', 'rollover', 'pull-shared-cloud',
       'resolve-interval:admin', 'set-interval:admin-interval', 'rollover-timer:true',
       'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
@@ -64,12 +65,14 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'publish-user', 'secret:valid-secret', 'pull-guest-snapshot',
+      'publish-user', 'secret:valid-secret', 'load-rules', 'pull-guest-snapshot',
       'resolve-interval:guest', 'set-interval:guest-interval', 'rollover-timer:false',
       'quote-refresh-start', 'guest-balance', 'scroll', 'refresh-quotes',
       'quote-refresh-finish', 'guest-balance', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
     ]);
     expect(fixture.dependencies.importSavedAdminWorkspace).not.toHaveBeenCalled();
+    expect(fixture.dependencies.hydrateLocalPortfolioState).not.toHaveBeenCalled();
+    expect(fixture.dependencies.loadBrokerRules).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.pullSharedCloudState).not.toHaveBeenCalled();
     expect(fixture.dependencies.applyOvernightRollover).not.toHaveBeenCalled();
   });
@@ -80,7 +83,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'clear-identity', 'secret:', 'import-admin-workspace', 'rollover',
+      'clear-identity', 'secret:', 'hydrate-local-storage', 'load-rules', 'import-admin-workspace', 'rollover',
       'resolve-interval:none', 'set-interval:admin-interval', 'rollover-timer:false',
       'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
       'quote-refresh-finish', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'

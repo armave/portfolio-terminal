@@ -1,6 +1,7 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
 export interface PortfolioAuthenticatedStartupDependencies {
+  hydrateLocalPortfolioState: () => Promise<void>;
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
   clearAccountIdentity: () => void;
@@ -36,18 +37,21 @@ export function createPortfolioAuthenticatedStartupRuntime(
   dependencies: PortfolioAuthenticatedStartupDependencies
 ): PortfolioAuthenticatedStartupRuntime {
   const startApp = async (secret: string): Promise<void> => {
-    dependencies.loadBrokerRules();
-
-    // Establish role and write permission before importing state or refreshing quotes.
+    // Establish role and write permission before reading any local administrator
+    // state. Guest sessions must never hydrate the administrator's local database.
+    // The local IndexedDB snapshot is reconciled before admin portfolio import.
     if (secret) await dependencies.publishCurrentUser();
     else dependencies.clearAccountIdentity();
 
     dependencies.setGatewaySecret(secret);
     const role = dependencies.getAccountRole();
     if (role === 'guest') {
+      dependencies.loadBrokerRules();
       // Replace any administrator workspace before the guest UI can render.
       await dependencies.pullGuestPortfolioSnapshot();
     } else {
+      await dependencies.hydrateLocalPortfolioState();
+      dependencies.loadBrokerRules();
       dependencies.importSavedAdminWorkspace();
       dependencies.applyOvernightRollover();
       if (secret) await dependencies.pullSharedCloudState();

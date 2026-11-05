@@ -16,12 +16,13 @@ import type { MarginIntelligenceState } from './components/MarginIntelligenceMod
 import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
-import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
+import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
 import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
+import { getPortfolioPersistenceStatus, subscribePortfolioPersistenceStatus } from './services/storage';
 import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { emitBrokerEvent } from './services/brokerEventBus';
@@ -380,6 +381,25 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
     addErrorToast(translateText(message, getAppLanguage()));
   }), []);
+
+  useEffect(() => {
+    let warningShown = false;
+    const reportPersistenceStatus = (status: ReturnType<typeof getPortfolioPersistenceStatus>) => {
+      if (status.state === 'degraded' || status.state === 'conflict') {
+        if (!warningShown) {
+          const message = status.state === 'conflict'
+            ? 'Another browser tab has a newer portfolio snapshot. Your local recovery data has been preserved; reload and reconcile before continuing.'
+            : 'Local portfolio data could not be fully synchronized to durable browser storage. Your recovery journal has been kept; retry before clearing browser data.';
+          addErrorToast(translateText(message || PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, getAppLanguage()));
+          warningShown = true;
+        }
+        return;
+      }
+      if (status.state === 'ready' || status.state === 'idle') warningShown = false;
+    };
+    reportPersistenceStatus(getPortfolioPersistenceStatus());
+    return subscribePortfolioPersistenceStatus(reportPersistenceStatus);
+  }, []);
 
   useEffect(() => {
     if (!permissions.canViewMarginDesk) {
@@ -870,8 +890,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
-      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
-        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
+      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-2" aria-live="assertive">
+        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto min-w-0 max-w-full whitespace-normal break-words rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>
       {permissions.canManageBackups && <input
         ref={backupImportInputRef}

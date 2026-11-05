@@ -11,7 +11,9 @@ const testStorage = new Map<string, string>();
 const localStorageMock = {
   getItem: (key: string) => testStorage.get(key) ?? null,
   setItem: (key: string, value: string) => { testStorage.set(key, String(value)); },
-  removeItem: (key: string) => { testStorage.delete(key); }
+  removeItem: (key: string) => { testStorage.delete(key); },
+  key: (index: number) => Array.from(testStorage.keys())[index] ?? null,
+  get length() { return testStorage.size; }
 };
 
 beforeEach(() => {

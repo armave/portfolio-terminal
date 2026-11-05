@@ -398,12 +398,51 @@ async function assertResponsiveLayout(page, width) {
       documentWidth: document.documentElement.scrollWidth,
       mainBounds: mainBounds ? { left: mainBounds.left, right: mainBounds.right } : null,
       navBounds: navBounds ? { left: navBounds.left, right: navBounds.right } : null,
-      navControls
+      navControls,
+      overflowElements: Array.from(document.body.querySelectorAll('*'))
+        .map((element) => {
+          const bounds = element.getBoundingClientRect();
+          const styles = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id || '',
+            className: typeof element.className === 'string' ? element.className : '',
+            left: Math.round(bounds.left),
+            right: Math.round(bounds.right),
+            width: Math.round(bounds.width),
+            position: styles.position,
+            clippedBy: (() => {
+              const ancestors = [];
+              let parent = element.parentElement;
+              while (parent && parent !== document.body) {
+                const parentStyles = getComputedStyle(parent);
+                const parentBounds = parent.getBoundingClientRect();
+                ancestors.push({
+                  tag: parent.tagName.toLowerCase(),
+                  id: parent.id || '',
+                  className: typeof parent.className === 'string' ? parent.className : '',
+                  left: Math.round(parentBounds.left),
+                  right: Math.round(parentBounds.right),
+                  overflowX: parentStyles.overflowX
+                });
+                parent = parent.parentElement;
+              }
+              return ancestors.filter((ancestor) =>
+                ['auto', 'scroll', 'hidden', 'clip'].includes(ancestor.overflowX) &&
+                ancestor.right < Math.round(bounds.right)
+              ).slice(0, 3);
+            })(),
+            text: (element.textContent || '').trim().slice(0, 80)
+          };
+        })
+        .filter((element) => element.right > viewportWidth + 1 || element.left < -1)
+        .sort((left, right) => right.right - left.right)
+        .slice(0, 16)
     };
   });
 
   if (layout.documentWidth > layout.viewportWidth + 1) {
-    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport. Offenders: ${JSON.stringify(layout.overflowElements)}`);
   }
   if (!layout.mainBounds || layout.mainBounds.left < -1 || layout.mainBounds.right > layout.viewportWidth + 1) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
@@ -908,6 +947,35 @@ try {
     () => worker.count('POST', '/api/state') > stateWritesBeforeImport,
     'valid backup import cloud write'
   );
+
+  await page.waitForFunction(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-state', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open the local portfolio database.'));
+      request.onblocked = () => reject(new Error('Local portfolio database upgrade is blocked.'));
+    });
+    try {
+      if (!database.objectStoreNames.contains('snapshots')) return false;
+      return await new Promise((resolve, reject) => {
+        const transaction = database.transaction('snapshots', 'readonly');
+        const request = transaction.objectStore('snapshots').get('current');
+        request.onsuccess = () => {
+          const snapshot = request.result;
+          resolve(Boolean(snapshot &&
+            snapshot.schemaVersion === 1 &&
+            Number.isInteger(snapshot.revision) &&
+            snapshot.state &&
+            typeof snapshot.state === 'object' &&
+            Array.isArray(snapshot.history?.brokerExecutedTrades) &&
+            Array.isArray(snapshot.history?.cashflows)));
+        };
+        request.onerror = () => reject(request.error || new Error('Could not read the local portfolio snapshot.'));
+      });
+    } finally {
+      database.close();
+    }
+  }, null, { timeout: 20_000 });
 
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');

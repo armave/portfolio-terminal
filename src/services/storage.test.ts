@@ -24,11 +24,47 @@ import {
   hasFreedomCashflowHistoryBaseline,
   hasFreedomTradeHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
-  markFreedomTradeHistoryBaseline
+  markFreedomTradeHistoryBaseline,
+  configurePortfolioStateDatabaseForTesting,
+  resetPortfolioStateDatabaseForTesting,
+  flushPortfolioPersistence,
+  hydratePortfolioPersistence,
+  getPortfolioPersistenceStatus
 } from './storage.ts';
+import type { PortfolioStateDatabase, PortfolioStateSnapshotRecord } from './portfolioStateDatabase';
 
 describe('storage service', () => {
   const storageMap = new Map<string, string>();
+  let databaseFixture: ReturnType<typeof createMemoryPortfolioDatabase>;
+
+  function createMemoryPortfolioDatabase() {
+    let current: PortfolioStateSnapshotRecord | null = null;
+    let failure: Error | null = null;
+    const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const database: PortfolioStateDatabase = {
+      async readCurrent() {
+        if (failure) throw failure;
+        return current ? clone(current) : null;
+      },
+      async compareAndCommit(record, expectedRevision) {
+        if (failure) throw failure;
+        if (current?.commitId === record.commitId) return 'already-committed';
+        if ((current?.revision ?? null) !== expectedRevision) return 'conflict';
+        current = clone(record);
+        return 'committed';
+      },
+      async clear() {
+        if (failure) throw failure;
+        current = null;
+      }
+    };
+    return {
+      database,
+      getCurrent: () => current ? clone(current) : null,
+      setCurrent: (record: PortfolioStateSnapshotRecord | null) => { current = record ? clone(record) : null; },
+      setFailure: (error: Error | null) => { failure = error; }
+    };
+  }
 
   const localStorageMock = {
     getItem: vi.fn((key: string) => storageMap.get(key) ?? null),
@@ -51,12 +87,19 @@ describe('storage service', () => {
     storageMap.clear();
     vi.clearAllMocks();
     vi.stubGlobal('localStorage', localStorageMock);
+    databaseFixture = createMemoryPortfolioDatabase();
+    configurePortfolioStateDatabaseForTesting(databaseFixture.database);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Let any fire-and-forget flush from the test settle before clearing the
+    // injected adapter; failures remain journaled and are discarded with the
+    // isolated in-memory localStorage map on the next beforeEach.
+    await flushPortfolioPersistence();
+    resetPortfolioStateDatabaseForTesting();
     localStorageMock.setItem.mockImplementation((key: string, value: string) => {
       storageMap.set(key, String(value));
     });
@@ -127,7 +170,7 @@ describe('storage service', () => {
       errorSpy.mockRestore();
     });
 
-    it('rolls back the portfolio state when its changed history sidecar cannot be saved', () => {
+    it('keeps the journal commit recoverable when a legacy history mirror cannot be updated', () => {
       const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
       const previousHistory = JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
@@ -148,11 +191,17 @@ describe('storage service', () => {
         storageMap.set(key, String(value));
       });
 
-      expect(saveState(state, onPushToGist)).toBe(false);
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      // The single journal record is the synchronous commit boundary. The
+      // legacy sidecar is only a compatibility mirror and may lag safely.
+      expect(saveState(state, onPushToGist)).toBe(true);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).not.toBe(previousState);
       expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
-      expect(state.lastUpdated).toBe(123);
-      expect(onPushToGist).not.toHaveBeenCalled();
+      expect(state.lastUpdated).toBeGreaterThan(123);
+      expect(loadSavedHistory()).toEqual({
+        brokerExecutedTrades: [{ id: 'new-trade' }],
+        cashflows: [{ id: 'new-fee' }]
+      });
+      expect(onPushToGist).toHaveBeenCalledWith(false);
     });
 
     it('commits blank portfolio, explicit empty history, and device view together', () => {
@@ -215,7 +264,301 @@ describe('storage service', () => {
     });
   });
 
+  describe('IndexedDB portfolio snapshot migration and recovery', () => {
+    it('migrates the existing local snapshot, history, broker rules, and desk preference without deleting legacy evidence', async () => {
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -1250,
+        gatewaySecret: 'must-not-be-migrated',
+        brokerExecutedTrades: [{ id: 'inline-trade' }],
+        cashflows: [{ id: 'inline-cashflow' }]
+      }));
+      const history = {
+        brokerExecutedTrades: [{ id: 'sidecar-trade' }],
+        cashflows: [{ id: 'sidecar-cashflow' }]
+      };
+      const brokerRules = { annualBorrowRate: 0.15, dayCountBasis: '365' };
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify(history));
+      storageMap.set('tradernet_rules_v1', JSON.stringify(brokerRules));
+      storageMap.set('portfolio_active_view', 'AAPL');
+
+      const status = await hydratePortfolioPersistence();
+      const migrated = databaseFixture.getCurrent();
+
+      expect(status.state).toBe('ready');
+      expect(migrated).toMatchObject({
+        schemaVersion: 1,
+        revision: 0,
+        state: { activeView: 'AAPL', balance: -1250 },
+        history,
+        brokerRules,
+        deviceActiveView: 'AAPL'
+      });
+      expect(migrated?.state).not.toHaveProperty('gatewaySecret');
+      expect(migrated?.state).not.toHaveProperty('brokerExecutedTrades');
+      expect(loadSavedState({})).toMatchObject({ activeView: 'AAPL', balance: -1250 });
+      expect(loadSavedHistory()).toEqual(history);
+      expect(loadBrokerRules()).toEqual(brokerRules);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(true);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(true);
+      expect(storageMap.has('portfolio_terminal_state_snapshot_v1')).toBe(true);
+    });
+
+    it('chains multiple first-run synchronous writes into consecutive revisions', async () => {
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
+
+      const status = await flushPortfolioPersistence();
+      const committed = databaseFixture.getCurrent();
+
+      expect(status.state).toBe('ready');
+      expect(committed?.revision).toBe(2);
+      expect(committed?.parentRevision).toBe(1);
+      expect(committed?.state).toMatchObject({ activeView: 'MSFT', balance: 250 });
+      expect(status.pendingWrites).toBe(0);
+      expect(Array.from(storageMap.keys()).filter((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toHaveLength(0);
+    });
+
+    it('does not copy unchanged large history arrays into every local recovery journal', async () => {
+      const executions = Array.from({ length: 250 }, (_, index) => ({ id: `execution-${index}`, ticker: 'AAPL' }));
+      const cashflows = Array.from({ length: 250 }, (_, index) => ({ id: `cashflow-${index}`, amount: -1 }));
+      const initial = {
+        activeView: 'AAPL',
+        balance: 100,
+        brokerExecutedTrades: executions,
+        cashflows
+      };
+
+      expect(saveState(initial)).toBe(true);
+      await flushPortfolioPersistence();
+      expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
+
+      expect(saveState({ ...initial, activeView: 'MSFT', balance: 200 })).toBe(true);
+      const pendingKey = Array.from(storageMap.keys()).find((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      );
+      expect(pendingKey).toBeDefined();
+      const journal = JSON.parse(storageMap.get(pendingKey!)!);
+
+      expect(journal.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
+      expect(journal).not.toHaveProperty('history');
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
+      expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
+      expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
+    });
+
+    it('persists an explicit empty history after reload when the in-memory history cache is empty', async () => {
+      expect(saveState({
+        activeView: 'AAPL',
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      })).toBe(true);
+      await flushPortfolioPersistence();
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      });
+
+      // Simulate a new page runtime: the IndexedDB/current snapshot survives,
+      // but the module-local history reference cache is reset.
+      configurePortfolioStateDatabaseForTesting(databaseFixture.database);
+      expect(saveState({
+        activeView: 'COMBINED',
+        brokerExecutedTrades: [],
+        cashflows: []
+      })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+    });
+
+    it('keeps a failed IndexedDB transaction journaled and recovers it on retry', async () => {
+      databaseFixture.setFailure(new Error('IndexedDB quota exceeded'));
+
+      expect(saveState({ activeView: 'NVDA', balance: 400 })).toBe(true);
+      const failed = await flushPortfolioPersistence();
+
+      expect(failed.state).toBe('degraded');
+      expect(failed.pendingWrites).toBe(1);
+      expect(loadSavedState({})).toMatchObject({ activeView: 'NVDA', balance: 400 });
+      expect(databaseFixture.getCurrent()).toBeNull();
+
+      databaseFixture.setFailure(null);
+      const recovered = await flushPortfolioPersistence();
+
+      expect(recovered.state).toBe('ready');
+      expect(recovered.pendingWrites).toBe(0);
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'NVDA', balance: 400 });
+    });
+
+    it('rejects a malformed IndexedDB generation without overwriting or discarding local recovery data', async () => {
+      const malformed = {
+        schemaVersion: 99,
+        revision: 4,
+        commitId: 'unsupported-schema',
+        state: { activeView: 'AAPL' }
+      } as unknown as PortfolioStateSnapshotRecord;
+      databaseFixture.setCurrent(malformed);
+
+      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('degraded');
+      expect(status.pendingWrites).toBe(1);
+      expect((databaseFixture.getCurrent() as unknown as { schemaVersion: number }).schemaVersion).toBe(99);
+      expect(storageMap.has('portfolio_terminal_state_snapshot_v1')).toBe(false);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(true);
+    });
+
+    it('preserves a stale-tab journal when IndexedDB has advanced to a newer revision', async () => {
+      await hydratePortfolioPersistence();
+      const initial = databaseFixture.getCurrent();
+      expect(initial?.revision).toBe(0);
+      databaseFixture.setCurrent({
+        ...initial!,
+        revision: 7,
+        parentRevision: 6,
+        commitId: 'newer-tab-commit',
+        originId: 'other-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'TSLA', balance: 700 }
+      });
+
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('conflict');
+      expect(status.pendingWrites).toBe(1);
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'TSLA', balance: 700 });
+      expect(loadSavedState({})).toMatchObject({ activeView: 'TSLA', balance: 700 });
+      expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(true);
+    });
+
+    it('keeps a clear tombstone authoritative if legacy-key removal is interrupted', async () => {
+      const previousRules = { annualBorrowRate: 0.15, dayCountBasis: '365' };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -900
+      }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      }));
+      storageMap.set('tradernet_rules_v1', JSON.stringify(previousRules));
+      storageMap.set('portfolio_active_view', 'AAPL');
+      storageMap.set('portfolio_terminal_state_pending_v1:pre-clear', JSON.stringify({
+        schemaVersion: 1,
+        revision: 1,
+        parentRevision: 0,
+        commitId: 'pre-clear-portfolio-write',
+        originId: 'previous-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'AAPL', balance: -999 }
+      }));
+      localStorageMock.removeItem.mockImplementation((key: string) => {
+        if (key === 'margin_portfolio_state_dynamic_v2') throw new Error('tab interrupted while clearing legacy keys');
+        storageMap.delete(key);
+      });
+
+      clearLocalData();
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'COMBINED',
+        balance: 0
+      });
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+
+      // The first cleanup attempt was interrupted. Restore removal behavior
+      // and prove the tombstone allows a later retry to finish safely.
+      localStorageMock.removeItem.mockImplementation((key: string) => {
+        storageMap.delete(key);
+      });
+      const interruptedStatus = getPortfolioPersistenceStatus();
+      expect(interruptedStatus.state).toBe('degraded');
+      expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(true);
+      const pendingCountBeforeRejectedWrite = Array.from(storageMap.keys()).filter((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      ).length;
+      expect(saveState({ activeView: 'MSFT', balance: -100 })).toBe(false);
+      expect(Array.from(storageMap.keys()).filter((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toHaveLength(pendingCountBeforeRejectedWrite);
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(false);
+      expect(databaseFixture.getCurrent()?.state).toEqual({});
+      expect(databaseFixture.getCurrent()?.state).not.toHaveProperty('balance');
+      expect(storageMap.has('portfolio_terminal_state_pending_v1:pre-clear')).toBe(false);
+      expect(databaseFixture.getCurrent()?.brokerRules).toEqual(previousRules);
+      expect(databaseFixture.getCurrent()?.deviceActiveView).toBe('AAPL');
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'COMBINED',
+        balance: 0
+      });
+      expect(loadBrokerRules()).toEqual(previousRules);
+    });
+
+    it('reports degraded mode when IndexedDB is unavailable but keeps the local journal readable', async () => {
+      configurePortfolioStateDatabaseForTesting(null);
+
+      expect(saveState({ activeView: 'AMD', balance: 125 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('degraded');
+      expect(status.message).toContain('test adapter is not configured');
+      expect(status.pendingWrites).toBe(1);
+      expect(loadSavedState({})).toMatchObject({ activeView: 'AMD', balance: 125 });
+      expect(getPortfolioPersistenceStatus().state).toBe('degraded');
+    });
+
+    it('writes a durable empty generation when local portfolio data is cleared', async () => {
+      expect(saveState({ activeView: 'AAPL', balance: -300 })).toBe(true);
+      await flushPortfolioPersistence();
+
+      clearLocalData();
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.state).toEqual({});
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_state')).toBe(false);
+    });
+  });
+
   describe('loadSavedState', () => {
+    it('falls back safely when accessing the browser localStorage getter throws', () => {
+      const fallback = { activeView: 'COMBINED', balance: 0 };
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new Error('localStorage access is blocked');
+        }
+      });
+
+      try {
+        expect(loadSavedState(fallback)).toEqual(fallback);
+        expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(false);
+      } finally {
+        if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor);
+        else delete (globalThis as { localStorage?: Storage }).localStorage;
+      }
+    });
+
     it('handles missing payload gracefully and returns fallback state', () => {
       const fallback = { activeView: 'COMBINED', balance: 0 };
       const loaded = loadSavedState(fallback);
@@ -564,11 +907,12 @@ describe('storage service', () => {
   });
 
   describe('clearLocalData', () => {
-    it('clears state items from storage', () => {
+    it('clears state items from storage', async () => {
       storageMap.set('portfolio_state', 'data1');
       storageMap.set('margin_portfolio_state_dynamic_v2', 'data2');
 
       clearLocalData();
+      await flushPortfolioPersistence();
 
       expect(storageMap.has('portfolio_state')).toBe(false);
       expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
