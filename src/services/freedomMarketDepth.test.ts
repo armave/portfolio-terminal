@@ -69,8 +69,9 @@ describe('TradeNet Market Depth accumulator', () => {
     const book = createFreedomMarketDepthBook('GOOGL.US');
     book.apply({
       i: 'GOOGL.US',
-      n: 0,
-      cnt: 4,
+      n: '0',
+      cnt: '4',
+      min_step: '0.01',
       ins: [
         { k: '0', p: '101.10', q: '10', s: 'S' },
         { k: '1', p: '101.00', q: '11', s: -1 },
@@ -80,7 +81,9 @@ describe('TradeNet Market Depth accumulator', () => {
     });
 
     expect(book.snapshot()).toMatchObject({
+      sequence: 0,
       reportedDepth: 4,
+      minStep: 0.01,
       providerLevelCount: 4,
       providerBidRowCount: 2,
       providerAskRowCount: 2,
@@ -99,7 +102,8 @@ describe('TradeNet Market Depth accumulator', () => {
 
     book.apply({
       i: 'GOOGL.US',
-      n: 1,
+      n: '1',
+      cnt: '4',
       del: [{ k: '1', s: -1 }],
       ins: [{ k: '1', p: '101.20', q: '14', s: false }],
       upd: [{ k: '2', p: '100.95', q: '15', s: 1 }]
@@ -107,6 +111,7 @@ describe('TradeNet Market Depth accumulator', () => {
 
     expect(book.snapshot()).toMatchObject({
       sequence: 1,
+      reportedDepth: 4,
       providerLevelCount: 4,
       providerBidRowCount: 2,
       providerAskRowCount: 2,
