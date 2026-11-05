@@ -114,6 +114,11 @@ export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): Ma
   };
 }
 
+/** Flags a one-price-per-side snapshot so limited provider depth is not mistaken for a UI cap. */
+export function isShallowMarketDepthSnapshot(snapshot: MarketDepthSnapshot): boolean {
+  return snapshot.bids.length === 1 && snapshot.asks.length === 1;
+}
+
 export function summarizeMarketDepth(snapshot: MarketDepthSnapshot): MarketDepthSummary {
   const bestBid = snapshot.bids.reduce<MarketDepthLevel | null>(
     (best, level) => !best || level.price > best.price ? level : best,
@@ -273,6 +278,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
     .reduce((max, level) => Math.max(max, level.quantity), 0) ?? 0;
   const maxQuantity = Math.max(maxDisplayedBid, maxDisplayedAsk);
   const hasLevels = Boolean(liveSnapshot && levelCount > 0);
+  const hasShallowBook = Boolean(liveSnapshot && isShallowMarketDepthSnapshot(liveSnapshot));
   const imbalanceLabel = summary?.imbalancePercent === null || summary?.imbalancePercent === undefined
     ? '—'
     : `${summary.imbalancePercent > 0 ? '+' : ''}${summary.imbalancePercent.toFixed(1)}% ${depthText(summary.imbalancePercent > 0 ? 'bid-heavy' : summary.imbalancePercent < 0 ? 'ask-heavy' : 'balanced')}`;
@@ -323,6 +329,9 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
         {displayState === 'waiting' && !loading && !error && <p role="status" class="mb-3 rounded-lg border border-cyan-900/50 bg-cyan-950/20 px-3 py-3 text-xs text-cyan-200">{depthText('The live stream is connected. Waiting for the first TradeNet depth update…')}</p>}
 
         {liveSnapshot && summary && <>
+          {hasShallowBook && <p role="note" class="mb-3 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-3 text-xs text-amber-200">
+            {depthText('TradeNet returned only one bid and one ask price level. This view already displays every level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.')}
+          </p>}
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
             <span>{liveSnapshot.symbol} · {depthText('Last depth update')} {new Date(liveSnapshot.updatedAt).toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
             <span>
