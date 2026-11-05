@@ -362,6 +362,56 @@ describe('storage service', () => {
       expect(Array.from(storageMap.keys()).some((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toBe(true);
     });
 
+    it('keeps a clear tombstone authoritative if legacy-key removal is interrupted', async () => {
+      const previousRules = { annualBorrowRate: 0.15, dayCountBasis: '365' };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: -900
+      }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-execution' }],
+        cashflows: [{ id: 'old-cashflow' }]
+      }));
+      storageMap.set('tradernet_rules_v1', JSON.stringify(previousRules));
+      storageMap.set('portfolio_active_view', 'AAPL');
+      localStorageMock.removeItem.mockImplementation((key: string) => {
+        if (key === 'margin_portfolio_state_dynamic_v2') throw new Error('tab interrupted while clearing legacy keys');
+        storageMap.delete(key);
+      });
+
+      clearLocalData();
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'COMBINED',
+        balance: 0
+      });
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.state).toEqual({});
+      expect(databaseFixture.getCurrent()?.brokerRules).toEqual(previousRules);
+      expect(databaseFixture.getCurrent()?.deviceActiveView).toBe('AAPL');
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'COMBINED',
+        balance: 0
+      });
+      expect(loadBrokerRules()).toEqual(previousRules);
+    });
+
+    it('reports degraded mode when IndexedDB is unavailable but keeps the local journal readable', async () => {
+      configurePortfolioStateDatabaseForTesting(null);
+
+      expect(saveState({ activeView: 'AMD', balance: 125 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('degraded');
+      expect(status.message).toContain('test adapter is not configured');
+      expect(status.pendingWrites).toBe(1);
+      expect(loadSavedState({})).toMatchObject({ activeView: 'AMD', balance: 125 });
+      expect(getPortfolioPersistenceStatus().state).toBe('degraded');
+    });
+
     it('writes a durable empty generation when local portfolio data is cleared', async () => {
       expect(saveState({ activeView: 'AAPL', balance: -300 })).toBe(true);
       await flushPortfolioPersistence();
