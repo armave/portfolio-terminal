@@ -1,6 +1,6 @@
 # PR 5 — Margin-risk input validity and scenario coverage
 
-**Status:** Draft implementation scaffold. This branch currently contains the scoped implementation plan only; code changes and regression tests are pending.
+**Status:** Implementation committed on this branch; final-head validation is in progress.
 
 **Proposed PR title:** `fix(finance): fail closed on invalid margin-risk assumptions`
 
@@ -33,17 +33,17 @@ Do not modify FIFO, sale accounting, commission rules, margin-interest/rollover 
 
 ## Implementation checklist
 
-- [ ] Trace all callers and characterize current valid-input outputs before changing the contract.
-- [ ] Define and document supported input constraints for debt, position value, collateral, maintenance ratio, and stop-out ratio.
-- [ ] Reject or explicitly classify non-finite values, negative monetary inputs, invalid threshold ordering, and ratios that make a denominator zero or negative.
-- [ ] Handle zero debt, zero assets, negative equity, debt exceeding assets, zero collateral, and threshold equality without NaN/Infinity output.
-- [ ] Ensure invalid assumptions cannot be converted into a reassuring "no margin call" or "no stop-out" state.
-- [ ] Add an explicit unavailable/invalid result contract and update every direct consumer; do not silently coerce bad inputs to zero.
-- [ ] Preserve current values and threshold semantics for all valid inputs and configured broker assumptions.
-- [ ] Keep configured maintenance/stop-out thresholds clearly labeled as estimates, not verified live broker rules.
-- [ ] Add deterministic table-driven tests for valid boundaries, invalid inputs, and every UI-visible unavailable state.
-- [ ] Add English/Russian copy and translation-parity assertions for any new state.
-- [ ] Update the refinement tracker with covered scenarios and any assumptions that still require broker confirmation.
+- [x] Trace all callers and characterize current valid-input outputs before changing the contract.
+- [x] Define and document supported input constraints for debt, position value, collateral, maintenance ratio, and stop-out ratio.
+- [x] Reject or explicitly classify non-finite values, negative monetary inputs, invalid threshold ordering, and ratios that make a denominator zero or negative.
+- [x] Handle zero debt, zero assets, negative equity, debt exceeding assets, zero collateral, and threshold equality without NaN/Infinity output.
+- [x] Ensure invalid assumptions cannot be converted into a reassuring "no margin call" or "no stop-out" state.
+- [x] Add an explicit unavailable/invalid result contract and update every direct consumer; do not silently coerce bad inputs to zero.
+- [x] Preserve current values and threshold semantics for all valid inputs and configured broker assumptions.
+- [x] Keep configured maintenance/stop-out thresholds clearly labeled as estimates, not verified live broker rules.
+- [x] Add deterministic table-driven tests for valid boundaries, invalid inputs, and every UI-visible unavailable state.
+- [x] Add English/Russian copy and translation-parity assertions for any new state.
+- [x] Update the refinement tracker with covered scenarios and any assumptions that still require broker confirmation.
 
 ## Non-goals and guardrails
 
@@ -55,12 +55,12 @@ Do not modify FIFO, sale accounting, commission rules, margin-interest/rollover 
 
 ## Acceptance criteria
 
-- [ ] The risk calculator never returns NaN or Infinity for a supported call.
-- [ ] Unsupported or invalid inputs produce an explicit unavailable result, not a false "healthy" result.
-- [ ] Existing outputs for valid inputs remain unchanged and are characterized by regression tests.
-- [ ] Both application and summary-metrics consumers handle unavailable results correctly.
-- [ ] New visible strings are localized in English and Russian.
-- [ ] No financial accounting formula or persisted format changes.
+- [x] The risk calculator never returns NaN or Infinity for a supported call.
+- [x] Unsupported or invalid inputs produce an explicit unavailable result, not a false "healthy" result.
+- [x] Existing outputs for valid inputs remain unchanged and are characterized by regression tests.
+- [x] Both application and summary-metrics consumers handle unavailable results correctly.
+- [x] New visible strings are localized in English and Russian.
+- [x] No financial accounting formula or persisted format changes.
 - [ ] TypeScript, full Vitest, localization checks, dead-code validation, dependency audits, production build, and relevant browser smoke tests pass on the exact PR head.
 
 ## Required validation
