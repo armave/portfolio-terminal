@@ -44,6 +44,7 @@ async function mockWorkerApi(page) {
   let nextUserId = 1;
   let stateRevision = 0;
   let historyRevision = 0;
+  let newsRequestCount = 0;
 
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
     if (call) call.responseStatus = status;
@@ -283,6 +284,11 @@ async function mockWorkerApi(page) {
       return;
     }
 
+    if (pathname === '/' && method === 'POST' && url.searchParams.has('symbol') && !action) {
+      await json(route, 200, {}, {}, call);
+      return;
+    }
+
     if (pathname === '/' && action) {
       if (!currentUser || token !== currentToken) {
         await json(route, 401, { error: 'Not signed in.' }, {}, call);
@@ -323,7 +329,18 @@ async function mockWorkerApi(page) {
         return;
       }
       if (action === 'news') {
-        await json(route, 200, [], {}, call);
+        newsRequestCount += 1;
+        if (newsRequestCount === 1) {
+          await json(route, 503, { error: 'news provider temporarily unavailable' }, {}, call);
+        } else {
+          await json(route, 200, [{
+            id: 'operations-news-recovered',
+            headline: 'Recovered Market News',
+            summary: 'News transport recovered after retry.',
+            datetime: Math.floor(Date.now() / 1000),
+            source: 'Operations smoke'
+          }], {}, call);
+        }
         return;
       }
       if (action === 'stocktwits') {
@@ -392,6 +409,28 @@ try {
     bootstrapSecret: 'operations-smoke-secret'
   });
   await waitForAuthOverlay(page, false);
+
+  // Market Insights: provider outages must be visible and recoverable; deep data
+  // is fetched only for its selected tab, and Stocktwits remains opt-in.
+  await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForFunction(() => document.querySelector('#marketInsightsTicker')?.textContent?.includes('AAPL'), null, { timeout: 20_000 });
+  await waitForCondition(() => worker.findCalls('GET', '/') .some((call) => call.action === 'news' && call.responseStatus === 503), 'initial News provider failure');
+  await page.locator('#marketInsightsContent').getByText(/Failed to load news:/).waitFor({ state: 'visible', timeout: 10_000 });
+  if (worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits')) {
+    throw new Error('Stocktwits was requested before the user opted in.');
+  }
+  await page.getByRole('button', { name: 'Refresh company news' }).click();
+  await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'news' && call.responseStatus === 200), 'News retry recovery');
+  await page.locator('#marketInsightsContent').getByText('Recovered Market News').waitFor({ state: 'visible', timeout: 10_000 });
+  const newsCallsBeforeDeepData = worker.findCalls('GET', '/').filter((call) => call.action === 'news').length;
+  await page.getByRole('tab', { name: 'Fundamentals' }).click();
+  await waitForCondition(() => worker.findCalls('POST', '/').some((call) => !call.action && call.body.symbol === undefined), 'deep market data request');
+  if (worker.findCalls('GET', '/').filter((call) => call.action === 'news').length !== newsCallsBeforeDeepData) {
+    throw new Error('Switching to Fundamentals unexpectedly retriggered company News.');
+  }
+  await page.getByRole('button', { name: 'Refresh Stocktwits messages' }).click();
+  await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits'), 'Stocktwits opt-in request');
+
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
