@@ -302,6 +302,46 @@ function readAtomicPortfolioSnapshot(storage: Storage): PortfolioStateSnapshotRe
   }
 }
 
+/**
+ * localStorage compatibility copies are redundant only after the device's
+ * atomic checkpoint has been verified against the latest IndexedDB snapshot.
+ * Never reclaim them based on revision alone: origin and commit identity must
+ * match as well.
+ */
+function hasVerifiedLocalPortfolioCheckpoint(storage: Storage): boolean {
+  const checkpoint = readAtomicPortfolioSnapshot(storage);
+  const durable = hydratedPortfolioSnapshot;
+  return Boolean(
+    checkpoint && durable &&
+    checkpoint.revision === durable.revision &&
+    checkpoint.commitId === durable.commitId &&
+    checkpoint.originId === durable.originId
+  );
+}
+
+function removeLegacyPortfolioMirrors(storage: Storage): void {
+  if (!hasVerifiedLocalPortfolioCheckpoint(storage)) {
+    throw new Error('Cannot reclaim legacy portfolio mirrors without a verified local checkpoint.');
+  }
+  // These keys duplicate state/history already stored in the verified atomic
+  // checkpoint and transactional IndexedDB generation. Keep broker rules and
+  // device preferences: they are small, separately consumed compatibility keys.
+  removeStoredKeys(storage, [
+    STORAGE_KEY_STATE,
+    STORAGE_KEY_LEGACY_STATE,
+    STORAGE_KEY_CLOSED_HISTORY
+  ]);
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  return candidate.name === 'QuotaExceededError' ||
+    candidate.code === 22 ||
+    candidate.code === 1014 ||
+    (typeof candidate.message === 'string' && /quota/i.test(candidate.message));
+}
+
 function readPendingPortfolioSnapshots(storage: Storage): PendingPortfolioSnapshot[] {
   const pending: PendingPortfolioSnapshot[] = [];
   try {
@@ -496,18 +536,29 @@ function writeLegacyCompatibilityMirrors(
   storage: Storage,
   record: PortfolioStateSnapshotRecord
 ): void {
-  // These mirrors keep older app versions and existing recovery tools readable.
-  // The journal/IndexedDB snapshot is authoritative; mirror failures do not undo
-  // a successfully written single-key recovery record.
-  try {
-    storage.setItem(STORAGE_KEY_STATE, JSON.stringify(record.state));
-  } catch (error) {
-    console.warn('Could not update the legacy portfolio-state mirror:', error);
-  }
-  try {
-    storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(record.history));
-  } catch (error) {
-    console.warn('Could not update the legacy closed-history mirror:', error);
+  // Once the local atomic checkpoint is verified against IndexedDB, writing a
+  // second full copy of portfolio state and closed history only amplifies
+  // localStorage usage. Current clients read the checkpoint/journal first, so
+  // reclaim these redundant mirrors instead of recreating multi-megabyte copies.
+  if (hasVerifiedLocalPortfolioCheckpoint(storage)) {
+    try {
+      removeLegacyPortfolioMirrors(storage);
+    } catch (error) {
+      console.warn('Could not reclaim verified legacy portfolio mirrors:', error);
+    }
+  } else {
+    // Before the first durable checkpoint, preserve the legacy compatibility
+    // copies as a fallback for older app versions and recovery tooling.
+    try {
+      storage.setItem(STORAGE_KEY_STATE, JSON.stringify(record.state));
+    } catch (error) {
+      console.warn('Could not update the legacy portfolio-state mirror:', error);
+    }
+    try {
+      storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(record.history));
+    } catch (error) {
+      console.warn('Could not update the legacy closed-history mirror:', error);
+    }
   }
   try {
     if (record.brokerRules === null) storage.removeItem(STORAGE_KEY_RULES);
@@ -655,6 +706,15 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
     storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
+    hydratedPortfolioSnapshot = current;
+    // The checkpoint is now known to be committed in IndexedDB and verified
+    // locally. Reclaim full-size legacy mirrors; they duplicate these records
+    // and can prevent the next recovery journal from fitting in localStorage.
+    try {
+      removeLegacyPortfolioMirrors(storage);
+    } catch (error) {
+      console.warn('Could not reclaim committed legacy portfolio mirrors:', error);
+    }
 
     // Any older journal not consumed by the active commit chain is a preserved
     // recovery branch, not a reason to block the current portfolio. Archive its
@@ -1193,20 +1253,38 @@ function persistPortfolioSnapshot(
   }
 
   const journalKey = STORAGE_KEY_PENDING_PREFIX + record.commitId;
+  let journalWritten = false;
   try {
     // One setItem is the synchronous commit boundary used by PortfolioStore.
     storage.setItem(journalKey, serializedRecord);
+    journalWritten = true;
   } catch (error) {
-    if (typeof options.deviceActiveView === 'string') {
+    // A verified IndexedDB + atomic-local checkpoint makes the two legacy
+    // full-state mirrors redundant. On localStorage quota pressure, reclaim
+    // only those copies and retry this exact journal once. Never delete pending
+    // journals or the authoritative checkpoint to make room.
+    if (isQuotaExceededError(error) && hasVerifiedLocalPortfolioCheckpoint(storage)) {
       try {
-        if (previousDeviceView === null) storage.removeItem('portfolio_active_view');
-        else storage.setItem('portfolio_active_view', previousDeviceView);
-      } catch (rollbackError) {
-        console.error('Failed to restore device desk preference after a rejected portfolio write:', rollbackError);
+        removeLegacyPortfolioMirrors(storage);
+        storage.setItem(journalKey, serializedRecord);
+        journalWritten = true;
+      } catch (retryError) {
+        console.error('Failed to write the local portfolio recovery journal after safe quota cleanup:', retryError);
       }
+    } else {
+      console.error('Failed to write the local portfolio recovery journal:', error);
     }
-    console.error('Failed to write the local portfolio recovery journal:', error);
-    return { success: false, stateChanged: false, savedAt: null };
+    if (!journalWritten) {
+      if (typeof options.deviceActiveView === 'string') {
+        try {
+          if (previousDeviceView === null) storage.removeItem('portfolio_active_view');
+          else storage.setItem('portfolio_active_view', previousDeviceView);
+        } catch (rollbackError) {
+          console.error('Failed to restore device desk preference after a rejected portfolio write:', rollbackError);
+        }
+      }
+      return { success: false, stateChanged: false, savedAt: null };
+    }
   }
 
   lastScheduledRevision = record.revision;
