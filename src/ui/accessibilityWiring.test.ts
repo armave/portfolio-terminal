@@ -57,6 +57,24 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('role="region" aria-label="Stocktwits messages" tabIndex={0}');
   });
 
+  it('wires translations and focusable controls through scenario and margin dialogs', () => {
+    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
+    const report = readSource('../components/ScenarioReportModal.tsx');
+    const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
+    const coverageCopy = readSource('../features/ai/marginIntelligenceCopy.ts');
+
+    expect(comparison).toContain("translateText('Close · Esc', getAppLanguage())");
+    expect(comparison).toContain("translateText('Compare', getAppLanguage())");
+    expect(report).toContain("translateText('What-if analysis', getAppLanguage())");
+    expect(report).toContain("translateText('Estimates only · actual results may differ.', getAppLanguage())");
+    expect(intelligence).toContain('formatMarginCoverageStatus(item, getAppLanguage())');
+    expect(intelligence).toContain("translateText('News coverage by position', getAppLanguage())");
+    expect(intelligence).toContain('min-h-11');
+    expect(intelligence).toContain('focus-visible:ring-2');
+    expect(coverageCopy).toContain("translateText('Feed unavailable', language)");
+    expect(coverageCopy).toContain("translateText('Feed returned no articles', language)");
+  });
+
   it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
     const comparison = readSource('../components/ScenarioComparisonModal.tsx');
     const report = readSource('../components/ScenarioReportModal.tsx');

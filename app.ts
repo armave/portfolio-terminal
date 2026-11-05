@@ -15,6 +15,8 @@ import {
 } from './src/domain/portfolio';
 import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
 import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
+import { buildAiIntentCommand } from './src/features/ai/intentCommand';
+import { aiIntentRequiresFreshPortfolioContext, createAiRequestLifecycle, fingerprintAiPortfolioContext } from './src/features/ai/requestLifecycle';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
@@ -122,6 +124,7 @@ import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfo
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
+import { CommandExecutionGuard } from './src/features/terminal/commandExecutionGuard';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
 
@@ -1815,11 +1818,12 @@ function assertNeverAiAction(action: never): never {
 }
 
 function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
+  const currentState = portfolioStore.getState();
   let ticker = 'ticker' in action && typeof action.ticker === 'string'
     ? action.ticker.trim().toUpperCase()
     : '';
   if (!ticker && (action.action === 'set_pt' || action.action === 'set_price')) {
-    ticker = state.positions[state.activeView] ? state.activeView : Object.keys(state.positions)[0] || '';
+    ticker = currentState.positions[currentState.activeView] ? currentState.activeView : Object.keys(currentState.positions)[0] || '';
   }
   const validTicker = /^[A-Z0-9._:-]+$/.test(ticker);
   const isPositiveFinite = (value: number) => Number.isFinite(value) && value > 0;
@@ -1874,16 +1878,16 @@ function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
   })();
 
   const confirmationLines = [
-    'Gemini interpreted your input as this portfolio change:',
+    translateText('Review this portfolio change:', getAppLanguage()),
     '',
     message
   ];
-  const currentPosition = state.positions[ticker] ||
-    state.cashCushion?.holdings?.find((holding) => holding.ticker === ticker);
+  const currentPosition = currentState.positions[ticker] ||
+    currentState.cashCushion?.holdings?.find((holding) => holding.ticker === ticker);
   const currentShares = action.action === 'buy'
-    ? Number(state.positions[ticker]?.shares) || 0
+    ? Number(currentState.positions[ticker]?.shares) || 0
     : Number(currentPosition?.shares) || 0;
-  const rules = state.brokerAssumptions || TRADERNET_RULES;
+  const rules = currentState.brokerAssumptions || TRADERNET_RULES;
 
   if (action.action === 'buy') {
     const shares = action.shares;
@@ -1891,7 +1895,7 @@ function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
     const gross = shares * price;
     const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
     const totalOutlay = gross + commission;
-    const availableCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const availableCash = Math.max(0, Number(currentState.cashCushion?.freeCash) || 0);
     const cashUsed = Math.min(availableCash, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
     confirmationLines.push(
@@ -1930,10 +1934,10 @@ function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
 
   confirmationLines.push(
     '',
-    'These are portfolio-model estimates only. No broker order is submitted.',
-    'Verify quantities, prices, and fees before applying this change.',
+    translateText('These are portfolio-model estimates only. No broker order is submitted.', getAppLanguage()),
+    translateText('Verify quantities, prices, and fees before applying this change.', getAppLanguage()),
     '',
-    'Apply this change?'
+    translateText('Apply this change?', getAppLanguage())
   );
   return confirm(confirmationLines.join('\n'));
 }
@@ -1942,17 +1946,64 @@ function showScenarioModal(data: ScenarioModalData): void {
   emitUiEvent('terminal:scenario-modal', data);
 }
 
-async function executeCommand(commandText: string) {
+const aiRequestLifecycle = createAiRequestLifecycle();
+
+const terminalCommandExecutionGuard = new CommandExecutionGuard();
+
+async function executeCommand(commandText: string, preserveAiRequest = false) {
   const text = commandText.trim();
   if (!text) return;
 
+  const outcome = await terminalCommandExecutionGuard.run(
+    text,
+    () => executeCommandOnce(text, preserveAiRequest)
+  );
+  if (outcome.status === 'duplicate') {
+    logTerminal(translateText(
+      'Duplicate terminal command ignored while the first submission is running.',
+      getAppLanguage()
+    ));
+  }
+}
+
+async function executeCommandOnce(text: string, preserveAiRequest = false) {
+  if (!preserveAiRequest && !/^(?:ai|ask)\b/i.test(text)) {
+    aiRequestLifecycle.invalidate();
+    setAiStatus('READY');
+  }
+
   logTerminal(text, true);
 
-  // Apply due margin interest before a trade, but do not block read-only commands
-  // or independent settings/quote updates when a rollover snapshot cannot be saved.
-  if (/^(?:buy|bought|sell|sold)\b/i.test(text) && !/\bvs\b/i.test(text) && !applyOvernightRollover()) {
-    logTerminal('[CLI Error]: Could not save the margin rollover. The trade was not applied.');
-    return;
+  // Parse and confirm a trade before any rollover or portfolio mutation.
+  const tradePreview = CommandDispatcher.previewTradeAction(text);
+  if (tradePreview) {
+    const action: PortfolioActionIntent = tradePreview.action === 'buy'
+      ? {
+        intent: 'action',
+        action: 'buy',
+        ticker: tradePreview.ticker,
+        shares: tradePreview.shares,
+        price: tradePreview.price,
+        pt: tradePreview.pt,
+        date: tradePreview.date
+      }
+      : {
+        intent: 'action',
+        action: 'sell',
+        ticker: tradePreview.ticker,
+        shares: tradePreview.shares,
+        price: tradePreview.price
+      };
+
+    if (!confirmAiPortfolioAction(action)) {
+      logTerminal(translateText('Trade cancelled. The portfolio was not changed.', getAppLanguage()));
+      return;
+    }
+
+    if (!applyOvernightRollover()) {
+      logTerminal('[CLI Error]: Could not save the margin rollover. The trade was not applied.');
+      return;
+    }
   }
 
   // 1. Execute via the deterministic dispatcher
@@ -1961,8 +2012,9 @@ async function executeCommand(commandText: string) {
   // 2. Surface dispatcher validation errors directly; never send them to the AI fallback.
   if (localResult.type === 'err') {
     if (localResult.text) {
-      logTerminal(`[CLI Error]: ${localResult.text}`);
-      showToast(localResult.text, 'error');
+      const errorText = translateText(localResult.text, getAppLanguage());
+      logTerminal(`[CLI Error]: ${errorText}`);
+      showToast(errorText, 'error');
     }
     return;
   }
@@ -2013,18 +2065,27 @@ async function executeCommand(commandText: string) {
     return;
   }
 
-  // Only hit the Gemini API if explicitly prefixed with "ai " or "ask "
-  //    (Or delete this block entirely to make the terminal 100% offline/frontend)
-  if (!/^(ai|ask)\b/i.test(text)) {
+  // Explicitly invalid local commands stay local errors. Natural-language input that
+  // the deterministic dispatcher cannot recognize is routed to the AI advisor.
+  const isAiPrefixed = /^(?:ai|ask)\b/i.test(text);
+  if (localResult.type !== 'unrecognized' && !isAiPrefixed) {
     logTerminal(`[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.`);
     return;
   }
 
-  const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
+  const aiQuery = text.replace(/^(?:ai|ask)\s*:?\s*/i, '');
   setAiStatus('CONNECTING...');
 
+  const requestId = aiRequestLifecycle.begin();
   try {
     const targetState = portfolioStore.getState();
+    const contextFingerprint = fingerprintAiPortfolioContext({
+      positions: targetState.positions,
+      activeView: targetState.activeView || '',
+      balance: targetState.balance,
+      cashCushion: targetState.cashCushion,
+      brokerAssumptions: targetState.brokerAssumptions
+    });
     const prompt = buildIntentPrompt({
       text: aiQuery,
       state: {
@@ -2037,8 +2098,28 @@ async function executeCommand(commandText: string) {
     });
 
     const data: unknown = await proxyFetch('gemini', {}, { method: "POST", body: JSON.stringify({ prompt }) });
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
+
     const rawText = extractGeminiResponseText(data);
     const parsed = parseAiIntent(rawText);
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
+
+    const latestState = portfolioStore.getState();
+    const latestContextFingerprint = fingerprintAiPortfolioContext({
+      positions: latestState.positions,
+      activeView: latestState.activeView || '',
+      balance: latestState.balance,
+      cashCushion: latestState.cashCushion,
+      brokerAssumptions: latestState.brokerAssumptions
+    });
+    if (
+      aiIntentRequiresFreshPortfolioContext(parsed.intent, 'ticker' in parsed ? parsed.ticker : null) &&
+      latestContextFingerprint !== contextFingerprint
+    ) {
+      logTerminal(`[AI Advisor]: ${translateText('Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.', getAppLanguage())}`);
+      setAiStatus('READY');
+      return;
+    }
 
     if (parsed.intent === "action") {
       const applied = await applyAiPortfolioActionAfterConfirmation(
@@ -2047,13 +2128,24 @@ async function executeCommand(commandText: string) {
         applyPortfolioActions
       );
       if (!applied) logTerminal("[AI Action]: Cancelled.");
+    } else if (parsed.intent === 'chat') {
+      logTerminal(`[AI Advisor]: ${parsed.response}`);
     } else {
-      const response = parsed.intent === 'chat' ? parsed.response : 'Executed.';
-      logTerminal(`[AI Advisor]: ${response}`);
+      const activeView = String(targetState.activeView || '').toUpperCase();
+      const activeTicker = Object.prototype.hasOwnProperty.call(targetState.positions || {}, activeView)
+        ? activeView
+        : null;
+      const command = buildAiIntentCommand(parsed, activeTicker);
+      if (!command) {
+        logTerminal(`[AI Advisor]: ${translateText('Select or mention an active stock before requesting an AI simulation, comparison, or quote.', getAppLanguage())}`);
+      } else {
+        await executeCommand(command, true);
+      }
     }
 
-    setAiStatus('READY');
+    if (aiRequestLifecycle.isCurrent(requestId)) setAiStatus('READY');
   } catch (err: unknown) {
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
     const message = err instanceof Error ? err.message : 'Unknown AI request error.';
     logTerminal(`[Error]: ${message}`);
     setAiStatus('READY');

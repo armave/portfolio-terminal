@@ -92,6 +92,9 @@ describe('supported AI intent variants', () => {
     '{"intent":"action","action":"buy","ticker":"AAPL","shares":1e308,"price":1e308,"pt":null,"date":null}',
     '{"intent":"fetch_quote","ticker":12}',
     '{"intent":"simulation","ticker":"AAPL","simPrice":0,"daysOffset":1,"label":"Bad"}',
+    '{"intent":"simulation","ticker":"AAPL","simPrice":100,"daysOffset":3651,"label":"Too far"}',
+    '{"intent":"simulation","ticker":"AAPL","simPrice":100,"daysOffset":1,"label":"   "}',
+    '{"intent":"comparison","ticker":"AAPL","scenarios":[{"label":"A","price":10,"days":0},{"label":"B","price":11,"days":3651}]}',
     '{"intent":"comparison","ticker":"AAPL","scenarios":[{"label":"A","price":10,"days":0},{"label":"B","price":11,"days":-1}]}',
     '{"intent":"chat","response":""}',
     '{"intent":"action","action":"buy","ticker":"AAPL","shares":1,"price":"100","pt":null,"date":null}'

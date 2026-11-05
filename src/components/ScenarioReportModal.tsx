@@ -3,6 +3,7 @@ import type { ComponentChild } from 'preact';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { scheduleDialogClose } from '../ui/dialogClose';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
+import { getAppLanguage, translateText } from '../services/i18n';
 
 interface ScenarioReportModalProps {
   report: string;
@@ -89,31 +90,31 @@ export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanc
 
   const header = report.split('\n', 1)[0].toUpperCase();
   const title = report.split('\n', 1)[0].replace(/^\[|\]$/g, '') || 'Scenario report';
-  const subtitle = header.startsWith('[HYPOTHETICAL BUY:')
+  const subtitle = translateText(header.startsWith('[HYPOTHETICAL BUY:')
     ? 'Current position vs. proposed purchase · profit, downside, exposure and fees'
     : header.startsWith('[MULTI-DATE EXIT COMPARISON:')
       ? 'Sell now vs. future exits · estimated net results after costs'
-      : 'Before vs. after · estimated values';
+      : 'Before vs. after · estimated values', getAppLanguage());
 
   return (
     <div id="scenarioReportModal" class={'scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm transition-opacity duration-200 ease-out sm:p-6 ' + (isClosing ? 'opacity-0' : 'opacity-100')} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
       <section ref={dialogRef} class={'scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 transition-[opacity,transform] duration-200 sm:max-h-[90vh] ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')} role="dialog" aria-modal="true" aria-labelledby="scenarioReportTitle" tabIndex={-1}>
         <header class="flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6">
           <div class="min-w-0">
-            <div class="mb-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300">What-if analysis</div>
-            <h2 id="scenarioReportTitle" class="break-words text-base font-bold tracking-tight text-white sm:text-lg">{title}</h2>
+            <div class="mb-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300">{translateText('What-if analysis', getAppLanguage())}</div>
+            <h2 id="scenarioReportTitle" class="break-words text-base font-bold tracking-tight text-white sm:text-lg">{translateText(title, getAppLanguage())}</h2>
             <p class="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400">{subtitle}</p>
           </div>
-          <button ref={closeButtonRef} type="button" class="shrink-0 min-h-11 rounded-lg border border-slate-700/80 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors duration-150 hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose} aria-label="Close scenario report">Close</button>
+          <button ref={closeButtonRef} type="button" class="shrink-0 min-h-11 rounded-lg border border-slate-700/80 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors duration-150 hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose} aria-label={translateText('Close scenario report', getAppLanguage())}>{translateText('Close', getAppLanguage())}</button>
         </header>
         <div class="scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-3 text-[13px] leading-snug selection:bg-violet-500/30 sm:px-5 sm:py-4 sm:text-sm" role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}>
-          {dataQualityWarning && <p class="mb-3 rounded-lg border border-amber-700/70 bg-amber-950/40 px-3 py-2 text-xs leading-relaxed text-amber-200" role="status">{dataQualityWarning}</p>}
+          {dataQualityWarning && <p class="mb-3 rounded-lg border border-amber-700/70 bg-amber-950/40 px-3 py-2 text-xs leading-relaxed text-amber-200" role="status">{translateText(dataQualityWarning, getAppLanguage())}</p>}
           <QuoteProvenanceList holdings={quoteProvenanceHoldings} />
           {renderReportLines(report)}
         </div>
         <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/80 px-4 py-3.5 sm:px-6">
-          <p class="max-w-xl text-[11px] leading-relaxed text-slate-400">Estimates only · actual results may differ.</p>
-          <button type="button" class="min-h-11 rounded-lg bg-purple-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-purple-950/30 transition duration-150 hover:-translate-y-px hover:bg-purple-300 hover:shadow-purple-900/30 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose}>Done</button>
+          <p class="max-w-xl text-[11px] leading-relaxed text-slate-400">{translateText('Estimates only · actual results may differ.', getAppLanguage())}</p>
+          <button type="button" class="min-h-11 rounded-lg bg-purple-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-purple-950/30 transition duration-150 hover:-translate-y-px hover:bg-purple-300 hover:shadow-purple-900/30 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose}>{translateText('Done', getAppLanguage())}</button>
         </footer>
       </section>
     </div>

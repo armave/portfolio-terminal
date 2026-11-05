@@ -51,6 +51,23 @@ describe('market insights provider client', () => {
     expect(fetchNews).toHaveBeenCalledTimes(2);
   });
 
+  it('surfaces news provider failures so the UI can distinguish outages from an empty feed', async () => {
+    const fetchNews = vi.fn()
+      .mockRejectedValueOnce(new Error('provider timed out'))
+      .mockResolvedValueOnce([{ headline: 'Recovered company news' }]);
+    const onNewsError = vi.fn();
+    const client = createMarketInsightsProviderClient({
+      fetchNews,
+      fetchStocktwits: vi.fn().mockResolvedValue({ messages: [] }),
+      onNewsError
+    });
+
+    await expect(client.fetchMarketNews('AAPL')).rejects.toThrow('provider timed out');
+    expect(onNewsError).toHaveBeenCalledWith('AAPL', expect.objectContaining({ message: 'provider timed out' }));
+    await expect(client.fetchMarketNews('AAPL')).resolves.toEqual([{ headline: 'Recovered company news' }]);
+    expect(fetchNews).toHaveBeenCalledTimes(2);
+  });
+
   it('normalizes Stocktwits messages and supplies a safe fallback stream URL', async () => {
     const client = createMarketInsightsProviderClient({
       fetchNews: vi.fn().mockResolvedValue([]),

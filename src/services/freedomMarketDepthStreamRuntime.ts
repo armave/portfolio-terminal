@@ -18,6 +18,8 @@ export interface FreedomMarketDepthStreamRuntimeDependencies {
   scheduleInterval?: (callback: () => void, delayMs: number) => ReturnType<typeof setInterval>;
   clearScheduledInterval?: (handle: ReturnType<typeof setInterval>) => void;
   now?: () => number;
+  /** Maximum time to wait after socket readiness for the first validated depth book. */
+  firstDepthTimeoutMs?: number;
 }
 
 export interface FreedomMarketDepthStreamRuntime {
@@ -27,6 +29,7 @@ export interface FreedomMarketDepthStreamRuntime {
 }
 
 const CONNECT_TIMEOUT_MS = 15_000;
+const FIRST_DEPTH_TIMEOUT_MS = 15_000;
 const HEARTBEAT_MS = 20_000;
 const PONG_TIMEOUT_MS = 50_000;
 const MAX_BROWSER_MESSAGE_BYTES = 256 * 1024;
@@ -53,12 +56,14 @@ export function createFreedomMarketDepthStreamRuntime(
   const scheduleInterval = dependencies.scheduleInterval || ((callback, delay) => setInterval(callback, delay));
   const clearIntervalHandle = dependencies.clearScheduledInterval || ((handle) => clearInterval(handle));
   const now = dependencies.now || Date.now;
+  const firstDepthTimeoutMs = dependencies.firstDepthTimeoutMs ?? FIRST_DEPTH_TIMEOUT_MS;
   let generation = 0;
   let activeSessionKey = '';
   let activeSymbol = '';
   let socket: FreedomMarketDepthSocketLike | null = null;
   let connected = false;
   let connectTimeout: ReturnType<typeof setTimeout> | null = null;
+  let firstDepthTimeout: ReturnType<typeof setTimeout> | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let lastPongAt = 0;
 
@@ -67,8 +72,10 @@ export function createFreedomMarketDepthStreamRuntime(
   };
   const clearTimers = (): void => {
     if (connectTimeout !== null) clearTimeoutHandle(connectTimeout);
+    if (firstDepthTimeout !== null) clearTimeoutHandle(firstDepthTimeout);
     if (heartbeat !== null) clearIntervalHandle(heartbeat);
     connectTimeout = null;
+    firstDepthTimeout = null;
     heartbeat = null;
   };
 
@@ -158,6 +165,16 @@ export function createFreedomMarketDepthStreamRuntime(
             connected = true;
             lastPongAt = now();
             report('connected');
+            // A healthy socket can keep answering heartbeats without ever
+            // delivering an order book. Do not leave the UI waiting forever.
+            firstDepthTimeout = scheduleTimeout(() => {
+              firstDepthTimeout = null;
+              if (run !== generation || socket !== nextSocket || !connected) return;
+              connected = false;
+              streamErrorMessage = 'No live Market Depth data is available.';
+              report('error', streamErrorMessage);
+              try { nextSocket.close(4000, 'Market Depth first-depth timeout'); } catch { /* ignore */ }
+            }, firstDepthTimeoutMs);
             finish(true);
             return;
           }
@@ -175,6 +192,8 @@ export function createFreedomMarketDepthStreamRuntime(
             }
             connected = true;
             lastPongAt = now();
+            if (firstDepthTimeout !== null) clearTimeoutHandle(firstDepthTimeout);
+            firstDepthTimeout = null;
             dependencies.onDepth(activeSymbol, message.data, updatedAt, sessionKey);
             return;
           }

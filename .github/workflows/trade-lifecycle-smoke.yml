@@ -1,0 +1,68 @@
+name: Trade Lifecycle Browser Smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app.ts'
+      - 'src/features/terminal/commandDispatcher.ts'
+      - 'src/features/terminal/commandDispatcher.test.ts'
+      - 'src/features/terminal/commandDispatcher.tradePreview.test.ts'
+      - 'src/features/terminal/commandExecutionGuard.ts'
+      - 'src/features/terminal/commandExecutionGuard.test.ts'
+      - 'src/store/portfolioStore.ts'
+      - 'src/store/portfolioTradeBoundary.test.ts'
+      - 'src/services/i18n.ts'
+      - 'src/services/i18n-ru.ts'
+      - 'scripts/browser-smoke-trades.mjs'
+      - '.github/workflows/trade-lifecycle-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trade-lifecycle-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trade-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run trade lifecycle unit tests
+        run: npx vitest run src/features/terminal/commandDispatcher.test.ts src/features/terminal/commandDispatcher.tradePreview.test.ts src/features/terminal/commandExecutionGuard.test.ts src/store/portfolioTradeBoundary.test.ts src/store/portfolioStore.test.ts
+
+      - name: Build production site
+        run: npm run build
+
+      - name: Install browser smoke-test runner
+        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.56.1-chromium
+
+      - name: Install Chromium for trade lifecycle journey
+        run: npx playwright install --with-deps chromium
+
+      - name: Exercise the production trade lifecycle
+        run: node scripts/browser-smoke-trades.mjs

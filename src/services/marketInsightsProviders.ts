@@ -335,7 +335,9 @@ export function createMarketInsightsProviderClient(options: MarketInsightsProvid
     } catch (error) {
       if (isAbortError(error)) throw error;
       options.onNewsError?.(symbol, error);
-      return [];
+      // Keep transport failures distinct from a valid empty news feed. The UI
+      // owns the retry affordance and must not present an outage as "no news".
+      throw error;
     }
   }
 
