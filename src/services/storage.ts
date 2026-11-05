@@ -363,7 +363,16 @@ function resolveLocalPortfolioSnapshot(storage: Storage): {
 }
 
 function readPendingCount(storage = getBrowserStorage()): number {
-  return storage ? readPendingPortfolioSnapshots(storage).length : 0;
+  if (!storage) return 0;
+  try {
+    let count = 0;
+    for (let index = 0; index < storage.length; index += 1) {
+      if (storage.key(index)?.startsWith(STORAGE_KEY_PENDING_PREFIX)) count += 1;
+    }
+    return count;
+  } catch {
+    return readPendingPortfolioSnapshots(storage).length;
+  }
 }
 
 function updatePortfolioPersistenceStatus(
