@@ -569,3 +569,23 @@ The live modal re-sorted price-grouped levels on every update, derived the ladde
 **Scope**
 
 Frontend render scheduling and Market Depth presentation only. No provider protocol, broker authentication, server session policy, trading behavior, account permissions, or persisted data semantics changed.
+
+
+## Stage 17 — TradeNet combined-position Market Depth correction (2026-11-05)
+
+**Finding**
+
+The live GOOGL Market Depth stream connected successfully but the first bid insertion could be rejected as a missing position. The accumulator incorrectly treated `k` as a side-local index, while TradeNet's published `notifyOrderBook` example and field description define it as a position in the combined book (for example, ask `k=0`, bid `k=19`).
+
+**Implementation**
+
+- [x] Replace separate bid/ask position maps with one combined global-position map.
+- [x] Apply deletes and inserts across both sides in TradeNet's documented `del` → `ins` → `upd` order.
+- [x] Validate update/delete side markers against the row at the global position.
+- [x] Update service, one-shot Worker and persistent Durable Object regression fixtures to use global positions.
+- [x] Correct the integration documentation and retain the 2,000-row combined safety bound plus 1,000-row per-side snapshot cap.
+- [ ] Verify a live authenticated GOOGL stream in the browser against the production Worker.
+
+**Scope**
+
+Shared Market Depth accumulator used by the browser, one-shot Worker diagnostic, and persistent Durable Object stream. No broker authentication, credentials, trading commands, portfolio/account state, or order placement changed.
