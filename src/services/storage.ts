@@ -1055,8 +1055,19 @@ function persistPortfolioSnapshot(
   // Module state from a prior page/test storage instance must not make the
   // first valid write appear stale; the IndexedDB CAS still protects against
   // an older durable generation in another tab.
-  if (!parent && pendingCount === 0) lastScheduledRevision = 0;
-  else if (lastScheduledRevision === null) lastScheduledRevision = parent?.revision ?? 0;
+  const atomicCheckpoint = readAtomicPortfolioSnapshot(storage);
+  if (
+    pendingCount === 0 &&
+    (!atomicCheckpoint || parent?.commitId === 'legacy-portfolio-snapshot')
+  ) {
+    // No committed v1 checkpoint or journal exists in this Storage area. A
+    // revision held only in module memory may belong to a previous account,
+    // tab fixture, or pre-migration session. Rebase on the durable legacy base;
+    // the IndexedDB compare-and-commit still rejects a stale cross-tab write.
+    lastScheduledRevision = parent?.revision ?? 0;
+  } else if (lastScheduledRevision === null) {
+    lastScheduledRevision = parent?.revision ?? 0;
+  }
   if ((parent?.revision ?? 0) !== lastScheduledRevision) {
     updatePortfolioPersistenceStatus('conflict', parent?.revision ?? 0,
       'This tab is behind a newer portfolio revision. Reload and reconcile before saving.');
