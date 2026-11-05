@@ -49,3 +49,23 @@ describe('AI portfolio context snapshot', () => {
     }
   });
 });
+
+describe('AI intent context freshness requirements', () => {
+  it('does not reject portfolio-independent chat and news responses after unrelated state updates', async () => {
+    const { aiIntentRequiresFreshPortfolioContext } = await import('./requestLifecycle');
+    expect(aiIntentRequiresFreshPortfolioContext('chat', null)).toBe(false);
+  });
+
+  it('keeps portfolio-dependent projections and actions protected against stale context', async () => {
+    const { aiIntentRequiresFreshPortfolioContext } = await import('./requestLifecycle');
+    expect(aiIntentRequiresFreshPortfolioContext('action', 'GOOGL')).toBe(true);
+    expect(aiIntentRequiresFreshPortfolioContext('simulation', 'GOOGL')).toBe(true);
+    expect(aiIntentRequiresFreshPortfolioContext('comparison', 'GOOGL')).toBe(true);
+  });
+
+  it('checks active selection when a quote intent omits its ticker', async () => {
+    const { aiIntentRequiresFreshPortfolioContext } = await import('./requestLifecycle');
+    expect(aiIntentRequiresFreshPortfolioContext('fetch_quote', null)).toBe(true);
+    expect(aiIntentRequiresFreshPortfolioContext('fetch_quote', 'GOOGL')).toBe(false);
+  });
+});

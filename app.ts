@@ -16,7 +16,7 @@ import {
 import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
 import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
 import { buildAiIntentCommand } from './src/features/ai/intentCommand';
-import { createAiRequestLifecycle, fingerprintAiPortfolioContext } from './src/features/ai/requestLifecycle';
+import { aiIntentRequiresFreshPortfolioContext, createAiRequestLifecycle, fingerprintAiPortfolioContext } from './src/features/ai/requestLifecycle';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
@@ -2021,14 +2021,15 @@ async function executeCommand(commandText: string, preserveAiRequest = false) {
     return;
   }
 
-  // Only hit the Gemini API if explicitly prefixed with "ai " or "ask "
-  //    (Or delete this block entirely to make the terminal 100% offline/frontend)
-  if (!/^(ai|ask)\b/i.test(text)) {
+  // Explicitly invalid local commands stay local errors. Natural-language input that
+  // the deterministic dispatcher cannot recognize is routed to the AI advisor.
+  const isAiPrefixed = /^(?:ai|ask)\b/i.test(text);
+  if (localResult.type !== 'unrecognized' && !isAiPrefixed) {
     logTerminal(`[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.`);
     return;
   }
 
-  const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
+  const aiQuery = text.replace(/^(?:ai|ask)\s*:?\s*/i, '');
   setAiStatus('CONNECTING...');
 
   const requestId = aiRequestLifecycle.begin();
@@ -2067,7 +2068,10 @@ async function executeCommand(commandText: string, preserveAiRequest = false) {
       cashCushion: latestState.cashCushion,
       brokerAssumptions: latestState.brokerAssumptions
     });
-    if (latestContextFingerprint !== contextFingerprint) {
+    if (
+      aiIntentRequiresFreshPortfolioContext(parsed.intent, parsed.intent === 'chat' ? null : parsed.ticker) &&
+      latestContextFingerprint !== contextFingerprint
+    ) {
       logTerminal(`[AI Advisor]: ${translateText('Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.', getAppLanguage())}`);
       setAiStatus('READY');
       return;

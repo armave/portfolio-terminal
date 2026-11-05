@@ -11,7 +11,10 @@ describe('AI intent application wiring', () => {
 
   it('rejects obsolete requests and changed portfolio context before showing/applying results', () => {
     expect(source).toContain('if (!aiRequestLifecycle.isCurrent(requestId)) return;');
-    expect(source).toContain('if (latestContextFingerprint !== contextFingerprint)');
+    expect(source).toContain('aiIntentRequiresFreshPortfolioContext(parsed.intent');
+    expect(source).toContain("localResult.type !== 'unrecognized' && !isAiPrefixed");
+    expect(source).toContain("const aiQuery = text.replace(/^(?:ai|ask)");
+    expect(source).toContain('latestContextFingerprint !== contextFingerprint');
     expect(source).toContain('aiRequestLifecycle.invalidate();');
   });
 
