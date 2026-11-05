@@ -564,6 +564,19 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
       storage.removeItem(STORAGE_KEY_ATOMIC_SNAPSHOT);
       hydratedPortfolioSnapshot = null;
       current = null;
+
+      // The clear tombstone supersedes every pending pre-clear mutation. Purge
+      // journal keys before seeding the empty generation so an interrupted
+      // clear can never replay an old portfolio write into a newly cleared DB.
+      const journalKeys: string[] = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key?.startsWith(STORAGE_KEY_PENDING_PREFIX)) journalKeys.push(key);
+      }
+      removeStoredKeys(storage, journalKeys);
+      if (readPendingCount(storage) > 0) {
+        throw new Error('Could not clear every pending portfolio recovery entry.');
+      }
     }
 
     if (!current) {
