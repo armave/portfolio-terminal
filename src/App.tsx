@@ -213,17 +213,28 @@ function buildMarginReviewContext(
       unpricedHoldings: valuation.unpricedHoldings,
       reliability: valuationReliability
     },
-    marginRisk: marginRisk && assumptions ? {
-      equityRatioPct: Number.isFinite(marginRisk.equityRatio) ? marginRisk.equityRatio * 100 : null,
-      maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
-      stopOutRatioPct: assumptions.stopOutRatio * 100,
-      marginCallBufferPct: Number.isFinite(marginRisk.marginCallBufferPct) ? marginRisk.marginCallBufferPct : null,
-      stopOutBufferPct: Number.isFinite(marginRisk.stopOutBufferPct) ? marginRisk.stopOutBufferPct : null,
-      dailyBorrowCostEstimate: debt * assumptions.annualBorrowRate / assumptions.dayCountBasis,
-      annualBorrowRatePct: assumptions.annualBorrowRate * 100,
-      dayCountBasis: assumptions.dayCountBasis,
-      qualification: 'Application estimate using configured assumptions; not a live broker margin or liquidation indicator.'
-    } : null
+    marginRisk: marginRisk && assumptions
+      ? marginRisk.status === 'available'
+        ? {
+          status: 'available',
+          equityRatioPct: marginRisk.equityRatio === null ? null : marginRisk.equityRatio * 100,
+          maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
+          stopOutRatioPct: assumptions.stopOutRatio * 100,
+          marginCallBufferPct: marginRisk.marginCallBufferPct,
+          stopOutBufferPct: marginRisk.stopOutBufferPct,
+          dailyBorrowCostEstimate: Number.isFinite(debt * assumptions.annualBorrowRate / assumptions.dayCountBasis)
+            ? debt * assumptions.annualBorrowRate / assumptions.dayCountBasis : null,
+          annualBorrowRatePct: Number.isFinite(assumptions.annualBorrowRate)
+            ? assumptions.annualBorrowRate * 100 : null,
+          dayCountBasis: assumptions.dayCountBasis,
+          qualification: 'Application estimate using configured assumptions; not a live broker margin or liquidation indicator.'
+        }
+        : {
+          status: 'unavailable',
+          reason: marginRisk.reason,
+          qualification: 'Margin risk estimate unavailable because portfolio values or configured margin thresholds are invalid.'
+        }
+      : null
   };
   const identity = {
     focusTicker: requestedTicker,
