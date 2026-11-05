@@ -48,10 +48,15 @@ export interface MarginDigestFreshness {
   reasons: Array<'snapshot-changed' | 'prompt-changed' | 'metadata-missing' | 'news-old'>;
 }
 
-export const MARGIN_REVIEW_PROMPT_VERSION = 2;
+export const MARGIN_REVIEW_PROMPT_VERSION = 3;
 export const MARGIN_REVIEW_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MARGIN_REVIEW_MAX_ARTICLES = 12;
 const MAX_ARTICLES_PER_TICKER = 3;
+
+/** Normalize app ticker keys and Freedom's market-qualified symbols for comparison. */
+export function normalizeMarginReviewTicker(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase().replace(/\.US$/i, '');
+}
 
 export function buildMarginReviewPrompt(
   portfolioContext: unknown,
@@ -63,7 +68,7 @@ export function buildMarginReviewPrompt(
     'Output these sections in order: **Stance** (one sentence stating whether supplied evidence changes this portfolio’s risk and confidence: low/medium/high); **What matters now** (up to 3 position-specific, evidence-linked observations); **Risks / invalidation** (up to 3 specific facts or conditions that would change the assessment); **Monitor next** (up to 3 measurable, ticker-specific checks); **Position facts** (brief factual snapshot).',
     'Use only supplied account data and article headlines/summaries. Do not invent prices, dates, events, rates, broker rules, or liquidation thresholds. Clearly separate supplied facts from interpretation. If a field is missing, stale, provisional, or unavailable, say so.',
     'If account valuation reliability is provisional or incomplete, qualify account-level risk conclusions and do not state that the portfolio is safe from a margin call.',
-    'If app-tracked shares, broker-reported shares, and entry-lot shares disagree, put a concise DATA QUALITY WARNING as the first line before the requested sections, list the three quantities and their sources, and do not make a firm size-dependent recommendation. Do not silently choose a quantity.',
+    'If app-tracked shares, broker-reported shares, and entry-lot shares are all available and disagree, put a concise DATA QUALITY WARNING as the first line before the requested sections, list the three quantities and their sources, and do not make a firm size-dependent recommendation. If app-tracked shares and entry-lot shares disagree, flag that too. If broker-reported shares are null or unavailable, explicitly say broker reconciliation is unavailable and report the app/entry-lot counts; do not describe the missing broker value as a confirmed mismatch or infer its quantity.',
     'Use application-calculated gross P&L as supplied; it excludes commissions, fees, and interest. Do not recompute P&L or infer a new target. Do not submit or modify orders.',
     'Every news-based statement must cite its supplied source ID exactly, e.g. [N2], and explain why it matters to that ticker’s actual exposure, entry basis, target, or margin context. Cite only supplied IDs. If no article supports a portfolio-specific takeaway, explicitly say no verified position-specific catalyst was found; do not fill space with generic market risks.',
     'Treat configured maintenance/stop-out values and margin buffers as application estimates, not live broker requirements or liquidation thresholds. Do not infer earnings timing; call an earnings date unverified unless explicitly provided.',
@@ -95,8 +100,26 @@ function stableSerialize(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
+const VOLATILE_MARGIN_REVIEW_METADATA_KEYS = new Set([
+  'brokerSnapshotReceivedAt',
+  'quoteUpdatedAt',
+  'quoteSourceTimestamp'
+]);
+
+function stripVolatileMarginReviewMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripVolatileMarginReviewMetadata);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !VOLATILE_MARGIN_REVIEW_METADATA_KEYS.has(key))
+        .map(([key, nested]) => [key, stripVolatileMarginReviewMetadata(nested)])
+    );
+  }
+  return value;
+}
+
 export async function fingerprintMarginReviewSnapshot(snapshot: unknown): Promise<string> {
-  const serialized = stableSerialize(snapshot);
+  const serialized = stableSerialize(stripVolatileMarginReviewMetadata(snapshot));
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
