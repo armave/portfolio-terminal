@@ -14,7 +14,9 @@ const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
   getItem: (key: string) => sharedTestStorage.get(key) ?? null,
   setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
-  removeItem: (key: string) => { sharedTestStorage.delete(key); }
+  removeItem: (key: string) => { sharedTestStorage.delete(key); },
+  key: (index: number) => Array.from(sharedTestStorage.keys())[index] ?? null,
+  get length() { return sharedTestStorage.size; }
 };
 
 beforeEach(() => {
@@ -522,7 +524,9 @@ describe('canonical trade lifecycle and persistence', () => {
   const localStorageMock = {
     getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => { stored.set(key, String(value)); },
-    removeItem: (key: string) => { stored.delete(key); }
+    removeItem: (key: string) => { stored.delete(key); },
+    key: (index: number) => Array.from(stored.keys())[index] ?? null,
+    get length() { return stored.size; }
   };
 
   afterEach(() => {
@@ -2126,7 +2130,9 @@ describe('atomic portfolio-store persistence', () => {
   const storageMock = {
     getItem: vi.fn((key: string) => values.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => { values.set(key, String(value)); }),
-    removeItem: vi.fn((key: string) => { values.delete(key); })
+    removeItem: vi.fn((key: string) => { values.delete(key); }),
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    get length() { return values.size; }
   };
 
   beforeEach(() => {
@@ -2257,10 +2263,9 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
   });
 
-  it('does not publish a portfolio update when the closed-history sidecar write fails', () => {
+  it('publishes a committed journal when a legacy closed-history mirror cannot be updated', () => {
     const store = new PortfolioStore();
     store.setState({ balance: -100 }, false);
-    const previous = store.getState();
     const listener = vi.fn();
     const persistenceErrorListener = vi.fn();
     store.subscribe(listener);
@@ -2274,14 +2279,20 @@ describe('atomic portfolio-store persistence', () => {
     expect(store.setState({
       balance: -300,
       brokerExecutedTrades: [{ id: 'new-execution', ticker: 'AAPL', side: 'BUY' }] as any
-    })).toBe(false);
+    })).toBe(true);
 
-    expect(store.getState()).toBe(previous);
-    expect(store.getState().balance).toBe(-100);
-    expect(listener).not.toHaveBeenCalled();
-    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
-    expect(values.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(store.getState().balance).toBe(-300);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(persistenceErrorListener).not.toHaveBeenCalled();
     expect(values.has('portfolio_closed_history_v1')).toBe(false);
+    const journalKey = Array.from(values.keys()).find((key) =>
+      key.startsWith('portfolio_terminal_state_pending_v1:')
+    );
+    expect(journalKey).toBeDefined();
+    expect(JSON.parse(values.get(journalKey!)!).history).toEqual({
+      brokerExecutedTrades: [{ id: 'new-execution', ticker: 'AAPL', side: 'BUY' }],
+      cashflows: []
+    });
   });
 });
 
