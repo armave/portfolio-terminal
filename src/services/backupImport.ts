@@ -19,3 +19,36 @@ export function commitPortfolioBackupImport<TState>(
     throw error;
   }
 }
+
+export interface PendingBackupCloudSyncOperations<TState> {
+  /** Refresh the cloud revision before attempting the conditional replacement. */
+  refreshCloudRevision: () => Promise<unknown>;
+  isCurrentSession: () => boolean;
+  restoreLocalSnapshot: (snapshot: TState) => boolean;
+  persistLocalSnapshot: () => boolean;
+  pushCloudSnapshot: () => Promise<boolean>;
+  clearPendingMarker: () => void;
+}
+
+/**
+ * Retry a previously imported backup after first refreshing the server revision.
+ * The imported snapshot is restored after the pull, so older cloud fields never
+ * become the new local source of truth. A failed push leaves the pending marker.
+ */
+export async function retryPendingBackupCloudSync<TState>(
+  importedSnapshot: TState,
+  operations: PendingBackupCloudSyncOperations<TState>
+): Promise<boolean> {
+  try {
+    await operations.refreshCloudRevision();
+    if (!operations.isCurrentSession()) return false;
+    if (!operations.restoreLocalSnapshot(importedSnapshot)) return false;
+    if (!operations.persistLocalSnapshot()) return false;
+    const pushed = await operations.pushCloudSnapshot();
+    if (!operations.isCurrentSession() || !pushed) return false;
+    operations.clearPendingMarker();
+    return true;
+  } catch {
+    return false;
+  }
+}

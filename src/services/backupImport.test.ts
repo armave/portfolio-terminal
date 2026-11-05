@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalizePortfolioBackup } from '../domain/portfolio';
-import { commitPortfolioBackupImport } from './backupImport';
+import { commitPortfolioBackupImport, retryPendingBackupCloudSync } from './backupImport';
 
 describe('commitPortfolioBackupImport', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -87,5 +87,79 @@ describe('commitPortfolioBackupImport', () => {
     expect(() => commitPortfolioBackupImport(imported, previous, replaceState, () => { throw storageError; }))
       .toThrow(storageError);
     expect(active).toBe(previous);
+  });
+});
+
+
+describe('retryPendingBackupCloudSync', () => {
+  it('refreshes the cloud revision, restores the imported snapshot, and clears the marker after a confirmed push', async () => {
+    const order: string[] = [];
+    const importedSnapshot = { balance: -250, activeView: 'COMBINED' };
+    const result = await retryPendingBackupCloudSync(importedSnapshot, {
+      refreshCloudRevision: async () => { order.push('pull'); },
+      isCurrentSession: () => true,
+      restoreLocalSnapshot: (snapshot) => {
+        order.push('restore');
+        expect(snapshot).toBe(importedSnapshot);
+        return true;
+      },
+      persistLocalSnapshot: () => { order.push('persist'); return true; },
+      pushCloudSnapshot: async () => { order.push('push'); return true; },
+      clearPendingMarker: () => { order.push('clear'); }
+    });
+
+    expect(result).toBe(true);
+    expect(order).toEqual(['pull', 'restore', 'persist', 'push', 'clear']);
+  });
+
+  it('keeps the pending marker when the cloud rejects the replacement', async () => {
+    const clearPendingMarker = vi.fn();
+    const result = await retryPendingBackupCloudSync({ balance: -250 }, {
+      refreshCloudRevision: async () => undefined,
+      isCurrentSession: () => true,
+      restoreLocalSnapshot: () => true,
+      persistLocalSnapshot: () => true,
+      pushCloudSnapshot: async () => false,
+      clearPendingMarker
+    });
+
+    expect(result).toBe(false);
+    expect(clearPendingMarker).not.toHaveBeenCalled();
+  });
+
+  it('does not restore or push after the account session changes during the cloud pull', async () => {
+    const restoreLocalSnapshot = vi.fn(() => true);
+    const pushCloudSnapshot = vi.fn(async () => true);
+    const clearPendingMarker = vi.fn();
+    const result = await retryPendingBackupCloudSync({ balance: -250 }, {
+      refreshCloudRevision: async () => undefined,
+      isCurrentSession: () => false,
+      restoreLocalSnapshot,
+      persistLocalSnapshot: () => true,
+      pushCloudSnapshot,
+      clearPendingMarker
+    });
+
+    expect(result).toBe(false);
+    expect(restoreLocalSnapshot).not.toHaveBeenCalled();
+    expect(pushCloudSnapshot).not.toHaveBeenCalled();
+    expect(clearPendingMarker).not.toHaveBeenCalled();
+  });
+
+  it('does not clear the marker when local persistence fails after restoring the imported snapshot', async () => {
+    const pushCloudSnapshot = vi.fn(async () => true);
+    const clearPendingMarker = vi.fn();
+    const result = await retryPendingBackupCloudSync({ balance: -250 }, {
+      refreshCloudRevision: async () => undefined,
+      isCurrentSession: () => true,
+      restoreLocalSnapshot: () => true,
+      persistLocalSnapshot: () => false,
+      pushCloudSnapshot,
+      clearPendingMarker
+    });
+
+    expect(result).toBe(false);
+    expect(pushCloudSnapshot).not.toHaveBeenCalled();
+    expect(clearPendingMarker).not.toHaveBeenCalled();
   });
 });

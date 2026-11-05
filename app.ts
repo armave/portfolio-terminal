@@ -42,7 +42,10 @@ import {
 } from './src/services/portfolioAutoRefresh';
 import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
-import { commitPortfolioBackupImport } from './src/services/backupImport';
+import {
+  commitPortfolioBackupImport,
+  retryPendingBackupCloudSync as retryBackupCloudSync
+} from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
@@ -80,6 +83,10 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  hasFreedomTradeHistoryBaseline,
+  hasPendingBackupCloudSync,
+  markPendingBackupCloudSync,
+  clearPendingBackupCloudSync,
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshotAfterFlush,
@@ -117,7 +124,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, mergeFreedomPortfolioRefresh, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -198,13 +205,31 @@ function setCloudStatus(status: string, text: string) {
   setCloudStatusState({ status, text });
 }
 
+/**
+ * Closed History is stored separately from the portfolio snapshot. A default
+ * empty in-memory array is not proof that a complete broker trade baseline
+ * exists; only use executions for lot reclassification after the account-scoped
+ * full-history marker has been committed.
+ */
+function getCompleteBrokerExecutionsForClassification(
+  current: PortfolioState,
+  latestExecutions?: unknown[]
+): ReturnType<typeof normalizeFreedomTrades> | undefined {
+  const accountId = currentAccountId || '';
+  if (!accountId || !hasFreedomTradeHistoryBaseline(accountId)) return undefined;
+  const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const currentExecutions = normalizeFreedomTrades(latestExecutions ?? current.brokerExecutedTrades ?? []);
+  const mergedExecutions = mergeBrokerExecutionHistory(savedExecutions, currentExecutions);
+  return mergedExecutions.length > 0 ? mergedExecutions : undefined;
+}
+
 // Freedom is authoritative for broker-reported account balance, aggregate
 // holdings and available broker prices. App-owned lots/cost basis remain local.
 addBrokerEventListener('broker:account-info', (snapshot) => {
   if (currentAccountRole !== 'admin') return;
   if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
   const current = portfolioStore.getState();
-  const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(current);
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
@@ -215,7 +240,13 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -233,7 +264,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   portfolioStore.setState({
     brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
     ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -277,17 +308,27 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(
+    current,
+    tradesWithPersistedFees
+  );
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
     current.cashCushion?.holdings || [],
     current.activeTrancheTypes || {},
     Date.now(),
-    tradesWithPersistedFees,
+    executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -299,7 +340,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     };
   });
   portfolioStore.setState({
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -352,7 +393,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     pushStateToGist();
     return;
   }
-  const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(current);
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
@@ -363,7 +404,13 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -379,7 +426,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     activeTrancheMixes,
     activeTrancheGuestAssignments,
     activeTrancheGuestAssignmentDetails,
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -1575,6 +1622,54 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
+/**
+ * A cloud pull refreshes the revision used by conditional cloud writes. Restore
+ * the locally imported snapshot after that pull, then push it against the current
+ * revision. The per-account marker remains until the server confirms the write.
+ */
+async function retryPendingBackupCloudSync(accountId: string): Promise<boolean> {
+  if (!accountId || !hasPendingBackupCloudSync(accountId) ||
+      currentAccountRole !== 'admin' || currentAccountId !== accountId ||
+      !canWriteCloudState || !areHeaderCredentialsConfigured()) {
+    return false;
+  }
+  const session = currentAccountSessionGuard.capture();
+  const isCurrentSession = () =>
+    currentAccountRole === 'admin' &&
+    currentAccountId === accountId &&
+    session !== null &&
+    currentAccountSessionGuard.isCurrent(session);
+  if (!isCurrentSession()) return false;
+
+  const importedSnapshot = portfolioStore.getState();
+  return retryBackupCloudSync(importedSnapshot, {
+    refreshCloudRevision: async () => { await syncCloudState('pull'); },
+    isCurrentSession,
+    restoreLocalSnapshot: (snapshot) => {
+      const restored = portfolioStore.importState(snapshot);
+      state = portfolioStore.getState();
+      return restored;
+    },
+    persistLocalSnapshot: () => saveState(state),
+    pushCloudSnapshot: () => pushStateToCloud(true),
+    clearPendingMarker: () => {
+      if (!clearPendingBackupCloudSync(accountId)) {
+        logTerminal('[Backup Import]: Cloud accepted the backup, but its local retry marker could not be cleared; it will be checked again on the next start.');
+      }
+    }
+  });
+}
+
+function pullSharedCloudStateUnlessBackupPending(): Promise<boolean | void> {
+  const accountId = currentAccountId || '';
+  if (accountId && hasPendingBackupCloudSync(accountId)) {
+    startupCloudWritePending = true;
+    logTerminal('[Backup Import]: A previous cloud replacement is pending; keeping the imported local backup instead of pulling an older shared snapshot.');
+    return Promise.resolve();
+  }
+  return syncCloudState('pull');
+}
+
 async function importBackupFile(file: File) {
   try {
     validatePortfolioBackupFileSize(file.size);
@@ -1596,20 +1691,44 @@ async function importBackupFile(file: File) {
       return;
     }
 
+    const backupAccountId = currentAccountRole === 'admin' ? (currentAccountId || '') : '';
+    if (backupAccountId && !markPendingBackupCloudSync(backupAccountId)) {
+      throw new Error('Could not protect the imported backup from an older cloud snapshot. No portfolio changes were applied.');
+    }
+
     importedState.lastUpdated = Date.now();
     const previousState = portfolioStore.getState();
-    commitPortfolioBackupImport(
-      importedState,
-      previousState,
-      (snapshot) => {
-        portfolioStore.importState(snapshot as any);
-        state = portfolioStore.getState();
-      },
-      () => saveState(state, pushStateToGist)
-    );
-    await pushStateToGist(true);
+    try {
+      commitPortfolioBackupImport(
+        importedState,
+        previousState,
+        (snapshot) => {
+          portfolioStore.importState(snapshot as any);
+          state = portfolioStore.getState();
+        },
+        () => saveState(state)
+      );
+    } catch (error) {
+      if (backupAccountId) clearPendingBackupCloudSync(backupAccountId);
+      throw error;
+    }
+
+    const cloudSynced = backupAccountId
+      ? await retryPendingBackupCloudSync(backupAccountId)
+      : false;
     renderBoard();
-    logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
+    if (backupAccountId && cloudSynced) {
+      logTerminal(`[Backup Import]: Imported ${file.name} and confirmed the replacement of the shared cloud workspace.`);
+    } else if (backupAccountId) {
+      const warning = translateText(
+        'Backup is saved locally, but its shared cloud replacement is still pending. This device will keep the imported copy and retry the sync.',
+        getAppLanguage()
+      );
+      showToast(warning, 'warning');
+      logTerminal(`[Backup Import]: Imported ${file.name} locally. The cloud replacement is pending; the older shared snapshot will not be pulled over this backup.`);
+    } else {
+      logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Cloud sync is not available for this session.`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Backup Error]: Could not import backup (${message}).`);
@@ -2143,7 +2262,7 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
   ),
   setQuoteRefreshInterval,
   pullGuestPortfolioSnapshot,
-  pullAdminPortfolioSnapshot: () => syncCloudState('pull'),
+  pullAdminPortfolioSnapshot: () => pullSharedCloudStateUnlessBackupPending(),
   refreshAllLivePrices: () => refreshAllLivePrices(true),
   startApp,
   hideAuthContainer
@@ -2188,7 +2307,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     state = portfolioStore.getState();
   },
   applyOvernightRollover,
-  pullSharedCloudState: () => syncCloudState('pull'),
+  pullSharedCloudState: pullSharedCloudStateUnlessBackupPending,
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role === 'guest' ? 'guest' : 'admin'
@@ -2204,6 +2323,19 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
     startupCloudWritesSuppressed = false;
+    const accountId = currentAccountId || '';
+    if (accountId && hasPendingBackupCloudSync(accountId)) {
+      const synced = await retryPendingBackupCloudSync(accountId);
+      if (!synced) {
+        const warning = translateText(
+          'Backup is saved locally, but its shared cloud replacement is still pending. This device will keep the imported copy and retry the sync.',
+          getAppLanguage()
+        );
+        showToast(warning, 'warning');
+      }
+      startupCloudWritePending = false;
+      return;
+    }
     if (startupCloudWritePending) {
       startupCloudWritePending = false;
       await pushStateToCloud();
@@ -2302,7 +2434,12 @@ function bindStartupActions() {
         });
         if (saved) {
           portfolioStore.setState({ gatewaySecret: event.detail.secret.trim() });
-          await syncCloudState('pull');
+          const accountId = currentAccountId || '';
+          if (accountId && hasPendingBackupCloudSync(accountId)) {
+            await retryPendingBackupCloudSync(accountId);
+          } else {
+            await syncCloudState('pull');
+          }
         }
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error), 'error');
@@ -2315,6 +2452,8 @@ function bindStartupActions() {
   portfolioSessionRuntime.bindLogout();
   addUiEventListener('settings:pull-cloud-state', () => {
     if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
+    const accountId = currentAccountId || '';
+    if (accountId) clearPendingBackupCloudSync(accountId);
     void syncCloudState('pull');
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
