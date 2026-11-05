@@ -63,6 +63,18 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.showRiskTriggers).toBe(true);
   });
 
+  it('keeps negative equity finite and classifies it below configured thresholds', () => {
+    const metrics = available(calculateMarginRiskMetrics(200, 100, 0, DEFAULT_BROKER_ASSUMPTIONS));
+
+    expect(metrics.equity).toBe(-100);
+    expect(metrics.equityRatio).toBe(-1);
+    expect(metrics.showMarginCall).toBe(true);
+    expect(metrics.showStopOut).toBe(true);
+    expect(metrics.showRiskTriggers).toBe(true);
+    expect(Object.values(metrics).filter((value): value is number => typeof value === 'number')
+      .every(Number.isFinite)).toBe(true);
+  });
+
   it('handles exact maintenance-threshold equality without rounding or non-finite output', () => {
     const metrics = available(calculateMarginRiskMetrics(
       90,
