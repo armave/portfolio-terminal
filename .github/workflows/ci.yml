@@ -55,6 +55,9 @@ jobs:
       - name: Smoke-test the production app in a browser
         run: node scripts/browser-smoke.mjs
 
+      - name: Smoke-test the complete trade lifecycle in a browser
+        run: node scripts/browser-smoke-trades.mjs
+
       - name: Validate dead code
         run: npm run validate:dead-code
 
