@@ -65,7 +65,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'publish-user', 'secret:valid-secret', 'pull-guest-snapshot',
+      'publish-user', 'secret:valid-secret', 'load-rules', 'pull-guest-snapshot',
       'resolve-interval:guest', 'set-interval:guest-interval', 'rollover-timer:false',
       'quote-refresh-start', 'guest-balance', 'scroll', 'refresh-quotes',
       'quote-refresh-finish', 'guest-balance', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
