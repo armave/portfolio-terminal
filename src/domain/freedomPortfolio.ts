@@ -576,9 +576,26 @@ export function classifyFreedomPortfolio(
   for (const [ticker, item] of marginByTicker) {
     const tranche = item.tranche;
     const prior = item.prior;
-    const totalEntryQuantity = item.entryTranches.reduce((sum, entry) => sum + entry.qty, 0);
+    const priorTranches = Array.isArray(prior?.tranches) ? prior.tranches : [];
+    const priorTrancheQuantity = priorTranches.reduce(
+      (sum, entry) => sum + (Number(entry?.qty) > 0 ? Number(entry.qty) : 0),
+      0
+    );
+    const quantityTolerance = Math.max(1e-8, Math.abs(tranche.quantity) * 1e-8);
+    // When the trade-history baseline is unavailable, the account snapshot has
+    // no lot-level detail. Keep imported FIFO lots intact when their total still
+    // matches the broker quantity instead of collapsing them to one average lot.
+    const canRetainPriorTranches = !Array.isArray(executedTrades) &&
+      priorTranches.length > 0 &&
+      priorTranches.every((entry) =>
+        Number.isFinite(Number(entry?.qty)) && Number(entry.qty) > 0 &&
+        Number.isFinite(Number(entry?.price)) && Number(entry.price) > 0
+      ) &&
+      Math.abs(priorTrancheQuantity - tranche.quantity) <= quantityTolerance;
+    const finalTranches = canRetainPriorTranches ? priorTranches : item.entryTranches;
+    const totalEntryQuantity = finalTranches.reduce((sum, entry) => sum + entry.qty, 0);
     const entryPrice = totalEntryQuantity > 0
-      ? item.entryTranches.reduce((sum, entry) => sum + entry.qty * entry.price, 0) / totalEntryQuantity
+      ? finalTranches.reduce((sum, entry) => sum + entry.qty * entry.price, 0) / totalEntryQuantity
       : (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || item.currentPrice) : item.currentPrice);
     const preservedQuote = item.preservedQuote;
     const snapshotPrice = item.snapshotPrice;
@@ -594,7 +611,7 @@ export function classifyFreedomPortfolio(
       commBuy: Array.isArray(executedTrades)
         ? item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0)
         : (Number(prior?.commBuy) || 0),
-      tranches: item.entryTranches,
+      tranches: finalTranches,
       quoteSource: !preservedQuote && snapshotPrice !== null ? 'Freedom TradeNet' : prior?.quoteSource,
       ...(!preservedQuote && snapshotPrice !== null ? {
         quoteDetails: {
@@ -612,14 +629,62 @@ export function classifyFreedomPortfolio(
     const quantity = Number(holding.shares) || 0;
     const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
       Math.abs(cost.pricedQuantity - quantity) <= 1e-8;
+    const priorCash = previousCash.get(tickerKey(holding.ticker));
+    const priorQuantity = Number(priorCash?.shares);
+    const canRetainPriorAverage = !Array.isArray(executedTrades) &&
+      Number.isFinite(priorQuantity) &&
+      Math.abs(priorQuantity - quantity) <= Math.max(1e-8, Math.abs(quantity) * 1e-8);
     return {
       ...holding,
-      // Do not show a partial or fabricated average when any open cash shares
-      // are missing a purchase price.
-      averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
+      // Do not fabricate a partial average when the broker supplies no cost
+      // basis. Keep an imported average only while the matching quantity remains.
+      averagePrice: hasCompleteCostBasis
+        ? cost.totalCost / quantity
+        : canRetainPriorAverage ? positiveFinite(priorCash?.averagePrice) : null
     };
   });
   return { positions, cashStocks };
+}
+
+/**
+ * Apply only the tickers present in a broker snapshot. A live snapshot can be
+ * partial (or scoped to the broker's active inventory), so holdings imported
+ * from backup but absent from that response must remain in the app.
+ *
+ * For a ticker the broker did report, its new cash/margin classification replaces
+ * the old classification atomically: it cannot remain in both ledgers.
+ */
+export function mergeFreedomPortfolioRefresh(
+  snapshot: FreedomPortfolioSnapshotLike,
+  sourcePositions: Record<string, PositionRecord>,
+  sourceCashHoldings: CashStockHolding[],
+  classified: FreedomPortfolioClassificationResult
+): FreedomPortfolioClassificationResult {
+  const observedTickers = new Set(
+    (Array.isArray(snapshot.positions) ? snapshot.positions : [])
+      .map((item) => tickerKey(item?.ticker))
+      .filter(Boolean)
+  );
+  const retainedPositions = Object.fromEntries(
+    Object.entries(sourcePositions || {}).filter(([key, position]) =>
+      !observedTickers.has(tickerKey(position?.ticker || key))
+    )
+  );
+  const positions = {
+    ...retainedPositions,
+    ...classified.positions
+  };
+
+  const cashByTicker = new Map<string, CashStockHolding>();
+  for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
+    const ticker = tickerKey(holding?.ticker);
+    if (ticker && !observedTickers.has(ticker)) cashByTicker.set(ticker, holding);
+  }
+  for (const holding of classified.cashStocks) {
+    const ticker = tickerKey(holding?.ticker);
+    if (ticker) cashByTicker.set(ticker, holding);
+  }
+  return { positions, cashStocks: [...cashByTicker.values()] };
 }
 
 
