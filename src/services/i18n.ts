@@ -26,6 +26,11 @@ function russianPlural(value: number, one: string, few: string, many: string): s
 }
 
 function translateDynamicText(normalized: string): string | undefined {
+  const unavailableShares = normalized.match(/^Cannot sell (.+?) (.+?); only (.+?) shares are available\.$/i);
+  if (unavailableShares) {
+    return `Нельзя продать ${unavailableShares[1]} ${unavailableShares[2]}: доступно только ${unavailableShares[3]} акций.`;
+  }
+
   const readNewsLabel = normalized.match(/^Read news:\s*(.+)$/i);
   if (readNewsLabel) {
     const headline = /^untitled article$/i.test(readNewsLabel[1])
