@@ -376,7 +376,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const reportPersistenceStatus = (status: ReturnType<typeof getPortfolioPersistenceStatus>) => {
       if (status.state === 'degraded' || status.state === 'conflict') {
         if (!warningShown) {
-          addErrorToast(translateText(status.message || PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, getAppLanguage()));
+          const message = status.state === 'conflict'
+            ? 'Another browser tab has a newer portfolio snapshot. Your local recovery data has been preserved; reload and reconcile before continuing.'
+            : 'Local portfolio data could not be fully synchronized to durable browser storage. Your recovery journal has been kept; retry before clearing browser data.';
+          addErrorToast(translateText(message || PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, getAppLanguage()));
           warningShown = true;
         }
         return;
