@@ -15,6 +15,8 @@ import {
 } from './src/domain/portfolio';
 import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
 import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
+import { buildAiIntentCommand } from './src/features/ai/intentCommand';
+import { aiIntentRequiresFreshPortfolioContext, createAiRequestLifecycle, fingerprintAiPortfolioContext } from './src/features/ai/requestLifecycle';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
@@ -1942,9 +1944,15 @@ function showScenarioModal(data: ScenarioModalData): void {
   emitUiEvent('terminal:scenario-modal', data);
 }
 
-async function executeCommand(commandText: string) {
+const aiRequestLifecycle = createAiRequestLifecycle();
+
+async function executeCommand(commandText: string, preserveAiRequest = false) {
   const text = commandText.trim();
   if (!text) return;
+  if (!preserveAiRequest && !/^(?:ai|ask)\b/i.test(text)) {
+    aiRequestLifecycle.invalidate();
+    setAiStatus('READY');
+  }
 
   logTerminal(text, true);
 
@@ -2013,18 +2021,27 @@ async function executeCommand(commandText: string) {
     return;
   }
 
-  // Only hit the Gemini API if explicitly prefixed with "ai " or "ask "
-  //    (Or delete this block entirely to make the terminal 100% offline/frontend)
-  if (!/^(ai|ask)\b/i.test(text)) {
+  // Explicitly invalid local commands stay local errors. Natural-language input that
+  // the deterministic dispatcher cannot recognize is routed to the AI advisor.
+  const isAiPrefixed = /^(?:ai|ask)\b/i.test(text);
+  if (localResult.type !== 'unrecognized' && !isAiPrefixed) {
     logTerminal(`[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.`);
     return;
   }
 
-  const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
+  const aiQuery = text.replace(/^(?:ai|ask)\s*:?\s*/i, '');
   setAiStatus('CONNECTING...');
 
+  const requestId = aiRequestLifecycle.begin();
   try {
     const targetState = portfolioStore.getState();
+    const contextFingerprint = fingerprintAiPortfolioContext({
+      positions: targetState.positions,
+      activeView: targetState.activeView || '',
+      balance: targetState.balance,
+      cashCushion: targetState.cashCushion,
+      brokerAssumptions: targetState.brokerAssumptions
+    });
     const prompt = buildIntentPrompt({
       text: aiQuery,
       state: {
@@ -2037,8 +2054,28 @@ async function executeCommand(commandText: string) {
     });
 
     const data: unknown = await proxyFetch('gemini', {}, { method: "POST", body: JSON.stringify({ prompt }) });
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
+
     const rawText = extractGeminiResponseText(data);
     const parsed = parseAiIntent(rawText);
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
+
+    const latestState = portfolioStore.getState();
+    const latestContextFingerprint = fingerprintAiPortfolioContext({
+      positions: latestState.positions,
+      activeView: latestState.activeView || '',
+      balance: latestState.balance,
+      cashCushion: latestState.cashCushion,
+      brokerAssumptions: latestState.brokerAssumptions
+    });
+    if (
+      aiIntentRequiresFreshPortfolioContext(parsed.intent, 'ticker' in parsed ? parsed.ticker : null) &&
+      latestContextFingerprint !== contextFingerprint
+    ) {
+      logTerminal(`[AI Advisor]: ${translateText('Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.', getAppLanguage())}`);
+      setAiStatus('READY');
+      return;
+    }
 
     if (parsed.intent === "action") {
       const applied = await applyAiPortfolioActionAfterConfirmation(
@@ -2047,13 +2084,24 @@ async function executeCommand(commandText: string) {
         applyPortfolioActions
       );
       if (!applied) logTerminal("[AI Action]: Cancelled.");
+    } else if (parsed.intent === 'chat') {
+      logTerminal(`[AI Advisor]: ${parsed.response}`);
     } else {
-      const response = parsed.intent === 'chat' ? parsed.response : 'Executed.';
-      logTerminal(`[AI Advisor]: ${response}`);
+      const activeView = String(targetState.activeView || '').toUpperCase();
+      const activeTicker = Object.prototype.hasOwnProperty.call(targetState.positions || {}, activeView)
+        ? activeView
+        : null;
+      const command = buildAiIntentCommand(parsed, activeTicker);
+      if (!command) {
+        logTerminal(`[AI Advisor]: ${translateText('Select or mention an active stock before requesting an AI simulation, comparison, or quote.', getAppLanguage())}`);
+      } else {
+        await executeCommand(command, true);
+      }
     }
 
-    setAiStatus('READY');
+    if (aiRequestLifecycle.isCurrent(requestId)) setAiStatus('READY');
   } catch (err: unknown) {
+    if (!aiRequestLifecycle.isCurrent(requestId)) return;
     const message = err instanceof Error ? err.message : 'Unknown AI request error.';
     logTerminal(`[Error]: ${message}`);
     setAiStatus('READY');
