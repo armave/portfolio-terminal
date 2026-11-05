@@ -1473,7 +1473,13 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
     // sidecar exists. A malformed sidecar is forensic evidence and is never
     // overwritten by an automatic fallback.
     try {
-      if (storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null) {
+      if (
+        storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null &&
+        !hasVerifiedLocalPortfolioCheckpoint(storage)
+      ) {
+        // Preserve the old sidecar only for legacy/local-only snapshots. A
+        // verified IndexedDB-backed atomic checkpoint already owns this history;
+        // recreating the sidecar would duplicate megabytes on every mount.
         storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(history));
       }
     } catch (error) {
