@@ -411,12 +411,33 @@ async function assertResponsiveLayout(page, width) {
             right: Math.round(bounds.right),
             width: Math.round(bounds.width),
             position: styles.position,
+            clippedBy: (() => {
+              const ancestors = [];
+              let parent = element.parentElement;
+              while (parent && parent !== document.body) {
+                const parentStyles = getComputedStyle(parent);
+                const parentBounds = parent.getBoundingClientRect();
+                ancestors.push({
+                  tag: parent.tagName.toLowerCase(),
+                  id: parent.id || '',
+                  className: typeof parent.className === 'string' ? parent.className : '',
+                  left: Math.round(parentBounds.left),
+                  right: Math.round(parentBounds.right),
+                  overflowX: parentStyles.overflowX
+                });
+                parent = parent.parentElement;
+              }
+              return ancestors.filter((ancestor) =>
+                ['auto', 'scroll', 'hidden', 'clip'].includes(ancestor.overflowX) &&
+                ancestor.right < Math.round(bounds.right)
+              ).slice(0, 3);
+            })(),
             text: (element.textContent || '').trim().slice(0, 80)
           };
         })
         .filter((element) => element.right > viewportWidth + 1 || element.left < -1)
         .sort((left, right) => right.right - left.right)
-        .slice(0, 12)
+        .slice(0, 16)
     };
   });
 
