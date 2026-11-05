@@ -310,14 +310,22 @@ export function createPortfolioBrokerDataRuntime(
     const fetchActiveOrdersAndCaptureFills = async (): Promise<unknown> => {
       if (isFreedomAccountStreamConnected(session.identity)) return { streamConnected: true };
       const response = await fetchActiveOrders();
+      // A live snapshot that arrived while this REST request was in flight is
+      // authoritative for the current session. Discard the obsolete response
+      // before validating it so stale/malformed REST data cannot mark the
+      // already-refreshed account as unavailable.
+      if (
+        !dependencies.isSessionCurrent(session) ||
+        isFreedomAccountStreamConnected(session.identity) ||
+        getFreedomAccountStreamSnapshotRevision(session.identity, 'orders') > streamRevisionAtStart ||
+        hasFreedomAccountStreamSnapshot(session.identity, 'orders')
+      ) return response;
       if (!isCompleteFreedomActiveOrdersResponse(response)) {
         throw new Error('TradeNet active-orders response is incomplete or malformed.');
       }
-      if (dependencies.isSessionCurrent(session)) {
-        const fillResponse = parseFreedomOrderFillsResponse(response);
-        orderStreamFillsMalformed = fillResponse.present && !fillResponse.valid;
-        orderStreamFills = fillResponse.valid ? normalizeOrderFills(response) : [];
-      }
+      const fillResponse = parseFreedomOrderFillsResponse(response);
+      orderStreamFillsMalformed = fillResponse.present && !fillResponse.valid;
+      orderStreamFills = fillResponse.valid ? normalizeOrderFills(response) : [];
       return response;
     };
     const request = (async () => {
