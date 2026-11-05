@@ -8,7 +8,7 @@ import {
   hasFreedomCashflowHistoryBaseline,
   loadSavedHistory,
   markFreedomCashflowHistoryBaseline,
-  savePortfolioSnapshot
+  savePortfolioSnapshotAfterFlush
 } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
@@ -278,12 +278,15 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       // Keep canonical portfolio fields and the independently stored history
       // sidecar aligned. A failed write restores the prior in-memory snapshot
       // and must never be followed by a cloud history write.
-      const historyPersisted = savePortfolioSnapshot(portfolioStore.getState(), {
+      // Closed History snapshots can be several megabytes. Drain any prior
+      // local journal to IndexedDB before appending another full history
+      // generation, avoiding simultaneous large localStorage WAL entries.
+      const historyPersisted = await savePortfolioSnapshotAfterFlush(portfolioStore.getState(), {
         brokerExecutedTrades: brokerExecutions.length
           ? updatedExecutions
           : (portfolioStore.getState().brokerExecutedTrades || []),
         cashflows: cashflowRows
-      });
+      }, {}, isOperationCurrent);
       if (!historyPersisted) {
         portfolioStore.update(() => previousPortfolioState, false);
         const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';

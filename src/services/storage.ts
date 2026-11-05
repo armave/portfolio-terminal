@@ -302,6 +302,46 @@ function readAtomicPortfolioSnapshot(storage: Storage): PortfolioStateSnapshotRe
   }
 }
 
+/**
+ * localStorage compatibility copies are redundant only after the device's
+ * atomic checkpoint has been verified against the latest IndexedDB snapshot.
+ * Never reclaim them based on revision alone: origin and commit identity must
+ * match as well.
+ */
+function hasVerifiedLocalPortfolioCheckpoint(storage: Storage): boolean {
+  const checkpoint = readAtomicPortfolioSnapshot(storage);
+  const durable = hydratedPortfolioSnapshot;
+  return Boolean(
+    checkpoint && durable &&
+    checkpoint.revision === durable.revision &&
+    checkpoint.commitId === durable.commitId &&
+    checkpoint.originId === durable.originId
+  );
+}
+
+function removeLegacyPortfolioMirrors(storage: Storage): void {
+  if (!hasVerifiedLocalPortfolioCheckpoint(storage)) {
+    throw new Error('Cannot reclaim legacy portfolio mirrors without a verified local checkpoint.');
+  }
+  // These keys duplicate state/history already stored in the verified atomic
+  // checkpoint and transactional IndexedDB generation. Keep broker rules and
+  // device preferences: they are small, separately consumed compatibility keys.
+  removeStoredKeys(storage, [
+    STORAGE_KEY_STATE,
+    STORAGE_KEY_LEGACY_STATE,
+    STORAGE_KEY_CLOSED_HISTORY
+  ]);
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  return candidate.name === 'QuotaExceededError' ||
+    candidate.code === 22 ||
+    candidate.code === 1014 ||
+    (typeof candidate.message === 'string' && /quota/i.test(candidate.message));
+}
+
 function readPendingPortfolioSnapshots(storage: Storage): PendingPortfolioSnapshot[] {
   const pending: PendingPortfolioSnapshot[] = [];
   try {
@@ -496,18 +536,29 @@ function writeLegacyCompatibilityMirrors(
   storage: Storage,
   record: PortfolioStateSnapshotRecord
 ): void {
-  // These mirrors keep older app versions and existing recovery tools readable.
-  // The journal/IndexedDB snapshot is authoritative; mirror failures do not undo
-  // a successfully written single-key recovery record.
-  try {
-    storage.setItem(STORAGE_KEY_STATE, JSON.stringify(record.state));
-  } catch (error) {
-    console.warn('Could not update the legacy portfolio-state mirror:', error);
-  }
-  try {
-    storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(record.history));
-  } catch (error) {
-    console.warn('Could not update the legacy closed-history mirror:', error);
+  // Once the local atomic checkpoint is verified against IndexedDB, writing a
+  // second full copy of portfolio state and closed history only amplifies
+  // localStorage usage. Current clients read the checkpoint/journal first, so
+  // reclaim these redundant mirrors instead of recreating multi-megabyte copies.
+  if (hasVerifiedLocalPortfolioCheckpoint(storage)) {
+    try {
+      removeLegacyPortfolioMirrors(storage);
+    } catch (error) {
+      console.warn('Could not reclaim verified legacy portfolio mirrors:', error);
+    }
+  } else {
+    // Before the first durable checkpoint, preserve the legacy compatibility
+    // copies as a fallback for older app versions and recovery tooling.
+    try {
+      storage.setItem(STORAGE_KEY_STATE, JSON.stringify(record.state));
+    } catch (error) {
+      console.warn('Could not update the legacy portfolio-state mirror:', error);
+    }
+    try {
+      storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(record.history));
+    } catch (error) {
+      console.warn('Could not update the legacy closed-history mirror:', error);
+    }
   }
   try {
     if (record.brokerRules === null) storage.removeItem(STORAGE_KEY_RULES);
@@ -654,8 +705,18 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
 
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
-    storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
-
+    const serializedCheckpoint = JSON.stringify(current);
+    try {
+      storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, serializedCheckpoint);
+    } catch (error) {
+      // During a flush, the previous atomic checkpoint still matches the last
+      // known durable generation. Reclaim only its verified compatibility
+      // mirrors and retry the checkpoint write once.
+      if (!isQuotaExceededError(error) || !hasVerifiedLocalPortfolioCheckpoint(storage)) throw error;
+      removeLegacyPortfolioMirrors(storage);
+      storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, serializedCheckpoint);
+    }
+    hydratedPortfolioSnapshot = current;
     // Any older journal not consumed by the active commit chain is a preserved
     // recovery branch, not a reason to block the current portfolio. Archive its
     // full payload in a separate IndexedDB transaction before deleting its
@@ -1193,20 +1254,38 @@ function persistPortfolioSnapshot(
   }
 
   const journalKey = STORAGE_KEY_PENDING_PREFIX + record.commitId;
+  let journalWritten = false;
   try {
     // One setItem is the synchronous commit boundary used by PortfolioStore.
     storage.setItem(journalKey, serializedRecord);
+    journalWritten = true;
   } catch (error) {
-    if (typeof options.deviceActiveView === 'string') {
+    // A verified IndexedDB + atomic-local checkpoint makes the two legacy
+    // full-state mirrors redundant. On localStorage quota pressure, reclaim
+    // only those copies and retry this exact journal once. Never delete pending
+    // journals or the authoritative checkpoint to make room.
+    if (isQuotaExceededError(error) && hasVerifiedLocalPortfolioCheckpoint(storage)) {
       try {
-        if (previousDeviceView === null) storage.removeItem('portfolio_active_view');
-        else storage.setItem('portfolio_active_view', previousDeviceView);
-      } catch (rollbackError) {
-        console.error('Failed to restore device desk preference after a rejected portfolio write:', rollbackError);
+        removeLegacyPortfolioMirrors(storage);
+        storage.setItem(journalKey, serializedRecord);
+        journalWritten = true;
+      } catch (retryError) {
+        console.error('Failed to write the local portfolio recovery journal after safe quota cleanup:', retryError);
       }
+    } else {
+      console.error('Failed to write the local portfolio recovery journal:', error);
     }
-    console.error('Failed to write the local portfolio recovery journal:', error);
-    return { success: false, stateChanged: false, savedAt: null };
+    if (!journalWritten) {
+      if (typeof options.deviceActiveView === 'string') {
+        try {
+          if (previousDeviceView === null) storage.removeItem('portfolio_active_view');
+          else storage.setItem('portfolio_active_view', previousDeviceView);
+        } catch (rollbackError) {
+          console.error('Failed to restore device desk preference after a rejected portfolio write:', rollbackError);
+        }
+      }
+      return { success: false, stateChanged: false, savedAt: null };
+    }
   }
 
   lastScheduledRevision = record.revision;
@@ -1232,6 +1311,36 @@ export function savePortfolioSnapshot<TState extends object>(
     return false;
   }
   return persistPortfolioSnapshot(state as Record<string, any>, history, options).success;
+}
+
+/**
+ * Serializes large history snapshots behind the current IndexedDB drain. This
+ * prevents Closed History recalculation from appending another multi-megabyte
+ * localStorage journal while an earlier generation still occupies the journal.
+ * If IndexedDB remains degraded, do not create an unbounded second journal when
+ * the durable database is available. Environments without IndexedDB retain the
+ * existing local-journal fallback.
+ */
+export async function savePortfolioSnapshotAfterFlush<TState extends object>(
+  state: TState,
+  history: ClosedHistorySnapshot,
+  options: PortfolioSnapshotOptions = {},
+  isCurrentSession: () => boolean = () => true
+): Promise<boolean> {
+  if (!isCurrentSession()) return false;
+  const status = await flushPortfolioPersistence();
+  if (!isCurrentSession()) return false;
+  if (status.state === 'conflict') return false;
+  if (status.state === 'degraded' && isPortfolioStateDatabaseAvailable()) return false;
+  const saved = savePortfolioSnapshot(state, history, options);
+  if (!saved) return false;
+  // Wait for this generation to leave localStorage's active journal. This
+  // serializes consecutive large history snapshots and lets the next caller
+  // start only after the preceding IndexedDB commit has freed its WAL entry.
+  const activeFlush = portfolioPersistenceFlush;
+  if (activeFlush) await activeFlush;
+  else await flushPortfolioPersistence();
+  return true;
 }
 
 /**
@@ -1369,7 +1478,13 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
     // sidecar exists. A malformed sidecar is forensic evidence and is never
     // overwritten by an automatic fallback.
     try {
-      if (storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null) {
+      if (
+        storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null &&
+        !hasVerifiedLocalPortfolioCheckpoint(storage)
+      ) {
+        // Preserve the old sidecar only for legacy/local-only snapshots. A
+        // verified IndexedDB-backed atomic checkpoint already owns this history;
+        // recreating the sidecar would duplicate megabytes on every mount.
         storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(history));
       }
     } catch (error) {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   saveState,
   savePortfolioSnapshot,
+  savePortfolioSnapshotAfterFlush,
   loadSavedState,
   loadSavedHistory,
   saveSavedHistory,
@@ -168,15 +169,24 @@ describe('storage service', () => {
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
 
-    it('returns false when persistence fails and does not trigger a sync callback', () => {
+    it('returns false without deleting legacy data when quota is exceeded before a checkpoint is verified', () => {
       const onPushToGist = vi.fn();
+      const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
+      const previousHistory = JSON.stringify({
+        brokerExecutedTrades: [{ id: 'recoverable-trade' }],
+        cashflows: [{ id: 'recoverable-cashflow' }]
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousState);
+      storageMap.set('portfolio_closed_history_v1', previousHistory);
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       localStorageMock.setItem.mockImplementationOnce(() => {
-        throw new Error('quota exceeded');
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
       });
 
       expect(saveState({ activeView: 'AAPL' }, onPushToGist)).toBe(false);
       expect(onPushToGist).not.toHaveBeenCalled();
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
 
       errorSpy.mockRestore();
     });
@@ -359,6 +369,192 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
       expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
       expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
+    });
+
+    it('reclaims verified mirrors when the atomic checkpoint itself hits localStorage quota', async () => {
+      const initialized = await hydratePortfolioPersistence();
+      expect(initialized.state).toBe('ready');
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        closedTrades: Array.from({ length: 100 }, (_, index) => ({ id: `trade-${index}` }))
+      }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: Array.from({ length: 100 }, (_, index) => ({ id: `execution-${index}` })),
+        cashflows: Array.from({ length: 100 }, (_, index) => ({ id: `cashflow-${index}` }))
+      }));
+
+      const record = {
+        schemaVersion: 1,
+        revision: 1,
+        parentRevision: 0,
+        commitId: 'checkpoint-quota-retry',
+        originId: 'current-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'MSFT', balance: 250 }
+      };
+      storageMap.set(
+        `portfolio_terminal_state_pending_v1:${record.commitId}`,
+        JSON.stringify(record)
+      );
+
+      let rejectedCheckpoint = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_terminal_state_snapshot_v1' && !rejectedCheckpoint) {
+          rejectedCheckpoint = true;
+          throw new DOMException('Atomic checkpoint exceeded quota', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const status = await flushPortfolioPersistence();
+
+      expect(rejectedCheckpoint).toBe(true);
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(JSON.parse(storageMap.get('portfolio_terminal_state_snapshot_v1')!).revision).toBe(1);
+      expect(databaseFixture.getCurrent()).toMatchObject({
+        revision: 1,
+        commitId: 'checkpoint-quota-retry',
+        state: { activeView: 'MSFT', balance: 250 }
+      });
+    });
+
+    it('does not commit a delayed history save after its account session becomes stale', async () => {
+      await hydratePortfolioPersistence();
+      let checks = 0;
+      const saved = await savePortfolioSnapshotAfterFlush(
+        { activeView: 'CLOSED_HISTORY', closedTrades: [{ id: 'closed-a' }] },
+        { brokerExecutedTrades: [{ id: 'execution-a' }], cashflows: [] },
+        {},
+        () => ++checks === 1
+      );
+
+      expect(saved).toBe(false);
+      expect(checks).toBe(2);
+      expect(databaseFixture.getCurrent()?.revision).toBe(0);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(false);
+    });
+
+    it('flushes an earlier pending journal before writing a large closed-history snapshot', async () => {
+      databaseFixture.setFailure(new Error('temporary IndexedDB interruption'));
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+
+      const interrupted = await flushPortfolioPersistence();
+      expect(interrupted.state).toBe('degraded');
+      expect(interrupted.pendingWrites).toBe(1);
+
+      databaseFixture.setFailure(null);
+      let rejectedWhilePreviousJournalExists = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        const hasOlderJournal = Array.from(storageMap.keys()).some((storedKey) =>
+          storedKey.startsWith('portfolio_terminal_state_pending_v1:')
+        );
+        if (key.startsWith('portfolio_terminal_state_pending_v1:') && hasOlderJournal) {
+          rejectedWhilePreviousJournalExists = true;
+          throw new DOMException('A previous recovery journal still occupies local storage', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const executions = Array.from({ length: 100 }, (_, index) => ({
+        id: `execution-${index}`,
+        ticker: 'AAPL',
+        marginFee: index / 100
+      }));
+      const cashflows = Array.from({ length: 100 }, (_, index) => ({
+        id: `cashflow-${index}`,
+        amount: index === 0 ? 0 : -index
+      }));
+      const saved = await savePortfolioSnapshotAfterFlush(
+        { activeView: 'CLOSED_HISTORY', closedTrades: [{ id: 'closed-1', ticker: 'AAPL' }] },
+        { brokerExecutedTrades: executions, cashflows }
+      );
+
+      expect(saved).toBe(true);
+      expect(rejectedWhilePreviousJournalExists).toBe(false);
+      expect(databaseFixture.getCurrent()?.revision).toBe(2);
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: executions,
+        cashflows
+      });
+      expect(status.pendingWrites).toBe(0);
+    });
+
+    it('reclaims verified duplicate localStorage mirrors and retries a quota-blocked journal write', async () => {
+      const initialized = await hydratePortfolioPersistence();
+      expect(initialized.state).toBe('ready');
+      const committedBefore = databaseFixture.getCurrent();
+      expect(committedBefore).not.toBeNull();
+
+      // Simulate the large compatibility mirrors observed on the affected device.
+      const previousStateMirror = JSON.stringify({
+        activeView: 'CLOSED_HISTORY',
+        closedTrades: Array.from({ length: 120 }, (_, index) => ({ id: `closed-${index}`, ticker: 'AAPL' }))
+      });
+      const previousHistoryMirror = JSON.stringify({
+        brokerExecutedTrades: Array.from({ length: 120 }, (_, index) => ({ id: `execution-${index}`, ticker: 'AAPL' })),
+        cashflows: Array.from({ length: 120 }, (_, index) => ({ id: `cashflow-${index}`, amount: -1 }))
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousStateMirror);
+      storageMap.set('portfolio_closed_history_v1', previousHistoryMirror);
+
+      let rejectedFirstJournalWrite = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key.startsWith('portfolio_terminal_state_pending_v1:') && !rejectedFirstJournalWrite) {
+          rejectedFirstJournalWrite = true;
+          throw new DOMException('Setting the value exceeded the quota', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const executions = Array.from({ length: 160 }, (_, index) => ({
+        id: `updated-execution-${index}`,
+        ticker: 'AAPL',
+        marginFeeAllocations: [{ trancheId: `tranche-${index}`, amount: index / 10 }]
+      }));
+      const cashflows = Array.from({ length: 160 }, (_, index) => ({
+        id: `updated-cashflow-${index}`,
+        amount: index === 0 ? 0 : -index
+      }));
+      const state = {
+        activeView: 'CLOSED_HISTORY',
+        closedTrades: Array.from({ length: 80 }, (_, index) => ({
+          id: `closed-${index}`,
+          ticker: 'AAPL',
+          netProfit: index
+        }))
+      };
+
+      expect(savePortfolioSnapshot(state, {
+        brokerExecutedTrades: executions,
+        cashflows
+      })).toBe(true);
+      expect(rejectedFirstJournalWrite).toBe(true);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_state')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(true);
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: executions,
+        cashflows
+      });
+      expect(databaseFixture.getCurrent()?.revision).toBe((committedBefore?.revision ?? 0) + 1);
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: executions, cashflows });
+      // A verified IndexedDB-backed checkpoint must not recreate the duplicate
+      // localStorage sidecar when Closed History mounts and reads its cache.
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
     it('persists an explicit empty history after reload when the in-memory history cache is empty', async () => {
