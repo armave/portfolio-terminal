@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   saveState,
   savePortfolioSnapshot,
+  savePortfolioSnapshotAfterFlush,
   loadSavedState,
   loadSavedHistory,
   saveSavedHistory,
@@ -368,6 +369,53 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
       expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
       expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
+    });
+
+    it('flushes an earlier pending journal before writing a large closed-history snapshot', async () => {
+      databaseFixture.setFailure(new Error('temporary IndexedDB interruption'));
+      expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
+
+      const interrupted = await flushPortfolioPersistence();
+      expect(interrupted.state).toBe('degraded');
+      expect(interrupted.pendingWrites).toBe(1);
+
+      databaseFixture.setFailure(null);
+      let rejectedWhilePreviousJournalExists = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        const hasOlderJournal = Array.from(storageMap.keys()).some((storedKey) =>
+          storedKey.startsWith('portfolio_terminal_state_pending_v1:')
+        );
+        if (key.startsWith('portfolio_terminal_state_pending_v1:') && hasOlderJournal) {
+          rejectedWhilePreviousJournalExists = true;
+          throw new DOMException('A previous recovery journal still occupies local storage', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const executions = Array.from({ length: 100 }, (_, index) => ({
+        id: `execution-${index}`,
+        ticker: 'AAPL',
+        marginFee: index / 100
+      }));
+      const cashflows = Array.from({ length: 100 }, (_, index) => ({
+        id: `cashflow-${index}`,
+        amount: -index
+      }));
+      const saved = await savePortfolioSnapshotAfterFlush(
+        { activeView: 'CLOSED_HISTORY', closedTrades: [{ id: 'closed-1', ticker: 'AAPL' }] },
+        { brokerExecutedTrades: executions, cashflows }
+      );
+
+      expect(saved).toBe(true);
+      expect(rejectedWhilePreviousJournalExists).toBe(false);
+      expect(databaseFixture.getCurrent()?.revision).toBe(1);
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.history).toEqual({
+        brokerExecutedTrades: executions,
+        cashflows
+      });
+      expect(status.pendingWrites).toBe(0);
     });
 
     it('reclaims verified duplicate localStorage mirrors and retries a quota-blocked journal write', async () => {
