@@ -385,9 +385,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const requestId = requestGuard.begin();
       const detail = event.detail;
       const requestedTicker = normalizeMarginReviewTicker(detail?.ticker);
-      const reviewAsOfMs = Date.now();
       const snapshot = portfolioStore.getState();
-      const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, reviewAsOfMs, scenarioRefreshIntervalMs);
+      const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
       const { allPositions, focusPosition } = reviewInput;
 
       if (requestedTicker && !focusPosition) {
@@ -430,7 +429,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         const snapshotFingerprint = await fingerprintMarginReviewSnapshot(reviewInput.snapshotIdentity);
         const cached = await loadSyncedMarginDigest(digestKey);
         if (!requestGuard.isCurrent(requestId)) return;
-        const latestCacheInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, reviewAsOfMs, scenarioRefreshIntervalMs);
+        const latestCacheInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
         const latestCacheFingerprint = await fingerprintMarginReviewSnapshot(latestCacheInput.snapshotIdentity);
         if (cached && !detail?.refresh) {
           const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
@@ -497,7 +496,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           .filter(Boolean).join('\n\n');
         if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
         if (!requestGuard.isCurrent(requestId)) return;
-        const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, reviewAsOfMs, scenarioRefreshIntervalMs);
+        const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
         const latestFingerprint = await fingerprintMarginReviewSnapshot(latestInput.snapshotIdentity);
         if (latestFingerprint !== snapshotFingerprint) {
           setMarginIntelligence({
@@ -529,7 +528,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         };
         const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
         if (!requestGuard.isCurrent(requestId)) return;
-        const postSaveInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, reviewAsOfMs, scenarioRefreshIntervalMs);
+        const postSaveInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
         const postSaveFingerprint = await fingerprintMarginReviewSnapshot(postSaveInput.snapshotIdentity);
         const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
         setMarginIntelligence({

@@ -46,19 +46,24 @@ describe('margin review snapshot identity', () => {
   it('ignores broker/quote observation timestamps but still fingerprints financial fact changes', async () => {
     const original = {
       brokerSnapshotReceivedAt: 1000,
-      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteUpdatedAt: 1000, quoteSourceTimestamp: 900 }]
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 1000, quoteSourceTimestamp: 900 }]
     };
     const refreshed = {
       brokerSnapshotReceivedAt: 2000,
-      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteUpdatedAt: 2000, quoteSourceTimestamp: 1900 }]
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 2000, quoteSourceTimestamp: 1900 }]
     };
     const resized = {
       ...refreshed,
       positions: [{ ...refreshed.positions[0], appTrackedShares: 69 }]
     };
+    const quoteBecameStale = {
+      ...refreshed,
+      positions: [{ ...refreshed.positions[0], quoteFreshness: 'stale' }]
+    };
 
     expect(await fingerprintMarginReviewSnapshot(original)).toBe(await fingerprintMarginReviewSnapshot(refreshed));
     expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(resized));
+    expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(quoteBecameStale));
   });
 });
 
