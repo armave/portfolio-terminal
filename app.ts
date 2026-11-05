@@ -80,6 +80,7 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  hasFreedomTradeHistoryBaseline,
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshotAfterFlush,
@@ -117,7 +118,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, mergeFreedomPortfolioRefresh, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -198,13 +199,31 @@ function setCloudStatus(status: string, text: string) {
   setCloudStatusState({ status, text });
 }
 
+/**
+ * Closed History is stored separately from the portfolio snapshot. A default
+ * empty in-memory array is not proof that a complete broker trade baseline
+ * exists; only use executions for lot reclassification after the account-scoped
+ * full-history marker has been committed.
+ */
+function getCompleteBrokerExecutionsForClassification(
+  current: PortfolioState,
+  latestExecutions?: unknown[]
+): ReturnType<typeof normalizeFreedomTrades> | undefined {
+  const accountId = currentAccountId || '';
+  if (!accountId || !hasFreedomTradeHistoryBaseline(accountId)) return undefined;
+  const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const currentExecutions = normalizeFreedomTrades(latestExecutions ?? current.brokerExecutedTrades ?? []);
+  const mergedExecutions = mergeBrokerExecutionHistory(savedExecutions, currentExecutions);
+  return mergedExecutions.length > 0 ? mergedExecutions : undefined;
+}
+
 // Freedom is authoritative for broker-reported account balance, aggregate
 // holdings and available broker prices. App-owned lots/cost basis remain local.
 addBrokerEventListener('broker:account-info', (snapshot) => {
   if (currentAccountRole !== 'admin') return;
   if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
   const current = portfolioStore.getState();
-  const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(current);
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
@@ -215,7 +234,13 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -233,7 +258,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   portfolioStore.setState({
     brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
     ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -277,17 +302,27 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(
+    current,
+    tradesWithPersistedFees
+  );
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
     current.cashCushion?.holdings || [],
     current.activeTrancheTypes || {},
     Date.now(),
-    tradesWithPersistedFees,
+    executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -299,7 +334,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     };
   });
   portfolioStore.setState({
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -352,7 +387,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     pushStateToGist();
     return;
   }
-  const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+  const executedTrades = getCompleteBrokerExecutionsForClassification(current);
   const classified = classifyFreedomPortfolio(
     snapshot,
     current.positions || {},
@@ -363,7 +398,13 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding) => {
+  const refreshed = mergeFreedomPortfolioRefresh(
+    snapshot,
+    current.positions || {},
+    current.cashCushion?.holdings || [],
+    classified
+  );
+  const brokerCashHoldings = refreshed.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return {
       ...holding,
@@ -379,7 +420,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     activeTrancheMixes,
     activeTrancheGuestAssignments,
     activeTrancheGuestAssignmentDetails,
-    positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+    positions: applyActiveLimitSellTargets(refreshed.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
