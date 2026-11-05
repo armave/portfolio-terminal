@@ -126,6 +126,58 @@ describe('TradeNet Market Depth accumulator', () => {
     });
   });
 
+
+  it('uses m as the current DomInfoBlock sequence counter', () => {
+    const book = createFreedomMarketDepthBook('GOOGL.US');
+    book.apply({
+      m: 0,
+      i: 'GOOGL.US',
+      cnt: 3,
+      ins: [
+        { p: 337.84, s: 'S', q: 114, k: 0 },
+        { p: 337.8, s: 'B', q: 65, k: 1 },
+        { p: 300, s: 'B', q: 1, k: 2 }
+      ]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      sequence: 0,
+      reportedDepth: 3,
+      providerLevelCount: 3,
+      providerBidRowCount: 2,
+      providerAskRowCount: 1
+    });
+
+    book.apply({
+      m: 1,
+      i: 'GOOGL.US',
+      cnt: 3,
+      del: [{ p: 337.8, k: 1 }],
+      ins: [{ p: 337.81, s: 'B', q: 24, k: 1 }],
+      upd: [{ p: 337.84, s: 'S', q: 74, k: 0 }]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      sequence: 1,
+      reportedDepth: 3,
+      providerLevelCount: 3,
+      providerBidRowCount: 2,
+      providerAskRowCount: 1,
+      asks: [{ position: 0, price: 337.84, quantity: 74 }],
+      bids: [
+        { position: 1, price: 337.81, quantity: 24 },
+        { position: 2, price: 300, quantity: 1 }
+      ]
+    });
+
+    expect(() => book.apply({
+      m: 3,
+      i: 'GOOGL.US',
+      cnt: 3,
+      upd: [{ p: 337.83, s: 'S', q: 80, k: 0 }]
+    })).toThrow(/sequence gap/);
+  });
+
   it('supports an array containing one or more dom envelopes', () => {
     const book = createFreedomMarketDepthBook('AAPL.US');
     const applied = book.apply([
