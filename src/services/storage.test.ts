@@ -435,6 +435,13 @@ describe('storage service', () => {
       const interruptedStatus = getPortfolioPersistenceStatus();
       expect(interruptedStatus.state).toBe('degraded');
       expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(true);
+      const pendingCountBeforeRejectedWrite = Array.from(storageMap.keys()).filter((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      ).length;
+      expect(saveState({ activeView: 'MSFT', balance: -100 })).toBe(false);
+      expect(Array.from(storageMap.keys()).filter((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toHaveLength(pendingCountBeforeRejectedWrite);
 
       const status = await flushPortfolioPersistence();
       expect(status.state).toBe('ready');
