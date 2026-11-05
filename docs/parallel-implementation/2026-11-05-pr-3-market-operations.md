@@ -1,7 +1,7 @@
 # PR 3 — Complete market-data, account and settings workflows
 
-**Status:** Draft execution plan; implementation not yet started.  
-**Base:** `main` at `056211e03fcc4154538c45f969bc608268120dac` (2026-11-05).  
+**Status:** Implementation in progress; PR remains draft.  
+**Base:** `main` at `6d56dfd34c1bbcc301db3fa6f3fe79b757ddd7eb` (2026-11-05).  
 **Branch:** `work/market-operations-e2e-2026-11-05`  
 **Priority:** High  
 **Ownership:** Market-data lifecycle, account/settings journeys, and operational resilience.
@@ -16,82 +16,91 @@ Verify that market and account operations behave correctly when sources are dela
 - Market Insights has request-policy and wiring tests; Stocktwits is opt-in and article selection is ticker-scoped.
 - Market Depth has a tested live-only display policy, payload normalization, stream lifecycle, retry, frame coalescing and order-book aggregation.
 - Admin/guest auth, cloud isolation, user management and guest assignment ownership already have dedicated unit/server tests and production-browser smoke coverage.
-- The repository's `docs/refinement-plan-2026-10-31.md` still records authenticated real-browser verification work for Market Insights request counts, Market Depth live disconnect/reconnect, no-data/retry states and burst/deep-table behavior.
-- Latest main includes the current TradeNet sequence/parser compatibility fixes. Do not revert or duplicate them.
+- The repository's `docs/refinement-plan-2026-10-31.md` records authenticated real-browser verification still needed for Market Insights request counts, Market Depth live disconnect/reconnect, no-data/retry states and burst/deep-table behavior.
+- Latest main includes current TradeNet sequence/parser compatibility fixes. Do not revert or duplicate them.
 
-## Implementation scope
+## Findings and implementation
 
-### 1. Market-data journeys
+### 1. Correct Market Insights news failure semantics
 
-- [ ] Add an isolated production-browser journey covering the quote provider primary/fallback path, stale/unknown timestamp display, and ticker switching while requests are delayed.
-- [ ] Verify News requests are limited to the News view; deep data is limited to supported Fundamentals/Earnings/Analysts views; Stocktwits requests occur only after opt-in.
-- [ ] Verify cached revisit and explicit refresh behavior without duplicate in-flight work.
-- [ ] Verify stale or out-of-order responses cannot overwrite the current ticker's display or portfolio quote.
-- [ ] Cover Market Depth first connection, readiness before first depth payload, valid first book, disconnect, socket error, retry, ticker switch, and no-data state.
-- [ ] Verify frame-coalesced rendering and the expanded detailed table at narrow and wide viewports.
-- [ ] Preserve the distinction between socket connection status and a validated live order book.
+**Finding:** `createMarketInsightsProviderClient.fetchMarketNews` caught non-abort provider errors, logged them, and returned an empty array. This made a network/provider outage indistinguishable from a successful response containing no articles. The Market Insights component already has a failure state and refresh affordance, but could not reach the failure state for these transport errors.
 
-### 2. Account and settings journeys
+- [x] Continue logging non-abort news provider errors through the existing callback.
+- [x] Re-throw the provider error so the UI can display the actual failure instead of a false empty feed.
+- [x] Preserve AbortError behavior and retryability; failed requests are not cached as successful empty results.
+- [x] Add Vitest coverage that asserts error propagation and a successful subsequent retry.
 
-- [ ] Cover account creation, rename, role changes, password reset, deletion and session revocation in the actual Settings UI.
-- [ ] Verify the final-admin protection and self-deletion restriction.
-- [ ] Verify language preferences persist through reload and role-specific user management does not leak to guests.
-- [ ] Verify broker assumptions reject invalid values and persist valid zero/non-zero values.
-- [ ] Verify refresh cadence accepts only 15/30/60 seconds and role changes use the correct cadence.
-- [ ] Verify provider configuration restore/backup behavior where exposed by the UI.
-- [ ] Verify guest sessions continue to see only their authenticated projection, not the owner workspace or Closed History.
+### 2. Bound the Market Depth first-book wait
 
-### 3. Live-service release verification
+**Finding:** A ready WebSocket could continue answering heartbeats without sending a depth snapshot. The modal would remain in its connected/awaiting-data state indefinitely because the socket-connect timeout is cleared once the ready message arrives.
 
-- [ ] Record the production Worker/Pages commit and workflow outcomes for the exact integrated head.
-- [ ] Use a real authenticated TradeNet session to verify the Market Depth diagnostic values for the target ticker: initial depth, first payload raw/accepted/ignored rows, current provider bid/ask rows and visible distinct price levels.
-- [ ] Verify a real disconnect/reconnect and no-data condition if safely reproducible without placing orders.
-- [ ] Clearly label simulations and mocked Worker journeys; do not describe them as live broker verification.
+- [x] Start a 15-second first-depth watchdog after a correctly scoped ready event.
+- [x] Cancel the watchdog as soon as the first timestamp-valid depth message is accepted.
+- [x] If no valid book arrives, report the existing localized no-data message, mark the stream disconnected from a live-book perspective, and close the socket so the modal exposes Retry.
+- [x] Clear the watchdog on stop, socket close, error, and retry.
+- [x] Add injectable timeout configuration for deterministic tests.
+- [x] Add Vitest tests for no-book timeout and cancellation after valid depth arrives.
 
-## Likely files and boundaries
+The watchdog does not claim that a production socket has been verified. It bounds a previously unending no-data state and is covered with deterministic runtime tests.
 
-Primary ownership:
-- `src/components/MarketInsightsPanel.tsx`
-- `src/components/MarketDepthModal.tsx`
-- `src/components/SettingsDesk.tsx`
-- Quote, provider, request-policy, refresh and market-depth services under `src/services/`
-- Relevant account/market tests, including Worker tests only if a concrete Worker defect is established
-- A dedicated operations journey, e.g. `scripts/browser-smoke-operations.mjs`
-- A dedicated workflow file if required to avoid editing shared CI files concurrently
-- `docs/refinement-plan-2026-10-31.md` to reconcile completed browser checks with evidence
+### 3. Account and Settings browser journey
 
-PR 1 owns the terminal/trade lifecycle and PR 2 owns scenario/AI workflows and localization. Do not edit those components or the shared monolithic `scripts/browser-smoke.mjs` while parallel work is in progress.
+- [x] Add isolated `scripts/browser-smoke-operations.mjs`; keep the shared `scripts/browser-smoke.mjs` untouched.
+- [x] Exercise account creation with guest as the default role.
+- [x] Exercise rename, role changes, language changes and password reset through the actual Settings UI.
+- [x] Exercise account deletion through the actual confirmation dialog.
+- [x] Verify the UI does not expose self-delete for the signed-in administrator.
+- [x] Verify the Worker contract rejects demotion of the final administrator and the UI surfaces the server error.
+- [x] Verify account language is saved server-side and restored after page reload.
+- [x] Verify administrator refresh cadence selection is persisted separately from guest cadence.
+- [x] Verify a guest does not inherit the administrator's 30-second refresh selection and defaults to 15 seconds.
+- [x] Verify stop-out equity above maintenance equity is rejected; verify valid broker assumptions are persisted.
+- [x] Verify guests cannot see User Management, Broker Rules, or admin backup actions, retain manual Sync, and hydrate only their assigned projection.
+- [x] Verify guest sign-in does not read the admin user directory or shared cloud workspace.
+- [x] Check Settings surface clipping/page overflow at 320, 360, 390, 768, 1024 and 1440px.
 
-## Worker/server policy
+The browser journey uses a deterministic mocked Worker API. It tests browser/UI integration and must not be described as a real production authorization or TradeNet session.
 
-Do not make speculative Worker changes. If a specific server-side defect is established by a reproducible test or live evidence:
-1. Add the Worker regression test.
-2. Commit and push Worker/server changes directly to `main` per repository workflow.
-3. Confirm the Worker deployment workflow succeeds.
-4. Keep frontend changes in this client PR and document the exact server commit dependency.
+### 4. Dedicated CI workflow
 
-No Worker code is included merely to broaden this PR.
+- [x] Add `.github/workflows/operations-browser.yml` with typecheck, full unit/Worker tests, production build, Chromium browser journey, dead-code validation and both dependency audits.
+- [x] Keep workflow and browser script isolated from PR #323's trade browser journey and the shared smoke script.
 
-## Non-goals
+## Still open before ready
 
-- No changes to financial calculations, portfolio accounting, or trade execution.
-- No change to quote provider priority unless supported by source and regression evidence.
-- No change to TradeNet subscription protocol without verified provider documentation or payload evidence.
+### Market-data browser evidence
+
+- [ ] Add/complete browser-level request-count checks: News only on News; deep-data only on Fundamentals/Earnings/Analysts; Stocktwits only after opt-in.
+- [ ] Exercise explicit refresh, cache revisit and ticker switching while older requests are delayed.
+- [ ] Verify source fallback and stale/unknown timestamp presentation in a real browser trace.
+- [ ] Verify Market Insights provider outage → visible error → retry recovery in the actual app browser journey.
+
+Existing service/policy tests cover deterministic fallback, freshness, request gating, caching, request coalescing and cancellation. A browser DevTools/network trace is not claimed by the current implementation.
+
+### Market Depth browser/live evidence
+
+- [ ] Verify a successful first validated book in a browser, with no LIVE state before the first depth payload.
+- [ ] Verify disconnect/reconnect, retry, no-data and ticker invalidation in a real browser.
+- [ ] Verify burst updates and the expanded detailed table at narrow and wide widths.
+- [ ] In a real authenticated TradeNet session, record initial depth and first-payload raw/accepted/ignored rows, provider bid/ask row counts and visible price levels without placing orders.
+
+The new first-depth watchdog is unit-tested; its behavior is not represented as proof of a production TradeNet socket.
+
+### Release evidence
+
+- [ ] Record production Pages/Worker commit and workflow outcomes for the final integrated head.
+- [ ] Record exact authenticated live-service diagnostics, or explicitly split any unavailable live checks into a follow-up before marking this PR ready.
+- [ ] Complete final English/Russian accessible-name review for affected Settings and Market Depth states.
+
+## Boundaries and non-goals
+
+- No financial calculation, portfolio accounting, or trade execution changes.
+- No provider-priority changes without reproducible evidence.
+- No TradeNet subscription-protocol change without verified provider documentation or payload evidence.
 - No account-model change: guest projections remain read-only and scoped.
-- No new framework or dependency unless required and justified.
+- No speculative Worker/server change. If a concrete Worker defect is established, add its Worker regression test and follow the repository direct-to-`main` deployment process.
 - No secret, broker SID or raw private provider payload exposed in the browser or logs.
-
-## Acceptance criteria
-
-1. Market-data provider fallback, timestamps, request policy, ticker scoping and retry behavior are covered by end-to-end tests.
-2. No stale/unknown quote is presented as fresh.
-3. Market Depth is LIVE only after a validated depth payload in the current connected session.
-4. Disconnect, retry and ticker changes cannot leak a previous order book.
-5. Account-management and settings operations persist correctly and enforce admin/guest permissions.
-6. English/Russian labels and accessible names remain correct.
-7. Guest access remains strictly projection-scoped and read-only.
-8. Mocked CI checks and real authenticated-service checks are clearly distinguished.
-9. Vitest, dedicated browser journeys and repository validation gates pass.
+- PR #323 owns trade lifecycle and transaction UI. PR #324 owns scenario/AI workflows and shared localization. Do not edit their owned files or the shared monolithic browser smoke script.
 
 ## Validation checklist
 
@@ -102,10 +111,11 @@ No Worker code is included merely to broaden this PR.
 - [ ] `npm run audit:dependencies`
 - [ ] `npm run audit:production`
 - [ ] `npm run build`
-- [ ] Dedicated production-browser operations journey
-- [ ] Responsive checks at 320, 360, 390, 768, 1024 and 1440px
-- [ ] English/Russian localization and accessibility checks
-- [ ] Authenticated live TradeNet release check, with diagnostics recorded
-- [ ] Final review of broker permissions, stale data, secrets and server/client boundaries
+- [ ] Dedicated operations browser journey on newest exact PR head
+- [x] Vitest regressions for news failure/retry and Market Depth first-book timeout/cancellation
+- [x] Settings browser journey covers admin/guest CRUD, permission boundaries, language, cadence, broker-rule validation and responsive widths
+- [ ] Browser-level Market Insights and Market Depth live/recovery checks
+- [ ] Authenticated live TradeNet release check with diagnostics recorded
+- [ ] Final broker-permission, stale-data, secrets and server/client-boundary review
 
-Do not mark this PR ready or merge it until code implementation, automated checks and required release evidence are complete.
+Do not mark this PR ready or merge it until the exact-head automated checks pass and remaining browser/live-service checks are completed or explicitly separated into a follow-up.
