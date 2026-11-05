@@ -127,9 +127,12 @@ function isPortfolioStateDatabaseAvailable(): boolean {
 
 function isPortfolioSnapshotRecord(value: unknown): value is PortfolioStateSnapshotRecord {
   if (!isPlainObject(value)) return false;
+  const revision = Number(value.revision);
+  const parentRevision = Number(value.parentRevision);
   return value.schemaVersion === 1 &&
-    Number.isInteger(value.revision) && Number(value.revision) >= 0 &&
-    Number.isInteger(value.parentRevision) && Number(value.parentRevision) >= 0 &&
+    Number.isInteger(revision) && revision >= 0 &&
+    Number.isInteger(parentRevision) && parentRevision >= 0 &&
+    (revision === 0 ? parentRevision === 0 : revision === parentRevision + 1) &&
     typeof value.commitId === 'string' && value.commitId.length > 0 &&
     typeof value.originId === 'string' &&
     Number.isFinite(Number(value.committedAt)) &&
@@ -137,6 +140,7 @@ function isPortfolioSnapshotRecord(value: unknown): value is PortfolioStateSnaps
     isPlainObject(value.history) &&
     Array.isArray(value.history.brokerExecutedTrades) &&
     Array.isArray(value.history.cashflows) &&
+    Object.prototype.hasOwnProperty.call(value, 'brokerRules') &&
     (value.deviceActiveView === null || typeof value.deviceActiveView === 'string');
 }
 
@@ -583,6 +587,8 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
       if (readPendingCount(storage) > 0) {
         throw new Error('Could not clear every pending portfolio recovery entry.');
       }
+    } else if (current !== null && !isPortfolioSnapshotRecord(current)) {
+      throw new Error('The IndexedDB portfolio snapshot has an unsupported or corrupted schema; the record was preserved and local recovery data was not discarded.');
     }
 
     if (!current) {
