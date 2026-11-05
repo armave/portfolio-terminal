@@ -409,6 +409,10 @@ try {
     bootstrapSecret: 'operations-smoke-secret'
   });
   await waitForAuthOverlay(page, false);
+  // Admin sign-in can restore the previously selected Balance view. Select the
+  // combined margin workspace explicitly before asserting Market Insights.
+  const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
+  if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
