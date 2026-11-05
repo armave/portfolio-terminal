@@ -1109,7 +1109,7 @@ function persistPortfolioSnapshot(
 
   lastScheduledRevision = record.revision;
   state.lastUpdated = savedAt;
-  lastPersistedHistory = cloneHistory(record.history);
+  if (history) lastPersistedHistory = history;
 
   // Legacy mirrors are deliberately best-effort. They are no longer part of
   // the commit boundary; a mirror quota error cannot invalidate the journal.
@@ -1117,6 +1117,60 @@ function persistPortfolioSnapshot(
   updatePortfolioPersistenceStatus('pending', record.revision, null);
   schedulePortfolioPersistenceFlush();
   return { success: true, stateChanged, savedAt };
+}
+
+export function savePortfolioSnapshot<TState extends object>(
+  state: TState,
+  history: ClosedHistorySnapshot,
+  options: PortfolioSnapshotOptions = {}
+): boolean {
+  if (!state || typeof state !== 'object' || Array.isArray(state) ||
+      !history || !Array.isArray(history.brokerExecutedTrades) ||
+      !Array.isArray(history.cashflows)) {
+    return false;
+  }
+  return persistPortfolioSnapshot(state as Record<string, any>, history, options).success;
+}
+
+/**
+ * Persists application state to a single local recovery-journal record and
+ * schedules its revision-checked IndexedDB commit. A true return value means
+ * the recovery journal is committed locally; IndexedDB mirroring is tracked
+ * separately by PortfolioPersistenceStatus.
+ */
+export function saveState<TState extends object>(
+  state?: TState | null,
+  onPushToGist?: (forcePrompt?: boolean) => void,
+  options: PortfolioSnapshotOptions = {}
+): boolean {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
+  const mutableState = state as TState & Record<string, any>;
+  const brokerExecutedTrades = Array.isArray(mutableState.brokerExecutedTrades)
+    ? mutableState.brokerExecutedTrades
+    : [];
+  const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
+  const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
+  const historyChanged = hasHistory && (
+    !lastPersistedHistory ||
+    lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
+    lastPersistedHistory.cashflows !== cashflows
+  );
+
+  const result = persistPortfolioSnapshot(
+    mutableState,
+    historyChanged ? { brokerExecutedTrades, cashflows } : null,
+    options
+  );
+  if (!result.success) return false;
+
+  if (result.stateChanged && typeof onPushToGist === 'function') {
+    try {
+      onPushToGist(false);
+    } catch (error) {
+      console.error('Failed to trigger Gist sync:', error);
+    }
+  }
+  return true;
 }
 
 /**
