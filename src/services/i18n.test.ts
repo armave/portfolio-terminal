@@ -91,16 +91,13 @@ describe('app localization', () => {
 
   it('localizes margin intelligence dynamic feed counts and evidence timestamps', () => {
     expect(formatMarginCoverageStatus({
-      ticker: 'AAPL', status: 'loaded', fetchedAt: '2026-11-05T08:00:00.000Z',
-      availableArticleCount: 4, selectedArticleCount: 2
+      status: 'loaded', availableArticleCount: 4, selectedArticleCount: 2
     }, 'ru')).toBe('4 доступно · 2 просмотрено');
     expect(formatMarginCoverageStatus({
-      ticker: 'MSFT', status: 'empty', fetchedAt: '2026-11-05T08:00:00.000Z',
-      availableArticleCount: 0, selectedArticleCount: 0
+      status: 'empty', availableArticleCount: 0, selectedArticleCount: 0
     }, 'ru')).toBe('Лента не вернула статей');
     expect(formatMarginCoverageStatus({
-      ticker: 'GOOGL', status: 'error', fetchedAt: '2026-11-05T08:00:00.000Z',
-      availableArticleCount: 0, selectedArticleCount: 0, error: 'Timeout'
+      status: 'error', availableArticleCount: 0, selectedArticleCount: 0, error: 'Timeout'
     }, 'ru')).toBe('Лента недоступна: Timeout');
     expect(formatMarginFetchedLabel('Nov 5, 2026', 'ru')).toBe('Получено Nov 5, 2026');
     expect(formatMarginSourcesHeading(3, 'ru')).toBe('Изученные источники (3)');
