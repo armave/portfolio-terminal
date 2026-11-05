@@ -2257,11 +2257,12 @@ describe('atomic portfolio-store persistence', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(persistenceErrorListener).not.toHaveBeenCalled();
 
-    const journalKey = Array.from(values.keys()).find((key) =>
-      key.startsWith('portfolio_terminal_state_pending_v1:')
-    );
-    expect(journalKey).toBeDefined();
-    expect(JSON.parse(values.get(journalKey!)!).brokerRules).toMatchObject({ annualBorrowRate: 0.2 });
+    const journalRecords = Array.from(values.keys())
+      .filter((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))
+      .map((key) => JSON.parse(values.get(key)!));
+    expect(journalRecords.some((record) =>
+      record.brokerRules?.annualBorrowRate === 0.2
+    )).toBe(true);
   });
 
   it('publishes a committed journal when a legacy closed-history mirror cannot be updated', () => {
