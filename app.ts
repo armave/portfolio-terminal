@@ -1967,7 +1967,7 @@ async function executeCommand(commandText: string, preserveAiRequest = false) {
 }
 
 async function executeCommandOnce(text: string, preserveAiRequest = false) {
-  if (!preserveAiRequest && !/^(?:ai|ask)\\b/i.test(text)) {
+  if (!preserveAiRequest && !/^(?:ai|ask)\b/i.test(text)) {
     aiRequestLifecycle.invalidate();
     setAiStatus('READY');
   }
