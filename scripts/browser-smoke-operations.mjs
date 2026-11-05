@@ -466,6 +466,15 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // Create two users, then exercise editing and deletion through the actual Settings form.
+  const waitForUserSaveReady = async (name) => {
+    await page.waitForFunction((userName) => {
+      const row = Array.from(document.querySelectorAll('#settingsDesk tbody tr')).find((candidate) =>
+        candidate.querySelector('input')?.getAttribute('aria-label') === `Name for ${userName}`
+      );
+      const saveButton = row?.querySelector('button[type="button"]');
+      return saveButton instanceof HTMLButtonElement && !saveButton.disabled;
+    }, name, { timeout: 10_000 });
+  };
   const createUser = async (name, password) => {
     await page.getByLabel('User name').fill(name);
     await page.getByLabel('Password (6+ characters)').fill(password);
@@ -476,6 +485,7 @@ try {
     await page.getByRole('button', { name: 'Add user' }).click();
     await page.locator('#settingsDesk tbody tr').filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) })
       .waitFor({ state: 'visible', timeout: 10_000 });
+    await waitForUserSaveReady(name);
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
   await createUser('Browser Guest Keep', 'keep-guest-password');
@@ -498,6 +508,7 @@ try {
       user.language === 'ru' && user.password === 'updated-guest-password'),
     'user rename, role, language and password update'
   );
+  await waitForUserSaveReady('Browser Guest Updated');
 
   const updatedRow = rowForUser('Browser Guest Updated');
   await updatedRow.getByLabel('Role for Browser Guest Updated').selectOption('guest');
@@ -506,6 +517,7 @@ try {
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'guest'),
     'guest role restoration'
   );
+  await waitForUserSaveReady('Browser Guest Updated');
 
   // The server remains authoritative: the sole administrator cannot be demoted.
   const adminRow = rowForUser('Operations Admin');
