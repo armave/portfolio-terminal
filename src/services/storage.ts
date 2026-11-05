@@ -15,6 +15,7 @@ const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
+const STORAGE_KEY_PENDING_BACKUP_CLOUD_SYNC = 'portfolio_backup_cloud_sync_pending_v1:';
 let lastPersistedHistory: ClosedHistorySnapshot | null = null;
 
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
@@ -880,6 +881,44 @@ export function markFreedomTradeHistoryBaseline(accountId: string): boolean {
     const storage = getBrowserStorage();
     if (!storage) return false;
     storage.setItem(historyBaselineKey(STORAGE_KEY_TRADE_HISTORY_BASELINE, accountId), '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keep a local backup authoritative across reloads until its replacement of the
+ * shared cloud snapshot has been confirmed. The marker is account-scoped so one
+ * administrator account cannot suppress another account's startup hydration.
+ */
+export function hasPendingBackupCloudSync(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    return getBrowserStorage()?.getItem(historyBaselineKey(STORAGE_KEY_PENDING_BACKUP_CLOUD_SYNC, accountId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markPendingBackupCloudSync(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    const storage = getBrowserStorage();
+    if (!storage) return false;
+    storage.setItem(historyBaselineKey(STORAGE_KEY_PENDING_BACKUP_CLOUD_SYNC, accountId), '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearPendingBackupCloudSync(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    const storage = getBrowserStorage();
+    if (!storage) return false;
+    storage.removeItem(historyBaselineKey(STORAGE_KEY_PENDING_BACKUP_CLOUD_SYNC, accountId));
     return true;
   } catch {
     return false;
