@@ -638,7 +638,8 @@ async function resetToBlankState(): Promise<void> {
   const localSnapshotSaved = await savePortfolioSnapshotAfterFlush(
     state,
     { brokerExecutedTrades: [], cashflows: [] },
-    { deviceActiveView: 'COMBINED' }
+    { deviceActiveView: 'COMBINED' },
+    isResetSessionCurrent
   );
 
   if (!localSnapshotSaved) {
@@ -1461,10 +1462,15 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       return false;
     }
 
-    const persisted = await savePortfolioSnapshotAfterFlush(portfolioStore.getState(), {
-      brokerExecutedTrades: updatedExecutions,
-      cashflows: mergedCashflows
-    });
+    const persisted = await savePortfolioSnapshotAfterFlush(
+      portfolioStore.getState(),
+      {
+        brokerExecutedTrades: updatedExecutions,
+        cashflows: mergedCashflows
+      },
+      {},
+      isCurrentSession
+    );
     if (!persisted) {
       portfolioStore.update(() => previousState, false);
       state = portfolioStore.getState();
