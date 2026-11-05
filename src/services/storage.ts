@@ -217,8 +217,9 @@ function readLegacyPortfolioSnapshot(storage: Storage): PortfolioStateSnapshotRe
         sourceState = { ...parsed };
         break;
       }
-    } catch {
+    } catch (error) {
       // A damaged current snapshot does not hide a recoverable legacy snapshot.
+      console.warn('Failed to parse saved state:', error);
     }
   }
 
@@ -1259,6 +1260,16 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
   if (resolved.record) {
     const history = cloneHistory(resolved.record.history);
     lastPersistedHistory = history;
+    // Migrate inline legacy history to the established sidecar only when no
+    // sidecar exists. A malformed sidecar is forensic evidence and is never
+    // overwritten by an automatic fallback.
+    try {
+      if (storage.getItem(STORAGE_KEY_CLOSED_HISTORY) === null) {
+        storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(history));
+      }
+    } catch (error) {
+      console.warn('Could not migrate legacy closed history to its sidecar:', error);
+    }
     if (resolved.conflict) {
       updatePortfolioPersistenceStatus('conflict', resolved.record.revision,
         'Conflicting local portfolio journal entries were preserved for recovery.');
