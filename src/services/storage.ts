@@ -317,10 +317,11 @@ function readPortfolioSnapshotBase(storage: Storage): PortfolioStateSnapshotReco
   } catch (error) {
     throw error;
   }
+  // The local checkpoint/journal is the recovery source for this browser
+  // storage area. An in-memory snapshot may belong to a previous account,
+  // test storage, or pre-clear generation, so it must never override missing
+  // local evidence.
   const atomic = readAtomicPortfolioSnapshot(storage);
-  if (hydratedPortfolioSnapshot && (!atomic || hydratedPortfolioSnapshot.revision >= atomic.revision)) {
-    return hydratedPortfolioSnapshot;
-  }
   return atomic || readLegacyPortfolioSnapshot(storage);
 }
 
