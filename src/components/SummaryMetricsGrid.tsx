@@ -65,6 +65,23 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     );
   }
 
+  if (risk.status === 'unavailable') {
+    const explanation = risk.reason === 'invalid-broker-assumptions'
+      ? 'Margin risk cannot be calculated because configured maintenance or stop-out thresholds are invalid. Review Broker Rules.'
+      : risk.reason === 'invalid-financial-inputs'
+        ? 'Margin risk cannot be calculated because portfolio values are invalid. Check debt, holdings, and collateral.'
+        : 'Margin risk calculation exceeded the supported numeric range. Check portfolio values and broker assumptions.';
+    return (
+      <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', getAppLanguage())}>
+        <div class="margin-risk-gauge-heading">
+          <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">—</strong></div>
+          <span class="margin-risk-status elevated">{translateText('Margin risk estimate unavailable', getAppLanguage())}</span>
+        </div>
+        <p class="mt-2 text-xs leading-relaxed text-amber-200">{translateText(explanation, getAppLanguage())}</p>
+      </section>
+    );
+  }
+
   const stopOutTitle = 'Estimate assumes the configured ' + (rules.stopOutRatio * 100).toFixed(2) +
     '% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.';
   const marginRiskTitle = 'Estimated from portfolio equity and configured thresholds: ' +
@@ -72,13 +89,15 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     (rules.stopOutRatio * 100).toFixed(2) + '% stop-out equity. Not a live broker risk indicator.';
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
-  const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
-  const stopOutBuffer = Number.isFinite(risk.stopOutBufferPct) ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
+  const buffer = risk.marginCallBufferPct !== null && Number.isFinite(risk.marginCallBufferPct)
+    ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
+  const stopOutBuffer = risk.stopOutBufferPct !== null && Number.isFinite(risk.stopOutBufferPct)
+    ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
   return (
     <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity" title={marginRiskTitle}>
       <div class="margin-risk-gauge-heading">
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
-        <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
+        <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') || risk.summaryText.startsWith('Equity ratio unavailable') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
@@ -87,12 +106,12 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
       <div class="margin-risk-gauge-grid">
         <div class="margin-risk-gauge-item">
-          <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
+          <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{risk.marginCallBufferPct !== null && Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
           <div class="margin-risk-buffer-track" role="progressbar" aria-label="Margin-call buffer" aria-valuemin={0} aria-valuemax={100} aria-valuenow={buffer}><span class={buffer < 30 ? 'danger' : 'warning'} style={{ width: buffer + '%' }}></span></div>
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</strong></div>
         </div>
         <div class="margin-risk-gauge-item">
-          <div class="margin-risk-gauge-row" title={stopOutTitle}><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
+          <div class="margin-risk-gauge-row" title={stopOutTitle}><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{risk.stopOutBufferPct !== null && Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
           <div class="margin-risk-buffer-track"><span class={stopOutBuffer < 30 ? 'danger' : 'safe'} style={{ width: stopOutBuffer + '%' }}></span></div>
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showStopOut ? risk.stopOutText : '—'}</strong></div>
         </div>
@@ -142,8 +161,26 @@ function computeMarginRiskDisplay(
   collateral: number,
   rules: BrokerAssumptions
 ) {
+  const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
+  if (metrics.status === 'unavailable') {
+    return {
+      status: 'unavailable' as const,
+      reason: metrics.reason,
+      summaryText: 'Margin risk estimate unavailable',
+      summaryClass: 'text-amber-400 font-bold font-mono',
+      showMarginCall: false,
+      marginCallText: '',
+      showStopOut: false,
+      stopOutText: '',
+      showRiskTriggers: false,
+      marginCallBufferPct: null,
+      stopOutBufferPct: null
+    };
+  }
+
   if (debt <= 0) {
     return {
+      status: 'available' as const,
       summaryText: 'No margin debt',
       summaryClass: 'text-emerald-400 font-bold font-mono',
       showMarginCall: false,
@@ -151,51 +188,44 @@ function computeMarginRiskDisplay(
       showStopOut: false,
       stopOutText: '',
       showRiskTriggers: false,
-      marginCallBufferPct: 100,
-      stopOutBufferPct: 100
+      marginCallBufferPct: metrics.marginCallBufferPct,
+      stopOutBufferPct: metrics.stopOutBufferPct
     };
   }
 
-  const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
-  const equityRatio = metrics.equityRatio * 100;
+  const equityRatio = metrics.equityRatio === null ? null : metrics.equityRatio * 100;
   const maintenanceRatio = rules.maintenanceEquityRatio * 100;
   const stopOutRatio = rules.stopOutRatio * 100;
 
-  let riskLevel = 'Healthy';
-  let riskClass = 'text-emerald-400';
+  let riskLevel = equityRatio === null ? 'Equity ratio unavailable' : 'Healthy';
+  let riskClass = equityRatio === null ? 'text-amber-400' : 'text-emerald-400';
 
-  if (equityRatio <= stopOutRatio) {
+  if (equityRatio !== null && equityRatio <= stopOutRatio) {
     riskLevel = 'Stop-out level';
     riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio) {
+  } else if (equityRatio !== null && equityRatio <= maintenanceRatio) {
     riskLevel = 'Margin-call level';
     riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio + 5) {
+  } else if (equityRatio !== null && equityRatio <= maintenanceRatio + 5) {
     riskLevel = 'Elevated';
     riskClass = 'text-amber-400';
   }
 
-  const summaryText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
-    } (${maintenanceRatio.toFixed(1)}% maintenance)`;
-
-  const showMarginCall = metrics.showMarginCall;
-  const showStopOut = metrics.showStopOut;
-  const marginCallValue = metrics.marginCallValue;
-  const stopOutValue = metrics.stopOutValue;
-  const marginCallBufferPct = metrics.marginCallBufferPct;
-  const stopOutBufferPct = metrics.stopOutBufferPct;
-  const showRiskTriggers = metrics.showRiskTriggers;
+  const summaryText = equityRatio === null
+    ? riskLevel
+    : `${riskLevel} · ${equityRatio.toFixed(1)}% equity (${maintenanceRatio.toFixed(1)}% maintenance)`;
 
   return {
+    status: 'available' as const,
     summaryText,
     summaryClass: `${riskClass} font-bold font-mono`,
-    showMarginCall,
-    marginCallText: marginCallValue > 0 ? formatRiskTrigger(marginCallValue, positionValue) : '',
-    showStopOut,
-    stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
-    showRiskTriggers,
-    marginCallBufferPct,
-    stopOutBufferPct
+    showMarginCall: metrics.showMarginCall,
+    marginCallText: metrics.marginCallValue > 0 ? formatRiskTrigger(metrics.marginCallValue, positionValue) : '',
+    showStopOut: metrics.showStopOut,
+    stopOutText: metrics.showStopOut ? formatRiskTrigger(metrics.stopOutValue, positionValue) : '',
+    showRiskTriggers: metrics.showRiskTriggers,
+    marginCallBufferPct: metrics.marginCallBufferPct,
+    stopOutBufferPct: metrics.stopOutBufferPct
   };
 }
 
