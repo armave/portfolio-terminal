@@ -86,6 +86,62 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     expect(runtime.isConnected()).toBe(false);
   });
 
+  it('fails an otherwise healthy socket when the first depth book never arrives', async () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const onStatus = vi.fn();
+    const runtime = createFreedomMarketDepthStreamRuntime({
+      createTicket: async () => ({ ticket: 'a'.repeat(64), symbol: 'AAPL.US' }),
+      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
+      createSocket: () => socket,
+      onDepth: vi.fn(),
+      onStatus,
+      firstDepthTimeoutMs: 1_000
+    });
+
+    const connecting = runtime.start('AAPL', 'admin:account-1');
+    await Promise.resolve();
+    socket.open();
+    socket.receive({ type: 'ready', symbol: 'AAPL.US' });
+    await expect(connecting).resolves.toBe(true);
+    expect(runtime.isConnected()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(runtime.isConnected()).toBe(false);
+    expect(onStatus).toHaveBeenLastCalledWith('error', 'No live Market Depth data is available.');
+    expect(socket.closeCalls).toContainEqual([4000, 'Market Depth first-depth timeout']);
+  });
+
+  it('cancels the first-depth timeout as soon as a valid book arrives', async () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const onDepth = vi.fn();
+    const onStatus = vi.fn();
+    const runtime = createFreedomMarketDepthStreamRuntime({
+      createTicket: async () => ({ ticket: 'b'.repeat(64), symbol: 'AAPL.US' }),
+      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
+      createSocket: () => socket,
+      onDepth,
+      onStatus,
+      firstDepthTimeoutMs: 1_000
+    });
+
+    const connecting = runtime.start('AAPL', 'admin:account-1');
+    await Promise.resolve();
+    socket.open();
+    socket.receive({ type: 'ready', symbol: 'AAPL.US' });
+    await expect(connecting).resolves.toBe(true);
+    const data = { bids: [{ position: 0, price: 100, quantity: 5 }], asks: [] };
+    socket.receive({ type: 'depth', symbol: 'AAPL.US', data, updatedAt: 123 });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(onDepth).toHaveBeenCalledWith('AAPL.US', data, 123, 'admin:account-1');
+    expect(onStatus).not.toHaveBeenCalledWith('error', 'No live Market Depth data is available.');
+    expect(socket.closeCalls).toEqual([]);
+    runtime.stop();
+  });
+
   it('rejects depth updates without a valid timestamp rather than substituting the browser clock', async () => {
     const socket = new FakeSocket();
     const onDepth = vi.fn();
