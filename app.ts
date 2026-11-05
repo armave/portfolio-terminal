@@ -1644,15 +1644,33 @@ async function retryPendingBackupCloudSync(accountId: string): Promise<boolean> 
 
   const importedSnapshot = portfolioStore.getState();
   return retryBackupCloudSync(importedSnapshot, {
-    refreshCloudRevision: async () => { await syncCloudState('pull'); },
+    refreshCloudRevision: async () => {
+      // Do not overlap full-state journals: the imported snapshot must become a
+      // durable parent before pulling cloud, and the pulled generation must be
+      // checkpointed before the imported snapshot is restored.
+      const beforePull = await flushPortfolioPersistence();
+      if (beforePull.state === 'conflict' || beforePull.pendingWrites > 0) {
+        throw new Error(beforePull.message || 'Local recovery writes are still pending.');
+      }
+      await syncCloudState('pull');
+      const afterPull = await flushPortfolioPersistence();
+      if (afterPull.state === 'conflict' || afterPull.pendingWrites > 0) {
+        throw new Error(afterPull.message || 'The cloud snapshot is still being saved locally.');
+      }
+    },
     isCurrentSession,
     restoreLocalSnapshot: (snapshot) => {
-      const restored = portfolioStore.importState(snapshot);
+      // Stage only; persistLocalSnapshot below commits this full snapshot once.
+      const restored = portfolioStore.importState(snapshot, false);
       state = portfolioStore.getState();
       return restored;
     },
     persistLocalSnapshot: () => saveState(state),
-    pushCloudSnapshot: () => pushStateToCloud(true),
+    pushCloudSnapshot: async () => {
+      const persisted = await flushPortfolioPersistence();
+      if (persisted.state === 'conflict' || persisted.pendingWrites > 0) return false;
+      return pushStateToCloud(true);
+    },
     clearPendingMarker: () => {
       if (!clearPendingBackupCloudSync(accountId)) {
         logTerminal('[Backup Import]: Cloud accepted the backup, but its local retry marker could not be cleared; it will be checked again on the next start.');
