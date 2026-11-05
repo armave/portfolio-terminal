@@ -398,6 +398,27 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'NVDA', balance: 400 });
     });
 
+    it('rejects a malformed IndexedDB generation without overwriting or discarding local recovery data', async () => {
+      const malformed = {
+        schemaVersion: 99,
+        revision: 4,
+        commitId: 'unsupported-schema',
+        state: { activeView: 'AAPL' }
+      } as unknown as PortfolioStateSnapshotRecord;
+      databaseFixture.setCurrent(malformed);
+
+      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
+      const status = await flushPortfolioPersistence();
+
+      expect(status.state).toBe('degraded');
+      expect(status.pendingWrites).toBe(1);
+      expect((databaseFixture.getCurrent() as unknown as { schemaVersion: number }).schemaVersion).toBe(99);
+      expect(storageMap.has('portfolio_terminal_state_snapshot_v1')).toBe(false);
+      expect(Array.from(storageMap.keys()).some((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      )).toBe(true);
+    });
+
     it('preserves a stale-tab journal when IndexedDB has advanced to a newer revision', async () => {
       await hydratePortfolioPersistence();
       const initial = databaseFixture.getCurrent();
