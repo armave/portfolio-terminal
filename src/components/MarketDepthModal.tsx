@@ -23,6 +23,16 @@ export interface MarketDepthSnapshot {
   rowUpdatesApplied?: number;
   deletionsApplied?: number;
   captureDurationMs?: number;
+  providerLevelCount?: number;
+  providerBidRowCount?: number;
+  providerAskRowCount?: number;
+  initialSequence?: number;
+  initialReportedDepth?: number;
+  initialRawInsertionCount?: number;
+  initialAcceptedInsertionCount?: number;
+  initialRejectedInsertionCount?: number;
+  initialBidInsertionCount?: number;
+  initialAskInsertionCount?: number;
   bids: MarketDepthLevel[];
   asks: MarketDepthLevel[];
   updatedAt: number;
@@ -108,6 +118,16 @@ export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): Ma
     ...(typeof data.captureDurationMs === 'number' && Number.isFinite(data.captureDurationMs)
       ? { captureDurationMs: data.captureDurationMs }
       : {}),
+    ...(Number.isSafeInteger(data.providerLevelCount) ? { providerLevelCount: data.providerLevelCount as number } : {}),
+    ...(Number.isSafeInteger(data.providerBidRowCount) ? { providerBidRowCount: data.providerBidRowCount as number } : {}),
+    ...(Number.isSafeInteger(data.providerAskRowCount) ? { providerAskRowCount: data.providerAskRowCount as number } : {}),
+    ...(Number.isSafeInteger(data.initialSequence) ? { initialSequence: data.initialSequence as number } : {}),
+    ...(Number.isSafeInteger(data.initialReportedDepth) ? { initialReportedDepth: data.initialReportedDepth as number } : {}),
+    ...(Number.isSafeInteger(data.initialRawInsertionCount) ? { initialRawInsertionCount: data.initialRawInsertionCount as number } : {}),
+    ...(Number.isSafeInteger(data.initialAcceptedInsertionCount) ? { initialAcceptedInsertionCount: data.initialAcceptedInsertionCount as number } : {}),
+    ...(Number.isSafeInteger(data.initialRejectedInsertionCount) ? { initialRejectedInsertionCount: data.initialRejectedInsertionCount as number } : {}),
+    ...(Number.isSafeInteger(data.initialBidInsertionCount) ? { initialBidInsertionCount: data.initialBidInsertionCount as number } : {}),
+    ...(Number.isSafeInteger(data.initialAskInsertionCount) ? { initialAskInsertionCount: data.initialAskInsertionCount as number } : {}),
     bids: data.bids,
     asks: data.asks,
     updatedAt: value.updatedAt as number
@@ -116,7 +136,9 @@ export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): Ma
 
 /** Flags a one-price-per-side snapshot so limited provider depth is not mistaken for a UI cap. */
 export function isShallowMarketDepthSnapshot(snapshot: MarketDepthSnapshot): boolean {
-  return snapshot.bids.length === 1 && snapshot.asks.length === 1;
+  const bidRows = snapshot.providerBidRowCount ?? snapshot.bids.length;
+  const askRows = snapshot.providerAskRowCount ?? snapshot.asks.length;
+  return bidRows <= 1 && askRows <= 1;
 }
 
 export function summarizeMarketDepth(snapshot: MarketDepthSnapshot): MarketDepthSummary {
@@ -426,6 +448,15 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
             {depthText('Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.')}
             {' '}{depthText('Visible levels:')} {liveSnapshot.bids.length} {depthText('bid')} / {liveSnapshot.asks.length} {depthText('ask')}.
             {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet reported book depth:')} ${liveSnapshot.reportedDepth} (${depthText('total positions in the combined book')}).` : ''}
+            {liveSnapshot.providerLevelCount !== undefined
+              ? ` ${depthText('Current provider rows:')} ${liveSnapshot.providerLevelCount} (${liveSnapshot.providerBidRowCount ?? 0} ${depthText('bid')} / ${liveSnapshot.providerAskRowCount ?? 0} ${depthText('ask')}).`
+              : ''}
+            {liveSnapshot.initialRawInsertionCount !== undefined
+              ? ` ${depthText('First payload:')} ${liveSnapshot.initialRawInsertionCount} ${depthText('raw rows')}, ${liveSnapshot.initialAcceptedInsertionCount ?? 0} ${depthText('accepted')}, ${liveSnapshot.initialRejectedInsertionCount ?? 0} ${depthText('ignored')}.`
+              : ''}
+            {liveSnapshot.initialReportedDepth !== undefined
+              ? ` ${depthText('Initial provider depth:')} ${liveSnapshot.initialReportedDepth}.`
+              : ''}
             {liveSnapshot.insertionsApplied !== undefined || liveSnapshot.rowUpdatesApplied !== undefined || liveSnapshot.deletionsApplied !== undefined
               ? ` ${depthText('Changes captured:')} +${liveSnapshot.insertionsApplied ?? 0} / ~${liveSnapshot.rowUpdatesApplied ?? 0} / −${liveSnapshot.deletionsApplied ?? 0}.`
               : ''}
