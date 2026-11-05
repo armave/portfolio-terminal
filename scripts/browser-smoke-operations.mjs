@@ -414,6 +414,16 @@ try {
   const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
   if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
+  // The isolated browser starts with an empty local portfolio. Add a deterministic
+  // paper-trade lot through the app's own Quick Buy terminal command so the
+  // Market Insights ticker is backed by real board state; this does not place an order.
+  const emptyState = page.locator('#emptyStatePanel');
+  await emptyState.getByRole('button', { name: 'Quick Buy' }).waitFor({ state: 'visible', timeout: 10_000 });
+  await emptyState.getByRole('button', { name: 'Quick Buy' }).click();
+  const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
+  await terminalCommand.fill('bought 5 AAPL for 10');
+  await terminalCommand.press('Enter');
+
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
   await waitForCondition(
