@@ -81,6 +81,7 @@ let portfolioStateDatabase: PortfolioStateDatabase | null = null;
 let portfolioStateDatabaseOverride: PortfolioStateDatabase | null = null;
 let hasPortfolioStateDatabaseOverride = false;
 let portfolioPersistenceFlush: Promise<PortfolioPersistenceStatus> | null = null;
+let portfolioPersistenceFlushRequested = false;
 const portfolioPersistenceListeners = new Set<(status: PortfolioPersistenceStatus) => void>();
 let portfolioPersistenceStatus: PortfolioPersistenceStatus = {
   state: 'idle',
@@ -332,6 +333,7 @@ export function configurePortfolioStateDatabaseForTesting(
   hydratedPortfolioSnapshot = null;
   lastScheduledRevision = null;
   portfolioPersistenceFlush = null;
+  portfolioPersistenceFlushRequested = false;
   updatePortfolioPersistenceStatus('idle', 0, null);
 }
 
@@ -522,9 +524,26 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
 }
 
 export async function flushPortfolioPersistence(): Promise<PortfolioPersistenceStatus> {
-  if (portfolioPersistenceFlush) return portfolioPersistenceFlush;
-  portfolioPersistenceFlush = flushPortfolioPersistenceOnce().finally(() => {
+  if (portfolioPersistenceFlush) {
+    // A new journal entry may have arrived while the current transaction was
+    // draining. Ask the active drain to make one more pass after it completes.
+    portfolioPersistenceFlushRequested = true;
+    return portfolioPersistenceFlush;
+  }
+
+  portfolioPersistenceFlush = (async () => {
+    let status = await flushPortfolioPersistenceOnce();
+    while (portfolioPersistenceFlushRequested) {
+      portfolioPersistenceFlushRequested = false;
+      status = await flushPortfolioPersistenceOnce();
+    }
+    return status;
+  })().finally(() => {
     portfolioPersistenceFlush = null;
+    if (portfolioPersistenceFlushRequested) {
+      portfolioPersistenceFlushRequested = false;
+      void flushPortfolioPersistence();
+    }
   });
   return portfolioPersistenceFlush;
 }
