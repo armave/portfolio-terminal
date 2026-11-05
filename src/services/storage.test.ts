@@ -418,8 +418,18 @@ describe('storage service', () => {
       });
       expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
 
+      // The first cleanup attempt was interrupted. Restore removal behavior
+      // and prove the tombstone allows a later retry to finish safely.
+      localStorageMock.removeItem.mockImplementation((key: string) => {
+        storageMap.delete(key);
+      });
+      const interruptedStatus = getPortfolioPersistenceStatus();
+      expect(interruptedStatus.state).toBe('degraded');
+      expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(true);
+
       const status = await flushPortfolioPersistence();
       expect(status.state).toBe('ready');
+      expect(storageMap.has('portfolio_terminal_state_cleared_v1')).toBe(false);
       expect(databaseFixture.getCurrent()?.state).toEqual({});
       expect(databaseFixture.getCurrent()?.brokerRules).toEqual(previousRules);
       expect(databaseFixture.getCurrent()?.deviceActiveView).toBe('AAPL');
@@ -810,11 +820,12 @@ describe('storage service', () => {
   });
 
   describe('clearLocalData', () => {
-    it('clears state items from storage', () => {
+    it('clears state items from storage', async () => {
       storageMap.set('portfolio_state', 'data1');
       storageMap.set('margin_portfolio_state_dynamic_v2', 'data2');
 
       clearLocalData();
+      await flushPortfolioPersistence();
 
       expect(storageMap.has('portfolio_state')).toBe(false);
       expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
