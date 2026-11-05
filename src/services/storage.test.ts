@@ -533,6 +533,10 @@ describe('storage service', () => {
         cashflows
       });
       expect(databaseFixture.getCurrent()?.revision).toBe((committedBefore?.revision ?? 0) + 1);
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: executions, cashflows });
+      // A verified IndexedDB-backed checkpoint must not recreate the duplicate
+      // localStorage sidecar when Closed History mounts and reads its cache.
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
     it('persists an explicit empty history after reload when the in-memory history cache is empty', async () => {
