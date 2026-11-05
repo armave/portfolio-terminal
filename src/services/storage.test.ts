@@ -24,11 +24,47 @@ import {
   hasFreedomCashflowHistoryBaseline,
   hasFreedomTradeHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
-  markFreedomTradeHistoryBaseline
+  markFreedomTradeHistoryBaseline,
+  configurePortfolioStateDatabaseForTesting,
+  resetPortfolioStateDatabaseForTesting,
+  flushPortfolioPersistence,
+  hydratePortfolioPersistence,
+  getPortfolioPersistenceStatus
 } from './storage.ts';
+import type { PortfolioStateDatabase, PortfolioStateSnapshotRecord } from './portfolioStateDatabase';
 
 describe('storage service', () => {
   const storageMap = new Map<string, string>();
+  let databaseFixture: ReturnType<typeof createMemoryPortfolioDatabase>;
+
+  function createMemoryPortfolioDatabase() {
+    let current: PortfolioStateSnapshotRecord | null = null;
+    let failure: Error | null = null;
+    const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const database: PortfolioStateDatabase = {
+      async readCurrent() {
+        if (failure) throw failure;
+        return current ? clone(current) : null;
+      },
+      async compareAndCommit(record, expectedRevision) {
+        if (failure) throw failure;
+        if (current?.commitId === record.commitId) return 'already-committed';
+        if ((current?.revision ?? null) !== expectedRevision) return 'conflict';
+        current = clone(record);
+        return 'committed';
+      },
+      async clear() {
+        if (failure) throw failure;
+        current = null;
+      }
+    };
+    return {
+      database,
+      getCurrent: () => current ? clone(current) : null,
+      setCurrent: (record: PortfolioStateSnapshotRecord | null) => { current = record ? clone(record) : null; },
+      setFailure: (error: Error | null) => { failure = error; }
+    };
+  }
 
   const localStorageMock = {
     getItem: vi.fn((key: string) => storageMap.get(key) ?? null),
@@ -51,12 +87,19 @@ describe('storage service', () => {
     storageMap.clear();
     vi.clearAllMocks();
     vi.stubGlobal('localStorage', localStorageMock);
+    databaseFixture = createMemoryPortfolioDatabase();
+    configurePortfolioStateDatabaseForTesting(databaseFixture.database);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Let any fire-and-forget flush from the test settle before clearing the
+    // injected adapter; failures remain journaled and are discarded with the
+    // isolated in-memory localStorage map on the next beforeEach.
+    await flushPortfolioPersistence();
+    resetPortfolioStateDatabaseForTesting();
     localStorageMock.setItem.mockImplementation((key: string, value: string) => {
       storageMap.set(key, String(value));
     });
