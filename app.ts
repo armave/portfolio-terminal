@@ -81,6 +81,9 @@ import {
   loadSavedState,
   loadSavedHistory,
   hasFreedomTradeHistoryBaseline,
+  hasPendingBackupCloudSync,
+  markPendingBackupCloudSync,
+  clearPendingBackupCloudSync,
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshotAfterFlush,
@@ -1616,6 +1619,60 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
+/**
+ * A cloud pull refreshes the revision used by conditional cloud writes. Restore
+ * the locally imported snapshot after that pull, then push it against the current
+ * revision. The per-account marker remains until the server confirms the write.
+ */
+async function retryPendingBackupCloudSync(accountId: string): Promise<boolean> {
+  if (!accountId || !hasPendingBackupCloudSync(accountId) ||
+      currentAccountRole !== 'admin' || currentAccountId !== accountId ||
+      !canWriteCloudState || !areHeaderCredentialsConfigured()) {
+    return false;
+  }
+  const session = currentAccountSessionGuard.capture();
+  const isCurrentSession = () =>
+    currentAccountRole === 'admin' &&
+    currentAccountId === accountId &&
+    session !== null &&
+    currentAccountSessionGuard.isCurrent(session);
+  if (!isCurrentSession()) return false;
+
+  const importedSnapshot = portfolioStore.getState();
+  try {
+    // Even if a pull is temporarily unavailable, the subsequent conditional
+    // push is still safe: a stale revision is rejected and the local marker stays.
+    await syncCloudState('pull');
+    if (!isCurrentSession()) return false;
+    if (!portfolioStore.importState(importedSnapshot)) return false;
+    state = portfolioStore.getState();
+    if (!saveState(state)) return false;
+
+    const pushed = await pushStateToCloud(true);
+    if (!isCurrentSession() || !pushed) return false;
+    if (!clearPendingBackupCloudSync(accountId)) {
+      logTerminal('[Backup Import]: Cloud accepted the backup, but its local retry marker could not be cleared; it will be checked again on the next start.');
+    }
+    return true;
+  } catch (error) {
+    if (isCurrentSession()) {
+      const detail = error instanceof Error ? error.message : String(error);
+      logTerminal(`[Backup Import]: Cloud replacement is still pending: ${detail}`);
+    }
+    return false;
+  }
+}
+
+function pullSharedCloudStateUnlessBackupPending(): Promise<boolean | void> {
+  const accountId = currentAccountId || '';
+  if (accountId && hasPendingBackupCloudSync(accountId)) {
+    startupCloudWritePending = true;
+    logTerminal('[Backup Import]: A previous cloud replacement is pending; keeping the imported local backup instead of pulling an older shared snapshot.');
+    return Promise.resolve();
+  }
+  return syncCloudState('pull');
+}
+
 async function importBackupFile(file: File) {
   try {
     validatePortfolioBackupFileSize(file.size);
@@ -1637,20 +1694,44 @@ async function importBackupFile(file: File) {
       return;
     }
 
+    const backupAccountId = currentAccountRole === 'admin' ? (currentAccountId || '') : '';
+    if (backupAccountId && !markPendingBackupCloudSync(backupAccountId)) {
+      throw new Error('Could not protect the imported backup from an older cloud snapshot. No portfolio changes were applied.');
+    }
+
     importedState.lastUpdated = Date.now();
     const previousState = portfolioStore.getState();
-    commitPortfolioBackupImport(
-      importedState,
-      previousState,
-      (snapshot) => {
-        portfolioStore.importState(snapshot as any);
-        state = portfolioStore.getState();
-      },
-      () => saveState(state, pushStateToGist)
-    );
-    await pushStateToGist(true);
+    try {
+      commitPortfolioBackupImport(
+        importedState,
+        previousState,
+        (snapshot) => {
+          portfolioStore.importState(snapshot as any);
+          state = portfolioStore.getState();
+        },
+        () => saveState(state)
+      );
+    } catch (error) {
+      if (backupAccountId) clearPendingBackupCloudSync(backupAccountId);
+      throw error;
+    }
+
+    const cloudSynced = backupAccountId
+      ? await retryPendingBackupCloudSync(backupAccountId)
+      : false;
     renderBoard();
-    logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
+    if (backupAccountId && cloudSynced) {
+      logTerminal(`[Backup Import]: Imported ${file.name} and confirmed the replacement of the shared cloud workspace.`);
+    } else if (backupAccountId) {
+      const warning = translateText(
+        'Backup is saved locally, but its shared cloud replacement is still pending. This device will keep the imported copy and retry the sync.',
+        getAppLanguage()
+      );
+      showToast(warning, 'warning');
+      logTerminal(`[Backup Import]: Imported ${file.name} locally. The cloud replacement is pending; the older shared snapshot will not be pulled over this backup.`);
+    } else {
+      logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Cloud sync is not available for this session.`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Backup Error]: Could not import backup (${message}).`);
@@ -2184,7 +2265,7 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
   ),
   setQuoteRefreshInterval,
   pullGuestPortfolioSnapshot,
-  pullAdminPortfolioSnapshot: () => syncCloudState('pull'),
+  pullAdminPortfolioSnapshot: () => pullSharedCloudStateUnlessBackupPending(),
   refreshAllLivePrices: () => refreshAllLivePrices(true),
   startApp,
   hideAuthContainer
@@ -2229,7 +2310,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     state = portfolioStore.getState();
   },
   applyOvernightRollover,
-  pullSharedCloudState: () => syncCloudState('pull'),
+  pullSharedCloudState: pullSharedCloudStateUnlessBackupPending,
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role === 'guest' ? 'guest' : 'admin'
@@ -2245,6 +2326,19 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
     startupCloudWritesSuppressed = false;
+    const accountId = currentAccountId || '';
+    if (accountId && hasPendingBackupCloudSync(accountId)) {
+      const synced = await retryPendingBackupCloudSync(accountId);
+      if (!synced) {
+        const warning = translateText(
+          'Backup is saved locally, but its shared cloud replacement is still pending. This device will keep the imported copy and retry the sync.',
+          getAppLanguage()
+        );
+        showToast(warning, 'warning');
+      }
+      startupCloudWritePending = false;
+      return;
+    }
     if (startupCloudWritePending) {
       startupCloudWritePending = false;
       await pushStateToCloud();
@@ -2343,7 +2437,12 @@ function bindStartupActions() {
         });
         if (saved) {
           portfolioStore.setState({ gatewaySecret: event.detail.secret.trim() });
-          await syncCloudState('pull');
+          const accountId = currentAccountId || '';
+          if (accountId && hasPendingBackupCloudSync(accountId)) {
+            await retryPendingBackupCloudSync(accountId);
+          } else {
+            await syncCloudState('pull');
+          }
         }
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error), 'error');
@@ -2356,6 +2455,8 @@ function bindStartupActions() {
   portfolioSessionRuntime.bindLogout();
   addUiEventListener('settings:pull-cloud-state', () => {
     if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
+    const accountId = currentAccountId || '';
+    if (accountId) clearPendingBackupCloudSync(accountId);
     void syncCloudState('pull');
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
