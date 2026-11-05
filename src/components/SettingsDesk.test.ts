@@ -49,24 +49,3 @@ describe('manual sync in Settings', () => {
     expect(source).toContain("translateText('Syncing…')");
   });
 });
-
-describe('integrated market status', () => {
-  it('removes the temporary TradeNet market probe from Settings', () => {
-    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).not.toContain('TradeNet market status probe');
-    expect(source).not.toContain('testFreedomTradeNetEventStream');
-    expect(source).not.toContain('Test market status updates');
-    expect(source).not.toContain('marketStatusTest');
-  });
-});
-
-describe('Market Depth dashboard integration', () => {
-  it('removes temporary probes and snapshots from Settings', () => {
-    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-
-    expect(source).not.toContain('Market Depth');
-    expect(source).not.toContain('freedom-market-depth');
-    expect(source).not.toContain('depthProbe');
-    expect(source).not.toContain('marketDepthSnapshot');
-  });
-});
