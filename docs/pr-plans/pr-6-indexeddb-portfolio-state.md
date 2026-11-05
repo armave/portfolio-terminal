@@ -106,3 +106,7 @@ node scripts/browser-smoke.mjs
 ``
 
 Do not mark ready or merge until all exact-head checks pass and any remaining limitations are reviewed.
+
+## Integration baseline
+
+The PR is being revalidated after PRs #313 and #315 were merged into `main` (current main baseline at review: `22450fc944f87d1c78185ebf0870f43d31fd2fb9`). In particular, verify the merged startup, portfolio-store failure handling, and broker-sync changes remain intact when this branch is integrated.
