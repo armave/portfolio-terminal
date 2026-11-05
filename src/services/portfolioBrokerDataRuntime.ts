@@ -1,5 +1,10 @@
 import { emitBrokerEvent } from './brokerEventBus';
-import { normalizeFreedomOrderFills } from './freedomTradeContracts';
+import {
+  isCompleteFreedomTradeHistoryResponse,
+  normalizeFreedomOrderFills,
+  parseFreedomOrderFillsResponse
+} from './freedomTradeContracts';
+import { isCompleteFreedomActiveOrdersResponse } from './freedomAccountContracts';
 import {
   fetchFreedomTradeNetActiveOrders,
   fetchFreedomTradeNetPositions,
@@ -31,6 +36,34 @@ import {
   hasFreedomAccountStreamSnapshot,
   isFreedomAccountStreamConnected
 } from './freedomAccountStreamHealth';
+
+
+function preserveConcurrentExecutionUpdates(
+  historyAtRequestStart: readonly FreedomExecutedTrade[],
+  latestHistory: readonly FreedomExecutedTrade[],
+  mergedHistory: FreedomExecutedTrade[]
+): FreedomExecutedTrade[] {
+  const beforeById = new Map(historyAtRequestStart.map((trade) => [String(trade.id), trade]));
+  const latestById = new Map(latestHistory.map((trade) => [String(trade.id), trade]));
+  const changedRows: FreedomExecutedTrade[] = [];
+  const changedIds = new Set<string>();
+
+  latestById.forEach((trade, id) => {
+    const before = beforeById.get(id);
+    if (!before || JSON.stringify(before) !== JSON.stringify(trade)) {
+      changedIds.add(id);
+      changedRows.push(trade);
+    }
+  });
+  if (changedRows.length === 0) return mergedHistory;
+
+  // A live fill may arrive while the slower REST page is in flight. Keep the
+  // latest canonical row for IDs changed during that window.
+  return mergeBrokerExecutionHistory(
+    changedRows,
+    mergedHistory.filter((trade) => !changedIds.has(String(trade.id)))
+  );
+}
 
 export interface PortfolioBrokerDataRuntimeDependencies {
   /** Current account ID is captured by the caller for the active account session. */
@@ -201,6 +234,7 @@ export function createPortfolioBrokerDataRuntime(
         const accountId = dependencies.getAccountId();
         const savedExecutions = loadSavedBrokerExecutions();
         const currentExecutions = dependencies.getCurrentBrokerExecutions();
+        const historyAtRequestStart = mergeBrokerExecutionHistory(savedExecutions, currentExecutions);
         const hasCompleteBaseline = hasHistoryBaseline(accountId);
         const fromDate = hasCompleteBaseline
           ? getLatestClosedTradeDate(
@@ -215,6 +249,9 @@ export function createPortfolioBrokerDataRuntime(
 
         const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;
+        if (!isCompleteFreedomTradeHistoryResponse(response, normalizedPage)) {
+          throw new Error('TradeNet trade history response is incomplete or malformed.');
+        }
 
         // A bounded provider response is never an authoritative replacement for
         // local history. Preserve app-calculated fee allocations before merging.
@@ -225,10 +262,9 @@ export function createPortfolioBrokerDataRuntime(
           normalizedPage,
           retainedExecutions
         );
-        const mergedTrades = mergeBrokerExecutionHistory(
-          retainedExecutions,
-          normalizedPageWithFees
-        );
+        const mergedPage = mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees);
+        const latestHistory = mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions);
+        const mergedTrades = preserveConcurrentExecutionUpdates(historyAtRequestStart, latestHistory, mergedPage);
         dependencies.setBrokerExecutions(mergedTrades);
 
         if (!hasCompleteBaseline) {
@@ -269,15 +305,31 @@ export function createPortfolioBrokerDataRuntime(
     const streamRevisionAtStart = getFreedomAccountStreamSnapshotRevision(session.identity, 'orders');
     let succeeded = false;
     let orderStreamFills: FreedomExecutedTrade[] = [];
+    let orderStreamFillsMalformed = false;
+    let errorReported = false;
     const fetchActiveOrdersAndCaptureFills = async (): Promise<unknown> => {
       if (isFreedomAccountStreamConnected(session.identity)) return { streamConnected: true };
       const response = await fetchActiveOrders();
-      if (dependencies.isSessionCurrent(session)) {
-        orderStreamFills = normalizeOrderFills(response);
+      // A live snapshot that arrived while this REST request was in flight is
+      // authoritative for the current session. Discard the obsolete response
+      // before validating it so stale/malformed REST data cannot mark the
+      // already-refreshed account as unavailable.
+      if (
+        !dependencies.isSessionCurrent(session) ||
+        isFreedomAccountStreamConnected(session.identity) ||
+        getFreedomAccountStreamSnapshotRevision(session.identity, 'orders') > streamRevisionAtStart ||
+        hasFreedomAccountStreamSnapshot(session.identity, 'orders')
+      ) return response;
+      if (!isCompleteFreedomActiveOrdersResponse(response)) {
+        throw new Error('TradeNet active-orders response is incomplete or malformed.');
       }
+      const fillResponse = parseFreedomOrderFillsResponse(response);
+      orderStreamFillsMalformed = fillResponse.present && !fillResponse.valid;
+      orderStreamFills = fillResponse.valid ? normalizeOrderFills(response) : [];
       return response;
     };
     const request = (async () => {
+      try {
       await refreshOrders({
         restoreGatewaySecret: restoreSecret,
         isCurrent: () => dependencies.isSessionCurrent(session),
@@ -295,9 +347,13 @@ export function createPortfolioBrokerDataRuntime(
           ) return;
           emit('broker:active-orders', orders);
 
-          // The authenticated orders event embeds completed executions in each
-          // order's trade[] list. Merge only new TradeNet trade IDs into the
-          // canonical history, preserving app-calculated fee allocations.
+          // A malformed optional fills collection must not invalidate valid
+          // orders, but it must mark the execution-history view as stale.
+          if (orderStreamFillsMalformed && dependencies.isSessionCurrent(session)) {
+            emit('broker:executed-trades-error');
+          }
+          // Merge only new TradeNet trade IDs into canonical history, preserving
+          // app-calculated fee allocations.
           if (orderStreamFills.length > 0 && dependencies.isSessionCurrent(session)) {
             const retainedExecutions = [
               ...loadSavedBrokerExecutions(),
@@ -324,6 +380,7 @@ export function createPortfolioBrokerDataRuntime(
         onError: () => {
           if (!dependencies.isSessionCurrent(session)) return;
           succeeded = false;
+          errorReported = true;
           emit('broker:active-orders-error');
         },
         logError: (error) => {
@@ -332,6 +389,13 @@ export function createPortfolioBrokerDataRuntime(
           }
         }
       });
+      } catch (error) {
+        if (dependencies.isSessionCurrent(session)) {
+          succeeded = false;
+          if (!errorReported) emit('broker:active-orders-error');
+          logError('Unable to load active TradeNet orders:', error);
+        }
+      }
       return succeeded;
     })();
 

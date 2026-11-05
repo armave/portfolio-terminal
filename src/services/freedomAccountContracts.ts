@@ -63,12 +63,6 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function recordRows(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value)
-    ? value.map(asRecord).filter((row): row is Record<string, unknown> => row !== null)
-    : [];
-}
-
 /** Normalize active order aliases without trusting the provider's raw row shape. */
 export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOrder[] {
   const envelope = asRecord(response);
@@ -242,6 +236,35 @@ export function compareFreedomPortfolioSnapshots(
   };
 }
 
+/** Return null when an active-order collection is missing or malformed. */
+function extractFreedomActiveOrderRows(response: unknown): unknown[] | null {
+  const envelope = asRecord(response);
+  const data = asRecord(envelope?.data);
+  const result = asRecord(data?.result);
+  const root = Array.isArray(response) ? response : result ?? data ?? asRecord(envelope?.result) ?? envelope;
+  const rootRecord = asRecord(root);
+  const orders = asRecord(rootRecord?.orders);
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(orders?.order)) return orders.order;
+  if (Array.isArray(rootRecord?.orders)) return rootRecord.orders as unknown[];
+  if (Array.isArray(rootRecord?.items)) return rootRecord.items;
+  if (Array.isArray(rootRecord?.data)) return rootRecord.data;
+  return null;
+}
+
+/** Empty order arrays are valid; each returned order needs an identity and ticker. */
+export function isCompleteFreedomActiveOrdersResponse(response: unknown): boolean {
+  const rows = extractFreedomActiveOrderRows(response);
+  if (!rows) return false;
+  return rows.every((value) => {
+    const row = asRecord(value);
+    if (!row) return false;
+    const id = textOr(readFirst(row, ['order_id', 'id', 'orderId'])).trim();
+    const ticker = textOr(readFirst(row, ['instr_nm', 'i', 'ticker', 'symbol', 'instr'])).trim();
+    return Boolean(id && ticker);
+  });
+}
+
 /** Normalize the documented USD account fields without converting currencies or inventing values. */
 export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSnapshot {
   const envelope = asRecord(response);
@@ -250,34 +273,54 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
   const ps = asRecord(result?.ps);
   if (!ps) throw new Error('TradeNet response is missing data.result.ps.');
   if (ps.loaded !== true) throw new Error('TradeNet USD account data is not loaded yet.');
+  if (!Array.isArray(ps.acc) || !Array.isArray(ps.pos)) {
+    throw new Error('TradeNet USD account snapshot is incomplete: balances and positions must both be arrays.');
+  }
 
-  // This app is intentionally scoped to the active USD account. Do not mix
-  // AED/RUR balances or non-USD positions into the USD portfolio.
-  const usdRows = (value: unknown) => recordRows(value).filter((row) =>
-    textOr(readFirst(row, ['curr', 'base_currency'])).toUpperCase() === 'USD'
-  );
+  const requireRows = (value: unknown, label: string): Record<string, unknown>[] => {
+    const records = (value as unknown[]).map(asRecord);
+    if (records.some((row) => row === null)) {
+      throw new Error(`TradeNet USD account snapshot contains a malformed ${label} row.`);
+    }
+    return records as Record<string, unknown>[];
+  };
+  const currencyOf = (row: Record<string, unknown>, label: string): string => {
+    const currency = textOr(readFirst(row, ['curr', 'base_currency'])).trim().toUpperCase();
+    if (!currency) throw new Error(`TradeNet USD account snapshot contains a ${label} row without a currency.`);
+    return currency;
+  };
 
-  const balances = usdRows(ps.acc).map((row): FreedomCashBalance => ({
-    currency: 'USD',
-    // TradeNet s matches the USD balance shown in the broker app; currval is a different value.
-    amount: numberOrNull(row.s) ?? numberOrNull(row.currval) ?? 0,
-    forecastIn: numberOrNull(row.forecast_in) ?? 0,
-    forecastOut: numberOrNull(row.forecast_out) ?? 0,
-    t2In: numberOrNull(row.t2_in) ?? 0,
-    t2Out: numberOrNull(row.t2_out) ?? 0
-  }));
-
-  const positions = usdRows(ps.pos).map((row): FreedomOpenPosition => ({
-    ticker: textOr(readFirst(row, ['i', 'base_contract_code'])),
-    name: textOr(readFirst(row, ['name', 'name2', 'i']), 'Unknown instrument'),
-    quantity: numberOrNull(row.q) ?? 0,
-    currency: 'USD',
-    marketPrice: numberOrNull(row.mkt_price),
-    marketValue: numberOrNull(row.market_value),
-    averagePrice: numberOrNull(row.bal_price_a),
-    profitClose: numberOrNull(row.profit_close),
-    accountPositionId: numberOrNull(row.acc_pos_id)
-  }));
-
+  const accountRows = requireRows(ps.acc, 'balance');
+  const positionRows = requireRows(ps.pos, 'position');
+  const balances = accountRows.filter((row) => currencyOf(row, 'balance') === 'USD')
+    .map((row): FreedomCashBalance => {
+      const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+      if (amount === null) throw new Error('TradeNet USD account snapshot contains a balance without a valid amount.');
+      return {
+        currency: 'USD', amount,
+        forecastIn: numberOrNull(row.forecast_in) ?? 0,
+        forecastOut: numberOrNull(row.forecast_out) ?? 0,
+        t2In: numberOrNull(row.t2_in) ?? 0,
+        t2Out: numberOrNull(row.t2_out) ?? 0
+      };
+    });
+  const positions = positionRows.filter((row) => currencyOf(row, 'position') === 'USD')
+    .map((row): FreedomOpenPosition => {
+      const ticker = textOr(readFirst(row, ['i', 'base_contract_code'])).trim();
+      const quantity = numberOrNull(row.q);
+      if (!ticker || quantity === null) {
+        throw new Error('TradeNet USD account snapshot contains a position without a valid ticker or quantity.');
+      }
+      return {
+        ticker,
+        name: textOr(readFirst(row, ['name', 'name2', 'i']), 'Unknown instrument'),
+        quantity, currency: 'USD',
+        marketPrice: numberOrNull(row.mkt_price),
+        marketValue: numberOrNull(row.market_value),
+        averagePrice: numberOrNull(row.bal_price_a),
+        profitClose: numberOrNull(row.profit_close),
+        accountPositionId: numberOrNull(row.acc_pos_id)
+      };
+    });
   return { loaded: true, balances, positions };
 }

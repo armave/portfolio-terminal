@@ -413,11 +413,15 @@ describe('app localization', () => {
     expect(translateText('Scenario report', 'ru')).toBe('Отчёт по сценарию');
   });
 
-  it('localizes active-order refresh warnings', () => {
+  it('localizes active-order and execution-history refresh warnings', () => {
     expect(translateText('Freedom active orders are unavailable — existing position targets are unchanged.', 'ru'))
       .toBe('Активные заявки Freedom недоступны — целевые цены позиций оставлены без изменений.');
     expect(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.', 'ru'))
       .toBe('[Предупреждение Freedom] Не удалось обновить активные заявки; целевые цены позиций оставлены без изменений.');
+    expect(translateText('Freedom trade history is unavailable — saved executions are being retained.', 'ru'))
+      .toBe('История сделок Freedom недоступна — сохранённые исполнения остаются без изменений.');
+    expect(translateText('[Freedom Warning] Trade history refresh failed; retained executions may be out of date.', 'ru'))
+      .toBe('[Предупреждение Freedom] Не удалось обновить историю сделок; сохранённые исполнения могут быть устаревшими.');
   });
 
   it('localizes remaining broker and portfolio error messages', () => {

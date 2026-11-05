@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addBrokerEventListener } from './brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent } from './brokerEventBus';
 import { createFreedomAccountStreamAppRuntime } from './freedomAccountStreamAppRuntime';
 import {
+  hasFreedomAccountStreamSnapshot,
   isFreedomAccountStreamHealthy,
   resetFreedomAccountStreamHealth
 } from './freedomAccountStreamHealth';
@@ -148,4 +149,118 @@ describe('Freedom account stream app adapter', () => {
       runtime.stop();
     }
   });
+  
+  it('does not mark malformed portfolio or order pushes as valid stream snapshots', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const portfolioErrors: unknown[] = [];
+    const orderErrors: unknown[] = [];
+    const offPortfolioError = addBrokerEventListener('broker:account-info-error', (value) => portfolioErrors.push(value));
+    const offOrderError = addBrokerEventListener('broker:active-orders-error', (value) => orderErrors.push(value));
+    const runtime = createFreedomAccountStreamAppRuntime({
+      createTicket: async () => ({ ticket: 'j'.repeat(64) }),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      getCurrentSessionKey: () => 'admin:account-1',
+      isAdmin: () => true,
+      loadSavedBrokerExecutions: () => [],
+      getCurrentBrokerExecutions: () => []
+    });
+
+    try {
+      const start = runtime.start('admin:account-1');
+      await Promise.resolve();
+      const socket = FakeWebSocket.latest!;
+      socket.open();
+      socket.receive({ type: 'ready' });
+      await expect(start).resolves.toBe(true);
+      socket.receive({ type: 'portfolio', data: { data: { result: { ps: { loaded: true, acc: [], pos: 'invalid' } } } } });
+      socket.receive({ type: 'orders', data: { data: { orders: 'invalid' } } });
+
+      expect(hasFreedomAccountStreamSnapshot('admin:account-1', 'portfolio')).toBe(false);
+      expect(hasFreedomAccountStreamSnapshot('admin:account-1', 'orders')).toBe(false);
+      expect(portfolioErrors).toHaveLength(1);
+      expect(orderErrors).toHaveLength(1);
+    } finally {
+      runtime.stop();
+      offPortfolioError();
+      offOrderError();
+    }
+  });
+
+  it('does not apply live fills from a previous account session and removes its listener on stop', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    let currentSession = 'admin:account-1';
+    const executions: unknown[] = [];
+    const offTrades = addBrokerEventListener('broker:executed-trades', (value) => executions.push(value));
+    const runtime = createFreedomAccountStreamAppRuntime({
+      createTicket: async () => ({ ticket: 'k'.repeat(64) }),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      getCurrentSessionKey: () => currentSession,
+      isAdmin: () => true,
+      loadSavedBrokerExecutions: () => [],
+      getCurrentBrokerExecutions: () => []
+    });
+
+    try {
+      const start = runtime.start('admin:account-1');
+      await Promise.resolve();
+      const socket = FakeWebSocket.latest!;
+      socket.open();
+      socket.receive({ type: 'ready' });
+      await expect(start).resolves.toBe(true);
+      const staleFill = {
+        id: 'stale-fill', ticker: 'AAPL.US', side: 'BUY', quantity: 1, price: 100,
+        currency: 'USD', executedAt: '2026-11-03T10:00:00Z', tradeValue: 100, profit: 0,
+        marginFee: null, commission: 0, commissionCurrency: 'USD', raw: {}
+      };
+      currentSession = 'admin:account-2';
+      emitBrokerEvent('broker:live-order-fills', { sessionKey: 'admin:account-1', fills: [staleFill] });
+      expect(executions).toHaveLength(0);
+      currentSession = 'admin:account-1';
+      runtime.stop();
+      emitBrokerEvent('broker:live-order-fills', { sessionKey: 'admin:account-1', fills: [staleFill] });
+      expect(executions).toHaveLength(0);
+    } finally {
+      runtime.stop();
+      offTrades();
+    }
+  });
+
+  it('keeps valid orders but rejects malformed embedded fill rows', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const orders: unknown[] = [];
+    const tradeErrors: unknown[] = [];
+    const offOrders = addBrokerEventListener('broker:active-orders', (value) => orders.push(value));
+    const offTradeError = addBrokerEventListener('broker:executed-trades-error', (value) => tradeErrors.push(value));
+    const runtime = createFreedomAccountStreamAppRuntime({
+      createTicket: async () => ({ ticket: 'l'.repeat(64) }),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      getCurrentSessionKey: () => 'admin:account-1',
+      isAdmin: () => true,
+      loadSavedBrokerExecutions: () => [],
+      getCurrentBrokerExecutions: () => []
+    });
+
+    try {
+      const start = runtime.start('admin:account-1');
+      await Promise.resolve();
+      const socket = FakeWebSocket.latest!;
+      socket.open();
+      socket.receive({ type: 'ready' });
+      await expect(start).resolves.toBe(true);
+      socket.receive({
+        type: 'orders',
+        data: { data: {
+          orders: { order: [{ order_id: 'order-1', instr: 'AAPL.US' }] },
+          trades: { trade: [{ id: 'partial-fill', instr: 'AAPL.US', side: 'BUY', q: 1 }] }
+        } }
+      });
+      expect(orders).toHaveLength(1);
+      expect(tradeErrors).toHaveLength(1);
+    } finally {
+      runtime.stop();
+      offOrders();
+      offTradeError();
+    }
+  });
+
 });

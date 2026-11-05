@@ -188,6 +188,7 @@ const portfolioBrokerRefreshRuntime = createPortfolioBrokerRefreshRuntime();
 // Cached broker limit prices must win over default targets during asynchronous refreshes.
 let activeLimitSellTargets: Record<string, number> = {};
 let activeOrdersRefreshWarned = false;
+let executedTradesRefreshWarned = false;
 
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
@@ -244,12 +245,20 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
 });
 
 addBrokerEventListener('broker:executed-trades-error', () => {
-  if (currentAccountRole === 'admin') guestPortfolioAssignmentRuntime.setBrokerTradeHistoryLoaded(false);
+  if (currentAccountRole === 'admin') {
+    guestPortfolioAssignmentRuntime.setBrokerTradeHistoryLoaded(false);
+    if (!executedTradesRefreshWarned) {
+      executedTradesRefreshWarned = true;
+      showToast(translateText('Freedom trade history is unavailable — saved executions are being retained.'), 'warning');
+      logTerminal(translateText('[Freedom Warning] Trade history refresh failed; retained executions may be out of date.'));
+    }
+  }
 });
 
 addBrokerEventListener('broker:executed-trades', (trades) => {
   if (currentAccountRole !== 'admin') return;
   if (!Array.isArray(trades)) return;
+  executedTradesRefreshWarned = false;
   guestPortfolioAssignmentRuntime.setBrokerTradeHistoryLoaded(true);
   const current = portfolioStore.getState();
   // portfolioStore.setState persists synchronously. Reattach local fee allocations

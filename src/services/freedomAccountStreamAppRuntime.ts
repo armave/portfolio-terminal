@@ -1,7 +1,14 @@
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { emitBrokerEvent, addBrokerEventListener } from './brokerEventBus';
-import { normalizeFreedomPortfolio, normalizeFreedomActiveOrders } from './freedomAccountContracts';
-import { normalizeFreedomOrderFills, normalizeFreedomTrades } from './freedomTradeContracts';
+import {
+  isCompleteFreedomActiveOrdersResponse,
+  normalizeFreedomPortfolio,
+  normalizeFreedomActiveOrders
+} from './freedomAccountContracts';
+import {
+  normalizeFreedomTrades,
+  parseFreedomOrderFillsResponse
+} from './freedomTradeContracts';
 import { createFreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
 import {
@@ -24,38 +31,69 @@ export interface FreedomAccountStreamAppDependencies {
 export function createFreedomAccountStreamAppRuntime(
   dependencies: FreedomAccountStreamAppDependencies
 ): FreedomAccountStreamRuntime {
-  addBrokerEventListener('broker:live-order-fills', (fills) => {
-    if (!dependencies.isAdmin() || !Array.isArray(fills) || fills.length === 0) return;
-    const savedRows = normalizeFreedomTrades(dependencies.loadSavedBrokerExecutions());
-    const retainedRows = [...savedRows, ...dependencies.getCurrentBrokerExecutions()];
-    const knownIds = new Set(retainedRows.map((trade) => String(trade.id)));
-    const newFills = fills.filter((trade) => !knownIds.has(String(trade.id)));
-    if (newFills.length === 0) return;
-    const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(newFills, retainedRows);
-    const mergedTrades = mergeBrokerExecutionHistory(retainedRows, fillsWithPersistedFees);
-    emitBrokerEvent('broker:executed-trades', mergedTrades);
-  });
-
   let activeSessionKey = '';
+  let removeLiveFillsListener: (() => void) | null = null;
+
+  const attachLiveFillsListener = (): void => {
+    if (removeLiveFillsListener) return;
+    removeLiveFillsListener = addBrokerEventListener('broker:live-order-fills', (event) => {
+      if (
+        !dependencies.isAdmin() ||
+        event.sessionKey !== activeSessionKey ||
+        event.sessionKey !== dependencies.getCurrentSessionKey() ||
+        !Array.isArray(event.fills) ||
+        event.fills.length === 0
+      ) return;
+      const savedRows = normalizeFreedomTrades(dependencies.loadSavedBrokerExecutions());
+      const retainedRows = [...savedRows, ...dependencies.getCurrentBrokerExecutions()];
+      const knownIds = new Set(retainedRows.map((trade) => String(trade.id)));
+      const newFills = event.fills.filter((trade) => !knownIds.has(String(trade.id)));
+      if (newFills.length === 0) return;
+      const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(newFills, retainedRows);
+      const mergedTrades = mergeBrokerExecutionHistory(retainedRows, fillsWithPersistedFees);
+      emitBrokerEvent('broker:executed-trades', mergedTrades);
+    });
+  };
+
+  const detachLiveFillsListener = (): void => {
+    removeLiveFillsListener?.();
+    removeLiveFillsListener = null;
+  };
   const runtime = createFreedomAccountStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     getCurrentSessionKey: dependencies.getCurrentSessionKey,
     onPortfolio: (data, sessionKey) => {
       if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
-      const snapshot = normalizeFreedomPortfolio(data);
-      if (!snapshot.loaded) return false;
-      markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
-      emitBrokerEvent('broker:account-info', snapshot);
-      return true;
+      try {
+        const snapshot = normalizeFreedomPortfolio(data);
+        if (!snapshot.loaded) return false;
+        markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
+        emitBrokerEvent('broker:account-info', snapshot);
+        return true;
+      } catch {
+        // Do not mark an incomplete push as current. The REST recovery path
+        // may still provide a valid snapshot while retaining last-known-good state.
+        emitBrokerEvent('broker:account-info-error');
+        return false;
+      }
     },
     onOrders: (data, sessionKey) => {
       if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
+      if (!isCompleteFreedomActiveOrdersResponse(data)) {
+        emitBrokerEvent('broker:active-orders-error');
+        return false;
+      }
       const normalizedOrders = normalizeFreedomActiveOrders(data);
       markFreedomAccountStreamSnapshot(sessionKey, 'orders');
       emitBrokerEvent('broker:active-orders', normalizedOrders);
-      const fills = normalizeFreedomOrderFills(data);
-      if (fills.length > 0) emitBrokerEvent('broker:live-order-fills', fills);
+
+      const fillResponse = parseFreedomOrderFillsResponse(data);
+      if (fillResponse.present && !fillResponse.valid) {
+        emitBrokerEvent('broker:executed-trades-error');
+      } else if (fillResponse.fills.length > 0) {
+        emitBrokerEvent('broker:live-order-fills', { sessionKey, fills: fillResponse.fills });
+      }
       return true;
     },
     onStatus: (status, message) => {
@@ -69,14 +107,17 @@ export function createFreedomAccountStreamAppRuntime(
       if (!dependencies.isAdmin() || !sessionKey.startsWith('admin:')) {
         runtime.stop();
         activeSessionKey = '';
+        detachLiveFillsListener();
         return Promise.resolve(false);
       }
       activeSessionKey = sessionKey;
+      attachLiveFillsListener();
       return runtime.start(sessionKey);
     },
     stop: () => {
       runtime.stop();
       activeSessionKey = '';
+      detachLiveFillsListener();
     },
     isConnected: () => runtime.isConnected()
   };
