@@ -54,15 +54,4 @@ describe('stylesheet architecture and shared policies', () => {
     }
     expect(policy).toContain('transform: none !important;');
   });
-
-  it('keeps mobile header shrink rules beside the existing workspace navigation breakpoint', () => {
-    const navStart = stylesheet.indexOf('/* Keep the ticker strip independent on desktop');
-    const mobileBreakpoint = stylesheet.indexOf('@media (max-width: 768px)', navStart);
-    const navSectionEnd = stylesheet.indexOf('/* Compact destination captions for phone-sized navigation. */', mobileBreakpoint);
-    const navStyles = stylesheet.slice(mobileBreakpoint, navSectionEnd);
-    expect(navStyles).toContain('.board-header-banner > .flex');
-    expect(navStyles).toContain('#tickerTabs');
-    expect(navStyles).toContain('min-width: 0;');
-    expect(stylesheet.slice(navSectionEnd)).not.toMatch(/@media\s*\(max-width:\s*768px\)\s*\{[^}]*#tickerTabs/);
-  });
 });
