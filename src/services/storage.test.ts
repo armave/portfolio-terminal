@@ -408,9 +408,10 @@ describe('storage service', () => {
 
       expect(saved).toBe(true);
       expect(rejectedWhilePreviousJournalExists).toBe(false);
-      expect(databaseFixture.getCurrent()?.revision).toBe(1);
+      expect(databaseFixture.getCurrent()?.revision).toBe(2);
       const status = await flushPortfolioPersistence();
       expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
       expect(databaseFixture.getCurrent()?.history).toEqual({
         brokerExecutedTrades: executions,
         cashflows
