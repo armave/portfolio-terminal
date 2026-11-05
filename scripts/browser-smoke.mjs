@@ -398,12 +398,30 @@ async function assertResponsiveLayout(page, width) {
       documentWidth: document.documentElement.scrollWidth,
       mainBounds: mainBounds ? { left: mainBounds.left, right: mainBounds.right } : null,
       navBounds: navBounds ? { left: navBounds.left, right: navBounds.right } : null,
-      navControls
+      navControls,
+      overflowElements: Array.from(document.body.querySelectorAll('*'))
+        .map((element) => {
+          const bounds = element.getBoundingClientRect();
+          const styles = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id || '',
+            className: typeof element.className === 'string' ? element.className : '',
+            left: Math.round(bounds.left),
+            right: Math.round(bounds.right),
+            width: Math.round(bounds.width),
+            position: styles.position,
+            text: (element.textContent || '').trim().slice(0, 80)
+          };
+        })
+        .filter((element) => element.right > viewportWidth + 1 || element.left < -1)
+        .sort((left, right) => right.right - left.right)
+        .slice(0, 12)
     };
   });
 
   if (layout.documentWidth > layout.viewportWidth + 1) {
-    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport. Offenders: ${JSON.stringify(layout.overflowElements)}`);
   }
   if (!layout.mainBounds || layout.mainBounds.left < -1 || layout.mainBounds.right > layout.viewportWidth + 1) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
