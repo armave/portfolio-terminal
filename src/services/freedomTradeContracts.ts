@@ -101,6 +101,74 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
   });
 }
 
+/** Resolve an explicit execution collection; null means the provider envelope is incomplete. */
+export function extractFreedomTradeHistoryRows(response: unknown): unknown[] | null {
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const responseRecord = asRecord(response);
+  const responseData = responseRecord?.data;
+  const dataRecord = asRecord(responseData);
+  const root = dataRecord?.result ?? responseData ?? responseRecord?.result ?? response;
+  const rootRecord = asRecord(root);
+  const tradesValue = rootRecord?.trades;
+  const tradesRecord = asRecord(tradesValue);
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(tradesRecord?.trade)) return tradesRecord.trade;
+  if (Array.isArray(tradesValue)) return tradesValue;
+  if (Array.isArray(rootRecord?.items)) return rootRecord.items;
+  if (Array.isArray(rootRecord?.history)) return rootRecord.history;
+  if (Array.isArray(rootRecord?.data)) return rootRecord.data;
+  return null;
+}
+
+function isCompleteNormalizedExecution(trade: FreedomExecutedTrade): boolean {
+  return Boolean(
+    typeof trade.id === 'string' && trade.id.trim() &&
+    typeof trade.ticker === 'string' && trade.ticker.trim() &&
+    ['BUY', 'SELL', 'SELL_SHORT'].includes(String(trade.side).toUpperCase()) &&
+    typeof trade.quantity === 'number' && Number.isFinite(trade.quantity) && trade.quantity > 0 &&
+    typeof trade.price === 'number' && Number.isFinite(trade.price) && trade.price > 0 &&
+    typeof trade.currency === 'string' && trade.currency.trim() &&
+    typeof trade.executedAt === 'string' && trade.executedAt.trim()
+  );
+}
+
+/** An explicit empty collection is valid; a missing collection is not empty history. */
+export function isCompleteFreedomTradeHistoryResponse(
+  response: unknown,
+  normalizedTrades: readonly FreedomExecutedTrade[]
+): boolean {
+  const rows = extractFreedomTradeHistoryRows(response);
+  if (!rows || rows.length !== normalizedTrades.length) return false;
+  if (rows.some((row) => row === null || typeof row !== 'object' || Array.isArray(row))) return false;
+  return normalizedTrades.every(isCompleteNormalizedExecution);
+}
+
+/** Parse optional fills embedded in an order snapshot without accepting partial rows. */
+export function parseFreedomOrderFillsResponse(response: unknown): {
+  present: boolean;
+  valid: boolean;
+  fills: FreedomExecutedTrade[];
+} {
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const envelope = asRecord(response);
+  const data = asRecord(envelope?.data) ?? envelope;
+  const result = asRecord(data?.result);
+  const payload = result?.trades !== undefined ? result : data;
+  if (!payload || payload.trades === undefined) return { present: false, valid: true, fills: [] };
+  const trades = asRecord(payload.trades);
+  const rows = Array.isArray(trades?.trade) ? trades.trade
+    : Array.isArray(payload.trades) ? payload.trades
+      : null;
+  if (!rows) return { present: true, valid: false, fills: [] };
+  const fills = normalizeFreedomOrderFills(payload);
+  const valid = rows.length === fills.length &&
+    rows.every((row) => row !== null && typeof row === 'object' && !Array.isArray(row)) &&
+    fills.every(isCompleteNormalizedExecution);
+  return { present: true, valid, fills: valid ? fills : [] };
+}
+
 
 
 /**
