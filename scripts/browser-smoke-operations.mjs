@@ -477,7 +477,14 @@ try {
   if (!invalidStopOut) throw new Error('Settings accepted a stop-out threshold above maintenance equity.');
   await page.locator('#maintenanceMarginInput').fill('12.5');
   await page.locator('#stopOutRatioInput').fill('3');
+  await page.locator('#annualMarginRateInput').fill('18');
   await page.locator('#brokerRulesForm button[type="submit"]').click();
+  await page.waitForFunction(() => {
+    const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
+    return stored && Math.abs(stored.annualBorrowRate - 0.18) < 0.000001 &&
+      Math.abs(stored.maintenanceEquityRatio - 0.125) < 0.000001 &&
+      Math.abs(stored.stopOutRatio - 0.03) < 0.000001;
+  }, null, { timeout: 10_000 });
 
   // Per-account language is server-backed and is restored after a browser reload.
   await page.getByLabel('Account language').selectOption('ru');
@@ -498,6 +505,7 @@ try {
   // A guest sees the account preference and manual sync controls, never admin-only user,
   // backup or broker-rule management. The shared owner workspace is not read.
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
+  const userDirectoryReadsBeforeGuest = worker.count('GET', '/api/auth/users');
   await page.getByRole('button', { name: 'Выйти' }).click();
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
@@ -516,6 +524,12 @@ try {
   }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
     throw new Error('Guest sign-in did not hydrate its assigned projection.');
+  }
+  if (worker.count('GET', '/api/auth/users') !== userDirectoryReadsBeforeGuest) {
+    throw new Error('Guest sign-in requested the administrator user directory.');
+  }
+  if (await page.locator('#quoteRefreshInterval').inputValue() !== '15000') {
+    throw new Error('Guest refresh cadence inherited the administrator 30-second preference.');
   }
   if (worker.count('GET', '/api/state') !== sharedWorkspaceReadsBeforeGuest) {
     throw new Error('Guest sign-in attempted to read the administrator shared workspace.');
