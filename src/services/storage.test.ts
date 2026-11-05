@@ -29,7 +29,8 @@ import {
   resetPortfolioStateDatabaseForTesting,
   flushPortfolioPersistence,
   hydratePortfolioPersistence,
-  getPortfolioPersistenceStatus
+  getPortfolioPersistenceStatus,
+  getArchivedPortfolioRecoveryRecords
 } from './storage.ts';
 import type { PortfolioRecoveryArchiveRecord, PortfolioStateDatabase, PortfolioStateSnapshotRecord } from './portfolioStateDatabase';
 
@@ -468,6 +469,7 @@ describe('storage service', () => {
 
       const archived = databaseFixture.getRecoveryRecords();
       expect(archived).toHaveLength(5);
+      await expect(getArchivedPortfolioRecoveryRecords()).resolves.toHaveLength(5);
       expect(archived.map((entry) => entry.id).sort()).toEqual([
         'stale-commit-86',
         'stale-commit-87',
