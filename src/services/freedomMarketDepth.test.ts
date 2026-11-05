@@ -36,7 +36,7 @@ describe('TradeNet Market Depth accumulator', () => {
       dom: [{
         n: 1,
         i: 'GOOGL.US',
-        del: [{ k: 9, p: 291.29, q: 19, s: 'S' }],
+        del: [{ k: 9, q: 19, s: 'S' }],
         ins: [{ k: 0, p: 291.21, q: 25, s: 'S' }],
         upd: [{ k: 10, p: 291.11, q: 28, s: 'B' }],
         cnt: 20

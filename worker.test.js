@@ -1013,26 +1013,26 @@ describe('Freedom Market Depth snapshot', () => {
     expect(result.asks).toHaveLength(0);
   });
 
-  it('accumulates inserts, updates, and deletes in independent bid and ask position spaces', () => {
+  it('accumulates inserts, updates, and deletes across the combined bid and ask book', () => {
     const result = sanitizeFreedomMarketDepth([
       {
         i: 'AAPL.US', n: 1, cnt: 4,
         ins: [
           { k: 0, p: 101, q: 11, s: 'S' },
           { k: 1, p: 102, q: 22, s: 'S' },
-          { k: 0, p: 100, q: 10, s: 'B' },
-          { k: 1, p: 99, q: 20, s: 'B' }
+          { k: 2, p: 100, q: 10, s: 'B' },
+          { k: 3, p: 99, q: 20, s: 'B' }
         ]
       },
       {
         i: 'AAPL.US', n: 2, cnt: 5,
         ins: [{ k: 0, p: 100.5, q: 8, s: 'S' }],
-        upd: [{ k: 0, p: 100.25, q: 14, s: 'B' }]
+        upd: [{ k: 3, p: 100.25, q: 14, s: 'B' }]
       },
       {
         i: 'AAPL.US', n: 3, cnt: 4,
         del: [{ k: 2, s: 'S' }],
-        upd: [{ k: 0, p: 100.3, q: 15, s: 'B' }]
+        upd: [{ k: 2, p: 100.3, q: 15, s: 'B' }]
       }
     ], 'AAPL.US', 8000);
 
@@ -1050,8 +1050,8 @@ describe('Freedom Market Depth snapshot', () => {
         { position: 1, price: 101, quantity: 11 }
       ],
       bids: [
-        { position: 0, price: 100.3, quantity: 15 },
-        { position: 1, price: 99, quantity: 20 }
+        { position: 2, price: 100.3, quantity: 15 },
+        { position: 3, price: 99, quantity: 20 }
       ]
     });
   });
