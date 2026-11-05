@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { compareFreedomPortfolioSnapshots, normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+import {
+  compareFreedomPortfolioSnapshots,
+  isCompleteFreedomActiveOrdersResponse,
+  normalizeFreedomActiveOrders,
+  normalizeFreedomPortfolio
+} from './freedomAccountContracts';
 
 describe('normalizeFreedomPortfolio', () => {
   it('accepts only record rows, scopes the snapshot to USD and preserves broker field aliases', () => {
@@ -10,15 +15,12 @@ describe('normalizeFreedomPortfolio', () => {
             loaded: true,
             acc: [
               { curr: 'USD', s: '-125.50', currval: 999, forecast_in: '10', forecast_out: 2, t2_in: 3, t2_out: 4 },
-              { curr: 'EUR', s: 500 },
-              null,
-              'malformed'
+              { curr: 'EUR', s: 500 }
             ],
             pos: [
               { i: 'AAPL.US', name: 'Apple', q: '2.5', mkt_price: '190', market_value: '475', bal_price_a: 180, profit_close: '25', acc_pos_id: '77', curr: 'USD' },
               { base_contract_code: 'MSFT.US', name2: 'Microsoft', q: 3, mkt_price: true, curr: 'USD' },
-              { i: 'IGNORED', q: 1, curr: 'EUR' },
-              false
+              { i: 'IGNORED', q: 1, curr: 'EUR' }
             ]
           }
         }
@@ -68,16 +70,19 @@ describe('normalizeFreedomPortfolio', () => {
       .toThrow('not loaded yet');
   });
 
-  it('does not coerce boolean broker values into numeric balances or positions', () => {
-    const snapshot = normalizeFreedomPortfolio({
-      data: { result: { ps: {
-        loaded: true,
-        acc: [{ curr: 'USD', s: true, currval: false }],
-        pos: [{ curr: 'USD', i: 'AAPL', q: true, mkt_price: false }]
-      } } }
-    });
-    expect(snapshot.balances[0].amount).toBe(0);
-    expect(snapshot.positions[0]).toMatchObject({ quantity: 0, marketPrice: null });
+  it('rejects partial or malformed loaded portfolio snapshots instead of coercing missing values to zero', () => {
+    expect(() => normalizeFreedomPortfolio({
+      data: { result: { ps: { loaded: true, acc: [], pos: 'not-an-array' } } }
+    })).toThrow('snapshot is incomplete');
+    expect(() => normalizeFreedomPortfolio({
+      data: { result: { ps: { loaded: true, acc: [{ curr: 'USD', s: true, currval: false }], pos: [] } } }
+    })).toThrow('balance without a valid amount');
+    expect(() => normalizeFreedomPortfolio({
+      data: { result: { ps: { loaded: true, acc: [], pos: [{ curr: 'USD', i: 'AAPL', q: true, mkt_price: false }] } } }
+    })).toThrow('position without a valid ticker or quantity');
+    expect(() => normalizeFreedomPortfolio({
+      data: { result: { ps: { loaded: true, acc: [null], pos: [] } } }
+    })).toThrow('malformed balance row');
   });
 });
 
@@ -143,6 +148,21 @@ describe('compareFreedomPortfolioSnapshots', () => {
       { data: { result: { ps: { loaded: false } } } },
       snapshot(100, 1, 1)
     )).toThrow('not loaded yet');
+  });
+});
+
+
+describe('isCompleteFreedomActiveOrdersResponse', () => {
+  it('accepts an explicit empty collection and fully identified orders', () => {
+    expect(isCompleteFreedomActiveOrdersResponse({ orders: { order: [] } })).toBe(true);
+    expect(isCompleteFreedomActiveOrdersResponse({ data: { orders: { order: [{ order_id: 'order-1', instr: 'AAPL.US' }] } } })).toBe(true);
+  });
+  it('rejects missing collections and rows without identity or ticker', () => {
+    expect(isCompleteFreedomActiveOrdersResponse(null)).toBe(false);
+    expect(isCompleteFreedomActiveOrdersResponse({ data: { orders: 'invalid' } })).toBe(false);
+    expect(isCompleteFreedomActiveOrdersResponse({ orders: { order: [null] } })).toBe(false);
+    expect(isCompleteFreedomActiveOrdersResponse({ orders: { order: [{ instr: 'AAPL.US' }] } })).toBe(false);
+    expect(isCompleteFreedomActiveOrdersResponse({ orders: { order: [{ order_id: 'order-1' }] } })).toBe(false);
   });
 });
 
