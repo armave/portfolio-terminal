@@ -707,15 +707,6 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     // Pending journals are removed only after that checkpoint is also saved.
     storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
     hydratedPortfolioSnapshot = current;
-    // The checkpoint is now known to be committed in IndexedDB and verified
-    // locally. Reclaim full-size legacy mirrors; they duplicate these records
-    // and can prevent the next recovery journal from fitting in localStorage.
-    try {
-      removeLegacyPortfolioMirrors(storage);
-    } catch (error) {
-      console.warn('Could not reclaim committed legacy portfolio mirrors:', error);
-    }
-
     // Any older journal not consumed by the active commit chain is a preserved
     // recovery branch, not a reason to block the current portfolio. Archive its
     // full payload in a separate IndexedDB transaction before deleting its
