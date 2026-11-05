@@ -1,7 +1,7 @@
-export const PORTFOLIO_STATE_DATABASE_NAME = 'portfolio-terminal-state';
-export const PORTFOLIO_STATE_DATABASE_VERSION = 1;
-export const PORTFOLIO_STATE_OBJECT_STORE = 'snapshots';
-export const PORTFOLIO_STATE_CURRENT_KEY = 'current';
+const PORTFOLIO_STATE_DATABASE_NAME = 'portfolio-terminal-state';
+const PORTFOLIO_STATE_DATABASE_VERSION = 1;
+const PORTFOLIO_STATE_OBJECT_STORE = 'snapshots';
+const PORTFOLIO_STATE_CURRENT_KEY = 'current';
 
 export interface PortfolioStateSnapshotRecord {
   schemaVersion: 1;
@@ -19,7 +19,7 @@ export interface PortfolioStateSnapshotRecord {
   deviceActiveView: string | null;
 }
 
-export type PortfolioStateCommitResult = 'committed' | 'already-committed' | 'conflict';
+type PortfolioStateCommitResult = 'committed' | 'already-committed' | 'conflict';
 
 export interface PortfolioStateDatabase {
   readCurrent(): Promise<PortfolioStateSnapshotRecord | null>;
