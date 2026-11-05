@@ -455,13 +455,16 @@ try {
   if (await adminRow.getByRole('button', { name: 'Delete' }).count() !== 0) {
     throw new Error('Settings exposed a self-delete action for the signed-in administrator.');
   }
+  const userUpdateCountBeforeFinalAdmin = worker.count('POST', '/api/auth/users');
   await adminRow.getByLabel('Role for Operations Admin').selectOption('guest');
   await adminRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
-    () => worker.findCalls('POST', '/api/auth/users').some((call) => call.body.action === 'update' && call.body.role === 'guest'),
+    () => worker.findCalls('POST', '/api/auth/users').slice(userUpdateCountBeforeFinalAdmin)
+      .some((call) => call.body.action === 'update' && call.body.role === 'guest'),
     'final administrator role update request'
   );
-  const finalAdminCalls = worker.findCalls('POST', '/api/auth/users').filter((call) => call.body.action === 'update' && call.body.role === 'guest');
+  const finalAdminCalls = worker.findCalls('POST', '/api/auth/users').slice(userUpdateCountBeforeFinalAdmin)
+    .filter((call) => call.body.action === 'update' && call.body.role === 'guest');
   const finalAdminCall = finalAdminCalls[finalAdminCalls.length - 1];
   if (finalAdminCall.body.id !== 'admin-operations' || finalAdminCall.responseStatus !== 409) {
     throw new Error('Unexpected final-admin update request: ' + JSON.stringify({ body: finalAdminCall.body, responseStatus: finalAdminCall.responseStatus, users: worker.users.map(({ id, name, role }) => ({ id, name, role })) }));
