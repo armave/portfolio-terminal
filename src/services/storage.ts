@@ -66,7 +66,7 @@ function isPlainObject(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-export type PortfolioPersistenceStatusState = 'idle' | 'pending' | 'ready' | 'degraded' | 'conflict';
+type PortfolioPersistenceStatusState = 'idle' | 'pending' | 'ready' | 'degraded' | 'conflict';
 
 export interface PortfolioPersistenceStatus {
   state: PortfolioPersistenceStatusState;
