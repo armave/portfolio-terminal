@@ -2445,4 +2445,30 @@ describe('portfolio import boundary validation', () => {
       { ticker: 'AAPL', shares: 1, netProfit: 15 }
     ]);
   });
+
+  it('can stage a backup import without writing a duplicate recovery journal', () => {
+    const store = new PortfolioStore();
+    const previousStorage = new Map(sharedTestStorage);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.importState({
+      balance: -350,
+      positions: {
+        NVDA: {
+          ticker: 'NVDA',
+          shares: 2,
+          currentPrice: 120,
+          pt: 135,
+          commBuy: 0,
+          tranches: [{ qty: 2, price: 110 }]
+        }
+      }
+    }, false)).toBe(true);
+
+    expect(store.getState().balance).toBe(-350);
+    expect(store.getState().positions.NVDA.shares).toBe(2);
+    expect(sharedTestStorage).toEqual(previousStorage);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
 });
