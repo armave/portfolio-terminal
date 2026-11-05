@@ -240,7 +240,11 @@ function readPendingPortfolioSnapshots(storage: Storage): PendingPortfolioSnapsh
 }
 
 function readPortfolioSnapshotBase(storage: Storage): PortfolioStateSnapshotRecord | null {
-  if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) return null;
+  try {
+    if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) return null;
+  } catch (error) {
+    throw error;
+  }
   const atomic = readAtomicPortfolioSnapshot(storage);
   if (hydratedPortfolioSnapshot && (!atomic || hydratedPortfolioSnapshot.revision >= atomic.revision)) {
     return hydratedPortfolioSnapshot;
@@ -355,7 +359,10 @@ export function resetPortfolioStateDatabaseForTesting(): void {
   updatePortfolioPersistenceStatus('idle', 0, null);
 }
 
-function makeEmptyPortfolioSnapshot(): PortfolioStateSnapshotRecord {
+function makeEmptyPortfolioSnapshot(
+  brokerRules: unknown | null = null,
+  deviceActiveView: string | null = null
+): PortfolioStateSnapshotRecord {
   return {
     schemaVersion: 1,
     revision: 0,
@@ -365,9 +372,26 @@ function makeEmptyPortfolioSnapshot(): PortfolioStateSnapshotRecord {
     committedAt: 0,
     state: {},
     history: { brokerExecutedTrades: [], cashflows: [] },
-    brokerRules: null,
-    deviceActiveView: null
+    brokerRules,
+    deviceActiveView
   };
+}
+
+function readClearMarker(storage: Storage): { brokerRules: unknown | null; deviceActiveView: string | null } | null {
+  try {
+    const raw = storage.getItem(STORAGE_KEY_CLEAR_MARKER);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!isPlainObject(value)) return { brokerRules: null, deviceActiveView: null };
+    return {
+      brokerRules: value.brokerRules ?? null,
+      deviceActiveView: typeof value.deviceActiveView === 'string' ? value.deviceActiveView : null
+    };
+  } catch {
+    // Old timestamp-only markers still mean "clear"; they simply carry no
+    // settings metadata to preserve.
+    return { brokerRules: null, deviceActiveView: null };
+  }
 }
 
 function writeLegacyCompatibilityMirrors(
@@ -451,16 +475,19 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     const database = getPortfolioStateDatabase();
     let current = await database.readCurrent();
 
-    if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) {
+    const clearMetadata = readClearMarker(storage);
+    const clearing = clearMetadata !== null;
+    if (clearing) {
       await database.clear();
       storage.removeItem(STORAGE_KEY_ATOMIC_SNAPSHOT);
-      storage.removeItem(STORAGE_KEY_CLEAR_MARKER);
       hydratedPortfolioSnapshot = null;
       current = null;
     }
 
     if (!current) {
-      const baseline = readPortfolioSnapshotBase(storage) || makeEmptyPortfolioSnapshot();
+      const baseline = clearing
+        ? makeEmptyPortfolioSnapshot(clearMetadata?.brokerRules ?? null, clearMetadata?.deviceActiveView ?? null)
+        : readPortfolioSnapshotBase(storage) || makeEmptyPortfolioSnapshot();
       const seeded = await database.compareAndCommit(baseline, null);
       if (seeded === 'conflict') {
         updatePortfolioPersistenceStatus('conflict', baseline.revision,
@@ -508,6 +535,7 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
     storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
+    if (clearing) storage.removeItem(STORAGE_KEY_CLEAR_MARKER);
     hydratedPortfolioSnapshot = current;
     lastScheduledRevision = current.revision;
     committedKeys.forEach((key) => {
@@ -908,7 +936,15 @@ function persistPortfolioSnapshot(
   const storage = getBrowserStorage();
   if (!storage) return { success: false, stateChanged: false, savedAt: null };
 
-  const local = resolveLocalPortfolioSnapshot(storage);
+  let local: ReturnType<typeof resolveLocalPortfolioSnapshot>;
+  try {
+    local = resolveLocalPortfolioSnapshot(storage);
+  } catch (error) {
+    console.error('Failed to inspect the local portfolio recovery journal:', error);
+    updatePortfolioPersistenceStatus('degraded', hydratedPortfolioSnapshot?.revision ?? 0,
+      error instanceof Error ? error.message : String(error));
+    return { success: false, stateChanged: false, savedAt: null };
+  }
   if (local.conflict) {
     updatePortfolioPersistenceStatus('conflict', local.record?.revision ?? 0,
       'Conflicting local portfolio journal entries must be reconciled before another save.');
@@ -993,6 +1029,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   try {
     const storage = getBrowserStorage();
     if (!storage) return fallback;
+    if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) return fallback;
     const resolved = resolveLocalPortfolioSnapshot(storage);
     if (resolved.record) {
       if (resolved.conflict) {
@@ -1050,6 +1087,9 @@ export function saveSavedHistory(history: { brokerExecutedTrades?: unknown[]; ca
 export function loadSavedHistory(): ClosedHistorySnapshot {
   const storage = getBrowserStorage();
   if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
+  if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) {
+    return { brokerExecutedTrades: [], cashflows: [] };
+  }
 
   const resolved = resolveLocalPortfolioSnapshot(storage);
   if (resolved.record) {
