@@ -262,6 +262,21 @@ describe('app localization', () => {
     expect(translateText('Quote sources and observation times', 'ru')).toBe('Источники котировок и время наблюдения');
   });
 
+  it('localizes terminal trade confirmation and dynamic oversized-sale feedback', () => {
+    expect(translateText('Review this portfolio change:', 'ru')).toBe('Проверьте это изменение портфеля:');
+    expect(translateText('These are portfolio-model estimates only. No broker order is submitted.', 'ru'))
+      .toBe('Это оценка модели портфеля. Заявка брокеру не отправляется.');
+    expect(translateText('Verify quantities, prices, and fees before applying this change.', 'ru'))
+      .toBe('Перед применением проверьте количество, цены и комиссии.');
+    expect(translateText('Apply this change?', 'ru')).toBe('Применить это изменение?');
+    expect(translateText('Trade cancelled. The portfolio was not changed.', 'ru'))
+      .toBe('Сделка отменена. Портфель не изменён.');
+    expect(translateText('Duplicate terminal command ignored while the first submission is running.', 'ru'))
+      .toBe('Повторная команда проигнорирована: предыдущая ещё выполняется.');
+    expect(translateText('Cannot sell 6 AAPL; only 5 shares are available.', 'ru'))
+      .toBe('Нельзя продать 6 AAPL: доступно только 5 акций.');
+  });
+
   it('localizes cost-basis sale rejection messaging into Russian', () => {
     expect(translateText(
       'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
