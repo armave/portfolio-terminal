@@ -5,6 +5,29 @@ import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } f
 afterEach(() => setAppLanguage('en'));
 
 describe('app localization', () => {
+  it('localizes unavailable margin-risk assumptions and financial-input states', () => {
+    const expected: Array<[string, string]> = [
+      ['Margin risk estimate unavailable', 'Оценка маржинального риска недоступна'],
+      [
+        'Margin risk cannot be calculated because portfolio values are invalid. Check debt, holdings, and collateral.',
+        'Невозможно рассчитать маржинальный риск: финансовые значения портфеля некорректны. Проверьте долг, активы и обеспечение.'
+      ],
+      [
+        'Margin risk cannot be calculated because configured maintenance or stop-out thresholds are invalid. Review Broker Rules.',
+        'Невозможно рассчитать маржинальный риск: заданы некорректные пороги поддерживающей маржи или принудительного закрытия. Проверьте правила брокера.'
+      ],
+      [
+        'Margin risk calculation exceeded the supported numeric range. Check portfolio values and broker assumptions.',
+        'Диапазон чисел для расчёта маржинального риска превышен. Проверьте значения портфеля и параметры брокера.'
+      ],
+      ['Equity ratio unavailable', 'Доля собственного капитала не может быть рассчитана']
+    ];
+
+    for (const [english, russian] of expected) {
+      expect(translateText(english, 'ru'), english).toBe(russian);
+    }
+  });
+
   it('keeps authentication modal copy localized in Russian', () => {
     const authenticationCopy = [
       'Create administrator account',
