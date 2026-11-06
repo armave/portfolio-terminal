@@ -186,6 +186,7 @@ export function createPortfolioBrokerDataRuntime(
       }
 
       emit('broker:account-info', brokerSnapshot.data);
+      emit('broker:account-info-snapshot', brokerSnapshot);
       return true;
     })();
 
