@@ -192,7 +192,30 @@ The current `PortfolioStateDO` instance is both the account/auth directory and t
 3. **Public Worker:** authenticates the request, obtains a verified principal, resolves and authorizes the resource, then routes to the correct tenant data boundary.
 4. **Client:** caches only the currently authorized workspace/portfolio view and clears scoped caches when identity, tenant, workspace, portfolio, or permission revision changes.
 
-The exact Cloudflare topology (new Durable Object class/binding versus a carefully isolated per-tenant instance strategy) must be selected after checking Wrangler configuration, namespace/class migration behavior, data size/transaction needs, and current deployment bindings. Do not assume a new named Durable Object alone provides identity separation: the existing DO also contains session/user records, so moving a request to a different instance without a directory design would make session verification fail or duplicate identities.
+### Selected topology (PT-05C recommendation)
+
+The current `wrangler.jsonc` on both `main` and `dev` defines a single `PORTFOLIO_STATE_DO` binding for `PortfolioStateDO`, introduced by SQLite Durable Object migration tag `v1`. The Worker exports `PortfolioStateDO` from `state-store.js`; `.github/workflows/deploy-worker.yml` deploys on changes to `worker.js`, `state-store.js`, and `wrangler.jsonc`. The existing Durable Object contains both the global account/session directory and the legacy shared portfolio data.
+
+**Recommended target: retain the existing identity/legacy Durable Object and add a separate SQLite Durable Object class with one canonical instance per tenant.**
+
+1. Keep `PortfolioStateDO` and the existing `PORTFOLIO_STATE_DO` binding stable. It remains the identity/session authority, tenant/workspace/portfolio directory, membership/grant authority, and compatibility endpoint for the current shared owner workspace and existing guest projections while migration is in progress. Do not rename or repurpose its existing storage identity.
+2. Add a new `PortfolioTenantDO` class and `PORTFOLIO_TENANT_DO` binding in a later additive Wrangler migration. Resolve the tenant from the trusted directory first, then address its data object using `PORTFOLIO_TENANT_DO.idFromName(canonicalTenantId)`. The canonical ID must come from the directory record, never directly from an untrusted request body or URL.
+3. Store that tenant's workspace/portfolio metadata, encrypted portfolio snapshots, transaction/history records, revisions, and tenant audit events inside its tenant object. Keep tenant membership and grants in the identity/directory authority so access can be decided before data routing.
+4. The public Worker verifies the session, asks the directory authority to resolve and authorize the exact action/resource, and only then forwards the request to the canonical tenant object. The tenant object should accept only its defined internal protocol, verify a short-lived signed authorization assertion (user/session version, canonical tenant/workspace/portfolio IDs, action, policy version, issue/expiry time and nonce), and fail closed on invalid/expired assertions. The signing key is a dedicated Worker secret, not the Gateway bootstrap secret or any user credential.
+5. Apply the same authorization flow to snapshot/history reads and writes, exports, backups, reports, AI tool calls, scheduled monitoring, and stream-ticket issuance. Stream tickets are short-lived, single-use, resource-scoped and invalidated/revalidated when session or membership versions change.
+6. Keep existing `/api/state`, `/api/history`, `/api/margin-digest`, and `/api/guest-portfolio` behavior on the legacy path during migration. New tenant routes are separate and remain disabled until the directory, data object, key lifecycle, migration and rollback gates are complete.
+
+This per-tenant object strategy gives each tenant an independently serialized SQLite storage boundary while preserving one central identity authority. It is simpler and safer for the first multi-tenant release than moving authentication into every tenant object or creating a cross-object transaction problem. A very large tenant could eventually become a workload hotspot; partitioning by workspace should be considered only after measured load justifies the added consistency and migration complexity.
+
+### Wrangler/deployment migration requirements
+
+- Preserve migration `v1` exactly. Add a new additive migration tag (for example `v2`) that creates `PortfolioTenantDO`; never edit the already-applied `v1` migration.
+- Add `PORTFOLIO_TENANT_DO` as a new binding; do not redirect the existing `PORTFOLIO_STATE_DO` binding to the new class.
+- Export `PortfolioTenantDO` from the Worker entry module and ensure any new source file is included by the deployment workflow's path filters.
+- Deploy the class/binding before any request path can route to it. Keep the tenant route feature flag off until server tests, migration parity and recovery gates pass.
+- Worker/server-only changes follow the repository's direct-to-`main` deployment path. Because this is a persistent-storage class addition, require an explicit migration review, production backup/restore plan, and rollout/rollback checklist before deployment.
+
+This topology is the recommended architecture based on the currently checked-in Wrangler and Worker entry/deploy configuration. It does not mean the new class or binding has been deployed.
 
 ### Resource key model
 
