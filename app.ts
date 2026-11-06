@@ -2135,7 +2135,8 @@ async function executeCommandOnce(text: string, preserveAiRequest = false) {
       const applied = await applyAiPortfolioActionAfterConfirmation(
         parsed,
         confirmAiPortfolioAction,
-        applyPortfolioActions
+        applyPortfolioActions,
+        `ai-action:${requestId}`
       );
       if (!applied) logTerminal("[AI Action]: Cancelled.");
     } else if (parsed.intent === 'chat') {
