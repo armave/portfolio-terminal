@@ -69,6 +69,8 @@ export interface ReconcileBrokerPortfolioInput {
   /** Only pass a balance when its app-side meaning matches the broker field. */
   appBalances?: readonly BrokerReconciliationBalanceInput[];
   brokerStatus?: 'current' | 'stale' | 'unavailable';
+  /** Completeness of the app-side execution history used to build current app positions. */
+  appPositionStatus?: 'complete' | 'partial' | 'unavailable';
   now?: number;
   maxAgeMs?: number;
   quantityTolerance?: number;
@@ -234,8 +236,9 @@ export function reconcileBrokerPortfolio(
     : observedAt === null ? 'unknown' : 'fresh';
   const stale = input.brokerStatus === 'stale' || freshness === 'stale';
   const partial = snapshot.quality === 'partial' || snapshot.quality === 'empty';
+  const appIncomplete = input.appPositionStatus !== undefined && input.appPositionStatus !== 'complete';
   const confidence: 'confirmed' | 'provisional' =
-    snapshot.quality === 'complete' && freshness === 'fresh' && !stale
+    snapshot.quality === 'complete' && freshness === 'fresh' && !stale && !appIncomplete
       ? 'confirmed'
       : 'provisional';
   const findings: BrokerReconciliationFinding[] = [];
@@ -251,6 +254,11 @@ export function reconcileBrokerPortfolio(
   }
   if (observedAt === null) {
     warnings.push('The provider observation timestamp is unknown; comparisons are provisional.');
+  }
+  if (input.appPositionStatus === 'partial') {
+    warnings.push('App execution history is stale or refreshing; missing-position findings are suppressed.');
+  } else if (input.appPositionStatus === 'unavailable') {
+    warnings.push('App execution history is not loaded; missing-position findings are suppressed.');
   }
 
   if (stale) {
@@ -299,7 +307,7 @@ export function reconcileBrokerPortfolio(
     finding.type === 'unclassified_app_position' ||
     finding.type === 'unclassified_broker_position'
   );
-  const suppressedMissing = partial || hasUnclassifiedPositionRows;
+  const suppressedMissing = partial || appIncomplete || hasUnclassifiedPositionRows;
 
   for (const ticker of allTickers) {
     const appRows = [...appPositions.values()].filter(row => row.ticker === ticker);
@@ -397,7 +405,7 @@ export function reconcileBrokerPortfolio(
     finding.type === 'unclassified_app_balance' ||
     finding.type === 'unclassified_broker_balance'
   );
-  const status: BrokerReconciliationStatus = partial || hasUnclassifiedRows
+  const status: BrokerReconciliationStatus = partial || appIncomplete || hasUnclassifiedRows
     ? 'partial'
     : freshness === 'unknown'
       ? 'provisional'
