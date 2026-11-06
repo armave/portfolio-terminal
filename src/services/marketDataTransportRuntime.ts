@@ -4,6 +4,7 @@ import { normalizeYahooBatchResults, type YahooBatchQuoteResult } from './yahooQ
 import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
 import type { YahooDeepStockData } from './yahooDeepDataContracts';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
+import { retryMarketDataRequest } from './marketDataRetry';
 
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
 export interface NormalizedFallbackQuote {
@@ -19,6 +20,7 @@ export interface MarketDataTransportRuntimeDependencies {
   recordMetric: (metric: string, details?: Record<string, unknown>) => void;
   now?: () => number;
   warn?: (...args: unknown[]) => void;
+  sleep?: (delayMs: number) => Promise<void>;
 }
 export interface MarketDataTransportRuntime {
   fetchYahooQuoteData: (ticker: string, force?: boolean) => Promise<YahooBatchQuoteResult | null>;
@@ -44,7 +46,12 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     }
   };
   const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
-  const yahooQuoteCache = new Map<string, { expiresAt: number; data: YahooBatchQuoteResult }>();
+  const YAHOO_QUOTE_STALE_RETENTION_MS = 15 * 60 * 1000;
+  const yahooQuoteCache = new Map<string, {
+    expiresAt: number;
+    staleUntil: number;
+    data: YahooBatchQuoteResult;
+  }>();
   const yahooQuoteRequests = new Map<string, Promise<YahooBatchQuoteResult>>();
   const yahooQuoteQueue = new Map<string, {
     request: Promise<YahooBatchQuoteResult>;
@@ -66,10 +73,18 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const force = entries.some(([, pending]) => pending.force);
     const startedAt = now();
     try {
-      const response = await dependencies.proxyFetch(
-        'quote',
-        { symbol: symbols.join(',') },
-        force ? { cache: 'no-store' } : {}
+      const response = await retryMarketDataRequest(
+        () => dependencies.proxyFetch(
+          'quote',
+          { symbol: symbols.join(',') },
+          force ? { cache: 'no-store' } : {}
+        ),
+        {
+          attempts: 2,
+          baseDelayMs: 250,
+          maxDelayMs: 1_000,
+          ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+        }
       );
       const results = normalizeYahooBatchResults(response, symbols);
       const bySymbol = new Map<string, YahooBatchQuoteResult>();
@@ -83,11 +98,27 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       });
       for (const [symbol, pending] of entries) {
         const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
+        let accepted = data;
         if (!data.error && data.price && typeof data.price === 'object') {
-          setBoundedCache(yahooQuoteCache, symbol, { expiresAt: now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
+          const cachedAt = now();
+          setBoundedCache(yahooQuoteCache, symbol, {
+            expiresAt: cachedAt + YAHOO_QUOTE_CACHE_TTL_MS,
+            staleUntil: cachedAt + YAHOO_QUOTE_STALE_RETENTION_MS,
+            data
+          });
+        } else {
+          const lastKnownGood = yahooQuoteCache.get(symbol);
+          if (lastKnownGood && lastKnownGood.staleUntil > now()) {
+            accepted = lastKnownGood.data;
+            dependencies.recordMetric('stale_fallback', {
+              provider: 'yahoo', operation: 'quote_batch', symbol
+            });
+          } else {
+            yahooQuoteCache.delete(symbol);
+          }
         }
         if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        pending.resolvers.forEach(resolve => resolve(data));
+        pending.resolvers.forEach(resolve => resolve(accepted));
       }
     } catch (error) {
       dependencies.recordMetric('provider_failure', {
@@ -95,7 +126,16 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       });
       for (const [symbol, pending] of entries) {
         if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        pending.rejecters.forEach(reject => reject(error));
+        const lastKnownGood = yahooQuoteCache.get(symbol);
+        if (lastKnownGood && lastKnownGood.staleUntil > now()) {
+          dependencies.recordMetric('stale_fallback', {
+            provider: 'yahoo', operation: 'quote_batch', symbol
+          });
+          pending.resolvers.forEach(resolve => resolve(lastKnownGood.data));
+        } else {
+          yahooQuoteCache.delete(symbol);
+          pending.rejecters.forEach(reject => reject(error));
+        }
       }
     }
   };
@@ -108,7 +148,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       dependencies.recordMetric('cache_hit', { cache: 'yahoo_quote' });
       return Promise.resolve(cached.data);
     }
-    if (cached) yahooQuoteCache.delete(symbol);
+    if (cached && cached.staleUntil <= now()) yahooQuoteCache.delete(symbol);
     const existing = yahooQuoteRequests.get(symbol);
     if (!force && existing) {
       dependencies.recordMetric('inflight_dedup', { operation: 'yahoo_quote' });
@@ -174,10 +214,18 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
   ): Promise<NormalizedFallbackQuote> => {
     const symbol = normalizeYahooSymbol(ticker);
     if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
-    const responseData: unknown = await dependencies.proxyFetch(
-      'provider-quote',
-      { symbol, provider },
-      force ? { cache: 'no-store' } : {}
+    const responseData: unknown = await retryMarketDataRequest(
+      () => dependencies.proxyFetch(
+        'provider-quote',
+        { symbol, provider },
+        force ? { cache: 'no-store' } : {}
+      ),
+      {
+        attempts: 2,
+        baseDelayMs: 250,
+        maxDelayMs: 1_000,
+        ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+      }
     );
     const data = isFallbackQuoteRecord(responseData) ? responseData : {};
     const currentValue = provider === 'finnhub' ? data.c : data.close;
