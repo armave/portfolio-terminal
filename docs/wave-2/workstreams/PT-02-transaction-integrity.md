@@ -60,6 +60,18 @@ PT-01 financial contracts are merged. `PortfolioState.positions` remains canonic
 - [ ] Cloud snapshots, multi-device writes, legacy backup/restore, and revision conflicts have explicit migration/compatibility evidence.
 - [x] `PortfolioState.positions` remains the active-position source of truth; no ledger cutover is included.
 
+## Exact-head validation — 2026-11-06
+
+<badge>Candidate: `cbddd2908be9de126675a849e44939ef3eca7a54`</badge>
+
+All three required workflows completed successfully against the exact PR head and base `c7ae6a6d808c7645a9686e32983f0209ec613f88`:
+
+- [x] [Pull Request CI #2886](https://github.com/armave/portfolio-terminal/actions/runs/42174609605) — passed: TypeScript typecheck, **1,571 tests across 133 files**, production build, production browser smoke, desktop/mobile browser performance artifact, dead-code validation, full dependency audit (high-severity threshold), and production dependency audit.
+- [x] [Operations Browser Journey #214](https://github.com/armave/portfolio-terminal/actions/runs/42174609580) — passed: unit/Worker tests, build, production-browser account/Settings journey, dead-code validation, full/production dependency audits.
+- [x] [Trade Lifecycle Browser Smoke #179](https://github.com/armave/portfolio-terminal/actions/runs/42174609659) — passed: **134 tests across 5 files**, production build, and production-browser trade lifecycle including partial/full exits, oversell rejection, cash holding, margin debt settlement, reload recovery, and Closed History.
+
+These workflows validate deterministic fixtures and the checked-in production build. They do not establish live authenticated TradeNet behavior or cross-device/distributed idempotency.
+
 ## Required validation
 
 Vitest known-answer lifecycle tests for buy → add → partial sale → full close; fees; cash/debt and cash-holding operations; rollover; idempotent retry/reload; malformed import; corrections/reset; and persistence failure rollback.
