@@ -1,13 +1,6 @@
 import { emitBrokerEvent } from './brokerEventBus';
-import { normalizeFreedomOrderFills } from './freedomTradeContracts';
-import {
-  fetchFreedomTradeNetActiveOrders,
-  fetchFreedomTradeNetPositions,
-  fetchFreedomTradeNetTrades,
-  normalizeFreedomActiveOrders,
-  normalizeFreedomPortfolio,
-  normalizeFreedomTrades
-} from './api';
+import { brokerAdapterRegistry } from './brokerAdapters/registry';
+import type { BrokerAdapter } from '../types/broker';
 import {
   hasFreedomTradeHistoryBaseline,
   loadSavedHistory,
@@ -37,6 +30,8 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   getAccountId: () => string;
   /** Session-generation guard; all asynchronous boundaries recheck it. */
   isSessionCurrent: (session: SessionIdentityToken) => boolean;
+  /** Provider adapter can be replaced in tests or when another broker is enabled. */
+  brokerAdapter?: BrokerAdapter;
   /** Optional overrides keep provider/storage boundaries directly testable. */
   restoreGatewaySecret?: () => Promise<string>;
   fetchAccountInfo?: () => Promise<unknown>;
@@ -80,17 +75,22 @@ export function createPortfolioBrokerDataRuntime(
   const emit = dependencies.emit || emitBrokerEvent;
   const refreshOrders = dependencies.refreshOrders || refreshActiveOrders;
   const restoreSecret = dependencies.restoreGatewaySecret || restoreGatewaySecret;
-  const fetchAccountInfo = dependencies.fetchAccountInfo || fetchFreedomTradeNetPositions;
-  const normalizeAccountInfo = dependencies.normalizeAccountInfo || normalizeFreedomPortfolio;
-  const fetchExecutedTrades = dependencies.fetchExecutedTrades || fetchFreedomTradeNetTrades;
-  const normalizeExecutedTrades = dependencies.normalizeExecutedTrades || normalizeFreedomTrades;
+  const brokerAdapter = dependencies.brokerAdapter || brokerAdapterRegistry.get('freedom-tradenet');
+  const fetchAccountInfo = dependencies.fetchAccountInfo || brokerAdapter.fetchPortfolio;
+  const normalizeAccountInfo = dependencies.normalizeAccountInfo ||
+    ((response) => brokerAdapter.normalizePortfolio(response).data);
+  const fetchExecutedTrades = dependencies.fetchExecutedTrades || brokerAdapter.fetchExecutions;
+  const normalizeExecutedTrades = dependencies.normalizeExecutedTrades ||
+    ((response) => brokerAdapter.normalizeExecutions(response).data);
   const loadSavedBrokerExecutions = dependencies.loadSavedBrokerExecutions ||
-    (() => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades));
+    (() => brokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data);
   const hasHistoryBaseline = dependencies.hasHistoryBaseline || hasFreedomTradeHistoryBaseline;
   const markHistoryBaseline = dependencies.markHistoryBaseline || markFreedomTradeHistoryBaseline;
-  const fetchActiveOrders = dependencies.fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
-  const normalizeActiveOrders = dependencies.normalizeActiveOrders || normalizeFreedomActiveOrders;
-  const normalizeOrderFills = dependencies.normalizeOrderFills || normalizeFreedomOrderFills;
+  const fetchActiveOrders = dependencies.fetchActiveOrders || brokerAdapter.fetchActiveOrders;
+  const normalizeActiveOrders = dependencies.normalizeActiveOrders ||
+    ((response) => brokerAdapter.normalizeActiveOrders(response).data);
+  const normalizeOrderFills = dependencies.normalizeOrderFills ||
+    ((response) => brokerAdapter.normalizeExecutionFills(response).data);
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
