@@ -47,7 +47,11 @@ jobs:
 
       - name: Install browser smoke-test runner
         id: install_playwright
-        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+        run: PLAYWRIGHT_ROOT="$RUNNER_TEMP/portfolio-terminal-playwright"
+mkdir -p "$PLAYWRIGHT_ROOT"
+npm install --prefix "$PLAYWRIGHT_ROOT" --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+ln -s "$PLAYWRIGHT_ROOT/node_modules/playwright" node_modules/playwright
+ln -s "$PLAYWRIGHT_ROOT/node_modules/.bin/playwright" node_modules/.bin/playwright
 
       - name: Cache Playwright browsers
         uses: actions/cache@v6
