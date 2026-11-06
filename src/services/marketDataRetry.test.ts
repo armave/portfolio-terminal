@@ -7,7 +7,7 @@ describe('market-data retry policy', () => {
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { status: 429 }))
       .mockResolvedValue('ok');
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delayMs: number) => undefined);
     await expect(retryMarketDataRequest(request, { attempts: 3, baseDelayMs: 100, maxDelayMs: 500, sleep }))
       .resolves.toBe('ok');
     expect(request).toHaveBeenCalledTimes(3);
