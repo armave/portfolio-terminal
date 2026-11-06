@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const host = '127.0.0.1';
@@ -389,6 +390,159 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
   throw new Error('Timed out waiting for ' + label + '.');
 }
 
+async function captureAuthenticatedPortfolioPerformance(browser) {
+  const viewports = [
+    { name: 'desktop', width: 1440, height: 900 },
+    { name: 'mobile', width: 390, height: 844 }
+  ];
+  const runsPerViewport = 3;
+  const samples = [];
+
+  for (const viewport of viewports) {
+    for (let run = 1; run <= runsPerViewport; run += 1) {
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+        serviceWorkers: 'block'
+      });
+      const page = await context.newPage();
+      const pageErrors = [];
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+      const worker = await mockWorkerApi(page);
+      const startedAt = Date.now();
+
+      try {
+        await page.addInitScript(() => {
+          window.__ptAuthenticatedPerformance = { lcp: null, cls: 0 };
+          try {
+            new PerformanceObserver((list) => {
+              const entries = list.getEntries();
+              const latest = entries[entries.length - 1];
+              if (latest) window.__ptAuthenticatedPerformance.lcp = latest.startTime;
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+          } catch {
+            // LCP is unavailable in this browser; the report will retain null.
+          }
+          try {
+            new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                if (!entry.hadRecentInput) window.__ptAuthenticatedPerformance.cls += entry.value;
+              }
+            }).observe({ type: 'layout-shift', buffered: true });
+          } catch {
+            // CLS is unavailable in this browser; the report will retain zero.
+          }
+        });
+
+        await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(
+          () => document.querySelector('#authModalTitle')?.textContent?.includes('Create administrator account'),
+          null,
+          { timeout: 20_000 }
+        );
+        await submitAuth(page, {
+          name: 'Performance Admin',
+          password: 'performance-admin-password',
+          bootstrapSecret: 'operations-smoke-secret'
+        });
+        await waitForAuthOverlay(page, false);
+
+        const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
+        if (await combinedPortfolio.count()) await combinedPortfolio.click();
+
+        const emptyState = page.locator('#emptyStatePanel');
+        await emptyState.getByRole('button', { name: 'Quick Buy' }).waitFor({ state: 'visible', timeout: 10_000 });
+        await emptyState.getByRole('button', { name: 'Quick Buy' }).click();
+        const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
+        await terminalCommand.fill('bought 5 AAPL for 10');
+        let tradeConfirmationMessage = '';
+        page.once('dialog', async (dialog) => {
+          tradeConfirmationMessage = dialog.message();
+          await dialog.accept();
+        });
+        await terminalCommand.press('Enter');
+
+        const positionSaved = await page.waitForFunction(() => {
+          try {
+            const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+            const saved = raw ? JSON.parse(raw) : null;
+            return Number(saved?.positions?.AAPL?.shares) >= 5;
+          } catch {
+            return false;
+          }
+        }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
+        if (!positionSaved) {
+          throw new Error('Authenticated performance fixture failed to seed its local-only AAPL paper position.');
+        }
+        if (!/apply this change\?/i.test(tradeConfirmationMessage) ||
+            !/no broker order is submitted/i.test(tradeConfirmationMessage)) {
+          throw new Error('Performance seed command did not show the expected local-only confirmation.');
+        }
+
+        await waitForCondition(
+          () => worker.findCalls('GET', '/').some((call) => call.action === 'freedom-positions' && call.responseStatus === 200),
+          'synthetic broker positions snapshot'
+        );
+        await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
+        await page.waitForFunction(
+          () => document.querySelector('#marketInsightsTicker')?.textContent?.includes('AAPL'),
+          null,
+          { timeout: 20_000 }
+        );
+        await page.evaluate(() => new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        ));
+
+        const metrics = await page.evaluate(() => {
+          const navigation = performance.getEntriesByType('navigation')[0];
+          const paint = (name) => performance.getEntriesByName(name)[0]?.startTime ?? null;
+          const resources = performance.getEntriesByType('resource');
+          return {
+            firstContentfulPaintMs: paint('first-contentful-paint'),
+            domContentLoadedMs: navigation?.domContentLoadedEventEnd ?? null,
+            loadEventMs: navigation?.loadEventEnd ?? null,
+            responseStartMs: navigation?.responseStart ?? null,
+            totalResourceTransferBytes: resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
+            resourceCount: resources.length,
+            largestContentfulPaintMs: window.__ptAuthenticatedPerformance?.lcp ?? null,
+            cumulativeLayoutShift: window.__ptAuthenticatedPerformance?.cls ?? null
+          };
+        });
+        if (pageErrors.length) throw new Error('Authenticated performance browser errors: ' + pageErrors.join('; '));
+
+        samples.push({
+          run,
+          viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
+          authenticatedRole: 'admin',
+          syntheticPortfolio: { ticker: 'AAPL', shares: 5, entryPrice: 10 },
+          elapsedToPortfolioReadyMs: Date.now() - startedAt,
+          ...metrics
+        });
+      } finally {
+        await context.close();
+      }
+    }
+  }
+
+  await mkdir('artifacts', { recursive: true });
+  await writeFile('artifacts/authenticated-portfolio-performance.json', JSON.stringify({
+    schemaVersion: 1,
+    fixture: {
+      authentication: 'Application bootstrap flow with a deterministic mocked Worker API',
+      portfolioSeed: 'Application Quick Buy terminal command; local-only paper trade, no broker order',
+      brokerSnapshot: 'Deterministic mocked Freedom positions response',
+      liveBrokerVerification: false
+    },
+    methodology: {
+      runsPerViewport,
+      viewports,
+      readiness: 'Market Insights panel visible and selected ticker confirmed as AAPL',
+      timing: 'Elapsed wall-clock time from navigation start through authenticated seeded portfolio readiness'
+    },
+    samples
+  }, null, 2));
+  console.log('Authenticated synthetic-portfolio performance fixture captured:', samples.length, 'samples.');
+}
+
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
@@ -641,6 +795,8 @@ try {
     throw new Error('Guest session attempted to read the administrator shared workspace.');
   }
   if (pageErrors.length) throw new Error('Browser errors: ' + pageErrors.join('; '));
+
+  await captureAuthenticatedPortfolioPerformance(browser);
 
   console.log('Operations browser smoke passed: account creation, update, password reset, role changes, deletion, final-admin protection, language persistence, refresh cadence, broker-rule validation, and guest Settings isolation.');
 } finally {

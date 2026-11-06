@@ -68,6 +68,15 @@ jobs:
         id: operations_browser
         run: node scripts/browser-smoke-operations.mjs
 
+      - name: Upload authenticated synthetic-portfolio performance baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authenticated-portfolio-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/authenticated-portfolio-performance.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Validate dead code
         id: dead_code
         run: npm run validate:dead-code

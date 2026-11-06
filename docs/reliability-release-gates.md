@@ -203,7 +203,8 @@ Use the repository PR template to record:
 - [x] Run targeted trade lifecycle browser checks in the dedicated path-filtered workflow for PRs and merges to `dev` as well as `main`; avoid running the same stateful journey twice in general CI.
 - [x] Document privacy-safe telemetry dimensions and prohibited portfolio/user fields.
 - [x] Document authenticated TradeNet, real Market Depth, responsive/accessibility, recovery, and deployment release gates.
-- [ ] Verify an authenticated synthetic-portfolio benchmark using an application-supported seed/restore path; current attempts exposed a state-initialization/reconciliation mismatch, so no authenticated dashboard performance claim is made. This PR leaves this limitation explicit.
+- [x] Add an authenticated synthetic-portfolio browser benchmark using the application's bootstrap flow and local-only Quick Buy paper-trade seed; CI records three cold samples each at desktop and mobile with mocked Worker/broker responses. This does not certify live broker behavior.
+- [ ] Collect the first 10-run baseline set and review variance before setting thresholds. This PR leaves this limitation explicit.
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
