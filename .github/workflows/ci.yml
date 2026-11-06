@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - dev
       - main
   workflow_dispatch:
 
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -29,18 +30,23 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        id: install_dependencies
         run: npm ci
 
       - name: Typecheck
+        id: typecheck
         run: npm run typecheck
 
       - name: Run tests
+        id: tests
         run: npm test
 
       - name: Build production site
+        id: build
         run: npm run build
 
       - name: Install browser smoke-test runner
+        id: install_playwright
         run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
 
       - name: Cache Playwright browsers
@@ -53,16 +59,81 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Smoke-test the production app in a browser
+        id: browser_smoke
         run: node scripts/browser-smoke.mjs
 
       - name: Smoke-test the complete trade lifecycle in a browser
+        id: trade_lifecycle_smoke
         run: node scripts/browser-smoke-trades.mjs
 
+      - name: Capture desktop and mobile browser performance baseline
+        id: browser_performance
+        run: node scripts/browser-performance-baseline.mjs
+
+      - name: Upload browser performance baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-performance-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-performance-baseline.json
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Validate dead code
+        id: dead_code
         run: npm run validate:dead-code
 
       - name: Audit all dependencies, including build and test tooling
+        id: dependency_audit
         run: npm run audit:dependencies
+
       - name: Audit production dependency surface
+        id: production_audit
         run: npm run audit:production
 
+      - name: Publish exact-head validation evidence
+        if: always()
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
+          DEPENDENCIES_RESULT: ${{ steps.install_dependencies.outcome || 'not-run' }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome || 'not-run' }}
+          TESTS_RESULT: ${{ steps.tests.outcome || 'not-run' }}
+          BUILD_RESULT: ${{ steps.build.outcome || 'not-run' }}
+          PLAYWRIGHT_RESULT: ${{ steps.install_playwright.outcome || 'not-run' }}
+          BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome || 'not-run' }}
+          TRADE_SMOKE_RESULT: ${{ steps.trade_lifecycle_smoke.outcome || 'not-run' }}
+          PERFORMANCE_RESULT: ${{ steps.browser_performance.outcome || 'not-run' }}
+          DEAD_CODE_RESULT: ${{ steps.dead_code.outcome || 'not-run' }}
+          DEPENDENCY_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
+          PRODUCTION_AUDIT_RESULT: ${{ steps.production_audit.outcome || 'not-run' }}
+        run: |
+          TESTED_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          {
+            echo "## Exact-head validation evidence"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Tested checkout SHA | `$TESTED_CHECKOUT_SHA` |"
+            echo "| PR head SHA | `$PR_HEAD_SHA` |"
+            echo "| PR base SHA | `$PR_BASE_SHA` |"
+            echo "| Ref | `$GITHUB_REF` |"
+            echo "| Event | `$GITHUB_EVENT_NAME` |"
+            echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
+            echo
+            echo "| Validation | Outcome |"
+            echo "|---|---|"
+            echo "| npm ci | $DEPENDENCIES_RESULT |"
+            echo "| Typecheck | $TYPECHECK_RESULT |"
+            echo "| Vitest | $TESTS_RESULT |"
+            echo "| Production build | $BUILD_RESULT |"
+            echo "| Playwright install | $PLAYWRIGHT_RESULT |"
+            echo "| Production app browser smoke | $BROWSER_SMOKE_RESULT |"
+            echo "| Trade lifecycle browser smoke | $TRADE_SMOKE_RESULT |"
+            echo "| Browser performance baseline | $PERFORMANCE_RESULT |"
+            echo "| Dead-code validation | $DEAD_CODE_RESULT |"
+            echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
+            echo "| Production dependency audit | $PRODUCTION_AUDIT_RESULT |"
+            echo
+            echo "Browser performance baseline is an unauthenticated app-shell fixture with mocked API responses; it does not certify live broker behavior or authenticated dashboard performance."
+          } >> "$GITHUB_STEP_SUMMARY"
