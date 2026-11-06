@@ -397,6 +397,15 @@ async function measureAuthenticatedLargePortfolio(viewport, run) {
   try {
     await page.goto(appUrl, { waitUntil: 'load', timeout: 30_000 });
     await page.locator('#authModalTitle').waitFor({ state: 'visible', timeout: 20_000 });
+    const seededStateDiagnostics = await page.evaluate(() => {
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+      const state = raw ? JSON.parse(raw) : null;
+      return {
+        rawBytes: raw?.length || 0,
+        positionCount: Object.keys(state?.positions || {}).length,
+        keys: state ? Object.keys(state).sort() : []
+      };
+    });
     await page.locator('#authUserName').fill('Performance Admin');
     await page.locator('#authPassword').fill('performance-smoke-password');
     await page.locator('#bootstrapSecret').fill('performance-smoke-bootstrap-secret');
@@ -409,11 +418,22 @@ async function measureAuthenticatedLargePortfolio(viewport, run) {
     await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).click();
     await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 30_000 });
-    await page.waitForFunction((expected) => {
+    const hydratedStateDiagnostics = await page.evaluate(() => {
       const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
-      if (!raw) return false;
-      return Object.keys(JSON.parse(raw).positions || {}).length === expected;
-    }, syntheticPositionCount, { timeout: 20_000 });
+      const state = raw ? JSON.parse(raw) : null;
+      return {
+        rawBytes: raw?.length || 0,
+        positionCount: Object.keys(state?.positions || {}).length,
+        activeView: state?.activeView || null,
+        firstPosition: Object.keys(state?.positions || {})[0] || null,
+        bodyExcerpt: document.body.innerText.slice(0, 500)
+      };
+    });
+    if (hydratedStateDiagnostics.positionCount !== syntheticPositionCount) {
+      throw new Error(
+        `Authenticated portfolio fixture changed during startup: seeded=${JSON.stringify(seededStateDiagnostics)}, hydrated=${JSON.stringify(hydratedStateDiagnostics)}, workerActions=${worker.calls.map((call) => call.action || call.pathname).join(',')}`
+      );
+    }
     const metrics = await collectMetrics(page, startedAt);
     if (metrics.positionCount !== syntheticPositionCount) {
       throw new Error(`Authenticated fixture expected ${syntheticPositionCount} positions, found ${metrics.positionCount}.`);
