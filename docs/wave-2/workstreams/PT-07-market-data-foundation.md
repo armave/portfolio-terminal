@@ -59,8 +59,8 @@ Provider contract tests cover malformed/out-of-order/missing observations, ISO t
 
 ## Exact-head validation evidence
 
-- **Validated commit:** `ade2a04635b66f61b93d9a6a51f875cc999e93f0`
-- **Pull Request CI:** [run 42182900911](https://github.com/armave/portfolio-terminal/actions/runs/42182900911) — passed typecheck, 1,587+ Vitest suite, production build, browser smoke/performance, dead-code validation, and dependency audits.
+- **Validated commit:** `c96f41c8d603722caf92a6c3a68b4eb8c3984fd4`
+- **Pull Request CI:** [run 42182900911](https://github.com/armave/portfolio-terminal/actions/runs/42182900911) — passed typecheck, 1,591 Vitest tests, production build, browser smoke/performance, dead-code validation, and dependency audits.
 - **Operations browser journey:** [run 42182900947](https://github.com/armave/portfolio-terminal/actions/runs/42182900947) — passed.
 - **Trade lifecycle browser smoke:** [run 42182901043](https://github.com/armave/portfolio-terminal/actions/runs/42182901043) — passed.
 - **Manual authenticated-broker QA:** not performed. CI uses fixtures/mocks and does not certify live provider behavior.
