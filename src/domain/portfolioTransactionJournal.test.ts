@@ -233,14 +233,16 @@ describe('broker history audit events', () => {
       { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
       { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
-      { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' }
+      { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' },
+      { id: 'split-1', date: '2026-11-05', type: 'Stock Split', amount: 0, currency: 'USD' }
     ];
     const events = appendBrokerHistoryAuditEvents([], [], cashflows, Date.parse('2026-11-06T09:00:00Z'));
     expect(events.map((event) => event.type)).toEqual([
-      'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer'
+      'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'corporate-action'
     ]);
     expect(events[3].externalCashFlowAmount).toBe(500);
     expect(events[2].financingCost).toBe(3);
+    expect(events[6].externalReferenceId).toBe('split-1');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
     const replay = replayPortfolioTransactionJournal(events);
