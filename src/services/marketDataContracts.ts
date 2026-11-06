@@ -248,9 +248,12 @@ export function normalizeMarketQuoteObservation(
   let freshness: MarketFreshness = 'unknown';
   if (delayClass === 'delayed') freshness = 'delayed';
   else if (delayClass === 'indicative') freshness = 'indicative';
-  else if (delayClass === 'live' && observedAt !== null) {
+  else if (observedAt !== null) {
     const ageMs = now - observedAt;
-    freshness = ageMs < 0 || ageMs > maxAgeMs ? 'stale' : 'fresh';
+    // Age is objective even when the provider's delay classification is not.
+    // A recent observation is called fresh only when the provider confirms live data.
+    if (ageMs < 0 || ageMs > maxAgeMs) freshness = 'stale';
+    else if (delayClass === 'live') freshness = 'fresh';
   }
 
   const hasCurrency = identity.instrument.quoteCurrency !== null;
@@ -287,6 +290,10 @@ export interface MarketHistoryResult {
   points: MarketPricePoint[];
   quality: 'complete' | 'partial' | 'unavailable';
   issues: string[];
+  instrument?: InstrumentIdentity;
+  provider?: string;
+  receivedAt?: number;
+  interval?: string;
 }
 
 export interface MarketQuoteRequest {
@@ -318,7 +325,10 @@ export function normalizeMarketHistoryPoints(
   if (!Array.isArray(input)) {
     return { points: [], quality: 'unavailable', issues: ['Historical price response is not an array.'] };
   }
-  const maxPoints = Math.max(1, Math.min(20_000, Math.floor(options.maxPoints ?? 20_000)));
+  const requestedMaxPoints = options.maxPoints ?? 20_000;
+  const maxPoints = Number.isFinite(requestedMaxPoints)
+    ? Math.max(1, Math.min(20_000, Math.floor(requestedMaxPoints)))
+    : 20_000;
   const issues: string[] = [];
   const byTimestamp = new Map<number, MarketPricePoint>();
   for (const [index, item] of input.entries()) {
@@ -391,6 +401,59 @@ export interface FxRateProviderAdapter {
   ): Promise<{ rate: FxRate | null; issues: string[] }>;
 }
 
+export interface MarketHistoryResponseInput {
+  symbol: unknown;
+  provider: unknown;
+  receivedAt: unknown;
+  interval: unknown;
+  points: unknown;
+  exchange?: unknown;
+  assetType?: unknown;
+  currency?: unknown;
+}
+
+/**
+ * Normalizes a historical-price response and attaches source/instrument
+ * provenance. Invalid provenance downgrades the result rather than fabricating
+ * an exchange, currency, provider, or observation timestamp.
+ */
+export function normalizeMarketHistoryResponse(
+  input: MarketHistoryResponseInput,
+  options: { maxPoints?: number } = {}
+): MarketHistoryResult {
+  const history = normalizeMarketHistoryPoints(input.points, options);
+  const identity = normalizeInstrumentIdentity({
+    symbol: input.symbol,
+    exchange: input.exchange,
+    assetType: input.assetType,
+    quoteCurrency: input.currency
+  });
+  const provider = normalizeToken(input.provider);
+  const receivedAt = normalizeTimestamp(input.receivedAt);
+  const interval = normalizeToken(input.interval);
+  const issues = [...history.issues, ...identity.issues];
+
+  if (!provider) issues.push('Historical data provider is missing.');
+  if (receivedAt === null) issues.push('Historical data receipt timestamp is missing or invalid.');
+  if (!interval) issues.push('Historical data interval is missing.');
+
+  const quality = history.quality === 'unavailable' || history.points.length === 0
+    ? 'unavailable'
+    : history.quality === 'partial' || !identity.instrument || !provider || receivedAt === null || !interval
+      ? 'partial'
+      : 'complete';
+
+  return {
+    points: history.points,
+    quality,
+    issues,
+    ...(identity.instrument ? { instrument: identity.instrument } : {}),
+    ...(provider ? { provider } : {}),
+    ...(receivedAt !== null ? { receivedAt } : {}),
+    ...(interval ? { interval } : {})
+  };
+}
+
 /** Normalizes an explicit BASE_TO_QUOTE FX observation; no pair inversion is attempted. */
 export function normalizeFxRate(
   input: FxRateInput,
@@ -444,7 +507,19 @@ export function isFxRateUsableForConversion(
   now = Date.now(),
   maxAgeMs = 24 * 60 * 60 * 1000
 ): boolean {
-  if (rate.quality !== 'complete' || rate.observedAt === null || rate.receivedAt < rate.observedAt) return false;
+  if (
+    !rate ||
+    rate.quality !== 'complete' ||
+    rate.direction !== 'BASE_TO_QUOTE' ||
+    !normalizeCurrencyCode(rate.baseCurrency) ||
+    !normalizeCurrencyCode(rate.quoteCurrency) ||
+    rate.baseCurrency === rate.quoteCurrency ||
+    !Number.isFinite(rate.rate) || rate.rate <= 0 ||
+    !Number.isFinite(rate.receivedAt) ||
+    rate.observedAt === null || !Number.isFinite(rate.observedAt) ||
+    rate.receivedAt < rate.observedAt ||
+    !Number.isFinite(now) || !Number.isFinite(maxAgeMs) || maxAgeMs < 0
+  ) return false;
   const ageMs = now - rate.observedAt;
   return ageMs >= 0 && ageMs <= maxAgeMs;
 }
