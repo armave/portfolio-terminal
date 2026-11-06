@@ -463,6 +463,15 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 - Manual QA: no runtime/UI behavior changed. Authenticated live TradeNet validation and manual Market Depth reconnect/failure/no-data checks were not performed and are not claimed. Production deployment verification is not claimed by this `dev` merge.
 - Accepted follow-ups: current valuation does not perform FX conversion; unlike currencies must not be consolidated without a defined FX contract. Active/runtime margin accrual and legacy cloud-import rollover behavior remain separate pending an explicit compatibility decision. Both are recorded in the PT-01 contract document.
 
+**PT-03 — Broker adapter boundary and normalized contracts**
+- Issue: [#331](https://github.com/armave/portfolio-terminal/issues/331) — core adapter implementation is merged; issue remains open for live TradeNet verification and the separately scoped second-provider proof.
+- Implementation PR: [#352](https://github.com/armave/portfolio-terminal/pull/352) — merged into `dev`; validated head `74ceae916d45a39d30d6e32e34964ff615c545ab`.
+- Wave 1 corrective PR: [#354](https://github.com/armave/portfolio-terminal/pull/354) — open against `dev`; branch `fix/wave1-broker-snapshot-quality`.
+- Corrective scope: missing/malformed required USD balance amounts and position quantities are no longer coerced to zero; valid numeric zeroes remain valid; malformed or unclassifiable rows and missing collections produce a partial snapshot; partial REST/WebSocket snapshots are rejected before portfolio mutation and the last accepted snapshot is retained as stale.
+- Added regression coverage for invalid/genuine-zero values, partial REST snapshots, and partial live account-stream snapshots.
+- Exact-head workflow results for PR #354 are pending; update this evidence when all required workflows complete.
+- Manual QA: authenticated live TradeNet account-stream and Closed History verification remain outstanding. Mocked CI does not establish live provider behavior.
+
 ### Progress update format
 
 Update this document as tasks finish. For every PT item, record: issue link, implementation PR (or server deployment commit), merged commit, validation workflow links, manual QA status, and any accepted follow-up. Do not mark a task complete merely because its branch or PR exists.
