@@ -345,6 +345,15 @@ Each child task has a dedicated branch name and issue. Create the implementation
 | PT-17 | Reliability, performance & release gates | [#345](https://github.com/armave/portfolio-terminal/issues/345) | `feat/pt-17-reliability-release-gates` | Continuous; starts PT-01 |
 | PT-18 | Onboarding & investor education | [#346](https://github.com/armave/portfolio-terminal/issues/346) | `feat/pt-18-product-onboarding` | PT-05, PT-06, PT-08, PT-09, PT-13 |
 
+### PT-03 delivery record — 2026-11-06
+
+- **Implementation PR:** [#352 — Broker adapter contracts and Freedom TradeNet adapter](https://github.com/armave/portfolio-terminal/pull/352).
+- **Validated implementation head before this documentation update:** `c579fc45d72977e9d2ffcae4faf9d1ca68f44b59`.
+- **Automated evidence:** [Pull Request CI #42161135731](https://github.com/armave/portfolio-terminal/actions/runs/42161135731), [Operations Browser Journey #42161135888](https://github.com/armave/portfolio-terminal/actions/runs/42161135888), and [Trade Lifecycle Browser Smoke #42161135745](https://github.com/armave/portfolio-terminal/actions/runs/42161135745) all passed on that exact implementation head.
+- **Implemented:** provider-neutral account, balance, position, order, execution, cashflow, provenance, authentication, and error contracts; read-only Freedom TradeNet adapter and registry; adapter-backed admin refresh, authenticated account stream, startup history/cashflow recovery, Cash Cushion, Summary Metrics, and Closed History consumers.
+- **Manual verification still pending:** a real authenticated TradeNet session and live account-stream/Closed History verification. Automated browser/fixture workflows do not establish live broker behavior.
+- **Follow-up:** add a second broker adapter against the shared contracts; retain the existing Freedom API exports as compatibility entrypoints while remaining consumers migrate incrementally.
+
 ### Child PR completion protocol
 
 For each implementation workstream:

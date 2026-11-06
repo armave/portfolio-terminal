@@ -19,10 +19,12 @@ import {
 import { calculateMarginRiskMetrics } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
-import { normalizeFreedomTrades } from '../services/api';
+import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
+
+const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
 export function getUsableMarketPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -623,7 +625,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const unrealizedPct = usableMarketPrice !== null && avgPrice > 0 ? ((usableMarketPrice - avgPrice) / avgPrice) * 100 : null;
 
   const positionTranches = pos.tranches || [];
-  const persistedBrokerTrades = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const persistedBrokerTrades = freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data;
   const brokerTrades = Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length
     ? state.brokerExecutedTrades
     : persistedBrokerTrades;
