@@ -470,15 +470,19 @@ addBrokerEventListener('broker:active-orders-error', () => {
 
 addBrokerEventListener('broker:account-info-error', (issue) => {
   const current = portfolioStore.getState();
-  if (current.brokerAccountInfo) {
-    portfolioStore.setState({
-      brokerAccountInfo: {
-        ...current.brokerAccountInfo,
-        status: current.brokerAccountInfo.loaded ? 'stale' : 'unavailable',
-        lastRefreshIssue: issue
-      }
-    });
-  }
+  const previousAccountInfo = current.brokerAccountInfo;
+  portfolioStore.setState({
+    brokerAccountInfo: {
+      ...(previousAccountInfo || {
+        loaded: false,
+        balances: [],
+        positions: [],
+        receivedAt: issue?.receivedAt ?? Date.now()
+      }),
+      status: previousAccountInfo?.loaded ? 'stale' : 'unavailable',
+      lastRefreshIssue: issue
+    }
+  });
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
   if (issue?.quality === 'partial' && issue.warnings.length > 0) {
     logTerminal(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
