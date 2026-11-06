@@ -271,18 +271,18 @@ describe('transaction journal replay and parity', () => {
     const events = [
       createPortfolioTransactionEvent({
         type: 'trade.buy', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
-        quantity: 2, positionQuantityDelta: 2, cashDelta: -200
+        quantity: 2, positionQuantityDelta: 2, cashDelta: 0, marginDebtDelta: 200
       }),
       createPortfolioTransactionEvent({
         type: 'cash.adjustment', effectiveAt: draft.effectiveAt, cashDelta: 25
       }),
       createPortfolioTransactionEvent({
-        type: 'margin.adjustment', effectiveAt: draft.effectiveAt, marginDebtDelta: 10
+        type: 'margin.adjustment', effectiveAt: draft.effectiveAt, marginDebtDelta: -190
       })
     ];
     expect(verifyPortfolioTransactionParity(events, {
       positions: { AAPL: { shares: 2 } },
-      cashCushion: { freeCash: -175, holdings: [] },
+      cashCushion: { freeCash: 25, holdings: [] },
       balance: -10
     })).toEqual({ matches: true, discrepancies: [] });
   });
