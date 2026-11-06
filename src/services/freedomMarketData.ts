@@ -151,7 +151,13 @@ function findHistoryRows(payload: unknown, depth = 0): unknown[] | null {
 /** Fetches and normalizes the existing read-only daily TradeNet HLOC endpoint. */
 export async function fetchFreedomHistory(
   symbol: string,
-  options: { force?: boolean; currency?: string; exchange?: string; assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN' } = {}
+  options: {
+    force?: boolean;
+    signal?: AbortSignal;
+    currency?: string;
+    exchange?: string;
+    assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN';
+  } = {}
 ): Promise<MarketHistoryResult> {
   const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
   if (!normalized) throw new Error('A ticker symbol is required.');
@@ -163,7 +169,10 @@ export async function fetchFreedomHistory(
   const payload = await proxyFetch(
     'freedom-history',
     { symbol: ticker },
-    options.force ? { cache: 'no-store' } : {}
+    {
+      ...(options.force ? { cache: 'no-store' as RequestCache } : {}),
+      ...(options.signal ? { signal: options.signal } : {})
+    }
   );
   if (!payload || payload.ok !== true) {
     throw new Error(
