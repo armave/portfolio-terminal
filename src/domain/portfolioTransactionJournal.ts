@@ -10,6 +10,8 @@ import {
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
   'trade.buy',
   'trade.sell',
+  'cash-holding.buy',
+  'cash-holding.sell',
   'cash.adjustment',
   'cash.transfer',
   'dividend',
