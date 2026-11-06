@@ -246,6 +246,27 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
 });
 
+// Retain the adapter's provenance alongside the compatibility data-only event.
+// Keeping this separate avoids changing existing account-info consumers.
+addBrokerEventListener('broker:account-info-snapshot', (snapshot) => {
+  if (currentAccountRole !== 'admin') return;
+  const current = portfolioStore.getState();
+  const accountInfo = current.brokerAccountInfo;
+  if (!accountInfo?.loaded) return;
+  portfolioStore.setState({
+    brokerAccountInfo: {
+      ...accountInfo,
+      provider: snapshot.provider,
+      quality: snapshot.quality,
+      source: snapshot.source,
+      receivedAt: snapshot.receivedAt,
+      ...(snapshot.observedAt === undefined ? { observedAt: undefined } : { observedAt: snapshot.observedAt }),
+      warnings: [...snapshot.warnings],
+      status: 'current'
+    }
+  });
+});
+
 addBrokerEventListener('broker:executed-trades-error', () => {
   if (currentAccountRole === 'admin') guestPortfolioAssignmentRuntime.setBrokerTradeHistoryLoaded(false);
 });
@@ -450,7 +471,18 @@ addBrokerEventListener('broker:account-info-error', (issue) => {
   const current = portfolioStore.getState();
   if (current.brokerAccountInfo) {
     portfolioStore.setState({
-      brokerAccountInfo: { ...current.brokerAccountInfo, status: 'stale' }
+      brokerAccountInfo: {
+        ...current.brokerAccountInfo,
+        status: current.brokerAccountInfo.loaded ? 'stale' : 'unavailable',
+        ...(issue ? {
+          provider: issue.provider,
+          quality: issue.quality,
+          source: issue.source,
+          receivedAt: issue.receivedAt,
+          ...(issue.observedAt === undefined ? {} : { observedAt: issue.observedAt }),
+          warnings: [...issue.warnings]
+        } : {})
+      }
     });
   }
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
