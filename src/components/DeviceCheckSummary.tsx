@@ -181,7 +181,6 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'Unsupported': 'Не поддерживается',
   'Error': 'Ошибка',
   'Cloud storage': 'Облачное хранилище',
-  'Available': 'Доступно',
   'Connecting': 'Подключение',
   'Setup required': 'Требуется настройка',
   'Not checked': 'Не проверено',
