@@ -153,7 +153,7 @@ export async function fetchFreedomHistory(
   symbol: string,
   options: { force?: boolean; currency?: string; exchange?: string; assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN' } = {}
 ): Promise<MarketHistoryResult> {
-  const normalized = symbol.trim().toUpperCase();
+  const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
   if (!normalized) throw new Error('A ticker symbol is required.');
   const ticker = freedomSymbol(normalized);
   if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
