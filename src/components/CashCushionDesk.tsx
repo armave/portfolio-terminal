@@ -6,7 +6,8 @@ import type { ActiveTrancheMix, ActiveTrancheType, PortfolioState, QuoteDetails 
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
-import { listUsers, normalizeFreedomTrades, type AuthUser } from '../services/api';
+import { listUsers, type AuthUser } from '../services/api';
+import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
@@ -18,6 +19,8 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+
+const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -167,7 +170,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     undefined,
     () => {
       const savedTrades = shouldReadBrokerHistory
-        ? normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades)
+        ? freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data
         : [];
       const currentTrades = shouldReadBrokerHistory && Array.isArray(state.brokerExecutedTrades)
         ? state.brokerExecutedTrades
