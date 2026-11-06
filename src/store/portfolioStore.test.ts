@@ -2648,6 +2648,35 @@ describe('portfolio transaction journal integration', () => {
   });
 
 
+  it('deduplicates a confirmed cash-holding removal after the holding is gone', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 3, 120)).not.toBeNull();
+    const context = {
+      idempotencyKey: 'ai-action:remove-cash-1',
+      actor: { type: 'ai' as const },
+      source: 'ai-confirmed'
+    };
+
+    expect(store.removeCashStock('NVDA', context)).toBe(true);
+    expect(store.getState().cashCushion.holdings).toHaveLength(0);
+    const eventCount = store.getState().transactionEvents?.length ?? 0;
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.removeCashStock('NVDA', context)).toBe(true);
+    expect(reloaded.getState().cashCushion.holdings).toHaveLength(0);
+    expect(reloaded.getState().transactionEvents).toHaveLength(eventCount);
+    expect(reloaded.getState().transactionEvents?.find((event) => event.idempotencyKey === context.idempotencyKey))
+      .toMatchObject({
+        type: 'cash-holding.adjustment',
+        actor: { type: 'ai' },
+        source: 'ai-confirmed'
+      });
+    expect(reloaded.removeCashStock('NVDA', {
+      ...context,
+      idempotencyKey: context.idempotencyKey
+    })).toBe(true);
+  });
+
   it('journals tranche removal as a tracking correction without pretending it was a sale', () => {
     const store = new PortfolioStore();
     expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
