@@ -43,7 +43,7 @@ describe('Trades cache-first rendering', () => {
   it('discards delayed cloud-history and cashflow responses after the account session changes', () => {
     const source = readSource();
     expect(source).toContain('if (!active || !isSessionCurrent()) return');
-    expect(source).toContain('if (!isSessionCurrent()) return;\n      const fetchedRows = normalizeFreedomCashflowRows(response)');
+    expect(source).toContain('if (!isSessionCurrent()) return;\n      const fetchedRows = brokerAdapter.normalizeCashflows(response).data');
     expect(source).toContain('if (!saved || !isSessionCurrent()) return');
     expect(source).toContain('const isOperationCurrent = () => isSessionCurrent() && isOperationActive();');
     expect(source).toContain('if (!completed) cashflowSyncStarted.current = false');
@@ -102,7 +102,7 @@ describe('Trades cache-first rendering', () => {
   it('hydrates saved executions synchronously before the first component effect', () => {
     const source = readSource();
     expect(source).toContain('function loadInitialBrokerExecutions(): FreedomExecutedTrade[]');
-    expect(source).toContain('normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades)');
+    expect(source).toContain('normalizeBrokerExecutions(loadSavedHistory().brokerExecutedTrades)');
     expect(source).toContain('createBrokerExecutionHistoryState(loadInitialBrokerExecutions(), [], true)');
   });
 
@@ -136,7 +136,7 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
     expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
     expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
-    expect(source).toContain('fetchFreedomCashflows(fromDate)');
+    expect(source).toContain('brokerAdapter.fetchCashflows(fromDate)');
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
   });
 
