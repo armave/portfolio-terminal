@@ -61,7 +61,7 @@ describe('Freedom TradeNet broker adapter', () => {
     });
 
     expect(snapshot.quality).toBe('partial');
-    expect(snapshot.warnings).toContain('Some USD provider rows or required collections were unavailable.');
+    expect(snapshot.warnings).toContain('TradeNet USD position collection is unavailable.');
   });
 
   it('marks malformed required USD values partial and excludes those rows without inventing zero values', () => {
