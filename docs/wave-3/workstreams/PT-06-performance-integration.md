@@ -11,7 +11,7 @@ Turn the pure PT-06 calculation kernel into actual portfolio performance intelli
 
 ## Scope
 
-- Map PT-02 transaction journal/source events into external contributions/withdrawals and documented income/cost adjustments.
+- Consume the accepted PT-02 event contract for external contributions/withdrawals and documented income/cost adjustments.
 - Define how buys, sells, internal transfers, dividends, commissions, fees and margin interest affect returns; avoid double-counting adjustments already reflected in equity or transaction flows.
 - Build a valuation-history adapter with observation timestamp, receipt timestamp, provider, currency, completeness and quality.
 - Integrate PT-04 discrepancy quality and PT-07 instrument/history provenance into the input quality contract.
@@ -23,9 +23,10 @@ Turn the pure PT-06 calculation kernel into actual portfolio performance intelli
 ## Boundaries
 
 - The pure calculation contract and methodology from PR #359 remain authoritative.
+- Do not complete performance integration by reading raw broker rows as a second transaction schema; use PT-02's accepted event/flow mapping.
 - No silent change to Modified Dietz/XIRR definitions, UTC period bucket boundaries, ACT/365, precision, cashflow sign or no-double-count conventions.
 - No implicit historical FX conversion.
-- Missing valuation or event history must remain unavailable/incomplete; do not backfill with current price or a zero.
+- Missing valuation or event history remains unavailable/incomplete; do not backfill with current price or zero.
 - Do not modify portfolio accounting records to make the return series reconcile.
 
 ## Acceptance criteria
@@ -35,8 +36,8 @@ Turn the pure PT-06 calculation kernel into actual portfolio performance intelli
 - Deposits and withdrawals do not become investment profit.
 - Fees, commissions, dividends and interest are included once under the published methodology.
 - Performance labels show currency, period, as-of time and current/provisional/unavailable quality.
-- Security/account attribution reconciles to portfolio totals where data coverage permits and clearly marks unsupported coverage otherwise.
+- Security/account attribution reconciles to portfolio totals where data coverage permits and marks unsupported coverage otherwise.
 
 ## Required tests and QA
 
-Independent known-answer TWR/MWR fixtures sourced from actual event shapes; irregular deposits/withdrawals; staged buys/sells; dividends/fees/interest; partial and reordered history; negative/zero equity; duplicate events; missing observations; currency mismatch; UTC/Armenia boundary dates; attribution tolerance. Vitest for data adapters and UI/i18n parity. Browser validation in admin and read-only guest-compatible states, but do not claim independent guest tenancy before PT-05 cutover.
+Independent known-answer TWR/MWR fixtures from actual event shapes; irregular deposits/withdrawals; staged buys/sells; dividends/fees/interest; partial and reordered history; negative/zero equity; duplicate events; missing observations; currency mismatch; UTC/Armenia boundary dates; attribution tolerance. Vitest for adapters and UI/i18n parity. Browser validation in admin and read-only guest-compatible states, but do not claim independent guest tenancy before PT-05 cutover.

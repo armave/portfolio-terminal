@@ -11,7 +11,7 @@ Make instrument identity and provider data trustworthy across ticker changes, hi
 
 ## Scope
 
-- Maintain an auditable alias registry with effective dates for ticker rename, exchange migration, provider mapping and corporate-action identity. Historical records retain their original instrument identity and effective mapping.
+- Maintain an auditable alias registry with effective dates for ticker rename, exchange migration, provider mapping and corporate-action identity. Historical records retain original instrument identity and effective mapping.
 - Extend provider health/resilience to Freedom one-shot WebSocket quotes and remaining research endpoints: bounded TTL, coalescing, timeout/cancellation, retry/backoff, last-known-good fallback and explicit provider-health state.
 - Complete typed provider registration and add at least one additional historical-price adapter beside Freedom daily history.
 - Expand exchange calendars/session handling beyond US equities with exchange-local timezone, holidays, early closes and interval-aware freshness.
@@ -21,7 +21,7 @@ Make instrument identity and provider data trustworthy across ticker changes, hi
 
 ## Boundaries
 
-- The existing PT-07 instrument, quote/history and FX contracts are the base; extend additively.
+- Existing PT-07 instrument, quote/history and FX contracts are the base; extend additively.
 - Do not silently rewrite historical tickers, positions or transaction events after an alias/corporate action.
 - Do not enable portfolio FX aggregation without validated historical rates and a complete pair/direction/source/time/quality contract.
 - Keep market provider data separate from app-owned accounting facts.

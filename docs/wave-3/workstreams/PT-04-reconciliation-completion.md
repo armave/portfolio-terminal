@@ -3,17 +3,17 @@
 **Tracking issue:** #332  
 **Merged foundation:** PR #358  
 **Dedicated branch:** feat/wave3-pt04-reconciliation-completion  
-**Target:** dev client/domain PR; any Worker-only change follows the direct-to-main policy.
+**Target:** dev client/domain PR; Worker-only changes follow the direct-to-main policy.
 
 ## Objective
 
-Extend the merged read-only position-quantity comparison into a reproducible comparison of broker facts and app-owned accounting events. The user must be able to understand why the broker and app differ, what source evidence supports a discrepancy, and what requires review.
+Extend the merged read-only position-quantity comparison into a reproducible comparison of broker facts and app-owned accounting events. The user must understand why the broker and app differ, what evidence supports a discrepancy and what requires review.
 
 ## Scope
 
 - Match normalized broker executions to PT-02 transaction/event records using stable provider IDs and documented fallback keys.
 - Detect duplicate, missing, reordered, partially filled, reversed/corrected and timing-shifted executions without double-counting.
-- Compare cashflows, dividends, commissions, margin-interest allocations and relevant fees where source contracts support the value and currency.
+- Compare cashflows, dividends, commissions, margin-interest allocations and relevant fees where source contracts support value and currency.
 - Compare price/freshness and timestamp differences using PT-07 provider observation and receipt metadata.
 - Classify differences as timing, missing transaction, duplicate, fee/currency, price/freshness, unsupported broker data or unresolved.
 - Provide drill-down evidence with source, observation time, receipt time, amount/quantity, currency, provider ID and matching confidence.
@@ -22,11 +22,11 @@ Extend the merged read-only position-quantity comparison into a reproducible com
 
 ## Boundaries
 
-- Consume PT-02 transaction/journal and PT-03 broker-adapter contracts; do not redefine either.
+- Consume the completed PT-02 transaction/journal/correction semantics and PT-03 broker-adapter contracts; do not redefine either.
 - Consume PT-07 source/freshness and historical FX contracts; do not call provider APIs from the comparison engine.
 - Keep reconciliation deterministic and read-only by default.
 - Do not infer a missing fee as zero or coerce currency/amounts without evidence.
-- The recently removed portfolio-desk reconciliation card must not be reintroduced as a large status panel. The user preferred Device Check in Settings. This stream owns the reconciliation domain and a compact, task-focused discrepancy workflow only when it materially helps resolve a real difference.
+- The recently removed portfolio-desk reconciliation card must not be reintroduced as a large status panel. The Device Check in Settings remains separate. This stream owns reconciliation logic and a compact, task-focused discrepancy workflow only when it materially helps resolve a real difference.
 
 ## Acceptance criteria
 
@@ -43,4 +43,4 @@ Vitest known-answer fixtures for exact-ID match, fallback match, duplicates, par
 
 ## Branch ownership
 
-Own reconciliation matching, discrepancy taxonomy and review workflow only. Do not edit PT-02 event schema, PT-07 provider normalization, or PT-05 authorization model without coordinating the contract owner.
+Own reconciliation matching, discrepancy taxonomy and review workflow only. Do not edit PT-02 event schema, PT-07 provider normalization or PT-05 authorization model without coordinating the contract owner.

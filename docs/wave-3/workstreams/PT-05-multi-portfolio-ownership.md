@@ -9,6 +9,12 @@
 
 Move from one shared administrator workspace plus read-only guest projections toward explicit tenant, workspace, portfolio and membership ownership. Authorization must be enforced at the Worker/Durable Object boundary, not inferred from client UI state.
 
+## Hard prerequisite
+
+Issue #333 explicitly records that PT-05B still requires completion of the PT-02 transaction/audit ownership and mutation contracts in issue #330. Wave 3 includes PT-02 completion for this reason.
+
+PT-05 may work in parallel on tenant directory schemas, scoped identity, server authorization for safe reads and isolated topology proof. It must **not enable independent tenant financial writes or live cutover** until PT-02 acceptance, PT-16 security/key review, adversarial isolation tests and migration/rollback gates pass.
+
 ## Starting architecture decision
 
 The existing design proposes keeping the current PortfolioStateDO and migration v1 intact and introducing a separate PortfolioTenantDO / PORTFOLIO_TENANT_DO topology with one canonical tenant object per tenant, routed only after directory authorization. Treat the architecture document as the design baseline, not as implemented functionality.
@@ -22,7 +28,7 @@ The existing design proposes keeping the current PortfolioStateDO and migration 
 2. **Server authorization**
    - Authenticated principal and server-side directory resolve the tenant/portfolio for every read/write/backup/stream/share request.
    - Object-level checks cover IDs, alternate routes, batch APIs, export and stream-ticket issuance.
-   - Revocation must prevent new requests and close/revalidate active stream sessions.
+   - Revocation prevents new requests and closes/revalidates active stream sessions.
 3. **Storage and key lifecycle**
    - Tenant-scoped storage and per-tenant key ownership, rotation, recovery and deletion.
    - Signed internal authorization assertion or an equally strong Worker-to-DO trust boundary.
@@ -34,7 +40,7 @@ The existing design proposes keeping the current PortfolioStateDO and migration 
 5. **Client contract**
    - Minimal typed tenant/portfolio selection and membership state.
    - No permission decisions based solely on hidden controls.
-   - Existing admin/guest flows must remain compatible until migration and cutover are explicitly approved.
+   - Existing admin/guest flows remain compatible until migration and cutover are explicitly approved.
 
 ## Acceptance criteria
 
@@ -42,7 +48,7 @@ The existing design proposes keeping the current PortfolioStateDO and migration 
 - Worker tests prove object-level isolation for cross-tenant reads/writes, guessed IDs, batch requests, streams and revoked sessions.
 - Each tenant's data and encryption key are isolated; key rotation/recovery and deletion are tested.
 - Existing admin and guest users migrate without data loss or cross-tenant visibility; rollback is demonstrated.
-- Security review approves the model before independent editable portfolio writes are enabled.
+- PT-02 mutation/journal acceptance and PT-16 security review pass before independent financial writes are enabled.
 - Existing PortfolioState.positions and financial persistence behavior remain compatible.
 
 ## Required validation
