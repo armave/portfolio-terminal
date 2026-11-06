@@ -63,18 +63,18 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 `scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic fixtures. It captures three cold samples for two scenarios at desktop (1440×900) and mobile (390×844): (1) unauthenticated application shell and (2) authenticated administrator workspace seeded with 100 synthetic positions, 200 tranches, and 200 matching executed-buy rows.
 
-The CI artifact `browser-performance-baseline` (schema version 2) contains separate `unauthenticatedShell` and `authenticatedLargePortfolio` results for each viewport. Each sample records:
+The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. Each sample records:
 - first contentful paint (FCP);
 - largest contentful paint (LCP), where supported;
 - DOMContentLoaded and load event timing;
 - response-start timing;
 - browser-reported transferred resource bytes and resource count;
-- elapsed time to render the relevant readiness landmark (sign-in shell or authenticated terminal workspace);
+- time to render the unauthenticated sign-in/bootstrap shell;
 - cumulative layout shift (CLS), where supported;
-- long-task count/duration, DOM node count, visible navigation item count, rendered position/tranche counts, and page text length;
+
 - browser version, commit SHA, ref, and workflow run ID.
 
-The authenticated scenario uses a synthetic administrator and a local synthetic portfolio with 100 positions/200 tranches. Broker, account, cloud, and market API interactions remain deterministic mocked Worker responses; no real credentials, broker account, or investor data are used. This measures authenticated workspace hydration and rendering for a reproducible synthetic portfolio, but it does not measure real broker latency, production network/provider availability, or the distribution of actual customer portfolio sizes. A 3G/slow-network profile and additional portfolio-size tiers remain future extensions.
+The current fixture does not measure authenticated dashboard hydration, large-portfolio rendering, transaction-history scale, real broker latency, or production network/provider availability. A future authenticated performance fixture must first seed a portfolio through a verified application-supported persistence/import path and prove that the same 100-position/200-tranche state survives authenticated startup and broker reconciliation before its measurements are treated as valid.
 
 ### Baseline protocol
 
@@ -83,7 +83,7 @@ The authenticated scenario uses a synthetic administrator and a local synthetic 
 3. Compare medians and p75/p95 where sample volume permits; do not infer a percentile from three samples in one workflow.
 4. Investigate regressions against the same viewport, browser version, build mode, and fixture.
 5. Add thresholds only after a documented baseline and a review of normal CI variance. Keep noisy metrics informational until their variance is understood.
-6. Extend the fixture set with realistic larger transaction histories, additional portfolio-size tiers, and slower network profiles before setting SLOs for those journeys.
+6. Add a verified authenticated portfolio fixture, realistic transaction-history tiers, additional portfolio sizes, and slower network profiles before setting SLOs for those journeys.
 
 No numeric production SLO is declared by this PR. The first deliverable is a repeatable, attributable baseline rather than an arbitrary threshold.
 
@@ -198,13 +198,13 @@ Use the repository PR template to record:
 ## 7. Completion status for PT-17
 
 - [x] Define reliability indicators and a baseline-collection protocol without inventing SLO thresholds.
-- [x] Add repeatable desktop/mobile performance sampling for both the unauthenticated shell and an authenticated synthetic administrator workspace (100 positions, 200 tranches, 200 matching executed-trade rows), with commit-attributed CI artifact output.
+- [x] Add repeatable desktop/mobile unauthenticated-shell performance sampling with commit-attributed CI artifact output.
 - [x] Run the primary validation workflow on pull requests and merged `dev`/ `main` commits.
 - [x] Record exact candidate SHA, PR head/base, workflow URL, and individual check outcomes in the CI summary.
 - [x] Run targeted trade lifecycle browser checks in the dedicated path-filtered workflow for PRs and merges to `dev` as well as `main`; avoid running the same stateful journey twice in general CI.
 - [x] Document privacy-safe telemetry dimensions and prohibited portfolio/user fields.
 - [x] Document authenticated TradeNet, real Market Depth, responsive/accessibility, recovery, and deployment release gates.
-- [x] Verify the authenticated synthetic-portfolio benchmark and upload the performance artifact in exact-head CI.
+- [ ] Verify an authenticated synthetic-portfolio benchmark using an application-supported seed/restore path; current attempts exposed a state-initialization/reconciliation mismatch, so no authenticated dashboard performance claim is made.
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
