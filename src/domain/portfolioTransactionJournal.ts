@@ -13,6 +13,10 @@ const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
   'cash-holding.buy',
   'cash-holding.sell',
   'cash-holding.adjustment',
+  'cash.deposit',
+  'cash.withdrawal',
+  'broker.execution',
+  'portfolio.reconciliation',
   'position.adjustment',
   'history.correction',
   'portfolio.reset',
@@ -94,6 +98,9 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     value.unitPrice,
     value.grossAmount,
     value.fees,
+    value.externalCashFlowAmount,
+    value.positionQuantityDelta,
+    value.cashHoldingQuantityDelta,
     value.financingCost,
     value.cashDelta,
     value.marginDebtDelta,
@@ -103,6 +110,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.quantity !== undefined && Number(value.quantity) <= 0) return false;
   if (value.fees !== undefined && Number(value.fees) < 0) return false;
   if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
+  if (value.externalReferenceId !== undefined && (typeof value.externalReferenceId !== 'string' || !value.externalReferenceId.trim())) return false;
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -164,6 +172,10 @@ export function createPortfolioTransactionEvent(
     ...(draft.unitPrice !== undefined ? { unitPrice: draft.unitPrice } : {}),
     ...(draft.grossAmount !== undefined ? { grossAmount: draft.grossAmount } : {}),
     ...(draft.fees !== undefined ? { fees: draft.fees } : {}),
+    ...(draft.externalCashFlowAmount !== undefined ? { externalCashFlowAmount: draft.externalCashFlowAmount } : {}),
+    ...(draft.externalReferenceId ? { externalReferenceId: draft.externalReferenceId } : {}),
+    ...(draft.positionQuantityDelta !== undefined ? { positionQuantityDelta: draft.positionQuantityDelta } : {}),
+    ...(draft.cashHoldingQuantityDelta !== undefined ? { cashHoldingQuantityDelta: draft.cashHoldingQuantityDelta } : {}),
     ...(draft.financingCost !== undefined ? { financingCost: draft.financingCost } : {}),
     ...(draft.cashDelta !== undefined ? { cashDelta: draft.cashDelta } : {}),
     ...(draft.marginDebtDelta !== undefined ? { marginDebtDelta: draft.marginDebtDelta } : {}),
@@ -193,8 +205,17 @@ export function appendPortfolioTransactionEvent(
   if (current.some((existing) => isPortfolioTransactionEvent(existing) && existing.id === event.id)) {
     throw new Error(`Portfolio transaction event id "${event.id}" already exists.`);
   }
-  if (event.idempotencyKey && hasPortfolioTransactionIdempotencyKey(current, event.idempotencyKey)) {
-    return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
+  if (event.idempotencyKey) {
+    const duplicate = current.find((existing) =>
+      isPortfolioTransactionEvent(existing) && existing.idempotencyKey === event.idempotencyKey
+    );
+    if (duplicate) {
+      if (duplicate.type !== event.type ||
+        duplicate.requestFingerprint !== event.requestFingerprint) {
+        throw new Error(`Portfolio transaction idempotency key "${event.idempotencyKey}" conflicts with a different command.`);
+      }
+      return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
+    }
   }
   return {
     events: freezePortfolioTransactionEventList([...current, event]),
@@ -255,4 +276,138 @@ export function mergePortfolioTransactionEvents(
   }
 
   return freezePortfolioTransactionEventList(merged);
+}
+
+export interface PortfolioTransactionReplayState {
+  positions: Record<string, number>;
+  cashHoldings: Record<string, number>;
+  freeCash: number;
+  marginDebt: number;
+}
+
+export interface PortfolioTransactionParityResult {
+  matches: boolean;
+  discrepancies: Array<{
+    field: 'position' | 'cash-holding' | 'free-cash' | 'margin-debt';
+    ticker?: string;
+    replayed: number;
+    canonical: number;
+    delta: number;
+  }>;
+}
+
+export function replayPortfolioTransactionJournal(
+  events: readonly PortfolioTransactionEvent[]
+): PortfolioTransactionReplayState {
+  if (!isPortfolioTransactionEventList(events)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+  const replay: PortfolioTransactionReplayState = {
+    positions: {},
+    cashHoldings: {},
+    freeCash: 0,
+    marginDebt: 0
+  };
+
+  for (const event of events) {
+    if (event.type === 'portfolio.reset') {
+      replay.positions = {};
+      replay.cashHoldings = {};
+      replay.freeCash = 0;
+      replay.marginDebt = 0;
+      continue;
+    }
+
+    const ticker = event.ticker?.trim().toUpperCase();
+    const positionDelta = event.positionQuantityDelta ??
+      (event.type === 'trade.buy' ? Number(event.quantity) || 0 :
+        event.type === 'trade.sell' || event.type === 'position.adjustment'
+          ? -(Number(event.quantity) || 0) : 0);
+    const cashHoldingDelta = event.cashHoldingQuantityDelta ??
+      (event.type === 'cash-holding.buy' ? Number(event.quantity) || 0 :
+        event.type === 'cash-holding.sell' || event.type === 'cash-holding.adjustment'
+          ? -(Number(event.quantity) || 0) : 0);
+
+    if (ticker && positionDelta !== 0) {
+      const next = (replay.positions[ticker] || 0) + positionDelta;
+      if (Math.abs(next) < 1e-8) delete replay.positions[ticker];
+      else replay.positions[ticker] = next;
+    }
+    if (ticker && cashHoldingDelta !== 0) {
+      const next = (replay.cashHoldings[ticker] || 0) + cashHoldingDelta;
+      if (Math.abs(next) < 1e-8) delete replay.cashHoldings[ticker];
+      else replay.cashHoldings[ticker] = next;
+    }
+    // External broker cashflows and executions are evidence only. They do not
+    // post to local free cash/debt or manufacture app-owned position lots.
+    if (event.type !== 'broker.execution' &&
+      event.type !== 'cash.deposit' &&
+      event.type !== 'cash.withdrawal' &&
+      event.type !== 'dividend' &&
+      event.type !== 'fee' &&
+      event.type !== 'cash.transfer') {
+      replay.freeCash += Number(event.cashDelta) || 0;
+      replay.marginDebt += Number(event.marginDebtDelta) || 0;
+    }
+  }
+
+  Object.keys(replay.positions).forEach((ticker) => {
+    if (Math.abs(replay.positions[ticker]) < 1e-8) delete replay.positions[ticker];
+  });
+  Object.keys(replay.cashHoldings).forEach((ticker) => {
+    if (Math.abs(replay.cashHoldings[ticker]) < 1e-8) delete replay.cashHoldings[ticker];
+  });
+  replay.freeCash = Math.abs(replay.freeCash) < 1e-8 ? 0 : replay.freeCash;
+  replay.marginDebt = Math.abs(replay.marginDebt) < 1e-8 ? 0 : replay.marginDebt;
+  return replay;
+}
+
+export function verifyPortfolioTransactionParity(
+  events: readonly PortfolioTransactionEvent[],
+  canonical: {
+    positions?: Record<string, { shares?: number }>;
+    cashCushion?: { freeCash?: number; holdings?: Array<{ ticker: string; shares: number }> };
+    balance?: number;
+  },
+  tolerance = 1e-6
+): PortfolioTransactionParityResult {
+  const replay = replayPortfolioTransactionJournal(events);
+  const discrepancies: PortfolioTransactionParityResult['discrepancies'] = [];
+  const positionTickers = new Set([
+    ...Object.keys(replay.positions),
+    ...Object.keys(canonical.positions || {})
+  ]);
+  for (const rawTicker of positionTickers) {
+    const ticker = rawTicker.toUpperCase();
+    const replayed = Number(replay.positions[ticker]) || 0;
+    const canonicalValue = Number(canonical.positions?.[ticker]?.shares) || 0;
+    if (Math.abs(replayed - canonicalValue) > tolerance) {
+      discrepancies.push({ field: 'position', ticker, replayed, canonical: canonicalValue, delta: canonicalValue - replayed });
+    }
+  }
+
+  const canonicalCashHoldings = new Map<string, number>();
+  for (const holding of canonical.cashCushion?.holdings || []) {
+    const ticker = holding.ticker.trim().toUpperCase();
+    canonicalCashHoldings.set(ticker, (canonicalCashHoldings.get(ticker) || 0) + (Number(holding.shares) || 0));
+  }
+  const holdingTickers = new Set([...Object.keys(replay.cashHoldings), ...canonicalCashHoldings.keys()]);
+  for (const ticker of holdingTickers) {
+    const replayed = Number(replay.cashHoldings[ticker]) || 0;
+    const canonicalValue = Number(canonicalCashHoldings.get(ticker)) || 0;
+    if (Math.abs(replayed - canonicalValue) > tolerance) {
+      discrepancies.push({ field: 'cash-holding', ticker, replayed, canonical: canonicalValue, delta: canonicalValue - replayed });
+    }
+  }
+
+  const canonicalCash = Math.max(0, Number(canonical.cashCushion?.freeCash) || 0);
+  if (Math.abs(replay.freeCash - canonicalCash) > tolerance) {
+    discrepancies.push({ field: 'free-cash', replayed: replay.freeCash, canonical: canonicalCash, delta: canonicalCash - replay.freeCash });
+  }
+
+  const canonicalDebt = Math.abs(Number(canonical.balance) || 0);
+  if (Math.abs(replay.marginDebt - canonicalDebt) > tolerance) {
+    discrepancies.push({ field: 'margin-debt', replayed: replay.marginDebt, canonical: canonicalDebt, delta: canonicalDebt - replay.marginDebt });
+  }
+  return { matches: discrepancies.length === 0, discrepancies };
 }
