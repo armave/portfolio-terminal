@@ -1629,7 +1629,7 @@ export class PortfolioStore {
           type: 'cash-holding.adjustment',
           effectiveAt: context?.effectiveAt ?? Date.now(),
           ticker: clean,
-          quantity,
+          ...(quantity > 0 ? { quantity } : {}),
           note: 'Cash-cushion holding removed from tracking; no sale proceeds or cash settlement were recorded.'
         }
       };
@@ -1854,7 +1854,7 @@ export class PortfolioStore {
           type: 'history.correction',
           effectiveAt: context?.effectiveAt ?? Date.now(),
           ...(ticker ? { ticker } : {}),
-          ...(quantity !== undefined ? { quantity } : {}),
+          ...(quantity !== undefined && quantity > 0 ? { quantity } : {}),
           note: `Closed-trade history record ${tradeId ?? `at index ${currentIndex}`} removed from the display history; the append-only transaction journal and financial balances were not changed.`
         }
       };
