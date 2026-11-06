@@ -21,7 +21,8 @@ import {
   isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
   normalizePortfolioTransactionIdempotencyKey,
-  mergePortfolioTransactionEvents
+  mergePortfolioTransactionEvents,
+  freezePortfolioTransactionEventList
 } from '../domain/portfolioTransactionJournal';
 import {
   loadSavedState,
@@ -370,7 +371,11 @@ export class PortfolioStore {
     return {
       ...raw,
       brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
-      transactionEvents: Array.isArray(raw.transactionEvents) ? raw.transactionEvents : [],
+      transactionEvents: Array.isArray(raw.transactionEvents)
+        ? (isPortfolioTransactionEventList(raw.transactionEvents)
+          ? freezePortfolioTransactionEventList(raw.transactionEvents)
+          : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
+        : freezePortfolioTransactionEventList([]),
       activeView,
       positions,
       holdings,
@@ -504,6 +509,7 @@ export class PortfolioStore {
     const currentEvents = Array.isArray(this.state.transactionEvents)
       ? this.state.transactionEvents
       : [];
+    if (!isPortfolioTransactionEventList(currentEvents)) return false;
     if (idempotencyKey) {
       if (!context?.requestFingerprint?.trim()) return false;
       const previous = currentEvents.find((event) =>
