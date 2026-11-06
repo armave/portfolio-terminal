@@ -1599,7 +1599,8 @@ export class PortfolioStore {
     ticker: string,
     sharesToSell: number,
     sellPrice: number,
-    closedAt = Date.now()
+    closedAt = Date.now(),
+    context?: PortfolioTransactionContext
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     const position = this.state.positions?.[clean];
@@ -1608,8 +1609,34 @@ export class PortfolioStore {
       !Number.isFinite(closedAt) || closedAt <= 0) return null;
 
     const date = new Date(closedAt).toISOString().slice(0, 10);
+    const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice, closedAt]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      effectiveAt: context?.effectiveAt ?? closedAt,
+      requestFingerprint,
+      source: context?.source ?? 'ai-confirmed',
+      actor: context?.actor ?? { type: 'ai' }
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      if (previouslyApplied.type !== 'trade.sell' ||
+        previouslyApplied.requestFingerprint !== requestFingerprint) return null;
+      const marginDebtDelta = Number(previouslyApplied.marginDebtDelta) || 0;
+      return {
+        ticker: clean,
+        sharesSold: Number(previouslyApplied.quantity) || 0,
+        remainingShares: Number(this.state.positions?.[clean]?.shares) || 0,
+        netProceeds: Number(previouslyApplied.netAmount) || 0,
+        debtRepaid: Math.max(0, -marginDebtDelta),
+        cashSurplus: Math.max(0, Number(previouslyApplied.cashDelta) || 0)
+      };
+    }
+
     const previousState = this.state;
-    const result = this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
+    const result = this.applyMarginSale(clean, sharesToSell, sellPrice, date, {
+      closedAt,
+      transactionContext
+    });
     return this.state !== previousState ? result : null;
   }
 
