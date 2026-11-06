@@ -60,19 +60,20 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 ### Scope and limitations
 
-`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic unauthenticated fixtures. It captures three cold page-load samples at desktop (1440×900) and mobile (390×844) viewports.
+`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic fixtures. It captures three cold samples for two scenarios at desktop (1440×900) and mobile (390×844): (1) unauthenticated application shell and (2) authenticated administrator workspace seeded with 100 synthetic positions and 200 tranches.
 
-The CI artifact `browser-performance-baseline` contains:
+The CI artifact `browser-performance-baseline` (schema version 2) contains separate `unauthenticatedShell` and `authenticatedLargePortfolio` results for each viewport. Each sample records:
 - first contentful paint (FCP);
 - largest contentful paint (LCP), where supported;
 - DOMContentLoaded and load event timing;
 - response-start timing;
 - browser-reported transferred resource bytes and resource count;
-- time to render the unauthenticated sign-in/bootstrap shell;
+- elapsed time to render the relevant readiness landmark (sign-in shell or authenticated terminal workspace);
 - cumulative layout shift (CLS), where supported;
+- long-task count/duration, DOM node count, visible navigation item count, rendered position/tranche counts, and page text length;
 - browser version, commit SHA, ref, and workflow run ID.
 
-The harness measures only the **unauthenticated application shell** with mocked broker/market/account APIs and no user portfolio loaded. It does not measure authenticated dashboard hydration, large-portfolio rendering, broker latency, or real network/provider availability. Those require dedicated future fixtures or controlled production measurements.
+The authenticated scenario uses a synthetic administrator and a local synthetic portfolio with 100 positions/200 tranches. Broker, account, cloud, and market API interactions remain deterministic mocked Worker responses; no real credentials, broker account, or investor data are used. This measures authenticated workspace hydration and rendering for a reproducible synthetic portfolio, but it does not measure real broker latency, production network/provider availability, or the distribution of actual customer portfolio sizes. A 3G/slow-network profile and additional portfolio-size tiers remain future extensions.
 
 ### Baseline protocol
 
@@ -81,7 +82,7 @@ The harness measures only the **unauthenticated application shell** with mocked 
 3. Compare medians and p75/p95 where sample volume permits; do not infer a percentile from three samples in one workflow.
 4. Investigate regressions against the same viewport, browser version, build mode, and fixture.
 5. Add thresholds only after a documented baseline and a review of normal CI variance. Keep noisy metrics informational until their variance is understood.
-6. Extend the fixture set for large positions/transactions, slower network profiles, and authenticated states before setting SLOs for those journeys.
+6. Extend the fixture set with realistic larger transaction histories, additional portfolio-size tiers, and slower network profiles before setting SLOs for those journeys.
 
 No numeric production SLO is declared by this PR. The first deliverable is a repeatable, attributable baseline rather than an arbitrary threshold.
 
