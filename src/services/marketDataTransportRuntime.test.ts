@@ -29,7 +29,7 @@ describe('market data transport runtime', () => {
       { symbol: 'MSFT', price: { current: 100 } }
     ]);
     expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(proxyFetch).toHaveBeenCalledWith('quote', { symbol: 'AAPL,MSFT' }, {});
+    expect(proxyFetch).toHaveBeenCalledWith('quote', { symbol: 'AAPL,MSFT' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('retries a transient Yahoo batch transport failure before returning normalized data', async () => {
@@ -118,7 +118,7 @@ describe('market data transport runtime', () => {
     await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({ price: { current: 1 } });
     await expect(runtime.fetchYahooQuoteData('AAPL', true)).resolves.toMatchObject({ price: { current: 2 } });
     expect(proxyFetch).toHaveBeenCalledTimes(2);
-    expect(proxyFetch).toHaveBeenNthCalledWith(2, 'quote', { symbol: 'AAPL' }, { cache: 'no-store' });
+    expect(proxyFetch).toHaveBeenNthCalledWith(2, 'quote', { symbol: 'AAPL' }, expect.objectContaining({ cache: 'no-store', signal: expect.any(AbortSignal) }));
   });
 
   it('returns an explicit symbol error for partial batch responses', async () => {
@@ -139,7 +139,7 @@ describe('market data transport runtime', () => {
       symbol: 'AAPL', price: 101.5, previousClose: 100,
       change: 1.5, changePercent: 1.5, sourceName: 'Finnhub'
     });
-    expect(proxyFetch).toHaveBeenCalledWith('provider-quote', { symbol: 'AAPL', provider: 'finnhub' }, {});
+    expect(proxyFetch).toHaveBeenCalledWith('provider-quote', { symbol: 'AAPL', provider: 'finnhub' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('retries transient fallback-provider transport errors but not invalid quote data', async () => {
