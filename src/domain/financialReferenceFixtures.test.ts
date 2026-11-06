@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrokerAssumptions, PositionRecord, TrancheItem } from '../types/portfolio';
 import { resolveClosedTradeAllocation } from './closedTradeAllocation';
+import { getGuestHoldingValuation } from './guestPortfolio';
 import { calculateFreedomMarginFeeAllocations } from './freedomMarginFees';
 import { processRollovers } from './portfolio';
 import {
@@ -208,6 +209,39 @@ describe('PT-01 independent financial reference fixtures', () => {
     expect(result.brokerAllocations.has(3)).toBe(false);
     expect(result.matchedFeeRows).toBe(1);
     expect(result.allocatedAmount).toBe(1);
+  });
+
+  it('calculates gross cash-holding unrealized P&L and preserves unavailable data', () => {
+    // Five shares: market value 60, cost basis 50, gross unrealized gain 10 (20%).
+    expect(getGuestHoldingValuation({
+      shares: 5,
+      currentPrice: 12,
+      price: 11,
+      averagePrice: 10
+    })).toEqual({
+      shares: 5,
+      currentPrice: 12,
+      marketValue: 60,
+      averagePrice: 10,
+      costBasis: 50,
+      unrealizedPnl: 10,
+      unrealizedPnlPercent: 20
+    });
+
+    // A missing live price may fall back to a valid stored price, but absent
+    // both price sources must not be turned into a fabricated zero P&L.
+    expect(getGuestHoldingValuation({
+      shares: 5,
+      currentPrice: null,
+      price: 11,
+      averagePrice: 10
+    })).toMatchObject({ currentPrice: 11, marketValue: 55, unrealizedPnl: 5 });
+    expect(getGuestHoldingValuation({
+      shares: 5,
+      currentPrice: null,
+      price: null,
+      averagePrice: 10
+    })).toMatchObject({ currentPrice: null, marketValue: null, unrealizedPnl: null, unrealizedPnlPercent: null });
   });
 
   it('keeps current, provisional, and incomplete valuation states distinct', () => {
