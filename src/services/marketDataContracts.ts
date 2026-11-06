@@ -597,6 +597,25 @@ export function isFxRateUsableForConversion(
 }
 
 /**
+ * Returns a rate only for the exact requested BASE_TO_QUOTE pair.
+ * Reverse or cross-pair reuse is rejected; callers must request the inverse
+ * pair explicitly from a provider rather than silently invert a quote.
+ */
+export function getFxConversionRate(
+  rate: FxRate | null | undefined,
+  baseCurrency: unknown,
+  quoteCurrency: unknown,
+  now = Date.now(),
+  maxAgeMs = 24 * 60 * 60 * 1000
+): number | null {
+  const expectedBase = normalizeCurrencyCode(baseCurrency);
+  const expectedQuote = normalizeCurrencyCode(quoteCurrency);
+  if (!expectedBase || !expectedQuote || expectedBase === expectedQuote) return null;
+  if (!rate || rate.baseCurrency !== expectedBase || rate.quoteCurrency !== expectedQuote) return null;
+  return isFxRateUsableForConversion(rate, now, maxAgeMs) ? rate.rate : null;
+}
+
+/**
  * Prevents an older provider response from replacing a newer observation.
  * If timestamps are unavailable, a lower request sequence (or older receipt)
  * cannot replace the current accepted observation.
