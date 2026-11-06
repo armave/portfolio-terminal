@@ -26,7 +26,7 @@ export type PortfolioTransactionActorType =
   | 'import'
   | 'unknown';
 
-export interface PortfolioTransactionActor {
+interface PortfolioTransactionActor {
   type: PortfolioTransactionActorType;
   /** Stable user/service identity when the caller is authorized to provide one. */
   id?: string;
