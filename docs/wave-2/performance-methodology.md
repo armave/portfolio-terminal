@@ -15,7 +15,7 @@ A valuation observation contains:
 - `currency`: three-letter currency code.
 - `quality`: `current`, `provisional`, or `incomplete`.
 
-At least two valuation observations are required. The engine sorts a copied array by timestamp; it does not mutate caller data. Duplicate timestamps, invalid values, mixed currencies, and incomplete quality cause an unavailable result.
+At least two valuation observations are required. Equity is signed: negative equity is valid for leveraged portfolios and is not coerced to zero. The engine sorts a copied array by timestamp; it does not mutate caller data. Duplicate timestamps, invalid values, mixed currencies, and incomplete quality cause an unavailable result.
 
 External cash flows use a positive magnitude and an explicit type:
 - `contribution`: capital enters the portfolio and is a positive portfolio flow.
@@ -45,7 +45,7 @@ R_{linked}=\prod_i(1+R_{MD,i})-1
 
 The output method is explicitly `linked-modified-dietz`. It is a flow-weighted approximation when pre-flow and post-flow valuations are unavailable; it must not be described as exact subperiod TWR. Exact TWR requires reliable valuations around each external flow and can be added when the upstream transaction/history contracts can supply them.
 
-Opening equity and the Modified Dietz capital base must be positive. A return below -100%, invalid timing, or non-finite result is unavailable rather than clamped into a plausible number (apart from a tiny floating-point tolerance at -100%).
+Opening equity and the Modified Dietz capital base must be positive. A finite period return below -100% is retained when a leveraged portfolio's closing equity turns negative; it is not clamped or hidden. A subsequent period starting from non-positive equity is unavailable because the standard positive-capital return denominator no longer exists. Invalid timing and non-finite results are unavailable.
 
 ## 3. Money-weighted return — XIRR
 
