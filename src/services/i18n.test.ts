@@ -131,6 +131,13 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes transaction journal backup and cloud restore conflicts', () => {
+    expect(translateText('Backup transaction history conflicts with this device or is not supported.', 'ru'))
+      .toBe('История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.');
+    expect(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', 'ru'))
+      .toBe('Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.');
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
