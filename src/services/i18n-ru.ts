@@ -56,6 +56,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Snapshot age': 'Возраст снимка',
   'Unknown': 'Неизвестно',
   'The broker snapshot contains no account rows; absence-based discrepancies are suppressed.': 'Снимок брокера не содержит строк счёта; расхождения, основанные на отсутствии записей, не формируются.',
+  'The broker account snapshot is not loaded; no reconciliation was performed.': 'Снимок брокерского счёта ещё не загружен; сверка не выполнялась.',
   'The provider did not supply a verifiable observation timestamp.': 'Провайдер не предоставил подтверждённую временную метку наблюдения.',
   'TradeNet USD balance row without a valid amount was excluded.': 'Строка баланса TradeNet в USD с некорректной суммой исключена.',
   'TradeNet position row without a valid quantity was excluded.': 'Строка позиции TradeNet с некорректным количеством исключена.',
