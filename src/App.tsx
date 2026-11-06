@@ -66,8 +66,10 @@ const CashCushionDesk = lazy(() =>
 const SettingsDesk = lazy(() =>
   import('./components/SettingsDesk').then(({ SettingsDesk }) => ({ default: memo(SettingsDesk) }))
 );
-const MarketInsightsPanel = lazy(() =>
-  import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: memo(MarketInsightsPanel) }))
+const DeferredMarketInsightsPanel = lazy(() =>
+  import('./components/DeferredMarketInsightsPanel').then(({ DeferredMarketInsightsPanel }) => ({
+    default: DeferredMarketInsightsPanel
+  }))
 );
 const ScenarioComparisonModal = lazy(() =>
   import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
@@ -81,40 +83,6 @@ const MarginIntelligenceModal = lazy(() =>
 const MarketDepthModal = lazy(() =>
   import('./components/MarketDepthModal').then(({ MarketDepthModal }) => ({ default: MarketDepthModal }))
 );
-
-function DeferredMarketInsightsPanel() {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [isNearViewport, setIsNearViewport] = useState(false);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || typeof IntersectionObserver === 'undefined') {
-      setIsNearViewport(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      setIsNearViewport(true);
-      observer.disconnect();
-    }, { rootMargin: '240px 0px' });
-
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={hostRef} data-deferred-market-insights>
-      {isNearViewport ? (
-        <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
-          <MarketInsightsPanel />
-        </Suspense>
-      ) : (
-        <div class="min-h-24" aria-hidden="true" />
-      )}
-    </div>
-  );
-}
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -833,7 +801,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
                   aria-label="Market insights"
                 >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
-                  <DeferredMarketInsightsPanel />
+                  <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
+                    <DeferredMarketInsightsPanel />
+                  </Suspense>
                 ) : null}</section>
               </div>
             </div>
