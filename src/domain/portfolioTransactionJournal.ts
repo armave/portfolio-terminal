@@ -202,9 +202,6 @@ export function appendPortfolioTransactionEvent(
   if (!isPortfolioTransactionEvent(event)) {
     throw new TypeError('Portfolio transaction event is invalid.');
   }
-  if (current.some((existing) => isPortfolioTransactionEvent(existing) && existing.id === event.id)) {
-    throw new Error(`Portfolio transaction event id "${event.id}" already exists.`);
-  }
   if (event.idempotencyKey) {
     const duplicate = current.find((existing) =>
       isPortfolioTransactionEvent(existing) && existing.idempotencyKey === event.idempotencyKey
@@ -216,6 +213,9 @@ export function appendPortfolioTransactionEvent(
       }
       return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
     }
+  }
+  if (current.some((existing) => isPortfolioTransactionEvent(existing) && existing.id === event.id)) {
+    throw new Error(`Portfolio transaction event id "${event.id}" already exists.`);
   }
   return {
     events: freezePortfolioTransactionEventList([...current, event]),
