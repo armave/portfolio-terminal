@@ -21,6 +21,7 @@ export interface MarketDataTransportRuntimeDependencies {
   now?: () => number;
   warn?: (...args: unknown[]) => void;
   sleep?: (delayMs: number) => Promise<void>;
+  requestTimeoutMs?: number;
 }
 export interface MarketDataTransportRuntime {
   fetchYahooQuoteData: (ticker: string, force?: boolean) => Promise<YahooBatchQuoteResult | null>;
@@ -33,10 +34,32 @@ export interface MarketDataTransportRuntime {
   clearYahooDeepStockDataCache: () => void;
 }
 
+async function fetchMarketDataWithTimeout<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      const error = new Error('Market data provider request timed out.');
+      Object.assign(error, { code: 'ETIMEDOUT' });
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([request(controller.signal), timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Owns Yahoo quote batching, deep-data cache wiring, fallback quotes and insights feeds. */
 export function createMarketDataTransportRuntime(dependencies: MarketDataTransportRuntimeDependencies): MarketDataTransportRuntime {
   const now = dependencies.now || Date.now;
   const warn = dependencies.warn || ((...args: unknown[]) => console.warn(...args));
+  const requestTimeoutMs = Math.max(1, Math.min(60_000, dependencies.requestTimeoutMs ?? 12_000));
   const MAX_API_CACHE_ENTRIES = 500;
   const setBoundedCache = <T>(cache: Map<string, T>, key: string, value: T): void => {
     cache.set(key, value);
@@ -74,10 +97,13 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const startedAt = now();
     try {
       const response = await retryMarketDataRequest(
-        () => dependencies.proxyFetch(
-          'quote',
-          { symbol: symbols.join(',') },
-          force ? { cache: 'no-store' } : {}
+        (signal) => fetchMarketDataWithTimeout(
+          requestSignal => dependencies.proxyFetch(
+            'quote',
+            { symbol: symbols.join(',') },
+            { ...(force ? { cache: 'no-store' } : {}), signal: requestSignal }
+          ),
+          requestTimeoutMs
         ),
         {
           attempts: 2,
@@ -215,10 +241,13 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const symbol = normalizeYahooSymbol(ticker);
     if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
     const responseData: unknown = await retryMarketDataRequest(
-      () => dependencies.proxyFetch(
-        'provider-quote',
-        { symbol, provider },
-        force ? { cache: 'no-store' } : {}
+      (signal) => fetchMarketDataWithTimeout(
+        requestSignal => dependencies.proxyFetch(
+          'provider-quote',
+          { symbol, provider },
+          { ...(force ? { cache: 'no-store' } : {}), signal: requestSignal }
+        ),
+        requestTimeoutMs
       ),
       {
         attempts: 2,
