@@ -30,7 +30,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Comparing app margin and cash-backed shares with broker account-wide quantities.': 'Сравнение маржинальных и денежных позиций приложения с общим количеством акций по данным брокера.',
   'Matched': 'Совпадает',
   'Differences found': 'Обнаружены расхождения',
-  'Partial snapshot': 'Неполный снимок',
+  'Partial comparison': 'Неполное сравнение',
   'Provisional comparison': 'Предварительное сравнение',
   'Stale broker snapshot': 'Устаревший снимок брокера',
   'Broker data unavailable': 'Данные брокера недоступны',
