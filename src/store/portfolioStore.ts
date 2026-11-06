@@ -980,7 +980,7 @@ export class PortfolioStore {
     if (!prefix || !trancheId.startsWith(prefix)) return false;
 
     const indexText = trancheId.slice(prefix.length);
-    if (!/^\\d+$/.test(indexText)) return false;
+    if (!/^\d+$/.test(indexText)) return false;
     const idxToRemove = Number(indexText);
     const position = this.state.positions?.[clean];
     const tranche = position?.tranches?.[idxToRemove];
