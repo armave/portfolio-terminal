@@ -64,6 +64,30 @@ describe('display formatters', () => {
     expect(getQuoteFreshness({}, now, 60_000)).toBe('unavailable');
   });
 
+  it('does not promote indicative, delayed, stale, or unknown provider observations to fresh', () => {
+    const now = 1_800_000_000_000;
+    expect(getQuoteFreshness({
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: now,
+      quoteDetails: { sourceTimestamp: now, freshness: 'indicative', delayClass: 'indicative' }
+    }, now)).toBe('unknown');
+    expect(getQuoteFreshness({
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: now,
+      quoteDetails: { sourceTimestamp: now, freshness: 'delayed', delayClass: 'delayed' }
+    }, now)).toBe('delayed');
+    expect(getQuoteFreshness({
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: now,
+      quoteDetails: { sourceTimestamp: now, freshness: 'stale', delayClass: 'live' }
+    }, now)).toBe('stale');
+    expect(getQuoteFreshness({
+      quoteSource: 'Finnhub',
+      quoteUpdatedAt: now,
+      quoteDetails: { sourceTimestamp: now, freshness: 'unknown', delayClass: 'unknown' }
+    }, now)).toBe('unknown');
+  });
+
   it('summarizes freshness across every held position instead of only the latest response', () => {
     const now = 1_800_000_000_000;
     const summary = summarizeQuoteFreshness([
