@@ -10,6 +10,7 @@ interface BrokerReconciliationPanelProps {
   brokerAccountInfo?: BrokerAccountInfo;
   positions: Record<string, PositionRecord>;
   cashHoldings: readonly CashStockHolding[];
+  appPositionStatus?: 'complete' | 'partial' | 'unavailable';
 }
 
 const STATUS_COPY = {
@@ -91,7 +92,8 @@ function statusTone(status: keyof typeof STATUS_COPY): string {
 export function BrokerReconciliationPanel({
   brokerAccountInfo,
   positions,
-  cashHoldings
+  cashHoldings,
+  appPositionStatus
 }: BrokerReconciliationPanelProps) {
   const brokerSnapshot = useMemo(
     () => buildBrokerSnapshot(brokerAccountInfo),
@@ -113,6 +115,7 @@ export function BrokerReconciliationPanel({
     brokerSnapshot,
     appPositions,
     brokerStatus: !brokerAccountInfo?.loaded ? 'unavailable' : brokerAccountInfo.status,
+    appPositionStatus,
     now: Date.now()
   });
 
