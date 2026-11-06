@@ -1987,6 +1987,19 @@ function showScenarioModal(data: ScenarioModalData): void {
   emitUiEvent('terminal:scenario-modal', data);
 }
 
+function createAiActionIdempotencyKey(requestId: number): string {
+  let uniqueId: string;
+  try {
+    const randomUUID = globalThis.crypto?.randomUUID;
+    uniqueId = typeof randomUUID === 'function'
+      ? randomUUID.call(globalThis.crypto)
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  } catch {
+    uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+  return `ai-action:${requestId}:${uniqueId}`;
+}
+
 const aiRequestLifecycle = createAiRequestLifecycle();
 
 const terminalCommandExecutionGuard = new CommandExecutionGuard();
@@ -2167,7 +2180,7 @@ async function executeCommandOnce(text: string, preserveAiRequest = false) {
         parsed,
         confirmAiPortfolioAction,
         applyPortfolioActions,
-        `ai-action:${requestId}`
+        createAiActionIdempotencyKey(requestId)
       );
       if (!applied) logTerminal("[AI Action]: Cancelled.");
     } else if (parsed.intent === 'chat') {
