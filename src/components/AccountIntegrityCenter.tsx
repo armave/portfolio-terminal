@@ -30,6 +30,43 @@ const STATUS_COPY: Record<ReportStatus, string> = {
   unavailable: 'Unavailable'
 };
 
+const ACCOUNT_INTEGRITY_RU_COPY: Record<string, string> = {
+  'Account Integrity Center': 'Центр целостности счёта',
+  'A quick view of portfolio data quality and broker verification.': 'Краткая сводка качества данных портфеля и проверки по данным брокера.',
+  'Verified': 'Проверено',
+  'Partial data': 'Неполные данные',
+  'Provisional': 'Предварительно',
+  'Stale snapshot': 'Устаревший снимок',
+  'App symbols': 'Инструменты приложения',
+  'Broker symbols': 'Инструменты брокера',
+  'Findings': 'Результаты проверки',
+  'Account integrity summary': 'Сводка целостности счёта',
+  'Latest broker refresh': 'Последнее обновление данных брокера',
+  'Not confirmed': 'Не подтверждено',
+  'App execution history': 'История исполненных сделок приложения',
+  'Cash & margin balances': 'Денежные средства и маржа',
+  'Not independently compared': 'Нет независимого сравнения',
+  'The current comparison covers position quantities only. Cash and margin balances are not verified because an independent app-side balance is not available.': 'Текущее сравнение охватывает только количество позиций. Денежные средства и маржа не проверены, поскольку независимый баланс со стороны приложения недоступен.',
+  'All comparable positions match the verified broker snapshot.': 'Все сопоставимые позиции совпадают с проверенным снимком брокера.',
+  'Discrepancies were found. Open verification details to review them.': 'Обнаружены расхождения. Откройте подробности проверки, чтобы изучить их.',
+  'The comparison is incomplete. Missing rows cannot be verified.': 'Сравнение неполное. Отсутствующие строки нельзя проверить.',
+  'No confirmed result is available because the broker observation time or another required input is unverified.': 'Подтверждённый результат недоступен: время наблюдения брокера или другие обязательные данные не проверены.',
+  'The last saved broker snapshot is stale. Refresh before relying on this comparison.': 'Последний сохранённый снимок брокера устарел. Обновите данные, прежде чем полагаться на это сравнение.',
+  'No broker snapshot is available. No reconciliation was performed.': 'Снимок брокера недоступен. Сверка не выполнялась.',
+  'View verification details': 'Подробности проверки',
+  'Provider and comparison evidence': 'Провайдер и данные сравнения',
+  'Snapshot quality': 'Качество снимка',
+  'No comparison findings are available for this snapshot.': 'Для этого снимка нет результатов сравнения.',
+  'Read-only verification. No positions, lots, cash balances, or cost basis are changed.': 'Проверка только для чтения. Позиции, лоты, денежные остатки и себестоимость не изменяются.'
+};
+
+export function translateAccountIntegrityText(value: string, language = getAppLanguage()): string {
+  if (language === 'ru' && ACCOUNT_INTEGRITY_RU_COPY[value]) {
+    return ACCOUNT_INTEGRITY_RU_COPY[value];
+  }
+  return translateText(value, language);
+}
+
 const FINDING_COPY = {
   quantity_mismatch: 'Quantity mismatch',
   missing_in_broker: 'Missing in broker',
@@ -190,7 +227,7 @@ export function AccountIntegrityCenter({
     now: Date.now()
   });
 
-  const label = (value: string) => translateText(value, getAppLanguage());
+  const label = (value: string) => translateAccountIntegrityText(value);
   const status = report.status as ReportStatus;
   const brokerPositions = brokerAccountInfo?.loaded ? brokerAccountInfo.positions : null;
   const counts = getAccountIntegrityCounts(appPositions, brokerPositions, report.findings.length);

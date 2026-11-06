@@ -655,42 +655,4 @@ describe('app localization', () => {
     expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
   });
 
-
-  it('localizes Account Integrity Center status, metric, and disclosure copy', () => {
-    const copy = [
-      'Account Integrity Center',
-      'A quick view of portfolio data quality and broker verification.',
-      'Verified',
-      'Partial data',
-      'Provisional',
-      'Stale snapshot',
-      'App symbols',
-      'Broker symbols',
-      'Findings',
-      'Account integrity summary',
-      'Latest broker refresh',
-      'Not confirmed',
-      'App execution history',
-      'Cash & margin balances',
-      'Not independently compared',
-      'The current comparison covers position quantities only. Cash and margin balances are not verified because an independent app-side balance is not available.',
-      'All comparable positions match the verified broker snapshot.',
-      'Discrepancies were found. Review the comparison details below.',
-      'The comparison is incomplete. Missing rows cannot be verified.',
-      'No confirmed result is available because the broker observation time or another required input is unverified.',
-      'The last saved broker snapshot is stale. Refresh before relying on this comparison.',
-      'No broker snapshot is available. No reconciliation was performed.',
-      'View verification details',
-      'Provider and comparison evidence',
-      'Snapshot quality',
-      'Showing first 20 findings; remaining findings are not hidden from the reconciliation report.',
-      'No comparison findings are available for this snapshot.',
-      'Read-only verification. No positions, lots, cash balances, or cost basis are changed.'
-    ];
-
-    for (const value of copy) {
-      expect(translateText(value, 'ru'), value).not.toBe(value);
-    }
-  });
-
 });

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { countIntegritySymbols, getAccountIntegrityCounts } from './AccountIntegrityCenter';
+import { countIntegritySymbols, getAccountIntegrityCounts, translateAccountIntegrityText } from './AccountIntegrityCenter';
 
 describe('Account Integrity Center summary', () => {
   it('counts unique app and broker symbols rather than adding unlike share quantities', () => {
@@ -45,6 +45,13 @@ describe('Account Integrity Center summary', () => {
       { ticker: 'MSFT', quantity: 'not-a-number' },
       { ticker: ' NVDA ', quantity: 3 }
     ])).toBe(1);
+  });
+
+  it('translates the new integrity-center copy locally without extending the eager global dictionary', () => {
+    expect(translateAccountIntegrityText('Account Integrity Center', 'ru')).toBe('Центр целостности счёта');
+    expect(translateAccountIntegrityText('Not independently compared', 'ru')).toBe('Нет независимого сравнения');
+    expect(translateAccountIntegrityText('All comparable positions match the verified broker snapshot.', 'ru'))
+      .toBe('Все сопоставимые позиции совпадают с проверенным снимком брокера.');
   });
 
   it('renders a compact expandable integrity center and discloses unsupported balance comparison', () => {

@@ -19,7 +19,7 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
-import { AccountIntegrityCenter } from './AccountIntegrityCenter';
+import { BrokerReconciliationPanel } from './BrokerReconciliationPanel';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -494,7 +494,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       )}
 
       {isAdmin && (
-        <AccountIntegrityCenter
+        <BrokerReconciliationPanel
           brokerAccountInfo={state.brokerAccountInfo}
           positions={positions}
           cashHoldings={cashHoldings}
