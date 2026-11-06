@@ -39,6 +39,8 @@ export interface PortfolioTransactionEvent {
   recordedAt: number;
   /** Optional caller-supplied key; unique within this portfolio journal. */
   idempotencyKey?: string;
+  /** Non-secret canonical command fingerprint to reject key reuse for a different command. */
+  requestFingerprint?: string;
   ticker?: string;
   currency?: string;
   quantity?: number;
@@ -77,6 +79,7 @@ export interface PortfolioTransactionDraft {
 
 export interface PortfolioTransactionContext {
   idempotencyKey?: string;
+  requestFingerprint?: string;
   actor?: PortfolioTransactionActor;
   source?: string;
   /** Optional override for the event's business/effective timestamp. */
