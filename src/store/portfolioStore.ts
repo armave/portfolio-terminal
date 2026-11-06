@@ -13,6 +13,19 @@ import {
   TrancheItem,
   PendingMutation
 } from '../types/portfolio';
+import type { PortfolioTransactionContext, PortfolioTransactionDraft, PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import {
+  appendPortfolioTransactionEvent,
+  createPortfolioTransactionEvent,
+  hasPortfolioTransactionIdempotencyKey,
+  isPortfolioTransactionEvent,
+  isPortfolioTransactionEventList,
+  normalizePortfolioTransactionIdempotencyKey,
+  mergePortfolioTransactionEvents,
+  freezePortfolioTransactionEventList,
+  appendBrokerHistoryAuditEvents,
+  verifyPortfolioTransactionParity
+} from '../domain/portfolioTransactionJournal';
 import {
   loadSavedState,
   saveState,
@@ -58,7 +71,8 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'cashflows',
     'tranches',
     'cashStocks',
-    'guestTrancheLedger'
+    'guestTrancheLedger',
+    'transactionEvents'
   ] as const;
   for (const field of arrayFields) {
     if (Object.prototype.hasOwnProperty.call(value, field) &&
@@ -90,6 +104,11 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
+      value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    return false;
+  }
+
   if (Object.prototype.hasOwnProperty.call(value, 'cashCushion')) {
     if (!isRecord(value.cashCushion)) return false;
     if (Object.prototype.hasOwnProperty.call(value.cashCushion, 'holdings') &&
@@ -116,6 +135,10 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
   }
 
   return true;
+}
+
+function createMutationFingerprint(parts: readonly (string | number | null | undefined)[]): string {
+  return JSON.stringify(parts);
 }
 
 function todayIso(): string {
@@ -347,9 +370,14 @@ export class PortfolioStore {
       ? requestedView
       : 'COMBINED';
 
-    return {
+    const normalized: PortfolioState = {
       ...raw,
       brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
+      transactionEvents: Array.isArray(raw.transactionEvents)
+        ? (isPortfolioTransactionEventList(raw.transactionEvents)
+          ? freezePortfolioTransactionEventList(raw.transactionEvents)
+          : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
+        : freezePortfolioTransactionEventList([]),
       activeView,
       positions,
       holdings,
@@ -364,6 +392,49 @@ export class PortfolioStore {
         freeCash,
         holdings: cashHoldings
       }
+    };
+
+    // Imported broker rows are immutable external evidence, not app-owned
+    // position/cash commands. Keep them in the same snapshot journal so cloud,
+    // local history and backup restoration share an auditable provenance trail.
+    if (!isPortfolioTransactionEventList(normalized.transactionEvents || [])) return normalized;
+
+    let transactionEvents = appendBrokerHistoryAuditEvents(
+      normalized.transactionEvents || [],
+      Array.isArray(normalized.brokerExecutedTrades) ? normalized.brokerExecutedTrades : [],
+      Array.isArray(normalized.cashflows) ? normalized.cashflows : []
+    );
+
+    // Catch any financial mutation path that still writes canonical state
+    // directly (imports, broker reconciliation, legacy UI paths). Record only
+    // the observed quantity/balance delta; never infer a sale, proceeds, cost
+    // basis, commission or investment return from a snapshot difference.
+    const parity = verifyPortfolioTransactionParity(transactionEvents, normalized);
+    if (!parity.matches) {
+      for (const discrepancy of parity.discrepancies) {
+        const event = createPortfolioTransactionEvent({
+          type: 'portfolio.reconciliation',
+          effectiveAt: Date.now(),
+          ...(discrepancy.ticker ? { ticker: discrepancy.ticker } : {}),
+          ...(discrepancy.field === 'position'
+            ? { positionQuantityDelta: discrepancy.delta }
+            : discrepancy.field === 'cash-holding'
+              ? { cashHoldingQuantityDelta: discrepancy.delta }
+              : discrepancy.field === 'free-cash'
+                ? { cashDelta: discrepancy.delta }
+                : { marginDebtDelta: discrepancy.delta }),
+          note: `Canonical snapshot reconciliation (${discrepancy.field}${discrepancy.ticker ? ` ${discrepancy.ticker}` : ''}): journal ${discrepancy.replayed}, canonical ${discrepancy.canonical}. No execution, cost basis, fee or P&L was inferred.`
+        }, {
+          actor: { type: 'system' },
+          source: 'canonical-snapshot-reconciliation'
+        });
+        transactionEvents = appendPortfolioTransactionEvent(transactionEvents, event).events;
+      }
+    }
+
+    return {
+      ...normalized,
+      transactionEvents
     };
   }
 
@@ -460,11 +531,84 @@ export class PortfolioStore {
     return true;
   }
 
+  /**
+   * Atomically commits an app-owned financial mutation and its audit event in
+   * the same portfolio snapshot. Existing positions remain canonical; the
+   * journal is append-only evidence and never becomes a second source of truth.
+   */
+  private updateFinancialMutation(
+    context: PortfolioTransactionContext | undefined,
+    prepare: (state: PortfolioState) => {
+      state: PortfolioState;
+      event: PortfolioTransactionDraft;
+    } | null,
+    persist = true
+  ): boolean {
+    let idempotencyKey: string | undefined;
+    try {
+      idempotencyKey = normalizePortfolioTransactionIdempotencyKey(context?.idempotencyKey);
+    } catch {
+      return false;
+    }
+
+    const currentEvents = Array.isArray(this.state.transactionEvents)
+      ? this.state.transactionEvents
+      : [];
+    if (!isPortfolioTransactionEventList(currentEvents)) return false;
+    if (idempotencyKey) {
+      if (!context?.requestFingerprint?.trim()) return false;
+      const previous = currentEvents.find((event) =>
+        isPortfolioTransactionEvent(event) && event.idempotencyKey === idempotencyKey
+      );
+      if (previous) return previous.requestFingerprint === context.requestFingerprint;
+    }
+
+    return this.update((state) => {
+      const existingEvents = Array.isArray(state.transactionEvents) ? state.transactionEvents : [];
+      // Re-check inside the commit boundary. This also protects synchronous
+      // re-entrancy from a subscriber or command dispatcher.
+      if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(existingEvents, idempotencyKey)) {
+        return state;
+      }
+
+      const prepared = prepare(state);
+      if (!prepared || prepared.state === state) return state;
+
+      const event = createPortfolioTransactionEvent(prepared.event, {
+        ...context,
+        ...(idempotencyKey ? { idempotencyKey } : {})
+      });
+      const appended = appendPortfolioTransactionEvent(existingEvents, event);
+      if (!appended.appended) return state;
+
+      return {
+        ...prepared.state,
+        transactionEvents: appended.events
+      };
+    }, persist);
+  }
+
+  private findAppliedTransaction(context?: PortfolioTransactionContext): PortfolioTransactionEvent | undefined {
+    let idempotencyKey: string | undefined;
+    try {
+      idempotencyKey = normalizePortfolioTransactionIdempotencyKey(context?.idempotencyKey);
+    } catch {
+      return undefined;
+    }
+    if (!idempotencyKey) return undefined;
+    return (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) && event.idempotencyKey === idempotencyKey
+    );
+  }
+
   public setState(
     partial: Partial<PortfolioState>,
     persist = true,
     source: PortfolioStoreChangeSource = 'durable'
   ): boolean {
+    // The append-only journal can only be changed by audited financial
+    // commands or by the validated import/merge path below.
+    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents')) return false;
     return this.update((state) => ({
       ...state,
       ...partial
@@ -479,9 +623,24 @@ export class PortfolioStore {
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
+    let mergedEvents = this.state.transactionEvents || [];
+    if (Array.isArray(newState.transactionEvents)) {
+      try {
+        mergedEvents = mergePortfolioTransactionEvents(
+          mergedEvents,
+          newState.transactionEvents
+        );
+      } catch {
+        return false;
+      }
+    }
+
     return this.update((state) => ({
       ...state,
-      ...newState
+      ...newState,
+      // Imports append/merge history; an older backup may never erase events
+      // already committed on this device.
+      transactionEvents: mergedEvents
     }));
   }
 
@@ -490,7 +649,11 @@ export class PortfolioStore {
    * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
    * are settings rather than portfolio content and intentionally remain in place.
    */
-  public resetToBlankState(now = Date.now(), persist = true): boolean {
+  public resetToBlankState(
+    now = Date.now(),
+    persist = true,
+    context?: PortfolioTransactionContext
+  ): boolean {
     // The selected desk is device-local and also participates in normalization.
     // Restore it when the persistent portfolio write fails so navigation cannot
     // advertise a reset while the previous portfolio is still active.
@@ -500,35 +663,55 @@ export class PortfolioStore {
     } catch {
       // Continue resetting portfolio data when browser preference storage is unavailable.
     }
-    const committed = this.update((state) => ({
-      ...state,
-      ...createBlankPortfolioState(now),
-      // Reset portfolio-owned data while retaining device/account configuration.
-      brokerAssumptions: state.brokerAssumptions,
-      apiKeys: state.apiKeys,
-      gatewaySecret: state.gatewaySecret,
-      autoRefreshInterval: state.autoRefreshInterval,
-      positions: {},
-      cashCushion: {
-        freeCash: 0,
-        holdings: [] as PortfolioState['cashCushion']['holdings']
+
+    const requestFingerprint = createMutationFingerprint(['portfolio.reset', now]);
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `portfolio-reset:${now}`,
+      requestFingerprint,
+      source: context?.source ?? 'user-reset',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? now
+    };
+
+    const committed = this.updateFinancialMutation(mutationContext, (state) => ({
+      state: {
+        ...state,
+        ...createBlankPortfolioState(now),
+        // Reset portfolio-owned data while retaining device/account configuration.
+        // The append-only transaction journal survives reset and receives this event.
+        transactionEvents: state.transactionEvents || [],
+        brokerAssumptions: state.brokerAssumptions,
+        apiKeys: state.apiKeys,
+        gatewaySecret: state.gatewaySecret,
+        autoRefreshInterval: state.autoRefreshInterval,
+        positions: {},
+        cashCushion: {
+          freeCash: 0,
+          holdings: [] as PortfolioState['cashCushion']['holdings']
+        },
+        activeTrancheTypes: {},
+        activeTrancheMixes: {},
+        activeTrancheGuestAssignments: {},
+        activeTrancheGuestAssignmentDetails: {},
+        closedTradeAllocations: {},
+        guestPortfolioSnapshot: undefined,
+        brokerAccountInfo: undefined,
+        portfolioEquity: undefined,
+        portfolioEquityUpdatedAt: undefined,
+        brokerExecutedTrades: [],
+        cashflows: [],
+        closedHistory: [],
+        tranches: [],
+        cashStocks: [],
+        selectedTicker: null,
+        pendingMutation: null
       },
-      activeTrancheTypes: {},
-      activeTrancheMixes: {},
-      activeTrancheGuestAssignments: {},
-      activeTrancheGuestAssignmentDetails: {},
-      closedTradeAllocations: {},
-      guestPortfolioSnapshot: undefined,
-      brokerAccountInfo: undefined,
-      portfolioEquity: undefined,
-      portfolioEquityUpdatedAt: undefined,
-      brokerExecutedTrades: [],
-      cashflows: [],
-      closedHistory: [],
-      tranches: [],
-      cashStocks: [],
-      selectedTicker: null,
-      pendingMutation: null
+      event: {
+        type: 'portfolio.reset',
+        effectiveAt: context?.effectiveAt ?? now,
+        note: 'Portfolio-owned state and history sidecars reset; append-only transaction journal retained.'
+      }
     }), persist);
 
     if (!committed) {
@@ -544,7 +727,7 @@ export class PortfolioStore {
     return committed;
   }
 
-  private readDeviceActiveView(): string | null {
+    private readDeviceActiveView(): string | null {
     try {
       return typeof localStorage !== 'undefined' ? localStorage.getItem('portfolio_active_view') : null;
     } catch {
@@ -609,64 +792,132 @@ export class PortfolioStore {
     compoundedDebt: number,
     interestAccrued: number,
     timestamp: number,
-    recordAsRealized: boolean
+    recordAsRealized: boolean,
+    context?: PortfolioTransactionContext
   ): boolean {
     if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
       compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return false;
 
-    return this.update((state) => ({
-      ...state,
-      balance: compoundedDebt > 0 ? -compoundedDebt : 0,
-      lastRolloverTimestamp: timestamp,
-      realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
-        (recordAsRealized ? interestAccrued : 0)
-    }));
-  }
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `rollover:${timestamp}`,
+      requestFingerprint: createMutationFingerprint(['margin.interest', timestamp, compoundedDebt, interestAccrued, recordAsRealized ? 1 : 0]),
+      actor: context?.actor ?? { type: 'system' },
+      source: context?.source ?? 'rollover',
+      effectiveAt: context?.effectiveAt ?? timestamp
+    };
 
-  /** Set the cash-cushion balance without changing margin debt. */
-  public setFreeCash(amount: number): boolean {
-    const num = Number(amount);
-    if (!Number.isFinite(num) || num < 0) {
-      throw new Error('Free cash must be a finite non-negative amount.');
-    }
-
-    return this.update((state) => ({
-      ...state,
-      cashBalance: num,
-      cashCushion: {
-        ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-        freeCash: num
-      }
-    }));
-  }
-
-  public setCashBalance(amount: number): boolean {
-    if (!Number.isFinite(amount)) return false;
-    const num = amount;
-    return this.update((state) => {
-      const freeCash = Math.max(0, num);
-      // A positive balance entry represents available cash and clears any old margin debt.
-      const balance = num < 0 ? num : 0;
-      return {
+    return this.updateFinancialMutation(mutationContext, (state) => {
+      const nextState = {
         ...state,
-        balance,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        balance: compoundedDebt > 0 ? -compoundedDebt : 0,
+        lastRolloverTimestamp: timestamp,
+        realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
+          (recordAsRealized ? interestAccrued : 0)
+      };
+      return {
+        state: nextState,
+        event: {
+          type: 'margin.interest',
+          effectiveAt: timestamp,
+          grossAmount: interestAccrued,
+          marginDebtDelta: compoundedDebt - Math.abs(Number(state.balance) || 0),
+          note: recordAsRealized ? 'Recorded as realized margin interest.' : 'Capitalized into margin debt.'
         }
       };
     });
   }
 
-  public setMarginDebt(debtAmount: number): boolean {
+  /** Set the cash-cushion balance without changing margin debt. */
+  public setFreeCash(amount: number, context?: PortfolioTransactionContext): boolean {
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num < 0) {
+      throw new Error('Free cash must be a finite non-negative amount.');
+    }
+
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['cash.set-free', num])
+    }, (state) => {
+      const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      return {
+        state: {
+          ...state,
+          cashBalance: num,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash: num
+          }
+        },
+        event: {
+          type: 'cash.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(num - previousCash),
+          cashDelta: num - previousCash,
+          note: 'Free cash balance adjusted.'
+        }
+      };
+    });
+  }
+
+  public setCashBalance(amount: number, context?: PortfolioTransactionContext): boolean {
+    if (!Number.isFinite(amount)) return false;
+    const num = amount;
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['cash.set-balance', num])
+    }, (state) => {
+      const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      const freeCash = Math.max(0, num);
+      // A positive balance entry represents available cash and clears any old margin debt.
+      const balance = num < 0 ? num : 0;
+      const nextDebt = Math.abs(balance);
+      return {
+        state: {
+          ...state,
+          balance,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'cash.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(freeCash - previousCash),
+          cashDelta: freeCash - previousCash,
+          marginDebtDelta: nextDebt - previousDebt,
+          note: 'Cash balance manually adjusted.'
+        }
+      };
+    });
+  }
+
+  public setMarginDebt(debtAmount: number, context?: PortfolioTransactionContext): boolean {
     const amount = Number(debtAmount);
     if (!Number.isFinite(amount)) return false;
     const debt = Math.abs(amount);
-    return this.update((state) => ({
-      ...state,
-      balance: -debt
-    }));
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['margin.set-debt', debt])
+    }, (state) => {
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      return {
+        state: {
+          ...state,
+          balance: -debt
+        },
+        event: {
+          type: 'margin.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(debt - previousDebt),
+          marginDebtDelta: debt - previousDebt,
+          note: 'Margin debt balance adjusted.'
+        }
+      };
+    });
   }
 
   public buyStock(
@@ -674,40 +925,46 @@ export class PortfolioStore {
     shares: number,
     price: number,
     date?: string,
-    pt?: number
+    pt?: number,
+    context?: PortfolioTransactionContext
   ): boolean {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) ||
       price <= 0 || !Number.isFinite(shares * price)) return false;
 
     const purchaseDate = date || todayIso();
+    const parsedEffectiveAt = Date.parse(purchaseDate);
+    const effectiveAt = context?.effectiveAt ??
+      (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
 
-    return this.update((state) => {
-
+    return this.updateFinancialMutation({
+      ...context,
+      effectiveAt,
+      requestFingerprint: createMutationFingerprint(['trade.buy', clean, shares, price, purchaseDate]),
+      source: context?.source ?? 'manual',
+      actor: context?.actor ?? { type: 'user' }
+    }, (state) => {
       const totalVal = shares * price;
 
-      // Extract broker commission rules with safe fallbacks
+      // Extract broker commission rules with safe fallbacks.
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
 
-      // A buyStock call represents one broker execution, so enforce the minimum
-      // ticket commission here rather than recalculating across the combined position.
+      // One buyStock call represents one broker execution, so enforce the
+      // minimum ticket commission here rather than recalculating across the position.
       const buyComm = Number(calculateCommission(
         shares, totalVal, resolveCommissionConfig(rules)
       ).toFixed(2));
       const totalOrderCost = totalVal + buyComm;
-      if (!Number.isFinite(buyComm) || buyComm < 0 || !Number.isFinite(totalOrderCost)) return state;
+      if (!Number.isFinite(buyComm) || buyComm < 0 || !Number.isFinite(totalOrderCost)) return null;
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
-
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
         { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
       ];
-
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
       const nextCommBuy = (Number(existingPos?.commBuy) || 0) + buyComm;
-
       const earliestPosDate =
         nextTranches
           .map((t) => t.date)
@@ -742,11 +999,13 @@ export class PortfolioStore {
         .sort();
       const earliestPortfolioDate = allDates[0] || state.startDate || purchaseDate;
 
-      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
-      let currentDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      let freeCash = previousFreeCash;
+      let currentDebt = previousDebt;
 
       if (!Number.isFinite(nextShares) || !Number.isFinite(nextCommBuy) ||
-        !Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
+        !Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return null;
 
       if (freeCash >= totalOrderCost) {
         freeCash -= totalOrderCost;
@@ -755,18 +1014,32 @@ export class PortfolioStore {
         freeCash = 0;
         currentDebt += remainingCost;
       }
-      if (!Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
+      if (!Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return null;
 
       return {
-        ...state,
-        positions,
-        startDate: earliestPortfolioDate,
-        activeView: clean,
-        balance: currentDebt > 0 ? -currentDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        state: {
+          ...state,
+          positions,
+          startDate: earliestPortfolioDate,
+          activeView: clean,
+          balance: currentDebt > 0 ? -currentDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'trade.buy',
+          effectiveAt,
+          ticker: clean,
+          quantity: shares,
+          positionQuantityDelta: shares,
+          unitPrice: price,
+          grossAmount: totalVal,
+          fees: buyComm,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: currentDebt - previousDebt
         }
       };
     });
@@ -774,38 +1047,62 @@ export class PortfolioStore {
 
   public addTranche(
     ticker: string,
-    tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number }
+    tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number },
+    context?: PortfolioTransactionContext
   ): boolean {
     return this.buyStock(
       ticker,
       Number(tranche.shares) || 0,
       Number(tranche.entryPrice) || 0,
       tranche.purchaseDate,
-      tranche.targetPrice
+      tranche.targetPrice,
+      context
     );
   }
 
-  public removeTranche(ticker: string, trancheId: string): void {
+  public removeTranche(
+    ticker: string,
+    trancheId: string,
+    context?: PortfolioTransactionContext
+  ): boolean {
     const clean = ticker.trim().toUpperCase();
     const prefix = clean ? `${clean}-` : '';
-    if (!prefix || !trancheId.startsWith(prefix)) return;
+    if (!prefix || !trancheId.startsWith(prefix)) return false;
 
     const indexText = trancheId.slice(prefix.length);
-    if (!/^\d+$/.test(indexText)) return;
+    if (!/^\d+$/.test(indexText)) return false;
     const idxToRemove = Number(indexText);
+    const position = this.state.positions?.[clean];
+    const tranche = position?.tranches?.[idxToRemove];
+    if (!position || !tranche) return false;
 
-    this.update((state) => {
+    const requestFingerprint = createMutationFingerprint([
+      'position.adjustment.remove-tranche',
+      clean,
+      trancheId,
+      tranche.qty,
+      tranche.price,
+      tranche.date
+    ]);
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-position-correction',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos || !Array.isArray(pos.tranches) || idxToRemove >= pos.tranches.length) return state;
+      if (!pos || !Array.isArray(pos.tranches) || idxToRemove >= pos.tranches.length) return null;
 
-      const nextTranches = pos.tranches.filter((_, i) => i !== idxToRemove);
-      if (nextTranches.length === pos.tranches.length) return state;
+      const removed = pos.tranches[idxToRemove];
+      const nextTranches = pos.tranches.filter((_, index) => index !== idxToRemove);
+      if (nextTranches.length === pos.tranches.length) return null;
 
       if (nextTranches.length === 0) {
         delete positions[clean];
       } else {
-        const nextShares = nextTranches.reduce((s, t) => s + t.qty, 0);
+        const nextShares = nextTranches.reduce((sum, item) => sum + item.qty, 0);
         positions[clean] = {
           ...pos,
           shares: nextShares,
@@ -814,20 +1111,57 @@ export class PortfolioStore {
       }
 
       return {
-        ...state,
-        positions
+        state: { ...state, positions },
+        event: {
+          type: 'position.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: removed.qty,
+          positionQuantityDelta: -removed.qty,
+          unitPrice: removed.price,
+          note: `Active tranche ${trancheId} removed from tracking; no sale proceeds or cash settlement were recorded.`
+        }
       };
     });
   }
 
-  public sellStock(
+    public sellStock(
     ticker: string,
     sharesToSell: number | 'ALL',
     sellPrice: number,
-    date?: string
+    date?: string,
+    context?: PortfolioTransactionContext
   ): boolean {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      (sharesToSell !== 'ALL' && (!Number.isFinite(sharesToSell) || sharesToSell <= 0))) return false;
+
+    const exitDate = date || todayIso();
+    const parsedEffectiveAt = Date.parse(exitDate);
+    const effectiveAt = context?.effectiveAt ??
+      (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
+    const requestFingerprint = createMutationFingerprint([
+      'trade.sell',
+      clean,
+      sharesToSell === 'ALL' ? 'ALL' : sharesToSell,
+      sellPrice,
+      exitDate
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      effectiveAt,
+      requestFingerprint,
+      source: context?.source ?? 'manual',
+      actor: context?.actor ?? { type: 'user' }
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      return previouslyApplied.type === 'trade.sell' &&
+        previouslyApplied.requestFingerprint === requestFingerprint;
+    }
+
     const previousState = this.state;
-    this.applyMarginSale(ticker, sharesToSell, sellPrice, date);
+    this.applyMarginSale(clean, sharesToSell, sellPrice, exitDate, { transactionContext });
     return this.state !== previousState;
   }
 
@@ -836,7 +1170,7 @@ export class PortfolioStore {
     sharesToSell: number | 'ALL',
     sellPrice: number,
     date?: string,
-    options: { closedAt?: number } = {}
+    options: { closedAt?: number; transactionContext?: PortfolioTransactionContext } = {}
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
@@ -844,16 +1178,16 @@ export class PortfolioStore {
 
     let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
-    this.update((state) => {
+    const committed = this.updateFinancialMutation(options.transactionContext, (state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos || !Number.isFinite(pos.shares) || pos.shares <= 0) return state;
-      if (sharesToSell !== 'ALL' && sharesToSell - pos.shares > 1e-8) return state;
+      if (!pos || !Number.isFinite(pos.shares) || pos.shares <= 0) return null;
+      if (sharesToSell !== 'ALL' && sharesToSell - pos.shares > 1e-8) return null;
 
       // A tolerance accepts insignificant floating-point noise at the boundary;
       // clamp that noise so the closed ledger can never exceed owned shares.
       const actualSold = sharesToSell === 'ALL' ? pos.shares : Math.min(pos.shares, sharesToSell);
-      if (actualSold <= 0 || !Number.isFinite(actualSold * sellPrice)) return state;
+      if (actualSold <= 0 || !Number.isFinite(actualSold * sellPrice)) return null;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       // Fail closed for legacy or corrupted records without a trustworthy
@@ -877,10 +1211,8 @@ export class PortfolioStore {
       const { soldCostBasis, buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
       const sellProceeds = actualSold * sellPrice;
-
-      // Shared with the AI-confirmed sale path to keep broker fees consistent.
       const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
-      if (!Number.isFinite(sellComm) || sellComm < 0) return state;
+      if (!Number.isFinite(sellComm) || sellComm < 0) return null;
 
       const accounting = calculateSaleAccounting({
         tranches: origTranches,
@@ -903,16 +1235,17 @@ export class PortfolioStore {
         netCashProceeds
       } = accounting;
       if (![marginInterestAllocated, totalCommissions, grossProfit, netProfit, netCashProceeds]
-        .every(Number.isFinite)) return state;
+        .every(Number.isFinite)) return null;
 
       const totalDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const settlement = settleSaleProceeds(
         totalDebt,
-        Number(state.cashCushion?.freeCash) || 0,
+        previousFreeCash,
         netCashProceeds
       );
       if (![settlement.remainingDebt, settlement.debtRepaid, settlement.cashSurplus, settlement.freeCash]
-        .every(Number.isFinite)) return state;
+        .every(Number.isFinite)) return null;
       const currentDebt = settlement.remainingDebt;
       const freeCash = settlement.freeCash;
 
@@ -970,22 +1303,39 @@ export class PortfolioStore {
       };
 
       return {
-        ...state,
-        positions,
-        activeView: nextActiveView,
-        selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
-        balance: currentDebt > 0 ? -currentDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        state: {
+          ...state,
+          positions,
+          activeView: nextActiveView,
+          selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
+          balance: currentDebt > 0 ? -currentDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          },
+          realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) + marginInterestAllocated,
+          closedTrades: [closedRecord, ...(state.closedTrades || [])]
         },
-        realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) + marginInterestAllocated,
-        closedTrades: [closedRecord, ...(state.closedTrades || [])]
+        event: {
+          type: 'trade.sell',
+          effectiveAt: options.transactionContext?.effectiveAt ?? closedTimestamp,
+          ticker: clean,
+          quantity: actualSold,
+          positionQuantityDelta: -actualSold,
+          unitPrice: sellPrice,
+          grossAmount: sellProceeds,
+          fees: totalCommissions,
+          financingCost: marginInterestAllocated,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: currentDebt - totalDebt,
+          netAmount: netCashProceeds,
+          realizedPnl: netProfit
+        }
       };
     });
 
-    return result;
+    return committed ? result : null;
   }
 
   /**
@@ -1207,7 +1557,8 @@ export class PortfolioStore {
   public addCashHolding(
     ticker: string,
     shares: number,
-    price = 0
+    price = 0,
+    context?: PortfolioTransactionContext
   ): { ticker: string; shares: number; price: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(shares) || shares <= 0) return null;
@@ -1217,8 +1568,20 @@ export class PortfolioStore {
     const currentHoldings = this.state.cashCushion?.holdings || [];
     const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
     const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.buy',
+      clean,
+      shares,
+      hasManualPrice ? manualPrice : null
+    ]);
 
-    const committed = this.update((state) => {
+    const committed = this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const existingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
@@ -1241,10 +1604,27 @@ export class PortfolioStore {
       }
 
       return {
-        ...state,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings
+        state: {
+          ...state,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            holdings
+          }
+        },
+        event: {
+          type: 'cash-holding.buy',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: shares,
+          cashHoldingQuantityDelta: shares,
+          ...(hasManualPrice ? {
+            unitPrice: manualPrice,
+            grossAmount: shares * manualPrice
+          } : {}),
+          cashDelta: 0,
+          note: hasManualPrice
+            ? 'Cash-cushion holding quantity added at manually supplied price; no free-cash settlement is modeled.'
+            : 'Cash-cushion holding quantity added; no execution price was supplied and no cost basis is inferred.'
         }
       };
     });
@@ -1252,80 +1632,146 @@ export class PortfolioStore {
     return committed ? { ticker: clean, shares, price: resolvedPrice } : null;
   }
 
-  /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
+    /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
   public addCashStock(ticker: string, shares: number, price: number): boolean {
     if (!Number.isFinite(price) || price <= 0 ) return false;
     return this.addCashHolding(ticker, shares, price) !== null;
   }
 
-  public removeCashStock(indexOrTicker: number | string): boolean {
-    let removed = false;
-    const committed = this.update((state) => {
-      const holdings = [...(state.cashCushion?.holdings || [])];
-      let nextHoldings: typeof holdings;
+  public removeCashStock(
+    indexOrTicker: number | string,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const commandReference = typeof indexOrTicker === 'number'
+      ? `index:${indexOrTicker}`
+      : `ticker:${indexOrTicker.trim().toUpperCase()}`;
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.adjustment.remove',
+      commandReference
+    ]);
+    // A successful retry may reach this method after the holding has already
+    // disappeared. Consult the event key before the existence check so the
+    // same confirmed command is reported as an idempotent success.
+    const previous = context?.idempotencyKey
+      ? this.findAppliedTransaction({ ...context, requestFingerprint })
+      : undefined;
+    if (previous) {
+      return previous.type === 'cash-holding.adjustment' &&
+        previous.requestFingerprint === requestFingerprint;
+    }
 
-      if (typeof indexOrTicker === 'number') {
-        if (!Number.isInteger(indexOrTicker) || indexOrTicker < 0 || indexOrTicker >= holdings.length) {
-          return state;
-        }
-        nextHoldings = holdings.filter((_, idx) => idx !== indexOrTicker);
-      } else {
-        const clean = indexOrTicker.trim().toUpperCase();
-        if (!clean || !holdings.some((holding) => holding.ticker.toUpperCase() === clean)) {
-          return state;
-        }
-        nextHoldings = holdings.filter((holding) => holding.ticker.toUpperCase() !== clean);
-      }
+    const holdings = this.state.cashCushion?.holdings || [];
+    const target = typeof indexOrTicker === 'number'
+      ? (Number.isInteger(indexOrTicker) && indexOrTicker >= 0 ? holdings[indexOrTicker] : undefined)
+      : holdings.find((holding) => holding.ticker.trim().toUpperCase() === indexOrTicker.trim().toUpperCase());
+    if (!target) return false;
 
-      if (nextHoldings.length === holdings.length) return state;
-      removed = true;
+    const clean = target.ticker.trim().toUpperCase();
+    const targetIndex = typeof indexOrTicker === 'number'
+      ? indexOrTicker
+      : holdings.findIndex((holding) => holding.ticker.trim().toUpperCase() === clean);
+    const quantity = Number(target.shares) || 0;
+
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding-correction',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
+      const nextHoldings = [...(state.cashCushion?.holdings || [])];
+      if (targetIndex < 0 || targetIndex >= nextHoldings.length) return null;
+      const current = nextHoldings[targetIndex];
+      if (!current || current.ticker.trim().toUpperCase() !== clean) return null;
+      nextHoldings.splice(targetIndex, 1);
       return {
-        ...state,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings: nextHoldings
+        state: {
+          ...state,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            holdings: nextHoldings
+          }
+        },
+        event: {
+          type: 'cash-holding.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          ...(quantity > 0 ? { quantity, cashHoldingQuantityDelta: -quantity } : {}),
+          note: 'Cash-cushion holding removed from tracking; no sale proceeds or cash settlement were recorded.'
         }
       };
     });
-    return removed && committed;
   }
 
-  /**
+    /**
    * Sells a cash-cushion holding as one atomic balance transition. Unlike a
    * margin-position exit, this does not create a margin closed-trade record.
    */
   public sellCashHolding(
     ticker: string,
     sharesToSell: number,
-    sellPrice: number
+    sellPrice: number,
+    context?: PortfolioTransactionContext
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
-      !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+      !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      !Number.isFinite(sharesToSell * sellPrice)) return null;
+
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.sell',
+      clean,
+      sharesToSell,
+      sellPrice
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      if (previouslyApplied.type !== 'cash-holding.sell' ||
+        previouslyApplied.requestFingerprint !== requestFingerprint) return null;
+      const debtDelta = Number(previouslyApplied.marginDebtDelta) || 0;
+      return {
+        ticker: clean,
+        sharesSold: Number(previouslyApplied.quantity) || 0,
+        remainingShares: Number(this.state.cashCushion?.holdings.find(
+          (holding) => holding.ticker.trim().toUpperCase() === clean
+        )?.shares) || 0,
+        netProceeds: Number(previouslyApplied.netAmount) || 0,
+        debtRepaid: Math.max(0, -debtDelta),
+        cashSurplus: Math.max(0, Number(previouslyApplied.cashDelta) || 0)
+      };
+    }
 
     let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
-    const committed = this.update((state) => {
+    const committed = this.updateFinancialMutation(transactionContext, (state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const holdingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
       );
-      if (holdingIndex < 0) return state;
+      if (holdingIndex < 0) return null;
 
       const holding = holdings[holdingIndex];
       const availableShares = Number(holding.shares) || 0;
       const actualSold = Math.min(availableShares, sharesToSell);
-      if (actualSold <= 0) return state;
+      if (actualSold <= 0) return null;
 
       const grossProceeds = actualSold * sellPrice;
+      if (!Number.isFinite(grossProceeds)) return null;
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       const sellCommission = calculateSaleCommission(actualSold, grossProceeds, rules);
       const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
-      const settlement = settleSaleProceeds(
-        Math.abs(Number(state.balance) || 0),
-        Number(state.cashCushion?.freeCash) || 0,
-        netProceeds
-      );
+      if (!Number.isFinite(netProceeds) || netProceeds < 0) return null;
+
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const settlement = settleSaleProceeds(previousDebt, previousFreeCash, netProceeds);
       const nextDebt = settlement.remainingDebt;
       const debtRepaid = settlement.debtRepaid;
       const cashSurplus = settlement.cashSurplus;
@@ -1348,13 +1794,29 @@ export class PortfolioStore {
       };
 
       return {
-        ...state,
-        balance: nextDebt > 0 ? -nextDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash,
-          holdings
+        state: {
+          ...state,
+          balance: nextDebt > 0 ? -nextDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash,
+            holdings
+          }
+        },
+        event: {
+          type: 'cash-holding.sell',
+          effectiveAt: transactionContext.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: actualSold,
+          cashHoldingQuantityDelta: -actualSold,
+          unitPrice: sellPrice,
+          grossAmount: grossProceeds,
+          fees: sellCommission,
+          netAmount: netProceeds,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: nextDebt - previousDebt,
+          note: 'Cash-cushion holding sold; cost basis and realized P&L are not tracked for this holding type.'
         }
       };
     });
@@ -1362,7 +1824,7 @@ export class PortfolioStore {
     return committed ? result : null;
   }
 
-  /**
+    /**
    * Compatibility entry point for AI-confirmed sales. Terminal and AI sales
    * share the same FIFO, commission, margin-interest, debt/cash, and history path.
    */
@@ -1370,7 +1832,8 @@ export class PortfolioStore {
     ticker: string,
     sharesToSell: number,
     sellPrice: number,
-    closedAt = Date.now()
+    closedAt = Date.now(),
+    context?: PortfolioTransactionContext
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     const position = this.state.positions?.[clean];
@@ -1379,19 +1842,91 @@ export class PortfolioStore {
       !Number.isFinite(closedAt) || closedAt <= 0) return null;
 
     const date = new Date(closedAt).toISOString().slice(0, 10);
+    // The caller's idempotency key identifies the command; a retry may naturally
+    // arrive at a different wall-clock instant, which must not change its fingerprint.
+    const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      effectiveAt: context?.effectiveAt ?? closedAt,
+      requestFingerprint,
+      source: context?.source ?? 'ai-confirmed',
+      actor: context?.actor ?? { type: 'ai' }
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      if (previouslyApplied.type !== 'trade.sell' ||
+        previouslyApplied.requestFingerprint !== requestFingerprint) return null;
+      const marginDebtDelta = Number(previouslyApplied.marginDebtDelta) || 0;
+      return {
+        ticker: clean,
+        sharesSold: Number(previouslyApplied.quantity) || 0,
+        remainingShares: Number(this.state.positions?.[clean]?.shares) || 0,
+        netProceeds: Number(previouslyApplied.netAmount) || 0,
+        debtRepaid: Math.max(0, -marginDebtDelta),
+        cashSurplus: Math.max(0, Number(previouslyApplied.cashDelta) || 0)
+      };
+    }
+
     const previousState = this.state;
-    const result = this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
+    const result = this.applyMarginSale(clean, sharesToSell, sellPrice, date, {
+      closedAt,
+      transactionContext
+    });
     return this.state !== previousState ? result : null;
   }
 
-  public deleteClosedTrade(index: number): void {
-    this.update((state) => {
+  public deleteClosedTrade(
+    index: number,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const currentTrade = this.state.closedTrades?.[index];
+    if (!currentTrade || !Number.isInteger(index) || index < 0) return false;
+    const trade = currentTrade as typeof currentTrade & {
+      id?: string;
+      ticker?: string;
+      shares?: number;
+      sellDate?: string;
+      netProfit?: number;
+    };
+    const tradeId = typeof trade.id === 'string' ? trade.id : undefined;
+    const ticker = typeof trade.ticker === 'string' ? trade.ticker.trim().toUpperCase() : undefined;
+    const quantity = Number.isFinite(Number(trade.shares)) ? Number(trade.shares) : undefined;
+    const requestFingerprint = createMutationFingerprint([
+      'history.correction.delete-closed-trade',
+      tradeId ?? '',
+      ticker ?? '',
+      quantity ?? 0,
+      trade.sellDate ?? '',
+      Number.isFinite(Number(trade.netProfit)) ? Number(trade.netProfit) : null
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      ...(context?.idempotencyKey || !tradeId ? {} : { idempotencyKey: `closed-trade-delete:${tradeId}` }),
+      requestFingerprint,
+      source: context?.source ?? 'closed-history-maintenance',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+
+    return this.updateFinancialMutation(transactionContext, (state) => {
       const closedTrades = state.closedTrades || [];
-      if (!Number.isInteger(index) || index < 0 || index >= closedTrades.length) return state;
-      const nextClosed = closedTrades.filter((_, idx) => idx !== index);
+      const currentIndex = tradeId
+        ? closedTrades.findIndex((item) => (item as typeof trade).id === tradeId)
+        : index;
+      if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= closedTrades.length) return null;
+      const nextClosed = closedTrades.filter((_, idx) => idx !== currentIndex);
       return {
-        ...state,
-        closedTrades: nextClosed
+        state: {
+          ...state,
+          closedTrades: nextClosed
+        },
+        event: {
+          type: 'history.correction',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ...(ticker ? { ticker } : {}),
+          ...(quantity !== undefined && quantity > 0 ? { quantity } : {}),
+          note: `Closed-trade history record ${tradeId ?? `at index ${currentIndex}`} removed from the display history; the append-only transaction journal and financial balances were not changed.`
+        }
       };
     });
   }

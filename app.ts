@@ -125,6 +125,7 @@ import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import { CommandExecutionGuard } from './src/features/terminal/commandExecutionGuard';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
+import type { PortfolioTransactionContext } from './src/types/portfolioTransaction';
 
 // ==========================================
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -573,7 +574,9 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   } else if (!parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
-  portfolioStore.importState(loadSavedState(mergedState));
+  if (!portfolioStore.importState(loadSavedState(mergedState))) {
+    throw new Error(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', getAppLanguage()));
+  }
   state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
@@ -1087,7 +1090,7 @@ function stopFreedomQuoteStreamRuntime(): void {
 
 
 
-function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
+function addCashHolding(ticker: string, shares: number, givenPrice = 0, context?: PortfolioTransactionContext) {
   const symbol = ticker.trim().toUpperCase();
   const quantity = Number(shares);
   const manualPrice = Number(givenPrice);
@@ -1095,7 +1098,7 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
     throw new Error('Ticker and a positive share quantity are required.');
   }
 
-  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice);
+  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice, context);
   if (!added) {
     throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
   }
@@ -1106,22 +1109,27 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
   return added;
 }
 
-function removeCashHolding(ticker: string) {
+function removeCashHolding(ticker: string, context?: PortfolioTransactionContext) {
   const symbol = ticker.trim().toUpperCase();
   const holdings = state.cashCushion?.holdings;
   if (!symbol || !Array.isArray(holdings)) return null;
 
   const removed = holdings.find((holding: any) => holding.ticker === symbol);
-  if (!removed) return null;
+
+  // Let the store resolve an already-committed idempotent retry even when the
+  // first attempt removed the holding from the current snapshot.
+  if (!removed) {
+    return portfolioStore.removeCashStock(symbol, context) ? { ticker: symbol } : null;
+  }
 
   // Let the store own this state transition; its subscriber updates the runtime
   // state reference after the canonical mutation has been committed.
-  if (!portfolioStore.removeCashStock(symbol)) return null;
+  if (!portfolioStore.removeCashStock(symbol, context)) return null;
   return removed;
 }
 
-function setCurrentBalance(value: number): { balance: number; debt: number } | null {
-  if (!portfolioStore.setCashBalance(value)) return null;
+function setCurrentBalance(value: number, context?: PortfolioTransactionContext): { balance: number; debt: number } | null {
+  if (!portfolioStore.setCashBalance(value, context)) return null;
 
   const current: any = portfolioStore.getState();
   return {
@@ -1593,7 +1601,9 @@ async function importBackupFile(file: File) {
       importedState,
       previousState,
       (snapshot) => {
-        portfolioStore.importState(snapshot as any);
+        if (!portfolioStore.importState(snapshot as any)) {
+          throw new Error(translateText('Backup transaction history conflicts with this device or is not supported.', getAppLanguage()));
+        }
         state = portfolioStore.getState();
       },
       () => saveState(state, pushStateToGist)
@@ -1611,7 +1621,7 @@ async function importBackupFile(file: File) {
 // ==========================================
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
-async function applyPortfolioActions(action: PortfolioActionIntent) {
+async function applyPortfolioActions(action: PortfolioActionIntent, transactionContext: PortfolioTransactionContext) {
   if ((action.action === 'buy' || action.action === 'sell') && !applyOvernightRollover()) {
     logTerminal('[Error]: Could not save the margin rollover. The portfolio action was not applied.');
     return;
@@ -1645,7 +1655,8 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
       shares,
       price,
       action.date || new Date().toISOString().split('T')[0],
-      targetPrice
+      targetPrice,
+      transactionContext
     );
     if (!committed) {
       logTerminal('[Error]: Could not save portfolio changes. Previous saved data is unchanged.');
@@ -1671,6 +1682,32 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
     }
 
     if (!pos) {
+      const priorEvent = transactionContext.idempotencyKey
+        ? state.transactionEvents?.find((event) => event.idempotencyKey === transactionContext.idempotencyKey)
+        : undefined;
+      const requestedPrice = Number(action.price);
+      if (priorEvent) {
+        const priorQuantity = Number(priorEvent.quantity);
+        const requestedQuantityMatches = action.shares === null ||
+          Math.abs(priorQuantity - Number(action.shares)) <= 1e-8;
+        const matchingPriorSale = (priorEvent.type === 'trade.sell' || priorEvent.type === 'cash-holding.sell') &&
+          priorEvent.ticker === ticker &&
+          Number(priorEvent.unitPrice) === requestedPrice &&
+          Number.isFinite(priorQuantity) && priorQuantity > 0 &&
+          requestedQuantityMatches;
+        if (matchingPriorSale) {
+          const repeatedResult = priorEvent.type === 'cash-holding.sell'
+            ? portfolioStore.sellCashHolding(ticker, priorQuantity, requestedPrice, transactionContext)
+            : portfolioStore.sellMarginPosition(ticker, priorQuantity, requestedPrice, priorEvent.effectiveAt, transactionContext);
+          if (repeatedResult) {
+            logTerminal('[AI Action]: This confirmed sale request was already committed; no additional sale was applied.');
+            return;
+          }
+        }
+        logTerminal('[AI Action Error]: This request idempotency key is already associated with a different transaction. No changes were made.');
+        showToast('This confirmed action was already used for a different portfolio change.', 'error');
+        return;
+      }
       logTerminal(`[Error]: Position ${ticker} not found to close.`);
       return;
     }
@@ -1696,7 +1733,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
       return;
     }
     if (isCashHolding) {
-      const result = portfolioStore.sellCashHolding(ticker, sharesToSell, sellPrice);
+      const result = portfolioStore.sellCashHolding(ticker, sharesToSell, sellPrice, transactionContext);
       if (!result) {
         logTerminal(`[Sell Error]: Could not sell cash holding ${ticker}.`);
         showToast('Cash holding sale failed.', 'error');
@@ -1715,7 +1752,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
 
     let result: ReturnType<typeof portfolioStore.sellMarginPosition>;
     try {
-      result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice);
+      result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice, Date.now(), transactionContext);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       logTerminal(`[Sell Error]: ${detail}`);
@@ -1771,7 +1808,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
       showToast('Invalid margin debt amount.', 'error');
       return;
     }
-    if (!portfolioStore.setMarginDebt(debt)) {
+    if (!portfolioStore.setMarginDebt(debt, transactionContext)) {
       logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
       return;
     }
@@ -1779,7 +1816,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
-    const committedBalance = setCurrentBalance(action.amount);
+    const committedBalance = setCurrentBalance(action.amount, transactionContext);
     if (!committedBalance) {
       logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
       return;
@@ -1794,7 +1831,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
     const givenPrice = Number(action.price) || 0;
 
     try {
-      addCashHolding(ticker, shares, givenPrice);
+      addCashHolding(ticker, shares, givenPrice, transactionContext);
     } catch (error) {
       logTerminal(`[Error]: ${error instanceof Error ? error.message : PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
       return;
@@ -1807,7 +1844,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
   }
   else if (action.action === "remove_cash_stock") {
     const ticker = action.ticker.toUpperCase();
-    const removed = removeCashHolding(ticker);
+    const removed = removeCashHolding(ticker, transactionContext);
     if (removed) {
       saveState(state, pushStateToGist);
       logTerminal(`[Balance]: Removed ${removed.ticker} from balance holdings.`);
@@ -1948,6 +1985,19 @@ function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
 
 function showScenarioModal(data: ScenarioModalData): void {
   emitUiEvent('terminal:scenario-modal', data);
+}
+
+function createAiActionIdempotencyKey(requestId: number): string {
+  let uniqueId: string;
+  try {
+    const randomUUID = globalThis.crypto?.randomUUID;
+    uniqueId = typeof randomUUID === 'function'
+      ? randomUUID.call(globalThis.crypto)
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  } catch {
+    uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+  return `ai-action:${requestId}:${uniqueId}`;
 }
 
 const aiRequestLifecycle = createAiRequestLifecycle();
@@ -2129,7 +2179,8 @@ async function executeCommandOnce(text: string, preserveAiRequest = false) {
       const applied = await applyAiPortfolioActionAfterConfirmation(
         parsed,
         confirmAiPortfolioAction,
-        applyPortfolioActions
+        applyPortfolioActions,
+        createAiActionIdempotencyKey(requestId)
       );
       if (!applied) logTerminal("[AI Action]: Cancelled.");
     } else if (parsed.intent === 'chat') {

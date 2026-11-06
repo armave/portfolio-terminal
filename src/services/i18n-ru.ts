@@ -842,4 +842,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "TradeNet returned only one bid price and one ask price in this snapshot. This view combines orders at identical prices and displays every distinct price level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.": "TradeNet предоставил в этом снимке только одну цену покупки и одну цену продажи. Интерфейс объединяет заявки с одинаковой ценой и показывает все полученные ценовые уровни. Уточните у Freedom Broker, доступна ли для этого инструмента большая глубина рыночных данных.",
   "total positions in the combined book": "позиций в объединённом стакане",
   "Changes captured:": "Полученные изменения:",
+  "Backup transaction history conflicts with this device or is not supported.": "История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.",
+  "Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.": "Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.",
 };
