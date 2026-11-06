@@ -17,7 +17,7 @@ describe('AI portfolio action confirmation boundary', () => {
     const confirm = vi.fn(() => false);
     const apply = vi.fn();
 
-    const result = await applyAiPortfolioActionAfterConfirmation(buyAction, confirm, apply);
+    const result = await applyAiPortfolioActionAfterConfirmation(buyAction, confirm, apply, 'ai-action:test-request');
 
     expect(result).toBe(false);
     expect(confirm).toHaveBeenCalledOnce();
@@ -29,18 +29,22 @@ describe('AI portfolio action confirmation boundary', () => {
     const confirm = vi.fn(() => true);
     const apply = vi.fn();
 
-    const result = await applyAiPortfolioActionAfterConfirmation(buyAction, confirm, apply);
+    const result = await applyAiPortfolioActionAfterConfirmation(buyAction, confirm, apply, 'ai-action:test-request');
 
     expect(result).toBe(true);
     expect(confirm).toHaveBeenCalledOnce();
     expect(apply).toHaveBeenCalledOnce();
-    expect(apply).toHaveBeenCalledWith(buyAction);
+    expect(apply).toHaveBeenCalledWith(buyAction, {
+      actor: { type: 'ai' },
+      source: 'ai-confirmed',
+      idempotencyKey: 'ai-action:test-request'
+    });
   });
 
   it('propagates mutation failures instead of reporting a successful application', async () => {
     const failure = new Error('store rejected action');
     const apply = vi.fn(() => { throw failure; });
 
-    await expect(applyAiPortfolioActionAfterConfirmation(buyAction, () => true, apply)).rejects.toBe(failure);
+    await expect(applyAiPortfolioActionAfterConfirmation(buyAction, () => true, apply, 'ai-action:failure-request')).rejects.toBe(failure);
   });
 });

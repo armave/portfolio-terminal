@@ -9,6 +9,7 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
+import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -2431,5 +2432,547 @@ describe('portfolio import boundary validation', () => {
     expect(store.getState().closedTrades).toEqual([
       { ticker: 'AAPL', shares: 1, netProfit: 15 }
     ]);
+  });
+});
+
+
+describe('portfolio transaction journal integration', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('persists purchase events atomically with canonical positions and deduplicates retries after reload', () => {
+    const store = new PortfolioStore();
+    expect(store.getState().transactionEvents).toEqual([]);
+
+    const context = {
+      idempotencyKey: 'terminal-buy-2026-11-06-001',
+      source: 'terminal' as const,
+      actor: { type: 'user' as const, id: 'user-7' }
+    };
+    expect(store.buyStock('aapl', 2, 100, '2026-11-06', undefined, context)).toBe(true);
+
+    const committed = store.getState();
+    expect(committed.positions.AAPL.shares).toBe(2);
+    expect(committed.transactionEvents).toHaveLength(1);
+    expect(committed.transactionEvents?.[0]).toMatchObject({
+      type: 'trade.buy',
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100,
+      grossAmount: 200,
+      idempotencyKey: context.idempotencyKey,
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+
+    const saved = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(saved.positions.AAPL.shares).toBe(2);
+    expect(saved.transactionEvents).toHaveLength(1);
+
+    const reloaded = new PortfolioStore();
+    const beforeRetry = reloaded.getState();
+    expect(reloaded.buyStock('AAPL', 2, 100, '2026-11-06', undefined, context)).toBe(true);
+    expect(reloaded.getState()).toBe(beforeRetry);
+    expect(reloaded.getState().positions.AAPL.shares).toBe(2);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+
+    // Reusing a key for a different command must be rejected, not treated as a retry.
+    expect(reloaded.buyStock('AAPL', 3, 100, '2026-11-06', undefined, context)).toBe(false);
+    expect(reloaded.getState().positions.AAPL.shares).toBe(2);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+  });
+
+  it('records AI-confirmed sale attribution and deduplicates a retry with a later wall-clock time', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+
+    const context = {
+      idempotencyKey: 'ai-action:request-17',
+      actor: { type: 'ai' as const },
+      source: 'ai-confirmed'
+    };
+    const first = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:00:00Z'), context);
+    expect(first).not.toBeNull();
+    const committedEventCount = store.getState().transactionEvents?.length ?? 0;
+
+    const retry = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:05:00Z'), context);
+
+    expect(retry).toEqual(first);
+    expect(store.getState().positions.AAPL.shares).toBe(1);
+    expect(store.getState().transactionEvents).toHaveLength(committedEventCount);
+    expect(store.getState().transactionEvents?.find((event) => event.idempotencyKey === context.idempotencyKey))
+      .toMatchObject({
+        type: 'trade.sell',
+        actor: { type: 'ai' },
+        source: 'ai-confirmed'
+      });
+  });
+
+  it('records sale proceeds, commissions, financing allocation, and realized P&L', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    expect(store.setCashBalance(5_000)).toBe(true);
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+
+    const saleContext = {
+      idempotencyKey: 'terminal-sale-2026-11-06-001',
+      source: 'terminal' as const
+    };
+    expect(store.sellStock('AAPL', 1, 120, '2026-11-06', saleContext)).toBe(true);
+
+    const event = store.getState().transactionEvents?.find((item) =>
+      item.idempotencyKey === saleContext.idempotencyKey
+    );
+    expect(event).toMatchObject({
+      type: 'trade.sell',
+      ticker: 'AAPL',
+      quantity: 1,
+      unitPrice: 120,
+      grossAmount: 120,
+      fees: 0,
+      financingCost: 0,
+      netAmount: 120,
+      realizedPnl: 20,
+      cashDelta: 120,
+      marginDebtDelta: 0
+    });
+    expect(event?.realizedPnl).toBe(store.getState().closedTrades[0].netProfit);
+    expect(store.getState().positions.AAPL.shares).toBe(1);
+  });
+
+
+  it('journals cash-holding additions and deduplicates a repeated command after reload', () => {
+    const store = new PortfolioStore();
+    const context = {
+      idempotencyKey: 'cash-holding-add-001',
+      source: 'terminal-cash-desk' as const
+    };
+
+    expect(store.addCashHolding('nvda', 3, 120, context)).toEqual({
+      ticker: 'NVDA',
+      shares: 3,
+      price: 120
+    });
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({ ticker: 'NVDA', shares: 3, price: 120 })
+    ]);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+    expect(store.getState().transactionEvents?.[0]).toMatchObject({
+      type: 'cash-holding.buy',
+      ticker: 'NVDA',
+      quantity: 3,
+      unitPrice: 120,
+      grossAmount: 360,
+      cashDelta: 0,
+      idempotencyKey: context.idempotencyKey
+    });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.addCashHolding('NVDA', 3, 120, context)).toEqual({
+      ticker: 'NVDA',
+      shares: 3,
+      price: 120
+    });
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(3);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+    expect(reloaded.addCashHolding('NVDA', 4, 120, context)).toBeNull();
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(3);
+  });
+
+  it('journals cash-holding sales with debt-first settlement and idempotent replay', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0
+    });
+    expect(store.setMarginDebt(10)).toBe(true);
+    expect(store.addCashHolding('NVDA', 3, 15)).not.toBeNull();
+
+    const context = { idempotencyKey: 'cash-holding-sale-001' };
+    const result = store.sellCashHolding('NVDA', 2, 20, context);
+    expect(result).toEqual({
+      ticker: 'NVDA',
+      sharesSold: 2,
+      remainingShares: 1,
+      netProceeds: 40,
+      debtRepaid: 10,
+      cashSurplus: 30
+    });
+    const event = store.getState().transactionEvents?.find((item) =>
+      item.idempotencyKey === context.idempotencyKey
+    );
+    expect(event).toMatchObject({
+      type: 'cash-holding.sell',
+      ticker: 'NVDA',
+      quantity: 2,
+      unitPrice: 20,
+      grossAmount: 40,
+      fees: 0,
+      netAmount: 40,
+      cashDelta: 30,
+      marginDebtDelta: -10
+    });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.sellCashHolding('NVDA', 2, 20, context)).toEqual(result);
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(1);
+    expect(reloaded.getState().cashCushion.freeCash).toBe(30);
+    expect(reloaded.getState().balance).toBe(0);
+    expect(reloaded.getState().transactionEvents?.filter((item) => item.idempotencyKey === context.idempotencyKey)).toHaveLength(1);
+    expect(reloaded.sellCashHolding('NVDA', 2, 21, context)).toBeNull();
+  });
+
+
+  it('deduplicates a confirmed cash-holding removal after the holding is gone', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 3, 120)).not.toBeNull();
+    const context = {
+      idempotencyKey: 'ai-action:remove-cash-1',
+      actor: { type: 'ai' as const },
+      source: 'ai-confirmed'
+    };
+
+    expect(store.removeCashStock('NVDA', context)).toBe(true);
+    expect(store.getState().cashCushion.holdings).toHaveLength(0);
+    const eventCount = store.getState().transactionEvents?.length ?? 0;
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.removeCashStock('NVDA', context)).toBe(true);
+    expect(reloaded.getState().cashCushion.holdings).toHaveLength(0);
+    expect(reloaded.getState().transactionEvents).toHaveLength(eventCount);
+    expect(reloaded.getState().transactionEvents?.find((event) => event.idempotencyKey === context.idempotencyKey))
+      .toMatchObject({
+        type: 'cash-holding.adjustment',
+        actor: { type: 'ai' },
+        source: 'ai-confirmed'
+      });
+    expect(reloaded.removeCashStock('NVDA', {
+      ...context,
+      idempotencyKey: context.idempotencyKey
+    })).toBe(true);
+  });
+
+  it('journals tranche removal as a tracking correction without pretending it was a sale', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    const beforeEvents = store.getState().transactionEvents?.length || 0;
+
+    expect(store.removeTranche('AAPL', 'AAPL-0')).toBe(true);
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    const correction = store.getState().transactionEvents?.[beforeEvents];
+    expect(correction).toMatchObject({
+      type: 'position.adjustment',
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100
+    });
+    expect(correction?.cashDelta).toBeUndefined();
+    expect(correction?.netAmount).toBeUndefined();
+    expect(correction?.note).toContain('no sale proceeds');
+  });
+
+  it('journals cash-holding removal without inventing proceeds', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 4, 120)).not.toBeNull();
+    const beforeEvents = store.getState().transactionEvents?.length || 0;
+
+    expect(store.removeCashStock('NVDA')).toBe(true);
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    const correction = store.getState().transactionEvents?.[beforeEvents];
+    expect(correction).toMatchObject({
+      type: 'cash-holding.adjustment',
+      ticker: 'NVDA',
+      quantity: 4
+    });
+    expect(correction?.cashDelta).toBeUndefined();
+    expect(correction?.netAmount).toBeUndefined();
+  });
+
+  it('preserves the append-only journal and records a reset marker', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-01')).toBe(true);
+    const previousEvents = store.getState().transactionEvents || [];
+    const resetAt = Date.parse('2026-11-06T10:00:00.000Z');
+
+    expect(store.resetToBlankState(resetAt)).toBe(true);
+    expect(store.getState().positions).toEqual({});
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    expect(store.getState().transactionEvents).toHaveLength(previousEvents.length + 1);
+    expect(store.getState().transactionEvents?.slice(0, previousEvents.length)).toEqual(previousEvents);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'portfolio.reset',
+      effectiveAt: resetAt,
+      actor: { type: 'user' }
+    });
+    const saved = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(saved.transactionEvents).toHaveLength(previousEvents.length + 1);
+  });
+
+  it('does not infer an execution price from a quote when cash-holding shares are added without a manual price', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 2, 120)).not.toBeNull();
+    expect(store.addCashHolding('NVDA', 1)).not.toBeNull();
+
+    const event = store.getState().transactionEvents?.at(-1);
+    expect(event).toMatchObject({
+      type: 'cash-holding.buy',
+      ticker: 'NVDA',
+      quantity: 1
+    });
+    expect(event?.unitPrice).toBeUndefined();
+    expect(event?.grossAmount).toBeUndefined();
+    expect(event?.note).toContain('no execution price');
+  });
+
+
+  it('records deletion of closed-trade display history without deleting transaction evidence', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    expect(store.sellStock('AAPL', 'ALL', 120, '2026-11-06')).toBe(true);
+    const originalEventCount = store.getState().transactionEvents?.length || 0;
+    const closedTradeId = store.getState().closedTrades[0].id;
+
+    expect(store.deleteClosedTrade(0)).toBe(true);
+    expect(store.getState().closedTrades).toHaveLength(0);
+    expect(store.getState().transactionEvents).toHaveLength(originalEventCount + 1);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'history.correction',
+      ticker: 'AAPL'
+    });
+    expect(store.getState().transactionEvents?.at(-1)?.note).toContain(String(closedTradeId));
+    expect(store.getState().transactionEvents?.some((event) => event.type === 'trade.sell')).toBe(true);
+    expect(store.getState().positions.AAPL).toBeUndefined();
+  });
+
+
+  it('journals imported broker executions and cashflows without posting them twice, then reconciles canonical baselines', () => {
+    const store = new PortfolioStore();
+    const execution = {
+      id: 'freedom-exec-500',
+      ticker: 'GOOGL',
+      side: 'BUY',
+      quantity: 2,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      tradeValue: 200,
+      commission: 1,
+      profit: null,
+      marginFee: null,
+      commissionCurrency: 'USD',
+      raw: {}
+    };
+    const cashflow = {
+      id: 'freedom-dividend-500',
+      date: '2026-11-02T10:00:00.000Z',
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD',
+      description: 'Quarterly dividend',
+      raw: {}
+    };
+    const imported = {
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 5,
+          currentPrice: 110,
+          pt: 120,
+          commBuy: 0,
+          tranches: [{ qty: 5, price: 100, date: '2026-10-01' }]
+        }
+      },
+      balance: -75,
+      cashCushion: {
+        freeCash: 40,
+        holdings: [{ ticker: 'MSFT', shares: 3, price: 50 }]
+      },
+      brokerExecutedTrades: [execution],
+      cashflows: [cashflow]
+    } as any;
+
+    expect(store.importState(imported)).toBe(true);
+    const events = store.getState().transactionEvents || [];
+    const brokerExecution = events.find((event) => event.type === 'broker.execution');
+    const brokerCashflow = events.find((event) => event.type === 'dividend');
+    expect(brokerExecution).toMatchObject({
+      externalReferenceId: execution.id,
+      ticker: 'GOOGL',
+      quantity: 2,
+      unitPrice: 100,
+      source: 'freedom-tradenet'
+    });
+    expect(brokerExecution?.positionQuantityDelta).toBeUndefined();
+    expect(brokerCashflow).toMatchObject({
+      externalReferenceId: cashflow.id,
+      externalCashFlowAmount: 15,
+      currency: 'USD'
+    });
+    expect(brokerCashflow?.cashDelta).toBeUndefined();
+
+    const reconciliation = events.filter((event) => event.type === 'portfolio.reconciliation');
+    expect(reconciliation.length).toBeGreaterThanOrEqual(4);
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+
+    const beforeReplay = events.length;
+    expect(store.importState(imported)).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(beforeReplay);
+
+    expect(store.importState({
+      brokerExecutedTrades: [{ ...execution, commission: 1.5 }]
+    })).toBe(true);
+    const revisions = store.getState().transactionEvents?.filter((event) =>
+      event.type === 'broker.execution' && event.externalReferenceId === execution.id
+    ) || [];
+    expect(revisions).toHaveLength(2);
+    expect(revisions[1].relatedEventId).toBe(revisions[0].id);
+    expect(revisions[1].fees).toBe(1.5);
+    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()).matches).toBe(true);
+  });
+
+  it('journals any direct canonical state edit as a reconciliation delta rather than a guessed trade', () => {
+    const store = new PortfolioStore();
+    expect(store.setState({
+      positions: {
+        NVDA: {
+          ticker: 'NVDA',
+          shares: 4,
+          currentPrice: 120,
+          pt: 130,
+          commBuy: 0,
+          tranches: [{ qty: 4, price: 100, date: '2026-11-01' }]
+        }
+      }
+    })).toBe(true);
+
+    const event = store.getState().transactionEvents?.at(-1);
+    expect(event).toMatchObject({
+      type: 'portfolio.reconciliation',
+      ticker: 'NVDA',
+      positionQuantityDelta: 4
+    });
+    expect(event?.realizedPnl).toBeUndefined();
+    expect(event?.netAmount).toBeUndefined();
+    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()).matches).toBe(true);
+  });
+
+  it('does not publish a financial mutation or append its event when persistence fails', () => {
+    const failingStorage = {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    };
+    vi.stubGlobal('localStorage', failingStorage);
+
+    const store = new PortfolioStore();
+    store.setState({ balance: -25 }, false);
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.buyStock('MSFT', 1, 100, '2026-11-06', undefined, {
+      idempotencyKey: 'failed-buy-1'
+    })).toBe(false);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().positions.MSFT).toBeUndefined();
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('makes automatic rollover idempotent for the same timestamp', () => {
+    const store = new PortfolioStore();
+    const timestamp = Date.parse('2026-11-06T00:00:00.000Z');
+    expect(store.applyRollover(105, 5, timestamp, true)).toBe(true);
+    const afterFirst = store.getState();
+
+    expect(store.applyRollover(105, 5, timestamp, true)).toBe(true);
+    expect(store.getState()).toBe(afterFirst);
+    expect(store.getState().transactionEvents?.filter((event) => event.type === 'margin.interest')).toHaveLength(1);
+
+    expect(store.applyRollover(106, 6, timestamp, true)).toBe(false);
+    expect(store.getState()).toBe(afterFirst);
+  });
+
+
+  it('prevents generic state patches and older backup imports from replacing committed audit history', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-01')).toBe(true);
+    const originalEvents = store.getState().transactionEvents || [];
+    const originalState = store.getState();
+
+    expect(store.setState({ transactionEvents: [] } as any)).toBe(false);
+    expect(store.getState().transactionEvents).toEqual(originalEvents);
+
+    expect(store.importState({ transactionEvents: [] })).toBe(true);
+    expect(store.getState().transactionEvents).toEqual(originalEvents);
+
+    const importedEvent = {
+      ...originalEvents[0],
+      id: 'imported-event-2',
+      idempotencyKey: undefined,
+      requestFingerprint: undefined,
+      type: 'cash.adjustment' as const,
+      ticker: undefined,
+      quantity: undefined,
+      unitPrice: undefined,
+      grossAmount: 25,
+      fees: undefined,
+      cashDelta: 25,
+      marginDebtDelta: undefined,
+      note: 'Imported cash adjustment'
+    };
+    expect(store.importState({ transactionEvents: [importedEvent] })).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(3);
+    expect(store.getState().transactionEvents?.[0]).toEqual(originalEvents[0]);
+    expect(store.getState().transactionEvents?.[1]).toMatchObject({
+      id: 'imported-event-2',
+      type: 'cash.adjustment',
+      cashDelta: 25
+    });
+    expect(store.getState().transactionEvents?.[2]).toMatchObject({
+      type: 'portfolio.reconciliation',
+      cashDelta: -25
+    });
+
+    const committed = store.getState();
+    expect(store.importState({
+      transactionEvents: [{ ...originalEvents[0], quantity: 99 }]
+    })).toBe(false);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState()).not.toBe(originalState);
+  });
+
+  it('rejects malformed imported transaction events without replacing current state', () => {
+    const store = new PortfolioStore();
+    const before = store.getState();
+    expect(store.importState({
+      transactionEvents: [{ id: 'bad-event', schemaVersion: 9 }]
+    } as any)).toBe(false);
+    expect(store.getState()).toBe(before);
   });
 });

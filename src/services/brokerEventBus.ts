@@ -2,7 +2,7 @@ import type {
   FreedomActiveOrder,
   FreedomPortfolioSnapshot
 } from './api';
-import type { BrokerDataQualityIssue } from '../types/broker';
+import type { BrokerDataQualityIssue, BrokerDataSnapshot } from '../types/broker';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 interface ActiveTrancheTypeRequest {
@@ -28,6 +28,8 @@ interface ClosedTradeAllocationRequest {
 
 export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
+  /** Full normalized snapshot metadata; the legacy data-only event remains for existing consumers. */
+  'broker:account-info-snapshot': BrokerDataSnapshot<FreedomPortfolioSnapshot>;
   'broker:account-info-refreshing': undefined;
   'broker:account-info-refresh-complete': undefined;
   'broker:account-info-error': BrokerDataQualityIssue | undefined;

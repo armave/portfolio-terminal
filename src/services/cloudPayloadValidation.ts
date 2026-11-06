@@ -1,3 +1,5 @@
+import { isPortfolioTransactionEventList } from '../domain/portfolioTransactionJournal';
+
 type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -31,6 +33,9 @@ export function assertValidCloudPortfolioPayload(value: unknown): asserts value 
   validateOptionalArray(value, 'brokerExecutedTrades', 'broker executions');
   validateOptionalArray(value, 'cashflows', 'cashflows');
   validateOptionalArray(value, 'guestTrancheLedger', 'guest tranche ledger');
+  if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    throw new Error('Invalid cloud portfolio: transaction events must be a valid versioned event array.');
+  }
 
   validateOptionalRecord(value, 'positions', 'positions');
   validateOptionalRecord(value, 'activeTrancheTypes', 'active tranche types');

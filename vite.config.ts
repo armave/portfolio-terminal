@@ -131,9 +131,12 @@ export default defineConfig({
           if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }
-          // Keep provider-neutral market-data validation out of the entry chunk.
-          // It is shared by quote, history and FX consumers and can be cached independently.
-          if (id.includes('/src/services/marketDataContracts.ts')) {
+          // The immutable transaction journal is shared by the store, backup,
+          // cloud validation and parity paths. Keep it cacheable outside the entry chunk.
+          if (id.endsWith('/src/domain/portfolioTransactionJournal.ts')) {
+            return 'transaction-journal';
+          }
+          if (id.endsWith('/src/services/marketDataContracts.ts')) {
             return 'market-data-contracts';
           }
           return undefined;

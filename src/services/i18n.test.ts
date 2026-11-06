@@ -131,6 +131,13 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes transaction journal backup and cloud restore conflicts', () => {
+    expect(translateText('Backup transaction history conflicts with this device or is not supported.', 'ru'))
+      .toBe('История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.');
+    expect(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', 'ru'))
+      .toBe('Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.');
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
@@ -228,8 +235,6 @@ describe('app localization', () => {
 
   it('localizes portfolio quote coverage labels', () => {
     expect(translateText('Fresh', 'ru')).toBe('Свежие');
-    expect(translateText('Cached', 'ru')).toBe('Из кэша');
-    expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
     expect(translateText('Stale', 'ru')).toBe('Устарело');
     expect(translateText('Delayed', 'ru')).toBe('С задержкой');
     expect(translateText('Time unknown', 'ru')).toBe('Время неизвестно');
@@ -642,6 +647,12 @@ describe('app localization', () => {
     expect(translateText('Trades', 'ru')).toBe('Сделки');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+  });
+
+
+  it('localizes quote cache provenance labels', () => {
+    expect(translateText('Cached', 'ru')).toBe('Из кэша');
+    expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
   });
 
 });
