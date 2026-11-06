@@ -1,5 +1,7 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
+export type BackgroundStartupOperation = 'quote-refresh' | 'cloud-write-recovery';
+
 export interface PortfolioAuthenticatedStartupDependencies {
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
@@ -22,6 +24,7 @@ export interface PortfolioAuthenticatedStartupDependencies {
   renderBoardAnalystConsensus: () => void;
   recoverPendingCloudWrites: () => Promise<void>;
   hideStartupLoading: () => void;
+  onBackgroundStartupError?: (operation: BackgroundStartupOperation, error: unknown) => void;
 }
 
 export interface PortfolioAuthenticatedStartupRuntime {
@@ -63,13 +66,35 @@ export function createPortfolioAuthenticatedStartupRuntime(
     else dependencies.showSavedAdminView();
 
     dependencies.scrollWorkspace();
-    await dependencies.refreshLivePrices();
-    dependencies.finishInitialQuoteRefresh();
 
-    if (role === 'guest') dependencies.showGuestBalanceView();
-    dependencies.renderBoardAnalystConsensus();
-    await dependencies.recoverPendingCloudWrites();
+    // The selected workspace is now fully hydrated and safe to use. Market data
+    // and pending cloud-write recovery must not keep the blocking startup overlay
+    // visible when their providers are slow or unavailable.
     dependencies.hideStartupLoading();
+
+    const refreshQuotesInBackground = async (): Promise<void> => {
+      try {
+        await dependencies.refreshLivePrices();
+      } catch (error) {
+        dependencies.onBackgroundStartupError?.('quote-refresh', error);
+      } finally {
+        dependencies.finishInitialQuoteRefresh();
+        dependencies.renderBoardAnalystConsensus();
+      }
+    };
+    const recoverCloudWritesInBackground = async (): Promise<void> => {
+      try {
+        await dependencies.recoverPendingCloudWrites();
+      } catch (error) {
+        dependencies.onBackgroundStartupError?.('cloud-write-recovery', error);
+      }
+    };
+
+    // Start both independent operations after the workspace is visible. The
+    // quote completion path no longer changes navigation, so a user who starts
+    // navigating immediately after startup is not sent back to Balance.
+    void refreshQuotesInBackground();
+    void recoverCloudWritesInBackground();
   };
 
   return { startApp };
