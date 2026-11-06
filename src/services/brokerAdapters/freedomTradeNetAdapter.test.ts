@@ -64,6 +64,62 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.warnings).toContain('Some USD provider rows or required collections were unavailable.');
   });
 
+  it('marks malformed required USD values partial and excludes those rows without inventing zero values', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [
+          { curr: 'USD', s: '125.50' },
+          { curr: 'USD', s: true, currval: false }
+        ],
+        pos: [
+          { curr: 'USD', i: 'AAPL.US', q: 2, mkt_price: 190 },
+          { curr: 'USD', i: 'MSFT.US', q: true, mkt_price: 400 }
+        ]
+      } } }
+    }, { receivedAt: 789, source: 'rest' });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.receivedAt).toBe(789);
+    expect(snapshot.data.balances).toEqual([{ currency: 'USD', amount: 125.5, forecastIn: 0, forecastOut: 0, t2In: 0, t2Out: 0 }]);
+    expect(snapshot.data.positions).toMatchObject([{ ticker: 'AAPL.US', quantity: 2 }]);
+    expect(snapshot.warnings).toEqual(expect.arrayContaining([
+      'TradeNet USD balance row without a valid amount was excluded.',
+      'TradeNet USD position row without a valid quantity was excluded.'
+    ]));
+  });
+
+  it('treats rows with unknown currency as partial rather than silently excluding them as non-USD', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ s: '100' }],
+        pos: []
+      } } }
+    });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.data.balances).toEqual([]);
+    expect(snapshot.warnings).toContain('TradeNet balance row without a currency was excluded.');
+  });
+
+  it('keeps genuine zero USD balances and quantities complete', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 0 }],
+        pos: [{ curr: 'USD', i: 'AAPL.US', q: 0 }]
+      } } }
+    }, { observedAt: 100 });
+
+    expect(snapshot.quality).toBe('complete');
+    expect(snapshot.data.balances[0].amount).toBe(0);
+    expect(snapshot.data.positions[0].quantity).toBe(0);
+  });
+
   it('rejects unloaded or malformed portfolio data through a typed provider error', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     expect(() => adapter.normalizePortfolio({ data: { result: { ps: { loaded: false } } } }))
