@@ -7,7 +7,7 @@ const host = '127.0.0.1';
 const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
 const appUrl = `http://${host}:${port}/portfolio-terminal/`;
 const workerOrigin = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
-const outputPath = process.env.PERFORMANCE_BASELINE_OUTPUT || 'artifacts/browser-performance-baseline.json';
+const outputPath = 'artifacts/browser-performance-baseline.json';
 const runsPerViewport = 3;
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -73,13 +73,26 @@ async function measure(viewport) {
     });
 
     await page.route(workerOrigin + '/**', async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname === '/api/auth/status' && route.request().method() === 'GET') {
+      const request = route.request();
+      const url = new URL(request.url());
+      const origin = request.headers().origin || '*';
+      const corsHeaders = {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-App-Auth, If-Match',
+        'Access-Control-Expose-Headers': 'ETag'
+      };
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (url.pathname === '/api/auth/status' && request.method() === 'GET') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ setupRequired: true, userCount: 0 }),
-          headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }
+          headers: corsHeaders
         });
         return;
       }
