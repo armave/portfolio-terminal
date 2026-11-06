@@ -20,7 +20,7 @@ PT-01 calculation contracts (merged), PT-02 transaction/cash-flow contract (para
 - [x] Define and implement calculation-level data-quality rules: fewer than two valuations, duplicate/invalid timestamps, incomplete inputs, missing/invalid flows, and currency mismatches are unavailable; provisional inputs remain visibly provisional.
 - [x] Implement pure deterministic calculation services with no UI, network, browser storage, or AI dependencies in `src/domain/portfolioPerformance.ts`.
 - [x] Add UTC daily/monthly/yearly linked return buckets, since-inception return, and generic keyed period attribution with reconciliation in `src/domain/portfolioPerformance.ts`. Security/account mapping awaits PT-02/PT-07 integration.
-- [ ] Implement benchmark comparisons with aligned date windows, currencies, trading calendars, and explicitly identified benchmark sources (not part of this initial calculation kernel).
+- [x] Add a pure benchmark comparison contract requiring a dividend-reinvested total-return index, exact opening/closing timestamp alignment, and matching currency; no interpolation or implicit FX.
 - [x] Reject mixed-currency calculations until the PT-07 historical FX provenance contract is integrated; no implicit conversion is performed.
 - [ ] Add UI surfaces for headline return, cash-flow adjusted performance, contribution, and methodology explanations after PT-02/PT-07 input integration.
 - [x] Keep the new engine isolated from existing dashboard P&L and persisted portfolio fields; no existing accounting formula or state was changed.
