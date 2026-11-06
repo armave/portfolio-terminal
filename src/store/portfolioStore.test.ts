@@ -2835,7 +2835,7 @@ describe('portfolio transaction journal integration', () => {
     })).toBe(false);
     expect(store.getState()).toBe(before);
     expect(store.getState().positions.MSFT).toBeUndefined();
-    expect(store.getState().transactionEvents).toEqual([]);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -2882,12 +2882,16 @@ describe('portfolio transaction journal integration', () => {
       note: 'Imported cash adjustment'
     };
     expect(store.importState({ transactionEvents: [importedEvent] })).toBe(true);
-    expect(store.getState().transactionEvents).toHaveLength(2);
+    expect(store.getState().transactionEvents).toHaveLength(3);
     expect(store.getState().transactionEvents?.[0]).toEqual(originalEvents[0]);
     expect(store.getState().transactionEvents?.[1]).toMatchObject({
       id: 'imported-event-2',
       type: 'cash.adjustment',
       cashDelta: 25
+    });
+    expect(store.getState().transactionEvents?.[2]).toMatchObject({
+      type: 'portfolio.reconciliation',
+      cashDelta: -25
     });
 
     const committed = store.getState();
