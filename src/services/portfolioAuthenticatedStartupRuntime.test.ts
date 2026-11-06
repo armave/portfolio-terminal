@@ -64,6 +64,8 @@ describe('portfolio authenticated startup runtime', () => {
 
     await fixture.start();
 
+    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
+
     expect(fixture.calls).toEqual([
       'load-rules', 'publish-user', 'secret:valid-secret', 'pull-guest-snapshot',
       'resolve-interval:guest', 'set-interval:guest-interval', 'rollover-timer:false',
@@ -79,6 +81,8 @@ describe('portfolio authenticated startup runtime', () => {
     const fixture = createFixture(null, '');
 
     await fixture.start();
+
+    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
 
     expect(fixture.calls).toEqual([
       'load-rules', 'clear-identity', 'secret:', 'import-admin-workspace', 'rollover',
