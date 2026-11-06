@@ -131,7 +131,7 @@ function aggregatePositions(
       });
       return;
     }
-    const key = `${ticker}| ${currency}`;
+    const key = `${ticker}|${currency}`;
     const previous = totals.get(key);
     totals.set(key, {
       ticker,
@@ -226,7 +226,7 @@ export function reconcileBrokerPortfolio(
     ? 'stale'
     : observedAt === null ? 'unknown' : 'fresh';
   const stale = input.brokerStatus === 'stale' || freshness === 'stale';
-  const partial = snapshot.quality === 'partial';
+  const partial = snapshot.quality === 'partial' || snapshot.quality === 'empty';
   const confidence: 'confirmed' | 'provisional' =
     snapshot.quality === 'complete' && freshness === 'fresh' && !stale
       ? 'confirmed'
@@ -236,6 +236,8 @@ export function reconcileBrokerPortfolio(
 
   if (snapshot.quality === 'partial') {
     warnings.push('The broker snapshot is partial; absence-based discrepancies are suppressed.');
+  } else if (snapshot.quality === 'empty') {
+    warnings.push('The broker snapshot contains no account rows; absence-based discrepancies are suppressed.');
   }
   if (stale) {
     warnings.push('The broker snapshot is stale; it is not treated as current reconciliation evidence.');
@@ -282,9 +284,10 @@ export function reconcileBrokerPortfolio(
     confidence
   );
 
-  const appTickers = new Set([...appPositions.values()].map(row => row.ticker));
-  const brokerTickers = new Set([...brokerPositions.values()].map(row => row.ticker));
-  const allTickers = new Set([...appTickers, ...brokerTickers]);
+  const allTickers = new Set([
+    ...[...appPositions.values()].map(row => row.ticker),
+    ...[...brokerPositions.values()].map(row => row.ticker)
+  ]);
   const suppressedMissing = partial;
 
   for (const ticker of allTickers) {
