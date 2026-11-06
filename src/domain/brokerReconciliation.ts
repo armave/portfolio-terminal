@@ -37,6 +37,8 @@ export interface BrokerReconciliationFinding {
   type: BrokerReconciliationFindingType;
   subject: string;
   currency?: string;
+  appCurrency?: string;
+  brokerCurrency?: string;
   appValue: number | null;
   brokerValue: number | null;
   difference?: number;
@@ -301,6 +303,8 @@ export function reconcileBrokerPortfolio(
       findings.push({
         type: 'currency_mismatch',
         subject: ticker,
+        appCurrency: [...appCurrencies].join(', '),
+        brokerCurrency: [...brokerCurrencies].join(', '),
         appValue: appRows.reduce((sum, row) => sum + row.quantity, 0),
         brokerValue: brokerRows.reduce((sum, row) => sum + row.quantity, 0),
         confidence
