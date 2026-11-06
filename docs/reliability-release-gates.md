@@ -20,7 +20,7 @@ The repository currently provides these scripts:
 | `npm run audit:dependencies` | Full dependency audit, including tooling; blocks high and critical advisories |
 | `npm run audit:production` | Production dependency audit; blocks high and critical advisories |
 
-The PR CI workflow also runs production browser smoke tests for the application shell and complete trade lifecycle. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
+The primary PR CI workflow runs the production browser smoke for the application shell. The dedicated, path-filtered Trade Lifecycle Browser Smoke workflow exercises the complete transaction lifecycle when application source or its supporting build/test configuration changes. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
 
 The PT-17 changes extend this baseline by:
 - validating merged `dev` commits as well as pull-request candidates and `main` commits;
