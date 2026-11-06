@@ -42,14 +42,22 @@ async function fetchMarketDataWithTimeout<T>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      controller.abort();
       const error = new Error('Market data provider request timed out.');
       Object.assign(error, { code: 'ETIMEDOUT' });
       reject(error);
+      controller.abort();
     }, timeoutMs);
   });
   try {
-    return await Promise.race([request(controller.signal), timeout]);
+    const pending = request(controller.signal).catch((error: unknown) => {
+      if (controller.signal.aborted) {
+        const timeoutError = new Error('Market data provider request timed out.');
+        Object.assign(timeoutError, { code: 'ETIMEDOUT' });
+        throw timeoutError;
+      }
+      throw error;
+    });
+    return await Promise.race([pending, timeout]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
