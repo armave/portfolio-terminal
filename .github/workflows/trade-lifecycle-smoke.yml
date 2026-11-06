@@ -91,7 +91,7 @@ jobs:
 
       - name: Install Chromium for trade lifecycle journey
         id: install_chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Exercise the production trade lifecycle
         id: trade_browser_smoke
