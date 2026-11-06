@@ -1,7 +1,5 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
-export type BackgroundStartupOperation = 'quote-refresh' | 'cloud-write-recovery';
-
 export interface PortfolioAuthenticatedStartupDependencies {
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
@@ -24,7 +22,6 @@ export interface PortfolioAuthenticatedStartupDependencies {
   renderBoardAnalystConsensus: () => void;
   recoverPendingCloudWrites: () => Promise<void>;
   hideStartupLoading: () => void;
-  onBackgroundStartupError?: (operation: BackgroundStartupOperation, error: unknown) => void;
 }
 
 export interface PortfolioAuthenticatedStartupRuntime {
@@ -72,29 +69,16 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // visible when their providers are slow or unavailable.
     dependencies.hideStartupLoading();
 
-    const refreshQuotesInBackground = async (): Promise<void> => {
-      try {
-        await dependencies.refreshLivePrices();
-      } catch (error) {
-        dependencies.onBackgroundStartupError?.('quote-refresh', error);
-      } finally {
+    // Start both independent operations after the workspace is visible. The
+    // quote completion path does not change navigation, so early user navigation
+    // is not interrupted by a late market-data response.
+    void dependencies.refreshLivePrices()
+      .catch(() => undefined)
+      .finally(() => {
         dependencies.finishInitialQuoteRefresh();
         dependencies.renderBoardAnalystConsensus();
-      }
-    };
-    const recoverCloudWritesInBackground = async (): Promise<void> => {
-      try {
-        await dependencies.recoverPendingCloudWrites();
-      } catch (error) {
-        dependencies.onBackgroundStartupError?.('cloud-write-recovery', error);
-      }
-    };
-
-    // Start both independent operations after the workspace is visible. The
-    // quote completion path no longer changes navigation, so a user who starts
-    // navigating immediately after startup is not sent back to Balance.
-    void refreshQuotesInBackground();
-    void recoverCloudWritesInBackground();
+      });
+    void dependencies.recoverPendingCloudWrites().catch(() => undefined);
   };
 
   return { startApp };

@@ -32,8 +32,7 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
     finishInitialQuoteRefresh: vi.fn(() => calls.push('quote-refresh-finish')),
     renderBoardAnalystConsensus: vi.fn(() => calls.push('analyst-consensus')),
     recoverPendingCloudWrites: vi.fn(async () => { calls.push('recover-cloud-writes'); }),
-    hideStartupLoading: vi.fn(() => calls.push('hide-loading')),
-    onBackgroundStartupError: vi.fn((operation, _error) => calls.push(`background-error:${operation}`))
+    hideStartupLoading: vi.fn(() => calls.push('hide-loading'))
   };
   return {
     calls,
@@ -109,24 +108,15 @@ describe('portfolio authenticated startup runtime', () => {
     expect(fixture.dependencies.renderBoardAnalystConsensus).toHaveBeenCalledTimes(1);
   });
 
-  it('does not let background quote or cloud recovery failures block the usable workspace', async () => {
+  it('contains background quote and cloud recovery failures after revealing the workspace', async () => {
     const fixture = createFixture('admin');
     (fixture.dependencies.refreshLivePrices as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('quotes unavailable'));
     (fixture.dependencies.recoverPendingCloudWrites as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cloud unavailable'));
 
     await expect(fixture.start()).resolves.toBeUndefined();
-    await vi.waitFor(() => expect(fixture.dependencies.onBackgroundStartupError).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
 
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.renderBoardAnalystConsensus).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.onBackgroundStartupError).toHaveBeenCalledWith(
-      'quote-refresh',
-      expect.any(Error)
-    );
-    expect(fixture.dependencies.onBackgroundStartupError).toHaveBeenCalledWith(
-      'cloud-write-recovery',
-      expect.any(Error)
-    );
   });
 });

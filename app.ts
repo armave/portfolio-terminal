@@ -2368,9 +2368,6 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
       await pushStateToCloud();
     }
   },
-  onBackgroundStartupError: (operation) => {
-    console.warn(`[Startup Background Error] ${operation} failed; the workspace remains available.`);
-  },
   hideStartupLoading
 });
 
