@@ -1,4 +1,4 @@
-export type FrameCancellation = () => void;
+type FrameCancellation = () => void;
 export type FrameSchedule = (callback: () => void) => FrameCancellation;
 
 export interface CoalescedFrameCallback {
