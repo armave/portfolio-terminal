@@ -35,6 +35,7 @@ export interface YahooBatchQuoteResult {
   currency?: unknown;
   exchange?: unknown;
   quoteType?: unknown;
+  cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
   error?: string;
 }
 
