@@ -92,6 +92,36 @@ The helper's precedence is exact: **incomplete first, then provisional, otherwis
 
 The current portfolio valuation input does not carry currency codes or an FX conversion table. It therefore has no explicit cross-currency conversion contract. The formula is valid only when the supplied balances, cash, holdings prices, and quantities are already denominated in a common reporting currency. Do not sum unlike currencies or invent an exchange rate. Multi-currency consolidated valuation is a future feature requiring explicit FX source, timestamp, base currency, conversion direction, and stale-rate behavior.
 
+## 3. Unrealized P&L and target-projection contracts
+
+**Sources:** `src/components/SummaryMetricsGrid.tsx`, the portfolio review summary in `src/App.tsx`, and `getGuestHoldingValuation` in `src/domain/guestPortfolio.ts`.
+
+### Margin-position and combined-view unrealized P&L
+
+- Open cost basis is the sum of each valid open tranche's quantity × entry price.
+- For a single margin-position view, market value = recorded open shares × selected positive current price; gross unrealized P&L = market value − open tranche cost basis.
+- The single-position P&L percentage uses (current market price − weighted average entry price) / weighted average entry price × 100, where weighted average entry price = open tranche cost basis / recorded open shares.
+- In the combined margin view, total market value is summed only for positions with a usable positive quote; combined gross unrealized P&L is market value − total open cost basis only when there are no unpriced positive-share margin positions. If one or more such positions are unpriced, combined unrealized P&L is unavailable rather than a partial total presented as complete.
+- In the margin review summary, position gross unrealized P&L is calculated lot by lot as the sum of (current market price − each lot entry price) × lot quantity. It is unavailable if no valid market price or no valid entry lots exist.
+- These are **gross** unrealized values: they exclude commissions, financing fees/interest, taxes, and any estimated future sell costs. Do not label them net liquidation value or net return.
+- Invalid/missing quotes must not be displayed as a real zero market price or real zero P&L. A numeric conservative fallback used for risk calculations is not an authoritative market valuation.
+
+### Cash-holding / guest unrealized P&L
+
+`getGuestHoldingValuation` chooses the first positive price from `currentPrice` then legacy `price`; average entry price is independently required. Market value = shares × current price; cost basis = shares × average entry price; gross unrealized P&L = market value − cost basis; unrealized P&L percent = P&L / cost basis × 100. If either required price is unavailable, the relevant value/P&L stays null, not zero.
+
+### Target-price projection is not current unrealized P&L
+
+`calculateCombinedMetrics` and `calculatePositionMetrics` in `src/domain/portfolioSelectors.ts` calculate a separate target-price projection:
+- target value = open shares × configured target price (`pt`);
+- gross target difference = target value − open lot cost basis;
+- projected sell commission is calculated at the target value;
+- target net projection subtracts commissions and the currently modeled margin charges.
+
+These results describe a target-price scenario, **not current unrealized P&L**, and must remain labelled as projection/target metrics. Do not combine target-price and current-market calculations in one metric.
+
+---
+
 ## 3. Commission contract
 
 **Sources:** `resolveCommissionConfig`, `calculateCommission`, and `calculateTrancheCommissions` in `src/domain/portfolio.ts`; `calculateSaleCommission` in `src/domain/portfolioTransactions.ts`.
