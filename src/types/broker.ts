@@ -1,8 +1,6 @@
 export type BrokerProviderId = string;
 
-export type BrokerConnectionStatus =
-  | 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'degraded' | 'error';
-export type BrokerAuthenticationStatus =
+type BrokerAuthenticationStatus =
   | 'unknown' | 'unauthenticated' | 'authenticating' | 'authenticated' | 'expired' | 'error';
 
 export interface BrokerAuthenticationState {
@@ -13,7 +11,7 @@ export interface BrokerAuthenticationState {
 }
 
 export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
-export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
+type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
 
 export interface BrokerAdapterContext {
   receivedAt?: number;
@@ -116,7 +114,7 @@ export interface BrokerAdapterError {
   cause?: unknown;
 }
 
-export interface BrokerAdapterCapabilities {
+interface BrokerAdapterCapabilities {
   readonly portfolios: boolean;
   readonly positions: boolean;
   readonly balances: boolean;
