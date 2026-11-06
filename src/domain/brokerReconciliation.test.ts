@@ -104,6 +104,38 @@ describe('reconcileBrokerPortfolio', () => {
     expect(report.warnings).toContain('The broker snapshot is partial; absence-based discrepancies are suppressed.');
   });
 
+  it('treats an empty broker snapshot as unverified rather than proof that app holdings are missing', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([], {
+        quality: 'empty',
+        data: { loaded: true, balances: [], positions: [] }
+      }),
+      appPositions: [{ ticker: 'AAPL', quantity: 2, currency: 'USD' }],
+      now: 10_100
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.differenceCount).toBe(0);
+    expect(report.findings).toEqual([]);
+    expect(report.warnings).toContain('The broker snapshot contains no account rows; absence-based discrepancies are suppressed.');
+  });
+
+  it('marks malformed app rows as partial instead of treating them as zero', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([brokerPosition('AAPL', 2)]),
+      appPositions: [{ ticker: 'AAPL', quantity: 'not-a-number', currency: 'USD' }],
+      now: 10_100
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.differenceCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'unclassified_app_position',
+      subject: 'AAPL',
+      appValue: null
+    }));
+  });
+
   it('reports overlapping quantity mismatches as provisional when the snapshot is partial', () => {
     const report = reconcileBrokerPortfolio({
       brokerSnapshot: snapshot([brokerPosition('AAPL', 3)], { quality: 'partial' }),
