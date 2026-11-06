@@ -47,7 +47,7 @@ export function getOperatingSystemLabel(
 }
 
 export function getDeviceTypeLabel(userAgent: string): string {
-  if (/iPad|Tablet/i.test(userAgent)) return 'Tablet';
+  if (/iPad|Tablet/i.test(userAgent) || (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent))) return 'Tablet';
   if (/Mobile|Android|iPhone|iPod/i.test(userAgent)) return 'Mobile';
   return 'Desktop';
 }
@@ -71,7 +71,7 @@ export function checkLocalStorageAvailability(storage: Pick<Storage, 'setItem' |
 }
 
 export function getCloudStorageLabel(status: { status: string; text: string }): string {
-  if (status.status === 'synced') return 'Connected';
+  if (status.status === 'synced') return 'Available';
   if (status.status === 'syncing') return 'Connecting';
   if (status.status === 'error') return 'Unavailable';
   if (/secret/i.test(status.text)) return 'Setup required';
@@ -146,6 +146,7 @@ async function collectDeviceDiagnostics(): Promise<DeviceDiagnostics> {
 const DEVICE_CHECK_RU: Record<string, string> = {
   'Device Check': 'Проверка устройства',
   'A quick health check of this browser and app environment.': 'Краткая проверка состояния браузера и среды приложения.',
+  'Local environment ready': 'Локальная среда готова',
   'Ready': 'Готово',
   'Offline': 'Нет сети',
   'Needs attention': 'Требует внимания',
@@ -167,14 +168,14 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'Secure context': 'Защищённый контекст',
   'Secure': 'Защищён',
   'Not secure': 'Не защищён',
-  'PWA / offline support': 'PWA / офлайн-поддержка',
+  'Service worker': 'Service worker',
   'Active': 'Активен',
   'Registered, not active': 'Зарегистрирован, не активен',
   'Not registered': 'Не зарегистрирован',
   'Unsupported': 'Не поддерживается',
   'Error': 'Ошибка',
   'Cloud storage': 'Облачное хранилище',
-  'Connected': 'Подключено',
+  'Available': 'Доступно',
   'Connecting': 'Подключение',
   'Setup required': 'Требуется настройка',
   'Not checked': 'Не проверено',
@@ -185,6 +186,9 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'No recent sync result': 'Нет недавнего результата синхронизации',
   'Browser-reported network state does not confirm that the API or cloud service is reachable.': 'Состояние сети по данным браузера не подтверждает доступность API или облачного сервиса.',
   'The storage check writes and removes a temporary test value; no portfolio data is changed.': 'Проверка хранилища записывает и удаляет временное тестовое значение; данные портфеля не изменяются.',
+  'Browser and device details are inferred from browser-provided information and may be approximate.': 'Сведения о браузере и устройстве определяются по данным браузера и могут быть приблизительными.',
+  'An active service worker does not guarantee that every page or data source works offline.': 'Активный Service Worker не гарантирует, что все страницы и источники данных доступны без сети.',
+  'Device diagnostics stay in this browser and are not uploaded as a device identifier.': 'Диагностика остаётся в этом браузере и не отправляется в виде идентификатора устройства.',
   'Installed app mode': 'Режим установленного приложения',
   'Installed': 'Установлено',
   'Browser tab': 'Вкладка браузера',
@@ -229,7 +233,7 @@ function healthTone(health: DeviceHealth): string {
 }
 
 function diagnosticTone(value: string): string {
-  if (['Available', 'Secure', 'Active', 'Connected', 'Synced', 'Online (browser-reported)', 'Installed'].includes(value)) {
+  if (['Available', 'Secure', 'Active', 'Synced', 'Online (browser-reported)', 'Installed'].includes(value)) {
     return 'text-emerald-300';
   }
   if (['Unavailable', 'Not secure', 'Error', 'Failed'].includes(value)) return 'text-rose-300';
@@ -280,11 +284,17 @@ export function DeviceCheckSummary() {
     window.addEventListener('online', updateNetwork);
     window.addEventListener('offline', updateNetwork);
     window.addEventListener('resize', updateDisplay);
-    navigator.serviceWorker?.addEventListener('controllerchange', () => { void runCheck(); });
+    const updateServiceWorker = () => { void runCheck(); };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', updateServiceWorker);
+    }
     return () => {
       window.removeEventListener('online', updateNetwork);
       window.removeEventListener('offline', updateNetwork);
       window.removeEventListener('resize', updateDisplay);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', updateServiceWorker);
+      }
     };
   }, []);
 
@@ -302,7 +312,7 @@ export function DeviceCheckSummary() {
     ['Network', diagnostics.online ? 'Online (browser-reported)' : 'Offline'],
     ['Local storage', diagnostics.localStorageAvailable ? 'Available' : 'Unavailable'],
     ['Secure context', diagnostics.secureContext ? 'Secure' : 'Not secure'],
-    ['PWA / offline support', serviceWorkerLabel(diagnostics.serviceWorker)],
+    ['Service worker', serviceWorkerLabel(diagnostics.serviceWorker)],
     ['Installed app mode', diagnostics.standalone ? 'Installed' : 'Browser tab'],
     ['Cloud storage', getCloudStorageLabel(cloudStatus)],
     ['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]
@@ -317,7 +327,7 @@ export function DeviceCheckSummary() {
         </div>
         <div class="flex items-center gap-2">
           <span class={'rounded-full border px-2.5 py-1 text-[10px] font-semibold ' + healthTone(health)} role="status">
-            {label(health === 'ready' ? 'Ready' : health === 'offline' ? 'Offline' : 'Needs attention')}
+            {label(health === 'ready' ? 'Local environment ready' : health === 'offline' ? 'Offline' : 'Needs attention')}
           </span>
           <button type="button" onClick={() => void runCheck()} disabled={checking} class="rounded border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 disabled:opacity-50">
             {label(checking ? 'Checking…' : 'Run check')}
@@ -340,6 +350,9 @@ export function DeviceCheckSummary() {
           {label('Browser-reported network state does not confirm that the API or cloud service is reachable.')}
           {' '}
           {label('The storage check writes and removes a temporary test value; no portfolio data is changed.')}
+          {' '}{label('Browser and device details are inferred from browser-provided information and may be approximate.')}
+          {' '}{label('An active service worker does not guarantee that every page or data source works offline.')}
+          {' '}{label('Device diagnostics stay in this browser and are not uploaded as a device identifier.')}
         </p>
         <span class="shrink-0 text-[10px] text-slate-500">
           {label('Last checked')}: {formatCheckedAt(diagnostics?.checkedAt ?? null)}
