@@ -1,4 +1,5 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
+import type { PortfolioTransactionEvent } from './portfolioTransaction';
 
 export interface Tranche {
   id: string;
@@ -303,6 +304,8 @@ export interface PortfolioState {
   closedTrades: ClosedTrade[];
   /** Persisted raw executed-trade snapshot from the broker, used to reconcile closed history and allocate broker cashflow fees. */
   brokerExecutedTrades?: FreedomExecutedTrade[];
+  /** Append-only app-owned mutation journal; positions remain canonical active state. */
+  transactionEvents?: PortfolioTransactionEvent[];
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
