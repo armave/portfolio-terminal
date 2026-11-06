@@ -35,8 +35,12 @@ export function calculateMarginRiskMetrics(
   const stopOutBufferPct = positionValue > 0
     ? ((positionValue - stopOutValue) / positionValue) * 100
     : Number.NEGATIVE_INFINITY;
-  const showMarginCall = debt > 0 && collateral < marginCallAssetsRequired;
-  const showStopOut = debt > 0 && collateral < stopOutAssetsRequired;
+
+  // The threshold is defined against total assets (position value + eligible
+  // collateral), not collateral in isolation. Equality is already at the
+  // configured threshold and must remain visible as a risk trigger.
+  const showMarginCall = debt > 0 && assets <= marginCallAssetsRequired;
+  const showStopOut = debt > 0 && assets <= stopOutAssetsRequired;
 
   return {
     assets,
