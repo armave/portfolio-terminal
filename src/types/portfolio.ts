@@ -1,4 +1,5 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
+import type { BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 
 export interface Tranche {
   id: string;
@@ -288,6 +289,13 @@ export interface PortfolioState {
     }>;
     /** Current when the latest API refresh succeeded; stale after a failed refresh. */
     status?: 'current' | 'stale' | 'unavailable';
+    /** Provenance retained from the normalized broker adapter snapshot. */
+    provider?: string;
+    quality?: BrokerSnapshotQuality | 'unknown';
+    source?: BrokerSnapshotSource;
+    /** Provider market/account observation time; distinct from client receipt time. */
+    observedAt?: number;
+    warnings?: string[];
     receivedAt: number;
   };
   cashCushion: CashCushionState;
