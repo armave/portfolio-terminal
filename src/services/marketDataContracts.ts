@@ -310,16 +310,13 @@ export interface MarketHistoryResult {
   observedAt: number | null;
   /** Unknown unless an interval-aware exchange calendar can verify series recency. */
   freshness: MarketFreshness;
+  session: MarketSession;
+  delayClass: MarketDelayClass;
   quality: 'complete' | 'partial' | 'unavailable';
   issues: string[];
   instrument?: InstrumentIdentity;
   provider?: string;
   receivedAt?: number;
-  /** Latest source observation in the returned series; each point also keeps its own timestamp. */
-  observedAt?: number | null;
-  freshness?: MarketFreshness;
-  session?: MarketSession;
-  delayClass?: MarketDelayClass;
   interval?: string;
 }
 
@@ -354,6 +351,8 @@ export function normalizeMarketHistoryPoints(
       points: [],
       observedAt: null,
       freshness: 'unknown',
+      session: 'UNKNOWN',
+      delayClass: 'unknown',
       quality: 'unavailable',
       issues: ['Historical price response is not an array.']
     };
@@ -423,6 +422,8 @@ export function normalizeMarketHistoryPoints(
     points,
     observedAt: points.length > 0 ? points[points.length - 1].timestamp : null,
     freshness: 'unknown',
+    session: 'UNKNOWN',
+    delayClass: 'unknown',
     quality,
     issues
   };
@@ -470,6 +471,8 @@ export interface MarketHistoryResponseInput {
   exchange?: unknown;
   assetType?: unknown;
   currency?: unknown;
+  session?: unknown;
+  delayClass?: unknown;
 }
 
 /**
@@ -511,6 +514,8 @@ export function normalizeMarketHistoryResponse(
     points: history.points,
     observedAt: history.observedAt,
     freshness: history.freshness,
+    session: normalizeMarketSession(input.session),
+    delayClass: normalizeDelayClass(input.delayClass),
     quality,
     issues,
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
