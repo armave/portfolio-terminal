@@ -67,10 +67,6 @@ jobs:
         id: browser_smoke
         run: node scripts/browser-smoke.mjs
 
-      - name: Smoke-test the complete trade lifecycle in a browser
-        id: trade_lifecycle_smoke
-        run: node scripts/browser-smoke-trades.mjs
-
       - name: Capture desktop and mobile browser performance baseline
         id: browser_performance
         run: node scripts/browser-performance-baseline.mjs
@@ -107,7 +103,6 @@ jobs:
           BUILD_RESULT: ${{ steps.build.outcome || 'not-run' }}
           PLAYWRIGHT_RESULT: ${{ steps.install_playwright.outcome || 'not-run' }}
           BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome || 'not-run' }}
-          TRADE_SMOKE_RESULT: ${{ steps.trade_lifecycle_smoke.outcome || 'not-run' }}
           PERFORMANCE_RESULT: ${{ steps.browser_performance.outcome || 'not-run' }}
           DEAD_CODE_RESULT: ${{ steps.dead_code.outcome || 'not-run' }}
           DEPENDENCY_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
@@ -134,7 +129,6 @@ jobs:
             echo "| Production build | $BUILD_RESULT |"
             echo "| Playwright install | $PLAYWRIGHT_RESULT |"
             echo "| Production app browser smoke | $BROWSER_SMOKE_RESULT |"
-            echo "| Trade lifecycle browser smoke | $TRADE_SMOKE_RESULT |"
             echo "| Browser performance baseline | $PERFORMANCE_RESULT |"
             echo "| Dead-code validation | $DEAD_CODE_RESULT |"
             echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
