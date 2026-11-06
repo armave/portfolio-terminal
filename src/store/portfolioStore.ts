@@ -1034,6 +1034,7 @@ export class PortfolioStore {
           effectiveAt,
           ticker: clean,
           quantity: shares,
+          positionQuantityDelta: shares,
           unitPrice: price,
           grossAmount: totalVal,
           fees: buyComm,
@@ -1116,6 +1117,7 @@ export class PortfolioStore {
           effectiveAt: context?.effectiveAt ?? Date.now(),
           ticker: clean,
           quantity: removed.qty,
+          positionQuantityDelta: -removed.qty,
           unitPrice: removed.price,
           note: `Active tranche ${trancheId} removed from tracking; no sale proceeds or cash settlement were recorded.`
         }
@@ -1320,6 +1322,7 @@ export class PortfolioStore {
           effectiveAt: options.transactionContext?.effectiveAt ?? closedTimestamp,
           ticker: clean,
           quantity: actualSold,
+          positionQuantityDelta: -actualSold,
           unitPrice: sellPrice,
           grossAmount: sellProceeds,
           fees: totalCommissions,
@@ -1613,6 +1616,7 @@ export class PortfolioStore {
           effectiveAt: context?.effectiveAt ?? Date.now(),
           ticker: clean,
           quantity: shares,
+          cashHoldingQuantityDelta: shares,
           ...(hasManualPrice ? {
             unitPrice: manualPrice,
             grossAmount: shares * manualPrice
@@ -1680,7 +1684,7 @@ export class PortfolioStore {
           type: 'cash-holding.adjustment',
           effectiveAt: context?.effectiveAt ?? Date.now(),
           ticker: clean,
-          ...(quantity > 0 ? { quantity } : {}),
+          ...(quantity > 0 ? { quantity, cashHoldingQuantityDelta: -quantity } : {}),
           note: 'Cash-cushion holding removed from tracking; no sale proceeds or cash settlement were recorded.'
         }
       };
@@ -1793,6 +1797,7 @@ export class PortfolioStore {
           effectiveAt: transactionContext.effectiveAt ?? Date.now(),
           ticker: clean,
           quantity: actualSold,
+          cashHoldingQuantityDelta: -actualSold,
           unitPrice: sellPrice,
           grossAmount: grossProceeds,
           fees: sellCommission,
