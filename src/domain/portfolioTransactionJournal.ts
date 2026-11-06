@@ -418,12 +418,17 @@ export function verifyPortfolioTransactionParity(
 
 
 function stableShortHash(value: string): string {
-  let hash = 2166136261;
+  // Two independent 32-bit FNV-style accumulators keep deterministic
+  // idempotency keys compact while making accidental key collisions far less
+  // likely than a single 32-bit hash.
+  let primary = 2166136261;
+  let secondary = 0x9e3779b9;
   for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+    const code = value.charCodeAt(index);
+    primary = Math.imul(primary ^ code, 16777619);
+    secondary = Math.imul(secondary ^ code, 2246822519);
   }
-  return (hash >>> 0).toString(36);
+  return `${(primary >>> 0).toString(36)}${(secondary >>> 0).toString(36)}`;
 }
 
 function recordTimestamp(value: unknown, fallback: number): number {
@@ -462,7 +467,42 @@ export function appendBrokerHistoryAuditEvents(
   if (!isPortfolioTransactionEventList(current)) {
     throw new TypeError('Portfolio transaction event history is malformed.');
   }
-  let events = freezePortfolioTransactionEventList(current);
+  const events = [...current];
+  const byIdempotencyKey = new Map<string, PortfolioTransactionEvent>();
+  const latestExecutionByReference = new Map<string, PortfolioTransactionEvent>();
+  const latestCashflowByReference = new Map<string, PortfolioTransactionEvent>();
+  for (const event of current) {
+    if (event.idempotencyKey) byIdempotencyKey.set(event.idempotencyKey, event);
+    if (event.type === 'broker.execution' && event.externalReferenceId) {
+      latestExecutionByReference.set(event.externalReferenceId, event);
+    }
+    if (event.externalReferenceId && event.idempotencyKey?.startsWith('broker-cashflow:')) {
+      latestCashflowByReference.set(event.externalReferenceId, event);
+    }
+  }
+
+  const appendExternalEvent = (event: PortfolioTransactionEvent): void => {
+    const previous = event.idempotencyKey
+      ? byIdempotencyKey.get(event.idempotencyKey)
+      : undefined;
+    if (previous) {
+      if (previous.type !== event.type || previous.requestFingerprint !== event.requestFingerprint) {
+        throw new Error(`Broker history idempotency key "${event.idempotencyKey}" conflicts with a different source record.`);
+      }
+      return;
+    }
+    if (events.some((existing) => existing.id === event.id)) {
+      throw new Error(`Broker history event ID "${event.id}" already exists.`);
+    }
+    events.push(event);
+    if (event.idempotencyKey) byIdempotencyKey.set(event.idempotencyKey, event);
+    if (event.type === 'broker.execution' && event.externalReferenceId) {
+      latestExecutionByReference.set(event.externalReferenceId, event);
+    }
+    if (event.externalReferenceId && event.idempotencyKey?.startsWith('broker-cashflow:')) {
+      latestCashflowByReference.set(event.externalReferenceId, event);
+    }
+  };
 
   for (const input of brokerExecutions) {
     if (!isPlainRecord(input)) continue;
@@ -493,9 +533,7 @@ export function appendBrokerHistoryAuditEvents(
     });
     const fingerprint = `broker-execution-v1:${stableShortHash(facts)}`;
     const idempotencyKey = `broker-execution:${stableShortHash(referenceId)}:${stableShortHash(facts)}`;
-    const previous = [...events].reverse().find((event) =>
-      event.type === 'broker.execution' && event.externalReferenceId === referenceId
-    );
+    const previous = latestExecutionByReference.get(referenceId);
     const event = createPortfolioTransactionEvent({
       type: 'broker.execution',
       effectiveAt: recordTimestamp(input.executedAt ?? input.date, recordedAt),
@@ -522,8 +560,7 @@ export function appendBrokerHistoryAuditEvents(
       eventId: `broker-execution-${stableShortHash(referenceId)}-${stableShortHash(facts)}`,
       recordedAt
     });
-    const appended = appendPortfolioTransactionEvent(events, event);
-    events = appended.events;
+    appendExternalEvent(event);
   }
 
   for (const input of cashflows) {
@@ -555,9 +592,7 @@ export function appendBrokerHistoryAuditEvents(
     });
     const fingerprint = `broker-cashflow-v1:${stableShortHash(facts)}`;
     const idempotencyKey = `broker-cashflow:${stableShortHash(referenceId)}:${stableShortHash(facts)}`;
-    const previous = [...events].reverse().find((event) =>
-      event.externalReferenceId === referenceId && event.idempotencyKey?.startsWith('broker-cashflow:')
-    );
+    const previous = latestCashflowByReference.get(referenceId);
     const noteText = typeof input.description === 'string' && input.description.trim()
       ? input.description.trim()
       : typeof input.type === 'string' ? input.type.trim() : 'Broker cashflow';
@@ -580,9 +615,8 @@ export function appendBrokerHistoryAuditEvents(
       eventId: `broker-cashflow-${stableShortHash(referenceId)}-${stableShortHash(facts)}`,
       recordedAt
     });
-    const appended = appendPortfolioTransactionEvent(events, event);
-    events = appended.events;
+    appendExternalEvent(event);
   }
 
-  return events;
+  return freezePortfolioTransactionEventList(events);
 }
