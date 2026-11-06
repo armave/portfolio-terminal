@@ -1593,7 +1593,9 @@ async function importBackupFile(file: File) {
       importedState,
       previousState,
       (snapshot) => {
-        portfolioStore.importState(snapshot as any);
+        if (!portfolioStore.importState(snapshot as any)) {
+          throw new Error('The backup contains transaction history that conflicts with this device or is not supported.');
+        }
         state = portfolioStore.getState();
       },
       () => saveState(state, pushStateToGist)
