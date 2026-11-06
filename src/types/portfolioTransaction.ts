@@ -6,6 +6,10 @@ export type PortfolioTransactionEventType =
   | 'cash-holding.buy'
   | 'cash-holding.sell'
   | 'cash-holding.adjustment'
+  | 'cash.deposit'
+  | 'cash.withdrawal'
+  | 'broker.execution'
+  | 'portfolio.reconciliation'
   | 'position.adjustment'
   | 'history.correction'
   | 'portfolio.reset'
@@ -54,6 +58,12 @@ export interface PortfolioTransactionEvent {
   grossAmount?: number;
   /** Fees/commissions attributed to this event in the event currency. */
   fees?: number;
+  /** Signed amount imported from an external broker cashflow; not a local cash posting. */
+  externalCashFlowAmount?: number;
+  /** Signed change to the canonical active-position quantity. */
+  positionQuantityDelta?: number;
+  /** Signed change to cash-cushion holding quantity. */
+  cashHoldingQuantityDelta?: number;
   /** Financing/interest cost allocated to this transaction, separate from commissions. */
   financingCost?: number;
   /** Signed change in available free cash. */
