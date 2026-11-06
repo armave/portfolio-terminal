@@ -2484,6 +2484,42 @@ describe('portfolio transaction journal integration', () => {
     expect(reloaded.getState().transactionEvents).toHaveLength(1);
   });
 
+  it('records AI-confirmed sale attribution and deduplicates a retry with a later wall-clock time', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+
+    const context = {
+      idempotencyKey: 'ai-action:request-17',
+      actor: { type: 'ai' as const },
+      source: 'ai-confirmed'
+    };
+    const first = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:00:00Z'), context);
+    expect(first).not.toBeNull();
+    const committedEventCount = store.getState().transactionEvents?.length;
+
+    const retry = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:05:00Z'), context);
+
+    expect(retry).toEqual(first);
+    expect(store.getState().positions.AAPL.shares).toBe(1);
+    expect(store.getState().transactionEvents).toHaveLength(committedEventCount);
+    expect(store.getState().transactionEvents?.find((event) => event.idempotencyKey === context.idempotencyKey))
+      .toMatchObject({
+        type: 'trade.sell',
+        actor: { type: 'ai' },
+        source: 'ai-confirmed'
+      });
+  });
+
   it('records sale proceeds, commissions, financing allocation, and realized P&L', () => {
     const store = new PortfolioStore();
     store.updateAssumptions({
