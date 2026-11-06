@@ -63,13 +63,22 @@ export function createPortfolioAuthenticatedStartupRuntime(
     else dependencies.showSavedAdminView();
 
     dependencies.scrollWorkspace();
-    await dependencies.refreshLivePrices();
-    dependencies.finishInitialQuoteRefresh();
 
-    if (role === 'guest') dependencies.showGuestBalanceView();
-    dependencies.renderBoardAnalystConsensus();
-    await dependencies.recoverPendingCloudWrites();
+    // The selected workspace is now fully hydrated and safe to use. Market data
+    // and pending cloud-write recovery must not keep the blocking startup overlay
+    // visible when their providers are slow or unavailable.
     dependencies.hideStartupLoading();
+
+    // Start both independent operations after the workspace is visible. The
+    // quote completion path does not change navigation, so early user navigation
+    // is not interrupted by a late market-data response.
+    void dependencies.refreshLivePrices()
+      .catch(() => undefined)
+      .finally(() => {
+        dependencies.finishInitialQuoteRefresh();
+        dependencies.renderBoardAnalystConsensus();
+      });
+    void dependencies.recoverPendingCloudWrites().catch(() => undefined);
   };
 
   return { startApp };
