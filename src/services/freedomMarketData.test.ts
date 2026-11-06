@@ -56,6 +56,21 @@ describe('fetchFreedomHistory', () => {
     );
   });
 
+  it('passes caller cancellation through to the read-only history request', async () => {
+    const controller = new AbortController();
+    vi.mocked(proxyFetch).mockResolvedValue({
+      ok: true, provider: 'Freedom TradeNet', symbol: 'AAPL.US',
+      data: [{ t: 1793966400, c: 101 }]
+    });
+
+    await fetchFreedomHistory('AAPL', { signal: controller.signal });
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-history',
+      { symbol: 'AAPL.US' },
+      { signal: controller.signal }
+    );
+  });
+
   it('rejects mismatched provider symbols and malformed action envelopes', async () => {
     vi.mocked(proxyFetch).mockResolvedValueOnce({
       ok: true, provider: 'Freedom TradeNet', symbol: 'MSFT.US', data: []
