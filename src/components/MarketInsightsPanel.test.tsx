@@ -6,9 +6,10 @@ import { formatNewsRelativeTime, getStocktwitsCashtags, getVisibleStocktwitsMess
 describe('deferred market insights loading', () => {
   it('waits until the panel approaches the viewport before mounting the data panel', () => {
     const source = readFileSync(new URL('./DeferredMarketInsightsPanel.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('data-deferred-market-insights');
     expect(source).toContain(`{ rootMargin: '240px 0px' }`);
-    expect(source).toContain('<DeferredMarketInsightsPanel />');
+    expect(source).toContain('<MarketInsightsPanel />');
+    const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(app).toContain('<DeferredMarketInsightsPanel />');
   });
 });
 

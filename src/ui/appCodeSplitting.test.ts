@@ -8,12 +8,12 @@ function readSource(path: string): string {
 describe('on-demand application code splitting', () => {
   it('loads infrequently used desks and market insights through lazy component imports', () => {
     const app = readSource('../App.tsx');
+    const deferredInsights = readSource('../components/DeferredMarketInsightsPanel.tsx');
     const components = [
       ['ClosedHistoryDesk', 'ClosedHistoryDesk'],
       ['GuestTrancheHistory', 'GuestTrancheHistory'],
       ['CashCushionDesk', 'CashCushionDesk'],
-      ['SettingsDesk', 'SettingsDesk'],
-      ['MarketInsightsPanel', 'MarketInsightsPanel']
+      ['SettingsDesk', 'SettingsDesk']
     ] as const;
 
     expect(app).toContain("import { lazy, memo, Suspense } from 'preact/compat';");
@@ -26,6 +26,9 @@ describe('on-demand application code splitting', () => {
     expect(app).toContain('Preparing balance');
     expect(app).toContain('Preparing trades');
     expect(app).toContain('Preparing settings');
+    expect(app).toContain("import('./components/DeferredMarketInsightsPanel')");
+    expect(deferredInsights).toContain("const MarketInsightsPanel = lazy(() =>");
+    expect(deferredInsights).toContain("import('./MarketInsightsPanel')");
   });
 
   it('defers modal-only code until the corresponding dialog is opened', () => {

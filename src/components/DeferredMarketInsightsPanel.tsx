@@ -27,7 +27,7 @@ export function DeferredMarketInsightsPanel() {
   }, []);
 
   return (
-    <div ref={hostRef} data-deferred-market-insights>
+    <div ref={hostRef}>
       {isNearViewport ? (
         <MarketInsightsPanel />
       ) : (
