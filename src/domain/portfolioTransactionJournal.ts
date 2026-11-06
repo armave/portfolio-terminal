@@ -365,9 +365,9 @@ export function replayPortfolioTransactionJournal(
 export function verifyPortfolioTransactionParity(
   events: readonly PortfolioTransactionEvent[],
   canonical: {
-    positions?: Record<string, { shares?: number }>;
-    cashCushion?: { freeCash?: number; holdings?: Array<{ ticker: string; shares: number }> };
-    balance?: number;
+    positions?: Record<string, { shares?: number | string }>;
+    cashCushion?: { freeCash?: number | string; holdings?: Array<{ ticker: string; shares: number | string }> };
+    balance?: number | string;
   },
   tolerance = 1e-6
 ): PortfolioTransactionParityResult {
