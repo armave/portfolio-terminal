@@ -5,6 +5,7 @@ import {
   hasPortfolioTransactionIdempotencyKey,
   isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
+  mergePortfolioTransactionEvents,
   normalizePortfolioTransactionIdempotencyKey
 } from './portfolioTransactionJournal';
 
@@ -102,5 +103,54 @@ describe('portfolio transaction journal', () => {
     const first = createPortfolioTransactionEvent(draft, { eventId: 'event-1', idempotencyKey: 'first' });
     const second = createPortfolioTransactionEvent(draft, { eventId: 'event-1', idempotencyKey: 'second' });
     expect(() => appendPortfolioTransactionEvent([first], second)).toThrow('already exists');
+  });
+});
+
+
+describe('portfolio transaction journal imports', () => {
+  it('merges unique imported events without replacing existing history', () => {
+    const first = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-1',
+      idempotencyKey: 'key-1',
+      requestFingerprint: 'buy:AAPL:2:100'
+    });
+    const second = createPortfolioTransactionEvent({
+      ...draft,
+      type: 'cash.adjustment',
+      ticker: undefined,
+      quantity: undefined,
+      unitPrice: undefined,
+      grossAmount: 50,
+      fees: undefined,
+      cashDelta: 50
+    }, {
+      eventId: 'event-2',
+      requestFingerprint: 'cash:+50'
+    });
+
+    const merged = mergePortfolioTransactionEvents([first], [first, second]);
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toEqual(first);
+    expect(merged[1]).toEqual(second);
+  });
+
+  it('rejects imports that conflict by event ID or idempotency key', () => {
+    const original = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-1',
+      idempotencyKey: 'key-1',
+      requestFingerprint: 'buy:AAPL:2:100'
+    });
+    expect(() => mergePortfolioTransactionEvents(
+      [original],
+      [{ ...original, quantity: 3 }]
+    )).toThrow('conflicts with existing history');
+
+    const reusedKey = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-2',
+      idempotencyKey: 'key-1',
+      requestFingerprint: 'buy:AAPL:3:100'
+    });
+    expect(() => mergePortfolioTransactionEvents([original], [reusedKey]))
+      .toThrow('idempotency key');
   });
 });
