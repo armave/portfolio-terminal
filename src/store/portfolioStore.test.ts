@@ -2740,6 +2740,51 @@ describe('portfolio transaction journal integration', () => {
     expect(store.getState()).toBe(afterFirst);
   });
 
+
+  it('prevents generic state patches and older backup imports from replacing committed audit history', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-01')).toBe(true);
+    const originalEvents = store.getState().transactionEvents || [];
+    const originalState = store.getState();
+
+    expect(store.setState({ transactionEvents: [] } as any)).toBe(false);
+    expect(store.getState().transactionEvents).toEqual(originalEvents);
+
+    expect(store.importState({ transactionEvents: [] })).toBe(true);
+    expect(store.getState().transactionEvents).toEqual(originalEvents);
+
+    const importedEvent = {
+      ...originalEvents[0],
+      id: 'imported-event-2',
+      idempotencyKey: undefined,
+      requestFingerprint: undefined,
+      type: 'cash.adjustment' as const,
+      ticker: undefined,
+      quantity: undefined,
+      unitPrice: undefined,
+      grossAmount: 25,
+      fees: undefined,
+      cashDelta: 25,
+      marginDebtDelta: undefined,
+      note: 'Imported cash adjustment'
+    };
+    expect(store.importState({ transactionEvents: [importedEvent] })).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(2);
+    expect(store.getState().transactionEvents?.[0]).toEqual(originalEvents[0]);
+    expect(store.getState().transactionEvents?.[1]).toMatchObject({
+      id: 'imported-event-2',
+      type: 'cash.adjustment',
+      cashDelta: 25
+    });
+
+    const committed = store.getState();
+    expect(store.importState({
+      transactionEvents: [{ ...originalEvents[0], quantity: 99 }]
+    })).toBe(false);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState()).not.toBe(originalState);
+  });
+
   it('rejects malformed imported transaction events without replacing current state', () => {
     const store = new PortfolioStore();
     const before = store.getState();
