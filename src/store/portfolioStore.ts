@@ -134,7 +134,7 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
   return true;
 }
 
-function createMutationFingerprint(parts: readonly (string | number)[]): string {
+function createMutationFingerprint(parts: readonly (string | number | null | undefined)[]): string {
   return JSON.stringify(parts);
 }
 
@@ -1849,7 +1849,6 @@ export class PortfolioStore {
         ? closedTrades.findIndex((item) => (item as typeof trade).id === tradeId)
         : index;
       if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= closedTrades.length) return null;
-      const removed = closedTrades[currentIndex] as typeof trade;
       const nextClosed = closedTrades.filter((_, idx) => idx !== currentIndex);
       return {
         state: {
