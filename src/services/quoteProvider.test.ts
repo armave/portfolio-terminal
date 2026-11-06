@@ -115,7 +115,10 @@ describe('fetchLivePriceFromProviders', () => {
         current: 100,
         previousClose: 95,
         marketState: 'REGULAR',
-        change: 5
+        change: 5,
+        currency: 'USD',
+        exchange: 'NMS',
+        quoteType: 'EQUITY'
       }
     } as never);
 
@@ -130,12 +133,47 @@ describe('fetchLivePriceFromProviders', () => {
       marketState: 'REGULAR',
       freshness: 'unknown',
       receivedAt: expect.any(Number),
+      provider: 'YAHOO',
+      instrumentId: 'EQUITY:NMS:AAPL',
+      currency: 'USD',
+      exchange: 'NMS',
+      assetType: 'EQUITY',
+      dataQuality: 'partial',
+      delayClass: 'unknown',
       price: 100,
       change: 5,
       changePercent: expect.any(Number)
     });
     expect(fetchFallbackQuote).not.toHaveBeenCalled();
     expect(result.error).toBeNull();
+  });
+
+  it('retains normalized provider, instrument, exchange, currency, and freshness metadata on the quote', async () => {
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      price: {
+        current: 100,
+        previousClose: 95,
+        regularMarketTime: Math.floor(Date.now() / 1000),
+        marketState: 'REGULAR',
+        currency: 'USD',
+        exchange: 'NMS',
+        quoteType: 'EQUITY'
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.quoteDetails).toMatchObject({
+      provider: 'YAHOO',
+      instrumentId: 'EQUITY:NMS:AAPL',
+      currency: 'USD',
+      exchange: 'NMS',
+      assetType: 'EQUITY',
+      marketSession: 'REGULAR',
+      delayClass: 'live',
+      dataQuality: 'complete',
+      freshness: 'fresh'
+    });
   });
 
   it('keeps the daily move against previous close when the market is closed', async () => {
