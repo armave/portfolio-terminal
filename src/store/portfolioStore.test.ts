@@ -2302,6 +2302,32 @@ describe('portfolio store subscriber failure isolation', () => {
     setItem.mockRestore();
   });
 
+  it('queues reentrant state updates until the current subscriber pass completes', () => {
+    const store = new PortfolioStore();
+    const deliveries: string[] = [];
+    let hasCommittedDerivedState = false;
+
+    store.subscribe((_state, source) => {
+      deliveries.push(`first:${source}`);
+      if (source === 'durable' && !hasCommittedDerivedState) {
+        hasCommittedDerivedState = true;
+        expect(store.setDerivedState({ portfolioEquity: 123 }, false)).toBe(true);
+      }
+    });
+    store.subscribe((_state, source) => {
+      deliveries.push(`second:${source}`);
+    });
+
+    expect(store.setState({ balance: -125 }, false)).toBe(true);
+    expect(deliveries).toEqual([
+      'first:durable',
+      'second:durable',
+      'first:derived',
+      'second:derived'
+    ]);
+    expect(store.getState().portfolioEquity).toBe(123);
+  });
+
   it('continues notifying state subscribers when an earlier subscriber throws', () => {
     const store = new PortfolioStore();
     const error = new Error('broken state subscriber');

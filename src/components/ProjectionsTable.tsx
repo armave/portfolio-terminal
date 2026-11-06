@@ -1,5 +1,5 @@
 import { memo } from 'preact/compat';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
   calculateAccruedFees,
   calculateProjectedDebt,
@@ -7,19 +7,72 @@ import {
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
-import { useActiveView, usePortfolio } from '../store/portfolioStore';
+import type { PortfolioState } from '../types/portfolio';
+import { useActiveView, usePortfolioSelector } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { getAppLanguage } from '../services/i18n';
 
 const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
+function areProjectionSourceStatesEqual(previous: PortfolioState, next: PortfolioState): boolean {
+  if (
+    previous.balance !== next.balance ||
+    previous.realizedMarginCharged !== next.realizedMarginCharged ||
+    previous.startDate !== next.startDate
+  ) return false;
+
+  const previousRules = previous.brokerAssumptions || {};
+  const nextRules = next.brokerAssumptions || {};
+  const ruleKeys = new Set([...Object.keys(previousRules), ...Object.keys(nextRules)]);
+  for (const key of ruleKeys) {
+    if (previousRules[key as keyof typeof previousRules] !== nextRules[key as keyof typeof nextRules]) return false;
+  }
+
+  const previousPositions = previous.positions || {};
+  const nextPositions = next.positions || {};
+  const tickers = Object.keys(previousPositions);
+  if (tickers.length !== Object.keys(nextPositions).length) return false;
+
+  for (const ticker of tickers) {
+    const left = previousPositions[ticker];
+    const right = nextPositions[ticker];
+    if (!right || !left ||
+      left.shares !== right.shares ||
+      left.pt !== right.pt ||
+      left.commBuy !== right.commBuy ||
+      left.startDate !== right.startDate) return false;
+
+    const leftTranches = left.tranches || [];
+    const rightTranches = right.tranches || [];
+    if (leftTranches.length !== rightTranches.length) return false;
+    for (let index = 0; index < leftTranches.length; index += 1) {
+      const leftTranche = leftTranches[index];
+      const rightTranche = rightTranches[index];
+      if (
+        leftTranche.qty !== rightTranche.qty ||
+        leftTranche.price !== rightTranche.price ||
+        leftTranche.date !== rightTranche.date ||
+        leftTranche.purchaseDate !== rightTranche.purchaseDate ||
+        leftTranche.acquiredAt !== rightTranche.acquiredAt
+      ) return false;
+    }
+  }
+
+  return true;
+}
+
 function ProjectionsTableView() {
-  const state = usePortfolio();
+  const state = usePortfolioSelector((snapshot) => snapshot, areProjectionSourceStatesEqual);
   const activeView = useActiveView();
-  const projectionState = state.activeView === activeView ? state : { ...state, activeView };
-  const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
-    getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
+  const projectionInputs = useMemo(
+    () => getPortfolioProjectionInputs(
+      state.activeView === activeView ? state : { ...state, activeView },
+      state.brokerAssumptions
+    ),
+    [state, activeView]
+  );
+  const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } = projectionInputs;
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -38,16 +91,19 @@ function ProjectionsTableView() {
 
   // Find the first day projected net reaches or crosses zero. That day is the
   // breakeven milestone; display its net as $0.00 and stop before any negative day.
-  const breakevenDays = findProjectionBreakevenDay(
+  const breakevenDays = useMemo(() => findProjectionBreakevenDay(
     gross,
     totalComms,
     marginChargedToUse,
     debtToUse,
     dailyRate,
     MAX_BREAKEVEN_SEARCH_DAYS
-  );
+  ), [gross, totalComms, marginChargedToUse, debtToUse, dailyRate]);
 
-  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays);
+  const projectionItems = useMemo(
+    () => getUsEquityProjectionDates(new Date(), entryDate, breakevenDays),
+    [entryDate, breakevenDays]
+  );
   const pageCount = Math.max(1, Math.ceil(projectionItems.length / ROWS_PER_PAGE));
   const currentPage = Math.min(page, pageCount - 1);
   const visibleItems = projectionItems.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE);

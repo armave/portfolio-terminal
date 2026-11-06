@@ -216,6 +216,8 @@ function mergeLiveQuoteDetails(
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState, source: PortfolioStoreChangeSource) => void> = new Set();
+  private notificationQueue: Array<{ state: PortfolioState; source: PortfolioStoreChangeSource }> = [];
+  private isNotifying = false;
   private activeViewListeners: Set<(view: string) => void> = new Set();
   private persistenceErrorListeners: Set<(message: string) => void> = new Set();
 
@@ -475,17 +477,34 @@ export class PortfolioStore {
   }
 
   private notify(source: PortfolioStoreChangeSource = 'durable'): void {
-    const state = this.state;
-    this.listeners.forEach((listener) => {
-      try {
-        listener(state, source);
-      } catch (error) {
-        // State is already committed before notification. Isolate subscriber
-        // failures so one consumer cannot starve the remaining subscribers or
-        // make a successful mutation appear to have failed.
-        console.error('Failed to notify a portfolio state subscriber:', error);
+    this.notificationQueue.push({ state: this.state, source });
+    if (this.isNotifying) return;
+
+    // A subscriber may commit a derived update (for example, synchronized
+    // equity). Queue that snapshot until the current subscriber pass finishes
+    // instead of recursively notifying listeners against a partially observed
+    // commit sequence.
+    this.isNotifying = true;
+    try {
+      while (this.notificationQueue.length > 0) {
+        const notification = this.notificationQueue.shift();
+        if (!notification) continue;
+        const listeners = Array.from(this.listeners);
+        listeners.forEach((listener) => {
+          if (!this.listeners.has(listener)) return;
+          try {
+            listener(notification.state, notification.source);
+          } catch (error) {
+            // State is already committed before notification. Isolate subscriber
+            // failures so one consumer cannot starve the remaining subscribers or
+            // make a successful mutation appear to have failed.
+            console.error('Failed to notify a portfolio state subscriber:', error);
+          }
+        });
       }
-    });
+    } finally {
+      this.isNotifying = false;
+    }
   }
 
   private notifyPersistenceFailure(): void {
