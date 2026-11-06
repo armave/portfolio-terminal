@@ -1435,7 +1435,8 @@ export class PortfolioStore {
   public addCashHolding(
     ticker: string,
     shares: number,
-    price = 0
+    price = 0,
+    context?: PortfolioTransactionContext
   ): { ticker: string; shares: number; price: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(shares) || shares <= 0) return null;
@@ -1445,8 +1446,20 @@ export class PortfolioStore {
     const currentHoldings = this.state.cashCushion?.holdings || [];
     const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
     const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.buy',
+      clean,
+      shares,
+      hasManualPrice ? manualPrice : null
+    ]);
 
-    const committed = this.update((state) => {
+    const committed = this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const existingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
@@ -1469,10 +1482,26 @@ export class PortfolioStore {
       }
 
       return {
-        ...state,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings
+        state: {
+          ...state,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            holdings
+          }
+        },
+        event: {
+          type: 'cash-holding.buy',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: shares,
+          ...(hasManualPrice ? {
+            unitPrice: manualPrice,
+            grossAmount: shares * manualPrice
+          } : {}),
+          cashDelta: 0,
+          note: hasManualPrice
+            ? 'Cash-cushion holding quantity added at manually supplied price; no free-cash settlement is modeled.'
+            : 'Cash-cushion holding quantity added without an execution price; no cost basis is inferred.'
         }
       };
     });
@@ -1480,7 +1509,7 @@ export class PortfolioStore {
     return committed ? { ticker: clean, shares, price: resolvedPrice } : null;
   }
 
-  /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
+    /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
   public addCashStock(ticker: string, shares: number, price: number): boolean {
     if (!Number.isFinite(price) || price <= 0 ) return false;
     return this.addCashHolding(ticker, shares, price) !== null;
