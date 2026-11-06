@@ -255,6 +255,8 @@ These are baseline constraints, not claims that every target capability is curre
 
 ## 8. Delivery sequence and dependency plan
 
+**Wave 2 execution plan:** see [docs/wave-2/README.md](wave-2/README.md) for the five merged implementation foundations, exact merge SHAs and CI evidence, Wave 2.5 transparency slice, and open follow-ups (#334, #365, #366).
+
 The roadmap is split into 18 independently scoped workstreams. Child issues hold task-level scope, acceptance criteria, required tests, and the dedicated implementation branch.
 
 ### Stage 0 — Baseline and delivery discipline
