@@ -164,6 +164,10 @@ describe('normalizeMarketHistoryPoints', () => {
       freshness: 'unknown',
       provider: 'YAHOO',
       receivedAt: Date.parse('2026-11-06T12:03:00.000Z'),
+      observedAt: Date.parse('2026-11-06T12:00:00.000Z'),
+      freshness: 'unknown',
+      session: 'UNKNOWN',
+      delayClass: 'unknown',
       interval: '1D',
       instrument: {
         id: 'EQUITY:US:AAPL',
@@ -171,6 +175,20 @@ describe('normalizeMarketHistoryPoints', () => {
         quoteCurrency: 'USD'
       },
       points: [{ timestamp: Date.parse('2026-11-06T12:00:00.000Z'), price: 210 }]
+    });
+  });
+
+  it('keeps historical series freshness and session explicitly unknown', () => {
+    const result = normalizeMarketHistoryResponse({
+      symbol: 'AAPL.US', provider: 'test', receivedAt: now,
+      interval: '1d', currency: 'USD',
+      points: [{ time: now - 86_400_000, close: 100 }]
+    });
+    expect(result).toMatchObject({
+      observedAt: now - 86_400_000,
+      freshness: 'unknown',
+      session: 'UNKNOWN',
+      delayClass: 'unknown'
     });
   });
 
