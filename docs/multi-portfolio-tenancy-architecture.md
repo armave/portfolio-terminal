@@ -20,7 +20,7 @@ The present system is already a useful starting point: it has authenticated acco
 
 ## 2. Verified current-state baseline
 
-The design is based on the current `dev` source inspected for this workstream.
+The design was revalidated against `dev` at commit `10e0237677953f56fcaeeb9322132cba15b6ada0` on 2026-11-06. The checked-in Wrangler configuration on both `dev` and `main` still binds only `PORTFOLIO_STATE_DO` to `PortfolioStateDO` and retains migration `v1`.
 
 ### Identity and roles
 
@@ -47,6 +47,14 @@ The design is based on the current `dev` source inspected for this workstream.
 The current security model is **one shared administrator portfolio plus user-scoped, read-only guest projections**. It is not yet an independent multi-tenant portfolio platform. A new portfolio ID cannot safely be added only to frontend state or to a request body while the Worker and Durable Object still read/write the shared record.
 
 This baseline must remain the compatibility contract until an approved migration is implemented.
+
+### Wave 1 changes now incorporated into the baseline
+
+- **PT-01 — PR #349 merged:** `docs/financial-calculation-contracts.md` and independent reference fixtures now document the financial source-of-truth and calculation contracts. `PortfolioState.positions` remains canonical; PT-01 did not change production formulas or persistence.
+- **PT-03 — PR #352 merged:** the read-only Freedom TradeNet adapter and normalized broker contracts are now part of `dev`. This does not change portfolio ownership, tenant isolation, or Worker storage routing.
+- **PT-16 — PR #351 merged:** the client encrypts Margin Intelligence digests using the existing AES-GCM v2 shared-workspace-key envelope. Its companion Worker change was deployed directly to `main`; `MARGIN_DIGEST_ENCRYPTION_REQUIRED` remains `false`, so legacy plaintext write compatibility is still enabled. This is not per-tenant key isolation and does not establish that all historical digests have been migrated.
+- **PT-17 — PR #350 merged:** exact-candidate CI and browser/release workflows are in place. The PR did not configure repository branch protection.
+- **PT-02 — issue #330 remains open:** transaction/audit ownership and mutation contracts are still outstanding and remain a prerequisite for independent tenant financial writes.
 
 ## 3. Vocabulary and ownership model
 
@@ -192,11 +200,11 @@ The current `PortfolioStateDO` instance is both the account/auth directory and t
 3. **Public Worker:** authenticates the request, obtains a verified principal, resolves and authorizes the resource, then routes to the correct tenant data boundary.
 4. **Client:** caches only the currently authorized workspace/portfolio view and clears scoped caches when identity, tenant, workspace, portfolio, or permission revision changes.
 
-### Selected topology (PT-05C recommendation)
+### Selected topology (PT-05C design decision)
 
 The current `wrangler.jsonc` on both `main` and `dev` defines a single `PORTFOLIO_STATE_DO` binding for `PortfolioStateDO`, introduced by SQLite Durable Object migration tag `v1`. The Worker exports `PortfolioStateDO` from `state-store.js`; `.github/workflows/deploy-worker.yml` deploys on changes to `worker.js`, `state-store.js`, and `wrangler.jsonc`. The existing Durable Object contains both the global account/session directory and the legacy shared portfolio data.
 
-**Recommended target: retain the existing identity/legacy Durable Object and add a separate SQLite Durable Object class with one canonical instance per tenant.**
+**Selected target: retain the existing identity/legacy Durable Object and add a separate SQLite Durable Object class with one canonical instance per tenant.**
 
 1. Keep `PortfolioStateDO` and the existing `PORTFOLIO_STATE_DO` binding stable. It remains the identity/session authority, tenant/workspace/portfolio directory, membership/grant authority, and compatibility endpoint for the current shared owner workspace and existing guest projections while migration is in progress. Do not rename or repurpose its existing storage identity.
 2. Add a new `PortfolioTenantDO` class and `PORTFOLIO_TENANT_DO` binding in a later additive Wrangler migration. Resolve the tenant from the trusted directory first, then address its data object using `PORTFOLIO_TENANT_DO.idFromName(canonicalTenantId)`. The canonical ID must come from the directory record, never directly from an untrusted request body or URL.
@@ -215,7 +223,7 @@ This per-tenant object strategy gives each tenant an independently serialized SQ
 - Deploy the class/binding before any request path can route to it. Keep the tenant route feature flag off until server tests, migration parity and recovery gates pass.
 - Worker/server-only changes follow the repository's direct-to-`main` deployment path. Because this is a persistent-storage class addition, require an explicit migration review, production backup/restore plan, and rollout/rollback checklist before deployment.
 
-This topology is the recommended architecture based on the currently checked-in Wrangler and Worker entry/deploy configuration. It does not mean the new class or binding has been deployed.
+This topology is the selected architectural direction based on the checked-in Wrangler and Worker entry/deploy configuration. It does not mean the new class or binding has been implemented or deployed.
 
 ### Resource key model
 
@@ -233,7 +241,7 @@ The exact storage layout is an implementation decision. Avoid embedding raw user
 
 ### Encryption and key lifecycle
 
-The current system has a shared `auth:cloud-encryption-key` and uses it to encrypt guest projection/ledger payloads. That is a legacy compatibility constraint, not a suitable final per-tenant key hierarchy.
+The current system has a shared `auth:cloud-encryption-key` and uses it to encrypt guest projection/ledger payloads. That is a legacy compatibility constraint, not a suitable final per-tenant key hierarchy. PT-16's digest-encryption slice also uses this existing shared-workspace-key envelope; because the production Worker flag `MARGIN_DIGEST_ENCRYPTION_REQUIRED` remains `false`, legacy plaintext writes are still accepted during rollout. Neither change supplies tenant-specific DEKs/KEKs or proves that historical digest records have all been re-encrypted.
 
 Target requirements:
 - Unique tenant-scoped data encryption keys (DEKs), with versioned key metadata.
@@ -291,7 +299,7 @@ Migration must preserve current administrator and guest experiences and must be 
 - Keep writes on the legacy path until read parity, authorization, key recovery, and browser validation gates pass.
 
 **Phase 5 — Controlled write cutover**
-- Enable writes only after PT-01/PT-02 financial and mutation contracts are merged and tested.
+- Enable independent tenant writes only after the PT-02 transaction/audit ownership and mutation contracts are merged and tested, with PT-01's merged financial-calculation contracts used as guardrails. The tenant isolation, key recovery, migration, rollback, and adversarial authorization gates must also pass.
 - Use one authoritative write path. Do not independently accept writes into both legacy and tenant stores without a transaction/reconciliation design.
 - Persist migration version, last confirmed source revision, target revision, and audit event for cutover.
 - Roll out one tenant at a time with per-tenant kill switch and monitoring.
@@ -374,8 +382,8 @@ This PT-05 workstream is intentionally staged. The present PR defines architectu
 | Step | Work | Dependency / gate |
 |---|---|---|
 | PT-05A | Approve this ownership, capability, storage, encryption, and migration model | Product/security review |
-| PT-05B | Complete PT-01 financial/data inventory and PT-02 transaction/audit ownership contracts | Required before tenant financial writes |
-| PT-05C | Select Cloudflare identity/data boundary and per-tenant key lifecycle; threat-model and deployment review | Wrangler/Worker/DO and recovery design |
+| PT-05B | Incorporate the merged PT-01 financial/data baseline and complete PT-02 transaction/audit ownership contracts | PT-01 is merged in PR #349; PT-02 issue #330 remains open and is required before tenant financial writes |
+| PT-05C | Confirm the selected Cloudflare identity/data topology and select the per-tenant key service/lifecycle | Topology selected in this PR; KEK/DEK provider, rotation, recovery, and deployment review remain open |
 | PT-05D | Add versioned identity, tenant, workspace, portfolio, membership, and grant records behind disabled flags | Server-only schema migration and rollback tests |
 | PT-05E | Implement central authorization and resource-scoped routing with negative/cross-tenant tests | No client-controlled DO routing |
 | PT-05F | Implement tenant data storage, encryption, exports/deletion, and legacy migration adapters | Key recovery + parity tests |
@@ -398,8 +406,8 @@ This PT-05 workstream is intentionally staged. The present PR defines architectu
 | Identity roles | Separate platform role from scoped tenant/workspace membership roles | Proposed |
 | Current admin migration | Map current owner workspace into one explicit legacy tenant/workspace | Proposed |
 | Guest migration | Preserve guest identities as narrow, read-only projection grants | Proposed |
-| Data source of truth | Keep existing portfolio state/financial contracts until PT-01/PT-02 approve any evolution | Required constraint |
-| DO topology | Separate identity authority from tenant data authority; final binding/class choice requires Wrangler review | Open implementation decision |
+| Data source of truth | Preserve `PortfolioState.positions` and the merged PT-01 financial contracts; require PT-02 mutation/audit semantics plus an explicit migration before changing ownership or canonical state | Required constraint |
+| DO topology | Preserve `PortfolioStateDO` as identity/legacy authority and add a future per-tenant `PortfolioTenantDO` | Selected architecture; implementation pending |
 | Encryption | Per-tenant DEK with versioned envelope encryption and separately managed KEK | Proposed; key service must be selected |
 | Cutover | Shadow auth, copy/verify, controlled read, then controlled write | Proposed |
 | Platform admin access | No implicit portfolio content access; audited break-glass only | Proposed |
@@ -418,4 +426,4 @@ The parent issue #333 may be closed only when all of the following are demonstra
 - Role-aware client views work against deployed server authorization and preserve English/Russian localization.
 - Exact-head CI, browser flows, security review, and production smoke evidence are attached to implementation PRs.
 
-**This design PR completes PT-05A only.** It is a necessary design milestone, not completion of independent multi-portfolio tenancy. The remaining PT-05 steps require PT-01/PT-02 inputs and a separate server-side implementation/deployment sequence.
+**This design PR completes the PT-05A architecture foundation and records the PT-05C Durable Object topology decision only.** It does not close issue #333 or enable multi-tenant runtime behavior. PT-01's financial baseline is merged; PT-02's transaction/audit ownership contract, the per-tenant key service, server-side isolation implementation, migration, rollback, and security sign-off remain required before independent tenant financial writes.
