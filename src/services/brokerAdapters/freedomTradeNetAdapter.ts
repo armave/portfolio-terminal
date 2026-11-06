@@ -58,6 +58,17 @@ function readOrderRows(response: unknown): unknown[] | null {
   return null;
 }
 
+function countUsdRows(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((candidate) => {
+    const row = asRecord(candidate);
+    const currency = row?.curr ?? row?.base_currency;
+    return typeof currency === 'string' || typeof currency === 'number'
+      ? String(currency).trim().toUpperCase() === 'USD'
+      : false;
+  }).length;
+}
+
 function readExecutionRows(response: unknown): unknown[] | null {
   if (Array.isArray(response)) return response;
   const root = asRecord(unwrapTradeNet(response));
@@ -203,13 +214,14 @@ export function createFreedomTradeNetBrokerAdapter(
         const hasBalances = Array.isArray(ps?.acc);
         const hasPositions = Array.isArray(ps?.pos);
         const visibleRows = data.balances.length + data.positions.length;
-        const providerRows = (Array.isArray(ps?.acc) ? ps.acc.length : 0) +
-          (Array.isArray(ps?.pos) ? ps.pos.length : 0);
+        // The normalizer deliberately excludes non-USD rows. Completeness is
+        // measured only against the requested USD account scope.
+        const providerRows = countUsdRows(ps?.acc) + countUsdRows(ps?.pos);
         const quality: BrokerSnapshotQuality = !hasBalances || !hasPositions || visibleRows < providerRows
           ? 'partial'
           : visibleRows === 0 ? 'empty' : 'complete';
         const warnings = quality === 'partial'
-          ? ['Some provider rows or collections were unavailable or are outside the current USD account scope.']
+          ? ['Some USD provider rows or required collections were unavailable.']
           : [];
         return createSnapshot(data, quality, context, warnings);
       } catch (error) {
