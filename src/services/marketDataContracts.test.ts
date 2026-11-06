@@ -132,6 +132,8 @@ describe('normalizeMarketHistoryPoints', () => {
       ],
       observedAt: Date.parse('2026-11-06T12:02:00.000Z'),
       freshness: 'unknown',
+      session: 'UNKNOWN',
+      delayClass: 'unknown',
       quality: 'complete',
       issues: []
     });
@@ -162,12 +164,10 @@ describe('normalizeMarketHistoryPoints', () => {
       quality: 'complete',
       observedAt: Date.parse('2026-11-06T12:00:00.000Z'),
       freshness: 'unknown',
-      provider: 'YAHOO',
-      receivedAt: Date.parse('2026-11-06T12:03:00.000Z'),
-      observedAt: Date.parse('2026-11-06T12:00:00.000Z'),
-      freshness: 'unknown',
       session: 'UNKNOWN',
       delayClass: 'unknown',
+      provider: 'YAHOO',
+      receivedAt: Date.parse('2026-11-06T12:03:00.000Z'),
       interval: '1D',
       instrument: {
         id: 'EQUITY:US:AAPL',
