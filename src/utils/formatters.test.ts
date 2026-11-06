@@ -86,6 +86,11 @@ describe('display formatters', () => {
       quoteUpdatedAt: now,
       quoteDetails: { sourceTimestamp: now, freshness: 'unknown', delayClass: 'unknown' }
     }, now)).toBe('unknown');
+    expect(getQuoteFreshness({
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: now,
+      quoteDetails: { sourceTimestamp: now, freshness: 'fresh', delayClass: 'live', cacheStatus: 'stale-fallback' }
+    }, now)).toBe('stale');
   });
 
   it('summarizes freshness across every held position instead of only the latest response', () => {
