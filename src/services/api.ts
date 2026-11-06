@@ -18,8 +18,18 @@ export type { FreedomExecutedTrade } from '../types/freedomTrade';
 export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
-export { normalizeCurrencyCode } from './marketDataContracts';
+export {
+  normalizeCurrencyCode,
+  normalizeInstrumentIdentity,
+  normalizeMarketQuoteObservation,
+  normalizeMarketHistoryPoints,
+  normalizeMarketHistoryResponse,
+  normalizeFxRate,
+  isFxRateUsableForConversion,
+  shouldAcceptMarketObservation
+} from './marketDataContracts';
 export type {
+  MarketDelayClass,
   MarketFreshness,
   MarketDataQuality,
   MarketSession,
