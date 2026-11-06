@@ -1,5 +1,6 @@
 import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
 import { normalizeMarketHistoryResponse, type MarketHistoryResult } from './marketDataContracts';
+import { retryMarketDataRequest } from './marketDataRetry';
 
 export interface FreedomQuote {
   symbol: string;
@@ -166,13 +167,16 @@ export async function fetchFreedomHistory(
     throw new Error('Enter one valid TradeNet ticker symbol.');
   }
 
-  const payload = await proxyFetch(
-    'freedom-history',
-    { symbol: ticker },
-    {
-      ...(options.force ? { cache: 'no-store' as RequestCache } : {}),
-      ...(options.signal ? { signal: options.signal } : {})
-    }
+  const payload = await retryMarketDataRequest(
+    () => proxyFetch(
+      'freedom-history',
+      { symbol: ticker },
+      {
+        ...(options.force ? { cache: 'no-store' as RequestCache } : {}),
+        ...(options.signal ? { signal: options.signal } : {})
+      }
+    ),
+    { attempts: 2, baseDelayMs: 0, maxDelayMs: 0 }
   );
   if (!payload || payload.ok !== true) {
     throw new Error(
@@ -200,13 +204,23 @@ export async function fetchFreedomHistory(
   });
 }
 
-export async function fetchFreedomQuote(symbol: string, force = false): Promise<FreedomQuote> {
-  const normalized = symbol.trim().toUpperCase();
+export async function fetchFreedomQuote(
+  symbol: string,
+  force = false,
+  signal?: AbortSignal
+): Promise<FreedomQuote> {
+  const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
   if (!normalized) throw new Error("A ticker symbol is required.");
-  const payload = await proxyFetch(
-    "freedom-quote",
-    { symbol: freedomSymbol(normalized) },
-    force ? { cache: "no-store" } : {}
+  const payload = await retryMarketDataRequest(
+    () => proxyFetch(
+      "freedom-quote",
+      { symbol: freedomSymbol(normalized) },
+      {
+        ...(force ? { cache: "no-store" as RequestCache } : {}),
+        ...(signal ? { signal } : {})
+      }
+    ),
+    { attempts: 2, baseDelayMs: 0, maxDelayMs: 0 }
   );
   const quote = normalizeFreedomQuote(payload?.data, normalized);
   if (!quote) throw new Error("Freedom TradeNet returned an unsupported quote payload.");
