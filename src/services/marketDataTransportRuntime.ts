@@ -135,15 +135,16 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
         let accepted = data;
         if (!data.error && data.price && typeof data.price === 'object') {
           const cachedAt = now();
+          accepted = { ...data, cacheStatus: 'network' };
           setBoundedCache(yahooQuoteCache, symbol, {
             expiresAt: cachedAt + YAHOO_QUOTE_CACHE_TTL_MS,
             staleUntil: cachedAt + YAHOO_QUOTE_STALE_RETENTION_MS,
-            data
+            data: accepted
           });
         } else {
           const lastKnownGood = yahooQuoteCache.get(symbol);
           if (lastKnownGood && lastKnownGood.staleUntil > now()) {
-            accepted = lastKnownGood.data;
+            accepted = { ...lastKnownGood.data, cacheStatus: 'stale-fallback' };
             dependencies.recordMetric('stale_fallback', {
               provider: 'yahoo', operation: 'quote_batch', symbol
             });
@@ -165,7 +166,10 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
           dependencies.recordMetric('stale_fallback', {
             provider: 'yahoo', operation: 'quote_batch', symbol
           });
-          pending.resolvers.forEach(resolve => resolve(lastKnownGood.data));
+          pending.resolvers.forEach(resolve => resolve({
+            ...lastKnownGood.data,
+            cacheStatus: 'stale-fallback'
+          }));
         } else {
           yahooQuoteCache.delete(symbol);
           pending.rejecters.forEach(reject => reject(error));
@@ -180,7 +184,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const cached = yahooQuoteCache.get(symbol);
     if (!force && cached && cached.expiresAt > now()) {
       dependencies.recordMetric('cache_hit', { cache: 'yahoo_quote' });
-      return Promise.resolve(cached.data);
+      return Promise.resolve({ ...cached.data, cacheStatus: 'fresh-cache' });
     }
     if (cached && cached.staleUntil <= now()) yahooQuoteCache.delete(symbol);
     const existing = yahooQuoteRequests.get(symbol);
