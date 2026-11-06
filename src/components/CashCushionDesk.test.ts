@@ -21,6 +21,14 @@ describe('cash/margin mix inputs', () => {
   });
 });
 
+describe('broker history adapter boundary', () => {
+  it('normalizes cached executions through the provider adapter', () => {
+    expect(deskSource).toContain("import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';");
+    expect(deskSource).toContain("freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data");
+    expect(deskSource).not.toContain('normalizeFreedomTrades');
+  });
+});
+
 describe('Balance guest grouping', () => {
   it('uses stable assigned guest IDs rather than asynchronous directory order', () => {
     expect(getAssignedGuestIds({
