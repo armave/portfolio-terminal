@@ -11,7 +11,7 @@ All timestamps are UTC epoch milliseconds. Valuation observations and all cash v
 
 A valuation observation contains:
 - `timestamp`: UTC epoch milliseconds, unique within the series.
-- `equity`: finite, non-negative portfolio equity.
+- `equity`: finite signed portfolio equity. Negative equity is supported for leveraged portfolios; a standard return period must still begin with positive opening equity.
 - `currency`: three-letter currency code.
 - `quality`: `current`, `provisional`, or `incomplete`.
 
@@ -129,7 +129,7 @@ This initial implementation is a pure domain calculation foundation. It does not
 - read portfolio persistence or the future PT-02 transaction ledger;
 - ingest real valuation history from PT-04/TradeNet or PT-07 market providers;
 - derive position/account attribution buckets from actual trades, holdings, cash, or liabilities;
-- compare benchmark series;
+- connect the pure benchmark-comparison function to a production benchmark data provider;
 - provide dashboard UI or reports;
 - perform historical FX conversion.
 

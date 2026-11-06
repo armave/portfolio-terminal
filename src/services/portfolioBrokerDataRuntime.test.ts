@@ -232,6 +232,16 @@ describe('portfolio broker data runtime', () => {
       type: 'broker:account-info',
       payload: { loaded: true, balances: [], positions: [] }
     });
+    expect(fixture.events[2]).toMatchObject({
+      type: 'broker:account-info-snapshot',
+      payload: {
+        provider: 'freedom-tradenet',
+        quality: 'empty',
+        source: 'rest',
+        data: { loaded: true, balances: [], positions: [] },
+        warnings: []
+      }
+    });
   });
 
   it('does not publish an account snapshot after the account session changes', async () => {

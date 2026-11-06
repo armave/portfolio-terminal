@@ -589,7 +589,7 @@ export function calculatePeriodAttribution(
   if (!currency) return unavailable('Attribution requires a three-letter currency code.');
   if (!finite(input.startPortfolioValue) || input.startPortfolioValue <= 0 ||
       !finite(input.endPortfolioValue)) {
-    return unavailable('Attribution requires positive opening equity and non-negative closing equity.');
+    return unavailable('Attribution requires positive opening equity and finite closing equity.');
   }
   if (!validQuality(input.quality) || input.quality === 'incomplete') {
     return unavailable('Attribution input quality is incomplete or invalid.');
@@ -809,9 +809,14 @@ export function comparePerformanceToBenchmark(
   if (![benchmarkReturn, portfolioReturn, activeReturn].every(Number.isFinite)) {
     return unavailable('Benchmark comparison produced a non-finite return.');
   }
+  // Use index levels directly: 1 + benchmarkReturn can round to zero for a tiny
+  // positive terminal index level even though the benchmark has not reached zero.
   const relativeReturn = benchmarkEnd.equity === 0
     ? null
-    : (1 + portfolioReturn) / (1 + benchmarkReturn) - 1;
+    : ((1 + portfolioReturn) * benchmarkStart.equity) / benchmarkEnd.equity - 1;
+  if (relativeReturn !== null && !finite(relativeReturn)) {
+    return unavailable('Benchmark relative return is not finite for the supplied index levels.');
+  }
   const quality = mergeQuality(portfolio.quality, benchmarkNormalized.value.quality);
   if (quality === 'incomplete') return unavailable('Benchmark comparison includes incomplete input data.');
   const warnings = [

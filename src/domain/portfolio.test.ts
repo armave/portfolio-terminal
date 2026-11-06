@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import {
   calculateMarginInterest,
   collectOpenPositionTranches,
@@ -40,6 +41,42 @@ describe('portfolio domain', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
+
+
+  it('preserves valid transaction journal history in exported backups and validates it on import', () => {
+    const event = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: 1_800_000_000_000,
+      ticker: 'AAPL',
+      quantity: 2,
+      positionQuantityDelta: 2
+    }, { eventId: 'backup-event-1' }, 1_800_000_000_001);
+    const source = {
+      positions: {},
+      transactionEvents: [event],
+      gatewaySecret: 'must-not-export'
+    };
+
+    const exported = createPortfolioBackupSnapshot(source);
+    expect(exported.transactionEvents).toEqual([event]);
+    expect(exported).not.toHaveProperty('gatewaySecret');
+    expect(normalizePortfolioBackup(exported, 1_800_000_000_002).transactionEvents).toEqual([event]);
+  });
+
+  it('rejects malformed versioned transaction history in a backup instead of silently dropping it', () => {
+    expect(() => normalizePortfolioBackup({
+      positions: {},
+      transactionEvents: [{ id: 'bad-event', schemaVersion: 99 }]
+    }, 1_800_000_000_002)).toThrow('Invalid transactionEvents in portfolio backup');
+  });
+
+  it('continues to import legacy backups that do not contain transaction journal history', () => {
+    expect(normalizePortfolioBackup({
+      positions: {},
+      balance: -20
+    }, 1_800_000_000_002).balance).toBe(-20);
+  });
+
 
   it('creates a backup snapshot without mutating live state or exporting secret fields', () => {
     const source = {

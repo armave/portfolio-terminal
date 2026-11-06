@@ -331,6 +331,20 @@ describe('comparePerformanceToBenchmark', () => {
       expect(wipedOut.value.activeReturn).toBeCloseTo(1.1, 12);
     }
   });
+
+  it('fails closed when relative wealth exceeds the supported numeric range', () => {
+    const result = comparePerformanceToBenchmark({
+      valuations: [valuation(0, 100), valuation(YEAR, 110)]
+    }, {
+      identifier: 'NEAR-ZERO-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(0, 200), valuation(YEAR, 1e-308)]
+    });
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') {
+      expect(result.reason).toContain('relative return is not finite');
+    }
+  });
 });
 
 

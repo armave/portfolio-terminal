@@ -2,9 +2,9 @@
 
 **Umbrella:** Wave 2 — Portfolio Intelligence Foundations  
 **Tracking issue:** [#334](https://github.com/armave/portfolio-terminal/issues/334)  
-**Implementation PR:** Draft branch is open for parallel implementation; upgrade this PR as code and tests land.  
+**Implementation PR:** [#359](https://github.com/armave/portfolio-terminal/pull/359) — the pure calculation kernel is implemented and validated; merge this slice as the domain foundation. Production history/provider adapters and dashboard UI remain follow-on work tracked in issue #334.  
 **Dedicated branch:** `feat/wave2-pt-06-performance-analytics`  
-**Base:** `dev`, currently `c7ae6a6d808c7645a9686e32983f0209ec613f88`
+**Base:** `dev`, synchronized through PT-02 PR #357 and PT-04 PR #358; base commit `484e2ffca7e429b429039d9453c6c41eb2bc4de5`.
 
 ## Objective
 
@@ -12,7 +12,7 @@ Deliver deterministic, explainable portfolio return and performance attribution 
 
 ## Dependencies
 
-PT-01 calculation contracts (merged), PT-02 transaction/cash-flow contract (parallel design; integration gate before final wiring), PT-03/04 reconciled account/flow data where available, PT-07 FX/market data contract for multi-currency support.
+PT-01 calculation contracts are merged. PT-02 transaction/cash-flow events (PR #357) and PT-04 broker reconciliation/provenance (PR #358) are now merged to `dev`, but this kernel does not yet adapt those source records into its input types. PT-07 market-history and historical-FX provenance remain in progress and are required before production history/FX wiring.
 
 ## Scope
 
@@ -29,7 +29,8 @@ PT-01 calculation contracts (merged), PT-02 transaction/cash-flow contract (para
 
 - [x] Calculation-kernel metrics have documented definitions, formulas, assumptions, required input fields, and edge-case behavior.
 - [x] External deposits/withdrawals are excluded from investment profit using linked Modified Dietz weights; MWR converts contributions/withdrawals to investor cash flows and solves XIRR under a unique-sign-change rule.
-- [ ] Fee/dividend/commission/interest summary and no-double-count treatment are implemented; reconciliation to PT-02 transaction events remains pending.
+- [x] Implement separate dividend/fee/commission/interest summaries and document the no-double-count rule.
+- [ ] Reconcile these summaries to actual PT-02 transaction/source events.
 - [x] Generic keyed item attribution must reconcile opening/closing values, item flows, and profit to portfolio Modified Dietz return within the configured tolerance.
 - [x] Incomplete observations/flows return unavailable; provisional inputs produce provisional results; mixed currencies are rejected. Runtime mapping from PT-04/PT-07 quality metadata remains pending.
 - [x] New calculation functions are pure and do not mutate portfolio state or accounting fields.
@@ -72,10 +73,10 @@ Implemented:
 - Independent fixtures for cash-flow timing, withdrawals, linked periods, XIRR, ambiguous cash flows, attribution reconciliation, and income/cost totals.
 
 Not yet integrated (intentionally waits for other parallel Wave 2 streams):
-- PT-02 transaction/cash-flow event mapping and actual portfolio history adapters.
-- PT-07 instrument/history/FX provenance and historical currency conversion.
-- PT-04 reconciliation quality mapping and account snapshot ingestion.
+- PT-02 transaction/cash-flow journal mapping into the kernel's `PerformanceInput` and actual portfolio history adapters.
+- PT-07 instrument, valuation-history, FX provenance, and historical currency conversion.
+- PT-04 reconciliation-quality mapping and account-snapshot ingestion.
 - Security/account-level attribution wiring from actual position and cash records.
-- Benchmark comparison, dashboard UI, and persisted/reporting integration.
+- Benchmark-provider wiring (the pure total-return comparison function is implemented), dashboard UI, and persisted/reporting integration.
 
-This is a calculation foundation, not yet a user-facing performance dashboard. The PR remains Draft until the upstream contracts are stable, integration is complete, and exact-head CI passes.
+This merged slice is a calculation foundation, not a finished user-facing performance dashboard. PT-02 and PT-04 contracts are now present on `dev`; runtime mapping from transaction history and reconciled snapshots, PT-07 market/FX adapters, persistent valuation history, benchmark-provider integration, and UI remain follow-on scope. Exact-head automated validation is required for every synchronized kernel change. No production/live broker performance result is claimed; keep issue #334 open until integration and remaining acceptance criteria are complete.
