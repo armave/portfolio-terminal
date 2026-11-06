@@ -123,12 +123,23 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
     issues.push('Quote currency is invalid; currency remains unknown.');
   }
 
-  const aliases = [...new Set((input.aliases || [])
+  if (input.aliases !== undefined && !Array.isArray(input.aliases)) {
+    issues.push('Instrument aliases must be provided as an array.');
+  }
+  const aliases = [...new Set((Array.isArray(input.aliases) ? input.aliases : [])
     .map(normalizeToken)
     .filter((alias): alias is string => Boolean(alias) && alias !== symbol))];
 
   const providerSymbols: Record<string, string> = {};
-  for (const [provider, rawProviderSymbol] of Object.entries(input.providerSymbols || {})) {
+  const providerSymbolEntries = input.providerSymbols && typeof input.providerSymbols === 'object' &&
+      !Array.isArray(input.providerSymbols)
+    ? Object.entries(input.providerSymbols)
+    : [];
+  if (input.providerSymbols !== undefined && input.providerSymbols !== null &&
+      (typeof input.providerSymbols !== 'object' || Array.isArray(input.providerSymbols))) {
+    issues.push('Provider symbol mappings must be provided as an object.');
+  }
+  for (const [provider, rawProviderSymbol] of providerSymbolEntries) {
     const providerKey = normalizeToken(provider);
     const providerSymbol = normalizeToken(rawProviderSymbol);
     if (providerKey && providerSymbol) providerSymbols[providerKey] = providerSymbol;
@@ -206,9 +217,13 @@ export function normalizeMarketQuoteObservation(
   input: MarketQuoteObservationInput,
   options: { now?: number; maxAgeMs?: number; maxFutureSkewMs?: number } = {}
 ): MarketQuoteObservationResult {
-  const now = options.now ?? Date.now();
-  const maxAgeMs = options.maxAgeMs ?? 5 * 60 * 1000;
-  const maxFutureSkewMs = options.maxFutureSkewMs ?? 60 * 1000;
+  const now = Number.isFinite(options.now) ? options.now! : Date.now();
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) && options.maxAgeMs! >= 0
+    ? options.maxAgeMs!
+    : 5 * 60 * 1000;
+  const maxFutureSkewMs = Number.isFinite(options.maxFutureSkewMs) && options.maxFutureSkewMs! >= 0
+    ? options.maxFutureSkewMs!
+    : 60 * 1000;
   const issues: string[] = [];
   const price = typeof input.price === 'number'
     ? input.price
@@ -291,6 +306,10 @@ export interface MarketPricePoint {
 
 export interface MarketHistoryResult {
   points: MarketPricePoint[];
+  /** Latest source observation represented by this series, independent of receipt time. */
+  observedAt: number | null;
+  /** Unknown unless an interval-aware exchange calendar can verify series recency. */
+  freshness: MarketFreshness;
   quality: 'complete' | 'partial' | 'unavailable';
   issues: string[];
   instrument?: InstrumentIdentity;
@@ -326,7 +345,13 @@ export function normalizeMarketHistoryPoints(
   options: { maxPoints?: number } = {}
 ): MarketHistoryResult {
   if (!Array.isArray(input)) {
-    return { points: [], quality: 'unavailable', issues: ['Historical price response is not an array.'] };
+    return {
+      points: [],
+      observedAt: null,
+      freshness: 'unknown',
+      quality: 'unavailable',
+      issues: ['Historical price response is not an array.']
+    };
   }
   const requestedMaxPoints = options.maxPoints ?? 20_000;
   const maxPoints = Number.isFinite(requestedMaxPoints)
@@ -389,7 +414,13 @@ export function normalizeMarketHistoryPoints(
     issues.push('Historical points were bounded to the most recent ' + maxPoints + ' observations.');
   }
   const quality = points.length === 0 ? 'unavailable' : issues.length > 0 ? 'partial' : 'complete';
-  return { points, quality, issues };
+  return {
+    points,
+    observedAt: points.length > 0 ? points[points.length - 1].timestamp : null,
+    freshness: 'unknown',
+    quality,
+    issues
+  };
 }
 
 export interface FxRateInput {
@@ -473,6 +504,8 @@ export function normalizeMarketHistoryResponse(
 
   return {
     points: history.points,
+    observedAt: history.observedAt,
+    freshness: history.freshness,
     quality,
     issues,
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
