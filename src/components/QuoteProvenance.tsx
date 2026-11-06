@@ -49,10 +49,14 @@ export function QuoteProvenanceList({ holdings }: { holdings: QuoteProvenanceHol
           const receivedAt = holding.quoteDetails?.receivedAt ?? holding.quoteUpdatedAt;
           const observedAt = formatQuoteTimestamp(sourceTimestamp);
           const receivedAtText = formatQuoteTimestamp(receivedAt);
+          const instrumentContext = [
+            holding.quoteDetails?.currency,
+            holding.quoteDetails?.exchange
+          ].filter((value): value is string => typeof value === 'string' && value.length > 0).join(' · ');
           return (
             <li key={`${holding.kind}-${holding.ticker || index}`}>
               <span class="font-semibold text-slate-300">{translateText(holding.kind, language)} {holding.ticker || '—'}</span>
-              <span> · {holding.quoteSource || translateText('Source unavailable', language)} · {translateText(freshnessLabel, language)}</span>
+              <span> · {holding.quoteDetails?.provider || holding.quoteSource || translateText('Source unavailable', language)} · {translateText(freshnessLabel, language)}{instrumentContext ? ' · ' + instrumentContext : ''}</span>
               <span class="block">
                 {observedAt ? `${observed}: ${observedAt}` : unavailable}
                 {receivedAtText ? ` · ${received}: ${receivedAtText}` : ''}
