@@ -1009,10 +1009,39 @@ export class PortfolioStore {
     ticker: string,
     sharesToSell: number | 'ALL',
     sellPrice: number,
-    date?: string
+    date?: string,
+    context?: PortfolioTransactionContext
   ): boolean {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      (sharesToSell !== 'ALL' && (!Number.isFinite(sharesToSell) || sharesToSell <= 0))) return false;
+
+    const exitDate = date || todayIso();
+    const parsedEffectiveAt = Date.parse(exitDate);
+    const effectiveAt = context?.effectiveAt ??
+      (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
+    const requestFingerprint = createMutationFingerprint([
+      'trade.sell',
+      clean,
+      sharesToSell === 'ALL' ? 'ALL' : sharesToSell,
+      sellPrice,
+      exitDate
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      effectiveAt,
+      requestFingerprint,
+      source: context?.source ?? 'manual',
+      actor: context?.actor ?? { type: 'user' }
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      return previouslyApplied.type === 'trade.sell' &&
+        previouslyApplied.requestFingerprint === requestFingerprint;
+    }
+
     const previousState = this.state;
-    this.applyMarginSale(ticker, sharesToSell, sellPrice, date);
+    this.applyMarginSale(clean, sharesToSell, sellPrice, exitDate, { transactionContext });
     return this.state !== previousState;
   }
 
@@ -1021,7 +1050,7 @@ export class PortfolioStore {
     sharesToSell: number | 'ALL',
     sellPrice: number,
     date?: string,
-    options: { closedAt?: number } = {}
+    options: { closedAt?: number; transactionContext?: PortfolioTransactionContext } = {}
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
@@ -1029,16 +1058,16 @@ export class PortfolioStore {
 
     let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
-    this.update((state) => {
+    const committed = this.updateFinancialMutation(options.transactionContext, (state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos || !Number.isFinite(pos.shares) || pos.shares <= 0) return state;
-      if (sharesToSell !== 'ALL' && sharesToSell - pos.shares > 1e-8) return state;
+      if (!pos || !Number.isFinite(pos.shares) || pos.shares <= 0) return null;
+      if (sharesToSell !== 'ALL' && sharesToSell - pos.shares > 1e-8) return null;
 
       // A tolerance accepts insignificant floating-point noise at the boundary;
       // clamp that noise so the closed ledger can never exceed owned shares.
       const actualSold = sharesToSell === 'ALL' ? pos.shares : Math.min(pos.shares, sharesToSell);
-      if (actualSold <= 0 || !Number.isFinite(actualSold * sellPrice)) return state;
+      if (actualSold <= 0 || !Number.isFinite(actualSold * sellPrice)) return null;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       // Fail closed for legacy or corrupted records without a trustworthy
@@ -1062,10 +1091,8 @@ export class PortfolioStore {
       const { soldCostBasis, buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
       const sellProceeds = actualSold * sellPrice;
-
-      // Shared with the AI-confirmed sale path to keep broker fees consistent.
       const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
-      if (!Number.isFinite(sellComm) || sellComm < 0) return state;
+      if (!Number.isFinite(sellComm) || sellComm < 0) return null;
 
       const accounting = calculateSaleAccounting({
         tranches: origTranches,
@@ -1088,16 +1115,17 @@ export class PortfolioStore {
         netCashProceeds
       } = accounting;
       if (![marginInterestAllocated, totalCommissions, grossProfit, netProfit, netCashProceeds]
-        .every(Number.isFinite)) return state;
+        .every(Number.isFinite)) return null;
 
       const totalDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const settlement = settleSaleProceeds(
         totalDebt,
-        Number(state.cashCushion?.freeCash) || 0,
+        previousFreeCash,
         netCashProceeds
       );
       if (![settlement.remainingDebt, settlement.debtRepaid, settlement.cashSurplus, settlement.freeCash]
-        .every(Number.isFinite)) return state;
+        .every(Number.isFinite)) return null;
       const currentDebt = settlement.remainingDebt;
       const freeCash = settlement.freeCash;
 
@@ -1155,22 +1183,38 @@ export class PortfolioStore {
       };
 
       return {
-        ...state,
-        positions,
-        activeView: nextActiveView,
-        selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
-        balance: currentDebt > 0 ? -currentDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        state: {
+          ...state,
+          positions,
+          activeView: nextActiveView,
+          selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
+          balance: currentDebt > 0 ? -currentDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          },
+          realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) + marginInterestAllocated,
+          closedTrades: [closedRecord, ...(state.closedTrades || [])]
         },
-        realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) + marginInterestAllocated,
-        closedTrades: [closedRecord, ...(state.closedTrades || [])]
+        event: {
+          type: 'trade.sell',
+          effectiveAt: options.transactionContext?.effectiveAt ?? closedTimestamp,
+          ticker: clean,
+          quantity: actualSold,
+          unitPrice: sellPrice,
+          grossAmount: sellProceeds,
+          fees: totalCommissions,
+          financingCost: marginInterestAllocated,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: currentDebt - totalDebt,
+          netAmount: netCashProceeds,
+          realizedPnl: netProfit
+        }
       };
     });
 
-    return result;
+    return committed ? result : null;
   }
 
   /**
