@@ -159,6 +159,36 @@ describe('reconcileBrokerPortfolio', () => {
     }));
   });
 
+  it('suppresses missing-position findings while app execution history is unavailable', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([brokerPosition('AAPL', 3)]),
+      appPositions: [],
+      appPositionStatus: 'unavailable',
+      now: 10_100
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.differenceCount).toBe(0);
+    expect(report.findings).toEqual([]);
+    expect(report.warnings).toContain('App execution history is not loaded; missing-position findings are suppressed.');
+  });
+
+  it('keeps overlapping differences provisional while app execution history is stale', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([brokerPosition('AAPL', 3)]),
+      appPositions: [{ ticker: 'AAPL', quantity: 2, currency: 'USD' }],
+      appPositionStatus: 'partial',
+      now: 10_100
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'quantity_mismatch',
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain('App execution history is stale or refreshing; missing-position findings are suppressed.');
+  });
+
   it('reports overlapping quantity mismatches as provisional when the snapshot is partial', () => {
     const report = reconcileBrokerPortfolio({
       brokerSnapshot: snapshot([brokerPosition('AAPL', 3)], { quality: 'partial' }),
