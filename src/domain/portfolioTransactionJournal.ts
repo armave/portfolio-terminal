@@ -279,6 +279,10 @@ export function mergePortfolioTransactionEvents(
     if (event.idempotencyKey) byKey.set(event.idempotencyKey, event);
   }
 
+  // A backup can contain earlier events than the current local snapshot.
+  // Restore recorded-time order so resets and later commands replay after the
+  // history they actually followed. Native sort is stable for equal timestamps.
+  merged.sort((left, right) => left.recordedAt - right.recordedAt);
   return freezePortfolioTransactionEventList(merged);
 }
 
