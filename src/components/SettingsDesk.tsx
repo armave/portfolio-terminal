@@ -14,6 +14,7 @@ import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync'
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
+import { DeviceCheckSummary } from './DeviceCheckSummary';
 
 
 export interface BrokerRulesFormValues {
@@ -344,6 +345,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
         <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
+
+      <DeviceCheckSummary />
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
