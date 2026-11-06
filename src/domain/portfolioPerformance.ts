@@ -155,7 +155,6 @@ export interface PerformanceIncomeCostSummary {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YEAR_MS = 365 * DAY_MS;
 const DEFAULT_TOLERANCE = 0.01;
-const RETURN_EPSILON = 1e-12;
 
 function unavailable<T>(reason: string, warnings: string[] = []): PerformanceCalculation<T> {
   return { status: 'unavailable', reason, warnings };
