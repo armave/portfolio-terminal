@@ -2433,3 +2433,140 @@ describe('portfolio import boundary validation', () => {
     ]);
   });
 });
+
+
+describe('portfolio transaction journal integration', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('persists purchase events atomically with canonical positions and deduplicates retries after reload', () => {
+    const store = new PortfolioStore();
+    expect(store.getState().transactionEvents).toEqual([]);
+
+    const context = {
+      idempotencyKey: 'terminal-buy-2026-11-06-001',
+      source: 'terminal' as const,
+      actor: { type: 'user' as const, id: 'user-7' }
+    };
+    expect(store.buyStock('aapl', 2, 100, '2026-11-06', undefined, context)).toBe(true);
+
+    const committed = store.getState();
+    expect(committed.positions.AAPL.shares).toBe(2);
+    expect(committed.transactionEvents).toHaveLength(1);
+    expect(committed.transactionEvents?.[0]).toMatchObject({
+      type: 'trade.buy',
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100,
+      grossAmount: 200,
+      idempotencyKey: context.idempotencyKey,
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+
+    const saved = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(saved.positions.AAPL.shares).toBe(2);
+    expect(saved.transactionEvents).toHaveLength(1);
+
+    const reloaded = new PortfolioStore();
+    const beforeRetry = reloaded.getState();
+    expect(reloaded.buyStock('AAPL', 2, 100, '2026-11-06', undefined, context)).toBe(true);
+    expect(reloaded.getState()).toBe(beforeRetry);
+    expect(reloaded.getState().positions.AAPL.shares).toBe(2);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+
+    // Reusing a key for a different command must be rejected, not treated as a retry.
+    expect(reloaded.buyStock('AAPL', 3, 100, '2026-11-06', undefined, context)).toBe(false);
+    expect(reloaded.getState().positions.AAPL.shares).toBe(2);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+  });
+
+  it('records sale proceeds, commissions, financing allocation, and realized P&L', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    expect(store.setCashBalance(5_000)).toBe(true);
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+
+    const saleContext = {
+      idempotencyKey: 'terminal-sale-2026-11-06-001',
+      source: 'terminal' as const
+    };
+    expect(store.sellStock('AAPL', 1, 120, '2026-11-06', saleContext)).toBe(true);
+
+    const event = store.getState().transactionEvents?.find((item) =>
+      item.idempotencyKey === saleContext.idempotencyKey
+    );
+    expect(event).toMatchObject({
+      type: 'trade.sell',
+      ticker: 'AAPL',
+      quantity: 1,
+      unitPrice: 120,
+      grossAmount: 120,
+      fees: 0,
+      financingCost: 0,
+      netAmount: 120,
+      realizedPnl: 20,
+      cashDelta: 120,
+      marginDebtDelta: 0
+    });
+    expect(event?.realizedPnl).toBe(store.getState().closedTrades[0].netProfit);
+    expect(store.getState().positions.AAPL.shares).toBe(1);
+  });
+
+  it('does not publish a financial mutation or append its event when persistence fails', () => {
+    const failingStorage = {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    };
+    vi.stubGlobal('localStorage', failingStorage);
+
+    const store = new PortfolioStore();
+    store.setState({ balance: -25 }, false);
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.buyStock('MSFT', 1, 100, '2026-11-06', undefined, {
+      idempotencyKey: 'failed-buy-1'
+    })).toBe(false);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().positions.MSFT).toBeUndefined();
+    expect(store.getState().transactionEvents).toEqual([]);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('makes automatic rollover idempotent for the same timestamp', () => {
+    const store = new PortfolioStore();
+    const timestamp = Date.parse('2026-11-06T00:00:00.000Z');
+    expect(store.applyRollover(105, 5, timestamp, true)).toBe(true);
+    const afterFirst = store.getState();
+
+    expect(store.applyRollover(105, 5, timestamp, true)).toBe(true);
+    expect(store.getState()).toBe(afterFirst);
+    expect(store.getState().transactionEvents?.filter((event) => event.type === 'margin.interest')).toHaveLength(1);
+
+    expect(store.applyRollover(106, 6, timestamp, true)).toBe(false);
+    expect(store.getState()).toBe(afterFirst);
+  });
+
+  it('rejects malformed imported transaction events without replacing current state', () => {
+    const store = new PortfolioStore();
+    const before = store.getState();
+    expect(store.importState({
+      transactionEvents: [{ id: 'bad-event', schemaVersion: 9 }]
+    } as any)).toBe(false);
+    expect(store.getState()).toBe(before);
+  });
+});
