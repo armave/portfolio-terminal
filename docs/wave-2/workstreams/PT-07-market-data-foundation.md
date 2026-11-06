@@ -2,7 +2,7 @@
 
 **Umbrella:** Wave 2 — Portfolio Intelligence Foundations  
 **Tracking issue:** [#335](https://github.com/armave/portfolio-terminal/issues/335)  
-**Implementation PR:** Draft branch is open for parallel implementation; upgrade this PR as code and tests land.  
+**Implementation PR:** [#360 — Draft](https://github.com/armave/portfolio-terminal/pull/360). Core client-side contracts and provider resilience are implemented; remaining provider/calendar integration and live-provider QA are listed below.  
 **Dedicated branch:** `feat/wave2-pt-07-market-data-foundation`  
 **Base:** `dev`, currently `c7ae6a6d808c7645a9686e32983f0209ec613f88`
 
@@ -16,22 +16,22 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 
 ## Scope
 
-- [ ] Define normalized instrument identity: canonical instrument ID, provider symbols, exchange, asset type, quote/base currency, and symbol alias/change handling.
+- [x] Define normalized instrument identity: canonical instrument ID, provider symbols, exchange, asset type, quote/base currency, and normalized aliases (a maintained symbol-change/corporate-action registry remains follow-up).
 - [x] Normalize quote and historical price responses with provider, observedAt, receivedAt, session, delay class, currency, quality, and error metadata (unknown session/freshness is explicit for historical series).
 - [x] Distinguish live, delayed, stale, indicative, cached, missing, and unavailable data; do not infer live status from receipt time.
-- [ ] Implement bounded TTL caching, request coalescing, timeout/cancellation, retry/backoff, provider health, and last-known-good behavior.
-- [ ] Define quote/history provider interfaces and compatibility adapters around existing sources; avoid a wholesale provider migration.
+- [ ] Implement bounded TTL caching, request coalescing, timeout/cancellation, retry/backoff, provider health, and last-known-good behavior (implemented for Yahoo batch and Finnhub/Twelve Data fallback requests; health dashboards and full Freedom/research-provider policy remain follow-up).
+- [x] Define quote/history provider interfaces and compatibility normalization around existing quote sources plus the read-only Freedom daily-history action; avoid a wholesale provider migration.
 - [x] Define an explicit FX-rate contract with pair, direction, source, observedAt, receivedAt, session, and rate quality; do not enable portfolio FX aggregation until validated historical FX semantics are established.
-- [ ] Keep market news, earnings/dividend calendars, fundamentals, and analyst data behind distinct typed capabilities instead of one unstructured payload.
+- [ ] Keep market news, earnings/dividend calendars, fundamentals, and analyst data behind distinct typed capabilities instead of one unstructured payload (news, fundamentals, analyst targets and earnings date remain separate existing typed services; new dividend-calendar ingestion is not included).
 - [x] Expose freshness/source indicators in market and portfolio UI where data is shown.
 
 ## Acceptance criteria
 
 - [x] All quote/history values expose source and freshness metadata or an explicit unknown state.
-- [ ] Out-of-order, stale, delayed, or failed provider responses cannot overwrite a newer valid observation.
-- [ ] Provider outages retain last-known-good values while rendering them as stale.
-- [ ] Instrument identity handles exchange-qualified symbols, aliases, currency, and unsupported instruments safely.
-- [ ] FX rates cannot be applied with reversed pair/direction, mismatched timestamps, or unknown quality.
+- [x] Out-of-order, stale, delayed, or failed provider responses cannot overwrite a newer valid observation (existing portfolio-store request/source ordering guards are retained and covered by regression tests).
+- [x] Provider outages retain last-known-good Yahoo quote values for a bounded 15-minute window and disclose the fallback as stale; the portfolio store retains its last accepted value when a provider yields no new quote.
+- [x] Instrument identity handles exchange-qualified symbols, aliases/provider mappings, explicit currency, and unsupported classifications safely.
+- [x] FX conversion helper rejects reversed/mismatched pairs, unknown/partial quality, and invalid/stale/future timestamps; portfolio FX aggregation remains disabled.
 - [x] Existing quote providers continue to function through compatibility adapters until consumers migrate.
 
 ## Implementation status (2026-11-06)
@@ -55,7 +55,7 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 
 ## Required validation
 
-Provider contract tests for malformed/out-of-order/missing observations, timestamps, timezone/session calendar, TTL and cache invalidation, request coalescing, abort/retry/backoff, stale fallback, symbol mapping, FX pair direction, and provider outage. Browser and i18n coverage for freshness states.
+Provider contract tests cover malformed/out-of-order/missing observations, ISO timezone offsets, provider sessions, bounded cache/TTL, request coalescing, timeout abort/retry, stale fallback, symbol mapping, exact FX pair direction, and provider outage. Exchange-holiday/session-calendar semantics remain on the existing market-calendar service and are not reimplemented here. Browser and English/Russian i18n coverage exercise quote freshness/cache states.
 
 ## Exact-head validation evidence
 
