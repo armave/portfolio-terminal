@@ -1545,39 +1545,60 @@ export class PortfolioStore {
     return this.addCashHolding(ticker, shares, price) !== null;
   }
 
-  public removeCashStock(indexOrTicker: number | string): boolean {
-    let removed = false;
-    const committed = this.update((state) => {
-      const holdings = [...(state.cashCushion?.holdings || [])];
-      let nextHoldings: typeof holdings;
+  public removeCashStock(
+    indexOrTicker: number | string,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const holdings = this.state.cashCushion?.holdings || [];
+    const target = typeof indexOrTicker === 'number'
+      ? (Number.isInteger(indexOrTicker) && indexOrTicker >= 0 ? holdings[indexOrTicker] : undefined)
+      : holdings.find((holding) => holding.ticker.trim().toUpperCase() === indexOrTicker.trim().toUpperCase());
+    if (!target) return false;
 
-      if (typeof indexOrTicker === 'number') {
-        if (!Number.isInteger(indexOrTicker) || indexOrTicker < 0 || indexOrTicker >= holdings.length) {
-          return state;
-        }
-        nextHoldings = holdings.filter((_, idx) => idx !== indexOrTicker);
-      } else {
-        const clean = indexOrTicker.trim().toUpperCase();
-        if (!clean || !holdings.some((holding) => holding.ticker.toUpperCase() === clean)) {
-          return state;
-        }
-        nextHoldings = holdings.filter((holding) => holding.ticker.toUpperCase() !== clean);
-      }
+    const clean = target.ticker.trim().toUpperCase();
+    const targetIndex = typeof indexOrTicker === 'number'
+      ? indexOrTicker
+      : holdings.findIndex((holding) => holding.ticker.trim().toUpperCase() === clean);
+    const quantity = Number(target.shares) || 0;
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.adjustment.remove',
+      clean,
+      targetIndex,
+      quantity
+    ]);
 
-      if (nextHoldings.length === holdings.length) return state;
-      removed = true;
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding-correction',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
+      const nextHoldings = [...(state.cashCushion?.holdings || [])];
+      if (targetIndex < 0 || targetIndex >= nextHoldings.length) return null;
+      const current = nextHoldings[targetIndex];
+      if (!current || current.ticker.trim().toUpperCase() !== clean) return null;
+      nextHoldings.splice(targetIndex, 1);
       return {
-        ...state,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings: nextHoldings
+        state: {
+          ...state,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            holdings: nextHoldings
+          }
+        },
+        event: {
+          type: 'cash-holding.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity,
+          note: 'Cash-cushion holding removed from tracking; no sale proceeds or cash settlement were recorded.'
         }
       };
     });
-    return removed && committed;
   }
 
-  /**
+    /**
    * Sells a cash-cushion holding as one atomic balance transition. Unlike a
    * margin-position exit, this does not create a margin closed-trade record.
    */
