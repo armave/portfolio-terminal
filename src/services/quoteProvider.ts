@@ -3,7 +3,6 @@ import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketDa
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 import { normalizeMarketQuoteObservation, type MarketDelayClass } from './marketDataContracts';
-import { retryMarketDataRequest } from './marketDataRetry';
 
 function describeProviderError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -28,12 +27,9 @@ export function nextLiveQuoteRequestSequence(): number {
 async function fetchFallbackPrice(symbol: string, force = false) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
-      const fallback = await retryMarketDataRequest(
-        () => force
-          ? fetchFallbackQuote(symbol, provider, true)
-          : fetchFallbackQuote(symbol, provider),
-        { attempts: 2, baseDelayMs: 250, maxDelayMs: 1_000 }
-      );
+      const fallback = force
+        ? await fetchFallbackQuote(symbol, provider, true)
+        : await fetchFallbackQuote(symbol, provider);
       return {
         price: fallback.price,
         sourceName: fallback.sourceName,
