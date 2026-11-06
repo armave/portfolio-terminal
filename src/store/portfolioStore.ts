@@ -13,6 +13,14 @@ import {
   TrancheItem,
   PendingMutation
 } from '../types/portfolio';
+import type { PortfolioTransactionContext, PortfolioTransactionDraft } from '../types/portfolioTransaction';
+import {
+  appendPortfolioTransactionEvent,
+  createPortfolioTransactionEvent,
+  hasPortfolioTransactionIdempotencyKey,
+  isPortfolioTransactionEventList,
+  normalizePortfolioTransactionIdempotencyKey
+} from '../domain/portfolioTransactionJournal';
 import {
   loadSavedState,
   saveState,
@@ -58,7 +66,8 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'cashflows',
     'tranches',
     'cashStocks',
-    'guestTrancheLedger'
+    'guestTrancheLedger',
+    'transactionEvents'
   ] as const;
   for (const field of arrayFields) {
     if (Object.prototype.hasOwnProperty.call(value, field) &&
@@ -88,6 +97,11 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
         value[field] !== undefined && !isRecord(value[field])) {
       return false;
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
+      value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    return false;
   }
 
   if (Object.prototype.hasOwnProperty.call(value, 'cashCushion')) {
@@ -350,6 +364,7 @@ export class PortfolioStore {
     return {
       ...raw,
       brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
+      transactionEvents: Array.isArray(raw.transactionEvents) ? raw.transactionEvents : [],
       activeView,
       positions,
       holdings,
@@ -458,6 +473,62 @@ export class PortfolioStore {
     this.notify(source);
     if (this.state.activeView !== previousState.activeView) this.notifyActiveView();
     return true;
+  }
+
+  /**
+   * Atomically commits an app-owned financial mutation and its audit event in
+   * the same portfolio snapshot. Existing positions remain canonical; the
+   * journal is append-only evidence and never becomes a second source of truth.
+   */
+  private updateFinancialMutation(
+    context: PortfolioTransactionContext | undefined,
+    prepare: (state: PortfolioState) => {
+      state: PortfolioState;
+      event: PortfolioTransactionDraft;
+    } | null
+  ): boolean {
+    let idempotencyKey: string | undefined;
+    try {
+      idempotencyKey = normalizePortfolioTransactionIdempotencyKey(context?.idempotencyKey);
+    } catch {
+      return false;
+    }
+
+    const currentEvents = Array.isArray(this.state.transactionEvents)
+      ? this.state.transactionEvents
+      : [];
+    if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(currentEvents, idempotencyKey)) {
+      return true;
+    }
+
+    try {
+      return this.update((state) => {
+        const existingEvents = Array.isArray(state.transactionEvents) ? state.transactionEvents : [];
+        // Re-check inside the commit boundary. This also protects synchronous
+        // re-entrancy from a subscriber or command dispatcher.
+        if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(existingEvents, idempotencyKey)) {
+          return state;
+        }
+
+        const prepared = prepare(state);
+        if (!prepared || prepared.state === state) return state;
+
+        const event = createPortfolioTransactionEvent(prepared.event, {
+          ...context,
+          ...(idempotencyKey ? { idempotencyKey } : {})
+        });
+        const appended = appendPortfolioTransactionEvent(existingEvents, event);
+        if (!appended.appended) return state;
+
+        return {
+          ...prepared.state,
+          transactionEvents: appended.events
+        };
+      });
+    } catch (error) {
+      console.error('Could not prepare an auditable portfolio transaction:', error);
+      return false;
+    }
   }
 
   public setState(
