@@ -139,6 +139,25 @@ describe('portfolio transaction journal imports', () => {
     expect(merged[1]).toEqual(second);
   });
 
+  it('reorders older backup events by recorded time while preserving append-only history', () => {
+    const newer = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 2_000,
+      note: 'Local reset'
+    }, { eventId: 'newer-reset', recordedAt: 2_100 });
+    const older = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: 1_000,
+      ticker: 'AAPL',
+      quantity: 1,
+      positionQuantityDelta: 1
+    }, { eventId: 'older-buy', recordedAt: 1_100 });
+
+    const merged = mergePortfolioTransactionEvents([newer], [older]);
+    expect(merged.map((event) => event.id)).toEqual(['older-buy', 'newer-reset']);
+    expect(Object.isFrozen(merged)).toBe(true);
+  });
+
   it('rejects imports that conflict by event ID or idempotency key', () => {
     const original = createPortfolioTransactionEvent(draft, {
       eventId: 'event-1',
