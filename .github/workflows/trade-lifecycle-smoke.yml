@@ -111,11 +111,11 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "|---|---|"
-            echo "| Tested checkout SHA | `$TESTED_CHECKOUT_SHA` |"
-            echo "| PR head SHA | `$PR_HEAD_SHA` |"
-            echo "| PR base SHA | `$PR_BASE_SHA` |"
-            echo "| Ref | `$GITHUB_REF` |"
-            echo "| Event | `$GITHUB_EVENT_NAME` |"
+            echo "| Tested checkout SHA | $TESTED_CHECKOUT_SHA |"
+            echo "| PR head SHA | $PR_HEAD_SHA |"
+            echo "| PR base SHA | $PR_BASE_SHA |"
+            echo "| Ref | $GITHUB_REF |"
+            echo "| Event | $GITHUB_EVENT_NAME |"
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
             echo
             echo "| Validation | Outcome |"
