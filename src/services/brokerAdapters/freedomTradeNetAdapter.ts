@@ -110,7 +110,7 @@ function extractHttpStatus(error: unknown): number | undefined {
   return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
 }
 
-export class BrokerAdapterFailure extends Error implements BrokerAdapterError {
+class BrokerAdapterFailure extends Error implements BrokerAdapterError {
   override readonly name = 'BrokerAdapterError' as const;
   readonly provider = FREEDOM_PROVIDER;
   readonly code: BrokerAdapterErrorCode;
@@ -131,7 +131,7 @@ export class BrokerAdapterFailure extends Error implements BrokerAdapterError {
   }
 }
 
-export function classifyFreedomBrokerError(error: unknown): BrokerAdapterError {
+function classifyFreedomBrokerError(error: unknown): BrokerAdapterError {
   const record = asRecord(error);
   const message = error instanceof Error
     ? error.message
