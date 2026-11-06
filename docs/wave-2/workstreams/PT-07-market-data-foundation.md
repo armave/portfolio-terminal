@@ -41,13 +41,13 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 - Quote provenance normalization for Yahoo, Freedom TradeNet, and fallback providers; source observation time remains separate from client receipt time.
 - Historical-price normalization with sorted/deduplicated timestamps, bounded OHLCV points, provider/instrument/receipt metadata, and explicit unknown session/freshness where the history source does not establish them.
 - Explicit BASE_TO_QUOTE FX contract and a strict conversion-usability predicate. No FX provider or portfolio FX aggregation is enabled.
-- Yahoo quote batching/coalescing, bounded TTL and stale retention, transient retry/backoff, timeout/abort, last-known-good fallback, and cache-state disclosure.
+- Yahoo quote batching/coalescing, bounded TTL and stale retention, transient retry/backoff, timeout/abort, last-known-good fallback, and cache-state disclosure; Freedom REST quote/history requests also use bounded transient retries and accept caller cancellation.
 - Quote freshness/source UI and English/Russian translations with Vitest parity coverage.
 - Existing portfolio-store request ordering and source-timestamp guards remain in place; this PR does not replace the persisted quote contract.
 
 **Remaining / partial**
 - Instrument alias lifecycle and symbol-change resolution are represented in the contract but do not yet have a maintained alias registry or corporate-action mapping.
-- Provider resilience is implemented for Yahoo batch and Finnhub/Twelve Data fallback requests; authenticated Freedom REST/WebSocket paths and other research endpoints do not yet share the full retry/cache policy.
+- Provider resilience covers Yahoo batch, Finnhub/Twelve Data fallback, and Freedom REST quote/history retries with cancellation. Freedom WebSocket remains a one-shot snapshot path; a shared cache/health policy and retry handling for other research endpoints remain follow-up work.
 - Quote/history adapter interfaces are defined and the existing quote path is normalized compatibly; a complete provider registry and a second history adapter are not part of this slice.
 - Historical exchange calendars/timezones, session-aware market-age policy, and provider health dashboards remain follow-up work.
 - News, fundamentals, analyst, and calendar capabilities remain separate existing services; this PR does not implement new earnings/dividend calendar ingestion.
@@ -59,10 +59,10 @@ Provider contract tests cover malformed/out-of-order/missing observations, ISO t
 
 ## Exact-head validation evidence
 
-- **Validated commit:** `c96f41c8d603722caf92a6c3a68b4eb8c3984fd4`
-- **Pull Request CI:** [run 42182900911](https://github.com/armave/portfolio-terminal/actions/runs/42182900911) — passed typecheck, 1,591 Vitest tests, production build, browser smoke/performance, dead-code validation, and dependency audits.
-- **Operations browser journey:** [run 42182900947](https://github.com/armave/portfolio-terminal/actions/runs/42182900947) — passed.
-- **Trade lifecycle browser smoke:** [run 42182901043](https://github.com/armave/portfolio-terminal/actions/runs/42182901043) — passed.
+- **Validated commit:** `2b0bdfe643a2ba8fbb5c66d94ce7b437d25e1c90`
+- **Pull Request CI:** [run 42183666686](https://github.com/armave/portfolio-terminal/actions/runs/42183666686) — passed typecheck, 1,591 Vitest tests, production build, browser smoke/performance, dead-code validation, and dependency audits.
+- **Operations browser journey:** [run 42183666572](https://github.com/armave/portfolio-terminal/actions/runs/42183666572) — passed.
+- **Trade lifecycle browser smoke:** [run 42183666603](https://github.com/armave/portfolio-terminal/actions/runs/42183666603) — passed.
 - **Manual authenticated-broker QA:** not performed. CI uses fixtures/mocks and does not certify live provider behavior.
 
 ## Parallel ownership and integration rules
