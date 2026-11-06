@@ -289,6 +289,27 @@ export interface MarketHistoryResult {
   issues: string[];
 }
 
+export interface MarketQuoteRequest {
+  instrument: InstrumentIdentity;
+  force?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface MarketHistoryRequest {
+  instrument: InstrumentIdentity;
+  startAt: number;
+  endAt: number;
+  interval: string;
+  signal?: AbortSignal;
+}
+
+/** Provider adapters return normalized contracts, never provider JSON or untyped values. */
+export interface MarketDataProviderAdapter {
+  readonly providerId: string;
+  fetchQuote(request: MarketQuoteRequest): Promise<MarketQuoteObservationResult>;
+  fetchHistory(request: MarketHistoryRequest): Promise<MarketHistoryResult>;
+}
+
 /** Normalizes, validates, sorts, and de-duplicates untrusted historical prices. */
 export function normalizeMarketHistoryPoints(
   input: unknown,
@@ -359,6 +380,15 @@ export interface FxRate {
   observedAt: number | null;
   receivedAt: number;
   quality: MarketDataQuality;
+}
+
+export interface FxRateProviderAdapter {
+  readonly providerId: string;
+  fetchRate(
+    baseCurrency: string,
+    quoteCurrency: string,
+    signal?: AbortSignal
+  ): Promise<{ rate: FxRate | null; issues: string[] }>;
 }
 
 /** Normalizes an explicit BASE_TO_QUOTE FX observation; no pair inversion is attempted. */
