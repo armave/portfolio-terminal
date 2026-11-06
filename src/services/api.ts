@@ -48,14 +48,54 @@ export async function loadSyncedMarginDigest(key: string): Promise<{ digest: Syn
   if (response.status === 404) return null;
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Could not load synced margin digest (HTTP ${response.status}).`);
-  if (!data || data.key !== key || typeof data.analysis !== 'string' || !Array.isArray(data.articles) || typeof data.syncedAt !== 'string') return null;
-  const revision = readCloudRevision(response.headers) ?? 0;
-  return { digest: data as SyncedMarginDigest, revision };
+  if (!data || data.key !== key) return null;
+
+  let digestValue: unknown;
+  let requiresEncryptionMigration = false;
+  if (typeof data.encryptedPayload === 'string') {
+    const decrypted = await decryptCloudPayload(data.encryptedPayload, secret);
+    try {
+      digestValue = JSON.parse(decrypted.plaintext);
+    } catch {
+      throw new Error('The encrypted margin digest could not be parsed.');
+    }
+    requiresEncryptionMigration = decrypted.legacy;
+  } else {
+    // Read legacy plaintext records during rollout. The next successful read
+    // attempts a revision-guarded encrypted rewrite without blocking the view.
+    digestValue = data;
+    requiresEncryptionMigration = true;
+  }
+
+  if (!digestValue || typeof digestValue !== 'object' || Array.isArray(digestValue)) return null;
+  const candidate = digestValue as Record<string, unknown>;
+  if (candidate.key !== key || typeof candidate.analysis !== 'string' ||
+      !Array.isArray(candidate.articles) || typeof candidate.syncedAt !== 'string') return null;
+
+  let revision = readCloudRevision(response.headers) ?? 0;
+  const digest = candidate as unknown as SyncedMarginDigest;
+  if (requiresEncryptionMigration) {
+    try {
+      revision = await saveSyncedMarginDigest(digest, revision);
+    } catch {
+      // Preserve read availability if another device won the revision race or
+      // the encryption upgrade is temporarily unavailable. A later read retries.
+    }
+  }
+  return { digest, revision };
 }
 
 export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revision: number): Promise<number> {
   const secret = getActiveGatewaySecret().trim();
   if (!secret) throw new Error('Gateway Secret is not available.');
+  if (!/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(digest.key)) {
+    throw new Error('A valid margin digest key is required.');
+  }
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error('A valid margin digest revision is required.');
+  }
+
+  const encryptedPayload = await encryptCloudPayload(JSON.stringify(digest), secret);
   const response = await fetch(new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL), {
     method: 'POST',
     headers: {
@@ -64,7 +104,9 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
       Authorization: `Bearer ${secret}`,
       'If-Match': `"${revision}"`
     },
-    body: JSON.stringify(digest),
+    // The lookup key is intentionally the only plaintext field. Analysis,
+    // article headlines/URLs, and portfolio-specific context stay encrypted.
+    body: JSON.stringify({ key: digest.key, encryptedPayload }),
     cache: 'no-store'
   });
   const data = await response.json().catch(() => null);

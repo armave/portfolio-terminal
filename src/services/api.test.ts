@@ -7,6 +7,8 @@ import {
   pushCloudHistory,
   clearCloudHistory,
   pullCloudHistory,
+  loadSyncedMarginDigest,
+  saveSyncedMarginDigest,
   syncCloudState,
   proxyFetch,
   getCurrentUser,
@@ -2105,5 +2107,107 @@ describe('closed-session market request cache integration', () => {
     await proxyFetch('freedom-positions', {}, { cache: 'no-store' });
     await proxyFetch('freedom-positions', {}, { cache: 'no-store' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('encrypted synced margin intelligence digests', () => {
+  const digest = {
+    key: 'position:GOOGL',
+    title: 'GOOGL · Position Review',
+    scope: 'position' as const,
+    ticker: 'GOOGL',
+    analysis: 'private portfolio analysis text',
+    articles: [{ ticker: 'GOOGL', headline: 'private article headline', source: 'Private Research', url: 'https://example.test/private-story' }],
+    syncedAt: '2026-11-06T00:00:00.000Z'
+  };
+
+  it('writes only the lookup key and AES-GCM ciphertext to cloud storage', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, revision: 8 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"8"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(saveSyncedMarginDigest(digest, 7)).resolves.toBe(8);
+    const [url, init] = fetchMock.mock.calls[0] as [string | URL, RequestInit];
+    expect(new URL(String(url)).pathname).toBe('/api/margin-digest');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['If-Match']).toBe('"7"');
+    const body = JSON.parse(String(init.body));
+    expect(Object.keys(body).sort()).toEqual(['encryptedPayload', 'key']);
+    expect(body.key).toBe(digest.key);
+    expect(body.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    expect(body.encryptedPayload).not.toContain(digest.analysis);
+    expect(JSON.stringify(body)).not.toContain('private article headline');
+    expect(JSON.stringify(body)).not.toContain('private portfolio analysis text');
+  });
+
+  it('decrypts an encrypted digest without attempting a migration write', async () => {
+    const encryptedPayload = await encryptV2Fixture(digest, 'test-gateway-secret');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      key: digest.key,
+      encryptedPayload
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"4"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('migrates a legacy plaintext digest with an optimistic revision write', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(digest), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"3"' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, revision: 4 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"4"' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [writeUrl, writeInit] = fetchMock.mock.calls[1] as [string | URL, RequestInit];
+    expect(new URL(String(writeUrl)).pathname).toBe('/api/margin-digest');
+    expect(writeInit.method).toBe('POST');
+    expect((writeInit.headers as Record<string, string>)['If-Match']).toBe('"3"');
+    const body = JSON.parse(String(writeInit.body));
+    expect(Object.keys(body).sort()).toEqual(['encryptedPayload', 'key']);
+    expect(body.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    expect(JSON.stringify(body)).not.toContain('private portfolio analysis text');
+  });
+
+  it('keeps a legacy digest readable if the background encryption migration cannot be saved', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(digest), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"3"' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporary unavailable' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 3 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects an encrypted record whose decrypted digest does not match its lookup key', async () => {
+    const encryptedPayload = await encryptV2Fixture({ ...digest, key: 'portfolio' }, 'test-gateway-secret');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      key: digest.key,
+      encryptedPayload
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"4"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toBeNull();
   });
 });
