@@ -490,7 +490,8 @@ export class PortfolioStore {
     prepare: (state: PortfolioState) => {
       state: PortfolioState;
       event: PortfolioTransactionDraft;
-    } | null
+    } | null,
+    persist = true
   ): boolean {
     let idempotencyKey: string | undefined;
     try {
@@ -533,7 +534,7 @@ export class PortfolioStore {
           ...prepared.state,
           transactionEvents: appended.events
         };
-      });
+      }, persist);
     } catch (error) {
       console.error('Could not prepare an auditable portfolio transaction:', error);
       return false;
