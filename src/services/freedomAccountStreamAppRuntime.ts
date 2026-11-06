@@ -1,7 +1,6 @@
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { emitBrokerEvent, addBrokerEventListener } from './brokerEventBus';
-import { normalizeFreedomPortfolio, normalizeFreedomActiveOrders } from './freedomAccountContracts';
-import { normalizeFreedomOrderFills, normalizeFreedomTrades } from './freedomTradeContracts';
+import { brokerAdapterRegistry } from './brokerAdapters/registry';
 import { createFreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
 import {
@@ -24,9 +23,10 @@ export interface FreedomAccountStreamAppDependencies {
 export function createFreedomAccountStreamAppRuntime(
   dependencies: FreedomAccountStreamAppDependencies
 ): FreedomAccountStreamRuntime {
+  const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
   addBrokerEventListener('broker:live-order-fills', (fills) => {
     if (!dependencies.isAdmin() || !Array.isArray(fills) || fills.length === 0) return;
-    const savedRows = normalizeFreedomTrades(dependencies.loadSavedBrokerExecutions());
+    const savedRows = brokerAdapter.normalizeExecutions(dependencies.loadSavedBrokerExecutions(), { source: 'cache' }).data;
     const retainedRows = [...savedRows, ...dependencies.getCurrentBrokerExecutions()];
     const knownIds = new Set(retainedRows.map((trade) => String(trade.id)));
     const newFills = fills.filter((trade) => !knownIds.has(String(trade.id)));
@@ -43,7 +43,7 @@ export function createFreedomAccountStreamAppRuntime(
     getCurrentSessionKey: dependencies.getCurrentSessionKey,
     onPortfolio: (data, sessionKey) => {
       if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
-      const snapshot = normalizeFreedomPortfolio(data);
+      const snapshot = brokerAdapter.normalizePortfolio(data, { source: 'websocket' }).data;
       if (!snapshot.loaded) return false;
       markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
       emitBrokerEvent('broker:account-info', snapshot);
@@ -51,10 +51,10 @@ export function createFreedomAccountStreamAppRuntime(
     },
     onOrders: (data, sessionKey) => {
       if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
-      const normalizedOrders = normalizeFreedomActiveOrders(data);
+      const normalizedOrders = brokerAdapter.normalizeActiveOrders(data, { source: 'websocket' }).data;
       markFreedomAccountStreamSnapshot(sessionKey, 'orders');
       emitBrokerEvent('broker:active-orders', normalizedOrders);
-      const fills = normalizeFreedomOrderFills(data);
+      const fills = brokerAdapter.normalizeExecutionFills(data, { source: 'websocket' }).data;
       if (fills.length > 0) emitBrokerEvent('broker:live-order-fills', fills);
       return true;
     },
