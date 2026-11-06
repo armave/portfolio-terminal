@@ -694,64 +694,123 @@ export class PortfolioStore {
     compoundedDebt: number,
     interestAccrued: number,
     timestamp: number,
-    recordAsRealized: boolean
+    recordAsRealized: boolean,
+    context?: PortfolioTransactionContext
   ): boolean {
     if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
       compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return false;
 
-    return this.update((state) => ({
-      ...state,
-      balance: compoundedDebt > 0 ? -compoundedDebt : 0,
-      lastRolloverTimestamp: timestamp,
-      realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
-        (recordAsRealized ? interestAccrued : 0)
-    }));
-  }
+    const previousDebt = Math.abs(Number(this.state.balance) || 0);
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `rollover:${timestamp}`,
+      actor: context?.actor ?? { type: 'system' },
+      source: context?.source ?? 'rollover',
+      effectiveAt: context?.effectiveAt ?? timestamp
+    };
 
-  /** Set the cash-cushion balance without changing margin debt. */
-  public setFreeCash(amount: number): boolean {
-    const num = Number(amount);
-    if (!Number.isFinite(num) || num < 0) {
-      throw new Error('Free cash must be a finite non-negative amount.');
-    }
-
-    return this.update((state) => ({
-      ...state,
-      cashBalance: num,
-      cashCushion: {
-        ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-        freeCash: num
-      }
-    }));
-  }
-
-  public setCashBalance(amount: number): boolean {
-    if (!Number.isFinite(amount)) return false;
-    const num = amount;
-    return this.update((state) => {
-      const freeCash = Math.max(0, num);
-      // A positive balance entry represents available cash and clears any old margin debt.
-      const balance = num < 0 ? num : 0;
-      return {
+    return this.updateFinancialMutation(mutationContext, (state) => {
+      const nextState = {
         ...state,
-        balance,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        balance: compoundedDebt > 0 ? -compoundedDebt : 0,
+        lastRolloverTimestamp: timestamp,
+        realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
+          (recordAsRealized ? interestAccrued : 0)
+      };
+      return {
+        state: nextState,
+        event: {
+          type: 'margin.interest',
+          effectiveAt: timestamp,
+          grossAmount: interestAccrued,
+          marginDebtDelta: compoundedDebt - Math.abs(Number(state.balance) || 0),
+          note: recordAsRealized ? 'Recorded as realized margin interest.' : 'Capitalized into margin debt.'
         }
       };
     });
   }
 
-  public setMarginDebt(debtAmount: number): boolean {
+  /** Set the cash-cushion balance without changing margin debt. */
+  public setFreeCash(amount: number, context?: PortfolioTransactionContext): boolean {
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num < 0) {
+      throw new Error('Free cash must be a finite non-negative amount.');
+    }
+
+    return this.updateFinancialMutation(context, (state) => {
+      const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      return {
+        state: {
+          ...state,
+          cashBalance: num,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash: num
+          }
+        },
+        event: {
+          type: 'cash.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(num - previousCash),
+          cashDelta: num - previousCash,
+          note: 'Free cash balance adjusted.'
+        }
+      };
+    });
+  }
+
+  public setCashBalance(amount: number, context?: PortfolioTransactionContext): boolean {
+    if (!Number.isFinite(amount)) return false;
+    const num = amount;
+    return this.updateFinancialMutation(context, (state) => {
+      const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      const freeCash = Math.max(0, num);
+      // A positive balance entry represents available cash and clears any old margin debt.
+      const balance = num < 0 ? num : 0;
+      const nextDebt = Math.abs(balance);
+      return {
+        state: {
+          ...state,
+          balance,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'cash.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(freeCash - previousCash),
+          cashDelta: freeCash - previousCash,
+          marginDebtDelta: nextDebt - previousDebt,
+          note: 'Cash balance manually adjusted.'
+        }
+      };
+    });
+  }
+
+  public setMarginDebt(debtAmount: number, context?: PortfolioTransactionContext): boolean {
     const amount = Number(debtAmount);
     if (!Number.isFinite(amount)) return false;
     const debt = Math.abs(amount);
-    return this.update((state) => ({
-      ...state,
-      balance: -debt
-    }));
+    return this.updateFinancialMutation(context, (state) => {
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      return {
+        state: {
+          ...state,
+          balance: -debt
+        },
+        event: {
+          type: 'margin.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          grossAmount: Math.abs(debt - previousDebt),
+          marginDebtDelta: debt - previousDebt,
+          note: 'Margin debt balance adjusted.'
+        }
+      };
+    });
   }
 
   public buyStock(
