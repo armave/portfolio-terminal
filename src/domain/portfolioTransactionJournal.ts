@@ -346,17 +346,11 @@ export function replayPortfolioTransactionJournal(
       if (Math.abs(next) < 1e-8) delete replay.cashHoldings[ticker];
       else replay.cashHoldings[ticker] = next;
     }
-    // External broker cashflows and executions are evidence only. They do not
-    // post to local free cash/debt or manufacture app-owned position lots.
-    if (event.type !== 'broker.execution' &&
-      event.type !== 'cash.deposit' &&
-      event.type !== 'cash.withdrawal' &&
-      event.type !== 'dividend' &&
-      event.type !== 'fee' &&
-      event.type !== 'cash.transfer') {
-      replay.freeCash += Number(event.cashDelta) || 0;
-      replay.marginDebt += Number(event.marginDebtDelta) || 0;
-    }
+    // Only explicit signed projection deltas post to local cash/debt. External
+    // broker cashflows carry externalCashFlowAmount but intentionally omit these
+    // fields, so evidence is not double-posted into the canonical local balance.
+    replay.freeCash += Number(event.cashDelta) || 0;
+    replay.marginDebt += Number(event.marginDebtDelta) || 0;
   }
 
   Object.keys(replay.positions).forEach((ticker) => {
