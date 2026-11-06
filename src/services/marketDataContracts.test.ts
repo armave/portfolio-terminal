@@ -194,6 +194,7 @@ describe('FX rate contract', () => {
       quoteCurrency: 'EUR',
       direction: 'BASE_TO_QUOTE',
       rate: 0.92,
+      session: null,
       quality: 'complete'
     });
     expect(isFxRateUsableForConversion(result.rate!, now)).toBe(true);
@@ -208,6 +209,19 @@ describe('FX rate contract', () => {
       baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0, provider: 'test',
       observedAt: now, receivedAt: now
     }).rate).toBeNull();
+  });
+
+  it('preserves a provider-specific FX session without inventing one when omitted', () => {
+    const withSession = normalizeFxRate({
+      baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
+      provider: 'test', observedAt: now, receivedAt: now, session: 'OPEN'
+    }, { now }).rate;
+    expect(withSession?.session).toBe('OPEN');
+    const withoutSession = normalizeFxRate({
+      baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
+      provider: 'test', observedAt: now, receivedAt: now
+    }, { now }).rate;
+    expect(withoutSession?.session).toBeNull();
   });
 
   it('keeps timestamp-less rates visible as partial but never usable for conversion', () => {
