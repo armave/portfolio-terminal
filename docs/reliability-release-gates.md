@@ -60,7 +60,7 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 ### Scope and limitations
 
-`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic fixtures. It captures three cold samples for two scenarios at desktop (1440×900) and mobile (390×844): (1) unauthenticated application shell and (2) authenticated administrator workspace seeded with 100 synthetic positions and 200 tranches.
+`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic fixtures. It captures three cold samples for two scenarios at desktop (1440×900) and mobile (390×844): (1) unauthenticated application shell and (2) authenticated administrator workspace seeded with 100 synthetic positions, 200 tranches, and matching executed-buy history.
 
 The CI artifact `browser-performance-baseline` (schema version 2) contains separate `unauthenticatedShell` and `authenticatedLargePortfolio` results for each viewport. Each sample records:
 - first contentful paint (FCP);
