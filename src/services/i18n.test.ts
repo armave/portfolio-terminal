@@ -228,6 +228,8 @@ describe('app localization', () => {
 
   it('localizes portfolio quote coverage labels', () => {
     expect(translateText('Fresh', 'ru')).toBe('Свежие');
+    expect(translateText('Cached', 'ru')).toBe('Из кэша');
+    expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
     expect(translateText('Stale', 'ru')).toBe('Устарело');
     expect(translateText('Delayed', 'ru')).toBe('С задержкой');
     expect(translateText('Time unknown', 'ru')).toBe('Время неизвестно');
