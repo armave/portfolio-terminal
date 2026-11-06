@@ -4,6 +4,7 @@ import {
   normalizeFxRate,
   normalizeInstrumentIdentity,
   normalizeMarketHistoryPoints,
+  normalizeMarketHistoryResponse,
   normalizeMarketQuoteObservation,
   shouldAcceptMarketObservation
 } from './marketDataContracts';
@@ -90,6 +91,9 @@ describe('normalizeMarketQuoteObservation', () => {
     expect(normalizeMarketQuoteObservation({
       ...base, delayClass: 'DELAYED'
     }, { now }).observation?.freshness).toBe('delayed');
+    expect(normalizeMarketQuoteObservation({
+      ...base, observedAt: now - 10 * 60_000, delayClass: 'unknown'
+    }, { now }).observation?.freshness).toBe('stale');
   });
 
   it('rejects impossible future observations and invalid prices/receipt times', () => {
@@ -127,6 +131,43 @@ describe('normalizeMarketHistoryPoints', () => {
     expect(result.points).toEqual([{ timestamp: 1793966460000, price: 101 }]);
     expect(result.quality).toBe('partial');
     expect(result.issues.length).toBeGreaterThan(0);
+  });
+
+  it('attaches provider, instrument, currency, interval, and receipt provenance to history', () => {
+    expect(normalizeMarketHistoryResponse({
+      symbol: 'aapl.us',
+      provider: 'yahoo',
+      receivedAt: '2026-11-06T12:03:00.000Z',
+      interval: '1d',
+      currency: 'USD',
+      assetType: 'EQUITY',
+      points: [{ time: '2026-11-06T12:00:00.000Z', close: 210 }]
+    })).toMatchObject({
+      quality: 'complete',
+      provider: 'YAHOO',
+      receivedAt: Date.parse('2026-11-06T12:03:00.000Z'),
+      interval: '1D',
+      instrument: {
+        id: 'EQUITY:US:AAPL',
+        symbol: 'AAPL',
+        quoteCurrency: 'USD'
+      },
+      points: [{ timestamp: Date.parse('2026-11-06T12:00:00.000Z'), price: 210 }]
+    });
+  });
+
+  it('downgrades historical responses with missing source metadata', () => {
+    const result = normalizeMarketHistoryResponse({
+      symbol: 'AAPL',
+      provider: '',
+      receivedAt: null,
+      interval: '',
+      points: [{ time: 1793966400, close: 210 }]
+    });
+    expect(result.quality).toBe('partial');
+    expect(result.provider).toBeUndefined();
+    expect(result.receivedAt).toBeUndefined();
+    expect(result.issues).toContain('Historical data provider is missing.');
   });
 
   it('reports an unavailable history when no usable points are present', () => {
@@ -186,6 +227,12 @@ describe('FX rate contract', () => {
     expect(isFxRateUsableForConversion(stale, now)).toBe(false);
     expect(isFxRateUsableForConversion({
       ...stale, quality: 'complete', observedAt: now + 60_000
+    }, now)).toBe(false);
+    expect(isFxRateUsableForConversion({
+      ...stale, quoteCurrency: 'USD', baseCurrency: 'USD'
+    } as never, now)).toBe(false);
+    expect(isFxRateUsableForConversion({
+      ...stale, rate: Number.NaN
     }, now)).toBe(false);
   });
 });
