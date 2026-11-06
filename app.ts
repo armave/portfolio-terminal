@@ -262,6 +262,7 @@ addBrokerEventListener('broker:account-info-snapshot', (snapshot) => {
       receivedAt: snapshot.receivedAt,
       ...(snapshot.observedAt === undefined ? { observedAt: undefined } : { observedAt: snapshot.observedAt }),
       warnings: [...snapshot.warnings],
+      lastRefreshIssue: undefined,
       status: 'current'
     }
   });
@@ -474,14 +475,7 @@ addBrokerEventListener('broker:account-info-error', (issue) => {
       brokerAccountInfo: {
         ...current.brokerAccountInfo,
         status: current.brokerAccountInfo.loaded ? 'stale' : 'unavailable',
-        ...(issue ? {
-          provider: issue.provider,
-          quality: issue.quality,
-          source: issue.source,
-          receivedAt: issue.receivedAt,
-          ...(issue.observedAt === undefined ? {} : { observedAt: issue.observedAt }),
-          warnings: [...issue.warnings]
-        } : {})
+        lastRefreshIssue: issue
       }
     });
   }
