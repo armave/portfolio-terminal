@@ -16,51 +16,26 @@ const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
 function areProjectionSourceStatesEqual(previous: PortfolioState, next: PortfolioState): boolean {
-  if (
-    previous.balance !== next.balance ||
-    previous.realizedMarginCharged !== next.realizedMarginCharged ||
-    previous.startDate !== next.startDate
-  ) return false;
-
-  const previousRules = previous.brokerAssumptions || {};
-  const nextRules = next.brokerAssumptions || {};
-  const ruleKeys = new Set([...Object.keys(previousRules), ...Object.keys(nextRules)]);
-  for (const key of ruleKeys) {
-    if (previousRules[key as keyof typeof previousRules] !== nextRules[key as keyof typeof nextRules]) return false;
-  }
-
-  const previousPositions = previous.positions || {};
-  const nextPositions = next.positions || {};
-  const tickers = Object.keys(previousPositions);
-  if (tickers.length !== Object.keys(nextPositions).length) return false;
-
-  for (const ticker of tickers) {
-    const left = previousPositions[ticker];
-    const right = nextPositions[ticker];
-    if (!right || !left ||
-      left.shares !== right.shares ||
-      left.pt !== right.pt ||
-      left.commBuy !== right.commBuy ||
-      left.startDate !== right.startDate) return false;
-
-    const leftTranches = left.tranches || [];
-    const rightTranches = right.tranches || [];
-    if (leftTranches.length !== rightTranches.length) return false;
-    for (let index = 0; index < leftTranches.length; index += 1) {
-      const leftTranche = leftTranches[index];
-      const rightTranche = rightTranches[index];
-      if (
-        leftTranche.qty !== rightTranche.qty ||
-        leftTranche.price !== rightTranche.price ||
-        leftTranche.date !== rightTranche.date ||
-        leftTranche.acquiredAt !== rightTranche.acquiredAt
-      ) return false;
-    }
-  }
-
-  return true;
+  const before = previous.positions || {};
+  const after = next.positions || {};
+  const tickers = Object.keys(before);
+  return previous.balance === next.balance &&
+    previous.realizedMarginCharged === next.realizedMarginCharged &&
+    previous.startDate === next.startDate &&
+    previous.activeView === next.activeView &&
+    previous.brokerAssumptions === next.brokerAssumptions &&
+    tickers.length === Object.keys(after).length &&
+    tickers.every((ticker) => {
+      const left = before[ticker];
+      const right = after[ticker];
+      return left === right || Boolean(right &&
+        left.shares === right.shares &&
+        left.pt === right.pt &&
+        left.commBuy === right.commBuy &&
+        left.startDate === right.startDate &&
+        left.tranches === right.tranches);
+    });
 }
-
 function ProjectionsTableView() {
   const state = usePortfolioSelector((snapshot) => snapshot, areProjectionSourceStatesEqual);
   const activeView = useActiveView();
