@@ -88,6 +88,8 @@ export interface PortfolioTransactionDraft {
   effectiveAt: number;
   ticker?: string;
   currency?: string;
+  side?: string;
+  feeCurrency?: string;
   quantity?: number;
   unitPrice?: number;
   grossAmount?: number;
