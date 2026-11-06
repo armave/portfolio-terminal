@@ -2524,6 +2524,92 @@ describe('portfolio transaction journal integration', () => {
     expect(store.getState().positions.AAPL.shares).toBe(1);
   });
 
+
+  it('journals cash-holding additions and deduplicates a repeated command after reload', () => {
+    const store = new PortfolioStore();
+    const context = {
+      idempotencyKey: 'cash-holding-add-001',
+      source: 'terminal-cash-desk' as const
+    };
+
+    expect(store.addCashHolding('nvda', 3, 120, context)).toEqual({
+      ticker: 'NVDA',
+      shares: 3,
+      price: 120
+    });
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({ ticker: 'NVDA', shares: 3, price: 120 })
+    ]);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+    expect(store.getState().transactionEvents?.[0]).toMatchObject({
+      type: 'cash-holding.buy',
+      ticker: 'NVDA',
+      quantity: 3,
+      unitPrice: 120,
+      grossAmount: 360,
+      cashDelta: 0,
+      idempotencyKey: context.idempotencyKey
+    });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.addCashHolding('NVDA', 3, 120, context)).toEqual({
+      ticker: 'NVDA',
+      shares: 3,
+      price: 120
+    });
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(3);
+    expect(reloaded.getState().transactionEvents).toHaveLength(1);
+    expect(reloaded.addCashHolding('NVDA', 4, 120, context)).toBeNull();
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(3);
+  });
+
+  it('journals cash-holding sales with debt-first settlement and idempotent replay', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0
+    });
+    expect(store.setMarginDebt(10)).toBe(true);
+    expect(store.addCashHolding('NVDA', 3, 15)).not.toBeNull();
+
+    const context = { idempotencyKey: 'cash-holding-sale-001' };
+    const result = store.sellCashHolding('NVDA', 2, 20, context);
+    expect(result).toEqual({
+      ticker: 'NVDA',
+      sharesSold: 2,
+      remainingShares: 1,
+      netProceeds: 40,
+      debtRepaid: 10,
+      cashSurplus: 30
+    });
+    const event = store.getState().transactionEvents?.find((item) =>
+      item.idempotencyKey === context.idempotencyKey
+    );
+    expect(event).toMatchObject({
+      type: 'cash-holding.sell',
+      ticker: 'NVDA',
+      quantity: 2,
+      unitPrice: 20,
+      grossAmount: 40,
+      fees: 0,
+      netAmount: 40,
+      cashDelta: 30,
+      marginDebtDelta: -10
+    });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.sellCashHolding('NVDA', 2, 20, context)).toEqual(result);
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(1);
+    expect(reloaded.getState().cashCushion.freeCash).toBe(30);
+    expect(reloaded.getState().balance).toBe(0);
+    expect(reloaded.getState().transactionEvents?.filter((item) => item.idempotencyKey === context.idempotencyKey)).toHaveLength(1);
+    expect(reloaded.sellCashHolding('NVDA', 2, 21, context)).toBeNull();
+  });
+
   it('does not publish a financial mutation or append its event when persistence fails', () => {
     const failingStorage = {
       getItem: (key: string) => sharedTestStorage.get(key) ?? null,
