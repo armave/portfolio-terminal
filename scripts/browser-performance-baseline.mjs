@@ -254,8 +254,11 @@ async function mockWorkerApi(page) {
   return { calls };
 }
 
-async function installPerformanceObservers(page) {
-  await page.addInitScript(() => {
+async function installPerformanceObservers(page, portfolioSnapshot = null) {
+  await page.addInitScript((snapshot) => {
+    if (snapshot) {
+      localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(snapshot));
+    }
     window.__ptPerformance = { lcp: null, cls: 0, longTaskCount: 0, longTaskDurationMs: 0 };
     try {
       new PerformanceObserver((list) => {
@@ -285,7 +288,7 @@ async function installPerformanceObservers(page) {
     } catch {
       // Long-task entries are unavailable in this browser.
     }
-  });
+  }, portfolioSnapshot);
 }
 
 async function collectMetrics(page, startedAt) {
@@ -387,10 +390,7 @@ async function measureAuthenticatedLargePortfolio(viewport, run) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await installPerformanceObservers(page);
-  await page.addInitScript((snapshot) => {
-    localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(snapshot));
-  }, createLargePortfolioFixture());
+  await installPerformanceObservers(page, createLargePortfolioFixture());
   const worker = await mockWorkerApi(page);
 
   const startedAt = Date.now();
