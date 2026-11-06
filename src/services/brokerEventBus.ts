@@ -55,7 +55,7 @@ const listeners = new Map<BrokerEventName, Set<BrokerListener>>();
 /** Publish an in-process broker update or request without using window DOM events. */
 export function emitBrokerEvent<K extends BrokerEventName>(
   type: K,
-  ...args: BrokerEventPayloads[K] extends undefined ? [payload?: undefined] : [payload: BrokerEventPayloads[K]]
+  ...args: undefined extends BrokerEventPayloads[K] ? [payload?: BrokerEventPayloads[K]] : [payload: BrokerEventPayloads[K]]
 ): void {
   const payload = args[0];
   listeners.get(type)?.forEach((listener) => listener(payload));
