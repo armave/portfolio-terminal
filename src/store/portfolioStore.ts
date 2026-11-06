@@ -1642,6 +1642,24 @@ export class PortfolioStore {
     indexOrTicker: number | string,
     context?: PortfolioTransactionContext
   ): boolean {
+    const commandReference = typeof indexOrTicker === 'number'
+      ? `index:${indexOrTicker}`
+      : `ticker:${indexOrTicker.trim().toUpperCase()}`;
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.adjustment.remove',
+      commandReference
+    ]);
+    // A successful retry may reach this method after the holding has already
+    // disappeared. Consult the event key before the existence check so the
+    // same confirmed command is reported as an idempotent success.
+    const previous = context?.idempotencyKey
+      ? this.findAppliedTransaction({ ...context, requestFingerprint })
+      : undefined;
+    if (previous) {
+      return previous.type === 'cash-holding.adjustment' &&
+        previous.requestFingerprint === requestFingerprint;
+    }
+
     const holdings = this.state.cashCushion?.holdings || [];
     const target = typeof indexOrTicker === 'number'
       ? (Number.isInteger(indexOrTicker) && indexOrTicker >= 0 ? holdings[indexOrTicker] : undefined)
@@ -1653,12 +1671,6 @@ export class PortfolioStore {
       ? indexOrTicker
       : holdings.findIndex((holding) => holding.ticker.trim().toUpperCase() === clean);
     const quantity = Number(target.shares) || 0;
-    const requestFingerprint = createMutationFingerprint([
-      'cash-holding.adjustment.remove',
-      clean,
-      targetIndex,
-      quantity
-    ]);
 
     return this.updateFinancialMutation({
       ...context,
