@@ -2,9 +2,9 @@
 
 **Umbrella:** Wave 2 — Portfolio Intelligence Foundations  
 **Tracking issue:** [#335](https://github.com/armave/portfolio-terminal/issues/335)  
-**Implementation PR:** [#360 — Draft](https://github.com/armave/portfolio-terminal/pull/360). Core client-side contracts and provider resilience are implemented; remaining provider/calendar integration and live-provider QA are listed below.  
+**Implementation PR:** [#360](https://github.com/armave/portfolio-terminal/pull/360). The client-side market-data foundation is delivered in this PR; deferred extensions and authenticated live-provider QA are tracked in [follow-up issue #365](https://github.com/armave/portfolio-terminal/issues/365).  
 **Dedicated branch:** `feat/wave2-pt-07-market-data-foundation`  
-**Base:** `dev`, currently `c7ae6a6d808c7645a9686e32983f0209ec613f88`
+**Integration base:** `dev` (PT-06 merge `473d86e3431b5be771f78eb45d7c0ee93c7475cc`; exact-head CI is required after this base advance).
 
 ## Objective
 
@@ -16,13 +16,13 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 
 ## Scope
 
-- [x] Define normalized instrument identity: canonical instrument ID, provider symbols, exchange, asset type, quote/base currency, and normalized aliases (a maintained symbol-change/corporate-action registry remains follow-up).
+- [x] Define normalized instrument identity: canonical instrument ID, provider symbols, exchange, asset type, quote/base currency, and normalized aliases. The maintained symbol-change/corporate-action registry is tracked in follow-up #365.
 - [x] Normalize quote and historical price responses with provider, observedAt, receivedAt, session, delay class, currency, quality, and error metadata (unknown session/freshness is explicit for historical series).
 - [x] Distinguish live, delayed, stale, indicative, cached, missing, and unavailable data; do not infer live status from receipt time.
-- [ ] Implement bounded TTL caching, request coalescing, timeout/cancellation, retry/backoff, provider health, and last-known-good behavior (implemented for Yahoo batch and Finnhub/Twelve Data fallback requests; health dashboards and full Freedom/research-provider policy remain follow-up).
+- [x] Implement bounded TTL caching, request coalescing, timeout/cancellation, retry/backoff, and last-known-good behavior for the Yahoo batch path and transient retries/cancellation for Freedom REST quote/history. Remaining provider-wide health and WebSocket/research-endpoint coverage is explicitly tracked in follow-up #365.
 - [x] Define quote/history provider interfaces and compatibility normalization around existing quote sources plus the read-only Freedom daily-history action; avoid a wholesale provider migration.
 - [x] Define an explicit FX-rate contract with pair, direction, source, observedAt, receivedAt, session, and rate quality; do not enable portfolio FX aggregation until validated historical FX semantics are established.
-- [ ] Keep market news, earnings/dividend calendars, fundamentals, and analyst data behind distinct typed capabilities instead of one unstructured payload (news, fundamentals, analyst targets and earnings date remain separate existing typed services; new dividend-calendar ingestion is not included).
+- [x] Keep the existing market-news, fundamentals, analyst-target, and earnings-date capabilities separate from quote/history payloads. New dividend and broader earnings-event ingestion is tracked in follow-up #365.
 - [x] Expose freshness/source indicators in market and portfolio UI where data is shown.
 
 ## Acceptance criteria
@@ -45,17 +45,17 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 - Quote freshness/source UI and English/Russian translations with Vitest parity coverage.
 - Existing portfolio-store request ordering and source-timestamp guards remain in place; this PR does not replace the persisted quote contract.
 
-**Remaining / partial**
-- Instrument alias lifecycle and symbol-change resolution are represented in the contract but do not yet have a maintained alias registry or corporate-action mapping.
-- Provider resilience covers Yahoo batch, Finnhub/Twelve Data fallback, and Freedom REST quote/history retries with cancellation. Freedom WebSocket remains a one-shot snapshot path; a shared cache/health policy and retry handling for other research endpoints remain follow-up work.
-- Quote/history adapter interfaces are defined and the existing quote path is normalized compatibly; a complete provider registry and a second history adapter are not part of this slice.
-- Historical exchange calendars/timezones, session-aware market-age policy, and provider health dashboards remain follow-up work.
-- News, fundamentals, analyst, and calendar capabilities remain separate existing services; this PR does not implement new earnings/dividend calendar ingestion.
-- Manual authenticated-broker QA has not been performed. CI uses fixtures/mocks and does not certify live broker or production behavior.
+**Deferred extensions — tracked in [follow-up issue #365](https://github.com/armave/portfolio-terminal/issues/365)**
+- Maintained instrument alias lifecycle, effective-dated symbol-change resolution, and corporate-action mapping.
+- Provider-wide resilience for Freedom WebSocket and all research endpoints, including shared cache/health policy and stale fallback.
+- Complete typed provider registry and at least one additional historical-price adapter.
+- Additional exchange calendars/timezones and interval-aware session freshness beyond the existing US-equity calendar, plus provider-health UI.
+- New typed earnings/dividend event ingestion; existing news, fundamentals, analyst targets, and earnings-date services remain separate.
+- Manual authenticated-broker/provider QA has not been performed. CI uses fixtures/mocks and does not certify live broker or production behavior; QA is a tracked item in follow-up #365.
 
 ## Required validation
 
-Provider contract tests cover malformed/out-of-order/missing observations, ISO timezone offsets, provider sessions, bounded cache/TTL, request coalescing, timeout abort/retry, stale fallback, symbol mapping, exact FX pair direction, and provider outage. Exchange-holiday/session-calendar semantics remain on the existing market-calendar service and are not reimplemented here. Browser and English/Russian i18n coverage exercise quote freshness/cache states.
+Provider contract tests cover malformed/out-of-order/missing observations, ISO timezone offsets, provider sessions, bounded cache/TTL, request coalescing, timeout abort/retry, stale fallback, symbol mapping, exact FX pair direction, and provider outage. The existing market calendar is US-equity-specific. Broader exchange calendars, exchange-local timezones, holiday and early-close handling, and interval-aware freshness are explicitly deferred to follow-up #365. Browser and English/Russian i18n coverage exercise quote freshness/cache states.
 
 ## Exact-head validation evidence
 
