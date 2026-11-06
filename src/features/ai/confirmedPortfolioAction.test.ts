@@ -34,7 +34,10 @@ describe('AI portfolio action confirmation boundary', () => {
     expect(result).toBe(true);
     expect(confirm).toHaveBeenCalledOnce();
     expect(apply).toHaveBeenCalledOnce();
-    expect(apply).toHaveBeenCalledWith(buyAction);
+    expect(apply).toHaveBeenCalledWith(buyAction, {
+      actor: { type: 'ai' },
+      source: 'ai-confirmed'
+    });
   });
 
   it('propagates mutation failures instead of reporting a successful application', async () => {
