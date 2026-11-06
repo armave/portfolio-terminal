@@ -56,6 +56,9 @@ const ACCOUNT_INTEGRITY_RU_COPY: Record<string, string> = {
   'View verification details': 'Подробности проверки',
   'Provider and comparison evidence': 'Провайдер и данные сравнения',
   'Snapshot quality': 'Качество снимка',
+  'Complete': 'Полная',
+  'Partial': 'Частичная',
+  'Empty': 'Пустой',
   'No comparison findings are available for this snapshot.': 'Для этого снимка нет результатов сравнения.',
   'Read-only verification. No positions, lots, cash balances, or cost basis are changed.': 'Проверка только для чтения. Позиции, лоты, денежные остатки и себестоимость не изменяются.'
 };
