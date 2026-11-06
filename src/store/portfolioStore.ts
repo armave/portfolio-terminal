@@ -13,11 +13,12 @@ import {
   TrancheItem,
   PendingMutation
 } from '../types/portfolio';
-import type { PortfolioTransactionContext, PortfolioTransactionDraft } from '../types/portfolioTransaction';
+import type { PortfolioTransactionContext, PortfolioTransactionDraft, PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import {
   appendPortfolioTransactionEvent,
   createPortfolioTransactionEvent,
   hasPortfolioTransactionIdempotencyKey,
+  isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
   normalizePortfolioTransactionIdempotencyKey
 } from '../domain/portfolioTransactionJournal';
@@ -529,6 +530,19 @@ export class PortfolioStore {
       console.error('Could not prepare an auditable portfolio transaction:', error);
       return false;
     }
+  }
+
+  private findAppliedTransaction(context?: PortfolioTransactionContext): PortfolioTransactionEvent | undefined {
+    let idempotencyKey: string | undefined;
+    try {
+      idempotencyKey = normalizePortfolioTransactionIdempotencyKey(context?.idempotencyKey);
+    } catch {
+      return undefined;
+    }
+    if (!idempotencyKey) return undefined;
+    return (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) && event.idempotencyKey === idempotencyKey
+    );
   }
 
   public setState(
