@@ -48,9 +48,9 @@ describe('fetchLivePriceFromProviders', () => {
       quoteDetails: {
         transport: 'websocket',
         provider: 'FREEDOM TRADENET',
-        instrumentId: 'EQUITY:US:AAPL',
+        instrumentId: 'UNKNOWN:US:AAPL',
         exchange: 'US',
-        assetType: 'EQUITY',
+        assetType: 'UNKNOWN',
         delayClass: 'live',
         dataQuality: 'partial',
         freshness: 'fresh'
