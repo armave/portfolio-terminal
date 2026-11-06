@@ -574,7 +574,7 @@ function pullCloudAndRewriteLocal(parsedState: any) {
     mergedState.activeView = currentView;
   }
   if (!portfolioStore.importState(loadSavedState(mergedState))) {
-    throw new Error('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.');
+    throw new Error(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', getAppLanguage()));
   }
   state = portfolioStore.getState();
   switchView(state.activeView);
@@ -1596,7 +1596,7 @@ async function importBackupFile(file: File) {
       previousState,
       (snapshot) => {
         if (!portfolioStore.importState(snapshot as any)) {
-          throw new Error('The backup contains transaction history that conflicts with this device or is not supported.');
+          throw new Error(translateText('Backup transaction history conflicts with this device or is not supported.', getAppLanguage()));
         }
         state = portfolioStore.getState();
       },
