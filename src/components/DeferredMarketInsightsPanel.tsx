@@ -1,6 +1,5 @@
 import { lazy, memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { DeskLoading } from './DeskLoading';
 
 const MarketInsightsPanel = lazy(() =>
   import('./MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: memo(MarketInsightsPanel) }))
@@ -28,7 +27,7 @@ export function DeferredMarketInsightsPanel() {
   }, []);
 
   return (
-    <div ref={hostRef} class="min-h-24" data-deferred-market-insights>
+    <div ref={hostRef} data-deferred-market-insights>
       {isNearViewport ? (
         <MarketInsightsPanel />
       ) : (
