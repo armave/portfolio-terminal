@@ -247,6 +247,28 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
 });
 
+// Retain the adapter's provenance alongside the compatibility data-only event.
+// Keeping this separate avoids changing existing account-info consumers.
+addBrokerEventListener('broker:account-info-snapshot', (snapshot) => {
+  if (currentAccountRole !== 'admin') return;
+  const current = portfolioStore.getState();
+  const accountInfo = current.brokerAccountInfo;
+  if (!accountInfo?.loaded) return;
+  portfolioStore.setState({
+    brokerAccountInfo: {
+      ...accountInfo,
+      provider: snapshot.provider,
+      quality: snapshot.quality,
+      source: snapshot.source,
+      receivedAt: snapshot.receivedAt,
+      ...(snapshot.observedAt === undefined ? { observedAt: undefined } : { observedAt: snapshot.observedAt }),
+      warnings: [...snapshot.warnings],
+      lastRefreshIssue: undefined,
+      status: 'current'
+    }
+  });
+});
+
 addBrokerEventListener('broker:executed-trades-error', () => {
   if (currentAccountRole === 'admin') guestPortfolioAssignmentRuntime.setBrokerTradeHistoryLoaded(false);
 });
@@ -449,11 +471,19 @@ addBrokerEventListener('broker:active-orders-error', () => {
 
 addBrokerEventListener('broker:account-info-error', (issue) => {
   const current = portfolioStore.getState();
-  if (current.brokerAccountInfo) {
-    portfolioStore.setState({
-      brokerAccountInfo: { ...current.brokerAccountInfo, status: 'stale' }
-    });
-  }
+  const previousAccountInfo = current.brokerAccountInfo;
+  portfolioStore.setState({
+    brokerAccountInfo: {
+      ...(previousAccountInfo || {
+        loaded: false,
+        balances: [],
+        positions: [],
+        receivedAt: issue?.receivedAt ?? Date.now()
+      }),
+      status: previousAccountInfo?.loaded ? 'stale' : 'unavailable',
+      lastRefreshIssue: issue
+    }
+  });
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
   if (issue?.quality === 'partial' && issue.warnings.length > 0) {
     logTerminal(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
