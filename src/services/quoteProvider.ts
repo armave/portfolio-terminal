@@ -2,6 +2,7 @@ import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
 import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
+import { normalizeMarketQuoteObservation, type MarketDelayClass } from './marketDataContracts';
 
 function describeProviderError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -32,7 +33,7 @@ async function fetchFallbackPrice(symbol: string, force = false) {
       return {
         price: fallback.price,
         sourceName: fallback.sourceName,
-        quoteDetails: {
+        quoteDetails: withMarketMetadata({
           // These providers do not reliably return a market-session label or
           // source observation timestamp. Do not present a fallback as live.
           marketState: 'UNKNOWN' as const,
@@ -45,7 +46,14 @@ async function fetchFallbackPrice(symbol: string, force = false) {
           ...(typeof fallback.changePercent === 'number' && Number.isFinite(fallback.changePercent)
             ? { changePercent: fallback.changePercent }
             : {})
-        }
+        }, {
+          symbol,
+          provider: fallback.sourceName,
+          price: fallback.price,
+          receivedAt: Date.now(),
+          delayClass: 'unknown',
+          requestSequence: 0
+        })
       };
     } catch (error: unknown) {
       console.warn(`[${provider} Quote Error for ${symbol}]:`, describeProviderError(error));
@@ -57,6 +65,56 @@ async function fetchFallbackPrice(symbol: string, force = false) {
 export interface QuoteProvenance {
   freshness: 'fresh' | 'stale' | 'delayed' | 'unknown';
   sourceTimestamp?: number;
+}
+
+interface QuoteMarketMetadataInput {
+  symbol: string;
+  provider: string;
+  price: number;
+  observedAt?: number | null;
+  receivedAt: number;
+  currency?: unknown;
+  exchange?: unknown;
+  assetType?: unknown;
+  marketSession?: string;
+  delayClass: MarketDelayClass;
+  requestSequence: number;
+}
+
+/** Adds validated market provenance without changing the legacy quote result contract. */
+function withMarketMetadata(
+  details: QuoteDetails,
+  input: QuoteMarketMetadataInput
+): QuoteDetails {
+  const result = normalizeMarketQuoteObservation({
+    symbol: input.symbol,
+    price: input.price,
+    provider: input.provider,
+    observedAt: input.observedAt ?? undefined,
+    receivedAt: input.receivedAt,
+    currency: input.currency,
+    exchange: input.exchange,
+    assetType: input.assetType,
+    session: input.marketSession,
+    delayClass: input.delayClass,
+    requestSequence: input.requestSequence
+  });
+  const observation = result.observation;
+  if (!observation) return details;
+  return {
+    ...details,
+    provider: observation.provider,
+    instrumentId: observation.instrument.id,
+    ...(observation.instrument.exchange ? { exchange: observation.instrument.exchange } : {}),
+    ...(observation.instrument.quoteCurrency ? { currency: observation.instrument.quoteCurrency } : {}),
+    assetType: observation.instrument.assetType,
+    marketSession: observation.session,
+    delayClass: observation.delayClass,
+    dataQuality: observation.quality,
+    freshness: observation.freshness,
+    sourceTimestamp: observation.observedAt ?? undefined,
+    receivedAt: observation.receivedAt
+  };
 }
 
 /**
@@ -126,12 +184,17 @@ export async function fetchLivePriceFromProviders(
 
     price = freedomQuote.price;
     sourceName = 'Freedom TradeNet';
-    quoteDetails = {
-      marketState: freedomQuote.marketState || 'UNKNOWN',
+    const receivedAt = Date.now();
+    const marketState = freedomQuote.marketState || 'UNKNOWN';
+    const delayClass: MarketDelayClass = freedomQuote.sourceTimestamp === null
+      ? 'unknown'
+      : marketState === 'CLOSED' && freedomFreshness === 'stale' ? 'delayed' : 'live';
+    quoteDetails = withMarketMetadata({
+      marketState,
       freshness: freedomFreshness,
       sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
       transport: freedomTransport,
-      receivedAt: Date.now(),
+      receivedAt,
       requestSequence,
       requestStartedAt,
       price: freedomQuote.price,
@@ -147,7 +210,16 @@ export async function fetchLivePriceFromProviders(
       ...(typeof freedomQuote.changePercent === 'number' && Number.isFinite(freedomQuote.changePercent)
         ? { changePercent: freedomQuote.changePercent }
         : {})
-    };
+    }, {
+      symbol,
+      provider: sourceName,
+      price: freedomQuote.price,
+      observedAt: freedomQuote.sourceTimestamp,
+      receivedAt,
+      marketSession: marketState,
+      delayClass,
+      requestSequence
+    });
   }
 
   // Only if both authenticated TradeNet paths failed do we try the external
@@ -196,16 +268,32 @@ export async function fetchLivePriceFromProviders(
               ? (data.price.postMarketTime ?? data.price.regularMarketTime)
               : data.price.regularMarketTime;
           const provenance = resolveQuoteProvenance(marketState, sourceTime);
-          quoteDetails = {
+          const receivedAt = Date.now();
+          const delayClass: MarketDelayClass = provenance.freshness === 'delayed'
+            ? 'delayed'
+            : provenance.freshness === 'fresh' || provenance.freshness === 'stale' ? 'live' : 'unknown';
+          quoteDetails = withMarketMetadata({
             marketState,
             ...provenance,
-            receivedAt: Date.now(),
+            receivedAt,
             requestSequence,
             requestStartedAt,
             price: current,
             ...(change !== null ? { change } : {}),
             ...(changePercent !== null ? { changePercent } : {})
-          };
+          }, {
+            symbol,
+            provider: 'Yahoo',
+            price: current,
+            observedAt: provenance.sourceTimestamp ?? null,
+            receivedAt,
+            currency: data.currency ?? data.price.currency,
+            exchange: data.exchange ?? data.price.exchange,
+            assetType: data.quoteType ?? data.price.quoteType,
+            marketSession: marketState,
+            delayClass,
+            requestSequence
+          });
         }
       }
     } catch (error: unknown) {
