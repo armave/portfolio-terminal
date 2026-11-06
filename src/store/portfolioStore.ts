@@ -133,6 +133,10 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
   return true;
 }
 
+function createMutationFingerprint(parts: readonly (string | number)[]): string {
+  return JSON.stringify(parts);
+}
+
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -498,8 +502,12 @@ export class PortfolioStore {
     const currentEvents = Array.isArray(this.state.transactionEvents)
       ? this.state.transactionEvents
       : [];
-    if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(currentEvents, idempotencyKey)) {
-      return true;
+    if (idempotencyKey) {
+      if (!context?.requestFingerprint?.trim()) return false;
+      const previous = currentEvents.find((event) =>
+        isPortfolioTransactionEvent(event) && event.idempotencyKey === idempotencyKey
+      );
+      if (previous) return previous.requestFingerprint === context.requestFingerprint;
     }
 
     try {
