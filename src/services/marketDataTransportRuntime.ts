@@ -67,7 +67,10 @@ async function fetchMarketDataWithTimeout<T>(
 export function createMarketDataTransportRuntime(dependencies: MarketDataTransportRuntimeDependencies): MarketDataTransportRuntime {
   const now = dependencies.now || Date.now;
   const warn = dependencies.warn || ((...args: unknown[]) => console.warn(...args));
-  const requestTimeoutMs = Math.max(1, Math.min(60_000, dependencies.requestTimeoutMs ?? 12_000));
+  const requestedTimeoutMs = dependencies.requestTimeoutMs ?? 12_000;
+  const requestTimeoutMs = Number.isFinite(requestedTimeoutMs)
+    ? Math.max(1, Math.min(60_000, requestedTimeoutMs))
+    : 12_000;
   const MAX_API_CACHE_ENTRIES = 500;
   const setBoundedCache = <T>(cache: Map<string, T>, key: string, value: T): void => {
     cache.set(key, value);
