@@ -323,12 +323,8 @@ export function replayPortfolioTransactionJournal(
     }
     const t = e.ticker?.trim().toUpperCase();
     if (t) {
-      add(out.positions, t, e.positionQuantityDelta ??
-        (e.type === 'trade.buy' ? Number(e.quantity) || 0 :
-          e.type === 'trade.sell' || e.type === 'position.adjustment' ? -(Number(e.quantity) || 0) : 0));
-      add(out.cashHoldings, t, e.cashHoldingQuantityDelta ??
-        (e.type === 'cash-holding.buy' ? Number(e.quantity) || 0 :
-          e.type === 'cash-holding.sell' || e.type === 'cash-holding.adjustment' ? -(Number(e.quantity) || 0) : 0));
+      add(out.positions, t, Number(e.positionQuantityDelta) || 0);
+      add(out.cashHoldings, t, Number(e.cashHoldingQuantityDelta) || 0);
     }
     out.freeCash += Number(e.cashDelta) || 0;
     out.marginDebt += Number(e.marginDebtDelta) || 0;
