@@ -416,6 +416,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "margin shares": "маржинальные акции",
   "Not fetched": "Не получено",
   "Fresh": "Свежие",
+  "Cached": "Из кэша",
+  "Stale cached fallback": "Устаревшая резервная котировка из кэша",
   "Unpriced holdings": "Позиции без котировки",
   "Their market value and allocation are unavailable until a valid quote is received.": "Их рыночная стоимость и доля распределения недоступны до получения действительной котировки.",
   "Priced market value": "Рыночная стоимость позиций с котировкой",
