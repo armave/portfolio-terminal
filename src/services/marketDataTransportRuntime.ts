@@ -105,7 +105,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const startedAt = now();
     try {
       const response = await retryMarketDataRequest(
-        (signal) => fetchMarketDataWithTimeout(
+        () => fetchMarketDataWithTimeout(
           requestSignal => dependencies.proxyFetch(
             'quote',
             { symbol: symbols.join(',') },
@@ -253,7 +253,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const symbol = normalizeYahooSymbol(ticker);
     if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
     const responseData: unknown = await retryMarketDataRequest(
-      (signal) => fetchMarketDataWithTimeout(
+      () => fetchMarketDataWithTimeout(
         requestSignal => dependencies.proxyFetch(
           'provider-quote',
           { symbol, provider },
