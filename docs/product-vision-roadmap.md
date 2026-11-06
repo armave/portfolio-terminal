@@ -469,8 +469,8 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 - Wave 1 corrective PR: [#354](https://github.com/armave/portfolio-terminal/pull/354) — open against `dev`; branch `fix/wave1-broker-snapshot-quality`.
 - Corrective scope: missing/malformed required USD balance amounts and position quantities are no longer coerced to zero; valid numeric zeroes remain valid; malformed or unclassifiable rows and missing collections produce a partial snapshot; partial REST/WebSocket snapshots are rejected before portfolio mutation and the last accepted snapshot is retained as stale.
 - Added regression coverage for invalid/genuine-zero values, partial REST snapshots, and partial live account-stream snapshots.
-- Exact-head workflow results for PR #354 are pending; update this evidence when all required workflows complete.
-- Manual QA: authenticated live TradeNet account-stream and Closed History verification remain outstanding. Mocked CI does not establish live provider behavior.
+- Exact-head validation on `5249bb13845234fdaef0cf4687eb4ef7a09f1f62`: [Pull Request CI #2757 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495327); [Operations Browser Journey #85 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495408); [Trade Lifecycle Browser Smoke #57 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495278). Typecheck, full Vitest/Worker tests, production build, production browser smoke, desktop/mobile shell performance artifact, dead-code validation, full dependency audit, and production dependency audit passed.
+- Manual QA: authenticated live TradeNet account-stream and Closed History verification remain outstanding in [#355](https://github.com/armave/portfolio-terminal/issues/355). Second-provider portability proof is tracked in [#356](https://github.com/armave/portfolio-terminal/issues/356). Mocked CI does not establish live provider behavior.
 
 ### Progress update format
 
