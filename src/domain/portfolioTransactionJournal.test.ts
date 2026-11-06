@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendPortfolioTransactionEvent,
+  appendBrokerHistoryAuditEvents,
   createPortfolioTransactionEvent,
   hasPortfolioTransactionIdempotencyKey,
   isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
   mergePortfolioTransactionEvents,
-  normalizePortfolioTransactionIdempotencyKey
+  normalizePortfolioTransactionIdempotencyKey,
+  replayPortfolioTransactionJournal,
+  verifyPortfolioTransactionParity
 } from './portfolioTransactionJournal';
 
 const draft = {
@@ -154,5 +157,151 @@ describe('portfolio transaction journal imports', () => {
     });
     expect(() => mergePortfolioTransactionEvents([original], [reusedKey]))
       .toThrow('idempotency key');
+  });
+});
+
+
+describe('broker history audit events', () => {
+  it('imports read-only broker executions exactly once and links source revisions', () => {
+    const firstRows = [{
+      id: 'exec-100',
+      ticker: 'aapl',
+      side: 'BUY',
+      quantity: 2,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1.25,
+      commissionCurrency: 'USD'
+    }];
+    const first = appendBrokerHistoryAuditEvents([], firstRows, [], Date.parse('2026-11-06T09:00:00Z'));
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({
+      type: 'broker.execution',
+      actor: { type: 'broker' },
+      source: 'freedom-tradenet',
+      externalReferenceId: 'exec-100',
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100,
+      grossAmount: 200,
+      fees: 1.25
+    });
+    expect(first[0].positionQuantityDelta).toBeUndefined();
+
+    const replayed = appendBrokerHistoryAuditEvents(first, firstRows, [], Date.parse('2026-11-06T09:01:00Z'));
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0].id).toBe(first[0].id);
+
+    const revised = appendBrokerHistoryAuditEvents(first, [{
+      ...firstRows[0],
+      commission: 1.5
+    }], [], Date.parse('2026-11-06T09:02:00Z'));
+    expect(revised).toHaveLength(2);
+    expect(revised[1]).toMatchObject({
+      type: 'broker.execution',
+      externalReferenceId: 'exec-100',
+      fees: 1.5,
+      relatedEventId: first[0].id
+    });
+  });
+
+  it('classifies external cashflows without posting their amounts to local cash or debt', () => {
+    const cashflows = [
+      { id: 'div-1', date: '2026-11-01', type: 'Dividend', amount: 12, currency: 'USD' },
+      { id: 'fee-1', date: '2026-11-02', type: 'Commission fee', amount: -2, currency: 'USD' },
+      { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
+      { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
+      { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
+      { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' }
+    ];
+    const events = appendBrokerHistoryAuditEvents([], [], cashflows, Date.parse('2026-11-06T09:00:00Z'));
+    expect(events.map((event) => event.type)).toEqual([
+      'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer'
+    ]);
+    expect(events[3].externalCashFlowAmount).toBe(500);
+    expect(events[2].financingCost).toBe(3);
+    expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
+
+    const replay = replayPortfolioTransactionJournal(events);
+    expect(replay).toEqual({ positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0 });
+  });
+});
+
+describe('transaction journal replay and parity', () => {
+  it('replays app-owned positions, cash holdings, cash and margin debt', () => {
+    const events = [
+      createPortfolioTransactionEvent({
+        type: 'trade.buy', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
+        quantity: 2, positionQuantityDelta: 2, cashDelta: -201.25, marginDebtDelta: 0
+      }, { eventId: 'buy' }),
+      createPortfolioTransactionEvent({
+        type: 'trade.sell', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
+        quantity: 1, positionQuantityDelta: -1, cashDelta: 119, marginDebtDelta: -10
+      }, { eventId: 'sell' }),
+      createPortfolioTransactionEvent({
+        type: 'cash-holding.buy', effectiveAt: draft.effectiveAt, ticker: 'MSFT',
+        quantity: 3, cashHoldingQuantityDelta: 3
+      }, { eventId: 'cash-buy' }),
+      createPortfolioTransactionEvent({
+        type: 'cash.adjustment', effectiveAt: draft.effectiveAt,
+        cashDelta: 50
+      }, { eventId: 'cash' })
+    ];
+    const canonical = {
+      positions: { AAPL: { shares: 1 } },
+      cashCushion: {
+        freeCash: -201.25 + 119 + 50,
+        holdings: [{ ticker: 'MSFT', shares: 3 }]
+      },
+      balance: -10
+    };
+    const replay = replayPortfolioTransactionJournal(events);
+    expect(replay).toEqual({
+      positions: { AAPL: 1 },
+      cashHoldings: { MSFT: 3 },
+      freeCash: -32.25,
+      marginDebt: -10
+    });
+    const parity = verifyPortfolioTransactionParity(events, canonical);
+    expect(parity.matches).toBe(false);
+    expect(parity.discrepancies).toEqual([
+      expect.objectContaining({ field: 'free-cash', replayed: -32.25, canonical: -32.25 })
+    ]);
+  });
+
+  it('verifies a journal against a matching canonical snapshot', () => {
+    const events = [
+      createPortfolioTransactionEvent({
+        type: 'trade.buy', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
+        quantity: 2, positionQuantityDelta: 2, cashDelta: -200
+      }),
+      createPortfolioTransactionEvent({
+        type: 'cash.adjustment', effectiveAt: draft.effectiveAt, cashDelta: 25
+      }),
+      createPortfolioTransactionEvent({
+        type: 'margin.adjustment', effectiveAt: draft.effectiveAt, marginDebtDelta: 10
+      })
+    ];
+    expect(verifyPortfolioTransactionParity(events, {
+      positions: { AAPL: { shares: 2 } },
+      cashCushion: { freeCash: -175, holdings: [] },
+      balance: -10
+    })).toEqual({ matches: true, discrepancies: [] });
+  });
+
+  it('reconciles legacy state differences without classifying them as executions', () => {
+    const events = [createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'GOOGL',
+      positionQuantityDelta: 50,
+      note: 'Legacy baseline imported from the canonical state.'
+    })];
+    expect(verifyPortfolioTransactionParity(events, {
+      positions: { GOOGL: { shares: 50 } },
+      cashCushion: { freeCash: 0, holdings: [] },
+      balance: 0
+    }).matches).toBe(true);
   });
 });
