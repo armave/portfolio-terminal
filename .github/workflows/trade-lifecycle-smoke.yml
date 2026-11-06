@@ -7,16 +7,13 @@ on:
       - main
     paths:
       - 'app.ts'
-      - 'src/features/terminal/commandDispatcher.ts'
-      - 'src/features/terminal/commandDispatcher.test.ts'
-      - 'src/features/terminal/commandDispatcher.tradePreview.test.ts'
-      - 'src/features/terminal/commandExecutionGuard.ts'
-      - 'src/features/terminal/commandExecutionGuard.test.ts'
-      - 'src/store/portfolioStore.ts'
-      - 'src/store/portfolioTradeBoundary.test.ts'
-      - 'src/services/i18n.ts'
-      - 'src/services/i18n-ru.ts'
+      - 'index.html'
+      - 'src/**'
       - 'scripts/browser-smoke-trades.mjs'
+      - 'scripts/build.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
       - '.github/workflows/trade-lifecycle-smoke.yml'
   push:
     branches:
@@ -24,16 +21,13 @@ on:
       - main
     paths:
       - 'app.ts'
-      - 'src/features/terminal/commandDispatcher.ts'
-      - 'src/features/terminal/commandDispatcher.test.ts'
-      - 'src/features/terminal/commandDispatcher.tradePreview.test.ts'
-      - 'src/features/terminal/commandExecutionGuard.ts'
-      - 'src/features/terminal/commandExecutionGuard.test.ts'
-      - 'src/store/portfolioStore.ts'
-      - 'src/store/portfolioTradeBoundary.test.ts'
-      - 'src/services/i18n.ts'
-      - 'src/services/i18n-ru.ts'
+      - 'index.html'
+      - 'src/**'
       - 'scripts/browser-smoke-trades.mjs'
+      - 'scripts/build.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
       - '.github/workflows/trade-lifecycle-smoke.yml'
   workflow_dispatch:
 
