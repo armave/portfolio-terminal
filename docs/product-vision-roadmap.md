@@ -1,8 +1,8 @@
 # Portfolio Terminal — Product Vision & Delivery Roadmap
 
 **Status:** Umbrella product roadmap  
-**Target branch for this roadmap PR:** \`dev\`  
-**Roadmap branch:** \`docs/portfolio-terminal-product-roadmap\`  
+**Target branch for this roadmap PR:** `dev`  
+**Roadmap branch:** `docs/portfolio-terminal-product-roadmap`  
 **Product owner intent:** Full investment management in one place, serving multiple investor roles  
 **Delivery model:** Small, independently reviewable implementation workstreams tracked by child issues and dedicated branches
 
@@ -173,7 +173,7 @@ The target logical domains are:
 
 ### Logical dependency flow
 
-\`\`\`text
+```text
 Role-specific Preact experiences
             |
      API / authorization boundary
@@ -193,13 +193,13 @@ accounting        & research               workspace
   Persistence, audit, cache, integrations
               |
        Brokers and market providers
-\`\`\`
+```
 
 ### Architecture decisions and constraints
 
 **Financial source of truth**
-- Preserve \`PortfolioState.positions\` as the canonical active-position representation during the initial roadmap.
-- Continue treating \`holdings\` as a compatibility projection, not an independent source of truth.
+- Preserve `PortfolioState.positions` as the canonical active-position representation during the initial roadmap.
+- Continue treating `holdings` as a compatibility projection, not an independent source of truth.
 - Add auditable transaction/event history incrementally so it can verify/reconstruct state and make mutations traceable.
 - A future ledger becoming canonical is a separate, gated migration decision with parity tests, versioning, backup compatibility, and rollback.
 
@@ -239,7 +239,7 @@ accounting        & research               workspace
 The current repository documents the following facts; the roadmap must evolve them deliberately rather than assume they are already solved:
 
 - The application is a Preact 11 / TypeScript / Vite client, with domain, store, service, AI, quote, and terminal feature areas.
-- \`PortfolioState.positions\` is the canonical active-position state; \`holdings\` is a compatibility projection.
+- `PortfolioState.positions` is the canonical active-position state; `holdings` is a compatibility projection.
 - Freedom TradeNet account refresh is read-only. Broker aggregate quantities and prices are kept separate from app-owned lots and cost basis; discrepancies are surfaced rather than silently rewritten.
 - The application supports administrator and guest accounts. Administrators share the owner workspace; guests receive server-filtered, encrypted, read-only projections and assignment history.
 - Current guest projections are **not** independent tenant-isolated portfolios; local offline guest edits do not update the cloud projection.
@@ -322,34 +322,34 @@ The roadmap is split into 18 independently scoped workstreams. Child issues hold
 
 ## 9. Child implementation workstreams
 
-Each child task has a dedicated branch name and issue. Create the implementation branch from the latest \`dev\` when work begins; do not open empty placeholder PRs. Each completed client/frontend task is delivered as a focused PR targeting \`dev\`. The child issue is closed only after the implementation PR is merged and its acceptance criteria are met.
+Each child task has a dedicated branch name and issue. Create the implementation branch from the latest `dev` when work begins; do not open empty placeholder PRs. Each completed client/frontend task is delivered as a focused PR targeting `dev`. The child issue is closed only after the implementation PR is merged and its acceptance criteria are met.
 
 | ID | Workstream | Tracking issue | Dedicated branch | Depends on |
 |---|---|---:|---|---|
-| PT-01 | Financial correctness baseline | [#329](https://github.com/armave/portfolio-terminal/issues/329) | \`feat/pt-01-financial-baseline\` | — |
-| PT-02 | Transaction integrity & audit history | [#330](https://github.com/armave/portfolio-terminal/issues/330) | \`feat/pt-02-transaction-integrity\` | PT-01 |
-| PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | \`feat/pt-03-broker-adapters\` | PT-01; PT-02 semantics |
-| PT-04 | Broker reconciliation & provenance | [#332](https://github.com/armave/portfolio-terminal/issues/332) | \`feat/pt-04-broker-reconciliation\` | PT-01, PT-03 |
-| PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | \`feat/pt-05-portfolio-tenancy\` | PT-01, PT-02 |
-| PT-06 | Performance & attribution | [#334](https://github.com/armave/portfolio-terminal/issues/334) | \`feat/pt-06-performance-analytics\` | PT-01, PT-02 |
-| PT-07 | Market/instrument data foundation | [#335](https://github.com/armave/portfolio-terminal/issues/335) | \`feat/pt-07-market-data-foundation\` | PT-01, PT-03 |
-| PT-08 | Portfolio risk engine | [#336](https://github.com/armave/portfolio-terminal/issues/336) | \`feat/pt-08-portfolio-risk\` | PT-01, PT-06, PT-07 |
-| PT-09 | Scenario & projection engine | [#337](https://github.com/armave/portfolio-terminal/issues/337) | \`feat/pt-09-projection-engine\` | PT-02, PT-06, PT-07, PT-08 |
-| PT-10 | Rules-based alerts & monitoring | [#338](https://github.com/armave/portfolio-terminal/issues/338) | \`feat/pt-10-alerts-monitoring\` | PT-05, PT-07, PT-08, PT-09 |
-| PT-11 | Grounded AI assistant | [#339](https://github.com/armave/portfolio-terminal/issues/339) | \`feat/pt-11-grounded-ai\` | PT-05, PT-06, PT-08, PT-09 |
-| PT-12 | Proactive AI monitoring | [#340](https://github.com/armave/portfolio-terminal/issues/340) | \`feat/pt-12-proactive-ai\` | PT-10, PT-11 |
-| PT-13 | Role-specific workspaces | [#341](https://github.com/armave/portfolio-terminal/issues/341) | \`feat/pt-13-role-based-workspaces\` | PT-05, PT-06, PT-08, PT-09, PT-10 |
-| PT-14 | Platform administration & audit | [#342](https://github.com/armave/portfolio-terminal/issues/342) | \`feat/pt-14-admin-operations\` | PT-02, PT-05, PT-10 |
-| PT-15 | Reporting, exports & benchmarks | [#343](https://github.com/armave/portfolio-terminal/issues/343) | \`feat/pt-15-reporting-benchmarks\` | PT-02, PT-05, PT-06, PT-08, PT-09 |
-| PT-16 | Security, privacy & lifecycle | [#344](https://github.com/armave/portfolio-terminal/issues/344) | \`feat/pt-16-security-privacy\` | PT-05; continuous review |
-| PT-17 | Reliability, performance & release gates | [#345](https://github.com/armave/portfolio-terminal/issues/345) | \`feat/pt-17-reliability-release-gates\` | Continuous; starts PT-01 |
-| PT-18 | Onboarding & investor education | [#346](https://github.com/armave/portfolio-terminal/issues/346) | \`feat/pt-18-product-onboarding\` | PT-05, PT-06, PT-08, PT-09, PT-13 |
+| PT-01 | Financial correctness baseline | [#329](https://github.com/armave/portfolio-terminal/issues/329) | `feat/pt-01-financial-baseline` | — |
+| PT-02 | Transaction integrity & audit history | [#330](https://github.com/armave/portfolio-terminal/issues/330) | `feat/pt-02-transaction-integrity` | PT-01 |
+| PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | `feat/pt-03-broker-adapters` | PT-01; PT-02 semantics |
+| PT-04 | Broker reconciliation & provenance | [#332](https://github.com/armave/portfolio-terminal/issues/332) | `feat/pt-04-broker-reconciliation` | PT-01, PT-03 |
+| PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
+| PT-06 | Performance & attribution | [#334](https://github.com/armave/portfolio-terminal/issues/334) | `feat/pt-06-performance-analytics` | PT-01, PT-02 |
+| PT-07 | Market/instrument data foundation | [#335](https://github.com/armave/portfolio-terminal/issues/335) | `feat/pt-07-market-data-foundation` | PT-01, PT-03 |
+| PT-08 | Portfolio risk engine | [#336](https://github.com/armave/portfolio-terminal/issues/336) | `feat/pt-08-portfolio-risk` | PT-01, PT-06, PT-07 |
+| PT-09 | Scenario & projection engine | [#337](https://github.com/armave/portfolio-terminal/issues/337) | `feat/pt-09-projection-engine` | PT-02, PT-06, PT-07, PT-08 |
+| PT-10 | Rules-based alerts & monitoring | [#338](https://github.com/armave/portfolio-terminal/issues/338) | `feat/pt-10-alerts-monitoring` | PT-05, PT-07, PT-08, PT-09 |
+| PT-11 | Grounded AI assistant | [#339](https://github.com/armave/portfolio-terminal/issues/339) | `feat/pt-11-grounded-ai` | PT-05, PT-06, PT-08, PT-09 |
+| PT-12 | Proactive AI monitoring | [#340](https://github.com/armave/portfolio-terminal/issues/340) | `feat/pt-12-proactive-ai` | PT-10, PT-11 |
+| PT-13 | Role-specific workspaces | [#341](https://github.com/armave/portfolio-terminal/issues/341) | `feat/pt-13-role-based-workspaces` | PT-05, PT-06, PT-08, PT-09, PT-10 |
+| PT-14 | Platform administration & audit | [#342](https://github.com/armave/portfolio-terminal/issues/342) | `feat/pt-14-admin-operations` | PT-02, PT-05, PT-10 |
+| PT-15 | Reporting, exports & benchmarks | [#343](https://github.com/armave/portfolio-terminal/issues/343) | `feat/pt-15-reporting-benchmarks` | PT-02, PT-05, PT-06, PT-08, PT-09 |
+| PT-16 | Security, privacy & lifecycle | [#344](https://github.com/armave/portfolio-terminal/issues/344) | `feat/pt-16-security-privacy` | PT-05; continuous review |
+| PT-17 | Reliability, performance & release gates | [#345](https://github.com/armave/portfolio-terminal/issues/345) | `feat/pt-17-reliability-release-gates` | Continuous; starts PT-01 |
+| PT-18 | Onboarding & investor education | [#346](https://github.com/armave/portfolio-terminal/issues/346) | `feat/pt-18-product-onboarding` | PT-05, PT-06, PT-08, PT-09, PT-13 |
 
 ### Child PR completion protocol
 
 For each implementation workstream:
 
-1. Create the named branch from the latest \`dev\` when the task starts.
+1. Create the named branch from the latest `dev` when the task starts.
 2. Keep the PR limited to that workstream; split unrelated work.
 3. State which acceptance criteria are completed and which remain open.
 4. Include tests for important logic and user workflows.
@@ -358,7 +358,7 @@ For each implementation workstream:
 7. Record real-browser, authenticated broker, and manual security checks separately from automated/mocked coverage.
 8. Link the implementation PR in the child issue and update this roadmap's progress table/checklist.
 
-**Repository deployment policy:** Client/frontend work is submitted as PRs against \`dev\`. Worker/server-only changes are committed and pushed directly to \`main\` for immediate deployment per the repository workflow. For mixed features, separate the server deployment slice from the client PR; keep interfaces compatible and record the paired commits/PRs in the child issue and parent roadmap. Do not route a Worker-only production fix through an unmerged \`dev\` PR.
+**Repository deployment policy:** Client/frontend work is submitted as PRs against `dev`. Worker/server-only changes are committed and pushed directly to `main` for immediate deployment per the repository workflow. For mixed features, separate the server deployment slice from the client PR; keep interfaces compatible and record the paired commits/PRs in the child issue and parent roadmap. Do not route a Worker-only production fix through an unmerged `dev` PR.
 
 ---
 
@@ -380,14 +380,14 @@ For each implementation workstream:
 ### Testing and merge gates
 Run the repository's actual scripts against the exact final candidate commit:
 
-\`\`\`sh
+```sh
 npm ci
 npm run typecheck
 npm test
 npm run validate:dead-code
 npm run audit:production
 npm run build
-\`\`\`
+```
 
 Also:
 - Use independent expected-value fixtures for important financial calculations.
