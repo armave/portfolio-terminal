@@ -60,7 +60,9 @@ describe('portfolio transaction journal', () => {
     expect(result.appended).toBe(true);
     expect(result.duplicate).toBe(false);
     expect(result.events).toHaveLength(2);
+    expect(Object.isFrozen(result.events)).toBe(true);
     expect(original).toEqual([first]);
+    expect(() => result.events.push(first)).toThrow(TypeError);
     expect(Object.isFrozen(result.events[1])).toBe(true);
     expect(Object.isFrozen(result.events[1].actor)).toBe(true);
   });
