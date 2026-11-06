@@ -53,7 +53,6 @@ function areProjectionSourceStatesEqual(previous: PortfolioState, next: Portfoli
         leftTranche.qty !== rightTranche.qty ||
         leftTranche.price !== rightTranche.price ||
         leftTranche.date !== rightTranche.date ||
-        leftTranche.purchaseDate !== rightTranche.purchaseDate ||
         leftTranche.acquiredAt !== rightTranche.acquiredAt
       ) return false;
     }
