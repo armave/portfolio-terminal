@@ -40,7 +40,7 @@ describe('market data transport runtime', () => {
     const { runtime } = createRuntime(proxyFetch, Date.now, sleep);
 
     await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({
-      symbol: 'AAPL', price: { current: 100 }, cacheStatus: 'stale-fallback'
+      symbol: 'AAPL', price: { current: 100 }, cacheStatus: 'network'
     });
     expect(proxyFetch).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(250);
