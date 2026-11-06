@@ -708,7 +708,6 @@ export class PortfolioStore {
     if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
       compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return false;
 
-    const previousDebt = Math.abs(Number(this.state.balance) || 0);
     const mutationContext: PortfolioTransactionContext = {
       ...context,
       idempotencyKey: context?.idempotencyKey ?? `rollover:${timestamp}`,
