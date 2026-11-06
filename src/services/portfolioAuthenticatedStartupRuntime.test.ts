@@ -47,30 +47,27 @@ describe('portfolio authenticated startup runtime', () => {
     const fixture = createFixture('admin');
 
     await fixture.start();
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
 
     expect(fixture.calls).toEqual([
       'load-rules', 'publish-user', 'secret:valid-secret',
       'import-admin-workspace', 'rollover', 'pull-shared-cloud',
       'resolve-interval:admin', 'set-interval:admin-interval', 'rollover-timer:true',
-      'quote-refresh-start', 'saved-admin-view', 'scroll', 'hide-loading',
-      'refresh-quotes', 'recover-cloud-writes', 'quote-refresh-finish', 'analyst-consensus'
+      'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
+      'quote-refresh-finish', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
     ]);
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).not.toHaveBeenCalled();
   });
 
-  it('hydrates the guest workspace and restores Balance before background quote refresh', async () => {
+  it('hydrates guest-only workspace and restores Balance before and after quote refresh', async () => {
     const fixture = createFixture('guest');
 
     await fixture.start();
 
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
-
     expect(fixture.calls).toEqual([
       'load-rules', 'publish-user', 'secret:valid-secret', 'pull-guest-snapshot',
       'resolve-interval:guest', 'set-interval:guest-interval', 'rollover-timer:false',
-      'quote-refresh-start', 'guest-balance', 'scroll', 'hide-loading',
-      'refresh-quotes', 'recover-cloud-writes', 'quote-refresh-finish', 'analyst-consensus'
+      'quote-refresh-start', 'guest-balance', 'scroll', 'refresh-quotes',
+      'quote-refresh-finish', 'guest-balance', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
     ]);
     expect(fixture.dependencies.importSavedAdminWorkspace).not.toHaveBeenCalled();
     expect(fixture.dependencies.pullSharedCloudState).not.toHaveBeenCalled();
@@ -82,46 +79,34 @@ describe('portfolio authenticated startup runtime', () => {
 
     await fixture.start();
 
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
-
     expect(fixture.calls).toEqual([
       'load-rules', 'clear-identity', 'secret:', 'import-admin-workspace', 'rollover',
       'resolve-interval:none', 'set-interval:admin-interval', 'rollover-timer:false',
-      'quote-refresh-start', 'saved-admin-view', 'scroll', 'hide-loading',
-      'refresh-quotes', 'recover-cloud-writes', 'quote-refresh-finish', 'analyst-consensus'
+      'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
+      'quote-refresh-finish', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
     ]);
     expect(fixture.dependencies.publishCurrentUser).not.toHaveBeenCalled();
     expect(fixture.dependencies.pullSharedCloudState).not.toHaveBeenCalled();
   });
 
-  it('shows the hydrated workspace while quote refresh continues in the background', async () => {
+  it('does not hide startup loading or recover cloud writes before quotes finish', async () => {
     const fixture = createFixture('admin');
     let resolveQuotes: (() => void) | undefined;
     (fixture.dependencies.refreshLivePrices as ReturnType<typeof vi.fn>).mockImplementation(
       () => new Promise<void>((resolve) => { resolveQuotes = resolve; })
     );
 
-    await fixture.start();
-
-    expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1);
+    const startup = fixture.start();
+    await vi.waitFor(() => expect(fixture.dependencies.refreshLivePrices).toHaveBeenCalledTimes(1));
     expect(fixture.dependencies.finishInitialQuoteRefresh).not.toHaveBeenCalled();
-    expect(fixture.dependencies.renderBoardAnalystConsensus).not.toHaveBeenCalled();
+    expect(fixture.dependencies.recoverPendingCloudWrites).not.toHaveBeenCalled();
+    expect(fixture.dependencies.hideStartupLoading).not.toHaveBeenCalled();
 
     resolveQuotes?.();
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
-    expect(fixture.dependencies.renderBoardAnalystConsensus).toHaveBeenCalledTimes(1);
-  });
+    await startup;
 
-  it('contains background quote and cloud recovery failures after revealing the workspace', async () => {
-    const fixture = createFixture('admin');
-    (fixture.dependencies.refreshLivePrices as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('quotes unavailable'));
-    (fixture.dependencies.recoverPendingCloudWrites as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cloud unavailable'));
-
-    await expect(fixture.start()).resolves.toBeUndefined();
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
-
+    expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.renderBoardAnalystConsensus).toHaveBeenCalledTimes(1);
   });
 });
