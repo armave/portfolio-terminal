@@ -199,7 +199,7 @@ export function reconcileBrokerPortfolio(
     : 0.01;
   const snapshot = input.brokerSnapshot;
 
-  if (!snapshot || input.brokerStatus === 'unavailable') {
+  if (!snapshot || input.brokerStatus === 'unavailable' || snapshot.data.loaded !== true) {
     return {
       status: 'unavailable',
       provider: snapshot?.provider ?? null,
@@ -214,7 +214,9 @@ export function reconcileBrokerPortfolio(
       amountTolerance,
       differenceCount: 0,
       findings: [],
-      warnings: ['Broker account data is unavailable; no reconciliation was performed.']
+      warnings: [snapshot?.data.loaded === false
+        ? 'The broker account snapshot is not loaded; no reconciliation was performed.'
+        : 'Broker account data is unavailable; no reconciliation was performed.']
     };
   }
 
