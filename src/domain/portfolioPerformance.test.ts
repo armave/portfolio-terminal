@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPerformanceSeries,
+  comparePerformanceToBenchmark,
   calculateMoneyWeightedReturn,
   calculatePeriodAttribution,
   calculateTimeWeightedReturn,
@@ -260,5 +261,76 @@ describe('summarizePerformanceIncomeAndCosts', () => {
     expect(summarizePerformanceIncomeAndCosts([
       { timestamp: 1, type: 'fee', amount: 1, currency: 'USD', quality: 'incomplete' }
     ], 'USD').status).toBe('unavailable');
+  });
+});
+
+
+describe('comparePerformanceToBenchmark', () => {
+  it('compares flow-adjusted portfolio returns with an aligned total-return index', () => {
+    const result = comparePerformanceToBenchmark({
+      valuations: [valuation(0, 100), valuation(YEAR, 110)]
+    }, {
+      identifier: 'SP500-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(0, 200), valuation(YEAR, 220)]
+    });
+
+    expect(result.status).toBe('available');
+    if (result.status !== 'unavailable') {
+      expect(result.value).toMatchObject({
+        benchmarkIdentifier: 'SP500-TR',
+        currency: 'USD',
+        portfolioReturn: 0.1,
+        benchmarkReturn: 0.1,
+        activeReturn: 0
+      });
+      expect(result.value.relativeReturn).toBeCloseTo(0, 12);
+    }
+  });
+
+  it('requires exact opening/closing timestamps, matching currency, and a total-return index', () => {
+    const portfolio = { valuations: [valuation(0, 100), valuation(YEAR, 110)] };
+    expect(comparePerformanceToBenchmark(portfolio, {
+      identifier: 'SP500-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(1, 200), valuation(YEAR, 220)]
+    }).status).toBe('unavailable');
+
+    expect(comparePerformanceToBenchmark(portfolio, {
+      identifier: 'SP500-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(0, 200), { ...valuation(YEAR, 220), currency: 'AMD' }]
+    }).status).toBe('unavailable');
+
+    expect(comparePerformanceToBenchmark(portfolio, {
+      identifier: 'SP500-PRICE',
+      returnType: 'price-index' as never,
+      valuations: [valuation(0, 200), valuation(YEAR, 220)]
+    }).status).toBe('unavailable');
+  });
+
+  it('preserves provisional quality and does not invent a relative return after total benchmark loss', () => {
+    const provisional = comparePerformanceToBenchmark({
+      valuations: [valuation(0, 100), valuation(YEAR, 110)]
+    }, {
+      identifier: 'PROVISIONAL-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(0, 200), valuation(YEAR, 220, 'provisional')]
+    });
+    expect(provisional.status).toBe('provisional');
+
+    const wipedOut = comparePerformanceToBenchmark({
+      valuations: [valuation(0, 100), valuation(YEAR, 110)]
+    }, {
+      identifier: 'TOTAL-LOSS-TR',
+      returnType: 'total-return-index',
+      valuations: [valuation(0, 200), valuation(YEAR, 0)]
+    });
+    expect(wipedOut.status).toBe('available');
+    if (wipedOut.status !== 'unavailable') {
+      expect(wipedOut.value.benchmarkReturn).toBe(-1);
+      expect(wipedOut.value.relativeReturn).toBeNull();
+      expect(wipedOut.value.activeReturn).toBeCloseTo(1.1, 12);
+    }
   });
 });
