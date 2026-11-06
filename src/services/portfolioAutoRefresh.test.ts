@@ -62,6 +62,8 @@ describe('portfolio automatic refresh policy', () => {
   it('pushes one admin portfolio snapshot after quote and supplemental work finish', async () => {
     const sequence: string[] = [];
     let releaseQuotes: (() => void) | undefined;
+    let notifyHistoryFinished: (() => void) | undefined;
+    const historyFinished = new Promise<void>((resolve) => { notifyHistoryFinished = resolve; });
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => true,
@@ -71,13 +73,15 @@ describe('portfolio automatic refresh policy', () => {
         sequence.push('quotes-finished');
       },
       refreshSupplemental: async () => { sequence.push('supplemental-finished'); },
-      syncHistory: async () => { sequence.push('history-finished'); },
+      syncHistory: async () => {
+        sequence.push('history-finished');
+        notifyHistoryFinished?.();
+      },
       syncState: async () => { sequence.push('state-sync'); }
     });
     scheduler.configure(60_000, 'admin');
     const cycle = scheduler.refreshNow();
-    await Promise.resolve();
-    await Promise.resolve();
+    await historyFinished;
     expect(sequence).toContain('history-finished');
     expect(sequence).not.toContain('state-sync');
     releaseQuotes?.();
