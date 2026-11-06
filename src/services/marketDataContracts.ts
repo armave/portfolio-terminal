@@ -282,7 +282,11 @@ export function normalizeMarketQuoteObservation(
 
 export interface MarketPricePoint {
   timestamp: number;
+  /** Close/last price retained as the common scalar consumed by existing analytics. */
   price: number;
+  open?: number;
+  high?: number;
+  low?: number;
   volume?: number;
 }
 
@@ -337,18 +341,34 @@ export function normalizeMarketHistoryPoints(
       continue;
     }
     const row = item as Record<string, unknown>;
-    const timestamp = normalizeTimestamp(row.timestamp ?? row.time ?? row.date);
-    const priceValue = row.price ?? row.close ?? row.value;
+    const timestamp = normalizeTimestamp(row.timestamp ?? row.time ?? row.date ?? row.t);
+    const priceValue = row.price ?? row.close ?? row.value ?? row.c;
     const price = typeof priceValue === 'number'
       ? priceValue
       : typeof priceValue === 'string' && priceValue.trim()
         ? Number(priceValue)
         : Number.NaN;
     if (timestamp === null || !Number.isFinite(price) || price <= 0) {
-      issues.push('Historical row ' + (index + 1) + ' has an invalid timestamp or price.');
+      issues.push('Historical row ' + (index + 1) + ' has an invalid timestamp or close price.');
       continue;
     }
-    const volumeValue = row.volume;
+    const readOptionalPrice = (value: unknown): number | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const parsed = typeof value === 'number' ? value
+        : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    };
+    const open = readOptionalPrice(row.open ?? row.o);
+    const high = readOptionalPrice(row.high ?? row.h);
+    const low = readOptionalPrice(row.low ?? row.l);
+    if ((row.open ?? row.o) != null && open === undefined) issues.push('Historical row ' + (index + 1) + ' has invalid open; open was omitted.');
+    if ((row.high ?? row.h) != null && high === undefined) issues.push('Historical row ' + (index + 1) + ' has invalid high; high was omitted.');
+    if ((row.low ?? row.l) != null && low === undefined) issues.push('Historical row ' + (index + 1) + ' has invalid low; low was omitted.');
+    if (high !== undefined && low !== undefined && high < low) {
+      issues.push('Historical row ' + (index + 1) + ' has high below low; high and low were omitted.');
+    }
+    const validHighLow = high !== undefined && low !== undefined && high >= low;
+    const volumeValue = row.volume ?? row.v;
     const volume = volumeValue === undefined || volumeValue === null
       ? undefined
       : typeof volumeValue === 'number' ? volumeValue
@@ -359,6 +379,8 @@ export function normalizeMarketHistoryPoints(
     byTimestamp.set(timestamp, {
       timestamp,
       price,
+      ...(open !== undefined ? { open } : {}),
+      ...(validHighLow ? { high, low } : {}),
       ...(volume !== undefined && Number.isFinite(volume) && volume >= 0 ? { volume } : {})
     });
   }
