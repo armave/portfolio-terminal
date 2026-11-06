@@ -1,4 +1,5 @@
 import { validateSaleCostBasisTranches } from './saleCostBasis';
+import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
 
 export interface TradeTranche {
   qty: number;
@@ -675,7 +676,7 @@ export function createPortfolioBackupSnapshot<T extends object>(state: T): Parti
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
@@ -695,6 +696,10 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
   }
   if (Object.hasOwn(candidate, 'closedTrades') && !Array.isArray(candidate.closedTrades)) {
     throw new Error('Invalid closedTrades in portfolio backup: expected an array.');
+  }
+
+  if (Object.hasOwn(candidate, 'transactionEvents') && !isPortfolioTransactionEventList(candidate.transactionEvents)) {
+    throw new Error('Invalid transactionEvents in portfolio backup: expected a valid versioned transaction event array.');
   }
 
   // Backups are user-supplied data. Do not silently coerce invalid financial
