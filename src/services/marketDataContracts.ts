@@ -460,10 +460,14 @@ export function normalizeMarketHistoryResponse(
   if (!provider) issues.push('Historical data provider is missing.');
   if (receivedAt === null) issues.push('Historical data receipt timestamp is missing or invalid.');
   if (!interval) issues.push('Historical data interval is missing.');
+  if (identity.instrument && !identity.instrument.quoteCurrency) {
+    issues.push('Historical quote currency is unknown; currency conversion is unavailable.');
+  }
 
   const quality = history.quality === 'unavailable' || history.points.length === 0
     ? 'unavailable'
-    : history.quality === 'partial' || !identity.instrument || !provider || receivedAt === null || !interval
+    : history.quality === 'partial' || !identity.instrument || !identity.instrument.quoteCurrency ||
+        !provider || receivedAt === null || !interval
       ? 'partial'
       : 'complete';
 
