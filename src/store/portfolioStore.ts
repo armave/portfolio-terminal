@@ -22,7 +22,9 @@ import {
   isPortfolioTransactionEventList,
   normalizePortfolioTransactionIdempotencyKey,
   mergePortfolioTransactionEvents,
-  freezePortfolioTransactionEventList
+  freezePortfolioTransactionEventList,
+  appendBrokerHistoryAuditEvents,
+  verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import {
   loadSavedState,
@@ -368,7 +370,7 @@ export class PortfolioStore {
       ? requestedView
       : 'COMBINED';
 
-    return {
+    const normalized: PortfolioState = {
       ...raw,
       brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
       transactionEvents: Array.isArray(raw.transactionEvents)
@@ -390,6 +392,49 @@ export class PortfolioStore {
         freeCash,
         holdings: cashHoldings
       }
+    };
+
+    // Imported broker rows are immutable external evidence, not app-owned
+    // position/cash commands. Keep them in the same snapshot journal so cloud,
+    // local history and backup restoration share an auditable provenance trail.
+    if (!isPortfolioTransactionEventList(normalized.transactionEvents || [])) return normalized;
+
+    let transactionEvents = appendBrokerHistoryAuditEvents(
+      normalized.transactionEvents || [],
+      Array.isArray(normalized.brokerExecutedTrades) ? normalized.brokerExecutedTrades : [],
+      Array.isArray(normalized.cashflows) ? normalized.cashflows : []
+    );
+
+    // Catch any financial mutation path that still writes canonical state
+    // directly (imports, broker reconciliation, legacy UI paths). Record only
+    // the observed quantity/balance delta; never infer a sale, proceeds, cost
+    // basis, commission or investment return from a snapshot difference.
+    const parity = verifyPortfolioTransactionParity(transactionEvents, normalized);
+    if (!parity.matches) {
+      for (const discrepancy of parity.discrepancies) {
+        const event = createPortfolioTransactionEvent({
+          type: 'portfolio.reconciliation',
+          effectiveAt: Date.now(),
+          ...(discrepancy.ticker ? { ticker: discrepancy.ticker } : {}),
+          ...(discrepancy.field === 'position'
+            ? { positionQuantityDelta: discrepancy.delta }
+            : discrepancy.field === 'cash-holding'
+              ? { cashHoldingQuantityDelta: discrepancy.delta }
+              : discrepancy.field === 'free-cash'
+                ? { cashDelta: discrepancy.delta }
+                : { marginDebtDelta: discrepancy.delta }),
+          note: `Canonical snapshot reconciliation (${discrepancy.field}${discrepancy.ticker ? ` ${discrepancy.ticker}` : ''}): journal ${discrepancy.replayed}, canonical ${discrepancy.canonical}. No execution, cost basis, fee or P&L was inferred.`
+        }, {
+          actor: { type: 'system' },
+          source: 'canonical-snapshot-reconciliation'
+        });
+        transactionEvents = appendPortfolioTransactionEvent(transactionEvents, event).events;
+      }
+    }
+
+    return {
+      ...normalized,
+      transactionEvents
     };
   }
 
