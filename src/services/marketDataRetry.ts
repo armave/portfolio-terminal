@@ -20,6 +20,8 @@ export function isRetryableMarketDataError(error: unknown): boolean {
   const record = error as Record<string, unknown>;
   if (record.name === 'AbortError' || record.name === 'ValidationError') return false;
 
+  const code = typeof record.code === 'string' ? record.code.toUpperCase() : '';
+  if (['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH'].includes(code)) return true;
   const status = errorStatus(error);
   if (status !== null) {
     return status === 408 || status === 425 || status === 429 || status >= 500;
