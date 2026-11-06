@@ -24,6 +24,7 @@ The PR CI workflow also runs production browser smoke tests for the application 
 
 The PT-17 changes extend this baseline by:
 - validating merged `dev` commits as well as pull-request candidates and `main` commits;
+- keeping the general CI browser journey focused on the app shell/operations surface while the path-filtered Trade Lifecycle workflow owns the full trade lifecycle journey, avoiding a redundant second run of the same stateful browser script in one job;
 - recording the candidate commit, source PR head/base where applicable, workflow run, and each validation step's outcome in the GitHub Actions run summary;
 - collecting repeatable desktop/mobile browser-shell performance samples as a CI artifact;
 - running the path-filtered trade lifecycle smoke workflow on PRs and merged commits targeting `dev`, as well as `main`.
@@ -197,12 +198,13 @@ Use the repository PR template to record:
 ## 7. Completion status for PT-17
 
 - [x] Define reliability indicators and a baseline-collection protocol without inventing SLO thresholds.
-- [x] Add repeatable desktop/mobile shell performance sampling with commit-attributed CI artifact output.
+- [x] Add repeatable desktop/mobile performance sampling for both the unauthenticated shell and an authenticated synthetic administrator workspace (100 positions, 200 tranches, 200 matching executed-trade rows), with commit-attributed CI artifact output.
 - [x] Run the primary validation workflow on pull requests and merged `dev`/ `main` commits.
 - [x] Record exact candidate SHA, PR head/base, workflow URL, and individual check outcomes in the CI summary.
-- [x] Run targeted trade lifecycle browser checks for PRs and merges to `dev` as well as `main`.
+- [x] Run targeted trade lifecycle browser checks in the dedicated path-filtered workflow for PRs and merges to `dev` as well as `main`; avoid running the same stateful journey twice in general CI.
 - [x] Document privacy-safe telemetry dimensions and prohibited portfolio/user fields.
 - [x] Document authenticated TradeNet, real Market Depth, responsive/accessibility, recovery, and deployment release gates.
+- [x] Verify the authenticated synthetic-portfolio benchmark and upload the performance artifact in exact-head CI.
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
