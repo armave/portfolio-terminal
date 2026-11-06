@@ -71,6 +71,7 @@ export interface PortfolioTransactionDraft {
   unitPrice?: number;
   grossAmount?: number;
   fees?: number;
+  financingCost?: number;
   cashDelta?: number;
   marginDebtDelta?: number;
   netAmount?: number;
