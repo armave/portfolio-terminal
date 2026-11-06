@@ -215,6 +215,61 @@ describe('storage service', () => {
     });
   });
 
+  describe('portfolio state persistence without closed-history cache rewrite', () => {
+    it('saves portfolio state without rewriting an oversized local history sidecar', () => {
+      const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
+      const previousHistory = JSON.stringify({
+        brokerExecutedTrades: [{ id: 'previous-history-is-retained' }],
+        cashflows: [{ id: 'previous-cashflow-is-retained' }]
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousState);
+      storageMap.set('portfolio_closed_history_v1', previousHistory);
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_closed_history_v1') {
+          const error = new Error('Quota exceeded') as Error & { name: string };
+          error.name = 'QuotaExceededError';
+          throw error;
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const state = {
+        activeView: 'COMBINED',
+        balance: 250,
+        brokerExecutedTrades: [{ id: 'full-history-is-checkpointed-in-cloud' }],
+        cashflows: [{ id: 'full-cashflows-are-checkpointed-in-cloud' }]
+      };
+
+      expect(savePortfolioStateSnapshot(state)).toBe(true);
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!)).toMatchObject({
+        activeView: 'COMBINED',
+        balance: 250
+      });
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
+      expect(loadSavedHistory()).toEqual({
+        brokerExecutedTrades: [{ id: 'previous-history-is-retained' }],
+        cashflows: [{ id: 'previous-cashflow-is-retained' }]
+      });
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+        'portfolio_closed_history_v1',
+        expect.any(String)
+      );
+    });
+
+    it('does not include raw execution/cashflow arrays in the compact portfolio snapshot', () => {
+      const state = {
+        activeView: 'COMBINED',
+        balance: 0,
+        brokerExecutedTrades: [{ id: 'trade-1' }],
+        cashflows: [{ id: 'cashflow-1' }]
+      };
+      expect(savePortfolioStateSnapshot(state)).toBe(true);
+      const saved = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!);
+      expect(saved).not.toHaveProperty('brokerExecutedTrades');
+      expect(saved).not.toHaveProperty('cashflows');
+    });
+  });
+
   describe('loadSavedState', () => {
     it('handles missing payload gracefully and returns fallback state', () => {
       const fallback = { activeView: 'COMBINED', balance: 0 };

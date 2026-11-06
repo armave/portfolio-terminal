@@ -84,6 +84,7 @@ import {
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshot,
+  savePortfolioStateSnapshot,
   saveApiKeys,
   saveGatewaySecret,
   saveQuoteRefreshInterval,
@@ -1496,14 +1497,14 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       return false;
     }
 
-    const persisted = savePortfolioSnapshot(portfolioStore.getState(), {
-      brokerExecutedTrades: updatedExecutions,
-      cashflows: mergedCashflows
-    });
+    // The full history is checkpointed to the separate encrypted cloud-history
+    // record below. Do not duplicate the entire multi-megabyte history in
+    // localStorage on every scheduled sync; retain the previous local cache.
+    const persisted = savePortfolioStateSnapshot(portfolioStore.getState());
     if (!persisted) {
       portfolioStore.update(() => previousState, false);
       state = portfolioStore.getState();
-      logTerminal('[Closed History Sync Error]: Could not persist broker executions and cashflows locally; cloud history was not changed.');
+      logTerminal('[Closed History Sync Error]: Could not persist the local portfolio snapshot; cloud history was not changed.');
       return false;
     }
     state = portfolioStore.getState();
