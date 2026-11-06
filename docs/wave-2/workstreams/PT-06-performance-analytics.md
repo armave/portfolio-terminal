@@ -36,7 +36,7 @@ PT-01 calculation contracts (merged), PT-02 transaction/cash-flow contract (para
 
 ## Required validation
 
-Independent known-answer datasets for TWR/MWR, irregular cash-flow dates, deposits/withdrawals, fees, dividends, partial history, negative/zero values, timezone/period boundaries, benchmark alignment, multi-currency unavailable states, and attribution sum checks. English/Russian metric explanations and Vitest locale-key parity.
+Independent known-answer datasets for TWR/MWR, irregular cash-flow dates, deposits/withdrawals, fees, dividends, partial history, zero/negative equity (including losses beyond 100% for a leveraged portfolio), timezone/period boundaries, total-return benchmark alignment, multi-currency unavailable states, and attribution sum checks. English/Russian metric explanations and Vitest locale-key parity.
 
 ## Parallel ownership and integration rules
 
