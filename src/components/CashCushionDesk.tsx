@@ -411,7 +411,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       })
     })).filter((group) => group.holdings.length > 0)
     : [],
-  [isAdmin, guestNames, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
+    [isAdmin, guestNames, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
 
   const unassignedHoldings = useMemo(() => {
     if (!isAdmin) return [];
@@ -431,7 +431,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       ...(unassignedHoldings.length ? [{ key: 'unassigned', label: 'Unassigned · shared holdings', holdings: unassignedHoldings }] : [])
     ]
     : [{ key: 'guest', label: '', holdings }],
-  [isAdmin, adminHoldingGroups, unassignedHoldings, holdings]);
+    [isAdmin, adminHoldingGroups, unassignedHoldings, holdings]);
   const displayHoldings = useMemo(() => displayHoldingGroups.flatMap((group) =>
     group.holdings.map((holding, index) => ({
       ...holding,
@@ -664,6 +664,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         ? `${h.quoteDetails.changePercent.toFixed(2)}%`
                         : sentimentLabel(direction);
 
+                    const volume = '$' + formatQuoteVolume(h.quoteDetails?.volume)
+
                     return (
                       <>
                         {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
@@ -701,7 +703,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             <span>{price !== null ? formatUSD(price) : '—'}</span>
                             {renderDailyQuoteSubtext(h.quoteDetails)}
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                              {translateText('Volume', getAppLanguage())} {formatQuoteVolume(h.quoteDetails?.volume) ?? '—'}
+                              {translateText('Volume', getAppLanguage())} {volume ?? '—'}
                             </span>
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                               {quoteMeta}

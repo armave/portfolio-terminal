@@ -1,4 +1,6 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
+import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
+import type { PortfolioTransactionEvent } from './portfolioTransaction';
 
 export interface Tranche {
   id: string;
@@ -30,11 +32,21 @@ export interface QuoteDetails {
   marketState?: string;
   price?: number;
   /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */
-  freshness?: 'fresh' | 'stale' | 'delayed' | 'unknown';
+  freshness?: 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
   /** Time this client received the response; not necessarily the market observation time. */
   receivedAt?: number;
   /** Provider-reported market observation time, when available. */
   sourceTimestamp?: number;
+  /** Normalized source metadata; unknown values are omitted, never inferred from receipt time. */
+  provider?: string;
+  instrumentId?: string;
+  exchange?: string;
+  currency?: string;
+  assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN';
+  marketSession?: 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | 'UNKNOWN';
+  delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
+  dataQuality?: 'complete' | 'partial' | 'unknown';
+  cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
   [key: string]: any;
 }
 
@@ -288,6 +300,15 @@ export interface PortfolioState {
     }>;
     /** Current when the latest API refresh succeeded; stale after a failed refresh. */
     status?: 'current' | 'stale' | 'unavailable';
+    /** Provenance retained from the normalized broker adapter snapshot. */
+    provider?: string;
+    quality?: BrokerSnapshotQuality | 'unknown';
+    source?: BrokerSnapshotSource;
+    /** Provider market/account observation time; distinct from client receipt time. */
+    observedAt?: number;
+    warnings?: string[];
+    /** Most recent rejected/failed refresh, kept separately from last-known-good snapshot metadata. */
+    lastRefreshIssue?: BrokerDataQualityIssue;
     receivedAt: number;
   };
   cashCushion: CashCushionState;
@@ -303,6 +324,8 @@ export interface PortfolioState {
   closedTrades: ClosedTrade[];
   /** Persisted raw executed-trade snapshot from the broker, used to reconcile closed history and allocate broker cashflow fees. */
   brokerExecutedTrades?: FreedomExecutedTrade[];
+  /** Append-only app-owned mutation journal; positions remain canonical active state. */
+  transactionEvents?: PortfolioTransactionEvent[];
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;

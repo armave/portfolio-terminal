@@ -13,6 +13,8 @@ import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
+import { DeviceCheckSummary } from './DeviceCheckSummary';
 
 
 export interface BrokerRulesFormValues {
@@ -374,6 +376,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
 
+      <DeviceCheckSummary />
+
       {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
@@ -525,6 +529,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </form>
         </div>
       </details>}
+
+      <PortfolioMethodologyPanel />
     </div>
   );
 }
