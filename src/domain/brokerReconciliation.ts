@@ -285,7 +285,7 @@ export function reconcileBrokerPortfolio(
   const appTickers = new Set([...appPositions.values()].map(row => row.ticker));
   const brokerTickers = new Set([...brokerPositions.values()].map(row => row.ticker));
   const allTickers = new Set([...appTickers, ...brokerTickers]);
-  const suppressedMissing = partial || snapshot.quality === 'unknown';
+  const suppressedMissing = partial;
 
   for (const ticker of allTickers) {
     const appRows = [...appPositions.values()].filter(row => row.ticker === ticker);
@@ -375,7 +375,13 @@ export function reconcileBrokerPortfolio(
     }
   }
 
-  const status: BrokerReconciliationStatus = partial
+  const hasUnclassifiedRows = findings.some(finding =>
+    finding.type === 'unclassified_app_position' ||
+    finding.type === 'unclassified_broker_position' ||
+    finding.type === 'unclassified_app_balance' ||
+    finding.type === 'unclassified_broker_balance'
+  );
+  const status: BrokerReconciliationStatus = partial || hasUnclassifiedRows
     ? 'partial'
     : freshness === 'unknown'
       ? 'provisional'
