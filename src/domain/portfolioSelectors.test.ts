@@ -25,8 +25,8 @@ describe('market insights ticker selector', () => {
     expect(getMarketInsightsTicker({
       ...state,
       positions: {
-        AAPL: { ticker: 'AAPL', currentPrice: 105 },
-        MSFT: { ticker: 'MSFT', currentPrice: 200 }
+        AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 105, pt: 110, commBuy: 0 },
+        MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200, pt: 210, commBuy: 0 }
       }
     })).toBe('AAPL');
   });
