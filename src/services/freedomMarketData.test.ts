@@ -71,6 +71,26 @@ describe('fetchFreedomHistory', () => {
     );
   });
 
+  it('retries a transient Freedom history transport failure and preserves cancellation', async () => {
+    const controller = new AbortController();
+    vi.mocked(proxyFetch)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({
+        ok: true, provider: 'Freedom TradeNet', symbol: 'AAPL.US',
+        data: [{ t: 1793966400, c: 101 }]
+      });
+
+    await expect(fetchFreedomHistory('AAPL', { signal: controller.signal }))
+      .resolves.toMatchObject({ points: [{ price: 101 }] });
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(proxyFetch).toHaveBeenNthCalledWith(
+      1, 'freedom-history', { symbol: 'AAPL.US' }, { signal: controller.signal }
+    );
+    expect(proxyFetch).toHaveBeenNthCalledWith(
+      2, 'freedom-history', { symbol: 'AAPL.US' }, { signal: controller.signal }
+    );
+  });
+
   it('rejects mismatched provider symbols and malformed action envelopes', async () => {
     vi.mocked(proxyFetch).mockResolvedValueOnce({
       ok: true, provider: 'Freedom TradeNet', symbol: 'MSFT.US', data: []
@@ -170,6 +190,27 @@ describe("normalizeFreedomQuote", () => {
     );
   });
 
+
+  it('retries a transient Freedom REST quote transport failure and forwards cancellation', async () => {
+    const controller = new AbortController();
+    vi.mocked(proxyFetch)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({
+        data: { q: [{ c: 'AAPL.US', ltp: 215, pp: 200, chg: 15, pcp: 7.5 }] }
+      });
+
+    await expect(fetchFreedomQuote('AAPL', true, controller.signal))
+      .resolves.toMatchObject({ price: 215 });
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(proxyFetch).toHaveBeenNthCalledWith(
+      1, 'freedom-quote', { symbol: 'AAPL.US' },
+      { cache: 'no-store', signal: controller.signal }
+    );
+    expect(proxyFetch).toHaveBeenNthCalledWith(
+      2, 'freedom-quote', { symbol: 'AAPL.US' },
+      { cache: 'no-store', signal: controller.signal }
+    );
+  });
 
   it("uses the authenticated q WebSocket payload for the requested ticker", async () => {
     vi.mocked(fetchFreedomTradeNetQuoteStreamOnce).mockResolvedValue({
