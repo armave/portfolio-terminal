@@ -45,7 +45,16 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result).toMatchObject({
       price: 210,
       sourceName: 'Freedom TradeNet',
-      quoteDetails: { transport: 'websocket', freshness: 'fresh' }
+      quoteDetails: {
+        transport: 'websocket',
+        provider: 'FREEDOM TRADENET',
+        instrumentId: 'EQUITY:US:AAPL',
+        exchange: 'US',
+        assetType: 'EQUITY',
+        delayClass: 'live',
+        dataQuality: 'partial',
+        freshness: 'fresh'
+      }
     });
   });
 
