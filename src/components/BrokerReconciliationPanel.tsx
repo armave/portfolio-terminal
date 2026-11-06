@@ -74,8 +74,8 @@ function buildBrokerSnapshot(info: BrokerAccountInfo | undefined): BrokerDataSna
     warnings: [
       ...(info.warnings || []),
       ...(info.lastRefreshIssue?.warnings || []),
-      ...(!hasVerifiedQuality ? ['Saved broker snapshot has no verified completeness metadata.'] : []),
-      ...(!info.source ? ['Saved broker snapshot has no verified source metadata.'] : [])
+      ...(!hasVerifiedQuality ? ['Broker snapshot has no verified completeness metadata.'] : []),
+      ...(!info.source ? ['Broker snapshot has no verified source metadata.'] : [])
     ]
   };
 }
