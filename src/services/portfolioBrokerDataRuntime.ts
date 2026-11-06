@@ -4,8 +4,7 @@ import type {
   BrokerAdapter,
   BrokerDataQualityIssue,
   BrokerDataSnapshot,
-  BrokerSnapshotQuality,
-  BrokerSnapshotSource
+  BrokerSnapshotQuality
 } from '../types/broker';
 import {
   hasFreedomTradeHistoryBaseline,
