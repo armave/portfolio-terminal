@@ -26,6 +26,7 @@ export {
   normalizeMarketHistoryResponse,
   normalizeFxRate,
   isFxRateUsableForConversion,
+  getFxConversionRate,
   shouldAcceptMarketObservation
 } from './marketDataContracts';
 export type {
