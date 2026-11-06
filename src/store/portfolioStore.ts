@@ -20,7 +20,8 @@ import {
   hasPortfolioTransactionIdempotencyKey,
   isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
-  normalizePortfolioTransactionIdempotencyKey
+  normalizePortfolioTransactionIdempotencyKey,
+  mergePortfolioTransactionEvents
 } from '../domain/portfolioTransactionJournal';
 import {
   loadSavedState,
@@ -559,6 +560,9 @@ export class PortfolioStore {
     persist = true,
     source: PortfolioStoreChangeSource = 'durable'
   ): boolean {
+    // The append-only journal can only be changed by audited financial
+    // commands or by the validated import/merge path below.
+    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents')) return false;
     return this.update((state) => ({
       ...state,
       ...partial
@@ -573,10 +577,25 @@ export class PortfolioStore {
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
-    return this.update((state) => ({
-      ...state,
-      ...newState
-    }));
+    return this.update((state) => {
+      let transactionEvents = state.transactionEvents || [];
+      if (Array.isArray(newState.transactionEvents)) {
+        try {
+          transactionEvents = mergePortfolioTransactionEvents(
+            transactionEvents,
+            newState.transactionEvents
+          );
+        } catch {
+          return state;
+        }
+      }
+
+      return {
+        ...state,
+        ...newState,
+        transactionEvents
+      };
+    });
   }
 
   /**
