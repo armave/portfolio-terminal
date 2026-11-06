@@ -13,6 +13,7 @@ import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
 
 
 export interface BrokerRulesFormValues {
@@ -525,6 +526,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </form>
         </div>
       </details>}
+
+      <PortfolioMethodologyPanel />
     </div>
   );
 }
