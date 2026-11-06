@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - dev
       - main
   workflow_dispatch:
 
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   operations-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -29,19 +30,29 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        id: install_dependencies
         run: npm ci
 
       - name: Typecheck
+        id: typecheck
         run: npm run typecheck
 
       - name: Run unit and Worker tests
+        id: tests
         run: npm test
 
       - name: Build production site
+        id: build
         run: npm run build
 
       - name: Install isolated browser runner
-        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+        id: install_playwright
+        run: |
+          PLAYWRIGHT_ROOT="$RUNNER_TEMP/portfolio-terminal-playwright"
+          mkdir -p "$PLAYWRIGHT_ROOT"
+          npm install --prefix "$PLAYWRIGHT_ROOT" --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          ln -s "$PLAYWRIGHT_ROOT/node_modules/playwright" node_modules/playwright
+          ln -s "$PLAYWRIGHT_ROOT/node_modules/.bin/playwright" node_modules/.bin/playwright
 
       - name: Cache Playwright Chromium
         uses: actions/cache@v6
@@ -50,16 +61,66 @@ jobs:
           key: ${{ runner.os }}-playwright-1.56.1-chromium
 
       - name: Install Chromium
+        id: install_chromium
         run: npx playwright install chromium
 
       - name: Exercise account and Settings journeys in production browser
+        id: operations_browser
         run: node scripts/browser-smoke-operations.mjs
 
       - name: Validate dead code
+        id: dead_code
         run: npm run validate:dead-code
 
       - name: Audit all dependencies
+        id: dependency_audit
         run: npm run audit:dependencies
 
       - name: Audit production dependencies
+        id: production_audit
         run: npm run audit:production
+
+      - name: Publish exact-head operations evidence
+        if: always()
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
+          DEPENDENCIES_RESULT: ${{ steps.install_dependencies.outcome || 'not-run' }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome || 'not-run' }}
+          TESTS_RESULT: ${{ steps.tests.outcome || 'not-run' }}
+          BUILD_RESULT: ${{ steps.build.outcome || 'not-run' }}
+          PLAYWRIGHT_RESULT: ${{ steps.install_playwright.outcome || 'not-run' }}
+          CHROMIUM_RESULT: ${{ steps.install_chromium.outcome || 'not-run' }}
+          BROWSER_RESULT: ${{ steps.operations_browser.outcome || 'not-run' }}
+          DEAD_CODE_RESULT: ${{ steps.dead_code.outcome || 'not-run' }}
+          DEPENDENCY_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
+          PRODUCTION_AUDIT_RESULT: ${{ steps.production_audit.outcome || 'not-run' }}
+        run: |
+          TESTED_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          {
+            echo "## Exact-head operations browser evidence"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Tested checkout SHA | $TESTED_CHECKOUT_SHA |"
+            echo "| PR head SHA | $PR_HEAD_SHA |"
+            echo "| PR base SHA | $PR_BASE_SHA |"
+            echo "| Ref | $GITHUB_REF |"
+            echo "| Event | $GITHUB_EVENT_NAME |"
+            echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
+            echo
+            echo "| Validation | Outcome |"
+            echo "|---|---|"
+            echo "| npm ci | $DEPENDENCIES_RESULT |"
+            echo "| Typecheck | $TYPECHECK_RESULT |"
+            echo "| Vitest and Worker tests | $TESTS_RESULT |"
+            echo "| Production build | $BUILD_RESULT |"
+            echo "| Playwright install | $PLAYWRIGHT_RESULT |"
+            echo "| Chromium install | $CHROMIUM_RESULT |"
+            echo "| Operations browser journey | $BROWSER_RESULT |"
+            echo "| Dead-code validation | $DEAD_CODE_RESULT |"
+            echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
+            echo "| Production dependency audit | $PRODUCTION_AUDIT_RESULT |"
+            echo
+            echo "The Worker and broker interactions in the browser journey are deterministic test fixtures; live authenticated broker verification remains a separate manual gate."
+          } >> "$GITHUB_STEP_SUMMARY"
