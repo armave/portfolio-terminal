@@ -1,6 +1,7 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
+import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -55,7 +56,6 @@ import {
   buildFreedomAccountStreamSocketUrl,
   clearCloudHistory,
   clearFreedomCashflowCache,
-  fetchFreedomCashflows,
   pullCloudHistory,
   pushCloudHistory,
   proxyFetch,
@@ -66,7 +66,6 @@ import {
   getCurrentUser,
   listUsers,
   logoutAccount,
-  normalizeFreedomTrades,
   clearFreedomTradeNetStreamSnapshotCache,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
@@ -113,7 +112,6 @@ import {
 import {
   getFreedomCashflowRefreshStartDate,
   mergeFreedomCashflowRows,
-  normalizeFreedomCashflowRows,
   normalizeSavedFreedomCashflows
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
@@ -129,6 +127,8 @@ import type { ScenarioModalData } from './src/features/terminal/scenarioContract
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
 
 // ==========================================
+const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
+
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
 // ==========================================
 const DEFAULT_TRADERNET_RULES: BrokerAssumptions = DEFAULT_BROKER_ASSUMPTIONS;
@@ -259,7 +259,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
   // BEFORE setting raw broker rows, otherwise this listener overwrites the
   // separately persisted, fee-enriched history before ClosedHistoryDesk handles
   // the same event.
-  const savedFeeRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const savedFeeRows = freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data;
   const tradesWithPersistedFees = preservePersistedBrokerFeeAllocations(
     trades,
     [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
@@ -446,7 +446,7 @@ addBrokerEventListener('broker:active-orders-error', () => {
   logTerminal(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.'));
 });
 
-addBrokerEventListener('broker:account-info-error', () => {
+addBrokerEventListener('broker:account-info-error', (issue) => {
   const current = portfolioStore.getState();
   if (current.brokerAccountInfo) {
     portfolioStore.setState({
@@ -454,6 +454,10 @@ addBrokerEventListener('broker:account-info-error', () => {
     });
   }
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
+  if (issue?.quality === 'partial' && issue.warnings.length > 0) {
+    logTerminal(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
+    return;
+  }
   logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
 });
 
@@ -1006,7 +1010,7 @@ function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> 
           ? `${currentAccountRole}:${currentAccountId}`
           : '',
         isAdmin: () => currentAccountRole === 'admin',
-        loadSavedBrokerExecutions: () => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades),
+        loadSavedBrokerExecutions: () => freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data,
         getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
         onStatus: (status, message) => {
           if (status === 'connected') {
@@ -1368,9 +1372,9 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     if (!isCurrentSession()) return false;
     const savedAtStart = loadSavedHistory();
     const currentAtStart = portfolioStore.getState();
-    const cloudExecutions = normalizeFreedomTrades(cloudHistory?.brokerExecutedTrades || []);
-    const savedExecutions = normalizeFreedomTrades(savedAtStart.brokerExecutedTrades);
-    const currentExecutions = normalizeFreedomTrades(currentAtStart.brokerExecutedTrades || []);
+    const cloudExecutions = freedomBrokerAdapter.normalizeExecutions(cloudHistory?.brokerExecutedTrades || [], { source: 'cache' }).data;
+    const savedExecutions = freedomBrokerAdapter.normalizeExecutions(savedAtStart.brokerExecutedTrades, { source: 'cache' }).data;
+    const currentExecutions = freedomBrokerAdapter.normalizeExecutions(currentAtStart.brokerExecutedTrades || [], { source: 'cache' }).data;
     const baselineExecutions = mergeBrokerExecutionHistory(
       mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
       currentExecutions
@@ -1393,16 +1397,16 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     // sync must ask Freedom for the latest cashflow rows (full baseline once,
     // then an overlapping incremental window).
     clearFreedomCashflowCache();
-    const cashflowResponse = await fetchFreedomCashflows(latestCashflowDate);
+    const cashflowResponse = await freedomBrokerAdapter.fetchCashflows(latestCashflowDate);
     if (!isCurrentSession()) return false;
-    const fetchedCashflows = normalizeFreedomCashflowRows(cashflowResponse);
+    const fetchedCashflows = freedomBrokerAdapter.normalizeCashflows(cashflowResponse).data;
 
     // Broker executions may have completed while the cashflow request was in
     // flight. Re-read the canonical store and sidecar before calculating fees.
     const current = portfolioStore.getState();
     const saved = loadSavedHistory();
-    const latestSavedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
-    const latestCurrentExecutions = normalizeFreedomTrades(current.brokerExecutedTrades || []);
+    const latestSavedExecutions = freedomBrokerAdapter.normalizeExecutions(saved.brokerExecutedTrades, { source: 'cache' }).data;
+    const latestCurrentExecutions = freedomBrokerAdapter.normalizeExecutions(current.brokerExecutedTrades || [], { source: 'cache' }).data;
     const mergedExecutions = preservePersistedBrokerFeeAllocations(
       mergeBrokerExecutionHistory(
         mergeBrokerExecutionHistory(cloudExecutions, latestSavedExecutions),

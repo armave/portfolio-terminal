@@ -2,6 +2,7 @@ import type {
   FreedomActiveOrder,
   FreedomPortfolioSnapshot
 } from './api';
+import type { BrokerDataQualityIssue } from '../types/broker';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 interface ActiveTrancheTypeRequest {
@@ -29,7 +30,7 @@ export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-refreshing': undefined;
   'broker:account-info-refresh-complete': undefined;
-  'broker:account-info-error': undefined;
+  'broker:account-info-error': BrokerDataQualityIssue | undefined;
   'broker:executed-trades': FreedomExecutedTrade[];
   'broker:live-order-fills': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
@@ -54,7 +55,7 @@ const listeners = new Map<BrokerEventName, Set<BrokerListener>>();
 /** Publish an in-process broker update or request without using window DOM events. */
 export function emitBrokerEvent<K extends BrokerEventName>(
   type: K,
-  ...args: BrokerEventPayloads[K] extends undefined ? [payload?: undefined] : [payload: BrokerEventPayloads[K]]
+  ...args: undefined extends BrokerEventPayloads[K] ? [payload?: BrokerEventPayloads[K]] : [payload: BrokerEventPayloads[K]]
 ): void {
   const payload = args[0];
   listeners.get(type)?.forEach((listener) => listener(payload));

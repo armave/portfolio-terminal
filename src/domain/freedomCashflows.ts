@@ -1,12 +1,6 @@
-export interface NormalizedFreedomCashflow {
-  id: string;
-  date: string;
-  type: string;
-  amount: number;
-  currency?: string;
-  description?: string;
-  raw: Record<string, string>;
-}
+import type { BrokerCashflow } from '../types/broker';
+
+export type NormalizedFreedomCashflow = BrokerCashflow;
 
 const ROW_COLLECTION_KEYS = [
   "cashflows", "cashflow", "cash_flows", "cashFlows", "cash_flow",

@@ -1,41 +1,14 @@
-export interface FreedomActiveOrder {
-  id: string;
-  ticker: string;
-  operation: number | null;
-  orderType: number | null;
-  limitPrice: number | null;
-  remainingQuantity: number | null;
-  date?: string | number | null;
-  status: string;
-  raw: Record<string, unknown>;
-}
+import type {
+  BrokerActiveOrder,
+  BrokerCashBalance,
+  BrokerPosition,
+  BrokerPortfolioSnapshot
+} from '../types/broker';
 
-export interface FreedomCashBalance {
-  currency: string;
-  amount: number;
-  forecastIn: number;
-  forecastOut: number;
-  t2In: number;
-  t2Out: number;
-}
-
-export interface FreedomOpenPosition {
-  ticker: string;
-  name: string;
-  quantity: number;
-  currency: string;
-  marketPrice: number | null;
-  marketValue: number | null;
-  averagePrice: number | null;
-  profitClose: number | null;
-  accountPositionId: number | null;
-}
-
-export interface FreedomPortfolioSnapshot {
-  loaded: boolean;
-  balances: FreedomCashBalance[];
-  positions: FreedomOpenPosition[];
-}
+export type FreedomActiveOrder = BrokerActiveOrder;
+export type FreedomCashBalance = BrokerCashBalance;
+export type FreedomOpenPosition = BrokerPosition;
+export type FreedomPortfolioSnapshot = BrokerPortfolioSnapshot;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -257,27 +230,41 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
     textOr(readFirst(row, ['curr', 'base_currency'])).toUpperCase() === 'USD'
   );
 
-  const balances = usdRows(ps.acc).map((row): FreedomCashBalance => ({
-    currency: 'USD',
-    // TradeNet s matches the USD balance shown in the broker app; currval is a different value.
-    amount: numberOrNull(row.s) ?? numberOrNull(row.currval) ?? 0,
-    forecastIn: numberOrNull(row.forecast_in) ?? 0,
-    forecastOut: numberOrNull(row.forecast_out) ?? 0,
-    t2In: numberOrNull(row.t2_in) ?? 0,
-    t2Out: numberOrNull(row.t2_out) ?? 0
-  }));
+  const balances = usdRows(ps.acc).map((row): FreedomCashBalance => {
+    // TradeNet's `s` is the authoritative USD balance field; retain the
+    // documented `currval` fallback, but never manufacture a zero when both
+    // fields are absent or malformed. Zero remains a valid broker value.
+    const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+    if (amount === null) {
+      throw new Error('TradeNet USD balance row is missing a valid balance amount.');
+    }
+    return {
+      currency: 'USD',
+      amount,
+      forecastIn: numberOrNull(row.forecast_in) ?? 0,
+      forecastOut: numberOrNull(row.forecast_out) ?? 0,
+      t2In: numberOrNull(row.t2_in) ?? 0,
+      t2Out: numberOrNull(row.t2_out) ?? 0
+    };
+  });
 
-  const positions = usdRows(ps.pos).map((row): FreedomOpenPosition => ({
-    ticker: textOr(readFirst(row, ['i', 'base_contract_code'])),
-    name: textOr(readFirst(row, ['name', 'name2', 'i']), 'Unknown instrument'),
-    quantity: numberOrNull(row.q) ?? 0,
-    currency: 'USD',
-    marketPrice: numberOrNull(row.mkt_price),
-    marketValue: numberOrNull(row.market_value),
-    averagePrice: numberOrNull(row.bal_price_a),
-    profitClose: numberOrNull(row.profit_close),
-    accountPositionId: numberOrNull(row.acc_pos_id)
-  }));
+  const positions = usdRows(ps.pos).map((row): FreedomOpenPosition => {
+    const quantity = numberOrNull(row.q);
+    if (quantity === null) {
+      throw new Error('TradeNet USD position row is missing a valid quantity.');
+    }
+    return {
+      ticker: textOr(readFirst(row, ['i', 'base_contract_code'])),
+      name: textOr(readFirst(row, ['name', 'name2', 'i']), 'Unknown instrument'),
+      quantity,
+      currency: 'USD',
+      marketPrice: numberOrNull(row.mkt_price),
+      marketValue: numberOrNull(row.market_value),
+      averagePrice: numberOrNull(row.bal_price_a),
+      profitClose: numberOrNull(row.profit_close),
+      accountPositionId: numberOrNull(row.acc_pos_id)
+    };
+  });
 
   return { loaded: true, balances, positions };
 }

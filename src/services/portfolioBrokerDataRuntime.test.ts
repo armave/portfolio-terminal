@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import type { FreedomPortfolioSnapshot } from './freedomAccountContracts';
 import type { SessionIdentityToken } from '../utils/sessionIdentityGuard';
+import { createFreedomTradeNetBrokerAdapter } from './brokerAdapters/freedomTradeNetAdapter';
 import {
   createPortfolioBrokerDataRuntime,
   type PortfolioBrokerDataRuntimeDependencies
@@ -105,6 +106,35 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.events).toEqual([
       { type: 'broker:account-info-refresh-complete', payload: undefined }
     ]);
+  });
+
+  it('rejects a partial broker snapshot and retains the previous account state', async () => {
+    const fixture = createFixture({
+      fetchAccountInfo: vi.fn(async () => ({
+        data: { result: { ps: {
+          loaded: true,
+          acc: [{ curr: 'USD', s: true, currval: false }],
+          pos: [{ curr: 'USD', i: 'AAPL.US', q: 2, mkt_price: 190 }]
+        } } }
+      })),
+      normalizeAccountInfo: undefined,
+      brokerAdapter: createFreedomTradeNetBrokerAdapter()
+    });
+
+    await expect(fixture.runtime.refreshAccountInfo(fixture.session)).resolves.toBe(false);
+    expect(fixture.events.map((event) => event.type)).toEqual([
+      'broker:account-info-refreshing',
+      'broker:account-info-error'
+    ]);
+    expect(fixture.events[1].payload).toMatchObject({
+      provider: 'freedom-tradenet',
+      quality: 'partial',
+      source: 'rest',
+      warnings: expect.arrayContaining([
+        'TradeNet USD balance row without a valid amount was excluded.'
+      ])
+    });
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:account-info' }));
   });
 
   it('completes the balance refresh lifecycle when the live portfolio snapshot is already applied', async () => {

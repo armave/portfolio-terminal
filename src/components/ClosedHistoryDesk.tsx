@@ -3,7 +3,8 @@ import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
-import { fetchFreedomCashflows, listUsers, normalizeFreedomTrades, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
+import { listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
+import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import {
   hasFreedomCashflowHistoryBaseline,
   loadSavedHistory,
@@ -11,7 +12,7 @@ import {
   savePortfolioSnapshot
 } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
@@ -24,6 +25,10 @@ import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import type { PortfolioState } from '../types/portfolio';
+
+const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
+const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
+  brokerAdapter.normalizeExecutions(value).data;
 
 function selectTradesPortfolioState(state: PortfolioState) {
   return {
@@ -54,7 +59,7 @@ function areTradesPortfolioStatesEqual(
 
 /** Restore the local execution snapshot synchronously before the first Trades render. */
 function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
-  const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const savedExecutions = normalizeBrokerExecutions(loadSavedHistory().brokerExecutedTrades);
   const currentExecutions = portfolioStore.getState().brokerExecutedTrades || [];
   return mergeBrokerExecutionHistory(
     savedExecutions,
@@ -123,7 +128,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (!active || !isSessionCurrent()) return;
       const current = portfolioStore.getState();
       const saved = loadSavedHistory();
-      const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+      const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
       const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
       const localCashflows = current.cashflows?.length ? current.cashflows : savedCashflows;
       const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : savedExecutions;
@@ -135,7 +140,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
-      const cloudSourceExecutions = normalizeFreedomTrades(cloud.brokerExecutedTrades);
+      const cloudSourceExecutions = normalizeBrokerExecutions(cloud.brokerExecutedTrades);
       const cloudCashflows = normalizeSavedFreedomCashflows(cloud.cashflows);
       historyHydrated.current = true;
       // Cloud history is the durable baseline, but the just-fetched broker page
@@ -181,7 +186,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (active && isSessionCurrent()) {
         const current = portfolioStore.getState();
         const saved = loadSavedHistory();
-        const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+        const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
         const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
         portfolioStore.setState({
           brokerExecutedTrades: mergeBrokerExecutionHistory(
@@ -336,9 +341,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     try {
       const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
       const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
-      const response = await fetchFreedomCashflows(fromDate);
+      const response = await brokerAdapter.fetchCashflows(fromDate);
       if (!isSessionCurrent()) return;
-      const fetchedRows = normalizeFreedomCashflowRows(response);
+      const fetchedRows = brokerAdapter.normalizeCashflows(response).data;
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
 
@@ -432,7 +437,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       // In-memory rows can contain explicit empty allocation objects from a
       // pre-hydration broker response. Restore real saved allocations by ID before
       // writing these rows into the canonical store or triggering cloud sync.
-      const savedFeeRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+      const savedFeeRows = normalizeBrokerExecutions(loadSavedHistory().brokerExecutedTrades);
       const normalizedPage = preservePersistedBrokerFeeAllocations(
         normalizedRaw,
         [...savedFeeRows, ...stored]
@@ -470,7 +475,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         return;
       }
       const saved = loadSavedHistory().brokerExecutedTrades;
-      if (Array.isArray(saved) && saved.length) persistBrokerTrades(normalizeFreedomTrades(saved));
+      if (Array.isArray(saved) && saved.length) persistBrokerTrades(normalizeBrokerExecutions(saved));
     };
     readCurrentTrades();
     // Trades requests a refresh on mount; the canonical cache remains in portfolioStore.

@@ -2,6 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
 
+describe('broker history adapter boundary', () => {
+  it('normalizes saved executions through the provider adapter', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';");
+    expect(source).toContain("freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data");
+    expect(source).not.toContain('normalizeFreedomTrades');
+  });
+});
+
 describe('usable margin market prices', () => {
   it('accepts only finite positive prices', () => {
     expect(getUsableMarketPrice(123.45)).toBe(123.45);
