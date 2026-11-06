@@ -334,3 +334,27 @@ describe('comparePerformanceToBenchmark', () => {
     }
   });
 });
+
+
+describe('leveraged portfolio equity crossing zero', () => {
+  it('reports a finite loss beyond 100% when positive opening equity turns negative', () => {
+    const result = calculateTimeWeightedReturn({
+      valuations: [valuation(0, 100), valuation(YEAR, -20)]
+    });
+    expect(result.status).toBe('available');
+    if (result.status !== 'unavailable') {
+      expect(result.value.periods[0].returnRate).toBeCloseTo(-1.2, 12);
+      expect(result.value.totalReturn).toBeCloseTo(-1.2, 12);
+    }
+  });
+
+  it('does not calculate a subsequent standard return period from non-positive opening equity', () => {
+    const result = calculateTimeWeightedReturn({
+      valuations: [valuation(0, 100), valuation(YEAR, -20), valuation(2 * YEAR, 10)]
+    });
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') {
+      expect(result.reason).toContain('positive opening equity');
+    }
+  });
+});
