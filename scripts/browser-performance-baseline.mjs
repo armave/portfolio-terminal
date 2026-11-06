@@ -122,6 +122,21 @@ function authUser() {
 async function mockWorkerApi(page) {
   const user = authUser();
   const token = 'performance-admin-session';
+  const brokerPositions = Array.from({ length: syntheticPositionCount }, (_, index) => {
+    const ticker = `PT${String(index + 1).padStart(3, '0')}`;
+    const marketPrice = 20 + index * 0.35;
+    return {
+      curr: 'USD',
+      i: `${ticker}.US`,
+      name: `Synthetic Position ${index + 1}`,
+      q: '50',
+      mkt_price: marketPrice.toFixed(2),
+      market_value: (marketPrice * 50).toFixed(2),
+      bal_price_a: (marketPrice * 0.955).toFixed(4),
+      profit_close: (marketPrice * 50 * 0.045).toFixed(2),
+      acc_pos_id: 900000 + index
+    };
+  });
   let stateRevision = 0;
   let historyRevision = 0;
   const calls = [];
@@ -218,7 +233,11 @@ async function mockWorkerApi(page) {
         case 'freedom-portfolio-snapshot':
         case 'freedom-positions':
           await json(route, 200, {
-            data: { result: { ps: { loaded: true, acc: [], pos: [] } } }
+            data: { result: { ps: {
+              loaded: true,
+              acc: [{ curr: 'USD', s: '10000', currval: '10000' }],
+              pos: brokerPositions
+            } } }
           }, call);
           return;
         case 'freedom-orders-stream':
