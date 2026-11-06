@@ -3,7 +3,7 @@
 **Status:** Architecture/design foundation; implementation is deliberately gated  
 **Tracking issue:** [#333](https://github.com/armave/portfolio-terminal/issues/333)  
 **Umbrella product roadmap:** [PR #347](https://github.com/armave/portfolio-terminal/pull/347)  
-**Target implementation PR branch:** \`feat/pt-05-portfolio-tenancy\` → \`dev\`  
+**Target implementation PR branch:** `feat/pt-05-portfolio-tenancy` → `dev`  
 **Scope of this change:** Architecture and migration specification only. It does not enable tenant creation, alter authorization, change Worker routes, migrate stored portfolios, or change encryption keys.
 
 ---
@@ -20,27 +20,27 @@ The present system is already a useful starting point: it has authenticated acco
 
 ## 2. Verified current-state baseline
 
-The design is based on the current \`dev\` source inspected for this workstream.
+The design is based on the current `dev` source inspected for this workstream.
 
 ### Identity and roles
 
-- \`state-store.js\` stores the account directory at \`auth:users\`.
-- Current account records include a stable user ID, name/normalized name, \`role\` (\`admin\` or \`guest\`), language, password salt/hash metadata, and creation time.
-- The initial bootstrap creates one administrator and stores a shared cloud-encryption key at \`auth:cloud-encryption-key\`.
-- Account management is administrator-only. The role API currently accepts only \`admin\` and \`guest\`.
+- `state-store.js` stores the account directory at `auth:users`.
+- Current account records include a stable user ID, name/normalized name, `role` (`admin` or `guest`), language, password salt/hash metadata, and creation time.
+- The initial bootstrap creates one administrator and stores a shared cloud-encryption key at `auth:cloud-encryption-key`.
+- Account management is administrator-only. The role API currently accepts only `admin` and `guest`.
 - The Worker verifies the session and obtains the authenticated account role and ID before handling protected requests.
 - Guest sessions are read-only at the public Worker boundary. Guests cannot read the administrator's shared state/history/margin-digest records or private account/order/cashflow paths.
 
 ### Portfolio and guest data
 
-- The Worker routes \`/api/state\`, \`/api/history\`, \`/api/margin-digest\`, and \`/api/guest-portfolio\` to a Durable Object named \`portfolio_state\`.
+- The Worker routes `/api/state`, `/api/history`, `/api/margin-digest`, and `/api/guest-portfolio` to a Durable Object named `portfolio_state`.
 - The owner portfolio state and history use shared record keys in that Durable Object; the state route does not yet select a tenant portfolio.
-- Guest data is stored separately under \`guest-portfolio:<guestUserId>\`.
+- Guest data is stored separately under `guest-portfolio:<guestUserId>`.
 - An authenticated guest GET is bound to the current guest's own ID. An administrator POST publishes a guest projection, and the server checks that every target ID is an existing guest.
 - Guest projections and assignment ledgers are encrypted by the Durable Object using the current shared workspace encryption key. Guest publication uses revision checks and a transaction to prevent partial batch writes or stale publisher wins.
 - Existing tests cover guest self-read, cross-guest isolation, guest write rejection, guest access to the workspace key rejection, publication atomicity, and session revocation.
-- \`src/domain/guestPortfolio.ts\` and related guest assignment services produce restricted assigned-tranche and guest-history projections. These are projections, not independent tenant-owned portfolio books.
-- \`src/domain/accountPermissions.ts\` and \`canAccessPortfolioView\` currently model the two client account roles for presentation/navigation. They are not a substitute for server authorization.
+- `src/domain/guestPortfolio.ts` and related guest assignment services produce restricted assigned-tranche and guest-history projections. These are projections, not independent tenant-owned portfolio books.
+- `src/domain/accountPermissions.ts` and `canAccessPortfolioView` currently model the two client account roles for presentation/navigation. They are not a substitute for server authorization.
 
 ### Consequence
 
@@ -50,7 +50,7 @@ This baseline must remain the compatibility contract until an approved migration
 
 ## 3. Vocabulary and ownership model
 
-Use the following distinct concepts. Do not overload the existing \`accountId\` name for all of them.
+Use the following distinct concepts. Do not overload the existing `accountId` name for all of them.
 
 | Entity | Meaning | Ownership/security boundary |
 |---|---|---|
@@ -94,16 +94,16 @@ The role names do not dictate every product feature. Define permissions as capab
 
 ### Initial capability vocabulary
 
-- \`tenant.read\`, \`tenant.update\`, \`tenant.members.manage\`
-- \`workspace.read\`, \`workspace.create\`, \`workspace.update\`, \`workspace.members.manage\`
-- \`portfolio.read\`, \`portfolio.create\`, \`portfolio.update\`, \`portfolio.archive\`, \`portfolio.delete\`
-- \`portfolio.positions.read\`, \`portfolio.transactions.read\`, \`portfolio.transactions.write\`
-- \`portfolio.performance.read\`, \`portfolio.risk.read\`, \`portfolio.projections.read\`
-- \`portfolio.reports.read\`, \`portfolio.reports.export\`
-- \`portfolio.share.manage\`
-- \`broker.connection.read\`, \`broker.connection.manage\`, \`broker.credentials.use\`
-- \`platform.users.manage\`, \`platform.health.read\`, \`platform.audit.read\`
-- \`support.break_glass\` (separate, exceptional, time-limited, reason-required, and fully audited)
+- `tenant.read`, `tenant.update`, `tenant.members.manage`
+- `workspace.read`, `workspace.create`, `workspace.update`, `workspace.members.manage`
+- `portfolio.read`, `portfolio.create`, `portfolio.update`, `portfolio.archive`, `portfolio.delete`
+- `portfolio.positions.read`, `portfolio.transactions.read`, `portfolio.transactions.write`
+- `portfolio.performance.read`, `portfolio.risk.read`, `portfolio.projections.read`
+- `portfolio.reports.read`, `portfolio.reports.export`
+- `portfolio.share.manage`
+- `broker.connection.read`, `broker.connection.manage`, `broker.credentials.use`
+- `platform.users.manage`, `platform.health.read`, `platform.audit.read`
+- `support.break_glass` (separate, exceptional, time-limited, reason-required, and fully audited)
 
 ### Permission matrix (initial safe defaults)
 
@@ -128,7 +128,7 @@ The role names do not dictate every product feature. Define permissions as capab
 
 After successful authentication, the server constructs a principal from verified session state. Conceptually:
 
-\`\`\`ts
+```ts
 interface AuthenticatedPrincipal {
   userId: string;
   sessionId: string;
@@ -144,7 +144,7 @@ interface TenantMembership {
   role: "owner" | "manager" | "investor" | "guest";
   membershipVersion: number;
 }
-\`\`\`
+```
 
 This is a conceptual target contract, not a type to add to client code as a source of truth. Session validation and membership resolution happen at the trusted server boundary.
 
@@ -152,14 +152,14 @@ This is a conceptual target contract, not a type to add to client code as a sour
 
 Every protected operation should be describable as:
 
-\`\`\`ts
+```ts
 authorize(principal, {
   action: "portfolio.transactions.write",
   tenantId,
   workspaceId,
   portfolioId
 });
-\`\`\`
+```
 
 The policy evaluator must:
 - Fail closed for missing/unknown users, roles, memberships, resources, and permissions.
@@ -174,10 +174,10 @@ A client may select a portfolio ID, but the server must resolve that ID and prov
 
 ### Endpoint and resource rules
 
-- Prefer resource-scoped routes, for example \`/api/tenants/:tenantId/workspaces/:workspaceId/portfolios/:portfolioId/state\`.
-- The server must not trust \`tenantId\`, \`workspaceId\`, \`portfolioId\`, \`ownerId\`, or role values in POST bodies as proof of access.
+- Prefer resource-scoped routes, for example `/api/tenants/:tenantId/workspaces/:workspaceId/portfolios/:portfolioId/state`.
+- The server must not trust `tenantId`, `workspaceId`, `portfolioId`, `ownerId`, or role values in POST bodies as proof of access.
 - Do not use a request's supplied ID directly to select a Durable Object before authorization. Resolve a canonical resource record through the trusted directory, authorize it, then route using the canonical server-held identifier.
-- Never let a guest read the shared legacy \`/api/state\`, \`/api/history\`, \`/api/margin-digest\`, or raw broker account paths as a side effect of receiving a portfolio grant.
+- Never let a guest read the shared legacy `/api/state`, `/api/history`, `/api/margin-digest`, or raw broker account paths as a side effect of receiving a portfolio grant.
 - Exports, backups, reports, AI tools, polling jobs, quote subscriptions, and WebSocket ticket creation are also protected resource reads.
 - WebSocket tickets should carry only short-lived, minimum necessary scope. Ticket consumption must validate ticket age, single-use state, user/session revocation state, portfolio scope, and permission version; role changes and grant revocation must terminate or invalidate relevant streams.
 
@@ -185,7 +185,7 @@ A client may select a portfolio ID, but the server must resolve that ID and prov
 
 ### Separation of authority
 
-The current \`PortfolioStateDO\` instance is both the account/auth directory and the shared portfolio-data endpoint. The target design should separate those responsibilities:
+The current `PortfolioStateDO` instance is both the account/auth directory and the shared portfolio-data endpoint. The target design should separate those responsibilities:
 
 1. **Identity/directory authority:** verifies sessions, manages users and memberships, issues/revokes sessions, resolves canonical tenant/workspace/portfolio ownership and grants.
 2. **Tenant data authority:** stores tenant/workspace-scoped portfolio and history data and enforces the authorized scope passed by the trusted Worker.
@@ -198,19 +198,19 @@ The exact Cloudflare topology (new Durable Object class/binding versus a careful
 
 Conceptual target keys should make ownership explicit, e.g.:
 
-- \`tenant:<tenantId>:metadata\`
-- \`tenant:<tenantId>:workspace:<workspaceId>:metadata\`
-- \`tenant:<tenantId>:portfolio:<portfolioId>:snapshot\`
-- \`tenant:<tenantId>:portfolio:<portfolioId>:history\`
-- \`tenant:<tenantId>:portfolio:<portfolioId>:transactions\`
-- \`tenant:<tenantId>:portfolio:<portfolioId>:revision\`
-- \`tenant:<tenantId>:portfolio:<portfolioId>:audit\`
+- `tenant:<tenantId>:metadata`
+- `tenant:<tenantId>:workspace:<workspaceId>:metadata`
+- `tenant:<tenantId>:portfolio:<portfolioId>:snapshot`
+- `tenant:<tenantId>:portfolio:<portfolioId>:history`
+- `tenant:<tenantId>:portfolio:<portfolioId>:transactions`
+- `tenant:<tenantId>:portfolio:<portfolioId>:revision`
+- `tenant:<tenantId>:portfolio:<portfolioId>:audit`
 
 The exact storage layout is an implementation decision. Avoid embedding raw user-controlled strings directly into keys. Validate identifier format/length and construct key names only from canonical server records.
 
 ### Encryption and key lifecycle
 
-The current system has a shared \`auth:cloud-encryption-key\` and uses it to encrypt guest projection/ledger payloads. That is a legacy compatibility constraint, not a suitable final per-tenant key hierarchy.
+The current system has a shared `auth:cloud-encryption-key` and uses it to encrypt guest projection/ledger payloads. That is a legacy compatibility constraint, not a suitable final per-tenant key hierarchy.
 
 Target requirements:
 - Unique tenant-scoped data encryption keys (DEKs), with versioned key metadata.
@@ -362,8 +362,8 @@ This PT-05 workstream is intentionally staged. The present PR defines architectu
 
 ### Deployment policy
 
-- This design document is delivered as a client/docs PR to \`dev\`.
-- Any later Worker/Durable Object/server-only implementation must follow the repository policy and be committed/pushed directly to \`main\` for immediate deployment.
+- This design document is delivered as a client/docs PR to `dev`.
+- Any later Worker/Durable Object/server-only implementation must follow the repository policy and be committed/pushed directly to `main` for immediate deployment.
 - A mixed feature must split server deployment and client presentation into compatible slices, with both commits/PRs cross-linked to issue #333 and the umbrella roadmap.
 - Do not merge a client that assumes a server capability which has not been deployed. Keep feature flags disabled until the server contract is live and verified.
 
