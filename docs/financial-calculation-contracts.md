@@ -72,6 +72,16 @@ Quote metadata contract in `src/types/portfolio.ts`:
 
 A quote with unknown observation time must not be silently labelled fresh merely because it was recently received.
 
+### Required fields in normalized USD broker snapshots
+
+The Freedom TradeNet account normalizer treats a finite USD balance amount (`s`, falling back to `currval`) and a finite position quantity (`q`) as required fields. A numeric zero is valid. Missing, boolean, non-finite, or otherwise malformed required values are not converted to zero.
+
+The adapter excludes malformed or unclassifiable rows from its candidate normalized data and marks the entire snapshot `partial`. Missing account/position collections and rows without a verifiable currency are also partial. Explicit non-USD rows are excluded from this app's USD scope without making an otherwise valid USD snapshot partial.
+
+A partial snapshot is not applied to the canonical portfolio state and does not mark the private account stream current. The previous accepted broker snapshot is retained and marked stale. The rejection event carries provider, quality, source, receipt/observation timestamps, and sanitized warnings; it does not carry raw broker rows.
+
+This is separate from quote freshness: an otherwise complete snapshot can still have unknown observation time and therefore remain provisional under the valuation reliability contract.
+
 ### Source freshness and valuation-state mapping
 
 The source-observation state and aggregate valuation reliability are different dimensions. The current implementation exposes the following source states and classification behavior:

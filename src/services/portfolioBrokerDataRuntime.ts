@@ -1,6 +1,11 @@
 import { emitBrokerEvent } from './brokerEventBus';
 import { brokerAdapterRegistry } from './brokerAdapters/registry';
-import type { BrokerAdapter } from '../types/broker';
+import type {
+  BrokerAdapter,
+  BrokerDataQualityIssue,
+  BrokerDataSnapshot,
+  BrokerSnapshotQuality
+} from '../types/broker';
 import {
   hasFreedomTradeHistoryBaseline,
   loadSavedHistory,
@@ -77,8 +82,34 @@ export function createPortfolioBrokerDataRuntime(
   const restoreSecret = dependencies.restoreGatewaySecret || restoreGatewaySecret;
   const brokerAdapter = dependencies.brokerAdapter || brokerAdapterRegistry.get('freedom-tradenet');
   const fetchAccountInfo = dependencies.fetchAccountInfo || brokerAdapter.fetchPortfolio;
-  const normalizeAccountInfo = dependencies.normalizeAccountInfo ||
-    ((response) => brokerAdapter.normalizePortfolio(response).data);
+  const normalizeAccountSnapshot = (response: unknown): BrokerDataSnapshot<FreedomPortfolioSnapshot> => {
+    if (dependencies.normalizeAccountInfo) {
+      // Preserve the existing injectable test/compatibility seam while making
+      // production refreshes consume the complete adapter snapshot contract.
+      const data = dependencies.normalizeAccountInfo(response);
+      const quality: BrokerSnapshotQuality = !data.loaded
+        ? 'partial'
+        : data.balances.length === 0 && data.positions.length === 0 ? 'empty' : 'complete';
+      return {
+        provider: brokerAdapter.provider,
+        data,
+        quality,
+        source: 'rest',
+        receivedAt: Date.now(),
+        warnings: data.loaded ? [] : ['The broker portfolio snapshot was not loaded.']
+      };
+    }
+    return brokerAdapter.normalizePortfolio(response);
+  };
+
+  const toQualityIssue = (snapshot: BrokerDataSnapshot<FreedomPortfolioSnapshot>): BrokerDataQualityIssue => ({
+    provider: snapshot.provider,
+    quality: snapshot.quality,
+    source: snapshot.source,
+    receivedAt: snapshot.receivedAt,
+    ...(snapshot.observedAt === undefined ? {} : { observedAt: snapshot.observedAt }),
+    warnings: [...snapshot.warnings]
+  });
   const fetchExecutedTrades = dependencies.fetchExecutedTrades || brokerAdapter.fetchExecutions;
   const normalizeExecutedTrades = dependencies.normalizeExecutedTrades ||
     ((response) => brokerAdapter.normalizeExecutions(response).data);
@@ -139,7 +170,7 @@ export function createPortfolioBrokerDataRuntime(
         return true;
       }
 
-      const snapshot = normalizeAccountInfo(response);
+      const brokerSnapshot = normalizeAccountSnapshot(response);
       if (!dependencies.isSessionCurrent(session)) return false;
       if (
         getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio') > streamRevisionAtStart ||
@@ -149,8 +180,13 @@ export function createPortfolioBrokerDataRuntime(
         return true;
       }
 
-      emit('broker:account-info', snapshot);
-      return snapshot.loaded === true;
+      if (brokerSnapshot.quality === 'partial' || brokerSnapshot.data.loaded !== true) {
+        emit('broker:account-info-error', toQualityIssue(brokerSnapshot));
+        return false;
+      }
+
+      emit('broker:account-info', brokerSnapshot.data);
+      return true;
     })();
 
     accountRequests.set(requestKey, request);

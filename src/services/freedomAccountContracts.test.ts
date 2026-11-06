@@ -68,12 +68,30 @@ describe('normalizeFreedomPortfolio', () => {
       .toThrow('not loaded yet');
   });
 
-  it('does not coerce boolean broker values into numeric balances or positions', () => {
-    const snapshot = normalizeFreedomPortfolio({
+  it('rejects malformed required USD balance amounts and position quantities instead of coercing them to zero', () => {
+    expect(() => normalizeFreedomPortfolio({
       data: { result: { ps: {
         loaded: true,
         acc: [{ curr: 'USD', s: true, currval: false }],
+        pos: []
+      } } }
+    })).toThrow('missing a valid balance amount');
+
+    expect(() => normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [],
         pos: [{ curr: 'USD', i: 'AAPL', q: true, mkt_price: false }]
+      } } }
+    })).toThrow('missing a valid quantity');
+  });
+
+  it('preserves genuine zero USD balances and quantities', () => {
+    const snapshot = normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 0 }],
+        pos: [{ curr: 'USD', i: 'AAPL', q: 0, mkt_price: false }]
       } } }
     });
     expect(snapshot.balances[0].amount).toBe(0);

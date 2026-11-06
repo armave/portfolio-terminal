@@ -41,12 +41,22 @@ export function createFreedomAccountStreamAppRuntime(
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     getCurrentSessionKey: dependencies.getCurrentSessionKey,
-    onPortfolio: (data, sessionKey) => {
+    onPortfolio: (data, sessionKey, receivedAt) => {
       if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
-      const snapshot = brokerAdapter.normalizePortfolio(data, { source: 'websocket' }).data;
-      if (!snapshot.loaded) return false;
+      const brokerSnapshot = brokerAdapter.normalizePortfolio(data, { source: 'websocket', receivedAt });
+      if (brokerSnapshot.quality === 'partial' || brokerSnapshot.data.loaded !== true) {
+        emitBrokerEvent('broker:account-info-error', {
+          provider: brokerSnapshot.provider,
+          quality: brokerSnapshot.quality,
+          source: brokerSnapshot.source,
+          receivedAt: brokerSnapshot.receivedAt,
+          ...(brokerSnapshot.observedAt === undefined ? {} : { observedAt: brokerSnapshot.observedAt }),
+          warnings: [...brokerSnapshot.warnings]
+        });
+        return false;
+      }
       markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
-      emitBrokerEvent('broker:account-info', snapshot);
+      emitBrokerEvent('broker:account-info', brokerSnapshot.data);
       return true;
     },
     onOrders: (data, sessionKey) => {

@@ -58,15 +58,88 @@ function readOrderRows(response: unknown): unknown[] | null {
   return null;
 }
 
-function countUsdRows(value: unknown): number {
-  if (!Array.isArray(value)) return 0;
-  return value.filter((candidate) => {
-    const row = asRecord(candidate);
-    const currency = row?.curr ?? row?.base_currency;
-    return typeof currency === 'string' || typeof currency === 'number'
-      ? String(currency).trim().toUpperCase() === 'USD'
-      : false;
-  }).length;
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function currencyCode(row: Record<string, unknown>): string {
+  const value = row.curr ?? row.base_currency;
+  return typeof value === 'string' || typeof value === 'number'
+    ? String(value).trim().toUpperCase()
+    : '';
+}
+
+interface PreparedPortfolioResponse {
+  response: unknown;
+  warnings: string[];
+}
+
+/**
+ * Exclude malformed rows before the legacy value normalizer runs. A row that
+ * cannot be classified by currency is not assumed to be non-USD. A real zero
+ * balance/quantity remains valid; missing or malformed required values make
+ * the whole broker snapshot partial and therefore ineligible for application.
+ */
+function preparePortfolioResponse(response: unknown): PreparedPortfolioResponse {
+  const envelope = asRecord(response);
+  const data = asRecord(envelope?.data);
+  const result = asRecord(data?.result);
+  const ps = asRecord(result?.ps);
+  if (!ps) throw new Error('TradeNet response is missing data.result.ps.');
+  if (ps.loaded !== true) throw new Error('TradeNet USD account data is not loaded yet.');
+
+  const warnings: string[] = [];
+  const filterRows = (value: unknown, label: 'balance' | 'position'): unknown[] => {
+    if (!Array.isArray(value)) {
+      warnings.push(`TradeNet USD ${label} collection is unavailable.`);
+      return [];
+    }
+
+    return value.filter((candidate) => {
+      const row = asRecord(candidate);
+      if (!row) {
+        warnings.push(`Malformed TradeNet ${label} row was excluded.`);
+        return false;
+      }
+
+      const currency = currencyCode(row);
+      if (!currency) {
+        warnings.push(`TradeNet ${label} row without a currency was excluded.`);
+        return false;
+      }
+      if (currency !== 'USD') return true;
+
+      const requiredValue = label === 'balance'
+        ? numberOrNull(row.s) ?? numberOrNull(row.currval)
+        : numberOrNull(row.q);
+      if (requiredValue === null) {
+        warnings.push(label === 'balance'
+          ? 'TradeNet USD balance row without a valid amount was excluded.'
+          : 'TradeNet USD position row without a valid quantity was excluded.');
+        return false;
+      }
+      return true;
+    });
+  };
+
+  const sanitized = {
+    ...envelope,
+    data: {
+      ...data,
+      result: {
+        ...result,
+        ps: {
+          ...ps,
+          acc: filterRows(ps.acc, 'balance'),
+          pos: filterRows(ps.pos, 'position')
+        }
+      }
+    }
+  };
+  return { response: sanitized, warnings };
 }
 
 function readExecutionRows(response: unknown): unknown[] | null {
@@ -208,22 +281,13 @@ export function createFreedomTradeNetBrokerAdapter(
     },
     normalizePortfolio: (response, context = {}) => {
       try {
-        const data = normalizeFreedomPortfolioPayload(response);
-        const root = asRecord(unwrapTradeNet(response));
-        const ps = asRecord(root?.ps);
-        const hasBalances = Array.isArray(ps?.acc);
-        const hasPositions = Array.isArray(ps?.pos);
+        const prepared = preparePortfolioResponse(response);
+        const data = normalizeFreedomPortfolioPayload(prepared.response);
         const visibleRows = data.balances.length + data.positions.length;
-        // The normalizer deliberately excludes non-USD rows. Completeness is
-        // measured only against the requested USD account scope.
-        const providerRows = countUsdRows(ps?.acc) + countUsdRows(ps?.pos);
-        const quality: BrokerSnapshotQuality = !hasBalances || !hasPositions || visibleRows < providerRows
+        const quality: BrokerSnapshotQuality = prepared.warnings.length > 0
           ? 'partial'
           : visibleRows === 0 ? 'empty' : 'complete';
-        const warnings = quality === 'partial'
-          ? ['Some USD provider rows or required collections were unavailable.']
-          : [];
-        return createSnapshot(data, quality, context, warnings);
+        return createSnapshot(data, quality, context, prepared.warnings);
       } catch (error) {
         return fail(error);
       }

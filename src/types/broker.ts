@@ -30,6 +30,16 @@ export interface BrokerDataSnapshot<T> {
   warnings: string[];
 }
 
+/** Safe quality-only context for rejecting an incomplete broker snapshot. */
+export interface BrokerDataQualityIssue {
+  provider: BrokerProviderId;
+  quality: BrokerSnapshotQuality;
+  source: BrokerSnapshotSource;
+  receivedAt: number;
+  observedAt?: number;
+  warnings: string[];
+}
+
 export interface BrokerCashBalance {
   currency: string;
   amount: number;

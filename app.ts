@@ -446,7 +446,7 @@ addBrokerEventListener('broker:active-orders-error', () => {
   logTerminal(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.'));
 });
 
-addBrokerEventListener('broker:account-info-error', () => {
+addBrokerEventListener('broker:account-info-error', (issue) => {
   const current = portfolioStore.getState();
   if (current.brokerAccountInfo) {
     portfolioStore.setState({
@@ -454,6 +454,10 @@ addBrokerEventListener('broker:account-info-error', () => {
     });
   }
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
+  if (issue?.quality === 'partial' && issue.warnings.length > 0) {
+    logTerminal(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
+    return;
+  }
   logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
 });
 
