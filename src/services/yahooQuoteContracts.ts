@@ -20,6 +20,9 @@ export interface YahooQuotePricePayload {
   regularMarketChange?: unknown;
   changePercent?: unknown;
   regularMarketChangePercent?: unknown;
+  currency?: unknown;
+  exchange?: unknown;
+  quoteType?: unknown;
 }
 
 export interface YahooBatchQuoteResult {
@@ -29,6 +32,9 @@ export interface YahooBatchQuoteResult {
   regularMarketPreviousClose?: unknown;
   regularMarketChange?: unknown;
   regularMarketChangePercent?: unknown;
+  currency?: unknown;
+  exchange?: unknown;
+  quoteType?: unknown;
   error?: string;
 }
 
@@ -59,7 +65,10 @@ function normalizeYahooBatchItem(value: unknown): YahooBatchQuoteResult | null {
       'change',
       'regularMarketChange',
       'changePercent',
-      'regularMarketChangePercent'
+      'regularMarketChangePercent',
+      'currency',
+      'exchange',
+      'quoteType'
     ] as const) {
       if (key in value.price) price[key] = value.price[key];
     }
@@ -77,7 +86,10 @@ function normalizeYahooBatchItem(value: unknown): YahooBatchQuoteResult | null {
     'regularMarketPrice',
     'regularMarketPreviousClose',
     'regularMarketChange',
-    'regularMarketChangePercent'
+    'regularMarketChangePercent',
+    'currency',
+    'exchange',
+    'quoteType'
   ] as const) {
     if (key in value) result[key] = value[key];
   }
