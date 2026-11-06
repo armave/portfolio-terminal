@@ -122,7 +122,7 @@ These results describe a target-price scenario, **not current unrealized P&L**, 
 
 ---
 
-## 3. Commission contract
+## 4. Commission contract
 
 **Sources:** `resolveCommissionConfig`, `calculateCommission`, and `calculateTrancheCommissions` in `src/domain/portfolio.ts`; `calculateSaleCommission` in `src/domain/portfolioTransactions.ts`.
 
@@ -143,7 +143,7 @@ For a positive finite share quantity (q), non-negative finite transaction value 
 - `calculateSaleCommission` uses the shared formula and rounds the returned sale commission to two decimal places.
 - Do not assume all commission call sites have the same rounding point; preserve their existing caller contract.
 
-## 4. FIFO cost-basis and partial-sale contract
+## 5. FIFO cost-basis and partial-sale contract
 
 **Source:** `allocateFifoSaleTranches` in `src/domain/portfolioTransactions.ts`; validation in `src/domain/saleCostBasis.ts`.
 
@@ -163,7 +163,7 @@ Allocation:
 
 A materially inconsistent/missing lot ledger blocks the sale calculation; it must not silently fall back to current quote × shares.
 
-## 5. Sale accounting and proceeds settlement contract
+## 6. Sale accounting and proceeds settlement contract
 
 **Source:** `calculateSaleAccounting`, `calculateSaleCommission`, `settleSaleProceeds`, and `createClosedTradeRecord` in `src/domain/portfolioTransactions.ts`.
 
@@ -191,7 +191,7 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 
 `createClosedTradeRecord` writes the legacy aliases (`avgBuyPrice`/`entryPrice`, `sellPrice`/`exitPrice`, date aliases, commission aliases, and net-profit aliases) alongside the canonical values. Holding days are computed from the date interval using rounded calendar-duration days in this helper. Preserve these persisted aliases unless a separately approved schema migration changes them.
 
-## 6. Margin interest, projection, and rollover contracts
+## 7. Margin interest, projection, and rollover contracts
 
 **Sources:** `calculateMarginInterest`, `calculateProjectedDebt`, `calculateAccruedFees`, `findProjectionBreakevenDay`, `calculateBreakevenDays`, and `processRollovers` in `src/domain/portfolio.ts`.
 
@@ -207,7 +207,7 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 
 **Known compatibility boundary:** repository architecture/audit notes distinguish the active runtime rollover/accrual calculation from the legacy cloud-import `processRollovers` path. Their time-boundary and rounding history must remain separately covered until explicitly reconciled. Do not unify, re-timezone, or re-round them as part of PT-01 or a cleanup-only change.
 
-## 7. Freedom financing-fee allocation and currency boundary
+## 8. Freedom financing-fee allocation and currency boundary
 
 **Sources:** `calculateFreedomMarginFeeAllocations` in `src/domain/freedomMarginFees.ts`; row provenance in `src/domain/freedomCashflows.ts`.
 
@@ -221,7 +221,7 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 
 The fee allocator does not convert EUR/AMD/other currencies to USD. A foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
 
-## 8. Funding classification contract
+## 9. Funding classification contract
 
 **Sources:** `normalizeActiveTrancheMix` and `resolveActiveTrancheMixInput` in `src/domain/freedomPortfolio.ts`; `resolveClosedTradeAllocation` in `src/domain/closedTradeAllocation.ts`.
 
@@ -234,7 +234,7 @@ The fee allocator does not convert EUR/AMD/other currencies to USD. A foreign-cu
 
 Funding classification is app-owned metadata, separate from broker position quantity and market value.
 
-## 9. Backup/import validation boundary
+## 10. Backup/import validation boundary
 
 **Source:** `normalizePortfolioBackup` and `normalizePortfolioState` in `src/domain/portfolio.ts`.
 
@@ -246,7 +246,7 @@ Funding classification is app-owned metadata, separate from broker position quan
 - Runtime credential fields such as `gatewaySecret` and legacy `marginBalance` are excluded from normalized/imported state and backup exports.
 - Current state is not to be replaced until import validation has succeeded and the user confirms the import.
 
-## 10. Broker-reconciliation discrepancy taxonomy
+## 11. Broker-reconciliation discrepancy taxonomy
 
 PT-01 defines the categories to use when the broker reconciliation workstream is implemented. This taxonomy is a specification; it does not claim that a full reconciliation workflow already exists.
 
@@ -269,7 +269,7 @@ Recommended resolution states are `open`, `explained_by_timing`, `requires_user_
 
 The independent examples below pin the current behavior; they do not claim that all discrepancy categories above are already detected automatically.
 
-## 11. Independent reference fixtures
+## 12. Independent reference fixtures
 
 The PT-01 test file `src/domain/financialReferenceFixtures.test.ts` pins independent expected values across representative paths:
 
@@ -287,7 +287,7 @@ The PT-01 test file `src/domain/financialReferenceFixtures.test.ts` pins indepen
 
 These fixtures are reference examples, not a complete proof of every broker/provider's behavior. Existing focused domain tests remain part of the baseline and should not be duplicated or weakened.
 
-## 12. Known gaps and follow-up decisions
+## 13. Known gaps and follow-up decisions
 
 1. **Consolidated FX valuation is not implemented by the current valuation API.** PT-01 records this limitation; a future FX workstream must define currency conversion before cross-currency totals are shown.
 2. **Rollover histories are intentionally distinct.** A separate compatibility investigation is required before any unification or formula change.
@@ -297,7 +297,7 @@ These fixtures are reference examples, not a complete proof of every broker/prov
 6. **Market price freshness is metadata separate from price arithmetic.** A new valuation policy must not infer observation time from receipt time.
 7. **Broker reconciliation and live authenticated verification are not proven by fixtures alone.** Keep authenticated TradeNet/browser validation as release gates.
 
-## 13. Change-control checklist for future financial work
+## 14. Change-control checklist for future financial work
 
 Before changing a contract:
 - Identify the source function, every caller, persisted field, and UI/report consumer.
