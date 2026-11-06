@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './i18n';
 import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourcesHeading } from '../features/ai/marginIntelligenceCopy';
+import { PORTFOLIO_METHODOLOGY_SECTIONS } from '../domain/portfolioMethodology';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -653,6 +654,20 @@ describe('app localization', () => {
   it('localizes quote cache provenance labels', () => {
     expect(translateText('Cached', 'ru')).toBe('Из кэша');
     expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
+  });
+
+
+  it('localizes every portfolio methodology and data-transparency entry in Russian', () => {
+    const copy = [
+      'Metric methodology and data notes',
+      'Review what current portfolio figures mean, which inputs they use, and where important limitations apply.',
+      ...PORTFOLIO_METHODOLOGY_SECTIONS.flatMap(section => [
+        section.title, section.description, ...section.points, ...(section.note ? [section.note] : [])
+      ])
+    ];
+    for (const value of copy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
   });
 
 });
