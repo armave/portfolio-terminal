@@ -292,7 +292,11 @@ export function reconcileBrokerPortfolio(
     ...[...appPositions.values()].map(row => row.ticker),
     ...[...brokerPositions.values()].map(row => row.ticker)
   ]);
-  const suppressedMissing = partial;
+  const hasUnclassifiedPositionRows = findings.some(finding =>
+    finding.type === 'unclassified_app_position' ||
+    finding.type === 'unclassified_broker_position'
+  );
+  const suppressedMissing = partial || hasUnclassifiedPositionRows;
 
   for (const ticker of allTickers) {
     const appRows = [...appPositions.values()].filter(row => row.ticker === ticker);
