@@ -1,41 +1,14 @@
-export interface FreedomActiveOrder {
-  id: string;
-  ticker: string;
-  operation: number | null;
-  orderType: number | null;
-  limitPrice: number | null;
-  remainingQuantity: number | null;
-  date?: string | number | null;
-  status: string;
-  raw: Record<string, unknown>;
-}
+import type {
+  BrokerActiveOrder,
+  BrokerCashBalance,
+  BrokerPosition,
+  BrokerPortfolioSnapshot
+} from '../types/broker';
 
-export interface FreedomCashBalance {
-  currency: string;
-  amount: number;
-  forecastIn: number;
-  forecastOut: number;
-  t2In: number;
-  t2Out: number;
-}
-
-export interface FreedomOpenPosition {
-  ticker: string;
-  name: string;
-  quantity: number;
-  currency: string;
-  marketPrice: number | null;
-  marketValue: number | null;
-  averagePrice: number | null;
-  profitClose: number | null;
-  accountPositionId: number | null;
-}
-
-export interface FreedomPortfolioSnapshot {
-  loaded: boolean;
-  balances: FreedomCashBalance[];
-  positions: FreedomOpenPosition[];
-}
+export type FreedomActiveOrder = BrokerActiveOrder;
+export type FreedomCashBalance = BrokerCashBalance;
+export type FreedomOpenPosition = BrokerPosition;
+export type FreedomPortfolioSnapshot = BrokerPortfolioSnapshot;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
