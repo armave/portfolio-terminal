@@ -150,7 +150,7 @@ function emptyStateCopy(status: ReportStatus): string {
     case 'matched':
       return 'All comparable positions match the verified broker snapshot.';
     case 'differences':
-      return 'Discrepancies were found. Review the comparison details below.';
+      return 'Discrepancies were found. Open verification details to review them.';
     case 'partial':
       return 'The comparison is incomplete. Missing rows cannot be verified.';
     case 'provisional':
@@ -195,9 +195,7 @@ export function AccountIntegrityCenter({
   const brokerPositions = brokerAccountInfo?.loaded ? brokerAccountInfo.positions : null;
   const counts = getAccountIntegrityCounts(appPositions, brokerPositions, report.findings.length);
   const currentRefreshStatus = refreshStatus(brokerAccountInfo);
-  const visibleFindings = report.findings.slice(0, 20);
-  const hasMoreFindings = report.findings.length > visibleFindings.length;
-
+  
   return (
     <section
       aria-labelledby="accountIntegrityTitle"
@@ -255,6 +253,13 @@ export function AccountIntegrityCenter({
         </div>
       </div>
 
+      <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] leading-4 text-slate-500">
+        <span>{label('Snapshot source')}: {report.source || '—'}</span>
+        <span>{label('Received')}: {formatTimestamp(report.receivedAt)}</span>
+        <span>{label('Snapshot age')}: {formatAge(report.snapshotAgeMs)}</span>
+        <span>{report.observedAt === null ? label('Observation time unavailable') : label('Observed') + ': ' + formatTimestamp(report.observedAt)}</span>
+      </div>
+
       <p class="mt-2 text-[10px] leading-4 text-slate-500">
         {label('The current comparison covers position quantities only. Cash and margin balances are not verified because an independent app-side balance is not available.')}
       </p>
@@ -310,7 +315,7 @@ export function AccountIntegrityCenter({
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800">
-                {visibleFindings.map((finding, index) => (
+                {report.findings.map((finding, index) => (
                   <tr key={finding.type + '-' + finding.subject + '-' + index}>
                     <td class="py-2 pr-3 font-medium text-amber-200">{label(FINDING_COPY[finding.type])}</td>
                     <td class="py-2 pr-3 text-slate-300">
@@ -325,11 +330,6 @@ export function AccountIntegrityCenter({
                 ))}
               </tbody>
             </table>
-            {hasMoreFindings && (
-              <p class="mt-2 text-[11px] text-slate-500">
-                {label('Showing first 20 findings; remaining findings are not hidden from the reconciliation report.')}
-              </p>
-            )}
           </div>
         ) : (
           <p class="mt-3 text-xs text-slate-400">
