@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 
 const host = '127.0.0.1';
 const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
-const appUrl = \`http://\${host}:\${port}/portfolio-terminal/\`;
+const appUrl = `http://${host}:${port}/portfolio-terminal/`;
 const workerOrigin = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 const outputPath = process.env.PERFORMANCE_BASELINE_OUTPUT || 'artifacts/browser-performance-baseline.json';
 const runsPerViewport = 3;
@@ -25,18 +25,18 @@ async function waitForPreview() {
   let lastError;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     if (server.exitCode !== null || server.signalCode !== null) {
-      throw new Error(\`Vite preview exited with code \${server.exitCode}.\`);
+      throw new Error(`Vite preview exited with code ${server.exitCode}.`);
     }
     try {
       const response = await fetch(appUrl);
       if (response.ok) return;
-      lastError = new Error(\`Vite preview returned HTTP \${response.status}.\`);
+      lastError = new Error(`Vite preview returned HTTP ${response.status}.`);
     } catch (error) {
       lastError = error;
     }
     await delay(500);
   }
-  throw new Error(\`Vite preview did not become ready: \${lastError?.message || 'unknown error'}\`);
+  throw new Error(`Vite preview did not become ready: ${lastError?.message || 'unknown error'}`);
 }
 
 async function measure(viewport) {
@@ -119,7 +119,7 @@ async function measure(viewport) {
         pageErrors
       });
       if (pageErrors.length > 0) {
-        throw new Error(\`\${viewport.name} run \${run} produced browser errors: \${pageErrors.join('; ')}\`);
+        throw new Error(`${viewport.name} run ${run} produced browser errors: ${pageErrors.join('; ')}`);
       }
     } finally {
       await context.close();
@@ -153,11 +153,11 @@ try {
   };
   await mkdir('artifacts', { recursive: true });
   await writeFile(outputPath, JSON.stringify(report, null, 2) + '\n', 'utf8');
-  console.log(\`Browser performance baseline written to \${outputPath}\`);
+  console.log(`Browser performance baseline written to ${outputPath}`);
   for (const [name, samples] of Object.entries(results)) {
     const fcp = samples.map((sample) => sample.firstContentfulPaintMs).filter(Number.isFinite);
     const auth = samples.map((sample) => sample.elapsedToAuthReadyMs);
-    console.log(\`\${name}: median FCP \${fcp.length ? Math.round(fcp.sort((a,b)=>a-b)[Math.floor(fcp.length / 2)]) : 'n/a'}ms; median auth-shell readiness \${Math.round(auth.sort((a,b)=>a-b)[Math.floor(auth.length / 2)])}ms\`);
+    console.log(`${name}: median FCP ${fcp.length ? Math.round(fcp.sort((a,b)=>a-b)[Math.floor(fcp.length / 2)]) : 'n/a'}ms; median auth-shell readiness ${Math.round(auth.sort((a,b)=>a-b)[Math.floor(auth.length / 2)])}ms`);
   }
 } finally {
   await browser?.close();
