@@ -32,6 +32,7 @@ describe('Device Check summary diagnostics', () => {
 
   it('classifies common mobile and tablet user agents', () => {
     expect(getDeviceTypeLabel('Mozilla/5.0 (Linux; Android 14; Pixel) Mobile')).toBe('Mobile');
+    expect(getDeviceTypeLabel('Mozilla/5.0 (Linux; Android 14; Pixel Tablet)')).toBe('Tablet');
     expect(getDeviceTypeLabel('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe('Tablet');
     expect(getDeviceTypeLabel('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('Desktop');
   });
@@ -67,18 +68,18 @@ describe('Device Check summary diagnostics', () => {
   it('summarizes device readiness without treating offline as local storage failure', () => {
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: true
-    }, { status: 'synced', text: 'UPDATED' })).toBe('ready');
+    }, { status: 'synced', text: 'UPDATED' }, { status: 'synced', text: 'Synced' })).toBe('ready');
     expect(getDeviceHealth({
       online: false, localStorageAvailable: true, secureContext: true
-    }, { status: 'idle', text: '' })).toBe('offline');
+    }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('offline');
     expect(getDeviceHealth({
       online: true, localStorageAvailable: false, secureContext: true
-    }, { status: 'idle', text: '' })).toBe('attention');
+    }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: false
     }, { status: 'idle', text: '' })).toBe('attention');
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: true
-    }, { status: 'error', text: 'Sync failed' })).toBe('attention');
+    }, { status: 'synced', text: 'UPDATED' }, { status: 'error', text: 'Sync failed' })).toBe('attention');
   });
 });

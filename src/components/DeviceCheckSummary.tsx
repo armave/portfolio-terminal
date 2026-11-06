@@ -87,10 +87,16 @@ export function getPortfolioSyncLabel(status: { status: string; text: string }):
 
 export function getDeviceHealth(
   diagnostics: Pick<DeviceDiagnostics, 'online' | 'localStorageAvailable' | 'secureContext'> | null,
+  cloudStatus: { status: string; text: string },
   cloudSyncStatus: { status: string; text: string }
 ): DeviceHealth {
   if (!diagnostics) return 'attention';
-  if (!diagnostics.localStorageAvailable || !diagnostics.secureContext || cloudSyncStatus.status === 'error') {
+  if (
+    !diagnostics.localStorageAvailable ||
+    !diagnostics.secureContext ||
+    cloudStatus.status === 'error' ||
+    cloudSyncStatus.status === 'error'
+  ) {
     return 'attention';
   }
   return diagnostics.online ? 'ready' : 'offline';
@@ -298,7 +304,7 @@ export function DeviceCheckSummary() {
     };
   }, []);
 
-  const health = getDeviceHealth(diagnostics, cloudSyncStatus);
+  const health = getDeviceHealth(diagnostics, cloudStatus, cloudSyncStatus);
 
   const rows: Array<[string, string]> = diagnostics ? [
     ['Browser', diagnostics.browser],
