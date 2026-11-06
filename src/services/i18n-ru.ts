@@ -54,7 +54,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Showing first 12 findings; more discrepancies are available in the reconciliation result.': 'Показаны первые 12 расхождений; остальные доступны в полном результате сверки.',
   'Snapshot warnings': 'Предупреждения о снимке',
   'Snapshot age': 'Возраст снимка',
-  'Unknown': 'Неизвестно',
   'The broker snapshot contains no account rows; absence-based discrepancies are suppressed.': 'Снимок брокера не содержит строк счёта; расхождения, основанные на отсутствии записей, не формируются.',
   'The broker account snapshot is not loaded; no reconciliation was performed.': 'Снимок брокерского счёта ещё не загружен; сверка не выполнялась.',
   'The provider did not supply a verifiable observation timestamp.': 'Провайдер не предоставил подтверждённую временную метку наблюдения.',
