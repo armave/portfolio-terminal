@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   saveState,
   savePortfolioSnapshot,
+  savePortfolioStateSnapshot,
   loadSavedState,
   loadSavedHistory,
   saveSavedHistory,
