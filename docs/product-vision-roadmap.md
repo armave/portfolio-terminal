@@ -434,12 +434,25 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 - [x] Current repository constraints documented from the checked-in README and architecture/audit documents.
 - [x] Eighteen implementation workstreams created as individually scoped GitHub issues.
 - [x] Dedicated implementation branch names and dependencies assigned to every workstream.
-- [ ] PT-01 financial baseline and PT-17 release-gate baseline completed.
+- [x] PT-01 financial correctness baseline completed (issue #329; implementation PR #349 merged into `dev`).
+- [ ] PT-17 reliability, performance, observability, and release-gate baseline completed.
 - [ ] Foundation and data integrity workstreams completed.
 - [ ] Performance, risk, projection, and market intelligence workstreams completed.
 - [ ] Monitoring and grounded/proactive AI workstreams completed.
 - [ ] Multi-user, role-specific, admin, reporting, and onboarding workstreams completed.
 - [ ] Product-level success criteria demonstrated and release evidence recorded.
+
+### Completed workstream evidence
+
+**PT-01 — Financial correctness baseline**
+- Issue: [#329](https://github.com/armave/portfolio-terminal/issues/329) — completed.
+- Implementation PR: [#349](https://github.com/armave/portfolio-terminal/pull/349) — merged into `dev`.
+- Validated source head: `a7505bf7ae645415a309cf18ab8ef114de4d71e9`.
+- Merge commit on `dev`: `659e07ed77c26d0010f4062668618b23ba58798f`.
+- Artifacts: `docs/financial-calculation-contracts.md` and `src/domain/financialReferenceFixtures.test.ts`.
+- Exact-head CI: [Pull Request CI — success](https://github.com/armave/portfolio-terminal/actions/runs/42152859754); [Operations Browser Journey — success](https://github.com/armave/portfolio-terminal/actions/runs/42152859756). Typecheck, Vitest/unit + Worker tests, production build, automated production-browser smoke, trade-lifecycle/browser account journeys, dead-code validation, full dependency audit, and production dependency audit passed.
+- Manual QA: no runtime/UI behavior changed. Authenticated live TradeNet validation and manual Market Depth reconnect/failure/no-data checks were not performed and are not claimed. Production deployment verification is not claimed by this `dev` merge.
+- Accepted follow-ups: current valuation does not perform FX conversion; unlike currencies must not be consolidated without a defined FX contract. Active/runtime margin accrual and legacy cloud-import rollover behavior remain separate pending an explicit compatibility decision. Both are recorded in the PT-01 contract document.
 
 ### Progress update format
 
