@@ -57,6 +57,7 @@ export function createFreedomAccountStreamAppRuntime(
       }
       markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
       emitBrokerEvent('broker:account-info', brokerSnapshot.data);
+      emitBrokerEvent('broker:account-info-snapshot', brokerSnapshot);
       return true;
     },
     onOrders: (data, sessionKey) => {
