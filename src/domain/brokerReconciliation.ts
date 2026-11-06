@@ -214,9 +214,12 @@ export function reconcileBrokerPortfolio(
       amountTolerance,
       differenceCount: 0,
       findings: [],
-      warnings: [snapshot?.data.loaded === false
-        ? 'The broker account snapshot is not loaded; no reconciliation was performed.'
-        : 'Broker account data is unavailable; no reconciliation was performed.']
+      warnings: [
+        ...(snapshot?.warnings || []),
+        snapshot?.data.loaded === false
+          ? 'The broker account snapshot is not loaded; no reconciliation was performed.'
+          : 'Broker account data is unavailable; no reconciliation was performed.'
+      ]
     };
   }
 
