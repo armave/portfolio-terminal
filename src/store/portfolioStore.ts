@@ -938,14 +938,16 @@ export class PortfolioStore {
 
   public addTranche(
     ticker: string,
-    tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number }
+    tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number },
+    context?: PortfolioTransactionContext
   ): boolean {
     return this.buyStock(
       ticker,
       Number(tranche.shares) || 0,
       Number(tranche.entryPrice) || 0,
       tranche.purchaseDate,
-      tranche.targetPrice
+      tranche.targetPrice,
+      context
     );
   }
 
