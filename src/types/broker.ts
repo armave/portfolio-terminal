@@ -11,7 +11,7 @@ export interface BrokerAuthenticationState {
 }
 
 export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
-export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
+type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
 
 export interface BrokerAdapterContext {
   receivedAt?: number;
