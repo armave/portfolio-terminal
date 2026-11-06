@@ -11,7 +11,7 @@ export interface BrokerAuthenticationState {
 }
 
 export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
-type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
+export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual';
 
 export interface BrokerAdapterContext {
   receivedAt?: number;
@@ -23,6 +23,16 @@ export interface BrokerAdapterContext {
 export interface BrokerDataSnapshot<T> {
   provider: BrokerProviderId;
   data: T;
+  quality: BrokerSnapshotQuality;
+  source: BrokerSnapshotSource;
+  receivedAt: number;
+  observedAt?: number;
+  warnings: string[];
+}
+
+/** Safe quality-only context for rejecting an incomplete broker snapshot. */
+export interface BrokerDataQualityIssue {
+  provider: BrokerProviderId;
   quality: BrokerSnapshotQuality;
   source: BrokerSnapshotSource;
   receivedAt: number;
