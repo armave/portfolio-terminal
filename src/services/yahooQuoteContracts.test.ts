@@ -10,7 +10,10 @@ describe('Yahoo quote response contracts', () => {
           current: '210.5',
           previousClose: 205,
           regularMarketTime: 1793450000,
-          marketState: 'REGULAR'
+          marketState: 'REGULAR',
+          currency: 'USD',
+          exchange: 'NMS',
+          quoteType: 'EQUITY'
         }
       },
       { symbol: 'MSFT', error: 'temporarily unavailable' }
@@ -23,7 +26,10 @@ describe('Yahoo quote response contracts', () => {
           current: '210.5',
           previousClose: 205,
           regularMarketTime: 1793450000,
-          marketState: 'REGULAR'
+          marketState: 'REGULAR',
+          currency: 'USD',
+          exchange: 'NMS',
+          quoteType: 'EQUITY'
         }
       },
       { symbol: 'MSFT', error: 'temporarily unavailable' }
