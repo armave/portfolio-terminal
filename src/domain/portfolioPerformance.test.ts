@@ -277,13 +277,11 @@ describe('comparePerformanceToBenchmark', () => {
 
     expect(result.status).toBe('available');
     if (result.status !== 'unavailable') {
-      expect(result.value).toMatchObject({
-        benchmarkIdentifier: 'SP500-TR',
-        currency: 'USD',
-        portfolioReturn: 0.1,
-        benchmarkReturn: 0.1,
-        activeReturn: 0
-      });
+      expect(result.value.benchmarkIdentifier).toBe('SP500-TR');
+      expect(result.value.currency).toBe('USD');
+      expect(result.value.portfolioReturn).toBeCloseTo(0.1, 12);
+      expect(result.value.benchmarkReturn).toBeCloseTo(0.1, 12);
+      expect(result.value.activeReturn).toBeCloseTo(0, 12);
       expect(result.value.relativeReturn).toBeCloseTo(0, 12);
     }
   });
