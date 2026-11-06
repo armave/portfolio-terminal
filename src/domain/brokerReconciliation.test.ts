@@ -189,6 +189,8 @@ describe('reconcileBrokerPortfolio', () => {
     expect(report.findings).toContainEqual(expect.objectContaining({
       type: 'currency_mismatch',
       subject: 'XYZ',
+      appCurrency: 'USD',
+      brokerCurrency: 'EUR',
       appValue: 4,
       brokerValue: 4
     }));
