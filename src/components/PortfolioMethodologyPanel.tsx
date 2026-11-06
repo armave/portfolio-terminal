@@ -1,8 +1,8 @@
-import { getAppLanguage, translateText } from '../services/i18n';
-import { PORTFOLIO_METHODOLOGY_SECTIONS } from '../domain/portfolioMethodology';
+import { getAppLanguage } from '../services/i18n';
+import { PORTFOLIO_METHODOLOGY_SECTIONS, translatePortfolioMethodology } from '../domain/portfolioMethodology';
 
 function t(copy: string): string {
-  return translateText(copy, getAppLanguage());
+  return translatePortfolioMethodology(copy, getAppLanguage());
 }
 
 /** Read-only explanations of current portfolio calculations and known limits. */
