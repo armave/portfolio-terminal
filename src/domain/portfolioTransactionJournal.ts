@@ -88,6 +88,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     value.unitPrice,
     value.grossAmount,
     value.fees,
+    value.financingCost,
     value.cashDelta,
     value.marginDebtDelta,
     value.netAmount,
@@ -95,6 +96,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   ].every(isFiniteOptional)) return false;
   if (value.quantity !== undefined && Number(value.quantity) <= 0) return false;
   if (value.fees !== undefined && Number(value.fees) < 0) return false;
+  if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -143,6 +145,7 @@ export function createPortfolioTransactionEvent(
     ...(draft.unitPrice !== undefined ? { unitPrice: draft.unitPrice } : {}),
     ...(draft.grossAmount !== undefined ? { grossAmount: draft.grossAmount } : {}),
     ...(draft.fees !== undefined ? { fees: draft.fees } : {}),
+    ...(draft.financingCost !== undefined ? { financingCost: draft.financingCost } : {}),
     ...(draft.cashDelta !== undefined ? { cashDelta: draft.cashDelta } : {}),
     ...(draft.marginDebtDelta !== undefined ? { marginDebtDelta: draft.marginDebtDelta } : {}),
     ...(draft.netAmount !== undefined ? { netAmount: draft.netAmount } : {}),
