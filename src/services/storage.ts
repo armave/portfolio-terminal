@@ -478,6 +478,20 @@ export function savePortfolioSnapshot<TState extends object>(
 }
 
 /**
+ * Persists only the compact portfolio snapshot, leaving the separately cached
+ * closed-history sidecar untouched. Use this when the complete history is
+ * being durably checkpointed to its independent encrypted cloud-history store;
+ * routine broker sync must not rewrite megabytes of local cache on every pass.
+ */
+export function savePortfolioStateSnapshot<TState extends object>(
+  state: TState,
+  options: PortfolioSnapshotOptions = {}
+): boolean {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
+  return persistPortfolioSnapshot(state as Record<string, any>, null, options).success;
+}
+
+/**
  * Persists application state to localStorage and updates `state.lastUpdated`.
  * Changed non-empty history is committed before the method reports success;
  * a failed sidecar write rolls back the accompanying portfolio-state write.
