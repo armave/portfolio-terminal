@@ -128,6 +128,61 @@ describe('Freedom account stream app adapter', () => {
     }
   });
 
+  it('rejects a partial live portfolio snapshot without marking the stream snapshot current', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const portfolioEvents: unknown[] = [];
+    const accountErrors: unknown[] = [];
+    const offPortfolio = addBrokerEventListener('broker:account-info', (value) => portfolioEvents.push(value));
+    const offError = addBrokerEventListener('broker:account-info-error', (value) => accountErrors.push(value));
+    const runtime = createFreedomAccountStreamAppRuntime({
+      createTicket: async () => ({ ticket: 'g'.repeat(64) }),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      getCurrentSessionKey: () => 'admin:account-1',
+      isAdmin: () => true,
+      loadSavedBrokerExecutions: () => [],
+      getCurrentBrokerExecutions: () => []
+    });
+
+    try {
+      const start = runtime.start('admin:account-1');
+      await Promise.resolve();
+      const socket = FakeWebSocket.latest;
+      expect(socket).not.toBeNull();
+      socket!.open();
+      socket!.receive({ type: 'ready' });
+      await expect(start).resolves.toBe(true);
+
+      socket!.receive({
+        type: 'portfolio',
+        receivedAt: 1_800_000_003_000,
+        data: {
+          data: { result: { ps: {
+            loaded: true,
+            acc: [{ curr: 'USD', s: true, currval: false }],
+            pos: [{ curr: 'USD', i: 'AAPL.US', q: 2, mkt_price: 190 }]
+          } } }
+        }
+      });
+
+      expect(portfolioEvents).toEqual([]);
+      expect(accountErrors).toHaveLength(1);
+      expect(accountErrors[0]).toMatchObject({
+        provider: 'freedom-tradenet',
+        quality: 'partial',
+        source: 'websocket',
+        receivedAt: 1_800_000_003_000,
+        warnings: expect.arrayContaining([
+          'TradeNet USD balance row without a valid amount was excluded.'
+        ])
+      });
+      expect(isFreedomAccountStreamHealthy('admin:account-1')).toBe(false);
+    } finally {
+      runtime.stop();
+      offPortfolio();
+      offError();
+    }
+  });
+
   it('does not request a ticket or open a socket for a guest session', async () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const createTicket = vi.fn(async () => ({ ticket: 'f'.repeat(64) }));
