@@ -970,27 +970,49 @@ export class PortfolioStore {
     );
   }
 
-  public removeTranche(ticker: string, trancheId: string): void {
+  public removeTranche(
+    ticker: string,
+    trancheId: string,
+    context?: PortfolioTransactionContext
+  ): boolean {
     const clean = ticker.trim().toUpperCase();
     const prefix = clean ? `${clean}-` : '';
-    if (!prefix || !trancheId.startsWith(prefix)) return;
+    if (!prefix || !trancheId.startsWith(prefix)) return false;
 
     const indexText = trancheId.slice(prefix.length);
-    if (!/^\d+$/.test(indexText)) return;
+    if (!/^\\d+$/.test(indexText)) return false;
     const idxToRemove = Number(indexText);
+    const position = this.state.positions?.[clean];
+    const tranche = position?.tranches?.[idxToRemove];
+    if (!position || !tranche) return false;
 
-    this.update((state) => {
+    const requestFingerprint = createMutationFingerprint([
+      'position.adjustment.remove-tranche',
+      clean,
+      trancheId,
+      tranche.qty,
+      tranche.price,
+      tranche.date
+    ]);
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-position-correction',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    }, (state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos || !Array.isArray(pos.tranches) || idxToRemove >= pos.tranches.length) return state;
+      if (!pos || !Array.isArray(pos.tranches) || idxToRemove >= pos.tranches.length) return null;
 
-      const nextTranches = pos.tranches.filter((_, i) => i !== idxToRemove);
-      if (nextTranches.length === pos.tranches.length) return state;
+      const removed = pos.tranches[idxToRemove];
+      const nextTranches = pos.tranches.filter((_, index) => index !== idxToRemove);
+      if (nextTranches.length === pos.tranches.length) return null;
 
       if (nextTranches.length === 0) {
         delete positions[clean];
       } else {
-        const nextShares = nextTranches.reduce((s, t) => s + t.qty, 0);
+        const nextShares = nextTranches.reduce((sum, item) => sum + item.qty, 0);
         positions[clean] = {
           ...pos,
           shares: nextShares,
@@ -999,13 +1021,20 @@ export class PortfolioStore {
       }
 
       return {
-        ...state,
-        positions
+        state: { ...state, positions },
+        event: {
+          type: 'position.adjustment',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: removed.qty,
+          unitPrice: removed.price,
+          note: `Active tranche ${trancheId} removed from tracking; no sale proceeds or cash settlement were recorded.`
+        }
       };
     });
   }
 
-  public sellStock(
+    public sellStock(
     ticker: string,
     sharesToSell: number | 'ALL',
     sellPrice: number,
