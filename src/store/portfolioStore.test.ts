@@ -2683,6 +2683,26 @@ describe('portfolio transaction journal integration', () => {
     expect(event?.note).toContain('no execution price');
   });
 
+
+  it('records deletion of closed-trade display history without deleting transaction evidence', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    expect(store.sellStock('AAPL', 'ALL', 120, '2026-11-06')).toBe(true);
+    const originalEventCount = store.getState().transactionEvents?.length || 0;
+    const closedTradeId = store.getState().closedTrades[0].id;
+
+    expect(store.deleteClosedTrade(0)).toBe(true);
+    expect(store.getState().closedTrades).toHaveLength(0);
+    expect(store.getState().transactionEvents).toHaveLength(originalEventCount + 1);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'history.correction',
+      ticker: 'AAPL'
+    });
+    expect(store.getState().transactionEvents?.at(-1)?.note).toContain(String(closedTradeId));
+    expect(store.getState().transactionEvents?.some((event) => event.type === 'trade.sell')).toBe(true);
+    expect(store.getState().positions.AAPL).toBeUndefined();
+  });
+
   it('does not publish a financial mutation or append its event when persistence fails', () => {
     const failingStorage = {
       getItem: (key: string) => sharedTestStorage.get(key) ?? null,
