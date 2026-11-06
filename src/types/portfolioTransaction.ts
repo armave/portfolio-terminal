@@ -53,6 +53,9 @@ export interface PortfolioTransactionEvent {
   requestFingerprint?: string;
   ticker?: string;
   currency?: string;
+  /** Broker-reported execution side (e.g. BUY/SELL), separate from app commands. */
+  side?: string;
+  feeCurrency?: string;
   quantity?: number;
   unitPrice?: number;
   grossAmount?: number;
