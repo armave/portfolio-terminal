@@ -411,3 +411,166 @@ export function verifyPortfolioTransactionParity(
   }
   return { matches: discrepancies.length === 0, discrepancies };
 }
+
+
+function stableShortHash(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function recordTimestamp(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const timestamp = value > 1e12 ? value : value > 1e9 ? value * 1000 : NaN;
+    return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : fallback;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    if (/^\\d{10,13}$/.test(value.trim())) return recordTimestamp(Number(value), fallback);
+  }
+  return fallback;
+}
+
+function externalReference(value: unknown, fallback: string): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    const normalized = String(value).trim();
+    if (normalized) return normalized.slice(0, 180);
+  }
+  return fallback;
+}
+
+/**
+ * Append read-only broker execution and cashflow evidence into the portfolio
+ * journal. These records never post to local positions/cash; they preserve
+ * source provenance and remain separate from app-owned trade commands.
+ */
+export function appendBrokerHistoryAuditEvents(
+  current: readonly PortfolioTransactionEvent[],
+  brokerExecutions: readonly unknown[],
+  cashflows: readonly unknown[],
+  recordedAt = Date.now(),
+  source = 'freedom-tradenet'
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(current)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+  let events = freezePortfolioTransactionEventList(current);
+
+  for (const input of brokerExecutions) {
+    if (!isPlainRecord(input)) continue;
+    const ticker = typeof input.ticker === 'string' ? input.ticker.trim().toUpperCase() : '';
+    const side = typeof input.side === 'string' ? input.side.trim().toUpperCase() : '';
+    const quantity = Number(input.quantity ?? input.shares);
+    const price = Number(input.price ?? input.executionPrice);
+    if (!ticker || !side || !Number.isFinite(quantity) || quantity <= 0) continue;
+
+    const rawReference = input.id ?? input.executionId ?? input.tradeId;
+    const provisional = JSON.stringify([ticker, side, quantity, Number.isFinite(price) ? price : null, input.currency, input.executedAt ?? input.date]);
+    const referenceId = externalReference(rawReference, stableShortHash(provisional));
+    const currency = typeof input.currency === 'string' && /^[A-Za-z]{3}$/.test(input.currency.trim())
+      ? input.currency.trim().toUpperCase()
+      : undefined;
+    const commissionValue = Number(input.commission);
+    const fees = Number.isFinite(commissionValue) ? Math.abs(commissionValue) : undefined;
+    const facts = JSON.stringify({
+      referenceId, ticker, side, quantity,
+      price: Number.isFinite(price) ? price : null,
+      currency: currency ?? null,
+      commission: fees ?? null,
+      commissionCurrency: typeof input.commissionCurrency === 'string' ? input.commissionCurrency.trim().toUpperCase() : null,
+      executedAt: input.executedAt ?? input.date ?? null,
+      tradeValue: Number.isFinite(Number(input.tradeValue)) ? Number(input.tradeValue) : null
+    });
+    const fingerprint = `broker-execution-v1:${stableShortHash(facts)}`;
+    const idempotencyKey = `broker-execution:${stableShortHash(referenceId)}:${stableShortHash(facts)}`;
+    const previous = [...events].reverse().find((event) =>
+      event.type === 'broker.execution' && event.externalReferenceId === referenceId
+    );
+    const event = createPortfolioTransactionEvent({
+      type: 'broker.execution',
+      effectiveAt: recordTimestamp(input.executedAt ?? input.date, recordedAt),
+      ticker,
+      currency,
+      quantity,
+      ...(Number.isFinite(price) && price > 0 ? { unitPrice: price } : {}),
+      ...(Number.isFinite(Number(input.tradeValue)) && Number(input.tradeValue) > 0
+        ? { grossAmount: Math.abs(Number(input.tradeValue)) }
+        : Number.isFinite(price) && price > 0 ? { grossAmount: quantity * price } : {}),
+      ...(fees !== undefined ? { fees } : {}),
+      externalReferenceId: referenceId,
+      ...(previous ? { relatedEventId: previous.id } : {}),
+      note: `Read-only broker execution (${side}); does not post or replace app-owned positions.`
+    }, {
+      actor: { type: 'broker' },
+      source,
+      idempotencyKey,
+      requestFingerprint: fingerprint,
+      eventId: `broker-execution-${stableShortHash(referenceId)}-${stableShortHash(facts)}`,
+      recordedAt
+    });
+    const appended = appendPortfolioTransactionEvent(events, event);
+    events = appended.events;
+  }
+
+  for (const input of cashflows) {
+    if (!isPlainRecord(input)) continue;
+    const amount = Number(input.amount ?? input.value);
+    if (!Number.isFinite(amount)) continue;
+    const typeText = [input.type, input.description, input.category]
+      .filter((part) => typeof part === 'string')
+      .join(' ')
+      .toLowerCase();
+    let type: PortfolioTransactionEventType = 'cash.adjustment';
+    if (/dividend|distribution|coupon/.test(typeText)) type = 'dividend';
+    else if (/margin|interest|financing|borrow fee|funding fee/.test(typeText)) type = 'margin.interest';
+    else if (/commission|fee|charge|tax/.test(typeText)) type = 'fee';
+    else if (/transfer|internal move/.test(typeText)) type = 'cash.transfer';
+    else if (/withdraw|debit|outflow/.test(typeText) || amount < 0 && /payment|cash out/.test(typeText)) type = 'cash.withdrawal';
+    else if (/deposit|funding|credit|inflow/.test(typeText)) type = 'cash.deposit';
+
+    const provisional = JSON.stringify([input.date, input.type, amount, input.currency, input.description]);
+    const referenceId = externalReference(input.id, stableShortHash(provisional));
+    const currency = typeof input.currency === 'string' && /^[A-Za-z]{3}$/.test(input.currency.trim())
+      ? input.currency.trim().toUpperCase()
+      : undefined;
+    const facts = JSON.stringify({
+      referenceId, type, date: input.date ?? null, amount,
+      currency: currency ?? null, description: typeof input.description === 'string' ? input.description : null
+    });
+    const fingerprint = `broker-cashflow-v1:${stableShortHash(facts)}`;
+    const idempotencyKey = `broker-cashflow:${stableShortHash(referenceId)}:${stableShortHash(facts)}`;
+    const previous = [...events].reverse().find((event) =>
+      event.externalReferenceId === referenceId && event.idempotencyKey?.startsWith('broker-cashflow:')
+    );
+    const noteText = typeof input.description === 'string' && input.description.trim()
+      ? input.description.trim()
+      : typeof input.type === 'string' ? input.type.trim() : 'Broker cashflow';
+    const event = createPortfolioTransactionEvent({
+      type,
+      effectiveAt: recordTimestamp(input.date, recordedAt),
+      currency,
+      externalReferenceId: referenceId,
+      externalCashFlowAmount: amount,
+      grossAmount: Math.abs(amount),
+      ...(type === 'fee' ? { fees: Math.abs(amount) } : {}),
+      ...(type === 'margin.interest' ? { financingCost: Math.abs(amount) } : {}),
+      ...(previous ? { relatedEventId: previous.id } : {}),
+      note: `Read-only broker cashflow: ${noteText.slice(0, 220)}. No local cash/debt posting was applied.`
+    }, {
+      actor: { type: 'broker' },
+      source: `${source}-cashflow`,
+      idempotencyKey,
+      requestFingerprint: fingerprint,
+      eventId: `broker-cashflow-${stableShortHash(referenceId)}-${stableShortHash(facts)}`,
+      recordedAt
+    });
+    const appended = appendPortfolioTransactionEvent(events, event);
+    events = appended.events;
+  }
+
+  return events;
+}
