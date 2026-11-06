@@ -390,26 +390,42 @@ async function measureAuthenticatedLargePortfolio(viewport, run) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await installPerformanceObservers(page, createLargePortfolioFixture());
+  await installPerformanceObservers(page);
   const worker = await mockWorkerApi(page);
 
   const startedAt = Date.now();
   try {
     await page.goto(appUrl, { waitUntil: 'load', timeout: 30_000 });
     await page.locator('#authModalTitle').waitFor({ state: 'visible', timeout: 20_000 });
+    await page.locator('#authUserName').fill('Performance Admin');
+    await page.locator('#authPassword').fill('performance-smoke-password');
+    await page.locator('#bootstrapSecret').fill('performance-smoke-bootstrap-secret');
+    await page.locator('.auth-submit-button').click();
+    await page.waitForFunction(
+      () => !document.querySelector('#auth-container')?.classList.contains('auth-overlay-open'),
+      null,
+      { timeout: 30_000 }
+    );
+
+    // Seed through the app's persisted-state contract after bootstrap, then reload
+    // so PortfolioStore consumes the same local snapshot path used by returning users.
+    const syntheticPortfolio = createLargePortfolioFixture();
+    await page.evaluate((snapshot) => {
+      localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(snapshot));
+    }, syntheticPortfolio);
     const seededStateDiagnostics = await page.evaluate(() => {
       const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
       const state = raw ? JSON.parse(raw) : null;
       return {
         rawBytes: raw?.length || 0,
-        positionCount: Object.keys(state?.positions || {}).length,
-        keys: state ? Object.keys(state).sort() : []
+        positionCount: Object.keys(state?.positions || {}).length
       };
     });
-    await page.locator('#authUserName').fill('Performance Admin');
-    await page.locator('#authPassword').fill('performance-smoke-password');
-    await page.locator('#bootstrapSecret').fill('performance-smoke-bootstrap-secret');
-    await page.locator('.auth-submit-button').click();
+    if (seededStateDiagnostics.positionCount !== syntheticPositionCount) {
+      throw new Error(`Performance fixture seeding failed before reload: ${JSON.stringify(seededStateDiagnostics)}`);
+    }
+
+    await page.reload({ waitUntil: 'load', timeout: 30_000 });
     await page.waitForFunction(
       () => !document.querySelector('#auth-container')?.classList.contains('auth-overlay-open'),
       null,
