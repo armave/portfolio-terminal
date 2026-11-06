@@ -58,7 +58,7 @@ describe('Device Check summary diagnostics', () => {
   });
 
   it('keeps cloud storage state separate from portfolio sync state', () => {
-    expect(getCloudStorageLabel({ status: 'synced', text: 'UPDATED' })).toBe('Connected');
+    expect(getCloudStorageLabel({ status: 'synced', text: 'UPDATED' })).toBe('Available');
     expect(getCloudStorageLabel({ status: 'idle', text: 'ADD SECRET' })).toBe('Setup required');
     expect(getCloudStorageLabel({ status: 'error', text: 'FAIL' })).toBe('Unavailable');
     expect(getPortfolioSyncLabel({ status: 'synced', text: 'Synced' })).toBe('Synced');
@@ -77,7 +77,7 @@ describe('Device Check summary diagnostics', () => {
     }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: false
-    }, { status: 'idle', text: '' })).toBe('attention');
+    }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: true
     }, { status: 'synced', text: 'UPDATED' }, { status: 'error', text: 'Sync failed' })).toBe('attention');
