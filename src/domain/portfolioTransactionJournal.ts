@@ -79,6 +79,8 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (typeof value.recordedAt !== 'number' || !Number.isFinite(value.recordedAt) || value.recordedAt <= 0) return false;
   if (value.idempotencyKey !== undefined &&
     (typeof value.idempotencyKey !== 'string' || !value.idempotencyKey.trim() || value.idempotencyKey.length > 200)) return false;
+  if (value.requestFingerprint !== undefined &&
+    (typeof value.requestFingerprint !== 'string' || !value.requestFingerprint.trim() || value.requestFingerprint.length > 512)) return false;
   if (value.ticker !== undefined && (typeof value.ticker !== 'string' || !value.ticker.trim())) return false;
   if (value.currency !== undefined && !/^[A-Z]{3}$/.test(String(value.currency))) return false;
   if (![
@@ -134,6 +136,7 @@ export function createPortfolioTransactionEvent(
     effectiveAt,
     recordedAt,
     ...(idempotencyKey ? { idempotencyKey } : {}),
+    ...(context.requestFingerprint ? { requestFingerprint: context.requestFingerprint } : {}),
     ...(draft.ticker ? { ticker: draft.ticker.trim().toUpperCase() } : {}),
     ...(draft.currency ? { currency: draft.currency.trim().toUpperCase() } : {}),
     ...(draft.quantity !== undefined ? { quantity: draft.quantity } : {}),
