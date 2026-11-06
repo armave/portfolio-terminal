@@ -91,6 +91,25 @@ describe('normalizeMarketQuoteObservation', () => {
     });
   });
 
+  it('normalizes explicit timezone offsets and provider session labels', () => {
+    const result = normalizeMarketQuoteObservation({
+      symbol: 'AAPL.US',
+      price: 210,
+      provider: 'test',
+      observedAt: '2026-11-06T07:00:00-05:00',
+      receivedAt: '2026-11-06T12:00:30Z',
+      currency: 'USD',
+      delayClass: 'LIVE',
+      session: 'POST-MARKET'
+    }, { now: Date.parse('2026-11-06T12:00:30Z') });
+    expect(result.observation).toMatchObject({
+      observedAt: Date.parse('2026-11-06T12:00:00Z'),
+      receivedAt: Date.parse('2026-11-06T12:00:30Z'),
+      session: 'POST',
+      freshness: 'fresh'
+    });
+  });
+
   it('never infers fresh/live data from receipt time alone', () => {
     const result = normalizeMarketQuoteObservation({
       ...base, observedAt: null, delayClass: 'unknown'
