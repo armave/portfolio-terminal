@@ -22,6 +22,8 @@ describe('cash/margin mix inputs', () => {
 });
 
 describe('broker history adapter boundary', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
   it('normalizes cached executions through the provider adapter', () => {
     expect(deskSource).toContain("import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';");
     expect(deskSource).toContain("freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data");
