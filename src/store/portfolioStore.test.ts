@@ -2610,6 +2610,79 @@ describe('portfolio transaction journal integration', () => {
     expect(reloaded.sellCashHolding('NVDA', 2, 21, context)).toBeNull();
   });
 
+
+  it('journals tranche removal as a tracking correction without pretending it was a sale', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    const beforeEvents = store.getState().transactionEvents?.length || 0;
+
+    expect(store.removeTranche('AAPL', 'AAPL-0')).toBe(true);
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    const correction = store.getState().transactionEvents?.[beforeEvents];
+    expect(correction).toMatchObject({
+      type: 'position.adjustment',
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100
+    });
+    expect(correction?.cashDelta).toBeUndefined();
+    expect(correction?.netAmount).toBeUndefined();
+    expect(correction?.note).toContain('no sale proceeds');
+  });
+
+  it('journals cash-holding removal without inventing proceeds', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 4, 120)).not.toBeNull();
+    const beforeEvents = store.getState().transactionEvents?.length || 0;
+
+    expect(store.removeCashStock('NVDA')).toBe(true);
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    const correction = store.getState().transactionEvents?.[beforeEvents];
+    expect(correction).toMatchObject({
+      type: 'cash-holding.adjustment',
+      ticker: 'NVDA',
+      quantity: 4
+    });
+    expect(correction?.cashDelta).toBeUndefined();
+    expect(correction?.netAmount).toBeUndefined();
+  });
+
+  it('preserves the append-only journal and records a reset marker', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-01')).toBe(true);
+    const previousEvents = store.getState().transactionEvents || [];
+    const resetAt = Date.parse('2026-11-06T10:00:00.000Z');
+
+    expect(store.resetToBlankState(resetAt)).toBe(true);
+    expect(store.getState().positions).toEqual({});
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    expect(store.getState().transactionEvents).toHaveLength(previousEvents.length + 1);
+    expect(store.getState().transactionEvents?.slice(0, previousEvents.length)).toEqual(previousEvents);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'portfolio.reset',
+      effectiveAt: resetAt,
+      actor: { type: 'user' }
+    });
+    const saved = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(saved.transactionEvents).toHaveLength(previousEvents.length + 1);
+  });
+
+  it('does not infer an execution price from a quote when cash-holding shares are added without a manual price', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('NVDA', 2, 120)).not.toBeNull();
+    expect(store.addCashHolding('NVDA', 1)).not.toBeNull();
+
+    const event = store.getState().transactionEvents?.at(-1);
+    expect(event).toMatchObject({
+      type: 'cash-holding.buy',
+      ticker: 'NVDA',
+      quantity: 1
+    });
+    expect(event?.unitPrice).toBeUndefined();
+    expect(event?.grossAmount).toBeUndefined();
+    expect(event?.note).toContain('no execution price');
+  });
+
   it('does not publish a financial mutation or append its event when persistence fails', () => {
     const failingStorage = {
       getItem: (key: string) => sharedTestStorage.get(key) ?? null,
