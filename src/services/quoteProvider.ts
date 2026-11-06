@@ -78,6 +78,7 @@ interface QuoteMarketMetadataInput {
   assetType?: unknown;
   marketSession?: string;
   delayClass: MarketDelayClass;
+  cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
   requestSequence: number;
 }
 
@@ -112,6 +113,7 @@ function withMarketMetadata(
     delayClass: observation.delayClass,
     dataQuality: observation.quality,
     freshness: observation.freshness,
+    ...(input.cacheStatus ? { cacheStatus: input.cacheStatus } : {}),
     sourceTimestamp: observation.observedAt ?? undefined,
     receivedAt: observation.receivedAt
   };
@@ -294,6 +296,7 @@ export async function fetchLivePriceFromProviders(
             assetType: data.quoteType ?? data.price.quoteType,
             marketSession: marketState,
             delayClass,
+            cacheStatus: data.cacheStatus,
             requestSequence
           });
         }
