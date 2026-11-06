@@ -712,6 +712,7 @@ export class PortfolioStore {
     const mutationContext: PortfolioTransactionContext = {
       ...context,
       idempotencyKey: context?.idempotencyKey ?? `rollover:${timestamp}`,
+      requestFingerprint: createMutationFingerprint(['margin.interest', timestamp, compoundedDebt, interestAccrued, recordAsRealized ? 1 : 0]),
       actor: context?.actor ?? { type: 'system' },
       source: context?.source ?? 'rollover',
       effectiveAt: context?.effectiveAt ?? timestamp
@@ -745,7 +746,10 @@ export class PortfolioStore {
       throw new Error('Free cash must be a finite non-negative amount.');
     }
 
-    return this.updateFinancialMutation(context, (state) => {
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['cash.set-free', num])
+    }, (state) => {
       const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       return {
         state: {
@@ -770,7 +774,10 @@ export class PortfolioStore {
   public setCashBalance(amount: number, context?: PortfolioTransactionContext): boolean {
     if (!Number.isFinite(amount)) return false;
     const num = amount;
-    return this.updateFinancialMutation(context, (state) => {
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['cash.set-balance', num])
+    }, (state) => {
       const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const previousDebt = Math.abs(Number(state.balance) || 0);
       const freeCash = Math.max(0, num);
@@ -803,7 +810,10 @@ export class PortfolioStore {
     const amount = Number(debtAmount);
     if (!Number.isFinite(amount)) return false;
     const debt = Math.abs(amount);
-    return this.updateFinancialMutation(context, (state) => {
+    return this.updateFinancialMutation({
+      ...context,
+      requestFingerprint: createMutationFingerprint(['margin.set-debt', debt])
+    }, (state) => {
       const previousDebt = Math.abs(Number(state.balance) || 0);
       return {
         state: {
@@ -841,6 +851,7 @@ export class PortfolioStore {
     return this.updateFinancialMutation({
       ...context,
       effectiveAt,
+      requestFingerprint: createMutationFingerprint(['trade.buy', clean, shares, price, purchaseDate]),
       source: context?.source ?? 'manual',
       actor: context?.actor ?? { type: 'user' }
     }, (state) => {
