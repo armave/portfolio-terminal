@@ -28,40 +28,6 @@ export function getCashCushionTotal(state?: BoardState | null): number {
 }
 
 
-/** Minimal identity-only input for market-insights ticker selection. */
-export interface MarketInsightsTickerSelection {
-  activeView: string;
-  positionTickers: string[];
-}
-
-export function selectMarketInsightsTicker(state: BoardState): MarketInsightsTickerSelection {
-  return {
-    activeView: state.activeView || '',
-    positionTickers: Object.keys(state.positions || {})
-  };
-}
-
-export function areMarketInsightsTickerSelectionsEqual(
-  previous: MarketInsightsTickerSelection,
-  next: MarketInsightsTickerSelection
-): boolean {
-  return previous.activeView === next.activeView &&
-    previous.positionTickers.length === next.positionTickers.length &&
-    previous.positionTickers.every((ticker, index) => ticker === next.positionTickers[index]);
-}
-
-/** Resolve the selected ticker without subscribing to live quote values. */
-export function resolveMarketInsightsTicker(selection: MarketInsightsTickerSelection): string {
-  const currentView = selection.activeView;
-  const isPositionView = Boolean(
-    currentView &&
-    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
-    selection.positionTickers.includes(currentView)
-  );
-  if (isPositionView) return currentView;
-  return selection.positionTickers[0] || '';
-}
-
 /** Resolve the stock symbol whose quote context backs the market-insights panel. */
 export function getMarketInsightsTicker(state?: BoardState | null): string {
   if (!state) return '';

@@ -5,15 +5,18 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
 import { usePortfolioSelector } from '../store/portfolioStore';
-import {
-  areMarketInsightsTickerSelectionsEqual,
-  resolveMarketInsightsTicker,
-  selectMarketInsightsTicker
-} from '../domain/portfolioSelectors';
+import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
+import type { BoardState } from '../types/portfolio';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
 import { useDialogFocus } from '../ui/dialogFocus';
 
 type InsightSection = MarketInsightsSection;
+
+const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsightsTicker({
+  activeView: state.activeView,
+  positions: state.positions,
+  selectedTicker: state.activeView
+});
 
 export function formatNewsRelativeTime(datetime: unknown, now = Date.now()): string {
   if ((typeof datetime !== 'number' && typeof datetime !== 'string') ||
@@ -97,8 +100,7 @@ function renderStocktwitsBody(body: string) {
 }
 
 function MarketInsightsPanelView() {
-  const tickerSelection = usePortfolioSelector(selectMarketInsightsTicker, areMarketInsightsTickerSelectionsEqual);
-  const ticker = resolveMarketInsightsTicker(tickerSelection);
+  const ticker = usePortfolioSelector(selectMarketInsightsTicker);
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [deepDataRequest, setDeepDataRequest] = useState<{
     ticker: string;

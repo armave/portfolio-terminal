@@ -5,9 +5,6 @@ import {
   getPortfolioProjectionInputs,
   getMarketInsightsTicker,
   isCurrentMarketInsightsTicker,
-  selectMarketInsightsTicker,
-  areMarketInsightsTickerSelectionsEqual,
-  resolveMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
@@ -25,6 +22,13 @@ describe('market insights ticker selector', () => {
     } as unknown as BoardState;
 
     expect(getMarketInsightsTicker(state)).toBe('AAPL');
+    expect(getMarketInsightsTicker({
+      ...state,
+      positions: {
+        AAPL: { ticker: 'AAPL', currentPrice: 105 },
+        MSFT: { ticker: 'MSFT', currentPrice: 200 }
+      }
+    })).toBe('AAPL');
   });
 
   it('resolves the active ticker when a single Margin position is selected', () => {
@@ -61,43 +65,6 @@ describe('market insights ticker selector', () => {
   it('does not publish analyst-target completions without a valid current ticker', () => {
     expect(isCurrentMarketInsightsTicker(null, 'GOOGL')).toBe(false);
     expect(isCurrentMarketInsightsTicker(undefined, '')).toBe(false);
-  });
-});
-
-describe('Market Insights selector equality', () => {
-  const positions = {
-    AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 110, commBuy: 0 },
-    MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200, pt: 210, commBuy: 0 }
-  };
-  const state = {
-    activeView: 'COMBINED',
-    positions
-  } as unknown as BoardState;
-
-  it('ignores quote-only updates while retaining the combined-view fallback', () => {
-    const first = selectMarketInsightsTicker(state);
-    const quoteOnly = selectMarketInsightsTicker({
-      ...state,
-      positions: { ...positions, AAPL: { ...positions.AAPL, currentPrice: 105 } }
-    });
-    expect(areMarketInsightsTickerSelectionsEqual(first, quoteOnly)).toBe(true);
-    expect(resolveMarketInsightsTicker(first)).toBe('AAPL');
-  });
-
-  it('updates for active-view changes and position-membership changes', () => {
-    const first = selectMarketInsightsTicker(state);
-    const selected = selectMarketInsightsTicker({ ...state, activeView: 'MSFT' });
-    expect(resolveMarketInsightsTicker(selected)).toBe('MSFT');
-    expect(areMarketInsightsTickerSelectionsEqual(first, selected)).toBe(false);
-    expect(areMarketInsightsTickerSelectionsEqual(first, selectMarketInsightsTicker({
-      ...state, positions: { AAPL: positions.AAPL }
-    }))).toBe(false);
-  });
-
-  it('falls back to the first remaining position when the active ticker disappears', () => {
-    expect(resolveMarketInsightsTicker(selectMarketInsightsTicker({
-      ...state, activeView: 'NVDA'
-    }))).toBe('AAPL');
   });
 });
 

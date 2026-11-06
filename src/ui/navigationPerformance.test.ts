@@ -17,7 +17,7 @@ describe('navigation performance wiring', () => {
     expect(rootRuntime).toContain('getActiveView: () => portfolioStore.getState().activeView');
     expect(app).toContain('const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);');
     const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
-    expect(marketInsights).toContain('usePortfolioSelector(selectMarketInsightsTicker, areMarketInsightsTickerSelectionsEqual)');
+    expect(marketInsights).toContain('usePortfolioSelector(selectMarketInsightsTicker)');
     expect(marketInsights).not.toContain('usePortfolio()');
     expect(app).not.toContain('const portfolioSnapshot = usePortfolio();');
     expect(app).not.toContain('deskLoadingView');
