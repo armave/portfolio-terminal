@@ -744,3 +744,89 @@ export function summarizePerformanceIncomeAndCosts(
     netIncomeAndCosts
   }, quality, quality === 'provisional' ? ['The income/cost summary includes provisional source data.'] : []);
 }
+
+export interface BenchmarkSeriesInput {
+  identifier: string;
+  /** Benchmark values must be a dividend-reinvested total-return index, not a price-only series. */
+  returnType: 'total-return-index';
+  valuations: readonly PerformanceValuationPoint[];
+}
+
+export interface BenchmarkComparison {
+  benchmarkIdentifier: string;
+  currency: string;
+  startAt: number;
+  endAt: number;
+  portfolioReturn: number;
+  benchmarkReturn: number;
+  /** Arithmetic active return, expressed as a decimal difference in return rates. */
+  activeReturn: number;
+  /** Relative wealth return; null when benchmark wealth falls to zero. */
+  relativeReturn: number | null;
+}
+
+/**
+ * Compare a portfolio return with a dividend-reinvested total-return benchmark
+ * over exactly aligned opening/closing timestamps and a common currency.
+ * The benchmark uses its index-level total return, while the portfolio uses
+ * flow-adjusted linked Modified Dietz. No calendar interpolation or FX is inferred.
+ */
+export function comparePerformanceToBenchmark(
+  portfolioInput: PerformanceInput,
+  benchmark: BenchmarkSeriesInput
+): PerformanceCalculation<BenchmarkComparison> {
+  if (!benchmark || typeof benchmark.identifier !== 'string' || benchmark.identifier.trim() === '') {
+    return unavailable('A non-empty benchmark identifier is required.');
+  }
+  if (benchmark.returnType !== 'total-return-index') {
+    return unavailable('Benchmark comparison requires a dividend-reinvested total-return index.');
+  }
+  const portfolio = calculateTimeWeightedReturn(portfolioInput);
+  if (portfolio.status === 'unavailable') return portfolio;
+  const benchmarkNormalized = normalizeValuations(benchmark.valuations);
+  if (benchmarkNormalized.status === 'unavailable') return benchmarkNormalized;
+
+  const portfolioPoints = normalizeValuations(portfolioInput.valuations);
+  if (portfolioPoints.status === 'unavailable') return portfolioPoints;
+  const portfolioStart = portfolioPoints.value.points[0];
+  const portfolioEnd = portfolioPoints.value.points[portfolioPoints.value.points.length - 1];
+  const benchmarkPoints = benchmarkNormalized.value.points;
+  const benchmarkStart = benchmarkPoints[0];
+  const benchmarkEnd = benchmarkPoints[benchmarkPoints.length - 1];
+
+  if (portfolio.value.currency !== benchmarkNormalized.value.currency) {
+    return unavailable('Portfolio and benchmark currencies must match; no implicit FX conversion is performed.');
+  }
+  if (portfolioStart.timestamp !== benchmarkStart.timestamp || portfolioEnd.timestamp !== benchmarkEnd.timestamp) {
+    return unavailable('Portfolio and benchmark observations must have exactly aligned opening and closing timestamps.');
+  }
+  if (benchmarkStart.equity <= 0) {
+    return unavailable('Benchmark comparison requires a positive opening total-return index level.');
+  }
+
+  const benchmarkReturn = benchmarkEnd.equity / benchmarkStart.equity - 1;
+  const portfolioReturn = portfolio.value.totalReturn;
+  const activeReturn = portfolioReturn - benchmarkReturn;
+  if (![benchmarkReturn, portfolioReturn, activeReturn].every(Number.isFinite)) {
+    return unavailable('Benchmark comparison produced a non-finite return.');
+  }
+  const relativeReturn = benchmarkEnd.equity === 0
+    ? null
+    : (1 + portfolioReturn) / (1 + benchmarkReturn) - 1;
+  const quality = mergeQuality(portfolio.quality, benchmarkNormalized.value.quality);
+  if (quality === 'incomplete') return unavailable('Benchmark comparison includes incomplete input data.');
+  const warnings = [
+    ...portfolio.warnings,
+    ...benchmarkNormalized.warnings
+  ];
+  return resultWithQuality({
+    benchmarkIdentifier: benchmark.identifier.trim(),
+    currency: portfolio.value.currency,
+    startAt: portfolioStart.timestamp,
+    endAt: portfolioEnd.timestamp,
+    portfolioReturn,
+    benchmarkReturn,
+    activeReturn,
+    relativeReturn
+  }, quality, warnings);
+}
