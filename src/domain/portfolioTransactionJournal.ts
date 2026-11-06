@@ -292,7 +292,6 @@ export interface PortfolioTransactionReplayState {
   freeCash: number;
   marginDebt: number;
 }
-
 export interface PortfolioTransactionParityResult {
   matches: boolean;
   discrepancies: Array<{
@@ -307,61 +306,36 @@ export interface PortfolioTransactionParityResult {
 export function replayPortfolioTransactionJournal(
   events: readonly PortfolioTransactionEvent[]
 ): PortfolioTransactionReplayState {
-  if (!isPortfolioTransactionEventList(events)) {
-    throw new TypeError('Portfolio transaction event history is malformed.');
-  }
-  const replay: PortfolioTransactionReplayState = {
-    positions: {},
-    cashHoldings: {},
-    freeCash: 0,
-    marginDebt: 0
+  if (!isPortfolioTransactionEventList(events)) throw new TypeError('Portfolio transaction event history is malformed.');
+  const out: PortfolioTransactionReplayState = { positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0 };
+  const add = (map: Record<string, number>, ticker: string, delta: number) => {
+    if (!delta) return;
+    const next = (map[ticker] || 0) + delta;
+    if (Math.abs(next) < 1e-8) delete map[ticker];
+    else map[ticker] = next;
   };
-
-  for (const event of events) {
-    if (event.type === 'portfolio.reset') {
-      replay.positions = {};
-      replay.cashHoldings = {};
-      replay.freeCash = 0;
-      replay.marginDebt = 0;
+  for (const e of events) {
+    if (e.type === 'portfolio.reset') {
+      out.positions = {};
+      out.cashHoldings = {};
+      out.freeCash = out.marginDebt = 0;
       continue;
     }
-
-    const ticker = event.ticker?.trim().toUpperCase();
-    const positionDelta = event.positionQuantityDelta ??
-      (event.type === 'trade.buy' ? Number(event.quantity) || 0 :
-        event.type === 'trade.sell' || event.type === 'position.adjustment'
-          ? -(Number(event.quantity) || 0) : 0);
-    const cashHoldingDelta = event.cashHoldingQuantityDelta ??
-      (event.type === 'cash-holding.buy' ? Number(event.quantity) || 0 :
-        event.type === 'cash-holding.sell' || event.type === 'cash-holding.adjustment'
-          ? -(Number(event.quantity) || 0) : 0);
-
-    if (ticker && positionDelta !== 0) {
-      const next = (replay.positions[ticker] || 0) + positionDelta;
-      if (Math.abs(next) < 1e-8) delete replay.positions[ticker];
-      else replay.positions[ticker] = next;
+    const t = e.ticker?.trim().toUpperCase();
+    if (t) {
+      add(out.positions, t, e.positionQuantityDelta ??
+        (e.type === 'trade.buy' ? Number(e.quantity) || 0 :
+          e.type === 'trade.sell' || e.type === 'position.adjustment' ? -(Number(e.quantity) || 0) : 0));
+      add(out.cashHoldings, t, e.cashHoldingQuantityDelta ??
+        (e.type === 'cash-holding.buy' ? Number(e.quantity) || 0 :
+          e.type === 'cash-holding.sell' || e.type === 'cash-holding.adjustment' ? -(Number(e.quantity) || 0) : 0));
     }
-    if (ticker && cashHoldingDelta !== 0) {
-      const next = (replay.cashHoldings[ticker] || 0) + cashHoldingDelta;
-      if (Math.abs(next) < 1e-8) delete replay.cashHoldings[ticker];
-      else replay.cashHoldings[ticker] = next;
-    }
-    // Only explicit signed projection deltas post to local cash/debt. External
-    // broker cashflows carry externalCashFlowAmount but intentionally omit these
-    // fields, so evidence is not double-posted into the canonical local balance.
-    replay.freeCash += Number(event.cashDelta) || 0;
-    replay.marginDebt += Number(event.marginDebtDelta) || 0;
+    out.freeCash += Number(e.cashDelta) || 0;
+    out.marginDebt += Number(e.marginDebtDelta) || 0;
   }
-
-  Object.keys(replay.positions).forEach((ticker) => {
-    if (Math.abs(replay.positions[ticker]) < 1e-8) delete replay.positions[ticker];
-  });
-  Object.keys(replay.cashHoldings).forEach((ticker) => {
-    if (Math.abs(replay.cashHoldings[ticker]) < 1e-8) delete replay.cashHoldings[ticker];
-  });
-  replay.freeCash = Math.abs(replay.freeCash) < 1e-8 ? 0 : replay.freeCash;
-  replay.marginDebt = Math.abs(replay.marginDebt) < 1e-8 ? 0 : replay.marginDebt;
-  return replay;
+  if (Math.abs(out.freeCash) < 1e-8) out.freeCash = 0;
+  if (Math.abs(out.marginDebt) < 1e-8) out.marginDebt = 0;
+  return out;
 }
 
 export function verifyPortfolioTransactionParity(
@@ -373,47 +347,23 @@ export function verifyPortfolioTransactionParity(
   },
   tolerance = 1e-6
 ): PortfolioTransactionParityResult {
-  const replay = replayPortfolioTransactionJournal(events);
+  const r = replayPortfolioTransactionJournal(events);
   const discrepancies: PortfolioTransactionParityResult['discrepancies'] = [];
-  const positionTickers = new Set([
-    ...Object.keys(replay.positions),
-    ...Object.keys(canonical.positions || {})
-  ]);
-  for (const rawTicker of positionTickers) {
-    const ticker = rawTicker.toUpperCase();
-    const replayed = Number(replay.positions[ticker]) || 0;
-    const canonicalValue = Number(canonical.positions?.[ticker]?.shares) || 0;
-    if (Math.abs(replayed - canonicalValue) > tolerance) {
-      discrepancies.push({ field: 'position', ticker, replayed, canonical: canonicalValue, delta: canonicalValue - replayed });
-    }
+  const compare = (field: PortfolioTransactionParityResult['discrepancies'][number]['field'], ticker: string | undefined, replayed: number, value: number) => {
+    if (Math.abs(replayed - value) > tolerance) discrepancies.push({ field, ...(ticker ? { ticker } : {}), replayed, canonical: value, delta: value - replayed });
+  };
+  const p = canonical.positions || {};
+  for (const t of new Set([...Object.keys(r.positions), ...Object.keys(p)])) compare('position', t, r.positions[t] || 0, Number(p[t]?.shares) || 0);
+  const h: Record<string, number> = {};
+  for (const row of canonical.cashCushion?.holdings || []) {
+    const t = row.ticker.trim().toUpperCase();
+    h[t] = (h[t] || 0) + (Number(row.shares) || 0);
   }
-
-  const canonicalCashHoldings = new Map<string, number>();
-  for (const holding of canonical.cashCushion?.holdings || []) {
-    const ticker = holding.ticker.trim().toUpperCase();
-    canonicalCashHoldings.set(ticker, (canonicalCashHoldings.get(ticker) || 0) + (Number(holding.shares) || 0));
-  }
-  const holdingTickers = new Set([...Object.keys(replay.cashHoldings), ...canonicalCashHoldings.keys()]);
-  for (const ticker of holdingTickers) {
-    const replayed = Number(replay.cashHoldings[ticker]) || 0;
-    const canonicalValue = Number(canonicalCashHoldings.get(ticker)) || 0;
-    if (Math.abs(replayed - canonicalValue) > tolerance) {
-      discrepancies.push({ field: 'cash-holding', ticker, replayed, canonical: canonicalValue, delta: canonicalValue - replayed });
-    }
-  }
-
-  const canonicalCash = Math.max(0, Number(canonical.cashCushion?.freeCash) || 0);
-  if (Math.abs(replay.freeCash - canonicalCash) > tolerance) {
-    discrepancies.push({ field: 'free-cash', replayed: replay.freeCash, canonical: canonicalCash, delta: canonicalCash - replay.freeCash });
-  }
-
-  const canonicalDebt = Math.abs(Number(canonical.balance) || 0);
-  if (Math.abs(replay.marginDebt - canonicalDebt) > tolerance) {
-    discrepancies.push({ field: 'margin-debt', replayed: replay.marginDebt, canonical: canonicalDebt, delta: canonicalDebt - replay.marginDebt });
-  }
-  return { matches: discrepancies.length === 0, discrepancies };
+  for (const t of new Set([...Object.keys(r.cashHoldings), ...Object.keys(h)])) compare('cash-holding', t, r.cashHoldings[t] || 0, h[t] || 0);
+  compare('free-cash', undefined, r.freeCash, Math.max(0, Number(canonical.cashCushion?.freeCash) || 0));
+  compare('margin-debt', undefined, r.marginDebt, Math.abs(Number(canonical.balance) || 0));
+  return { matches: !discrepancies.length, discrepancies };
 }
-
 
 function hash(value: string): string {
   let a = 2166136261, b = 0x9e3779b9;
