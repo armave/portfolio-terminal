@@ -16,7 +16,7 @@ interface BrokerReconciliationPanelProps {
 const STATUS_COPY = {
   matched: 'Matched',
   differences: 'Differences found',
-  partial: 'Partial snapshot',
+  partial: 'Partial comparison',
   provisional: 'Provisional comparison',
   stale: 'Stale broker snapshot',
   unavailable: 'Broker data unavailable'
