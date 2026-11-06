@@ -1,11 +1,71 @@
 import { describe, expect, it, vi } from "vitest";
 import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
-import { fetchFreedomQuote, fetchFreedomQuoteWebSocket, normalizeFreedomQuote } from "./freedomMarketData";
+import { fetchFreedomHistory, fetchFreedomQuote, fetchFreedomQuoteWebSocket, normalizeFreedomQuote } from "./freedomMarketData";
 
 vi.mock("./api", () => ({
   proxyFetch: vi.fn(),
   fetchFreedomTradeNetQuoteStreamOnce: vi.fn()
 }));
+
+describe('fetchFreedomHistory', () => {
+  it('normalizes the existing TradeNet daily HLOC response with source and instrument provenance', async () => {
+    vi.mocked(proxyFetch).mockResolvedValue({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      symbol: 'AAPL.US',
+      data: {
+        hloc: [
+          { t: 1793966400, o: 98, h: 103, l: 97, c: 101, v: 1200 },
+          { t: 1793880000, o: 96, h: 100, l: 95, c: 99, v: 900 }
+        ]
+      }
+    });
+
+    await expect(fetchFreedomHistory('AAPL')).resolves.toMatchObject({
+      quality: 'partial',
+      provider: 'FREEDOM TRADENET',
+      interval: '1D',
+      instrument: {
+        id: 'UNKNOWN:US:AAPL',
+        symbol: 'AAPL',
+        exchange: 'US',
+        quoteCurrency: null
+      },
+      points: [
+        { timestamp: 1793880000000, price: 99, open: 96, high: 100, low: 95, volume: 900 },
+        { timestamp: 1793966400000, price: 101, open: 98, high: 103, low: 97, volume: 1200 }
+      ]
+    });
+    expect(proxyFetch).toHaveBeenCalledWith('freedom-history', { symbol: 'AAPL.US' }, {});
+  });
+
+  it('uses only explicitly supplied instrument metadata and supports a forced uncached history request', async () => {
+    vi.mocked(proxyFetch).mockResolvedValue({
+      ok: true, provider: 'Freedom TradeNet', symbol: 'AAPL.US',
+      data: [{ t: 1793966400, c: 101 }]
+    });
+
+    await expect(fetchFreedomHistory('AAPL', {
+      force: true, currency: 'USD', assetType: 'EQUITY'
+    })).resolves.toMatchObject({
+      quality: 'complete',
+      instrument: { id: 'EQUITY:US:AAPL', quoteCurrency: 'USD', assetType: 'EQUITY' }
+    });
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-history', { symbol: 'AAPL.US' }, { cache: 'no-store' }
+    );
+  });
+
+  it('rejects mismatched provider symbols and malformed action envelopes', async () => {
+    vi.mocked(proxyFetch).mockResolvedValueOnce({
+      ok: true, provider: 'Freedom TradeNet', symbol: 'MSFT.US', data: []
+    });
+    await expect(fetchFreedomHistory('AAPL')).rejects.toThrow('different ticker');
+
+    vi.mocked(proxyFetch).mockResolvedValueOnce({ ok: false, error: 'provider unavailable' });
+    await expect(fetchFreedomHistory('AAPL')).rejects.toThrow('provider unavailable');
+  });
+});
 
 describe("normalizeFreedomQuote", () => {
   it("normalizes a quote payload with common Tradernet field names", () => {
