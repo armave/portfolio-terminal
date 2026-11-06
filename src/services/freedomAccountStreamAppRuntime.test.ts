@@ -53,9 +53,11 @@ describe('Freedom account stream app adapter', () => {
   it('routes normalized portfolio, orders and deduplicated fills into broker events', async () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const portfolioEvents: unknown[] = [];
+    const snapshotEvents: unknown[] = [];
     const orderEvents: unknown[] = [];
     let brokerExecutions: any[] = [];
     const offPortfolio = addBrokerEventListener('broker:account-info', (value) => portfolioEvents.push(value));
+    const offSnapshot = addBrokerEventListener('broker:account-info-snapshot', (value) => snapshotEvents.push(value));
     const offOrders = addBrokerEventListener('broker:active-orders', (value) => orderEvents.push(value));
     const offTrades = addBrokerEventListener('broker:executed-trades', (value) => { brokerExecutions = value; });
     const runtime = createFreedomAccountStreamAppRuntime({
@@ -93,6 +95,14 @@ describe('Freedom account stream app adapter', () => {
         balances: [{ currency: 'USD', amount: 9000 }],
         positions: [{ ticker: 'GOOGL.US', quantity: 50, marketPrice: 294 }]
       });
+      expect(snapshotEvents).toHaveLength(1);
+      expect(snapshotEvents[0]).toMatchObject({
+        provider: 'freedom-tradenet',
+        quality: 'complete',
+        source: 'websocket',
+        receivedAt: 1_800_000_000_000,
+        data: { positions: [{ ticker: 'GOOGL.US', quantity: 50 }] }
+      });
 
       const orders = {
         data: {
@@ -123,6 +133,7 @@ describe('Freedom account stream app adapter', () => {
     } finally {
       runtime.stop();
       offPortfolio();
+      offSnapshot();
       offOrders();
       offTrades();
     }
