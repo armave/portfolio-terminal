@@ -66,8 +66,8 @@ describe('market insights ticker selector', () => {
 
 describe('Market Insights selector equality', () => {
   const positions = {
-    AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 100 },
-    MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200 }
+    AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 110, commBuy: 0 },
+    MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200, pt: 210, commBuy: 0 }
   };
   const state = {
     activeView: 'COMBINED',
