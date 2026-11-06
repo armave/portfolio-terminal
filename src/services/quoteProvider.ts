@@ -220,6 +220,8 @@ export async function fetchLivePriceFromProviders(
       price: freedomQuote.price,
       observedAt: freedomQuote.sourceTimestamp,
       receivedAt,
+      exchange: symbol.includes('.') ? undefined : 'US',
+      assetType: 'EQUITY',
       marketSession: marketState,
       delayClass,
       requestSequence
