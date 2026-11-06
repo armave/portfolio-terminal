@@ -48,6 +48,8 @@ export interface PortfolioTransactionEvent {
   grossAmount?: number;
   /** Fees/commissions attributed to this event in the event currency. */
   fees?: number;
+  /** Financing/interest cost allocated to this transaction, separate from commissions. */
+  financingCost?: number;
   /** Signed change in available free cash. */
   cashDelta?: number;
   /** Positive means margin debt increased; negative means it was repaid. */
