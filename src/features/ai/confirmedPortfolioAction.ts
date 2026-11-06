@@ -1,4 +1,5 @@
 import type { PortfolioActionIntent } from './intent';
+import type { PortfolioTransactionContext } from '../../types/portfolioTransaction';
 
 /**
  * Keep AI-generated portfolio changes behind an explicit, synchronous user decision.
@@ -7,9 +8,9 @@ import type { PortfolioActionIntent } from './intent';
 export async function applyAiPortfolioActionAfterConfirmation(
   action: PortfolioActionIntent,
   requestConfirmation: (action: PortfolioActionIntent) => boolean,
-  applyAction: (action: PortfolioActionIntent) => void | Promise<void>
+  applyAction: (action: PortfolioActionIntent, context: PortfolioTransactionContext) => void | Promise<void>
 ): Promise<boolean> {
   if (!requestConfirmation(action)) return false;
-  await applyAction(action);
+  await applyAction(action, { actor: { type: 'ai' }, source: 'ai-confirmed' });
   return true;
 }
