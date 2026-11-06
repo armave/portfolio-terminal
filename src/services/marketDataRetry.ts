@@ -44,9 +44,18 @@ export async function retryMarketDataRequest<T>(
   request: () => Promise<T>,
   options: MarketDataRetryOptions = {}
 ): Promise<T> {
-  const attempts = Math.max(1, Math.min(4, Math.floor(options.attempts ?? 2)));
-  const baseDelayMs = Math.max(0, options.baseDelayMs ?? 250);
-  const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? 2_000);
+  const requestedAttempts = options.attempts ?? 2;
+  const requestedBaseDelayMs = options.baseDelayMs ?? 250;
+  const requestedMaxDelayMs = options.maxDelayMs ?? 2_000;
+  const attempts = Number.isFinite(requestedAttempts)
+    ? Math.max(1, Math.min(4, Math.floor(requestedAttempts)))
+    : 2;
+  const baseDelayMs = Number.isFinite(requestedBaseDelayMs)
+    ? Math.max(0, requestedBaseDelayMs)
+    : 250;
+  const maxDelayMs = Number.isFinite(requestedMaxDelayMs)
+    ? Math.max(baseDelayMs, requestedMaxDelayMs)
+    : Math.max(baseDelayMs, 2_000);
   const shouldRetry = options.shouldRetry ?? isRetryableMarketDataError;
   const sleep = options.sleep ?? defaultSleep;
 
