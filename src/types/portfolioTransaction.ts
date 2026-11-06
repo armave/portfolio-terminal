@@ -3,6 +3,8 @@ export const PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION = 1 as const;
 export type PortfolioTransactionEventType =
   | 'trade.buy'
   | 'trade.sell'
+  | 'cash-holding.buy'
+  | 'cash-holding.sell'
   | 'cash.adjustment'
   | 'cash.transfer'
   | 'dividend'
