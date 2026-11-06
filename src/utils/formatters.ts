@@ -73,6 +73,8 @@ interface QuoteFreshnessInput {
   quoteDetails?: {
     sourceTimestamp?: number;
     marketState?: string;
+    freshness?: 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
+    delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
   };
 }
 
@@ -82,6 +84,17 @@ export function getQuoteFreshness(
   refreshIntervalMs = 60000
 ): QuoteFreshness {
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
+
+  // Preserve explicit provider delay/quality classifications. In particular,
+  // indicative data must never be promoted to fresh by a recent receipt time.
+  const delayClass = holding.quoteDetails?.delayClass;
+  const providerFreshness = holding.quoteDetails?.freshness;
+  if (delayClass === 'indicative' || providerFreshness === 'indicative' || providerFreshness === 'unknown') {
+    return 'unknown';
+  }
+  if (delayClass === 'delayed' || providerFreshness === 'delayed') return 'delayed';
+  if (providerFreshness === 'stale') return 'stale';
+
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   if (!Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) {
     return holding.quoteUpdatedAt || holding.quoteSource ? 'unknown' : 'unavailable';
