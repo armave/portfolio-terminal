@@ -1830,7 +1830,9 @@ export class PortfolioStore {
       !Number.isFinite(closedAt) || closedAt <= 0) return null;
 
     const date = new Date(closedAt).toISOString().slice(0, 10);
-    const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice, closedAt]);
+    // The caller's idempotency key identifies the command; a retry may naturally
+    // arrive at a different wall-clock instant, which must not change its fingerprint.
+    const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice]);
     const transactionContext: PortfolioTransactionContext = {
       ...context,
       effectiveAt: context?.effectiveAt ?? closedAt,
