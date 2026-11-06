@@ -40,6 +40,20 @@ describe('normalizeInstrumentIdentity', () => {
     });
   });
 
+  it('treats malformed alias and provider-symbol containers as issues instead of throwing', () => {
+    expect(normalizeInstrumentIdentity({
+      symbol: 'AAPL',
+      aliases: 'not-an-array' as unknown as string[],
+      providerSymbols: ['invalid'] as unknown as Record<string, string>
+    })).toMatchObject({
+      instrument: { symbol: 'AAPL', aliases: [], providerSymbols: {} },
+      issues: [
+        'Instrument aliases must be provided as an array.',
+        'Provider symbol mappings must be provided as an object.'
+      ]
+    });
+  });
+
   it('rejects blank or unsafe symbols and does not infer currency from a ticker', () => {
     expect(normalizeInstrumentIdentity({ symbol: '   ' }).instrument).toBeNull();
     expect(normalizeInstrumentIdentity({ symbol: 'AAPL;DROP' }).instrument).toBeNull();
@@ -116,6 +130,8 @@ describe('normalizeMarketHistoryPoints', () => {
         { timestamp: 1793966400000, price: 101 },
         { timestamp: Date.parse('2026-11-06T12:02:00.000Z'), price: 103 }
       ],
+      observedAt: Date.parse('2026-11-06T12:02:00.000Z'),
+      freshness: 'unknown',
       quality: 'complete',
       issues: []
     });
@@ -144,6 +160,8 @@ describe('normalizeMarketHistoryPoints', () => {
       points: [{ time: '2026-11-06T12:00:00.000Z', close: 210 }]
     })).toMatchObject({
       quality: 'complete',
+      observedAt: Date.parse('2026-11-06T12:00:00.000Z'),
+      freshness: 'unknown',
       provider: 'YAHOO',
       receivedAt: Date.parse('2026-11-06T12:03:00.000Z'),
       interval: '1D',
