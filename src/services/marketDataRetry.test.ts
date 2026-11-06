@@ -34,6 +34,21 @@ describe('market-data retry policy', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('falls back to safe retry bounds for non-finite numeric options', async () => {
+    const request = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue('ok');
+    const sleep = vi.fn(async (_delayMs: number) => undefined);
+    await expect(retryMarketDataRequest(request, {
+      attempts: Number.NaN,
+      baseDelayMs: Number.NaN,
+      maxDelayMs: Number.POSITIVE_INFINITY,
+      sleep
+    })).resolves.toBe('ok');
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
+  });
+
   it('supports provider-specific retry classification', async () => {
     const request = vi.fn().mockRejectedValueOnce(new Error('provider temporarily unavailable')).mockResolvedValue(42);
     await expect(retryMarketDataRequest(request, {
