@@ -119,6 +119,13 @@ describe('US-equities market status presentation', () => {
       .toBe('До премаркета: 2 дн 11 ч');
   });
 
+  it('updates the whole-minute countdown on minute boundaries rather than every second', () => {
+    const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('60_000 - (Date.now() % 60_000)');
+    expect(source).toContain('window.setInterval(() => setNow(new Date()), 60_000)');
+    expect(source).not.toContain('setNow(new Date()), 1000');
+  });
+
   it('does not mount a duplicate status badge inside the Balance desk', () => {
     const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
     expect(source).not.toContain('MarketStatusBadge');

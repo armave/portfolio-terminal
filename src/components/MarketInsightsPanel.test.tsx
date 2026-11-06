@@ -1,6 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { formatNewsRelativeTime, getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
+
+describe('deferred market insights loading', () => {
+  it('waits until the panel approaches the viewport before mounting the data panel', () => {
+    const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('data-deferred-market-insights');
+    expect(source).toContain(`{ rootMargin: '240px 0px' }`);
+    expect(source).toContain('<DeferredMarketInsightsPanel />');
+  });
+});
 
 describe('formatNewsRelativeTime', () => {
   it('converts positive provider Unix seconds into relative time', () => {

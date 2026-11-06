@@ -236,8 +236,21 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     if (!hasAuthenticatedSession) return;
-    const intervalId = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(intervalId);
+
+    // The visible countdown is rounded to whole minutes, so a one-second
+    // render loop adds work without changing the displayed value.
+    let intervalId: number | undefined;
+    const updateAtNextMinute = () => {
+      setNow(new Date());
+      intervalId = window.setInterval(() => setNow(new Date()), 60_000);
+    };
+    const delayToNextMinute = 60_000 - (Date.now() % 60_000);
+    const timeoutId = window.setTimeout(updateAtNextMinute, delayToNextMinute);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
   }, [hasAuthenticatedSession]);
 
   if (!hasAuthenticatedSession) return null;
