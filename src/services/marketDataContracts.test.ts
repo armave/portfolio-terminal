@@ -220,7 +220,7 @@ describe('FX rate contract', () => {
     const withoutSession = normalizeFxRate({
       baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
       provider: 'test', observedAt: now, receivedAt: now
-    }, { now }).rate;
+    }).rate;
     expect(withoutSession?.session).toBeNull();
   });
 
