@@ -464,13 +464,26 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 - Accepted follow-ups: current valuation does not perform FX conversion; unlike currencies must not be consolidated without a defined FX contract. Active/runtime margin accrual and legacy cloud-import rollover behavior remain separate pending an explicit compatibility decision. Both are recorded in the PT-01 contract document.
 
 **PT-03 — Broker adapter boundary and normalized contracts**
-- Issue: [#331](https://github.com/armave/portfolio-terminal/issues/331) — core adapter implementation is merged; issue remains open for live TradeNet verification and the separately scoped second-provider proof.
-- Implementation PR: [#352](https://github.com/armave/portfolio-terminal/pull/352) — merged into `dev`; validated head `74ceae916d45a39d30d6e32e34964ff615c545ab`.
-- Wave 1 corrective PR: [#354](https://github.com/armave/portfolio-terminal/pull/354) — open against `dev`; branch `fix/wave1-broker-snapshot-quality`.
-- Corrective scope: missing/malformed required USD balance amounts and position quantities are no longer coerced to zero; valid numeric zeroes remain valid; malformed or unclassifiable rows and missing collections produce a partial snapshot; partial REST/WebSocket snapshots are rejected before portfolio mutation and the last accepted snapshot is retained as stale.
-- Added regression coverage for invalid/genuine-zero values, partial REST snapshots, and partial live account-stream snapshots.
-- Exact-head validation on `5249bb13845234fdaef0cf4687eb4ef7a09f1f62`: [Pull Request CI #2757 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495327); [Operations Browser Journey #85 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495408); [Trade Lifecycle Browser Smoke #57 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168495278). Typecheck, full Vitest/Worker tests, production build, production browser smoke, desktop/mobile shell performance artifact, dead-code validation, full dependency audit, and production dependency audit passed.
-- Manual QA: authenticated live TradeNet account-stream and Closed History verification remain outstanding in [#355](https://github.com/armave/portfolio-terminal/issues/355). Second-provider portability proof is tracked in [#356](https://github.com/armave/portfolio-terminal/issues/356). Mocked CI does not establish live provider behavior.
+- Issue: [#331](https://github.com/armave/portfolio-terminal/issues/331) — **closed as completed** after the core adapter and Wave 1 data-quality correction were merged.
+- Adapter implementation PR: [#352](https://github.com/armave/portfolio-terminal/pull/352) — merged into `dev`; validated head `74ceae916d45a39d30d6e32e34964ff615c545ab`.
+- Wave 1 corrective PR: [#354](https://github.com/armave/portfolio-terminal/pull/354) — **merged into `dev`** at `4812d6f2eac7c38e0f89bb20f05c75740b4f0402`; validated PR head `8e71dfa2e6be4c00b9d06235d55c122857fbe403`.
+- Corrective scope: missing/malformed required USD balance amounts and position quantities are not coerced to zero; genuine numeric zeroes remain valid; malformed rows, missing currency, and missing required collections produce a partial snapshot; partial REST/WebSocket snapshots are rejected before portfolio mutation; the last accepted snapshot is retained and marked stale.
+- Quality/source/timestamp/warning metadata is retained in sanitized account-error events. Regression coverage includes invalid and genuine-zero values, partial REST responses, and partial live account-stream responses.
+- Exact-head validation on `8e71dfa2e6be4c00b9d06235d55c122857fbe403`: [Pull Request CI #2758 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168709452); [Operations Browser Journey #86 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168709497); [Trade Lifecycle Browser Smoke #58 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42168709481).
+- Follow-ups remain separate and intentionally open: [#355](https://github.com/armave/portfolio-terminal/issues/355) requires authenticated production TradeNet verification; [#356](https://github.com/armave/portfolio-terminal/issues/356) is a future second-provider portability proof. Mocked CI does not establish live provider behavior.
+
+### Wave 1 closeout status
+
+Wave 1 implementation PRs #348–#352 are merged into `dev`. PT-03's identified P1 broker snapshot correctness gap was fixed in #354 and PT-03 issue #331 is closed. The remaining items below are not resolved by the five merged streams and must not be marked complete merely to close the release PR:
+
+- **PT-05 / #333:** architecture and topology foundation delivered by #348; tenant runtime, signed authorization, per-tenant key lifecycle, migration/rollback, and adversarial isolation tests are still unimplemented. Keep #333 open.
+- **PT-16 / #344:** client-side encrypted digest support delivered by #351. The paired Worker change is deployed directly to `main` in [commit `f49343d`](https://github.com/armave/portfolio-terminal/commit/f49343d8d6b6327f4bd0c0d94e398f8e32a2eb31), but `MARGIN_DIGEST_ENCRYPTION_REQUIRED=false` remains the compatibility setting. Strict enforcement, legacy-record migration, per-tenant keys, and the broader privacy/data-lifecycle acceptance criteria remain open. Keep #344 open.
+- **PT-17 / #345:** exact-head CI, browser journeys, shell performance sampling, and release-gate documentation delivered by #350. The 10-run baseline, authenticated portfolio performance fixture, privacy-approved production telemetry, live TradeNet/Market Depth verification, and required branch-protection enforcement remain open. Keep #345 open.
+- **PT-01 / #329:** completed and closed.
+- **PT-03 / #331:** completed and closed after #354.
+- **Live broker verification #355** and **second-provider proof #356** remain separate follow-up issues, not evidence of a failed automated build and not safe to close without their own acceptance evidence.
+
+The open release PR #353 is a `dev` → `main` promotion. The Worker companion change already on its `main` base must be preserved; Worker-only follow-up changes continue to use the direct-to-`main` deployment lane.
 
 ### Progress update format
 
