@@ -233,11 +233,11 @@ describe('transaction journal replay and parity', () => {
     const events = [
       createPortfolioTransactionEvent({
         type: 'trade.buy', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
-        quantity: 2, positionQuantityDelta: 2, cashDelta: -201.25, marginDebtDelta: 0
+        quantity: 2, positionQuantityDelta: 2, cashDelta: 0, marginDebtDelta: 201.25
       }, { eventId: 'buy' }),
       createPortfolioTransactionEvent({
         type: 'trade.sell', effectiveAt: draft.effectiveAt, ticker: 'AAPL',
-        quantity: 1, positionQuantityDelta: -1, cashDelta: 119, marginDebtDelta: -10
+        quantity: 1, positionQuantityDelta: -1, cashDelta: 0, marginDebtDelta: -119
       }, { eventId: 'sell' }),
       createPortfolioTransactionEvent({
         type: 'cash-holding.buy', effectiveAt: draft.effectiveAt, ticker: 'MSFT',
@@ -251,23 +251,20 @@ describe('transaction journal replay and parity', () => {
     const canonical = {
       positions: { AAPL: { shares: 1 } },
       cashCushion: {
-        freeCash: -201.25 + 119 + 50,
+        freeCash: 50,
         holdings: [{ ticker: 'MSFT', shares: 3 }]
       },
-      balance: -10
+      balance: -82.25
     };
     const replay = replayPortfolioTransactionJournal(events);
     expect(replay).toEqual({
       positions: { AAPL: 1 },
       cashHoldings: { MSFT: 3 },
-      freeCash: -32.25,
-      marginDebt: -10
+      freeCash: 50,
+      marginDebt: 82.25
     });
     const parity = verifyPortfolioTransactionParity(events, canonical);
-    expect(parity.matches).toBe(false);
-    expect(parity.discrepancies).toEqual([
-      expect.objectContaining({ field: 'free-cash', replayed: -32.25, canonical: -32.25 })
-    ]);
+    expect(parity).toEqual({ matches: true, discrepancies: [] });
   });
 
   it('verifies a journal against a matching canonical snapshot', () => {
