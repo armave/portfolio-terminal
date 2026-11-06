@@ -35,7 +35,16 @@ const FINDING_COPY = {
 
 function formatQuantity(value: number | null): string {
   if (value === null) return '—';
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value);
+  return new Intl.NumberFormat(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }).format(value);
+}
+
+
+function formatAge(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return translateText('Unknown', getAppLanguage());
+  const minutes = Math.max(0, Math.floor(value / 60_000));
+  const unit: Intl.RelativeTimeFormatUnit = minutes < 60 ? 'minute' : minutes < 24 * 60 ? 'hour' : 'day';
+  const amount = unit === 'minute' ? minutes : unit === 'hour' ? Math.floor(minutes / 60) : Math.floor(minutes / (24 * 60));
+  return new Intl.RelativeTimeFormat(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { numeric: 'auto' }).format(-amount, unit);
 }
 
 function formatTimestamp(value: number | null): string {
@@ -64,6 +73,7 @@ function buildBrokerSnapshot(info: BrokerAccountInfo | undefined): BrokerDataSna
     ...(info.observedAt === undefined ? {} : { observedAt: info.observedAt }),
     warnings: [
       ...(info.warnings || []),
+      ...(info.lastRefreshIssue?.warnings || []),
       ...(!hasVerifiedQuality ? ['Saved broker snapshot has no verified completeness metadata.'] : []),
       ...(!info.source ? ['Saved broker snapshot has no verified source metadata.'] : [])
     ]
@@ -102,7 +112,7 @@ export function BrokerReconciliationPanel({
   const report = reconcileBrokerPortfolio({
     brokerSnapshot,
     appPositions,
-    brokerStatus: brokerAccountInfo?.status,
+    brokerStatus: !brokerAccountInfo?.loaded ? 'unavailable' : brokerAccountInfo.status,
     now: Date.now()
   });
 
@@ -129,7 +139,7 @@ export function BrokerReconciliationPanel({
         {label('Comparing app margin and cash-backed shares with broker account-wide quantities.')}
       </p>
 
-      <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+      <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-5">
         <div class="rounded-lg bg-slate-900/80 p-2">
           <div class="text-slate-500">{label('Provider')}</div>
           <div class="mt-1 truncate font-semibold text-slate-200">{report.provider || '—'}</div>
@@ -147,6 +157,10 @@ export function BrokerReconciliationPanel({
           <div class="mt-1 font-semibold text-slate-200">
             {report.observedAt === null ? label('Observation time unavailable') : formatTimestamp(report.observedAt)}
           </div>
+        </div>
+        <div class="rounded-lg bg-slate-900/80 p-2">
+          <div class="text-slate-500">{label('Snapshot age')}</div>
+          <div class="mt-1 font-semibold text-slate-200">{formatAge(report.snapshotAgeMs)}</div>
         </div>
       </div>
 
