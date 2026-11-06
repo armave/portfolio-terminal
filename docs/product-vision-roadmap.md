@@ -444,6 +444,7 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 - [x] Eighteen implementation workstreams created as individually scoped GitHub issues.
 - [x] Dedicated implementation branch names and dependencies assigned to every workstream.
 - [x] PT-01 financial correctness baseline completed (issue #329; implementation PR #349 merged into `dev`).
+- [x] PT-03 Freedom broker adapter foundation and Wave 1 snapshot-quality correction completed (issue #331; PRs #352 and #354 merged into `dev`). Authenticated live-provider verification (#355) and second-provider portability (#356) remain separate follow-ups.
 - [ ] PT-17 reliability, performance, observability, and release-gate baseline completed.
 - [ ] Foundation and data integrity workstreams completed.
 - [ ] Performance, risk, projection, and market intelligence workstreams completed.
