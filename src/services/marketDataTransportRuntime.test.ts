@@ -40,7 +40,7 @@ describe('market data transport runtime', () => {
     const { runtime } = createRuntime(proxyFetch, Date.now, sleep);
 
     await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({
-      symbol: 'AAPL', price: { current: 100 }
+      symbol: 'AAPL', price: { current: 100 }, cacheStatus: 'stale-fallback'
     });
     expect(proxyFetch).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(250);
@@ -103,8 +103,12 @@ describe('market data transport runtime', () => {
     let version = 0;
     const proxyFetch = vi.fn(async () => [{ symbol: 'AAPL', price: { current: ++version } }]);
     const { runtime } = createRuntime(proxyFetch, () => now);
-    await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({ price: { current: 1 } });
-    await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({ price: { current: 1 } });
+    await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({
+      price: { current: 1 }, cacheStatus: 'network'
+    });
+    await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({
+      price: { current: 1 }, cacheStatus: 'fresh-cache'
+    });
     expect(proxyFetch).toHaveBeenCalledTimes(1);
     now += 8_001;
     await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({ price: { current: 2 } });
