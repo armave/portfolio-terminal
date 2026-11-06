@@ -4,12 +4,14 @@ import { createMarketDataTransportRuntime } from './marketDataTransportRuntime';
 function createRuntime(
   proxyFetch: (...args: any[]) => Promise<any>,
   now: () => number = Date.now,
-  sleep?: (delayMs: number) => Promise<void>
+  sleep?: (delayMs: number) => Promise<void>,
+  requestTimeoutMs?: number
 ) {
   const recordMetric = vi.fn();
   const runtime = createMarketDataTransportRuntime({
     proxyFetch, recordMetric, now,
-    ...(sleep ? { sleep } : {})
+    ...(sleep ? { sleep } : {}),
+    ...(requestTimeoutMs !== undefined ? { requestTimeoutMs } : {})
   });
   return { runtime, recordMetric };
 }
@@ -77,6 +79,23 @@ describe('market data transport runtime', () => {
     now += 15 * 60 * 1000 + 1;
     await expect(runtime.fetchYahooQuoteData('AAPL')).rejects.toThrow('Failed to fetch');
     expect(proxyFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('aborts a provider request after the configured timeout and reports a retryable timeout', async () => {
+    const proxyFetch = vi.fn((_action: string, _params: unknown, options: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The request was aborted.', 'AbortError'));
+        }, { once: true });
+      })
+    );
+    const sleep = vi.fn(async (_delayMs: number) => undefined);
+    const { runtime } = createRuntime(proxyFetch, Date.now, sleep, 5);
+
+    await expect(runtime.fetchYahooQuoteData('AAPL')).rejects.toThrow('Market data provider request timed out.');
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
+    expect((proxyFetch.mock.calls[0][2] as RequestInit).signal).toBeInstanceOf(AbortSignal);
   });
 
   it('caches successful quotes for eight seconds and refreshes after expiry', async () => {
