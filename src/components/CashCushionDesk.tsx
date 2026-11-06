@@ -19,6 +19,7 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { BrokerReconciliationPanel } from './BrokerReconciliationPanel';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -490,6 +491,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
           <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
         </div>
+      )}
+
+      {isAdmin && (
+        <BrokerReconciliationPanel
+          brokerAccountInfo={state.brokerAccountInfo}
+          positions={positions}
+          cashHoldings={cashHoldings}
+        />
       )}
 
       {shouldReadBrokerHistory && (brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error') && (
