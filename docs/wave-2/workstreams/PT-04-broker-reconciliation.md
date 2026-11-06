@@ -28,6 +28,22 @@ PT-01 financial contracts and PT-03 Freedom broker adapter are merged. The snaps
 - [x] Regression tests cover combined margin+cash quantity matching, mismatches, missing sides, partial/empty/unloaded/stale data, provisional timestamp handling, currency mismatch, optional cash-balance comparison, unavailable data, genuine zeroes, and no-mutation behavior.
 - [x] REST and WebSocket runtime tests verify that the normalized snapshot metadata event is emitted alongside the backward-compatible data-only event.
 
+## Exact-head validation evidence
+
+**Validated code/documentation head:** `88c8bded2dff61a6f287fe8136cc3c36e58f145d`
+
+- [x] [Pull Request CI #42174737902 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42174737902)
+  - Typecheck passed.
+  - Vitest/Worker suite: 133 test files, 1,568 tests passed.
+  - Production build and production browser smoke passed.
+  - Desktop/mobile performance artifact captured.
+  - Dead-code validation passed.
+  - Full dependency audit and production dependency audit passed.
+- [x] [Operations Browser Journey #42174737918 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42174737918).
+- [x] [Trade Lifecycle Browser Smoke #42174737862 — passed](https://github.com/armave/portfolio-terminal/actions/runs/42174737862).
+
+These workflows use deterministic broker/Worker fixtures. They do not establish authenticated production TradeNet behavior or live Market Depth service availability.
+
 ## Remaining scope — intentionally deferred
 
 - [ ] Reconcile broker executions against app transaction events, including duplicate/reordered fills and timing differences. Wait for PT-02 transaction identity/idempotency/audit contract.
