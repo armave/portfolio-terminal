@@ -133,7 +133,7 @@ export default defineConfig({
           }
           // The immutable transaction journal is shared by the store, backup,
           // cloud validation and parity paths. Keep it cacheable outside the entry chunk.
-          if (/\\/src\\/domain\\/portfolioTransactionJournal\\.ts$/.test(id)) {
+          if (id.endsWith('/src/domain/portfolioTransactionJournal.ts')) {
             return 'transaction-journal';
           }
           return undefined;
