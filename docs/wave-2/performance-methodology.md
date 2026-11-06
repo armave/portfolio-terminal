@@ -71,7 +71,20 @@ The engine groups linked subperiod returns by the UTC calendar date, month, or y
 
 The bucket frequency does not invent observations. The actual time resolution is limited by the supplied valuation cadence. For example, monthly snapshots cannot produce reliable daily performance.
 
-## 5. Attribution
+## 5. Benchmark comparison
+
+Benchmark comparison requires a dividend-reinvested total-return index. A price-only index is rejected because omitted distributions would make the comparison inconsistent with portfolio total return.
+
+Portfolio and benchmark must use the same currency and exactly matching opening and closing UTC timestamps. The engine does not interpolate trading calendars, resample histories, or convert currencies. PT-07 must provide validated total-return index levels and market/FX provenance before the UI exposes production benchmark comparisons.
+
+The benchmark return is the closing total-return index level divided by its opening level, minus one. The portfolio return is the flow-adjusted linked Modified Dietz result over the same endpoints. The output includes:
+
+- arithmetic active return: portfolio return minus benchmark return;
+- relative wealth return: (1 + portfolio return) / (1 + benchmark return) - 1.
+
+Relative return is unavailable (represented as `null`) when benchmark wealth falls to zero; the arithmetic active return remains available. Provisional benchmark observations produce a provisional comparison and warning.
+
+## 6. Attribution
 
 One-period attribution accepts generic keyed buckets such as positions, accounts, cash, or liabilities.
 
@@ -88,7 +101,7 @@ Item opening values must sum to opening portfolio equity. Item closing values mu
 
 The contribution percentages therefore reconcile to the period's Modified Dietz return. The engine intentionally does not infer security/account allocations from aggregate broker positions; PT-02 transaction and PT-07 instrument contracts must provide those mappings.
 
-## 6. Dividends, fees, commissions, and financing costs
+## 7. Dividends, fees, commissions, and financing costs
 
 Dividends, fees, commissions, and interest are summarized separately as positive magnitudes. Net income/cost is:
 
@@ -100,7 +113,7 @@ This summary is explanatory only. These amounts must already be represented in t
 
 External contributions and withdrawals are the only cash-flow types used to adjust performance in this calculation kernel.
 
-## 7. Data quality and currency rules
+## 8. Data quality and currency rules
 
 - `current`: all required observations are current.
 - `provisional`: inputs are usable but one or more observations/flows are provisional; the calculation remains labelled provisional and carries warnings.
@@ -110,7 +123,7 @@ Mixed currencies are rejected. No current FX rate is substituted for historical 
 
 The engine never interprets an absent/malformed value as zero. Callers must provide a valid observation or an explicit quality state.
 
-## 8. Integration boundaries and known omissions
+## 9. Integration boundaries and known omissions
 
 This initial implementation is a pure domain calculation foundation. It does not yet:
 - read portfolio persistence or the future PT-02 transaction ledger;
