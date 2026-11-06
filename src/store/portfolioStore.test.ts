@@ -2505,7 +2505,7 @@ describe('portfolio transaction journal integration', () => {
     };
     const first = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:00:00Z'), context);
     expect(first).not.toBeNull();
-    const committedEventCount = store.getState().transactionEvents?.length;
+    const committedEventCount = store.getState().transactionEvents?.length ?? 0;
 
     const retry = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-11-06T09:05:00Z'), context);
 
