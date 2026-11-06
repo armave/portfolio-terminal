@@ -498,6 +498,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           brokerAccountInfo={state.brokerAccountInfo}
           positions={positions}
           cashHoldings={cashHoldings}
+          appPositionStatus={brokerExecutionHistory.status === 'ready'
+            ? 'complete'
+            : brokerExecutionHistory.trades.length > 0 ? 'partial' : 'unavailable'}
         />
       )}
 
