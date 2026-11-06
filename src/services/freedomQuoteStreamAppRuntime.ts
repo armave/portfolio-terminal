@@ -1,4 +1,5 @@
 import { normalizeFreedomQuote } from './freedomMarketData';
+import { createCoalescedFrameCallback, type FrameSchedule } from '../utils/coalescedFrameCallback';
 import {
   createFreedomQuoteStreamRuntime,
   type FreedomQuoteStreamRuntime,
@@ -20,6 +21,7 @@ export interface FreedomQuoteStreamAppRuntimeDependencies {
     requestStartedAt: number
   ) => boolean;
   renderAfterUpdate: () => void;
+  scheduleRenderFrame?: FrameSchedule;
   onStatus?: (status: string, message?: string) => void;
 }
 
@@ -30,7 +32,11 @@ export interface FreedomQuoteStreamAppRuntimeDependencies {
 export function createFreedomQuoteStreamAppRuntime(
   dependencies: FreedomQuoteStreamAppRuntimeDependencies
 ): FreedomQuoteStreamRuntime {
-  return createFreedomQuoteStreamRuntime({
+  const renderScheduler = createCoalescedFrameCallback(
+    dependencies.renderAfterUpdate,
+    dependencies.scheduleRenderFrame
+  );
+  const runtime = createFreedomQuoteStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     createSocket: dependencies.createSocket,
@@ -74,9 +80,17 @@ export function createFreedomQuoteStreamAppRuntime(
         ...(quote.serverTime ? { serverTime: quote.serverTime } : {})
       };
       if (dependencies.recordQuote(ticker, quote.price, 'Freedom TradeNet', receivedAt, quoteDetails, receivedAt)) {
-        dependencies.renderAfterUpdate();
+        renderScheduler.schedule();
       }
     },
     onStatus: dependencies.onStatus
   });
+
+  return {
+    ...runtime,
+    stop: () => {
+      renderScheduler.cancel();
+      runtime.stop();
+    }
+  };
 }

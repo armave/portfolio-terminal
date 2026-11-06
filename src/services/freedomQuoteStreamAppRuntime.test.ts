@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFreedomQuoteStreamAppRuntime } from './freedomQuoteStreamAppRuntime';
 import type { FreedomQuoteSocketLike } from './freedomQuoteStreamRuntime';
+import type { FrameSchedule } from '../utils/coalescedFrameCallback';
 
 class FakeSocket implements FreedomQuoteSocketLike {
   readyState = 0;
@@ -31,11 +32,22 @@ class FakeSocket implements FreedomQuoteSocketLike {
   }
 }
 
+function createScheduledFrameQueue() {
+  const frames: Array<{ callback: () => void; cancelled: boolean }> = [];
+  const schedule: FrameSchedule = (callback) => {
+    const frame = { callback, cancelled: false };
+    frames.push(frame);
+    return () => { frame.cancelled = true; };
+  };
+  return { frames, schedule };
+}
+
 describe('Freedom quote stream app adapter', () => {
-  it('applies every accepted q update to the current portfolio session without persistence', async () => {
+  it('applies every accepted q update immediately and coalesces derived renders by frame', async () => {
     const recordQuote = vi.fn().mockReturnValue(true);
     const renderAfterUpdate = vi.fn();
     const socket = new FakeSocket();
+    const frameQueue = createScheduledFrameQueue();
     let currentSessionKey = 'admin:account-1';
     let requestSequence = 122;
     const runtime = createFreedomQuoteStreamAppRuntime({
@@ -45,7 +57,8 @@ describe('Freedom quote stream app adapter', () => {
       getCurrentSessionKey: () => currentSessionKey,
       nextRequestSequence: () => ++requestSequence,
       recordQuote,
-      renderAfterUpdate
+      renderAfterUpdate,
+      scheduleRenderFrame: frameQueue.schedule
     });
 
     const start = runtime.start(['GOOGL'], 'admin:account-1');
@@ -90,10 +103,13 @@ describe('Freedom quote stream app adapter', () => {
       }),
       1_800_000_000_000
     );
+    expect(renderAfterUpdate).not.toHaveBeenCalled();
+    expect(frameQueue.frames).toHaveLength(1);
+    frameQueue.frames.shift()?.callback();
     expect(renderAfterUpdate).toHaveBeenCalledTimes(1);
 
-    // Every subsequent q message for the same ticker must be forwarded as a
-    // new local overwrite, even if the provider's ltt timestamp moves backward.
+    // A second q event updates the canonical quote immediately, but reuses
+    // the already queued render until the browser reaches the next frame.
     socket.receive({
       type: 'quote',
       symbol: 'GOOGL.US',
@@ -128,6 +144,9 @@ describe('Freedom quote stream app adapter', () => {
       }),
       1_800_000_001_000
     );
+    expect(renderAfterUpdate).toHaveBeenCalledTimes(1);
+    expect(frameQueue.frames).toHaveLength(1);
+    frameQueue.frames.shift()?.callback();
     expect(renderAfterUpdate).toHaveBeenCalledTimes(2);
 
     currentSessionKey = 'guest:guest-2';
@@ -143,7 +162,7 @@ describe('Freedom quote stream app adapter', () => {
     runtime.stop();
   });
 
-  it('does not persist a quote rejected by the canonical portfolio store', async () => {
+  it('does not render a quote rejected by the canonical portfolio store', async () => {
     const recordQuote = vi.fn().mockReturnValue(false);
     const renderAfterUpdate = vi.fn();
     const socket = new FakeSocket();
@@ -172,5 +191,42 @@ describe('Freedom quote stream app adapter', () => {
     expect(recordQuote).toHaveBeenCalledTimes(1);
     expect(renderAfterUpdate).not.toHaveBeenCalled();
     runtime.stop();
+  });
+
+  it('cancels a queued derived render when the quote runtime stops', async () => {
+    const recordQuote = vi.fn().mockReturnValue(true);
+    const renderAfterUpdate = vi.fn();
+    const socket = new FakeSocket();
+    const frameQueue = createScheduledFrameQueue();
+    const runtime = createFreedomQuoteStreamAppRuntime({
+      createTicket: vi.fn(async () => ({ ticket: 'c'.repeat(64) })),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => socket,
+      getCurrentSessionKey: () => 'admin:account-3',
+      nextRequestSequence: () => 789,
+      recordQuote,
+      renderAfterUpdate,
+      scheduleRenderFrame: frameQueue.schedule
+    });
+
+    const start = runtime.start(['MSFT'], 'admin:account-3');
+    await Promise.resolve();
+    socket.open();
+    socket.receive({ type: 'ready' });
+    await start;
+    socket.receive({
+      type: 'quote',
+      symbol: 'MSFT.US',
+      data: { c: 'MSFT.US', ltp: 420 },
+      receivedAt: 1_800_000_001_000
+    });
+
+    expect(recordQuote).toHaveBeenCalledTimes(1);
+    expect(frameQueue.frames).toHaveLength(1);
+    const pendingFrame = frameQueue.frames[0];
+    runtime.stop();
+    expect(pendingFrame.cancelled).toBe(true);
+    pendingFrame.callback();
+    expect(renderAfterUpdate).not.toHaveBeenCalled();
   });
 });
