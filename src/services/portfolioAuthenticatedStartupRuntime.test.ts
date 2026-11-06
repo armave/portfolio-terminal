@@ -47,6 +47,7 @@ describe('portfolio authenticated startup runtime', () => {
     const fixture = createFixture('admin');
 
     await fixture.start();
+    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
 
     expect(fixture.calls).toEqual([
       'load-rules', 'publish-user', 'secret:valid-secret',
@@ -58,7 +59,7 @@ describe('portfolio authenticated startup runtime', () => {
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).not.toHaveBeenCalled();
   });
 
-  it('hydrates guest-only workspace and restores Balance before and after quote refresh', async () => {
+  it('hydrates the guest workspace and restores Balance before background quote refresh', async () => {
     const fixture = createFixture('guest');
 
     await fixture.start();
