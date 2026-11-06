@@ -63,19 +63,25 @@ function createLargePortfolioFixture() {
     activeTrancheTypes[ticker] = 'margin';
   }
 
-  const brokerExecutedTrades = Object.values(positions).map((position, index) => {
-    const entryPrice = position.currentPrice * 0.955;
-    return {
-      id: `pt-performance-buy-${index + 1}`,
-      ticker: `${position.ticker}.US`,
-      side: 'BUY',
-      quantity: position.shares,
-      price: Number(entryPrice.toFixed(4)),
-      currency: 'USD',
-      executedAt: '2026-10-01T09:00:00.000Z',
-      tradeValue: Number((position.shares * entryPrice).toFixed(2)),
-      commission: 0.2
-    };
+  const brokerExecutedTrades = Object.values(positions).flatMap((position, index) => {
+    const entries = [
+      { quantity: 25, entryRatio: 0.94, executedAt: '2026-10-01T09:00:00.000Z' },
+      { quantity: 25, entryRatio: 0.97, executedAt: '2026-10-15T09:00:00.000Z' }
+    ];
+    return entries.map((entry, trancheIndex) => {
+      const entryPrice = position.currentPrice * entry.entryRatio;
+      return {
+        id: `pt-performance-buy-${index + 1}-${trancheIndex + 1}`,
+        ticker: `${position.ticker}.US`,
+        side: 'BUY',
+        quantity: entry.quantity,
+        price: Number(entryPrice.toFixed(4)),
+        currency: 'USD',
+        executedAt: entry.executedAt,
+        tradeValue: Number((entry.quantity * entryPrice).toFixed(2)),
+        commission: 0.1
+      };
+    });
   });
 
   return {
@@ -152,21 +158,26 @@ async function mockWorkerApi(page) {
       acc_pos_id: 900000 + index
     };
   });
-  const brokerTrades = brokerPositions.map((position, index) => {
+  const brokerTrades = brokerPositions.flatMap((position, index) => {
     const marketPrice = 20 + index * 0.35;
-    const entryPrice = marketPrice * 0.955;
-    return {
-      trade_id: `pt-performance-buy-${index + 1}`,
-      instr_nm: position.i,
-      operation: '1',
-      quantity: '50',
-      p: entryPrice.toFixed(4),
-      date: '2026-10-01T09:00:00.000Z',
-      v: (50 * entryPrice).toFixed(2),
-      curr_c: 'USD',
-      commiss: '0.20',
-      profit: '0'
-    };
+    return [
+      { quantity: 25, entryRatio: 0.94, date: '2026-10-01T09:00:00.000Z', lot: 1 },
+      { quantity: 25, entryRatio: 0.97, date: '2026-10-15T09:00:00.000Z', lot: 2 }
+    ].map((entry) => {
+      const entryPrice = marketPrice * entry.entryRatio;
+      return {
+        trade_id: `pt-performance-buy-${index + 1}-${entry.lot}`,
+        instr_nm: position.i,
+        operation: '1',
+        quantity: String(entry.quantity),
+        p: entryPrice.toFixed(4),
+        date: entry.date,
+        v: (entry.quantity * entryPrice).toFixed(2),
+        curr_c: 'USD',
+        commiss: '0.10',
+        profit: '0'
+      };
+    });
   });
   let stateRevision = 0;
   let historyRevision = 0;
