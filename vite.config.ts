@@ -131,6 +131,11 @@ export default defineConfig({
           if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }
+          // The immutable transaction journal is shared by the store, backup,
+          // cloud validation and parity paths. Keep it cacheable outside the entry chunk.
+          if (/\\/src\\/domain\\/portfolioTransactionJournal\\.ts$/.test(id)) {
+            return 'transaction-journal';
+          }
           return undefined;
         }
       }
