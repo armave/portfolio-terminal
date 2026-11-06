@@ -3,7 +3,7 @@ import type {
   BrokerPortfolioSnapshot
 } from '../types/broker';
 
-export type BrokerReconciliationStatus =
+type BrokerReconciliationStatus =
   | 'matched'
   | 'differences'
   | 'partial'
@@ -11,7 +11,7 @@ export type BrokerReconciliationStatus =
   | 'stale'
   | 'unavailable';
 
-export type BrokerReconciliationFindingType =
+type BrokerReconciliationFindingType =
   | 'quantity_mismatch'
   | 'missing_in_broker'
   | 'missing_in_app'
@@ -22,18 +22,18 @@ export type BrokerReconciliationFindingType =
   | 'unclassified_app_balance'
   | 'unclassified_broker_balance';
 
-export interface BrokerReconciliationPositionInput {
+interface BrokerReconciliationPositionInput {
   ticker: string;
   quantity: unknown;
   currency?: string;
 }
 
-export interface BrokerReconciliationBalanceInput {
+interface BrokerReconciliationBalanceInput {
   currency: string;
   amount: unknown;
 }
 
-export interface BrokerReconciliationFinding {
+interface BrokerReconciliationFinding {
   type: BrokerReconciliationFindingType;
   subject: string;
   currency?: string;
