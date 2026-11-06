@@ -112,6 +112,19 @@ export function isPortfolioTransactionEventList(value: unknown): value is Portfo
   return Array.isArray(value) && value.every(isPortfolioTransactionEvent);
 }
 
+/** Return a detached, deeply frozen journal list for safe exposure through getState(). */
+export function freezePortfolioTransactionEventList(
+  events: readonly unknown[]
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(events)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+  return Object.freeze(events.map((event) => Object.freeze({
+    ...event,
+    actor: Object.freeze({ ...event.actor })
+  }))) as unknown as PortfolioTransactionEvent[];
+}
+
 export function hasPortfolioTransactionIdempotencyKey(
   events: readonly unknown[],
   idempotencyKey: string
@@ -181,10 +194,10 @@ export function appendPortfolioTransactionEvent(
     throw new Error(`Portfolio transaction event id "${event.id}" already exists.`);
   }
   if (event.idempotencyKey && hasPortfolioTransactionIdempotencyKey(current, event.idempotencyKey)) {
-    return { events: current as PortfolioTransactionEvent[], appended: false, duplicate: true };
+    return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
   }
   return {
-    events: [...current, Object.freeze({ ...event, actor: Object.freeze({ ...event.actor }) })],
+    events: freezePortfolioTransactionEventList([...current, event]),
     appended: true,
     duplicate: false
   };
@@ -241,5 +254,5 @@ export function mergePortfolioTransactionEvents(
     if (event.idempotencyKey) byKey.set(event.idempotencyKey, event);
   }
 
-  return merged;
+  return freezePortfolioTransactionEventList(merged);
 }
