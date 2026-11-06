@@ -469,9 +469,11 @@ export function appendBrokerHistoryAuditEvents(
   }
   const events = [...current];
   const byIdempotencyKey = new Map<string, PortfolioTransactionEvent>();
+  const eventIds = new Set<string>();
   const latestExecutionByReference = new Map<string, PortfolioTransactionEvent>();
   const latestCashflowByReference = new Map<string, PortfolioTransactionEvent>();
   for (const event of current) {
+    eventIds.add(event.id);
     if (event.idempotencyKey) byIdempotencyKey.set(event.idempotencyKey, event);
     if (event.type === 'broker.execution' && event.externalReferenceId) {
       latestExecutionByReference.set(event.externalReferenceId, event);
@@ -491,10 +493,11 @@ export function appendBrokerHistoryAuditEvents(
       }
       return;
     }
-    if (events.some((existing) => existing.id === event.id)) {
+    if (eventIds.has(event.id)) {
       throw new Error(`Broker history event ID "${event.id}" already exists.`);
     }
     events.push(event);
+    eventIds.add(event.id);
     if (event.idempotencyKey) byIdempotencyKey.set(event.idempotencyKey, event);
     if (event.type === 'broker.execution' && event.externalReferenceId) {
       latestExecutionByReference.set(event.externalReferenceId, event);
