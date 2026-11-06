@@ -2549,10 +2549,29 @@ export class PortfolioStateDO {
       if (typeof body.key !== "string" || !/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(body.key)) {
         return jsonResponse({ error: "Digest key must identify a portfolio or ticker position." }, 400);
       }
-      if (typeof body.analysis !== "string" || !body.analysis.trim() || body.analysis.length > 30_000 ||
-          !Array.isArray(body.articles) || body.articles.length > 20 ||
-          typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
-        return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
+
+      if (typeof body.encryptedPayload === "string") {
+        // New clients send only the lookup key and an AES-GCM v2 envelope.
+        // Analysis, headlines, URLs, and other digest contents must never be
+        // duplicated beside the ciphertext in the Durable Object record.
+        const encryptedKeysOnly = Object.keys(body).every((key) => key === "key" || key === "encryptedPayload");
+        const validEnvelope = body.encryptedPayload.length <= 128 * 1024 &&
+          /^aesgcm:v2:[A-Za-z0-9+/]{16}:[A-Za-z0-9+/]{22,}={0,2}$/.test(body.encryptedPayload);
+        if (!encryptedKeysOnly || !validEnvelope) {
+          return jsonResponse({ error: "Margin digest must contain only a valid AES-GCM encrypted payload." }, 400);
+        }
+      } else {
+        // Rollout compatibility: old clients may still send plaintext during
+        // the client release window. Flip this Worker variable to true after
+        // the encrypted client is deployed and legacy records have migrated.
+        if (this.env?.MARGIN_DIGEST_ENCRYPTION_REQUIRED === "true") {
+          return jsonResponse({ error: "Margin digest encryption is required." }, 400);
+        }
+        if (typeof body.analysis !== "string" || !body.analysis.trim() || body.analysis.length > 30_000 ||
+            !Array.isArray(body.articles) || body.articles.length > 20 ||
+            typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
+          return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
+        }
       }
       recordKey = "marginDigestRecord:" + body.key;
     } else if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {

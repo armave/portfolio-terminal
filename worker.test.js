@@ -1782,7 +1782,7 @@ describe('provider-quote proxy validation', () => {
 
 
 describe('PortfolioStateDO optimistic concurrency', () => {
-  function makeDurableObject(legacyPayload = null) {
+  function makeDurableObject(legacyPayload = null, envOverrides = {}) {
     const values = new Map();
     const storage = {
       get: async (key) => values.get(key),
@@ -1796,7 +1796,8 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     };
     const ctx = { storage };
     const env = {
-      PORTFOLIO_KV: { get: async (key) => key === 'portfolio_state' ? legacyPayload : null }
+      PORTFOLIO_KV: { get: async (key) => key === 'portfolio_state' ? legacyPayload : null },
+      ...envOverrides
     };
     return new PortfolioStateDO(ctx, env);
   }
@@ -1856,50 +1857,113 @@ describe('PortfolioStateDO optimistic concurrency', () => {
   });
 
 
-  it('stores independent server-synced digests for portfolio and ticker keys', async () => {
+  it('stores margin digests as ciphertext-only envelopes and preserves per-key revisions', async () => {
     const store = makeDurableObject();
-    const digest = {
+    const envelope = {
       key: 'position:GOOGL',
-      title: 'GOOGL · Position Review',
-      scope: 'position',
-      ticker: 'GOOGL',
-      analysis: '**Stance** Hold.',
-      articles: [{ ticker: 'GOOGL', headline: 'Example', source: 'Test', url: 'https://example.com' }],
-      syncedAt: '2026-10-28T05:00:00.000Z'
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
     };
     const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(write.status).toBe(200);
     expect(write.headers.get('ETag')).toBe('"1"');
 
+    const stored = await store.ctx.storage.get('marginDigestRecord:position:GOOGL');
+    expect(stored.payload).toBe(JSON.stringify(envelope));
+    expect(stored.payload).not.toContain('analysis');
+    expect(stored.payload).not.toContain('GOOGL · Position Review');
+
     const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=position%3AGOOGL'));
     expect(read.status).toBe(200);
-    expect(await read.json()).toEqual(digest);
+    expect(await read.json()).toEqual(envelope);
     expect(read.headers.get('ETag')).toBe('"1"');
 
     const missing = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
     expect(missing.status).toBe(404);
   });
 
-  it('rejects invalid margin digest keys and stale writes', async () => {
+  it('keeps legacy plaintext digest reads and writes available during the compatibility window', async () => {
+    const store = makeDurableObject();
+    const legacyDigest = {
+      key: 'portfolio',
+      title: 'Portfolio Review',
+      scope: 'portfolio',
+      analysis: 'legacy readable review',
+      articles: [],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(legacyDigest)
+    }));
+    expect(write.status).toBe(200);
+    const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(await read.json()).toEqual(legacyDigest);
+  });
+
+  it('rejects plaintext writes and extra plaintext fields when encrypted digests are required', async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: 'true' });
+    const legacyDigest = {
+      key: 'portfolio',
+      title: 'Portfolio Review',
+      scope: 'portfolio',
+      analysis: 'must not be stored',
+      articles: [],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const plaintextWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(legacyDigest)
+    }));
+    expect(plaintextWrite.status).toBe(400);
+
+    const validEnvelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const encryptedWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(validEnvelope)
+    }));
+    expect(encryptedWrite.status).toBe(200);
+
+    const mixedPayloadWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' },
+      body: JSON.stringify({ ...validEnvelope, analysis: 'plaintext leak' })
+    }));
+    expect(mixedPayloadWrite.status).toBe(400);
+  });
+
+  it('rejects invalid margin digest keys, malformed encrypted envelopes, and stale writes', async () => {
     const store = makeDurableObject();
     const invalid = await store.fetch(new Request('https://worker.test/api/margin-digest?key=bad%2Fkey'));
     expect(invalid.status).toBe(400);
 
-    const digest = { key: 'portfolio', title: 'Portfolio Review', scope: 'portfolio', analysis: 'Review', articles: [], syncedAt: '2026-10-28T05:00:00.000Z' };
+    const malformed = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ key: 'portfolio', encryptedPayload: 'aesgcm:v2:bad-envelope' })
+    }));
+    expect(malformed.status).toBe(400);
+
+    const envelope = { key: 'portfolio', encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA' };
     const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(first.status).toBe(200);
     const stale = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(stale.status).toBe(409);
   });
