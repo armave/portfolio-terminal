@@ -2,6 +2,7 @@ import type {
   FreedomActiveOrder,
   FreedomPortfolioSnapshot
 } from './api';
+import type { BrokerDataQualityIssue } from '../types/broker';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 interface ActiveTrancheTypeRequest {
@@ -29,7 +30,7 @@ export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-refreshing': undefined;
   'broker:account-info-refresh-complete': undefined;
-  'broker:account-info-error': undefined;
+  'broker:account-info-error': BrokerDataQualityIssue | undefined;
   'broker:executed-trades': FreedomExecutedTrade[];
   'broker:live-order-fills': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
