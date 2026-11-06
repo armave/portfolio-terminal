@@ -189,3 +189,57 @@ export function appendPortfolioTransactionEvent(
     duplicate: false
   };
 }
+
+
+/**
+ * Merge imported audit history without allowing an older backup to erase
+ * already-recorded events. Exact duplicate IDs/keys are ignored; conflicting
+ * reuse is rejected so the caller can keep the existing committed snapshot.
+ */
+export function mergePortfolioTransactionEvents(
+  existing: readonly unknown[],
+  incoming: readonly unknown[]
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(existing) || !isPortfolioTransactionEventList(incoming)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+
+  const merged = [...existing] as PortfolioTransactionEvent[];
+  const byId = new Map(merged.map((event) => [event.id, event]));
+  const byKey = new Map(
+    merged
+      .filter((event) => event.idempotencyKey)
+      .map((event) => [event.idempotencyKey as string, event])
+  );
+
+  for (const event of incoming) {
+    const sameId = byId.get(event.id);
+    if (sameId) {
+      if (JSON.stringify(sameId) !== JSON.stringify(event)) {
+        throw new Error(`Imported transaction event ID "${event.id}" conflicts with existing history.`);
+      }
+      continue;
+    }
+
+    if (event.idempotencyKey) {
+      const sameKey = byKey.get(event.idempotencyKey);
+      if (sameKey) {
+        if (!event.requestFingerprint ||
+          sameKey.requestFingerprint !== event.requestFingerprint ||
+          sameKey.type !== event.type) {
+          throw new Error(`Imported transaction idempotency key "${event.idempotencyKey}" conflicts with existing history.`);
+        }
+        continue;
+      }
+    }
+
+    merged.push(Object.freeze({
+      ...event,
+      actor: Object.freeze({ ...event.actor })
+    }));
+    byId.set(event.id, event);
+    if (event.idempotencyKey) byKey.set(event.idempotencyKey, event);
+  }
+
+  return merged;
+}
