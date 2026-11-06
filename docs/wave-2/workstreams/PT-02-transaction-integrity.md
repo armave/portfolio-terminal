@@ -2,92 +2,57 @@
 
 **Umbrella:** Wave 2 — Portfolio Intelligence Foundations  
 **Tracking issue:** [#330](https://github.com/armave/portfolio-terminal/issues/330)  
-**Implementation PR:** [#357 — Draft](https://github.com/armave/portfolio-terminal/pull/357)  
+**Implementation PR:** [#357](https://github.com/armave/portfolio-terminal/pull/357)  
 **Dedicated branch:** `feat/wave2-pt-02-transaction-integrity`  
 **Base:** `dev`
 
-## Objective
+## Wave 2.1 delivery
 
-Make supported financial mutations atomic, idempotent, auditable, and recoverable without an unapproved ledger cutover.
+Wave 2.1 is the first additive transaction-integrity release. It deliberately retains the existing portfolio snapshot as canonical and adds an append-only audit/verifier journal beside it. It is not a migration to a ledger as the source of truth.
 
-## Dependencies
+- [x] Schema-versioned event contracts and validation, stable IDs, source/actor, effective and recorded timestamps, currency and amount details, idempotency key and request fingerprint.
+- [x] Append-only journal helpers with frozen event records and arrays; duplicate import records are ignored while conflicting IDs or idempotency keys are rejected.
+- [x] Atomic persistence for covered store-owned financial mutations: state and event persist together before subscribers see the new snapshot. Persistence rejection leaves the previous in-memory state and journal unchanged.
+- [x] Explicit actor and source attribution for manual commands and confirmed AI actions. Confirmed AI actions carry a request-scoped idempotency key from confirmation through the store; retrying the same sale request with a later wall-clock timestamp does not apply it twice.
+- [x] Journal margin-position buys and partial/full sells with gross value, commissions, allocated financing cost, net proceeds, cash/debt movement and realized P&L.
+- [x] Journal cash/free-cash and margin-debt adjustments, rollover interest/debt movement, and cash-cushion holding add/sell/remove actions.
+- [x] Journal tracking/history cleanup as correction events rather than inventing a sale. Cash-holding adds without a manual execution price do not infer cost basis; cash-holding sales do not claim realized P&L when that holding type has no cost-basis model.
+- [x] Import read-only broker execution and cashflow evidence with stable external references and revision links. Cashflows are classified as dividend, fee, margin interest, deposit, withdrawal, transfer, or corporate-action evidence where the source description supports it. These imported broker rows are audit evidence only: they do not post again to local cash/debt/positions that already reflect the canonical account snapshot.
+- [x] Replay explicit app-owned journal deltas and verify parity against canonical positions, cash-holding quantities, free cash and margin debt. Snapshot/import discrepancies create explicit reconciliation events; they are not guessed as executions and do not invent cost basis, fees or P&L.
+- [x] Older local/cloud snapshots without a journal remain readable. Validated backup import/export preserves schema-v1 events and rejects malformed transaction history rather than silently discarding it. Cloud payload validation accepts valid events and rejects malformed journal rows.
+- [x] Validated state restore merges the event journal append-only. Conflicting event history is rejected without replacing local state.
+- [x] Cloud snapshot writes retain the existing revision/ETag `If-Match` guard; stale updates are rejected with a conflict response rather than silently replacing newer cloud state. Per-tab writes are serialized, and tests cover a pull completing after a queued write was submitted. The app directs users to export, pull, reconcile, then retry; it does not auto-merge concurrent financial changes.
+- [x] English/Russian conflict messaging and Vitest regression coverage for event schema/merge, mutation lifecycle, retry/reload, AI attribution, broker history, replay/parity, malformed cloud/backup payloads, and persistence rollback.
+- [x] Production build budget retained. The transaction journal is split into its own bundle chunk; the existing entry and gzip limits were not raised.
 
-PT-01 financial contracts are merged. `PortfolioState.positions` remains canonical active-position state. PT-04, PT-06, and PT-08 consume PT-02's stable transaction/event contracts.
+## Ownership and canonical-state safety
 
-## Wave 2.1 implementation delivered in this PR
+- `PortfolioState.positions` and the existing cash/debt fields remain canonical. The journal is an audit and verification layer, not a competing source of truth.
+- No silent change to FIFO, P&L, commission, financing, cash settlement, rollover, rounding or timezone semantics.
+- Broker execution/cashflow imports preserve provider facts and provenance but do not double-post those external facts into the already-refreshed canonical portfolio.
+- Reconciliation records only observed signed quantity/cash/debt deltas. It never infers whether a missing snapshot delta was a buy, sale, deposit, fee, commission, or corporate action.
+- Corporate-action cashflow rows are classified as external evidence only. This PR does not apply stock-split ratios, merger consideration, spin-off basis allocations, or tax treatment to canonical holdings.
 
-- [x] Added schema-versioned transaction event types and runtime validation in `src/types/portfolioTransaction.ts` and `src/domain/portfolioTransactionJournal.ts`.
-- [x] Added stable event IDs, actor/source, effective/recorded timestamps, optional currency/amount/quantity/fee fields, command fingerprint, and optional caller idempotency key.
-- [x] Added immutable append and import-merge helpers. Exact duplicate records are ignored; conflicting event IDs/idempotency keys are rejected.
-- [x] Added optional `transactionEvents` to `PortfolioState`; new portfolios initialize it; legacy snapshots without it normalize to an empty journal.
-- [x] Included the journal in the same full portfolio snapshot commit as the corresponding financial state. The existing store persistence-before-publish boundary is reused; failed persistence leaves state and events unpublished.
-- [x] Generic `setState` cannot replace the journal. Validated `importState` merges it and cannot erase previously committed events with an older/empty backup.
-- [x] Journaled margin-position buys and partial/full sales, including gross amount, commissions, allocated financing, realized P&L, cash movement, and debt movement.
-- [x] Journaled cash/free-cash adjustments, margin-debt adjustments, and rollover interest/debt changes. Automatic rollover keys prevent reapplication of the same rollover timestamp.
-- [x] Journaled cash-cushion holding additions, sales, and removals. Cash-holding sale events record commission, net proceeds, debt repayment, and cash surplus, but do not invent cost basis or realized P&L.
-- [x] Journaled manual active-tranche removal and closed-trade display-history removal as corrections, distinct from actual sale events.
-- [x] Portfolio reset preserves prior transaction events and appends a reset marker.
-- [x] Explicit idempotency keys are bound to a canonical command fingerprint; reusing a key for a different request is rejected.
-- [x] Added Vitest coverage for event validation, append/merge, key conflicts, reload/replay, buy/sell, cash-holding, rollover, corrections, reset, malformed imports, and persistence rollback.
+## Exact-head validation
 
-### Semantics and safety
+The final commit and exact-head workflow results are recorded in PR [#357](https://github.com/armave/portfolio-terminal/pull/357). Merge only after all three required workflows complete successfully on the final commit:
+- Pull Request CI: typecheck, complete Vitest suite, dead-code validation, audits, production build and bundle budget.
+- Operations Browser Journey: unit/Worker suite and production browser account/Settings journey.
+- Trade Lifecycle Browser Smoke: production browser trade lifecycle and deterministic lifecycle tests.
 
-- The journal is an append-only audit/verifier layer in the existing portfolio snapshot. It is **not** a new financial source of truth.
-- `PortfolioState.positions` and existing tranche/cash/debt semantics remain unchanged and canonical.
-- A cash-cushion holding added without a manually supplied execution price is recorded without a unit price or gross amount. A quote or stored display price is not promoted to cost basis.
-- Removing a tranche or holding is recorded as a tracking correction, not a sale; it has no sale proceeds or cash settlement.
-- Deleting a closed-trade display record is recorded as a history correction; the transaction sale event remains in the journal.
-- Reset does not erase the transaction journal.
-- Idempotency is local to the persisted portfolio snapshot and requires a caller-supplied key, except for the automatic rollover/reset keys. Calls without a key are treated as distinct intentional commands.
+Automated fixtures do not establish authenticated live TradeNet correctness. No manual authenticated broker QA or real multi-device concurrency test is claimed.
 
-## Remaining PT-02 scope — not claimed complete
+## Explicit follow-on scope — not a Wave 2.1 blocker
 
-- [ ] Inventory and route every mutation path, including dividends, fees, imports, external broker executions, corporate actions, and cloud restoration.
-- [ ] Add transaction-to-position replay/parity verification. The current implementation records audit events but does not reconstruct canonical positions from the journal.
-- [ ] Define explicit deposit, withdrawal, transfer, and dividend cash-flow posting semantics; current manual cash/debt setters are balance adjustments, not classified external flows.
-- [ ] Add cloud/multi-device transaction coordination, cross-tab stale-write protection, and server-side idempotency/revision semantics. Current idempotency is within the local persisted snapshot and is not a distributed transaction guarantee.
-- [ ] Add a reviewed migration/rollback procedure and backup/restore round-trip evidence for large/legacy records.
-- [ ] Add correction/reversal relationships for imported broker executions and corporate actions, including provenance and actor identity.
-- [ ] Add a final mutation-path inventory proving that no supported financial command can change balances/positions without the intended journal semantics.
+- [ ] Full PT-02 mutation-path ownership review across all future portfolio features and provider-specific imports; new financial commands must use the journal-aware store boundary.
+- [ ] Server-side idempotency and a distributed transaction protocol. Current command idempotency is persisted in the portfolio journal; cloud revision checks reject stale writes, but no global exactly-once guarantee exists.
+- [ ] Cross-tab local write coordination/merge. Cloud revision conflicts prevent last-writer-wins overwrite, but conflicting changes require a human export/pull/reconcile workflow.
+- [ ] Executable corporate-action accounting and explicit broker correction/reversal workflows, including position/cost-basis/tax treatment.
+- [ ] A separate gated decision on any future canonical ledger cutover, with a versioned migration and rollback plan.
+- [ ] Manual validation against an authenticated live TradeNet account and real multi-device usage. The checked-in browser tests are deterministic fixtures.
+- [ ] Older builds may not understand the additive event journal if they rewrite an imported snapshot. Before rolling back to a build predating this schema, export a current JSON backup; restore that backup in a journal-aware build.
 
-## Acceptance criteria
+## Delivery status
 
-- [x] For the integrated mutation paths above, state and journal append commit together through the store's existing persistence boundary; persistence failure does not publish either.
-- [x] Replaying the same explicit idempotency key and fingerprint does not reapply a supported command; key reuse with a different fingerprint is rejected.
-- [ ] Every financial mutation path in the full application is covered, including external cash flows, dividends, fees, imports, and broker sync.
-- [ ] Journal replay/parity independently verifies canonical positions/cash for supported flows.
-- [x] Events include actor/source and effective/recorded timestamps; corrections and resets are represented without deleting transaction evidence.
-- [ ] Cloud snapshots, multi-device writes, legacy backup/restore, and revision conflicts have explicit migration/compatibility evidence.
-- [x] `PortfolioState.positions` remains the active-position source of truth; no ledger cutover is included.
+Wave 2.1 can be reviewed and merged as the additive first release once exact-head CI is green. Tracking issue #330 remains open for the follow-on PT-02 scope above. PT-04, PT-06, PT-07 and PT-08 retain their own implementation branches and PRs.
 
-## Exact-head validation — 2026-11-06
-
-<badge>Candidate: `cbddd2908be9de126675a849e44939ef3eca7a54`</badge>
-
-All three required workflows completed successfully against the exact PR head and base `c7ae6a6d808c7645a9686e32983f0209ec613f88`:
-
-- [x] [Pull Request CI #2886](https://github.com/armave/portfolio-terminal/actions/runs/42174609605) — passed: TypeScript typecheck, **1,571 tests across 133 files**, production build, production browser smoke, desktop/mobile browser performance artifact, dead-code validation, full dependency audit (high-severity threshold), and production dependency audit.
-- [x] [Operations Browser Journey #214](https://github.com/armave/portfolio-terminal/actions/runs/42174609580) — passed: unit/Worker tests, build, production-browser account/Settings journey, dead-code validation, full/production dependency audits.
-- [x] [Trade Lifecycle Browser Smoke #179](https://github.com/armave/portfolio-terminal/actions/runs/42174609659) — passed: **134 tests across 5 files**, production build, and production-browser trade lifecycle including partial/full exits, oversell rejection, cash holding, margin debt settlement, reload recovery, and Closed History.
-
-These workflows validate deterministic fixtures and the checked-in production build. They do not establish live authenticated TradeNet behavior or cross-device/distributed idempotency.
-
-## Required validation
-
-Vitest known-answer lifecycle tests for buy → add → partial sale → full close; fees; cash/debt and cash-holding operations; rollover; idempotent retry/reload; malformed import; corrections/reset; and persistence failure rollback.
-
-Still outstanding for PT-02 completion: dividends, deposit/withdrawal classifications, broker-execution import, replay/parity, cross-tab/cloud revision conflicts, and legacy backup round-trip evidence.
-
-## Parallel ownership and integration rules
-
-PT-02 owns transaction/event type definitions, idempotency, and mutation/audit semantics. PT-04/PT-06 consume its event/cash-flow contracts. PT-07 owns market-data and FX provenance. Do not add competing schemas in consumer streams. Avoid broad changes to quote/provider modules owned by PT-07.
-
-## Repository-wide rules
-
-- Preserve established calculation contracts and current persisted-data compatibility.
-- Do not silently change rounding, currency, rollover, margin, cash-flow, or P&L semantics.
-- Keep deterministic calculations independent of UI, network, browser storage, and AI.
-- Preserve English/Russian localization and add Vitest coverage for important behavior.
-- Do not claim live broker or production validation based on mocked fixtures.
-- Frontend/client PR targets `dev`; Worker/server-only changes follow the direct-to-`main` deployment rule.
-- Keep this PR Draft until implementation scope and exact-head CI/review gates are complete. Do not merge automatically.
