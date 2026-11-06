@@ -521,12 +521,6 @@ export function normalizeMarketHistoryResponse(
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
     ...(provider ? { provider } : {}),
     ...(receivedAt !== null ? { receivedAt } : {}),
-    observedAt: history.points.length ? history.points[history.points.length - 1].timestamp : null,
-    // A history response is not a live quote. Do not infer market-session or
-    // real-time freshness from when the historical series was downloaded.
-    freshness: 'unknown',
-    session: 'UNKNOWN',
-    delayClass: 'unknown',
     ...(interval ? { interval } : {})
   };
 }
