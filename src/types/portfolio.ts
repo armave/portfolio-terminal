@@ -1,5 +1,5 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
-import type { BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
+import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 
 export interface Tranche {
   id: string;
@@ -296,6 +296,8 @@ export interface PortfolioState {
     /** Provider market/account observation time; distinct from client receipt time. */
     observedAt?: number;
     warnings?: string[];
+    /** Most recent rejected/failed refresh, kept separately from last-known-good snapshot metadata. */
+    lastRefreshIssue?: BrokerDataQualityIssue;
     receivedAt: number;
   };
   cashCushion: CashCushionState;
