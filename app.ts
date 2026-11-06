@@ -1115,7 +1115,12 @@ function removeCashHolding(ticker: string, context?: PortfolioTransactionContext
   if (!symbol || !Array.isArray(holdings)) return null;
 
   const removed = holdings.find((holding: any) => holding.ticker === symbol);
-  if (!removed) return null;
+
+  // Let the store resolve an already-committed idempotent retry even when the
+  // first attempt removed the holding from the current snapshot.
+  if (!removed) {
+    return portfolioStore.removeCashStock(symbol, context) ? { ticker: symbol } : null;
+  }
 
   // Let the store own this state transition; its subscriber updates the runtime
   // state reference after the canonical mutation has been committed.
@@ -1677,6 +1682,32 @@ async function applyPortfolioActions(action: PortfolioActionIntent, transactionC
     }
 
     if (!pos) {
+      const priorEvent = transactionContext.idempotencyKey
+        ? state.transactionEvents?.find((event) => event.idempotencyKey === transactionContext.idempotencyKey)
+        : undefined;
+      const requestedPrice = Number(action.price);
+      if (priorEvent) {
+        const priorQuantity = Number(priorEvent.quantity);
+        const requestedQuantityMatches = action.shares === null ||
+          Math.abs(priorQuantity - Number(action.shares)) <= 1e-8;
+        const matchingPriorSale = (priorEvent.type === 'trade.sell' || priorEvent.type === 'cash-holding.sell') &&
+          priorEvent.ticker === ticker &&
+          Number(priorEvent.unitPrice) === requestedPrice &&
+          Number.isFinite(priorQuantity) && priorQuantity > 0 &&
+          requestedQuantityMatches;
+        if (matchingPriorSale) {
+          const repeatedResult = priorEvent.type === 'cash-holding.sell'
+            ? portfolioStore.sellCashHolding(ticker, priorQuantity, requestedPrice, transactionContext)
+            : portfolioStore.sellMarginPosition(ticker, priorQuantity, requestedPrice, priorEvent.effectiveAt, transactionContext);
+          if (repeatedResult) {
+            logTerminal('[AI Action]: This confirmed sale request was already committed; no additional sale was applied.');
+            return;
+          }
+        }
+        logTerminal('[AI Action Error]: This request idempotency key is already associated with a different transaction. No changes were made.');
+        showToast('This confirmed action was already used for a different portfolio change.', 'error');
+        return;
+      }
       logTerminal(`[Error]: Position ${ticker} not found to close.`);
       return;
     }
