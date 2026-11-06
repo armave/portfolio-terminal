@@ -136,6 +136,9 @@ export default defineConfig({
           if (id.endsWith('/src/domain/portfolioTransactionJournal.ts')) {
             return 'transaction-journal';
           }
+          if (id.endsWith('/src/services/marketDataContracts.ts')) {
+            return 'market-data-contracts';
+          }
           return undefined;
         }
       }

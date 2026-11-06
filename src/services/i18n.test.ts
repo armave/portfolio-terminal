@@ -649,4 +649,10 @@ describe('app localization', () => {
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
   });
 
+
+  it('localizes quote cache provenance labels', () => {
+    expect(translateText('Cached', 'ru')).toBe('Из кэша');
+    expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
+  });
+
 });

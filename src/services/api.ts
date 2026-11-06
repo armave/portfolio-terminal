@@ -18,6 +18,39 @@ export type { FreedomExecutedTrade } from '../types/freedomTrade';
 export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
+export {
+  normalizeCurrencyCode,
+  normalizeInstrumentIdentity,
+  normalizeMarketQuoteObservation,
+  normalizeMarketHistoryPoints,
+  normalizeMarketHistoryResponse,
+  normalizeFxRate,
+  isFxRateUsableForConversion,
+  getFxConversionRate,
+  shouldAcceptMarketObservation
+} from './marketDataContracts';
+export type {
+  MarketDelayClass,
+  MarketFreshness,
+  MarketDataQuality,
+  MarketSession,
+  MarketAssetType,
+  InstrumentIdentityInput,
+  InstrumentIdentity,
+  InstrumentIdentityResult,
+  MarketQuoteObservationInput,
+  MarketQuoteObservation,
+  MarketQuoteObservationResult,
+  MarketPricePoint,
+  MarketHistoryResult,
+  MarketQuoteRequest,
+  MarketHistoryRequest,
+  MarketDataProviderAdapter,
+  MarketHistoryResponseInput,
+  FxRateInput,
+  FxRate,
+  FxRateProviderAdapter
+} from './marketDataContracts';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
 
 export interface SyncedMarginDigest {

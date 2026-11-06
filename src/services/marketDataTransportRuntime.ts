@@ -4,6 +4,7 @@ import { normalizeYahooBatchResults, type YahooBatchQuoteResult } from './yahooQ
 import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
 import type { YahooDeepStockData } from './yahooDeepDataContracts';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
+import { retryMarketDataRequest } from './marketDataRetry';
 
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
 export interface NormalizedFallbackQuote {
@@ -19,6 +20,8 @@ export interface MarketDataTransportRuntimeDependencies {
   recordMetric: (metric: string, details?: Record<string, unknown>) => void;
   now?: () => number;
   warn?: (...args: unknown[]) => void;
+  sleep?: (delayMs: number) => Promise<void>;
+  requestTimeoutMs?: number;
 }
 export interface MarketDataTransportRuntime {
   fetchYahooQuoteData: (ticker: string, force?: boolean) => Promise<YahooBatchQuoteResult | null>;
@@ -31,10 +34,43 @@ export interface MarketDataTransportRuntime {
   clearYahooDeepStockDataCache: () => void;
 }
 
+async function fetchMarketDataWithTimeout<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('Market data provider request timed out.');
+      Object.assign(error, { code: 'ETIMEDOUT' });
+      reject(error);
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    const pending = request(controller.signal).catch((error: unknown) => {
+      if (controller.signal.aborted) {
+        const timeoutError = new Error('Market data provider request timed out.');
+        Object.assign(timeoutError, { code: 'ETIMEDOUT' });
+        throw timeoutError;
+      }
+      throw error;
+    });
+    return await Promise.race([pending, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Owns Yahoo quote batching, deep-data cache wiring, fallback quotes and insights feeds. */
 export function createMarketDataTransportRuntime(dependencies: MarketDataTransportRuntimeDependencies): MarketDataTransportRuntime {
   const now = dependencies.now || Date.now;
   const warn = dependencies.warn || ((...args: unknown[]) => console.warn(...args));
+  const requestedTimeoutMs = dependencies.requestTimeoutMs ?? 12_000;
+  const requestTimeoutMs = Number.isFinite(requestedTimeoutMs)
+    ? Math.max(1, Math.min(60_000, requestedTimeoutMs))
+    : 12_000;
   const MAX_API_CACHE_ENTRIES = 500;
   const setBoundedCache = <T>(cache: Map<string, T>, key: string, value: T): void => {
     cache.set(key, value);
@@ -44,7 +80,12 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     }
   };
   const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
-  const yahooQuoteCache = new Map<string, { expiresAt: number; data: YahooBatchQuoteResult }>();
+  const YAHOO_QUOTE_STALE_RETENTION_MS = 15 * 60 * 1000;
+  const yahooQuoteCache = new Map<string, {
+    expiresAt: number;
+    staleUntil: number;
+    data: YahooBatchQuoteResult;
+  }>();
   const yahooQuoteRequests = new Map<string, Promise<YahooBatchQuoteResult>>();
   const yahooQuoteQueue = new Map<string, {
     request: Promise<YahooBatchQuoteResult>;
@@ -66,10 +107,21 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const force = entries.some(([, pending]) => pending.force);
     const startedAt = now();
     try {
-      const response = await dependencies.proxyFetch(
-        'quote',
-        { symbol: symbols.join(',') },
-        force ? { cache: 'no-store' } : {}
+      const response = await retryMarketDataRequest(
+        () => fetchMarketDataWithTimeout(
+          requestSignal => dependencies.proxyFetch(
+            'quote',
+            { symbol: symbols.join(',') },
+            { ...(force ? { cache: 'no-store' } : {}), signal: requestSignal }
+          ),
+          requestTimeoutMs
+        ),
+        {
+          attempts: 2,
+          baseDelayMs: 250,
+          maxDelayMs: 1_000,
+          ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+        }
       );
       const results = normalizeYahooBatchResults(response, symbols);
       const bySymbol = new Map<string, YahooBatchQuoteResult>();
@@ -83,11 +135,28 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       });
       for (const [symbol, pending] of entries) {
         const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
+        let accepted = data;
         if (!data.error && data.price && typeof data.price === 'object') {
-          setBoundedCache(yahooQuoteCache, symbol, { expiresAt: now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
+          const cachedAt = now();
+          accepted = { ...data, cacheStatus: 'network' };
+          setBoundedCache(yahooQuoteCache, symbol, {
+            expiresAt: cachedAt + YAHOO_QUOTE_CACHE_TTL_MS,
+            staleUntil: cachedAt + YAHOO_QUOTE_STALE_RETENTION_MS,
+            data: accepted
+          });
+        } else {
+          const lastKnownGood = yahooQuoteCache.get(symbol);
+          if (lastKnownGood && lastKnownGood.staleUntil > now()) {
+            accepted = { ...lastKnownGood.data, cacheStatus: 'stale-fallback' };
+            dependencies.recordMetric('stale_fallback', {
+              provider: 'yahoo', operation: 'quote_batch', symbol
+            });
+          } else {
+            yahooQuoteCache.delete(symbol);
+          }
         }
         if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        pending.resolvers.forEach(resolve => resolve(data));
+        pending.resolvers.forEach(resolve => resolve(accepted));
       }
     } catch (error) {
       dependencies.recordMetric('provider_failure', {
@@ -95,7 +164,19 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       });
       for (const [symbol, pending] of entries) {
         if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        pending.rejecters.forEach(reject => reject(error));
+        const lastKnownGood = yahooQuoteCache.get(symbol);
+        if (lastKnownGood && lastKnownGood.staleUntil > now()) {
+          dependencies.recordMetric('stale_fallback', {
+            provider: 'yahoo', operation: 'quote_batch', symbol
+          });
+          pending.resolvers.forEach(resolve => resolve({
+            ...lastKnownGood.data,
+            cacheStatus: 'stale-fallback'
+          }));
+        } else {
+          yahooQuoteCache.delete(symbol);
+          pending.rejecters.forEach(reject => reject(error));
+        }
       }
     }
   };
@@ -106,9 +187,9 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const cached = yahooQuoteCache.get(symbol);
     if (!force && cached && cached.expiresAt > now()) {
       dependencies.recordMetric('cache_hit', { cache: 'yahoo_quote' });
-      return Promise.resolve(cached.data);
+      return Promise.resolve({ ...cached.data, cacheStatus: 'fresh-cache' });
     }
-    if (cached) yahooQuoteCache.delete(symbol);
+    if (cached && cached.staleUntil <= now()) yahooQuoteCache.delete(symbol);
     const existing = yahooQuoteRequests.get(symbol);
     if (!force && existing) {
       dependencies.recordMetric('inflight_dedup', { operation: 'yahoo_quote' });
@@ -174,10 +255,21 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
   ): Promise<NormalizedFallbackQuote> => {
     const symbol = normalizeYahooSymbol(ticker);
     if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
-    const responseData: unknown = await dependencies.proxyFetch(
-      'provider-quote',
-      { symbol, provider },
-      force ? { cache: 'no-store' } : {}
+    const responseData: unknown = await retryMarketDataRequest(
+      () => fetchMarketDataWithTimeout(
+        requestSignal => dependencies.proxyFetch(
+          'provider-quote',
+          { symbol, provider },
+          { ...(force ? { cache: 'no-store' } : {}), signal: requestSignal }
+        ),
+        requestTimeoutMs
+      ),
+      {
+        attempts: 2,
+        baseDelayMs: 250,
+        maxDelayMs: 1_000,
+        ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+      }
     );
     const data = isFallbackQuoteRecord(responseData) ? responseData : {};
     const currentValue = provider === 'finnhub' ? data.c : data.close;
