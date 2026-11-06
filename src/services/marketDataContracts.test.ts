@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getFxConversionRate,
   isFxRateUsableForConversion,
   normalizeFxRate,
   normalizeInstrumentIdentity,
@@ -235,6 +236,17 @@ describe('FX rate contract', () => {
       quality: 'complete'
     });
     expect(isFxRateUsableForConversion(result.rate!, now)).toBe(true);
+  });
+
+  it('only returns a conversion rate for the exact ordered BASE_TO_QUOTE pair', () => {
+    const rate = normalizeFxRate({
+      baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
+      provider: 'test', observedAt: now - 60_000, receivedAt: now
+    }).rate!;
+    expect(getFxConversionRate(rate, 'USD', 'EUR', now)).toBe(0.92);
+    expect(getFxConversionRate(rate, 'EUR', 'USD', now)).toBeNull();
+    expect(getFxConversionRate(rate, 'USD', 'GBP', now)).toBeNull();
+    expect(getFxConversionRate({ ...rate, quality: 'partial' }, 'USD', 'EUR', now)).toBeNull();
   });
 
   it('never auto-inverts a pair and rejects invalid or identical currencies', () => {
