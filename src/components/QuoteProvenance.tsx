@@ -56,7 +56,7 @@ export function QuoteProvenanceList({ holdings }: { holdings: QuoteProvenanceHol
           return (
             <li key={`${holding.kind}-${holding.ticker || index}`}>
               <span class="font-semibold text-slate-300">{translateText(holding.kind, language)} {holding.ticker || '—'}</span>
-              <span> · {holding.quoteDetails?.provider || holding.quoteSource || translateText('Source unavailable', language)} · {translateText(freshnessLabel, language)}{instrumentContext ? ' · ' + instrumentContext : ''}</span>
+              <span> · {holding.quoteSource || holding.quoteDetails?.provider || translateText('Source unavailable', language)} · {translateText(freshnessLabel, language)}{instrumentContext ? ' · ' + instrumentContext : ''}</span>
               <span class="block">
                 {observedAt ? `${observed}: ${observedAt}` : unavailable}
                 {receivedAtText ? ` · ${received}: ${receivedAtText}` : ''}
