@@ -48,8 +48,20 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(portfolio.value.margin.value[0].dailyInterestCost).toBeCloseTo(45 / 365);
     expect(portfolio.value.margin.value[0].maintenanceState).toBe('above-maintenance');
     const concentration = result.value.concentrationByCurrency[0].value;
-    expect(concentration.byTicker[0]).toMatchObject({ key: 'AAA', exposure: 1_000, percentage: 80, positions: 1 });
+    expect(concentration.byTicker[0]).toMatchObject({ key: 'AAA', exposure: 1_000, percentage: 80, positions: 1, positionIds: ['a1'] });
+    expect(portfolio.value.inputPositionIds).toEqual(['a1', 'b1']);
+    expect(portfolio.value.sourceObservationTimes).toEqual([currentAt - 60_000]);
     expect(concentration.bySector.map(item => item.key)).toEqual(['Technology', 'Healthcare']);
+  });
+
+  it('rejects duplicate position IDs after trimming whitespace', () => {
+    const result = calculatePortfolioRiskSnapshot(makeSnapshot({
+      positions: [
+        { ...makeSnapshot().positions[0], id: 'same' },
+        { ...makeSnapshot().positions[1], id: ' same ' }
+      ]
+    }));
+    expect(result.status).toBe('unavailable');
   });
 
   it('keeps short exposure signed while using absolute exposure for concentration', () => {
@@ -184,6 +196,23 @@ describe('deterministic stress scenarios', () => {
     expect(JSON.stringify(snapshot)).toBe(before);
     expect(result.value.disclaimer).toContain('not a probability estimate');
   });
+  it('aggregates duplicate ticker holdings across accounts into one shock driver', () => {
+    const snapshot = makeSnapshot({
+      positions: [
+        { ...makeSnapshot().positions[0], id: 'account-a' },
+        { ...makeSnapshot().positions[0], id: 'account-b', quantity: 2, price: 50, accountId: 'cash' }
+      ]
+    });
+    const result = calculateRiskStressScenario(snapshot, [{ ticker: 'AAA', priceShock: -0.1 }]);
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.drivers).toHaveLength(1);
+    expect(result.value.drivers[0]).toMatchObject({
+      ticker: 'AAA', currentExposure: 1_100, grossExposure: 1_100, pnlImpact: -110
+    });
+    expect(result.value.stressedEquity).toBe(890);
+  });
+
   it('rejects empty, duplicate, unknown and out-of-range shocks', () => {
     const snapshot = makeSnapshot();
     expect(calculateRiskStressScenario(snapshot, []).status).toBe('unavailable');
