@@ -65,6 +65,10 @@ describe('Device Check summary diagnostics', () => {
     expect(getPortfolioSyncLabel({ status: 'error', text: 'Sync failed' })).toBe('Failed');
   });
 
+  it('shows checking while device diagnostics have not loaded', () => {
+    expect(getDeviceHealth(null, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('checking');
+  });
+
   it('summarizes device readiness without treating offline as local storage failure', () => {
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: true

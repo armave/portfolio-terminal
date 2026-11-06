@@ -3,7 +3,7 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { useCloudStatus, useCloudSyncStatus } from '../ui/uiStateStore';
 
 type ServiceWorkerState = 'active' | 'registered' | 'not_registered' | 'unsupported' | 'error';
-type DeviceHealth = 'ready' | 'offline' | 'attention';
+type DeviceHealth = 'ready' | 'offline' | 'attention' | 'checking';
 
 export interface DeviceDiagnostics {
   browser: string;
@@ -90,7 +90,7 @@ export function getDeviceHealth(
   cloudStatus: { status: string; text: string },
   cloudSyncStatus: { status: string; text: string }
 ): DeviceHealth {
-  if (!diagnostics) return 'attention';
+  if (!diagnostics) return 'checking';
   if (
     !diagnostics.localStorageAvailable ||
     !diagnostics.secureContext ||
@@ -234,6 +234,7 @@ function formatCheckedAt(value: number | null): string {
 function healthTone(health: DeviceHealth): string {
   if (health === 'ready') return 'border-emerald-800/70 bg-emerald-950/25 text-emerald-300';
   if (health === 'offline') return 'border-amber-800/70 bg-amber-950/20 text-amber-200';
+  if (health === 'checking') return 'border-slate-700 bg-slate-900 text-slate-300';
   return 'border-rose-800/70 bg-rose-950/20 text-rose-200';
 }
 
@@ -332,7 +333,7 @@ export function DeviceCheckSummary() {
         </div>
         <div class="flex items-center gap-2">
           <span class={'rounded-full border px-2.5 py-1 text-[10px] font-semibold ' + healthTone(health)} role="status">
-            {label(health === 'ready' ? 'Local environment ready' : health === 'offline' ? 'Offline' : 'Needs attention')}
+            {label(health === 'ready' ? 'Local environment ready' : health === 'offline' ? 'Offline' : health === 'checking' ? 'Checking…' : 'Needs attention')}
           </span>
           <button type="button" onClick={() => void runCheck()} disabled={checking} class="rounded border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 disabled:opacity-50">
             {label(checking ? 'Checking…' : 'Run check')}
