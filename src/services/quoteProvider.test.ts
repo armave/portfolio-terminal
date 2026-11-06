@@ -185,6 +185,30 @@ describe('fetchLivePriceFromProviders', () => {
     });
   });
 
+  it('retains the provider cache status in portfolio quote provenance', async () => {
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      cacheStatus: 'stale-fallback',
+      price: {
+        current: 100,
+        previousClose: 95,
+        regularMarketTime: Math.floor(Date.now() / 1000),
+        marketState: 'REGULAR',
+        currency: 'USD',
+        exchange: 'NMS',
+        quoteType: 'EQUITY'
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.quoteDetails).toMatchObject({
+      cacheStatus: 'stale-fallback',
+      provider: 'YAHOO',
+      currency: 'USD',
+      exchange: 'NMS'
+    });
+  });
+
   it('keeps the daily move against previous close when the market is closed', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     vi.mocked(fetchYahooQuoteData).mockResolvedValue({
