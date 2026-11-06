@@ -35,6 +35,15 @@ export interface QuoteDetails {
   receivedAt?: number;
   /** Provider-reported market observation time, when available. */
   sourceTimestamp?: number;
+  /** Normalized source metadata; unknown values are omitted, never inferred from receipt time. */
+  provider?: string;
+  instrumentId?: string;
+  exchange?: string;
+  currency?: string;
+  assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN';
+  marketSession?: 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | 'UNKNOWN';
+  delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
+  dataQuality?: 'complete' | 'partial' | 'unknown';
   [key: string]: any;
 }
 
