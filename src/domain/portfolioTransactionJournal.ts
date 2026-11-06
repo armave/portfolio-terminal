@@ -463,7 +463,7 @@ export function appendBrokerHistoryAuditEvents(
     const amount = Number(amountValue);
     if (!Number.isFinite(amount)) continue;
     const text = [raw.type, raw.description, raw.category].filter((v) => typeof v === 'string').join(' ').toLowerCase();
-    const isCorporateAction = /\\b(stock split|reverse split|merger|spin[- ]?off|reorgani[sz]ation|corporate action|symbol change|cash in lieu)\\b/.test(text);
+    const isCorporateAction = ['stock split', 'reverse split', 'merger', 'spin-off', 'spin off', 'reorganization', 'reorganisation', 'corporate action', 'symbol change', 'cash in lieu'].some((keyword) => text.includes(keyword));
     const type: PortfolioTransactionEventType = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
       ? 'dividend'
       : isCorporateAction
