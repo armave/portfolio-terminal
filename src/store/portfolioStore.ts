@@ -512,34 +512,29 @@ export class PortfolioStore {
       if (previous) return previous.requestFingerprint === context.requestFingerprint;
     }
 
-    try {
-      return this.update((state) => {
-        const existingEvents = Array.isArray(state.transactionEvents) ? state.transactionEvents : [];
-        // Re-check inside the commit boundary. This also protects synchronous
-        // re-entrancy from a subscriber or command dispatcher.
-        if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(existingEvents, idempotencyKey)) {
-          return state;
-        }
+    return this.update((state) => {
+      const existingEvents = Array.isArray(state.transactionEvents) ? state.transactionEvents : [];
+      // Re-check inside the commit boundary. This also protects synchronous
+      // re-entrancy from a subscriber or command dispatcher.
+      if (idempotencyKey && hasPortfolioTransactionIdempotencyKey(existingEvents, idempotencyKey)) {
+        return state;
+      }
 
-        const prepared = prepare(state);
-        if (!prepared || prepared.state === state) return state;
+      const prepared = prepare(state);
+      if (!prepared || prepared.state === state) return state;
 
-        const event = createPortfolioTransactionEvent(prepared.event, {
-          ...context,
-          ...(idempotencyKey ? { idempotencyKey } : {})
-        });
-        const appended = appendPortfolioTransactionEvent(existingEvents, event);
-        if (!appended.appended) return state;
+      const event = createPortfolioTransactionEvent(prepared.event, {
+        ...context,
+        ...(idempotencyKey ? { idempotencyKey } : {})
+      });
+      const appended = appendPortfolioTransactionEvent(existingEvents, event);
+      if (!appended.appended) return state;
 
-        return {
-          ...prepared.state,
-          transactionEvents: appended.events
-        };
-      }, persist);
-    } catch (error) {
-      console.error('Could not prepare an auditable portfolio transaction:', error);
-      return false;
-    }
+      return {
+        ...prepared.state,
+        transactionEvents: appended.events
+      };
+    }, persist);
   }
 
   private findAppliedTransaction(context?: PortfolioTransactionContext): PortfolioTransactionEvent | undefined {
@@ -1574,7 +1569,7 @@ export class PortfolioStore {
           cashDelta: 0,
           note: hasManualPrice
             ? 'Cash-cushion holding quantity added at manually supplied price; no free-cash settlement is modeled.'
-            : 'Cash-cushion holding quantity added without an execution price; no cost basis is inferred.'
+            : 'Cash-cushion holding quantity added; no execution price was supplied and no cost basis is inferred.'
         }
       };
     });
