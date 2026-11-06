@@ -818,40 +818,45 @@ export class PortfolioStore {
     shares: number,
     price: number,
     date?: string,
-    pt?: number
+    pt?: number,
+    context?: PortfolioTransactionContext
   ): boolean {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) ||
       price <= 0 || !Number.isFinite(shares * price)) return false;
 
     const purchaseDate = date || todayIso();
+    const parsedEffectiveAt = Date.parse(purchaseDate);
+    const effectiveAt = context?.effectiveAt ??
+      (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
 
-    return this.update((state) => {
-
+    return this.updateFinancialMutation({
+      ...context,
+      effectiveAt,
+      source: context?.source ?? 'manual',
+      actor: context?.actor ?? { type: 'user' }
+    }, (state) => {
       const totalVal = shares * price;
 
-      // Extract broker commission rules with safe fallbacks
+      // Extract broker commission rules with safe fallbacks.
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
 
-      // A buyStock call represents one broker execution, so enforce the minimum
-      // ticket commission here rather than recalculating across the combined position.
+      // One buyStock call represents one broker execution, so enforce the
+      // minimum ticket commission here rather than recalculating across the position.
       const buyComm = Number(calculateCommission(
         shares, totalVal, resolveCommissionConfig(rules)
       ).toFixed(2));
       const totalOrderCost = totalVal + buyComm;
-      if (!Number.isFinite(buyComm) || buyComm < 0 || !Number.isFinite(totalOrderCost)) return state;
+      if (!Number.isFinite(buyComm) || buyComm < 0 || !Number.isFinite(totalOrderCost)) return null;
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
-
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
         { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
       ];
-
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
       const nextCommBuy = (Number(existingPos?.commBuy) || 0) + buyComm;
-
       const earliestPosDate =
         nextTranches
           .map((t) => t.date)
@@ -886,11 +891,13 @@ export class PortfolioStore {
         .sort();
       const earliestPortfolioDate = allDates[0] || state.startDate || purchaseDate;
 
-      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
-      let currentDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      let freeCash = previousFreeCash;
+      let currentDebt = previousDebt;
 
       if (!Number.isFinite(nextShares) || !Number.isFinite(nextCommBuy) ||
-        !Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
+        !Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return null;
 
       if (freeCash >= totalOrderCost) {
         freeCash -= totalOrderCost;
@@ -899,18 +906,31 @@ export class PortfolioStore {
         freeCash = 0;
         currentDebt += remainingCost;
       }
-      if (!Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
+      if (!Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return null;
 
       return {
-        ...state,
-        positions,
-        startDate: earliestPortfolioDate,
-        activeView: clean,
-        balance: currentDebt > 0 ? -currentDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash
+        state: {
+          ...state,
+          positions,
+          startDate: earliestPortfolioDate,
+          activeView: clean,
+          balance: currentDebt > 0 ? -currentDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'trade.buy',
+          effectiveAt,
+          ticker: clean,
+          quantity: shares,
+          unitPrice: price,
+          grossAmount: totalVal,
+          fees: buyComm,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: currentDebt - previousDebt
         }
       };
     });
