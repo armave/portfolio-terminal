@@ -30,7 +30,7 @@ export interface QuoteDetails {
   marketState?: string;
   price?: number;
   /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */
-  freshness?: 'fresh' | 'stale' | 'delayed' | 'unknown';
+  freshness?: 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
   /** Time this client received the response; not necessarily the market observation time. */
   receivedAt?: number;
   /** Provider-reported market observation time, when available. */
