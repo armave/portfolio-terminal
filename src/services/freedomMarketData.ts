@@ -1,4 +1,5 @@
 import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
+import { normalizeMarketHistoryResponse, type MarketHistoryResult } from './marketDataContracts';
 
 export interface FreedomQuote {
   symbol: string;
@@ -134,6 +135,60 @@ export async function fetchFreedomQuoteWebSocket(symbol: string): Promise<Freedo
   const quote = normalizeFreedomQuote(payload.data, normalized);
   if (!quote) throw new Error("TradeNet WebSocket returned an unsupported quote payload.");
   return quote;
+}
+
+function findHistoryRows(payload: unknown, depth = 0): unknown[] | null {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object' || depth > 5) return null;
+  const record = payload as Record<string, unknown>;
+  for (const key of ['hloc', 'history', 'candles', 'items', 'rows', 'data', 'result', 'prices']) {
+    const found = findHistoryRows(record[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Fetches and normalizes the existing read-only daily TradeNet HLOC endpoint. */
+export async function fetchFreedomHistory(
+  symbol: string,
+  options: { force?: boolean; currency?: string; exchange?: string; assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN' } = {}
+): Promise<MarketHistoryResult> {
+  const normalized = symbol.trim().toUpperCase();
+  if (!normalized) throw new Error('A ticker symbol is required.');
+  const ticker = freedomSymbol(normalized);
+  if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
+    throw new Error('Enter one valid TradeNet ticker symbol.');
+  }
+
+  const payload = await proxyFetch(
+    'freedom-history',
+    { symbol: ticker },
+    options.force ? { cache: 'no-store' } : {}
+  );
+  if (!payload || payload.ok !== true) {
+    throw new Error(
+      typeof payload?.error === 'string'
+        ? payload.error
+        : 'Freedom TradeNet returned an invalid historical-price response.'
+    );
+  }
+  const returnedSymbol = typeof payload.symbol === 'string'
+    ? payload.symbol.trim().toUpperCase()
+    : ticker;
+  if (returnedSymbol !== ticker) {
+    throw new Error('Freedom TradeNet returned history for a different ticker.');
+  }
+
+  return normalizeMarketHistoryResponse({
+    symbol: returnedSymbol,
+    provider: 'Freedom TradeNet',
+    receivedAt: Date.now(),
+    interval: '1D',
+    currency: options.currency,
+    exchange: options.exchange,
+    assetType: options.assetType,
+    points: findHistoryRows(payload.data)
+  });
 }
 
 export async function fetchFreedomQuote(symbol: string, force = false): Promise<FreedomQuote> {
