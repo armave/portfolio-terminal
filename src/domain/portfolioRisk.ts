@@ -53,7 +53,7 @@ export interface PortfolioRiskSnapshot {
 interface CurrencyExposure {
   currency: string; grossExposure: number; netExposure: number; cash: number; debt: number; equity: number;
 }
-interface RiskConcentrationGroup { key: string; exposure: number; percentage: number; positions: number; }
+interface RiskConcentrationGroup { key: string; exposure: number; percentage: number; positions: number; positionIds: string[]; }
 interface RiskConcentrationBreakdown {
   byTicker: RiskConcentrationGroup[];
   bySector: RiskConcentrationGroup[];
@@ -75,6 +75,7 @@ interface RiskPortfolioMetrics {
   currency: string; calculatedAt: number; grossExposure: number; netExposure: number; cash: number; debt: number;
   equity: number; grossLeverage: number | null; netLeverage: number | null; marginUtilization: number | null;
   cashCoverage: number | null; equityRatio: number | null; margin: RiskCalculation<BrokerMarginRisk[]>;
+  inputPositionIds: string[]; sourceObservationTimes: number[];
 }
 export interface PortfolioRiskReport {
   calculatedAt: number; quality: 'current' | 'provisional'; currencyExposure: CurrencyExposure[];
@@ -95,7 +96,7 @@ export interface HistoricalCorrelation {
   correlation: number; lookbackStart: number; lookbackEnd: number;
 }
 export interface StressShockInput { ticker: string; /** Decimal return: -0.25 = -25%. */ priceShock: number; }
-interface StressShockDriver { ticker: string; currentExposure: number; priceShock: number; pnlImpact: number; }
+interface StressShockDriver { ticker: string; currentExposure: number; grossExposure: number; priceShock: number; pnlImpact: number; }
 export interface StressScenarioResult {
   currency: string; calculatedAt: number; totalPnlImpact: number; currentEquity: number; stressedEquity: number;
   drivers: StressShockDriver[]; assumptions: string[]; disclaimer: string;
@@ -145,10 +146,11 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
   const capital: RiskCapitalInput[] = [];
   const qualities: Array<'current' | 'provisional'> = [];
   for (const position of input.positions) {
-    if (!position || typeof position.id !== 'string' || !position.id.trim() || ids.has(position.id)) {
+    const positionId = typeof position?.id === 'string' ? position.id.trim() : '';
+    if (!positionId || ids.has(positionId)) {
       return unavailable('Every position must have a unique, non-empty id.');
     }
-    ids.add(position.id);
+    ids.add(positionId);
     const ticker = normalizeTicker(position.ticker);
     const currency = normalizeCurrency(position.currency);
     if (!ticker || !currency) return unavailable('A position has an invalid ticker or currency.');
@@ -169,7 +171,7 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
       ? ticker + ': market observation time is unknown.' : ticker + ': quote is not confirmed fresh.');
     qualities.push(quality);
     positions.push({
-      ...position, id: position.id.trim(), ticker, currency,
+      ...position, id: positionId, ticker, currency,
       sector: normalizedLabel(position.sector), assetType: normalizedLabel(position.assetType),
       brokerId: normalizedLabel(position.brokerId), accountId: normalizedLabel(position.accountId)
     });
@@ -207,20 +209,24 @@ function buildCurrencyExposure(currency: string, positions: readonly RiskPositio
   return { currency, grossExposure, netExposure, cash, debt, equity: cash + netExposure - debt };
 }
 function groupConcentration(positions: readonly RiskPositionInput[], keyFor: (position: RiskPositionInput) => string): RiskConcentrationGroup[] {
-  const values = new Map<string, { exposure: number; positions: number }>();
+  const values = new Map<string, { exposure: number; positions: number; positionIds: string[] }>();
   let grossExposure = 0;
   for (const position of positions) {
     const exposure = Math.abs(position.quantity * position.price);
     if (exposure === 0) continue;
     grossExposure += exposure;
     const key = keyFor(position);
-    const group = values.get(key) ?? { exposure: 0, positions: 0 };
+    const group = values.get(key) ?? { exposure: 0, positions: 0, positionIds: [] };
     group.exposure += exposure;
     group.positions += 1;
+    group.positionIds.push(position.id);
     values.set(key, group);
   }
   return [...values.entries()]
-    .map(([key, value]) => ({ key, exposure: value.exposure, percentage: grossExposure > 0 ? value.exposure / grossExposure * 100 : 0, positions: value.positions }))
+    .map(([key, value]) => ({
+      key, exposure: value.exposure, percentage: grossExposure > 0 ? value.exposure / grossExposure * 100 : 0,
+      positions: value.positions, positionIds: value.positionIds.sort()
+    }))
     .sort((a, b) => b.exposure - a.exposure || a.key.localeCompare(b.key));
 }
 function buildConcentration(positions: readonly RiskPositionInput[]): RiskConcentrationBreakdown {
@@ -297,6 +303,11 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
   const currencyExposure = currencies.map(currency => buildCurrencyExposure(
     currency, positions.filter(item => item.currency === currency), capital.filter(item => item.currency === currency)
   ));
+  if (currencyExposure.some(item => ![
+    item.grossExposure, item.netExposure, item.cash, item.debt, item.equity
+  ].every(finite))) {
+    return unavailable('Aggregated risk exposure exceeds the finite calculation range.');
+  }
   const concentrationByCurrency = currencies.map(currency => ({
     currency, value: buildConcentration(positions.filter(item => item.currency === currency))
   }));
@@ -315,7 +326,12 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
       marginUtilization: exposure.grossExposure > 0 ? exposure.debt / exposure.grossExposure : null,
       cashCoverage: exposure.grossExposure > 0 ? exposure.cash / exposure.grossExposure : null,
       equityRatio: assets > 0 ? exposure.equity / assets : null,
-      margin
+      margin,
+      inputPositionIds: positions.filter(item => item.currency === currencies[0]).map(item => item.id).sort(),
+      sourceObservationTimes: [...new Set([
+        ...positions.filter(item => item.currency === currencies[0]).map(item => item.observedAt),
+        ...capital.filter(item => item.currency === currencies[0]).map(item => item.observedAt)
+      ].filter((value): value is number => value !== null))].sort((a, b) => a - b)
     }, quality, warnings);
   }
   const historyByTicker: Record<string, RiskCalculation<HistoricalRiskMetrics>> = {};
@@ -445,7 +461,14 @@ export function calculateRiskStressScenario(
     ...normalized.value.positions.map(item => item.currency), ...normalized.value.capital.map(item => item.currency)
   ]);
   if (currencies.size !== 1) return unavailable('A stress scenario requires one currency; cross-currency shocks need an explicit FX contract.');
-  const byTicker = new Map<string, RiskPositionInput>(normalized.value.positions.map(item => [item.ticker, item]));
+  const byTicker = new Map<string, { currentExposure: number; grossExposure: number }>();
+  for (const position of normalized.value.positions) {
+    const existing = byTicker.get(position.ticker) ?? { currentExposure: 0, grossExposure: 0 };
+    const exposure = position.quantity * position.price;
+    existing.currentExposure += exposure;
+    existing.grossExposure += Math.abs(exposure);
+    byTicker.set(position.ticker, existing);
+  }
   const seen = new Set<string>();
   const drivers: StressShockDriver[] = [];
   for (const shock of shocks) {
@@ -455,10 +478,14 @@ export function calculateRiskStressScenario(
     }
     if (seen.has(ticker)) return unavailable('A ticker may be shocked only once per scenario.');
     seen.add(ticker);
-    const position = byTicker.get(ticker);
-    if (!position) return unavailable('No supplied position matches stress ticker ' + ticker + '.');
-    const currentExposure = position.quantity * position.price;
-    drivers.push({ ticker, currentExposure, priceShock: shock.priceShock, pnlImpact: currentExposure * shock.priceShock });
+    const exposure = byTicker.get(ticker);
+    if (!exposure) return unavailable('No supplied position matches stress ticker ' + ticker + '.');
+    const pnlImpact = exposure.currentExposure * shock.priceShock;
+    if (!finite(pnlImpact)) return unavailable('Stress impact exceeds the finite calculation range for ' + ticker + '.');
+    drivers.push({
+      ticker, currentExposure: exposure.currentExposure, grossExposure: exposure.grossExposure,
+      priceShock: shock.priceShock, pnlImpact
+    });
   }
   drivers.sort((a, b) => Math.abs(b.pnlImpact) - Math.abs(a.pnlImpact) || a.ticker.localeCompare(b.ticker));
   const totalPnlImpact = drivers.reduce((sum, item) => sum + item.pnlImpact, 0);
@@ -466,9 +493,13 @@ export function calculateRiskStressScenario(
   const debt = normalized.value.capital.reduce((sum, item) => sum + item.debt, 0);
   const currentExposure = normalized.value.positions.reduce((sum, item) => sum + item.quantity * item.price, 0);
   const currentEquity = cash + currentExposure - debt;
+  const stressedEquity = currentEquity + totalPnlImpact;
+  if (![totalPnlImpact, currentEquity, stressedEquity].every(finite)) {
+    return unavailable('Stress scenario totals exceed the finite calculation range.');
+  }
   return available({
     currency: [...currencies][0], calculatedAt: normalized.value.calculatedAt, totalPnlImpact, currentEquity,
-    stressedEquity: currentEquity + totalPnlImpact, drivers,
+    stressedEquity, drivers,
     assumptions: [
       'Only explicitly supplied ticker shocks are applied; unshocked positions are held constant.',
       'Cash and debt are held constant; trading costs, taxes, liquidity slippage and forced liquidation are not modeled.'
