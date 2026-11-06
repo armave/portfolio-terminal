@@ -584,7 +584,11 @@ export class PortfolioStore {
    * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
    * are settings rather than portfolio content and intentionally remain in place.
    */
-  public resetToBlankState(now = Date.now(), persist = true): boolean {
+  public resetToBlankState(
+    now = Date.now(),
+    persist = true,
+    context?: PortfolioTransactionContext
+  ): boolean {
     // The selected desk is device-local and also participates in normalization.
     // Restore it when the persistent portfolio write fails so navigation cannot
     // advertise a reset while the previous portfolio is still active.
@@ -594,35 +598,55 @@ export class PortfolioStore {
     } catch {
       // Continue resetting portfolio data when browser preference storage is unavailable.
     }
-    const committed = this.update((state) => ({
-      ...state,
-      ...createBlankPortfolioState(now),
-      // Reset portfolio-owned data while retaining device/account configuration.
-      brokerAssumptions: state.brokerAssumptions,
-      apiKeys: state.apiKeys,
-      gatewaySecret: state.gatewaySecret,
-      autoRefreshInterval: state.autoRefreshInterval,
-      positions: {},
-      cashCushion: {
-        freeCash: 0,
-        holdings: [] as PortfolioState['cashCushion']['holdings']
+
+    const requestFingerprint = createMutationFingerprint(['portfolio.reset', now]);
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `portfolio-reset:${now}`,
+      requestFingerprint,
+      source: context?.source ?? 'user-reset',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? now
+    };
+
+    const committed = this.updateFinancialMutation(mutationContext, (state) => ({
+      state: {
+        ...state,
+        ...createBlankPortfolioState(now),
+        // Reset portfolio-owned data while retaining device/account configuration.
+        // The append-only transaction journal survives reset and receives this event.
+        transactionEvents: state.transactionEvents || [],
+        brokerAssumptions: state.brokerAssumptions,
+        apiKeys: state.apiKeys,
+        gatewaySecret: state.gatewaySecret,
+        autoRefreshInterval: state.autoRefreshInterval,
+        positions: {},
+        cashCushion: {
+          freeCash: 0,
+          holdings: [] as PortfolioState['cashCushion']['holdings']
+        },
+        activeTrancheTypes: {},
+        activeTrancheMixes: {},
+        activeTrancheGuestAssignments: {},
+        activeTrancheGuestAssignmentDetails: {},
+        closedTradeAllocations: {},
+        guestPortfolioSnapshot: undefined,
+        brokerAccountInfo: undefined,
+        portfolioEquity: undefined,
+        portfolioEquityUpdatedAt: undefined,
+        brokerExecutedTrades: [],
+        cashflows: [],
+        closedHistory: [],
+        tranches: [],
+        cashStocks: [],
+        selectedTicker: null,
+        pendingMutation: null
       },
-      activeTrancheTypes: {},
-      activeTrancheMixes: {},
-      activeTrancheGuestAssignments: {},
-      activeTrancheGuestAssignmentDetails: {},
-      closedTradeAllocations: {},
-      guestPortfolioSnapshot: undefined,
-      brokerAccountInfo: undefined,
-      portfolioEquity: undefined,
-      portfolioEquityUpdatedAt: undefined,
-      brokerExecutedTrades: [],
-      cashflows: [],
-      closedHistory: [],
-      tranches: [],
-      cashStocks: [],
-      selectedTicker: null,
-      pendingMutation: null
+      event: {
+        type: 'portfolio.reset',
+        effectiveAt: context?.effectiveAt ?? now,
+        note: 'Portfolio-owned state and history sidecars reset; append-only transaction journal retained.'
+      }
     }), persist);
 
     if (!committed) {
@@ -638,7 +662,7 @@ export class PortfolioStore {
     return committed;
   }
 
-  private readDeviceActiveView(): string | null {
+    private readDeviceActiveView(): string | null {
     try {
       return typeof localStorage !== 'undefined' ? localStorage.getItem('portfolio_active_view') : null;
     } catch {
