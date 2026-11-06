@@ -44,6 +44,7 @@ export interface QuoteDetails {
   marketSession?: 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | 'UNKNOWN';
   delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
   dataQuality?: 'complete' | 'partial' | 'unknown';
+  cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
   [key: string]: any;
 }
 
