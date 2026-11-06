@@ -226,6 +226,20 @@ describe('reconcileBrokerPortfolio', () => {
     }));
   });
 
+  it('does not reconcile a snapshot whose account data has not loaded', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([brokerPosition('AAPL', 2)], {
+        data: { loaded: false, balances: [], positions: [] }
+      }),
+      appPositions: [{ ticker: 'AAPL', quantity: 2, currency: 'USD' }],
+      now: 10_100
+    });
+
+    expect(report.status).toBe('unavailable');
+    expect(report.findings).toEqual([]);
+    expect(report.warnings).toContain('The broker account snapshot is not loaded; no reconciliation was performed.');
+  });
+
   it('returns unavailable without fabricating a zero or a matched result', () => {
     const report = reconcileBrokerPortfolio({
       brokerSnapshot: null,
