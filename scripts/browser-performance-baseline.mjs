@@ -100,7 +100,7 @@ async function measure(viewport) {
         status: 401,
         contentType: 'application/json',
         body: JSON.stringify({ error: 'Unauthenticated performance-baseline fixture.' }),
-        headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }
+        headers: corsHeaders
       });
     });
 
