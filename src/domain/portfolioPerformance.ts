@@ -223,8 +223,8 @@ function normalizeValuations(
     if (!point || !validTimestamp(point.timestamp)) {
       return unavailable('A valuation timestamp is missing or invalid.');
     }
-    if (!finite(point.equity) || point.equity < 0) {
-      return unavailable('A valuation must contain a finite, non-negative equity value.');
+    if (!finite(point.equity)) {
+      return unavailable('A valuation must contain a finite equity value; negative equity is valid for leveraged portfolios.');
     }
     const pointCurrency = currencyCode(point.currency);
     if (!pointCurrency) return unavailable('A valuation currency must be a three-letter currency code.');
@@ -324,8 +324,8 @@ function calculateDietzPeriod(
 
   const profit = end.equity - start.equity - externalFlow;
   const returnRate = profit / capitalBase;
-  if (!finite(returnRate) || returnRate < -1 - RETURN_EPSILON) {
-    return unavailable('The period return is outside the supported range; verify valuation timing and cash-flow allocation.');
+  if (!finite(returnRate)) {
+    return unavailable('The period return is not finite; verify valuation timing and cash-flow allocation.');
   }
 
   const quality = mergeQuality(...qualities);
@@ -339,7 +339,7 @@ function calculateDietzPeriod(
     weightedExternalFlow,
     capitalBase,
     profit,
-    returnRate: Math.max(-1, returnRate)
+    returnRate
   }, quality, quality === 'provisional' ? ['The return period includes provisional source data.'] : []);
 }
 
@@ -589,7 +589,7 @@ export function calculatePeriodAttribution(
   const currency = currencyCode(input.currency);
   if (!currency) return unavailable('Attribution requires a three-letter currency code.');
   if (!finite(input.startPortfolioValue) || input.startPortfolioValue <= 0 ||
-      !finite(input.endPortfolioValue) || input.endPortfolioValue < 0) {
+      !finite(input.endPortfolioValue)) {
     return unavailable('Attribution requires positive opening equity and non-negative closing equity.');
   }
   if (!validQuality(input.quality) || input.quality === 'incomplete') {
@@ -800,7 +800,7 @@ export function comparePerformanceToBenchmark(
   if (portfolioStart.timestamp !== benchmarkStart.timestamp || portfolioEnd.timestamp !== benchmarkEnd.timestamp) {
     return unavailable('Portfolio and benchmark observations must have exactly aligned opening and closing timestamps.');
   }
-  if (benchmarkStart.equity <= 0) {
+  if (benchmarkStart.equity <= 0 || benchmarkEnd.equity < 0) {
     return unavailable('Benchmark comparison requires a positive opening total-return index level.');
   }
 
