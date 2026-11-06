@@ -72,6 +72,22 @@ Quote metadata contract in `src/types/portfolio.ts`:
 
 A quote with unknown observation time must not be silently labelled fresh merely because it was recently received.
 
+### Source freshness and valuation-state mapping
+
+The source-observation state and aggregate valuation reliability are different dimensions. The current implementation exposes the following source states and classification behavior:
+
+| Source state | Meaning / evidence | Aggregate behavior |
+|---|---|---|
+| Current / fresh | Latest successful observation has a verifiable provider timestamp and is within that provider's freshness policy; broker account refresh succeeded and its status is `current`. | Can contribute to a `current` valuation when every other required input is also complete/current. |
+| Stale | Last-known-good observation is retained but is outside the freshness policy or the latest refresh failed; quote metadata uses `stale` or broker account status uses `stale`. | Makes an otherwise complete valuation `provisional`; stale data must not be relabelled current. |
+| Delayed | Provider explicitly reports a delayed feed/observation; quote freshness uses `delayed`. | Makes an otherwise complete valuation `provisional`. |
+| Unknown | A numeric quote exists but there is no verifiable source observation timestamp; quote freshness uses `unknown`. | Makes an otherwise complete valuation `provisional`. A recent `receivedAt` does not change this. |
+| Unavailable | There is no usable latest observation/snapshot, or the broker account refresh status is `unavailable`. | A missing account balance or a held position with no valid price makes the valuation `incomplete`. If an unavailable quote is tracked separately but all held quantities still have valid prices, the availability flag makes the valuation `provisional`. |
+| Provisional | Aggregate status returned by `getPortfolioValuationReliability`; account balance and held quantities are present/priced, but at least one source is stale, delayed, unknown, unavailable, or the account balance is stale. | Not a source status; it means a finite valuation exists but one or more input observations are not fully current. |
+| Incomplete | Aggregate status returned when account balance is unavailable/invalid or any positive-quantity holding is unpriced. | Takes precedence over provisional, even if other observations are stale/delayed/unknown. The numeric fallback must not be represented as a complete equity figure. |
+
+The helper's precedence is exact: **incomplete first, then provisional, otherwise current**. Its current/stale decisions rely on the caller supplying accurate counts and account-balance availability; it does not itself inspect timestamps or calculate provider-specific freshness windows.
+
 ### Currency limitation
 
 The current portfolio valuation input does not carry currency codes or an FX conversion table. It therefore has no explicit cross-currency conversion contract. The formula is valid only when the supplied balances, cash, holdings prices, and quantities are already denominated in a common reporting currency. Do not sum unlike currencies or invent an exchange rate. Multi-currency consolidated valuation is a future feature requiring explicit FX source, timestamp, base currency, conversion direction, and stale-rate behavior.
@@ -200,7 +216,30 @@ Funding classification is app-owned metadata, separate from broker position quan
 - Runtime credential fields such as `gatewaySecret` and legacy `marginBalance` are excluded from normalized/imported state and backup exports.
 - Current state is not to be replaced until import validation has succeeded and the user confirms the import.
 
-## 10. Independent reference fixtures
+## 10. Broker-reconciliation discrepancy taxonomy
+
+PT-01 defines the categories to use when the broker reconciliation workstream is implemented. This taxonomy is a specification; it does not claim that a full reconciliation workflow already exists.
+
+| Discrepancy class | Compare | Typical explanation to investigate | Do not auto-correct |
+|---|---|---|---|
+| Position quantity | Broker-reported quantity vs app active quantity/lots | Execution not yet included in one side, partial fill, timing/cutoff, missing import, corporate-action adjustment | App-owned lot history or active quantity |
+| Account cash / debt | Broker balance by currency vs app signed balance and free cash | Settlement timing, cashflow not imported, fee, transfer, currency sub-account, snapshot as-of mismatch | App cash/debt based solely on an aggregate position snapshot |
+| Execution history | Broker executions vs app trade/transaction history | Missing/duplicate execution, partial fill, cancellation/correction, out-of-order events | Existing transactions without execution-level evidence and an auditable correction |
+| Cost basis / lots | Broker-reported average/total basis vs app FIFO tranches | Different lot method, fees, partial-sale allocation, transferred position, missing acquisition history | App FIFO cost basis from a broker average price |
+| Market price / market value | Broker price/value vs selected quote provider price/value | Different provider, exchange, market session, delayed quote, currency, observation timestamp | Price provenance or a valid newer source with an older aggregate snapshot |
+| Commission / fees / financing | Broker execution/cashflow fees vs app commission and margin-fee allocations | Per-ticket minimum, fee currency, financing window, duplicate fee row, missing fee detail | Historical fee attribution without matching source evidence |
+| Currency / FX | Currency code and amount on each side | Separate currency ledger, missing conversion, FX timestamp/rate direction, base-currency mismatch | Sum of unlike currency values or inferred FX rates |
+| Snapshot / timing | Observation time, receipt time, effective date, settlement date, rollover boundary | Stale snapshot, asynchronous refresh, timezone/day-boundary, event ordering | A newer local receipt timestamp as proof that the underlying observation is newer |
+
+A discrepancy record should carry at least: portfolio/account scope, normalized instrument or balance key, category, app-side value, broker-side value, unit/currency, quantity/amount delta where valid, both source identities, observation/as-of timestamps, client receipt timestamps, detection time, severity, and resolution state.
+
+Recommended resolution states are `open`, `explained_by_timing`, `requires_user_review`, `accepted_as_documented`, and `resolved`. Every state change that alters app-owned accounting must be auditable and attributable to an explicit authorized action. A mismatch is not permission to overwrite either side.
+
+### Reference-fixture coverage
+
+The independent examples below pin the current behavior; they do not claim that all discrepancy categories above are already detected automatically.
+
+## 11. Independent reference fixtures
 
 The PT-01 test file `src/domain/financialReferenceFixtures.test.ts` pins independent expected values across representative paths:
 
@@ -218,7 +257,7 @@ The PT-01 test file `src/domain/financialReferenceFixtures.test.ts` pins indepen
 
 These fixtures are reference examples, not a complete proof of every broker/provider's behavior. Existing focused domain tests remain part of the baseline and should not be duplicated or weakened.
 
-## 11. Known gaps and follow-up decisions
+## 12. Known gaps and follow-up decisions
 
 1. **Consolidated FX valuation is not implemented by the current valuation API.** PT-01 records this limitation; a future FX workstream must define currency conversion before cross-currency totals are shown.
 2. **Rollover histories are intentionally distinct.** A separate compatibility investigation is required before any unification or formula change.
@@ -228,7 +267,7 @@ These fixtures are reference examples, not a complete proof of every broker/prov
 6. **Market price freshness is metadata separate from price arithmetic.** A new valuation policy must not infer observation time from receipt time.
 7. **Broker reconciliation and live authenticated verification are not proven by fixtures alone.** Keep authenticated TradeNet/browser validation as release gates.
 
-## 12. Change-control checklist for future financial work
+## 13. Change-control checklist for future financial work
 
 Before changing a contract:
 - Identify the source function, every caller, persisted field, and UI/report consumer.
