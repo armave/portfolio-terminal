@@ -155,6 +155,7 @@ describe('portfolio transaction journal imports', () => {
 
     const merged = mergePortfolioTransactionEvents([newer], [older]);
     expect(merged.map((event) => event.id)).toEqual(['older-buy', 'newer-reset']);
+    expect(replayPortfolioTransactionJournal(merged).positions).toEqual({});
     expect(Object.isFrozen(merged)).toBe(true);
   });
 
@@ -296,12 +297,15 @@ describe('transaction journal replay and parity', () => {
         type: 'cash.adjustment', effectiveAt: draft.effectiveAt, cashDelta: 25
       }),
       createPortfolioTransactionEvent({
+        type: 'cash.deposit', effectiveAt: draft.effectiveAt, externalCashFlowAmount: 10, cashDelta: 10
+      }),
+      createPortfolioTransactionEvent({
         type: 'margin.adjustment', effectiveAt: draft.effectiveAt, marginDebtDelta: -190
       })
     ];
     expect(verifyPortfolioTransactionParity(events, {
       positions: { AAPL: { shares: 2 } },
-      cashCushion: { freeCash: 25, holdings: [] },
+      cashCushion: { freeCash: 35, holdings: [] },
       balance: -10
     })).toEqual({ matches: true, discrepancies: [] });
   });
