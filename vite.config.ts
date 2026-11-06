@@ -131,6 +131,11 @@ export default defineConfig({
           if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }
+          // Keep provider-neutral market-data validation out of the entry chunk.
+          // It is shared by quote, history and FX consumers and can be cached independently.
+          if (id.includes('/src/services/marketDataContracts.ts')) {
+            return 'market-data-contracts';
+          }
           return undefined;
         }
       }
