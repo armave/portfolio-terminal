@@ -1554,35 +1554,68 @@ export class PortfolioStore {
   public sellCashHolding(
     ticker: string,
     sharesToSell: number,
-    sellPrice: number
+    sellPrice: number,
+    context?: PortfolioTransactionContext
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
-      !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+      !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      !Number.isFinite(sharesToSell * sellPrice)) return null;
+
+    const requestFingerprint = createMutationFingerprint([
+      'cash-holding.sell',
+      clean,
+      sharesToSell,
+      sellPrice
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      requestFingerprint,
+      source: context?.source ?? 'manual-cash-holding',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+    const previouslyApplied = this.findAppliedTransaction(transactionContext);
+    if (previouslyApplied) {
+      if (previouslyApplied.type !== 'cash-holding.sell' ||
+        previouslyApplied.requestFingerprint !== requestFingerprint) return null;
+      const debtDelta = Number(previouslyApplied.marginDebtDelta) || 0;
+      return {
+        ticker: clean,
+        sharesSold: Number(previouslyApplied.quantity) || 0,
+        remainingShares: Number(this.state.cashCushion?.holdings.find(
+          (holding) => holding.ticker.trim().toUpperCase() === clean
+        )?.shares) || 0,
+        netProceeds: Number(previouslyApplied.netAmount) || 0,
+        debtRepaid: Math.max(0, -debtDelta),
+        cashSurplus: Math.max(0, Number(previouslyApplied.cashDelta) || 0)
+      };
+    }
 
     let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
-    const committed = this.update((state) => {
+    const committed = this.updateFinancialMutation(transactionContext, (state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const holdingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
       );
-      if (holdingIndex < 0) return state;
+      if (holdingIndex < 0) return null;
 
       const holding = holdings[holdingIndex];
       const availableShares = Number(holding.shares) || 0;
       const actualSold = Math.min(availableShares, sharesToSell);
-      if (actualSold <= 0) return state;
+      if (actualSold <= 0) return null;
 
       const grossProceeds = actualSold * sellPrice;
+      if (!Number.isFinite(grossProceeds)) return null;
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       const sellCommission = calculateSaleCommission(actualSold, grossProceeds, rules);
       const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
-      const settlement = settleSaleProceeds(
-        Math.abs(Number(state.balance) || 0),
-        Number(state.cashCushion?.freeCash) || 0,
-        netProceeds
-      );
+      if (!Number.isFinite(netProceeds) || netProceeds < 0) return null;
+
+      const previousDebt = Math.abs(Number(state.balance) || 0);
+      const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      const settlement = settleSaleProceeds(previousDebt, previousFreeCash, netProceeds);
       const nextDebt = settlement.remainingDebt;
       const debtRepaid = settlement.debtRepaid;
       const cashSurplus = settlement.cashSurplus;
@@ -1605,13 +1638,28 @@ export class PortfolioStore {
       };
 
       return {
-        ...state,
-        balance: nextDebt > 0 ? -nextDebt : 0,
-        cashBalance: freeCash,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          freeCash,
-          holdings
+        state: {
+          ...state,
+          balance: nextDebt > 0 ? -nextDebt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash,
+            holdings
+          }
+        },
+        event: {
+          type: 'cash-holding.sell',
+          effectiveAt: transactionContext.effectiveAt ?? Date.now(),
+          ticker: clean,
+          quantity: actualSold,
+          unitPrice: sellPrice,
+          grossAmount: grossProceeds,
+          fees: sellCommission,
+          netAmount: netProceeds,
+          cashDelta: freeCash - previousFreeCash,
+          marginDebtDelta: nextDebt - previousDebt,
+          note: 'Cash-cushion holding sold; cost basis and realized P&L are not tracked for this holding type.'
         }
       };
     });
@@ -1619,7 +1667,7 @@ export class PortfolioStore {
     return committed ? result : null;
   }
 
-  /**
+    /**
    * Compatibility entry point for AI-confirmed sales. Terminal and AI sales
    * share the same FIFO, commission, margin-interest, debt/cash, and history path.
    */
