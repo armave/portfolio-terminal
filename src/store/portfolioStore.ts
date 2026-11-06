@@ -577,25 +577,25 @@ export class PortfolioStore {
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
-    return this.update((state) => {
-      let transactionEvents = state.transactionEvents || [];
-      if (Array.isArray(newState.transactionEvents)) {
-        try {
-          transactionEvents = mergePortfolioTransactionEvents(
-            transactionEvents,
-            newState.transactionEvents
-          );
-        } catch {
-          return state;
-        }
+    let mergedEvents = this.state.transactionEvents || [];
+    if (Array.isArray(newState.transactionEvents)) {
+      try {
+        mergedEvents = mergePortfolioTransactionEvents(
+          mergedEvents,
+          newState.transactionEvents
+        );
+      } catch {
+        return false;
       }
+    }
 
-      return {
-        ...state,
-        ...newState,
-        transactionEvents
-      };
-    });
+    return this.update((state) => ({
+      ...state,
+      ...newState,
+      // Imports append/merge history; an older backup may never erase events
+      // already committed on this device.
+      transactionEvents: mergedEvents
+    }));
   }
 
   /**
