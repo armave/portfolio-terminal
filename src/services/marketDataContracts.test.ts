@@ -147,7 +147,7 @@ describe('FX rate contract', () => {
       provider: 'ecb',
       observedAt: now - 60_000,
       receivedAt: now
-    }, { now });
+    });
     expect(result.rate).toMatchObject({
       baseCurrency: 'USD',
       quoteCurrency: 'EUR',
@@ -173,7 +173,7 @@ describe('FX rate contract', () => {
     const result = normalizeFxRate({
       baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
       provider: 'test', receivedAt: now
-    }, { now });
+    });
     expect(result.rate).toMatchObject({ quality: 'partial', observedAt: null });
     expect(isFxRateUsableForConversion(result.rate!, now)).toBe(false);
   });
@@ -182,7 +182,7 @@ describe('FX rate contract', () => {
     const stale = normalizeFxRate({
       baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
       provider: 'test', observedAt: now - 3 * 24 * 60 * 60_000, receivedAt: now
-    }, { now }).rate!;
+    }).rate!;
     expect(isFxRateUsableForConversion(stale, now)).toBe(false);
     expect(isFxRateUsableForConversion({
       ...stale, quality: 'complete', observedAt: now + 60_000
@@ -196,7 +196,7 @@ describe('out-of-order market observations', () => {
     normalizeMarketQuoteObservation({
       symbol: 'AAPL', price: 100 + requestSequence, provider: 'test',
       observedAt, receivedAt: now, currency: 'USD', delayClass: 'LIVE', requestSequence
-    }, { now }).observation!;
+    }).observation!;
 
   it('rejects an older observation even when it arrives later', () => {
     expect(shouldAcceptMarketObservation(create(now - 30_000, 2), create(now - 60_000, 3))).toBe(false);
@@ -213,7 +213,7 @@ describe('out-of-order market observations', () => {
     const candidate = normalizeMarketQuoteObservation({
       symbol: 'AAPL', price: 101, provider: 'test',
       receivedAt: now, currency: 'USD', delayClass: 'unknown', requestSequence: 3
-    }, { now }).observation!;
+    }).observation!;
     expect(shouldAcceptMarketObservation(current, candidate)).toBe(false);
   });
 });
