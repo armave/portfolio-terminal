@@ -6,8 +6,8 @@
  * No rounding is performed here; formatting/rounding belongs at presentation.
  */
 
-export type PerformanceDataQuality = 'current' | 'provisional' | 'incomplete';
-export type ExternalCashFlowType = 'contribution' | 'withdrawal';
+type PerformanceDataQuality = 'current' | 'provisional' | 'incomplete';
+type ExternalCashFlowType = 'contribution' | 'withdrawal';
 export type PerformanceFrequency = 'daily' | 'monthly' | 'yearly';
 
 export interface PerformanceValuationPoint {
@@ -44,7 +44,7 @@ export type PerformanceCalculation<T> =
       warnings: string[];
     };
 
-export interface ModifiedDietzPeriod {
+interface ModifiedDietzPeriod {
   startAt: number;
   endAt: number;
   startValue: number;
@@ -63,7 +63,7 @@ export interface TimeWeightedPerformance {
   periods: ModifiedDietzPeriod[];
 }
 
-export interface PerformanceSeriesPoint {
+interface PerformanceSeriesPoint {
   period: string;
   startAt: number;
   endAt: number;
@@ -87,7 +87,7 @@ export interface MoneyWeightedPerformance {
   endAt: number;
 }
 
-export interface PerformanceAttributionFlow {
+interface PerformanceAttributionFlow {
   timestamp: number;
   /** Signed capital movement from the portfolio's perspective. */
   amount: number;
@@ -95,7 +95,7 @@ export interface PerformanceAttributionFlow {
   quality: PerformanceDataQuality;
 }
 
-export interface PerformanceAttributionItem {
+interface PerformanceAttributionItem {
   key: string;
   currency: string;
   startValue: number;
@@ -118,7 +118,7 @@ export interface PeriodAttributionInput {
   tolerance?: number;
 }
 
-export interface PerformanceAttributionItemResult {
+interface PerformanceAttributionItemResult {
   key: string;
   profit: number;
   contribution: number;
@@ -132,7 +132,7 @@ export interface PeriodAttribution {
   items: PerformanceAttributionItemResult[];
 }
 
-export type PerformanceAdjustmentType = 'dividend' | 'fee' | 'commission' | 'interest';
+type PerformanceAdjustmentType = 'dividend' | 'fee' | 'commission' | 'interest';
 
 export interface PerformanceAdjustment {
   timestamp: number;
