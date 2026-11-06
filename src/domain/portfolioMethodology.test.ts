@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PORTFOLIO_METHODOLOGY_SECTIONS } from './portfolioMethodology';
+import { PORTFOLIO_METHODOLOGY_RU, PORTFOLIO_METHODOLOGY_SECTIONS, translatePortfolioMethodology } from './portfolioMethodology';
 
 describe('portfolio methodology reference', () => {
   it('uses unique stable section identifiers and contains meaningful guidance', () => {
@@ -29,6 +29,21 @@ describe('portfolio methodology reference', () => {
     expect(copy).toContain('Observation time');
     expect(copy).toContain('no currency or FX conversion contract');
     expect(copy).toContain('time-weighted and money-weighted return');
+  });
+
+  it('keeps all methodology copy localized in Russian without bloating the global startup dictionary', () => {
+    const copy = [
+      'Metric methodology and data notes',
+      'Review what current portfolio figures mean, which inputs they use, and where important limitations apply.',
+      ...PORTFOLIO_METHODOLOGY_SECTIONS.flatMap(section => [
+        section.title, section.description, ...section.points, ...(section.note ? [section.note] : [])
+      ])
+    ];
+    for (const value of copy) {
+      expect(PORTFOLIO_METHODOLOGY_RU[value], value).toBeTruthy();
+      expect(translatePortfolioMethodology(value, 'ru')).not.toBe(value);
+      expect(translatePortfolioMethodology(value, 'en')).toBe(value);
+    }
   });
 
   it('does not present the reference panel as a calculation or state mutation engine', () => {
