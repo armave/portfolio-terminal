@@ -1791,14 +1791,59 @@ export class PortfolioStore {
     return this.state !== previousState ? result : null;
   }
 
-  public deleteClosedTrade(index: number): void {
-    this.update((state) => {
+  public deleteClosedTrade(
+    index: number,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const currentTrade = this.state.closedTrades?.[index];
+    if (!currentTrade || !Number.isInteger(index) || index < 0) return false;
+    const trade = currentTrade as typeof currentTrade & {
+      id?: string;
+      ticker?: string;
+      shares?: number;
+      sellDate?: string;
+      netProfit?: number;
+    };
+    const tradeId = typeof trade.id === 'string' ? trade.id : undefined;
+    const ticker = typeof trade.ticker === 'string' ? trade.ticker.trim().toUpperCase() : undefined;
+    const quantity = Number.isFinite(Number(trade.shares)) ? Number(trade.shares) : undefined;
+    const requestFingerprint = createMutationFingerprint([
+      'history.correction.delete-closed-trade',
+      tradeId ?? '',
+      ticker ?? '',
+      quantity ?? 0,
+      trade.sellDate ?? '',
+      Number.isFinite(Number(trade.netProfit)) ? Number(trade.netProfit) : null
+    ]);
+    const transactionContext: PortfolioTransactionContext = {
+      ...context,
+      ...(context?.idempotencyKey || !tradeId ? {} : { idempotencyKey: `closed-trade-delete:${tradeId}` }),
+      requestFingerprint,
+      source: context?.source ?? 'closed-history-maintenance',
+      actor: context?.actor ?? { type: 'user' },
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+
+    return this.updateFinancialMutation(transactionContext, (state) => {
       const closedTrades = state.closedTrades || [];
-      if (!Number.isInteger(index) || index < 0 || index >= closedTrades.length) return state;
-      const nextClosed = closedTrades.filter((_, idx) => idx !== index);
+      const currentIndex = tradeId
+        ? closedTrades.findIndex((item) => (item as typeof trade).id === tradeId)
+        : index;
+      if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= closedTrades.length) return null;
+      const removed = closedTrades[currentIndex] as typeof trade;
+      const nextClosed = closedTrades.filter((_, idx) => idx !== currentIndex);
       return {
-        ...state,
-        closedTrades: nextClosed
+        state: {
+          ...state,
+          closedTrades: nextClosed
+        },
+        event: {
+          type: 'history.correction',
+          effectiveAt: context?.effectiveAt ?? Date.now(),
+          ...(ticker ? { ticker } : {}),
+          ...(quantity !== undefined ? { quantity } : {}),
+          note: `Closed-trade history record ${tradeId ?? `at index ${currentIndex}`} removed from the display history; the append-only transaction journal and financial balances were not changed.`
+        }
       };
     });
   }
