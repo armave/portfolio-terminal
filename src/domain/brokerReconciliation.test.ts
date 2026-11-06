@@ -136,6 +136,29 @@ describe('reconcileBrokerPortfolio', () => {
     }));
   });
 
+  it('suppresses missing-side findings when a broker position row is unclassified', () => {
+    const malformedBrokerPosition = {
+      ...brokerPosition('AAPL', 2),
+      quantity: Number.NaN
+    };
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([malformedBrokerPosition]),
+      appPositions: [{ ticker: 'AAPL', quantity: 2, currency: 'USD' }],
+      now: 10_100
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.differenceCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'unclassified_broker_position',
+      subject: 'AAPL',
+      brokerValue: null
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'missing_in_app'
+    }));
+  });
+
   it('reports overlapping quantity mismatches as provisional when the snapshot is partial', () => {
     const report = reconcileBrokerPortfolio({
       brokerSnapshot: snapshot([brokerPosition('AAPL', 3)], { quality: 'partial' }),
