@@ -31,31 +31,37 @@ export function getCashCushionTotal(state?: BoardState | null): number {
 /** Minimal identity-only input for market-insights ticker selection. */
 export interface MarketInsightsTickerSelection {
   activeView: string;
-  selectedTicker?: string | null;
   positionTickers: string[];
 }
+
 export function selectMarketInsightsTicker(state: BoardState): MarketInsightsTickerSelection {
   return {
     activeView: state.activeView || '',
-    selectedTicker: state.selectedTicker ?? null,
     positionTickers: Object.keys(state.positions || {})
   };
 }
-export function areMarketInsightsTickerSelectionsEqual(previous: MarketInsightsTickerSelection, next: MarketInsightsTickerSelection): boolean {
+
+export function areMarketInsightsTickerSelectionsEqual(
+  previous: MarketInsightsTickerSelection,
+  next: MarketInsightsTickerSelection
+): boolean {
   return previous.activeView === next.activeView &&
-    previous.selectedTicker === next.selectedTicker &&
     previous.positionTickers.length === next.positionTickers.length &&
     previous.positionTickers.every((ticker, index) => ticker === next.positionTickers[index]);
 }
+
+/** Resolve the selected ticker without subscribing to live quote values. */
 export function resolveMarketInsightsTicker(selection: MarketInsightsTickerSelection): string {
   const currentView = selection.activeView;
-  const isPositionView = Boolean(currentView &&
+  const isPositionView = Boolean(
+    currentView &&
     !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
-    selection.positionTickers.includes(currentView));
+    selection.positionTickers.includes(currentView)
+  );
   if (isPositionView) return currentView;
-  if (selection.selectedTicker && selection.positionTickers.includes(selection.selectedTicker)) return selection.selectedTicker;
   return selection.positionTickers[0] || '';
 }
+
 /** Resolve the stock symbol whose quote context backs the market-insights panel. */
 export function getMarketInsightsTicker(state?: BoardState | null): string {
   if (!state) return '';
