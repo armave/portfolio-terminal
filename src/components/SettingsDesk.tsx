@@ -346,8 +346,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
 
-      <DeviceCheckSummary />
-
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
@@ -377,6 +375,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
+
+      <DeviceCheckSummary />
 
       {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
