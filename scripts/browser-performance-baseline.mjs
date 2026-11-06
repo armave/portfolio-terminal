@@ -63,6 +63,21 @@ function createLargePortfolioFixture() {
     activeTrancheTypes[ticker] = 'margin';
   }
 
+  const brokerExecutedTrades = Object.values(positions).map((position, index) => {
+    const entryPrice = position.currentPrice * 0.955;
+    return {
+      id: `pt-performance-buy-${index + 1}`,
+      ticker: `${position.ticker}.US`,
+      side: 'BUY',
+      quantity: position.shares,
+      price: Number(entryPrice.toFixed(4)),
+      currency: 'USD',
+      executedAt: '2026-10-01T09:00:00.000Z',
+      tradeValue: Number((position.shares * entryPrice).toFixed(2)),
+      commission: 0.2
+    };
+  });
+
   return {
     positions,
     activeTrancheTypes,
@@ -82,7 +97,7 @@ function createLargePortfolioFixture() {
     startDate: '2026-10-01',
     activeView: 'COMBINED',
     closedTrades: [],
-    brokerExecutedTrades: [],
+    brokerExecutedTrades,
     closedHistory: [],
     cashflows: [],
     brokerAssumptions: {
@@ -135,6 +150,22 @@ async function mockWorkerApi(page) {
       bal_price_a: (marketPrice * 0.955).toFixed(4),
       profit_close: (marketPrice * 50 * 0.045).toFixed(2),
       acc_pos_id: 900000 + index
+    };
+  });
+  const brokerTrades = brokerPositions.map((position, index) => {
+    const marketPrice = 20 + index * 0.35;
+    const entryPrice = marketPrice * 0.955;
+    return {
+      trade_id: `pt-performance-buy-${index + 1}`,
+      instr_nm: position.i,
+      operation: '1',
+      quantity: '50',
+      p: entryPrice.toFixed(4),
+      date: '2026-10-01T09:00:00.000Z',
+      v: (50 * entryPrice).toFixed(2),
+      curr_c: 'USD',
+      commiss: '0.20',
+      profit: '0'
     };
   });
   let stateRevision = 0;
@@ -245,7 +276,7 @@ async function mockWorkerApi(page) {
           await json(route, 200, { ok: true, data: { orders: { order: [] } } }, call);
           return;
         case 'freedom-trades':
-          await json(route, 200, { data: { trades: { trade: [] } } }, call);
+          await json(route, 200, { data: { trades: { trade: brokerTrades } } }, call);
           return;
         case 'quote': {
           const symbols = String(url.searchParams.get('symbol') || '').split(',').filter(Boolean);
