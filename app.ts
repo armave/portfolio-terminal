@@ -573,7 +573,9 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   } else if (!parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
-  portfolioStore.importState(loadSavedState(mergedState));
+  if (!portfolioStore.importState(loadSavedState(mergedState))) {
+    throw new Error('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.');
+  }
   state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
