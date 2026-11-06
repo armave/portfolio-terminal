@@ -61,7 +61,7 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 ### Scope and limitations
 
-`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic fixtures. It captures three cold samples for two scenarios at desktop (1440×900) and mobile (390×844): (1) unauthenticated application shell and (2) authenticated administrator workspace seeded with 100 synthetic positions, 200 tranches, and 200 matching executed-buy rows.
+`scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic unauthenticated fixtures. It captures three cold samples of the unauthenticated application shell at desktop (1440×900) and mobile (390×844).
 
 The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. Each sample records:
 - first contentful paint (FCP);
@@ -71,7 +71,6 @@ The CI artifact `browser-performance-baseline` (schema version 1) contains the u
 - browser-reported transferred resource bytes and resource count;
 - time to render the unauthenticated sign-in/bootstrap shell;
 - cumulative layout shift (CLS), where supported;
-
 - browser version, commit SHA, ref, and workflow run ID.
 
 The current fixture does not measure authenticated dashboard hydration, large-portfolio rendering, transaction-history scale, real broker latency, or production network/provider availability. A future authenticated performance fixture must first seed a portfolio through a verified application-supported persistence/import path and prove that the same 100-position/200-tranche state survives authenticated startup and broker reconciliation before its measurements are treated as valid.
