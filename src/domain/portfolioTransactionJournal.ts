@@ -474,7 +474,9 @@ export function appendBrokerHistoryAuditEvents(
     const currency = typeof input.currency === 'string' && /^[A-Za-z]{3}$/.test(input.currency.trim())
       ? input.currency.trim().toUpperCase()
       : undefined;
-    const commissionValue = Number(input.commission);
+    const commissionValue = input.commission === null || input.commission === undefined || input.commission === ''
+      ? NaN
+      : Number(input.commission);
     const fees = Number.isFinite(commissionValue) ? Math.abs(commissionValue) : undefined;
     const facts = JSON.stringify({
       referenceId, ticker, side, quantity,
@@ -518,7 +520,9 @@ export function appendBrokerHistoryAuditEvents(
 
   for (const input of cashflows) {
     if (!isPlainRecord(input)) continue;
-    const amount = Number(input.amount ?? input.value);
+    const rawAmount = input.amount ?? input.value;
+    if (rawAmount === null || rawAmount === undefined || rawAmount === '') continue;
+    const amount = Number(rawAmount);
     if (!Number.isFinite(amount)) continue;
     const typeText = [input.type, input.description, input.category]
       .filter((part) => typeof part === 'string')
