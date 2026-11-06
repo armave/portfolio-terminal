@@ -463,17 +463,20 @@ export function appendBrokerHistoryAuditEvents(
     const amount = Number(amountValue);
     if (!Number.isFinite(amount)) continue;
     const text = [raw.type, raw.description, raw.category].filter((v) => typeof v === 'string').join(' ').toLowerCase();
+    const isCorporateAction = /\\b(stock split|reverse split|merger|spin[- ]?off|reorgani[sz]ation|corporate action|symbol change|cash in lieu)\\b/.test(text);
     const type: PortfolioTransactionEventType = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
       ? 'dividend'
-      : text.includes('margin') || text.includes('interest') || text.includes('financing') || text.includes('borrow fee')
-        ? 'margin.interest'
-        : text.includes('fee') || text.includes('commission') || text.includes('charge') || text.includes('tax')
-          ? 'fee'
-          : text.includes('transfer') ? 'cash.transfer'
-            : text.includes('withdraw') || text.includes('debit') || amount < 0 && text.includes('outflow')
-              ? 'cash.withdrawal'
-              : text.includes('deposit') || text.includes('funding') || text.includes('credit')
-                ? 'cash.deposit' : 'cash.adjustment';
+      : isCorporateAction
+        ? 'corporate-action'
+        : text.includes('margin') || text.includes('interest') || text.includes('financing') || text.includes('borrow fee')
+          ? 'margin.interest'
+          : text.includes('fee') || text.includes('commission') || text.includes('charge') || text.includes('tax')
+            ? 'fee'
+            : text.includes('transfer') ? 'cash.transfer'
+              : text.includes('withdraw') || text.includes('debit') || amount < 0 && text.includes('outflow')
+                ? 'cash.withdrawal'
+                : text.includes('deposit') || text.includes('funding') || text.includes('credit')
+                  ? 'cash.deposit' : 'cash.adjustment';
     const date = raw.date;
     const currency = validCurrency(raw.currency);
     const fallback = hash(JSON.stringify([date, type, amount, currency, raw.description]));
