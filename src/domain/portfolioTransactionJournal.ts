@@ -92,6 +92,8 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.requestFingerprint !== undefined &&
     (typeof value.requestFingerprint !== 'string' || !value.requestFingerprint.trim() || value.requestFingerprint.length > 512)) return false;
   if (value.ticker !== undefined && (typeof value.ticker !== 'string' || !value.ticker.trim())) return false;
+  if (value.side !== undefined && (typeof value.side !== 'string' || !value.side.trim())) return false;
+  if (value.feeCurrency !== undefined && !/^[A-Z]{3}$/.test(String(value.feeCurrency))) return false;
   if (value.currency !== undefined && !/^[A-Z]{3}$/.test(String(value.currency))) return false;
   if (![
     value.quantity,
@@ -168,6 +170,8 @@ export function createPortfolioTransactionEvent(
     ...(context.requestFingerprint ? { requestFingerprint: context.requestFingerprint } : {}),
     ...(draft.ticker ? { ticker: draft.ticker.trim().toUpperCase() } : {}),
     ...(draft.currency ? { currency: draft.currency.trim().toUpperCase() } : {}),
+    ...(draft.side ? { side: draft.side.trim().toUpperCase() } : {}),
+    ...(draft.feeCurrency ? { feeCurrency: draft.feeCurrency.trim().toUpperCase() } : {}),
     ...(draft.quantity !== undefined ? { quantity: draft.quantity } : {}),
     ...(draft.unitPrice !== undefined ? { unitPrice: draft.unitPrice } : {}),
     ...(draft.grossAmount !== undefined ? { grossAmount: draft.grossAmount } : {}),
@@ -497,6 +501,10 @@ export function appendBrokerHistoryAuditEvents(
       effectiveAt: recordTimestamp(input.executedAt ?? input.date, recordedAt),
       ticker,
       currency,
+      side,
+      feeCurrency: typeof input.commissionCurrency === 'string' && /^[A-Za-z]{3}$/.test(input.commissionCurrency.trim())
+        ? input.commissionCurrency.trim().toUpperCase()
+        : undefined,
       quantity,
       ...(Number.isFinite(price) && price > 0 ? { unitPrice: price } : {}),
       ...(Number.isFinite(Number(input.tradeValue)) && Number(input.tradeValue) > 0
