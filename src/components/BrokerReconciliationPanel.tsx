@@ -179,7 +179,7 @@ export function BrokerReconciliationPanel({
               {visibleFindings.map((finding, index) => (
                 <tr key={`${finding.type}-${finding.subject}-${index}`}>
                   <td class="py-2 pr-3 font-medium text-amber-200">{label(FINDING_COPY[finding.type])}</td>
-                  <td class="py-2 pr-3 text-slate-300">{finding.subject}{finding.currency ? ` · ${finding.currency}` : ''}</td>
+                  <td class="py-2 pr-3 text-slate-300">{finding.subject}{finding.type === 'currency_mismatch' ? ` · ${finding.appCurrency || '—'} → ${finding.brokerCurrency || '—'}` : finding.currency ? ` · ${finding.currency}` : ''}</td>
                   <td class="py-2 pr-3 text-right tabular-nums text-slate-200">{formatQuantity(finding.appValue)}</td>
                   <td class="py-2 text-right tabular-nums text-slate-200">{formatQuantity(finding.brokerValue)}</td>
                 </tr>
