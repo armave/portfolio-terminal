@@ -86,7 +86,7 @@ interface BalanceTotal {
 
 function normalizedTicker(value: unknown): string {
   return typeof value === 'string'
-    ? value.trim().toUpperCase().replace(/\\.US$/i, '')
+    ? value.trim().toUpperCase().replace(/\.US$/i, '')
     : '';
 }
 
