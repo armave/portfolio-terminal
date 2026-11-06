@@ -275,6 +275,24 @@ describe('reconcileBrokerPortfolio', () => {
     expect(report.warnings).toContain('Broker account data is unavailable; no reconciliation was performed.');
   });
 
+  it('preserves first-refresh warnings when no last-known-good snapshot exists', () => {
+    const report = reconcileBrokerPortfolio({
+      brokerSnapshot: snapshot([], {
+        quality: 'partial',
+        data: { loaded: false, balances: [], positions: [] },
+        warnings: ['Provider authentication expired.']
+      }),
+      appPositions: [],
+      brokerStatus: 'unavailable',
+      now: 10_100
+    });
+
+    expect(report.status).toBe('unavailable');
+    expect(report.findings).toEqual([]);
+    expect(report.warnings).toContain('Provider authentication expired.');
+    expect(report.warnings).toContain('The broker account snapshot is not loaded; no reconciliation was performed.');
+  });
+
   it('preserves real zero quantities as valid values', () => {
     const report = reconcileBrokerPortfolio({
       brokerSnapshot: snapshot([brokerPosition('AAPL', 0)]),
