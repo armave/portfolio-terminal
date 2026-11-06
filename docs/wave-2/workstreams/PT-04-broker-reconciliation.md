@@ -23,6 +23,7 @@ PT-01 financial contracts and PT-03 Freedom broker adapter are merged. The snaps
 - [x] Explicit quantity and amount tolerances; app cash-balance comparison is available to callers only when semantically equivalent app-side values are supplied. The current UI intentionally does not compare cash balances because it lacks an independent comparable app-side balance.
 - [x] Provider, source, quality, receipt time, observation time, warnings, and snapshot age are retained from both REST and authenticated WebSocket account refreshes.
 - [x] Last accepted snapshot metadata is preserved separately from a failed/partial refresh issue; an unsuccessful refresh marks the saved snapshot stale rather than replacing its data or provenance.
+- [x] App-side execution-history readiness is part of reconciliation confidence. Loading, stale, or unavailable execution history suppresses absence-based findings; overlapping quantity differences remain provisional until the app-side history is ready.
 - [x] Admin Cash & Non-Margin Holdings desk includes a read-only reconciliation panel with status, source/timestamps/age, discrepancy rows, warnings, and English/Russian copy.
 - [x] Regression tests cover combined margin+cash quantity matching, mismatches, missing sides, partial/empty/unloaded/stale data, provisional timestamp handling, currency mismatch, optional cash-balance comparison, unavailable data, genuine zeroes, and no-mutation behavior.
 - [x] REST and WebSocket runtime tests verify that the normalized snapshot metadata event is emitted alongside the backward-compatible data-only event.
@@ -41,6 +42,7 @@ PT-01 financial contracts and PT-03 Freedom broker adapter are merged. The snaps
 - [x] An incomplete, empty, unloaded, unavailable, or stale broker response cannot be treated as a fully reconciled account.
 - [x] An aggregate position mismatch never silently rewrites app-owned lots, cost basis, cash, or transactions.
 - [x] Failed refreshes retain last accepted data and provenance while exposing stale/error status and the most recent rejection warnings.
+- [x] Missing-side findings are suppressed while the app execution-history feed is loading, stale, or unavailable.
 - [x] Broker and app quantities remain distinguishable; current Freedom broker quantities are compared to app margin plus cash-backed holdings.
 - [ ] Every supported transaction/fee/cashflow discrepancy is classified after PT-02 contracts are integrated.
 - [ ] Resolution proposals are previewed, explicitly confirmed, idempotent, and audited through PT-02.
