@@ -30,7 +30,7 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot).toMatchObject({
       provider: 'freedom-tradenet',
       source: 'websocket',
-      quality: 'partial',
+      quality: 'complete',
       receivedAt: 123,
       data: {
         loaded: true,
@@ -52,6 +52,16 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.observedAt).toBe(450);
     expect(snapshot.data.balances).toEqual([]);
     expect(snapshot.data.positions).toEqual([]);
+  });
+
+  it('marks missing USD collections as partial without penalizing excluded non-USD rows', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: { loaded: true, acc: [{ curr: 'USD', s: '10' }] } } }
+    });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.warnings).toContain('Some USD provider rows or required collections were unavailable.');
   });
 
   it('rejects unloaded or malformed portfolio data through a typed provider error', () => {
