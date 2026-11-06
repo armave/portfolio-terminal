@@ -49,3 +49,15 @@ describe('manual sync in Settings', () => {
     expect(source).toContain("translateText('Syncing…')");
   });
 });
+
+describe('Device Check placement', () => {
+  it('places device diagnostics in Settings instead of the Cash & Non-Margin Holdings desk', () => {
+    const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const cashSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+    expect(settingsSource).toContain("import { DeviceCheckSummary } from './DeviceCheckSummary';");
+    expect(settingsSource).toContain('<DeviceCheckSummary />');
+    expect(cashSource).not.toContain('AccountIntegrityCenter');
+    expect(cashSource).not.toContain('BrokerReconciliationPanel');
+  });
+});

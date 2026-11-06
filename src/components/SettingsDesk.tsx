@@ -14,6 +14,7 @@ import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync'
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
+import { DeviceCheckSummary } from './DeviceCheckSummary';
 
 
 export interface BrokerRulesFormValues {
@@ -374,6 +375,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
+
+      <DeviceCheckSummary />
 
       {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
