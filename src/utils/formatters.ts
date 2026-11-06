@@ -75,6 +75,7 @@ interface QuoteFreshnessInput {
     marketState?: string;
     freshness?: 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
     delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
+    cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
   };
 }
 
@@ -84,6 +85,7 @@ export function getQuoteFreshness(
   refreshIntervalMs = 60000
 ): QuoteFreshness {
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
+  if (holding.quoteDetails?.cacheStatus === 'stale-fallback') return 'stale';
 
   // Preserve explicit provider delay/quality classifications. In particular,
   // indicative data must never be promoted to fresh by a recent receipt time.
