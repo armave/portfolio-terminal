@@ -179,6 +179,7 @@ describe('normalizeMarketHistoryPoints', () => {
   });
 
   it('keeps historical series freshness and session explicitly unknown', () => {
+    const now = Date.parse('2026-11-06T12:00:00.000Z');
     const result = normalizeMarketHistoryResponse({
       symbol: 'AAPL.US', provider: 'test', receivedAt: now,
       interval: '1d', currency: 'USD',
