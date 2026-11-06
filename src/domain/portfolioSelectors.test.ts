@@ -22,6 +22,13 @@ describe('market insights ticker selector', () => {
     } as unknown as BoardState;
 
     expect(getMarketInsightsTicker(state)).toBe('AAPL');
+    expect(getMarketInsightsTicker({
+      ...state,
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 105, pt: 110, commBuy: 0 },
+        MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200, pt: 210, commBuy: 0 }
+      }
+    })).toBe('AAPL');
   });
 
   it('resolves the active ticker when a single Margin position is selected', () => {
