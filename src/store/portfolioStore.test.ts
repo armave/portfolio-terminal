@@ -2717,6 +2717,8 @@ describe('portfolio transaction journal integration', () => {
       executedAt: '2026-11-01T10:00:00.000Z',
       tradeValue: 200,
       commission: 1,
+      profit: null,
+      marginFee: null,
       commissionCurrency: 'USD',
       raw: {}
     };
