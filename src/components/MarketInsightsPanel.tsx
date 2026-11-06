@@ -4,8 +4,12 @@ import { createPortal, memo } from 'preact/compat';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
-import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
+import { usePortfolioSelector } from '../store/portfolioStore';
+import {
+  areMarketInsightsTickerSelectionsEqual,
+  resolveMarketInsightsTicker,
+  selectMarketInsightsTicker
+} from '../domain/portfolioSelectors';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
 import { useDialogFocus } from '../ui/dialogFocus';
 
@@ -93,13 +97,8 @@ function renderStocktwitsBody(body: string) {
 }
 
 function MarketInsightsPanelView() {
-  const portfolio = usePortfolio();
-  const activeView = useActiveView();
-  const ticker = getMarketInsightsTicker({
-    ...portfolio,
-    activeView,
-    selectedTicker: activeView
-  });
+  const tickerSelection = usePortfolioSelector(selectMarketInsightsTicker, areMarketInsightsTickerSelectionsEqual);
+  const ticker = resolveMarketInsightsTicker(tickerSelection);
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [deepDataRequest, setDeepDataRequest] = useState<{
     ticker: string;

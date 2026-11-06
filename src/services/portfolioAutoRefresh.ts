@@ -101,22 +101,13 @@ export function createPortfolioAutoRefreshScheduler(
     return request;
   };
 
-  const refreshQuotesAndSyncState = async (): Promise<boolean> => {
-    const quotes = await runTask('quotes', options.refreshQuotes);
-    if (activeRole !== 'admin' || !options.syncState || !canRefresh()) return quotes;
-    const synced = await runTask('state-sync', options.syncState);
-    return quotes && synced;
-  };
+  const refreshQuotes = (): Promise<boolean> => runTask('quotes', options.refreshQuotes);
 
   const refreshSupplementalAndSyncHistory = async (): Promise<boolean> => {
     const supplemental = await runTask('supplemental', options.refreshSupplemental);
     if (activeRole !== 'admin' || !options.syncHistory || !canRefresh()) return supplemental;
     const history = await runTask('history-sync', options.syncHistory);
-    if (!canRefresh() || !options.syncState) return supplemental && history;
-    if (stateSyncInFlight) await stateSyncInFlight;
-    if (!canRefresh()) return supplemental && history;
-    const state = await runTask('state-sync', options.syncState);
-    return supplemental && history && state;
+    return supplemental && history;
   };
 
   const refreshNow = async (): Promise<boolean> => {
@@ -128,10 +119,15 @@ export function createPortfolioAutoRefreshScheduler(
       // The guest snapshot is fetched first; its newly assigned tickers are then quoted.
       cycle = runTask('supplemental', options.refreshSupplemental);
     } else {
+      // Complete both independent data branches before persisting one coherent snapshot.
       cycle = Promise.all([
-        refreshQuotesAndSyncState(),
+        refreshQuotes(),
         refreshSupplementalAndSyncHistory()
-      ]).then(([quotesAndSync, supplemental]) => quotesAndSync && supplemental);
+      ]).then(async ([quotes, supplemental]) => {
+        if (!canRefresh() || !options.syncState) return quotes && supplemental;
+        const synced = await runTask('state-sync', options.syncState);
+        return quotes && supplemental && synced;
+      });
     }
 
     let wrappedCycle: Promise<boolean>;

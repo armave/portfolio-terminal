@@ -59,6 +59,35 @@ describe('portfolio automatic refresh policy', () => {
     }
   );
 
+  it('pushes one admin portfolio snapshot after quote and supplemental work finish', async () => {
+    const sequence: string[] = [];
+    let releaseQuotes: (() => void) | undefined;
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      refreshQuotes: async () => {
+        sequence.push('quotes-start');
+        await new Promise<void>((resolve) => { releaseQuotes = resolve; });
+        sequence.push('quotes-finished');
+      },
+      refreshSupplemental: async () => { sequence.push('supplemental-finished'); },
+      syncHistory: async () => { sequence.push('history-finished'); },
+      syncState: async () => { sequence.push('state-sync'); }
+    });
+    scheduler.configure(60_000, 'admin');
+    const cycle = scheduler.refreshNow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sequence).toContain('history-finished');
+    expect(sequence).not.toContain('state-sync');
+    releaseQuotes?.();
+    await expect(cycle).resolves.toBe(true);
+    expect(sequence.filter((entry) => entry === 'state-sync')).toHaveLength(1);
+    expect(sequence.indexOf('state-sync')).toBeGreaterThan(sequence.indexOf('quotes-finished'));
+    expect(sequence.indexOf('state-sync')).toBeGreaterThan(sequence.indexOf('history-finished'));
+    scheduler.stop();
+  });
+
   it('runs guest hydration before quoting the newly assigned holdings on manual refresh', async () => {
     const sequence: string[] = [];
     const scheduler = createPortfolioAutoRefreshScheduler({

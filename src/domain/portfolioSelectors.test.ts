@@ -5,6 +5,9 @@ import {
   getPortfolioProjectionInputs,
   getMarketInsightsTicker,
   isCurrentMarketInsightsTicker,
+  selectMarketInsightsTicker,
+  areMarketInsightsTickerSelectionsEqual,
+  resolveMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
@@ -58,6 +61,39 @@ describe('market insights ticker selector', () => {
   it('does not publish analyst-target completions without a valid current ticker', () => {
     expect(isCurrentMarketInsightsTicker(null, 'GOOGL')).toBe(false);
     expect(isCurrentMarketInsightsTicker(undefined, '')).toBe(false);
+  });
+});
+
+describe('Market Insights selector equality', () => {
+  const state = {
+    activeView: 'COMBINED',
+    selectedTicker: 'MSFT',
+    positions: {
+      AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 100 },
+      MSFT: { ticker: 'MSFT', shares: 5, currentPrice: 200 }
+    }
+  } as unknown as BoardState;
+
+  it('ignores quote-only updates while retaining ticker selection', () => {
+    const first = selectMarketInsightsTicker(state);
+    const quoteOnly = selectMarketInsightsTicker({
+      ...state,
+      positions: { ...state.positions, AAPL: { ...state.positions.AAPL, currentPrice: 105 } }
+    });
+    expect(areMarketInsightsTickerSelectionsEqual(first, quoteOnly)).toBe(true);
+    expect(resolveMarketInsightsTicker(first)).toBe('MSFT');
+  });
+
+  it('tracks active-view changes and ticker membership changes', () => {
+    const first = selectMarketInsightsTicker(state);
+    expect(resolveMarketInsightsTicker(selectMarketInsightsTicker({ ...state, activeView: 'AAPL' }))).toBe('AAPL');
+    expect(areMarketInsightsTickerSelectionsEqual(first, selectMarketInsightsTicker({
+      ...state, positions: { AAPL: state.positions.AAPL }
+    }))).toBe(false);
+  });
+
+  it('falls back to the first position when the preferred ticker is unavailable', () => {
+    expect(resolveMarketInsightsTicker(selectMarketInsightsTicker({ ...state, selectedTicker: 'NVDA' }))).toBe('AAPL');
   });
 });
 
