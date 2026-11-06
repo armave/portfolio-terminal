@@ -57,6 +57,14 @@ PT-01 source/freshness contracts (merged), PT-03 provider adapter patterns (merg
 
 Provider contract tests for malformed/out-of-order/missing observations, timestamps, timezone/session calendar, TTL and cache invalidation, request coalescing, abort/retry/backoff, stale fallback, symbol mapping, FX pair direction, and provider outage. Browser and i18n coverage for freshness states.
 
+## Exact-head validation evidence
+
+- **Validated commit:** `ade2a04635b66f61b93d9a6a51f875cc999e93f0`
+- **Pull Request CI:** [run 42182900911](https://github.com/armave/portfolio-terminal/actions/runs/42182900911) — passed typecheck, 1,587+ Vitest suite, production build, browser smoke/performance, dead-code validation, and dependency audits.
+- **Operations browser journey:** [run 42182900947](https://github.com/armave/portfolio-terminal/actions/runs/42182900947) — passed.
+- **Trade lifecycle browser smoke:** [run 42182901043](https://github.com/armave/portfolio-terminal/actions/runs/42182901043) — passed.
+- **Manual authenticated-broker QA:** not performed. CI uses fixtures/mocks and does not certify live provider behavior.
+
 ## Parallel ownership and integration rules
 
 PT-07 owns instrument and market-data/FX provenance contracts, provider orchestration, and freshness UI. PT-06 and PT-08 consume its types; do not import provider implementations directly into their calculations.
