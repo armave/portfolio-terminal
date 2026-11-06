@@ -99,12 +99,12 @@ export function BrokerReconciliationPanel({
       currency: 'USD'
     }))
   ], [positions, cashHoldings]);
-  const report = useMemo(() => reconcileBrokerPortfolio({
+  const report = reconcileBrokerPortfolio({
     brokerSnapshot,
     appPositions,
     brokerStatus: brokerAccountInfo?.status,
     now: Date.now()
-  }), [brokerSnapshot, appPositions, brokerAccountInfo?.status]);
+  });
 
   const label = (value: string) => translateText(value, getAppLanguage());
   const visibleFindings = report.findings.slice(0, 12);
@@ -191,7 +191,7 @@ export function BrokerReconciliationPanel({
           {report.warnings.slice(0, 4).map((warning, index) => (
             <li key={index} class="flex gap-2">
               <span aria-hidden="true">•</span>
-              <span>{warning}</span>
+              <span>{label(warning)}</span>
             </li>
           ))}
         </ul>
