@@ -101,14 +101,13 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
   if (explicitExchange && !/^[A-Z0-9-]{1,16}$/.test(explicitExchange)) {
     return { instrument: null, issues: ['Exchange contains unsupported characters.'] };
   }
+  const suffixParsed = splitKnownExchangeSuffix(rawSymbol);
   const parsed = explicitExchange
     ? {
-        symbol: rawSymbol.endsWith('.' + explicitExchange)
-          ? rawSymbol.slice(0, -(explicitExchange.length + 1))
-          : rawSymbol,
+        symbol: suffixParsed.exchange ? suffixParsed.symbol : rawSymbol,
         exchange: explicitExchange
       }
-    : splitKnownExchangeSuffix(rawSymbol);
+    : suffixParsed;
   const exchange = parsed.exchange || explicitExchange;
   const symbol = parsed.symbol;
   if (!symbol) return { instrument: null, issues: ['Instrument symbol is empty after exchange normalization.'] };
@@ -400,6 +399,8 @@ export interface FxRateInput {
   provider: unknown;
   observedAt?: unknown;
   receivedAt: unknown;
+  /** Optional provider-specific FX trading session; never inferred. */
+  session?: unknown;
 }
 
 export interface FxRate {
@@ -411,6 +412,7 @@ export interface FxRate {
   provider: string;
   observedAt: number | null;
   receivedAt: number;
+  session: string | null;
   quality: MarketDataQuality;
 }
 
@@ -518,6 +520,7 @@ export function normalizeFxRate(
       provider,
       observedAt,
       receivedAt,
+      session: normalizeToken(input.session),
       quality
     },
     issues
