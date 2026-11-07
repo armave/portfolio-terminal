@@ -1,3 +1,4 @@
+import { FREEDOM_BROKER_TIME_ZONE } from './brokerAssumptions';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
 
@@ -173,7 +174,7 @@ export function calculateTrancheCommissions(
  */
 function getArmeniaClockParts(date: Date): { year: number; month: number; day: number; hour: number; minute: number } {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Yerevan',
+    timeZone: FREEDOM_BROKER_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
