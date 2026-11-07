@@ -104,7 +104,7 @@ export function getClosestDatedMarketEvents<T>(
   const todayAtUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   const ranked = events.flatMap((event, index) => {
     const value = getDate(event);
-    const parsed = typeof value === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+    const parsed = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
       ? Date.parse(value + 'T00:00:00.000Z')
       : Number.NaN;
     return Number.isFinite(parsed)
