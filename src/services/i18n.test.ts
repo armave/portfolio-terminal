@@ -656,4 +656,10 @@ describe('app localization', () => {
   });
 
 
+
+  it('localizes tenant directory loading and recovery states', () => {
+    expect(translateText('Loading portfolio ownership…', 'ru')).toBe('Загрузка раздела владения портфелями…');
+    expect(translateText('Portfolio ownership could not be loaded.', 'ru')).toBe('Не удалось загрузить раздел владения портфелями.');
+  });
+
 });

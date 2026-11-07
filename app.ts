@@ -29,6 +29,7 @@ import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountS
 import { resolveFreedomAccountRefreshMode } from './src/services/freedomAccountStreamHealth';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
+import { launchBackgroundTask } from './src/services/launchBackgroundTask';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
@@ -1322,15 +1323,19 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
       ]))
       : [];
   const accountStreamSessionKey = currentAccountRole && currentAccountId
-    ? `${currentAccountRole}:${currentAccountId}`
+    ? currentAccountRole + ':' + currentAccountId
     : '';
   if (currentAccountRole === 'admin' && accountStreamSessionKey) {
-    try {
+    // Persistent sockets are best-effort background transports. Do not make
+    // first-render readiness wait for a WebSocket ready frame; REST snapshots
+    // remain the bounded source for initial portfolio/quote data.
+    launchBackgroundTask(async () => {
       const accountStreamRuntime = await getFreedomAccountStreamRuntime();
+      if (currentAccountRole + ':' + currentAccountId !== accountStreamSessionKey) return;
       await accountStreamRuntime.start(accountStreamSessionKey);
-    } catch (streamError) {
-      console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; initial account snapshots remain available.', streamError);
-    }
+    }, (streamError) => {
+      console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; REST snapshots remain available.', streamError);
+    });
   } else {
     stopFreedomAccountStreamRuntime();
   }
@@ -1341,7 +1346,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
   }
 
   const sessionKey = currentAccountRole && currentAccountId
-    ? `${currentAccountRole}:${currentAccountId}`
+    ? currentAccountRole + ':' + currentAccountId
     : '';
   if (!sessionKey) {
     stopFreedomQuoteStreamRuntime();
@@ -1349,48 +1354,43 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
   }
 
   try {
-    // The persistent TradeNet q socket is the primary quote source. It remains
-    // open after the first q payload and pushes later price changes directly
-    // into the portfolio store; routine scheduler ticks only maintain it.
     const quoteStreamRuntime = await getFreedomQuoteStreamRuntime();
     const currentSessionKey = currentAccountRole && currentAccountId
-      ? `${currentAccountRole}:${currentAccountId}`
+      ? currentAccountRole + ':' + currentAccountId
       : '';
     if (currentSessionKey !== sessionKey) {
       quoteStreamRuntime.stop();
       return true;
     }
-    const connected = await quoteStreamRuntime.start(tickersArray, sessionKey);
-    if (connected) return true;
-    throw new Error('TradeNet quote socket did not become ready.');
-  } catch (streamError) {
-    const quoteSocketIsOpen = Boolean(
-      freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
-      freedomQuoteStreamRuntime.isSocketOpen()
+
+    if (quoteStreamRuntime.isConnected()) return true;
+
+    // Start the persistent quote socket in the background. The initial
+    // one-time REST quote batch below supplies prices while the socket opens
+    // or reconnects; later q messages take over without blocking startup.
+    launchBackgroundTask(
+      () => quoteStreamRuntime.start(tickersArray, sessionKey),
+      (streamError) => console.warn(
+        '[Freedom Quote Stream]: Live socket is not ready yet; REST quote snapshots remain active.',
+        streamError
+      )
     );
-    if (quoteSocketIsOpen) {
-      console.warn('[Freedom Quote Stream]: The browser socket remains open; REST quote backups are suppressed.', streamError);
+
+    const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
+    if (refreshResult.skipped) return true;
+    if (refreshResult.updatedCount > 0) {
+      state = portfolioStore.getState();
+      saveState(state);
+      renderBoard();
+      logTerminal('[System]: Initial market quote snapshot refreshed ' + refreshResult.updatedCount + ' assets; the live socket is connecting in the background.');
       return true;
     }
-    console.warn('[Freedom Quote Stream]: Unable to establish the live socket; using the one-time snapshot fallback.', streamError);
-    try {
-      const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
-      if (refreshResult.skipped) return true;
-      const updatedCount = refreshResult.updatedCount;
-      if (updatedCount > 0) {
-        state = portfolioStore.getState();
-        saveState(state);
-        renderBoard();
-        logTerminal(`[System]: Initial market quote fallback refreshed ${updatedCount} assets; the live socket is reconnecting.`);
-        return true;
-      }
-      logTerminal('[Warning]: The live quote socket and initial quote fallback returned no usable prices.');
-      return false;
-    } catch (err: any) {
-      console.error('Initial quote fallback failed:', err);
-      logTerminal(`[Error]: Initial quote fallback failed - ${err.message}`);
-      return false;
-    }
+    logTerminal('[Warning]: The live quote socket is connecting; the initial REST quote snapshot returned no usable prices.');
+    return false;
+  } catch (err: any) {
+    console.error('Initial REST quote fallback failed:', err);
+    logTerminal('[Error]: Initial quote snapshot failed - ' + err.message);
+    return false;
   }
 }
 
@@ -1407,10 +1407,13 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
 
     try {
       const accountStreamRuntime = await getFreedomAccountStreamRuntime();
-      if (`${currentAccountRole}:${currentAccountId}` !== sessionKey) return false;
-      await accountStreamRuntime.start(sessionKey);
+      if (currentAccountRole + ':' + currentAccountId !== sessionKey) return false;
+      launchBackgroundTask(
+        () => accountStreamRuntime.start(sessionKey),
+        (streamError) => console.warn('[Freedom Account Stream]: Unable to establish the private account socket; broker REST catch-up will continue.', streamError)
+      );
     } catch (streamError) {
-      console.warn('[Freedom Account Stream]: Unable to establish the private account socket before broker refresh.', streamError);
+      console.warn('[Freedom Account Stream]: Unable to load the private account socket; broker REST catch-up will continue.', streamError);
     }
 
     // The persistent browser stream suppresses its REST backups while connected.
@@ -2423,7 +2426,15 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   showGuestBalanceView: () => setActiveView('BALANCE'),
   showSavedAdminView: () => switchView(state.activeView),
   scrollWorkspace: () => emitUiEvent('terminal:scroll-workspace'),
-  refreshLivePrices: () => refreshAllLivePrices(true),
+  refreshLivePrices: () => {
+    // Show the restored workspace promptly; provider snapshots are independent
+    // background refreshes and can take several seconds across fallback sources.
+    launchBackgroundTask(
+      () => refreshAllLivePrices(true),
+      (error) => console.warn('[Startup Quote Refresh]: Initial background quote refresh did not complete.', error)
+    );
+    return Promise.resolve();
+  },
   finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {

@@ -893,5 +893,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Backup transaction history conflicts with this device or is not supported.": "История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.",
   "Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.": "Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.",
   "Cached": "Из кэша",
+  "Portfolio ownership could not be loaded.": "Не удалось загрузить раздел владения портфелями.",
+  "Loading portfolio ownership…": "Загрузка раздела владения портфелями…",
   "Stale cached fallback": "Устаревшая резервная котировка из кэша",
 };

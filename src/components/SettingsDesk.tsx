@@ -14,6 +14,7 @@ import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync'
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
+import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
 
 
@@ -29,6 +30,26 @@ export interface BrokerRulesFormValues {
 }
 
 /** Converts persisted numeric rules into the strings controlled form inputs require. */
+/** Reads the values the user actually submitted, falling back only when a control is absent. */
+export function readBrokerRulesFormValues(
+  form: HTMLFormElement,
+  fallback: BrokerRulesFormValues
+): BrokerRulesFormValues {
+  const read = (id: string, defaultValue: string): string =>
+    form.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.value ?? defaultValue;
+
+  return {
+    annualRate: read('annualMarginRateInput', fallback.annualRate),
+    dayCountBasis: read('interestDayCountInput', fallback.dayCountBasis),
+    maintenanceMargin: read('maintenanceMarginInput', fallback.maintenanceMargin),
+    stopOutRatio: read('stopOutRatioInput', fallback.stopOutRatio),
+    rolloverTime: read('rolloverTimeInput', fallback.rolloverTime),
+    commPerShare: read('commissionPerShareInput', fallback.commPerShare),
+    commVolumePct: read('commissionVolumeInput', fallback.commVolumePct),
+    minCommOrder: read('minimumCommissionInput', fallback.minCommOrder)
+  };
+}
+
 export function toBrokerRulesFormValues(rules: BrokerAssumptions): BrokerRulesFormValues {
   const hours = String(rules.rolloverHour ?? 4).padStart(2, '0');
   const minutes = String(rules.rolloverMinute ?? 0).padStart(2, '0');
@@ -53,6 +74,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
   const [account, setAccount] = useState<AuthUser | null>(currentUser);
+  const [tenantDirectoryModule, setTenantDirectoryModule] = useState<typeof import('./TenantDirectoryPanel') | null>(null);
+  const [tenantDirectoryLoadFailed, setTenantDirectoryLoadFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void import('./TenantDirectoryPanel').then((module) => {
+      if (!cancelled) setTenantDirectoryModule(() => module);
+    }).catch(() => {
+      if (!cancelled) setTenantDirectoryLoadFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
@@ -65,6 +98,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
+  const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
@@ -193,6 +227,15 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   );
 
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
+
+  const updateStopOutValidity = () => {
+    const stopOutInput = stopOutInputRef.current;
+    const maintenanceInput = stopOutInput?.form?.querySelector<HTMLInputElement>('#maintenanceMarginInput');
+    if (!stopOutInput || !maintenanceInput) return;
+    stopOutInput.setCustomValidity(
+      getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value) || ''
+    );
+  };
 
   // Sync local form values whenever rules prop updates (e.g. Restore defaults)
   useEffect(() => {
@@ -377,13 +420,33 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </section>}
 
       <DeviceCheckSummary />
+      {LoadedTenantDirectoryPanel ? (
+        <LoadedTenantDirectoryPanel currentUser={account} />
+      ) : (
+        <div class="settings-panel text-xs text-slate-500" role="status">
+          {tenantDirectoryLoadFailed
+            ? translateText('Portfolio ownership could not be loaded.')
+            : translateText('Loading portfolio ownership…')}
+        </div>
+      )}
 
-      {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
+      {permissions.canEditBrokerRules && <details
+        class="settings-panel settings-broker-rules space-y-3"
+        open={brokerRulesOpen}
+        onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
         </summary>
         <div class="mt-3">
-          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="settings-rules-form space-y-2">
+          <form id="brokerRulesForm" onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget as HTMLFormElement;
+            updateStopOutValidity();
+            if (!form.reportValidity()) return;
+            const values = readBrokerRulesFormValues(form, ruleValues);
+            emitUiEvent('settings:save-broker-rules', { values });
+          }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
@@ -428,7 +491,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   value={ruleValues.maintenanceMargin}
                   onInput={(e) => {
                     updateRuleValue('maintenanceMargin', (e.target as HTMLInputElement).value);
-                    stopOutInputRef.current?.setCustomValidity('');
+                    updateStopOutValidity();
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
@@ -447,7 +510,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   value={ruleValues.stopOutRatio}
                   onInput={(e) => {
                     updateRuleValue('stopOutRatio', (e.target as HTMLInputElement).value);
-                    stopOutInputRef.current?.setCustomValidity('');
+                    updateStopOutValidity();
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
