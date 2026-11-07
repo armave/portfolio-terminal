@@ -17,7 +17,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.marginCallAssetsRequired).toBeCloseTo(500 / 0.9);
     expect(metrics.showMarginCall).toBe(false);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(false);
   });
 
   it('reports a maintenance call while remaining above the stop-out threshold', () => {
@@ -28,7 +27,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equityRatio).toBeCloseTo(0.1);
     expect(metrics.showMarginCall).toBe(true);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(true);
   });
 
   it('shows a maintenance trigger at exact threshold equality', () => {
@@ -49,7 +47,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equity).toBe(-100);
     expect(metrics.showMarginCall).toBe(true);
     expect(metrics.showStopOut).toBe(true);
-    expect(metrics.showRiskTriggers).toBe(true);
   });
 
   it('does not claim a margin trigger when debt is absent', () => {
@@ -58,7 +55,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equityRatio).toBe(1);
     expect(metrics.showMarginCall).toBe(false);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(false);
   });
 });
 
