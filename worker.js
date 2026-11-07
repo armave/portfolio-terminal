@@ -237,8 +237,8 @@ function resolveCorsHeaders(request, env = {}) {
         "Access-Control-Allow-Origin": origin || configuredOrigins[0],
         "Vary": "Origin",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
-        "Access-Control-Expose-Headers": "ETag"
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
+        "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
     };
 }
 

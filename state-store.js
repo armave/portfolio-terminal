@@ -5,8 +5,8 @@ const CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
-  "Access-Control-Expose-Headers": "ETag"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
+  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
 };
 
 function jsonResponse(body, status = 200, revision = null) {
@@ -3124,17 +3124,100 @@ export class PortfolioStateDO {
       return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
 
-    const result = await this.ctx.storage.transaction(async () => {
-      const current = await this.ctx.storage.get(recordKey);
+    const idempotencyHeader = request.headers.get("Idempotency-Key");
+    const idempotencyKey = idempotencyHeader === null ? null : idempotencyHeader.trim();
+    if (idempotencyHeader !== null &&
+        (!idempotencyKey || idempotencyKey.length > 180 || !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey))) {
+      return jsonResponse({ error: "Invalid Idempotency-Key header." }, 400);
+    }
+    // Hash the exact request envelope, never store ciphertext or financial payloads
+    // a second time in the idempotency receipt.
+    const idempotencyFingerprint = idempotencyKey
+      ? await digestHex(JSON.stringify(body))
+      : null;
+    const receiptStorageKey = "cloud-write-idempotency:" + recordKey;
+
+    const result = await this.ctx.storage.transaction(async (transactionStorage) => {
+      const current = await transactionStorage.get(recordKey);
       const currentRevision = current?.revision ?? 0;
+      const now = Date.now();
+      const storedReceipts = idempotencyKey
+        ? await transactionStorage.get(receiptStorageKey)
+        : null;
+      const receipts = Array.isArray(storedReceipts)
+        ? storedReceipts.filter((receipt) =>
+            receipt && typeof receipt.key === "string" &&
+            typeof receipt.fingerprint === "string" &&
+            Number.isSafeInteger(receipt.revision) &&
+            Number.isFinite(receipt.expiresAt) && receipt.expiresAt > now)
+        : [];
+
+      if (idempotencyKey) {
+        const priorReceipt = receipts.find((receipt) => receipt.key === idempotencyKey);
+        if (priorReceipt) {
+          if (priorReceipt.fingerprint !== idempotencyFingerprint) {
+            return { idempotencyConflict: true, revision: currentRevision };
+          }
+          // Do not turn a delayed retry into permission to overwrite a newer
+          // device's snapshot. A replay is successful only while its commit is
+          // still the latest revision for this record.
+          if (currentRevision !== priorReceipt.revision) {
+            return { idempotencySuperseded: true, revision: currentRevision };
+          }
+          return {
+            replayed: true,
+            revision: currentRevision,
+            committedRevision: priorReceipt.revision
+          };
+        }
+      }
+
       if (currentRevision !== expectedRevision) {
         return { conflict: true, revision: currentRevision };
       }
+
       const nextRevision = currentRevision + 1;
-      await this.ctx.storage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      await transactionStorage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      if (idempotencyKey && idempotencyFingerprint) {
+        // Keep a small rolling window of receipts. The seven-day TTL bounds
+        // stale keys; the count cap bounds Durable Object storage growth.
+        const nextReceipts = [...receipts, {
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          revision: nextRevision,
+          expiresAt: now + 7 * 24 * 60 * 60 * 1000
+        }].slice(-100);
+        await transactionStorage.put(receiptStorageKey, nextReceipts);
+      }
       return { conflict: false, revision: nextRevision };
     });
 
+    if (result.idempotencyConflict) {
+      return jsonResponse({
+        error: "Idempotency key was already used for a different cloud write.",
+        conflict: true,
+        idempotencyConflict: true,
+        currentRevision: result.revision
+      }, 409, result.revision);
+    }
+    if (result.idempotencySuperseded) {
+      return jsonResponse({
+        error: "This cloud write was committed but has since been superseded by a newer snapshot. Pull the latest state before saving again.",
+        conflict: true,
+        idempotencySuperseded: true,
+        currentRevision: result.revision
+      }, 409, result.revision);
+    }
+    if (result.replayed) {
+      const replayResponse = jsonResponse({
+        success: true,
+        revision: result.revision,
+        committedRevision: result.committedRevision,
+        replayed: true
+      }, 200, result.revision);
+      replayResponse.headers.set("Idempotency-Replayed", "true");
+      return replayResponse;
+    }
     if (result.conflict) {
       return jsonResponse({
         error: "Cloud portfolio changed since this device last synced. Pull the latest state before saving.",

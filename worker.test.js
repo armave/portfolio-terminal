@@ -1825,6 +1825,113 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(latest.headers.get('ETag')).toBe('"1"');
   });
 
+  it('replays an identical cloud write after an ambiguous response without incrementing the revision twice', async () => {
+    const store = makeDurableObject();
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-write-retry-0001'
+    };
+    const body = JSON.stringify({ encryptedPayload: 'stable-encrypted-snapshot' });
+
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers, body
+    }));
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+
+    const retry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers, body
+    }));
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    expect(await retry.json()).toMatchObject({
+      success: true, revision: 1, committedRevision: 1, replayed: true
+    });
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:record');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ key: 'cloud-write-retry-0001', revision: 1 });
+    expect(JSON.stringify(receipts)).not.toContain('stable-encrypted-snapshot');
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'stable-encrypted-snapshot' });
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('rejects reuse of an idempotency key for a different payload without changing the snapshot', async () => {
+    const store = makeDurableObject();
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"', 'Idempotency-Key': 'cloud-write-conflict-0001' },
+      body: JSON.stringify({ encryptedPayload: 'first' })
+    }));
+    expect(first.status).toBe(200);
+
+    const conflictingRetry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"', 'Idempotency-Key': 'cloud-write-conflict-0001' },
+      body: JSON.stringify({ encryptedPayload: 'different' })
+    }));
+    expect(conflictingRetry.status).toBe(409);
+    expect(await conflictingRetry.json()).toMatchObject({ conflict: true, idempotencyConflict: true });
+
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'first' });
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('does not acknowledge an old retry after a newer device has superseded its snapshot', async () => {
+    const store = makeDurableObject();
+    const originalHeaders = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-write-old-0001'
+    };
+    const originalBody = JSON.stringify({ encryptedPayload: 'older-snapshot' });
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers: originalHeaders, body: originalBody
+    }));
+    expect(first.status).toBe(200);
+
+    const newer = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"', 'Idempotency-Key': 'cloud-write-new-0001' },
+      body: JSON.stringify({ encryptedPayload: 'newer-snapshot' })
+    }));
+    expect(newer.status).toBe(200);
+
+    const delayedRetry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers: originalHeaders, body: originalBody
+    }));
+    expect(delayedRetry.status).toBe(409);
+    expect(await delayedRetry.json()).toMatchObject({
+      conflict: true, idempotencySuperseded: true, currentRevision: 2
+    });
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'newer-snapshot' });
+    expect(latest.headers.get('ETag')).toBe('"2"');
+  });
+
+  it('validates idempotency keys and keeps legacy writes without the optional header compatible', async () => {
+    const store = makeDurableObject();
+    const invalid = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"', 'Idempotency-Key': 'contains spaces' },
+      body: JSON.stringify({ encryptedPayload: 'invalid-key' })
+    }));
+    expect(invalid.status).toBe(400);
+
+    const legacy = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'legacy-client' })
+    }));
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers.get('ETag')).toBe('"1"');
+    expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
+  });
+
   it('allows only one of two simultaneous writes using the same revision', async () => {
     const values = new Map();
     let transactionQueue = Promise.resolve();
