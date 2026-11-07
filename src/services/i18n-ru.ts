@@ -1,6 +1,8 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
   'MARGIN DESK': 'МАРЖИНАЛЬНЫЙ РАЗДЕЛ',
+  'Preparing portfolio metrics': 'Подготовка показателей портфеля',
+  'Loading portfolio metrics…': 'Загрузка показателей портфеля…',
   'Margin fee': 'Проценты по марже',
   'Rows {start}–{end} of {total}': 'Строки {start}–{end} из {total}',
   'Page {current} of {total}': 'Страница {current} из {total}',
