@@ -4579,9 +4579,9 @@ describe('Finnhub market-data routes',()=>{
   expect(JSON.stringify(data)).not.toContain('rawSecret');expect(JSON.stringify(data)).not.toContain('private-key');
  });
  it('keeps the available feed when the other feed fails',async()=>{
-  const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07'}]}),{status:200})).mockResolvedValueOnce(new Response('{}',{status:503}));
+  const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'PT02TEST',date:'2026-11-07'}]}),{status:200})).mockResolvedValueOnce(new Response('{}',{status:503}));
   vi.stubGlobal('fetch',fetchMock);
-  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=PT02TEST&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
   expect(response.status).toBe(200);await expect(response.json()).resolves.toMatchObject({earningsAvailable:true,dividendsAvailable:false,earnings:[{date:'2026-11-07'}],dividends:[]});
  });
 });
