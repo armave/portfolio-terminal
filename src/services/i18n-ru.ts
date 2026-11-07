@@ -952,4 +952,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Broker balance is stale": "Баланс брокера устарел",
   "Quote data is provisional": "Данные котировок предварительные",
   "Valuation is current": "Оценка актуальна",
+  'unknown': 'неизвестно',
+  'unavailable': 'недоступно',
+  'unknown / unavailable': 'неизвестно / недоступно',
 };
