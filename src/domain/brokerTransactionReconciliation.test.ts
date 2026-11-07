@@ -1,0 +1,154 @@
+import { describe, expect, it } from 'vitest';
+import type { BrokerCashflow, BrokerExecution } from '../types/broker';
+import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
+import type { PortfolioTransactionEvent, PortfolioTransactionEventType } from '../types/portfolioTransaction';
+import { reconcileBrokerActivity } from './brokerTransactionReconciliation';
+
+const at = Date.parse('2026-11-06T10:00:00.000Z');
+
+function execution(overrides: Partial<BrokerExecution> = {}): BrokerExecution {
+  return {
+    id: 'exec-1', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 100,
+    currency: 'USD', executedAt: new Date(at).toISOString(), tradeValue: 200,
+    profit: null, marginFee: null, commission: 1, commissionCurrency: 'USD',
+    raw: {}, ...overrides
+  };
+}
+function appEvent(
+  type: PortfolioTransactionEventType,
+  overrides: Partial<Parameters<typeof createPortfolioTransactionEvent>[0]> = {}
+): PortfolioTransactionEvent {
+  return createPortfolioTransactionEvent({
+    type, effectiveAt: at, ticker: 'AAPL', quantity: 2, unitPrice: 100,
+    currency: 'USD', fees: 1, feeCurrency: 'USD', ...overrides
+  }, { actor: { type: 'user', id: 'investor-1' }, source: 'manual', eventId: `app-${type}`, recordedAt: at });
+}
+function reconcile(
+  brokerExecutions: BrokerExecution[],
+  appEvents: PortfolioTransactionEvent[],
+  extra: Partial<Parameters<typeof reconcileBrokerActivity>[0]> = {}
+) {
+  return reconcileBrokerActivity({
+    brokerExecutions,
+    brokerCashflows: [],
+    appEvents,
+    executionStatus: 'complete',
+    cashflowStatus: 'complete',
+    appHistoryStatus: 'complete',
+    now: at + 60_000,
+    ...extra
+  });
+}
+
+describe('reconcileBrokerActivity', () => {
+  it('matches an execution by normalized ticker, side, quantity, price, currency and timestamp', () => {
+    const report = reconcile([execution({ ticker: 'AAPL.US' })], [appEvent('trade.buy')]);
+    expect(report.status).toBe('matched');
+    expect(report.matchedExecutionCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('reports commission differences without converting currencies or changing inputs', () => {
+    const broker = execution({ commission: 1.5 });
+    const app = appEvent('trade.buy');
+    const beforeBroker = structuredClone(broker);
+    const beforeApp = structuredClone(app);
+    const report = reconcile([broker], [app]);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_fee_mismatch', brokerValue: 1.5, appValue: 1,
+      brokerReferences: ['exec-1'], appEventIds: ['app-trade.buy']
+    }));
+    expect(broker).toEqual(beforeBroker);
+    expect(app).toEqual(beforeApp);
+  });
+
+  it('classifies timestamp differences beyond the normal tolerance as timing findings', () => {
+    const report = reconcile(
+      [execution({ executedAt: new Date(at + 60 * 60_000).toISOString() })],
+      [appEvent('trade.buy')]
+    );
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_timing_difference',
+      difference: 60 * 60_000
+    }));
+  });
+
+  it('aggregates multiple broker partial fills against one app transaction', () => {
+    const report = reconcile([
+      execution({ id: 'fill-1', quantity: 0.75, price: 100, commission: 0.4 }),
+      execution({ id: 'fill-2', quantity: 1.25, price: 100, commission: 0.6 })
+    ], [appEvent('trade.buy')]);
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe('matched');
+  });
+
+  it('detects duplicate broker execution identifiers', () => {
+    const report = reconcile(
+      [execution(), execution({ quantity: 2 })],
+      [appEvent('trade.buy')]
+    );
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_execution',
+      brokerReferences: ['exec-1']
+    }));
+  });
+
+  it('keeps unmatched execution findings provisional while PT-02 journal coverage is incomplete', () => {
+    const report = reconcile(
+      [execution({ id: 'unmatched' })],
+      [],
+      { appHistoryStatus: 'partial' }
+    );
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain(
+      'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.'
+    );
+  });
+
+  it('matches app-authored dividends to broker cashflows while excluding broker import audit events', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'div-1', date: new Date(at).toISOString(), type: 'Dividend',
+      amount: 15, currency: 'USD', description: 'Quarterly dividend', raw: {}
+    };
+    const importedAudit = createPortfolioTransactionEvent({
+      type: 'dividend', effectiveAt: at, currency: 'USD',
+      externalCashFlowAmount: 15, externalReferenceId: 'div-1'
+    }, { actor: { type: 'broker' }, source: 'freedom-tradenet-cashflow', eventId: 'broker-div-1', recordedAt: at });
+    const appDividend = createPortfolioTransactionEvent({
+      type: 'dividend', effectiveAt: at, currency: 'USD', externalCashFlowAmount: 15
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-div-1', recordedAt: at });
+    const report = reconcile([], [importedAudit, appDividend], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('reports cashflow currency mismatches without attempting FX conversion', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'fee-1', date: new Date(at).toISOString(), type: 'Fee',
+      amount: -5, currency: 'USD', description: 'Account fee', raw: {}
+    };
+    const appFee = createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at, currency: 'EUR', fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-fee', recordedAt: at });
+    const report = reconcile([], [appFee], { brokerCashflows: [brokerCashflow] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_currency_mismatch',
+      brokerValue: -5,
+      appEventIds: ['app-fee']
+    }));
+  });
+
+  it('does not treat incomplete broker feeds as authoritative absence evidence', () => {
+    const report = reconcile([], [appEvent('trade.buy')], {
+      executionStatus: 'partial',
+      cashflowStatus: 'unavailable'
+    });
+    expect(report.status).toBe('partial');
+    expect(report.findings.every(finding => finding.confidence === 'provisional')).toBe(true);
+  });
+});
