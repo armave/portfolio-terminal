@@ -80,3 +80,14 @@ describe('multi-portfolio ownership Settings surface', () => {
 
 
 
+
+
+describe('broker rules disclosure state', () => {
+  it('synchronizes native details toggles with Preact state across controlled form rerenders', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
+    expect(source).toContain('open={brokerRulesOpen}');
+    expect(source).toContain('onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}');
+    expect(source).toContain('value={ruleValues.annualRate}');
+  });
+});
