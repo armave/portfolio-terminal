@@ -964,4 +964,5 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Annual margin rate': 'Годовая ставка маржи',
   'Day': 'День',
   'Cash holdings value': 'Рыночная стоимость денежных активов',
+  'Show tranches': 'Показать транши',
 };
