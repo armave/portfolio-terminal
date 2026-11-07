@@ -43,9 +43,11 @@ export function AdminExecutiveDashboard() {
       const price = Number(position.currentPrice);
       const validPrice = Number.isFinite(price) && price > 0;
       const marketValue = validPrice ? Number(position.shares) * price : null;
-      const basis = (position.tranches || []).reduce((sum, tranche) =>
-        sum + Math.max(0, Number(tranche.qty) || 0) * Math.max(0, Number(tranche.price) || 0), 0);
-      const pnl = validPrice && basis > 0 ? marketValue! - basis : null;
+      const tranches = (position.tranches || []).filter(tranche => Number(tranche.qty) > 0 && Number(tranche.price) > 0);
+      const basisShares = tranches.reduce((sum, tranche) => sum + Number(tranche.qty), 0);
+      const basis = tranches.reduce((sum, tranche) => sum + Number(tranche.qty) * Number(tranche.price), 0);
+      const basisComplete = Math.abs(basisShares - Number(position.shares)) <= Math.max(0.000001, Number(position.shares) * 0.000001);
+      const pnl = validPrice && basisComplete && basis > 0 ? marketValue! - basis : null;
       return {
         ticker: position.ticker, kind: 'Margin', shares: Number(position.shares),
         marketValue, pnl, weight: marketValue !== null && totalValue > 0 ? marketValue / totalValue * 100 : null,
@@ -154,7 +156,7 @@ export function AdminExecutiveDashboard() {
             </div>
             <div>
               <p class="text-[10px] text-slate-500">{label('Market quotes')}</p>
-              <p class="mt-1 text-xs font-semibold text-slate-200">{quoteCounts.fresh} {label('fresh')} · {quoteCounts.stale} {label('stale')} · {quoteCounts.delayed} {label('delayed')}</p>
+              <p class="mt-1 text-xs font-semibold text-slate-200">{quoteCounts.fresh} {label('fresh')} · {quoteCounts.stale} {label('stale')} · {quoteCounts.delayed} {label('delayed')} · {quoteCounts.unknown + quoteCounts.unavailable} {label('unknown / unavailable')}</p>
             </div>
           </div>
         </section>
