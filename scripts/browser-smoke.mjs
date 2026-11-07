@@ -489,12 +489,20 @@ async function assertManyTickerNavigation(page) {
     const nav = document.querySelector('#tickerTabs');
     const navBounds = nav.getBoundingClientRect();
     const cloneBounds = clones.map((clone) => clone.getBoundingClientRect());
+    const fixedDestinations = Array.from(nav.querySelectorAll('.workspace-nav-fixed-list [data-nav-tab="true"]'));
+    const fixedDestinationBounds = fixedDestinations.map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+    });
     const result = {
       stripDisplay: getComputedStyle(strip).display,
+      stripWidth: strip.clientWidth,
+      stripScrollWidth: strip.scrollWidth,
       navWidth: nav.clientWidth,
       navScrollWidth: nav.scrollWidth,
       navBounds: { left: navBounds.left, right: navBounds.right },
       cloneBounds: cloneBounds.map(({ left, right, top }) => ({ left, right, top })),
+      fixedDestinationBounds,
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
       fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
@@ -503,16 +511,19 @@ async function assertManyTickerNavigation(page) {
     return result;
   });
 
-  if (mobileMeasurements.stripDisplay !== 'contents' || mobileMeasurements.navWidth < 200) {
-    throw new Error('The mobile ticker destinations are not merged into the centered navigation group.');
+  if (mobileMeasurements.stripDisplay !== 'flex' || mobileMeasurements.stripWidth < 200) {
+    throw new Error('The mobile ticker strip does not retain its dedicated scrollable layout.');
   }
-  if (new Set(mobileMeasurements.cloneBounds.map(({ top }) => Math.round(top))).size < 2) {
-    throw new Error('A long mobile ticker list did not wrap within the centered navigation group.');
+  if (mobileMeasurements.stripScrollWidth <= mobileMeasurements.stripWidth) {
+    throw new Error('A long mobile ticker list did not become horizontally scrollable.');
   }
-  if (mobileMeasurements.cloneBounds.some(({ left, right }) =>
+  if (new Set(mobileMeasurements.cloneBounds.map(({ top }) => Math.round(top))).size !== 1) {
+    throw new Error('Ticker destinations wrapped instead of remaining in the horizontal scroll strip.');
+  }
+  if (mobileMeasurements.fixedDestinationBounds.length === 0 || mobileMeasurements.fixedDestinationBounds.some(({ left, right }) =>
     left < mobileMeasurements.navBounds.left - 1 || right > mobileMeasurements.navBounds.right + 1
   )) {
-    throw new Error('A mobile ticker destination is clipped by the centered navigation group.');
+    throw new Error('A fixed mobile destination is clipped outside its wrapping navigation row.');
   }
   if (mobileMeasurements.documentWidth > mobileMeasurements.viewportWidth + 1) {
     throw new Error('A long mobile ticker list caused page-level horizontal overflow: ' + JSON.stringify(mobileMeasurements));
