@@ -4757,7 +4757,8 @@ describe("Freedom daily historical candles", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
       ok: true,
       provider: "Freedom TradeNet",
       symbol: "GOOGL.US",
@@ -4772,7 +4773,7 @@ describe("Freedom daily historical candles", () => {
       count: 0,
       intervalMode: "ClosedRay"
     });
-    const serialized = JSON.stringify(await response.clone().json());
+    const serialized = JSON.stringify(responseBody);
     expect(serialized).not.toContain("public-key");
     expect(serialized).not.toContain("private-key");
   });
