@@ -208,7 +208,7 @@ export function reconcileBrokerActivity(
     const prior = seenExecutionIds.get(row.id);
     if (prior) {
       findings.push(makeFinding({
-        id: `duplicate-execution:${row.id}`,
+        id: `duplicate-execution:${row.id}:${uniqueBrokerRows.length}`,
         type: 'duplicate_broker_execution',
         subject: `${row.ticker} ${row.side.toUpperCase()}`,
         currency: row.currency || undefined,
@@ -304,7 +304,7 @@ export function reconcileBrokerActivity(
       }, confidence));
     }
     const appFee = number(best.event.fees);
-    if (broker.fee !== null && appFee !== null &&
+    if (best.event.type !== 'trade.sell' && broker.fee !== null && appFee !== null &&
       (!broker.feeCurrency || !best.event.feeCurrency || broker.feeCurrency === currency(best.event.feeCurrency)) &&
       Math.abs(Math.abs(broker.fee) - Math.abs(appFee)) > amountTolerance) {
       findings.push(makeFinding({
@@ -440,6 +440,29 @@ export function reconcileBrokerActivity(
     if (candidate[0]) {
       unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
       unmatchedCashflowApp.delete(candidate[0].index);
+      continue;
+    }
+    const classificationMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
+      .find(({ event }) => event.type !== broker.type &&
+        (!broker.currency || !event.currency || currency(event.currency) === broker.currency) &&
+        Math.abs(Math.abs(eventAmount(event) ?? 0) - Math.abs(broker.amount)) <= amountTolerance &&
+        Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt)) <= maxTimingDifference);
+    if (classificationMismatch) {
+      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
+      unmatchedCashflowApp.delete(classificationMismatch.index);
+      findings.push(makeFinding({
+        id: `cashflow-type:${broker.id}:${classificationMismatch.event.id}`,
+        type: 'cashflow_type_mismatch',
+        subject: broker.type,
+        currency: broker.currency || undefined,
+        brokerValue: broker.amount,
+        appValue: eventAmount(classificationMismatch.event),
+        brokerReferences: [broker.id],
+        appEventIds: [classificationMismatch.event.id],
+        brokerAt: broker.at ?? undefined,
+        appAt: classificationMismatch.event.effectiveAt,
+        explanation: 'The broker and app classify the same cashflow differently.'
+      }, confidence));
       continue;
     }
     const currencyMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))

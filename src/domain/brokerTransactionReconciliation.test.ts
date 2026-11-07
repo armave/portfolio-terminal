@@ -62,6 +62,16 @@ describe('reconcileBrokerActivity', () => {
     expect(app).toEqual(beforeApp);
   });
 
+  it('does not compare broker sell commission to the app sell event total-cost field', () => {
+    const report = reconcile(
+      [execution({ side: 'SELL', commission: 1 })],
+      [appEvent('trade.sell', { fees: 8 })]
+    );
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_fee_mismatch'
+    }));
+  });
+
   it('does not flag intraday broker fills against date-only app trade records on the same day', () => {
     const dateOnly = createPortfolioTransactionEvent({
       type: 'trade.buy',
@@ -139,6 +149,21 @@ describe('reconcileBrokerActivity', () => {
     const report = reconcile([], [importedAudit, appDividend], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(1);
     expect(report.findings).toEqual([]);
+  });
+
+  it('classifies cashflow category mismatches separately from missing rows', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'cash-type-1', date: new Date(at).toISOString(), type: 'Dividend',
+      amount: 15, currency: 'USD', description: 'Quarterly dividend', raw: {}
+    };
+    const appAdjustment = createPortfolioTransactionEvent({
+      type: 'cash.adjustment', effectiveAt: at, currency: 'USD', externalCashFlowAmount: 15
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-adjustment', recordedAt: at });
+    const report = reconcile([], [appAdjustment], { brokerCashflows: [brokerCashflow] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_type_mismatch',
+      appEventIds: ['app-adjustment']
+    }));
   });
 
   it('reports cashflow currency mismatches without attempting FX conversion', () => {
