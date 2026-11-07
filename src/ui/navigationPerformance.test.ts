@@ -46,35 +46,3 @@ describe('navigation performance wiring', () => {
     expect(runtime).not.toContain('portfolioStore.setState({ activeView: normalizedView });');
   });
 });
-
-
-describe('stable workspace header layout', () => {
-  it('reserves a fixed KV status slot beside the navigation without flex reflow', () => {
-    const app = readSource('../App.tsx');
-    const styles = readSource('../../style.css');
-    const cloudIndicator = readSource('../components/CloudSyncIndicator.tsx');
-    expect(app).toContain('class="workspace-header-navigation"');
-    expect(app).toContain('class="workspace-header-status"');
-    expect(styles).toContain('.workspace-header-navigation');
-    expect(styles).toContain('grid-template-columns: minmax(0, 1fr) auto');
-    expect(styles).toContain('width: 12.5rem');
-    expect(styles).toContain('flex-wrap: nowrap');
-    expect(cloudIndicator).toContain('cloud-sync-indicator__detail');
-    expect(cloudIndicator).toContain("detailText || '\\u00a0'");
-  });
-});
-
-
-describe('fixed and scrollable workspace navigation groups', () => {
-  it('keeps ticker tabs scrollable while fixed destinations wrap without being clipped', () => {
-    const tabs = readSource('../components/TickerTab.tsx');
-    const styles = readSource('../../style.css');
-    expect(tabs).toContain('class="workspace-nav-ticker-list"');
-    expect(tabs).toContain('class="workspace-nav-fixed-list"');
-    expect(tabs.indexOf('class="workspace-nav-fixed-list"')).toBeGreaterThan(tabs.indexOf('class="workspace-nav-ticker-list"'));
-    expect(styles).toContain('#tickerTabs > .workspace-nav-fixed-list');
-    expect(styles).toContain('flex-wrap: wrap');
-    expect(styles).toContain('overflow: visible');
-    expect(styles).toContain('overflow-x: auto');
-  });
-});

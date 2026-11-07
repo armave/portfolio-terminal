@@ -74,7 +74,8 @@ const freedomAdapter:MarketHistoryProviderAdapter={
     if(!['D','1D'].includes(request.interval.toUpperCase()))throw new Error('Freedom TradeNet history currently supports daily candles only.');
     return fetchFreedomHistory(request.instrument.symbol,{
       signal:request.signal,currency:request.instrument.quoteCurrency??undefined,
-      exchange:request.instrument.exchange??undefined,assetType:request.instrument.assetType
+      exchange:request.instrument.exchange??undefined,assetType:request.instrument.assetType,
+      startAt:request.startAt,endAt:request.endAt
     });
   }
 };

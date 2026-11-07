@@ -164,77 +164,75 @@ export const TickerTabs = memo(function TickerTabs({
         </div>
       )}
 
-      <div class="workspace-nav-fixed-list">
-        <button
-          type="button"
-          onClick={() => selectView('BALANCE')}
-          aria-pressed={isCushionActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
-            ? 'bg-cyan-500 text-black'
-            : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
-            }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
-        >
-          <span>{translateText('BALANCE', getAppLanguage())}</span>
-          <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
-        </button>
-  
-        {canViewGuestHistory && <button
-          type="button"
-          onClick={() => selectView('GUEST_HISTORY')}
-          aria-pressed={isGuestHistoryActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
-            ? 'bg-indigo-500 text-white'
-            : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
-            }`}
-          data-nav-tab="true"
-          data-nav-index={guestHistoryNavIndex}
-          ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
-        >
-          {translateText('LOTS', getAppLanguage())}
-        </button>}
-  
-        {isAdmin && <button
-          type="button"
-          onClick={() => selectView('CLOSED_HISTORY')}
-          aria-label={translateText('Trades', getAppLanguage())}
-          aria-pressed={isClosedHistoryActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
-            ? 'bg-purple-500 text-black'
-            : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
-            }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex + 1}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
-          onKeyDown={handleTabKeyDown}
-        >
-          {translateText('TRADES', getAppLanguage())}
-        </button>}
-  
-        <button
-          id="settingsBtn"
-          type="button"
-          aria-pressed={isSettingsActive}
-          onClick={() => selectView('SETTINGS')}
-          class={
-            isSettingsActive
-              ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
-              : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
-          }
-          data-nav-tab="true"
-          data-nav-index={settingsNavIndex}
-          ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
-          aria-label={translateText('Settings', getAppLanguage())}
-          title={translateText('Settings', getAppLanguage())}
-        >
-          <span aria-hidden="true">⚙️</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => selectView('BALANCE')}
+        aria-pressed={isCushionActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
+          ? 'bg-cyan-500 text-black'
+          : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
+          }`}
+        data-nav-tab="true"
+        data-nav-index={balanceNavIndex}
+        ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
+      >
+        <span>{translateText('BALANCE', getAppLanguage())}</span>
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
+      </button>
+
+      {canViewGuestHistory && <button
+        type="button"
+        onClick={() => selectView('GUEST_HISTORY')}
+        aria-pressed={isGuestHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
+          ? 'bg-indigo-500 text-white'
+          : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
+          }`}
+        data-nav-tab="true"
+        data-nav-index={guestHistoryNavIndex}
+        ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
+      >
+        {translateText('LOTS', getAppLanguage())}
+      </button>}
+
+      {isAdmin && <button
+        type="button"
+        onClick={() => selectView('CLOSED_HISTORY')}
+        aria-label={translateText('Trades', getAppLanguage())}
+        aria-pressed={isClosedHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
+          ? 'bg-purple-500 text-black'
+          : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
+          }`}
+        data-nav-tab="true"
+        data-nav-index={balanceNavIndex + 1}
+        ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
+        onKeyDown={handleTabKeyDown}
+      >
+        {translateText('TRADES', getAppLanguage())}
+      </button>}
+
+      <button
+        id="settingsBtn"
+        type="button"
+        aria-pressed={isSettingsActive}
+        onClick={() => selectView('SETTINGS')}
+        class={
+          isSettingsActive
+            ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
+            : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
+        }
+        data-nav-tab="true"
+        data-nav-index={settingsNavIndex}
+        ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
+        aria-label={translateText('Settings', getAppLanguage())}
+        title={translateText('Settings', getAppLanguage())}
+      >
+        <span aria-hidden="true">⚙️</span>
+      </button>
     </>
   );
 });

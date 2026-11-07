@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMarketHistoryProviderRegistry } from './marketHistoryProviders';
+import { createMarketHistoryProviderRegistry, marketHistoryProviderRegistry } from './marketHistoryProviders';
+import { proxyFetch } from './api';
+
+vi.mock('./api', () => ({
+  proxyFetch: vi.fn(),
+  fetchFreedomTradeNetQuoteStreamOnce: vi.fn()
+}));
 const result={points:[],observedAt:null,freshness:'unknown' as const,session:'UNKNOWN' as const,delayClass:'unknown' as const,quality:'unavailable' as const,issues:[]};
 describe('market history provider registry',()=>{
  it('lists providers and dispatches by stable provider ID',async()=>{
@@ -64,4 +70,31 @@ describe('market history daily fallback', () => {
     await expect(registry.fetchDailyHistory({ ...request, signal: controller.signal })).rejects.toThrow('no access');
     expect(freedom.fetchHistory).not.toHaveBeenCalled();
   });
+});
+
+
+describe('Freedom provider request range', () => {
+  it('forwards the requested date window through the production Freedom adapter', async () => {
+    const startAt = Date.parse('2026-11-01T00:00:00.000Z');
+    const endAt = Date.parse('2026-11-07T23:59:00.000Z');
+    vi.mocked(proxyFetch).mockResolvedValue({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      symbol: 'GOOGL.US',
+      data: [{ t: 1793966400, c: 284.64 }]
+    });
+
+    await expect(marketHistoryProviderRegistry.fetch('FREEDOM_TRADENET', {
+      instrument: { symbol: 'GOOGL', exchange: 'US', assetType: 'EQUITY', quoteCurrency: 'USD' } as never,
+      startAt,
+      endAt,
+      interval: '1D'
+    })).resolves.toMatchObject({ points: [{ price: 284.64 }] });
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-history',
+      { symbol: 'GOOGL.US', startAt, endAt },
+      {}
+    );
+  });
+
 });
