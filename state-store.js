@@ -97,6 +97,64 @@ const AUTH_SESSION_CLEANUP_CURSOR_KEY = "maintenance:auth-session-cleanup-cursor
 const AUTH_SESSION_CLEANUP_LAST_RUN_KEY = "maintenance:auth-session-cleanup-last-run:v1";
 const AUTH_USER_SESSION_INDEX_PREFIX = "auth:user-sessions:";
 
+const TENANT_DIRECTORY_KEY = "tenant:directory:v1";
+const TENANT_AUDIT_PREFIX = "tenant:audit:v1:";
+const LEGACY_TENANT_ID = "legacy-tenant-v1";
+const LEGACY_WORKSPACE_ID = "legacy-workspace-v1";
+const LEGACY_PORTFOLIO_ID = "legacy-portfolio-v1";
+const TENANT_DIRECTORY_MAX_TENANTS = 100;
+const TENANT_DIRECTORY_MAX_WORKSPACES = 250;
+const TENANT_DIRECTORY_MAX_PORTFOLIOS = 1000;
+const TENANT_DIRECTORY_MAX_MEMBERSHIPS = 5000;
+const TENANT_DIRECTORY_MAX_GRANTS = 10000;
+const TENANT_DIRECTORY_MAX_BODY_BYTES = 16 * 1024;
+
+const TENANT_ROLE_CAPABILITIES = Object.freeze({
+  owner: [
+    "tenant.read", "tenant.update", "tenant.members.manage",
+    "workspace.read", "workspace.create", "workspace.update",
+    "portfolio.read", "portfolio.create", "portfolio.update",
+    "portfolio.archive", "portfolio.delete", "portfolio.share.manage"
+  ],
+  manager: [
+    "tenant.read", "workspace.read", "portfolio.read",
+    "portfolio.positions.read", "portfolio.transactions.read",
+    "portfolio.performance.read", "portfolio.risk.read", "portfolio.reports.read"
+  ],
+  investor: [
+    "tenant.read", "workspace.read", "portfolio.read",
+    "portfolio.positions.read", "portfolio.performance.read",
+    "portfolio.risk.read", "portfolio.reports.read"
+  ],
+  guest: ["portfolio.projection.read"]
+});
+
+function isTenantDirectoryRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+    value.version === 1 && Number.isSafeInteger(value.revision) && value.revision >= 1 &&
+    Array.isArray(value.tenants) && Array.isArray(value.workspaces) &&
+    Array.isArray(value.portfolios) && Array.isArray(value.memberships) &&
+    Array.isArray(value.grants) &&
+    value.tenants.length <= TENANT_DIRECTORY_MAX_TENANTS &&
+    value.workspaces.length <= TENANT_DIRECTORY_MAX_WORKSPACES &&
+    value.portfolios.length <= TENANT_DIRECTORY_MAX_PORTFOLIOS &&
+    value.memberships.length <= TENANT_DIRECTORY_MAX_MEMBERSHIPS &&
+    value.grants.length <= TENANT_DIRECTORY_MAX_GRANTS);
+}
+
+function normalizeTenantDisplayName(value, fallback = "") {
+  if (value === undefined && fallback) return fallback;
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFC").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  if (normalized.length < 2 || normalized.length > 80) return null;
+  return normalized;
+}
+
+function tenantAuditKey() {
+  return TENANT_AUDIT_PREFIX + String(Date.now()).padStart(13, "0") + ":" + crypto.randomUUID();
+}
+
+
 function userSessionIndexKey(userId) {
   return AUTH_USER_SESSION_INDEX_PREFIX + userId;
 }
@@ -2245,6 +2303,469 @@ export class PortfolioStateDO {
     };
   }
 
+
+  async ensureTenantDirectory() {
+    return this.ctx.storage.transaction(async (transaction) => {
+      const users = await transaction.get(AUTH_USERS_KEY);
+      const accountUsers = Array.isArray(users) ? users.filter((user) =>
+        user && typeof user.id === "string" && (user.role === "admin" || user.role === "guest")
+      ) : [];
+      let directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      const now = new Date().toISOString();
+      let created = false;
+      let changedUsers = 0;
+
+      if (directory !== undefined && !isTenantDirectoryRecord(directory)) {
+        // Never replace or silently reset a malformed ownership directory.
+        return null;
+      }
+
+      if (directory === undefined) {
+        directory = {
+          version: 1,
+          revision: 1,
+          createdAt: now,
+          migration: "legacy-admin-guest-v1",
+          tenants: [{
+            id: LEGACY_TENANT_ID,
+            name: "Legacy shared workspace",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          workspaces: [{
+            id: LEGACY_WORKSPACE_ID,
+            tenantId: LEGACY_TENANT_ID,
+            name: "Legacy workspace",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          portfolios: [{
+            id: LEGACY_PORTFOLIO_ID,
+            tenantId: LEGACY_TENANT_ID,
+            workspaceId: LEGACY_WORKSPACE_ID,
+            name: "Legacy shared portfolio",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          memberships: [],
+          grants: []
+        };
+        created = true;
+      }
+
+      const legacyTenant = directory.tenants.find((item) => item.id === LEGACY_TENANT_ID);
+      if (!legacyTenant) {
+        // A directory created by a newer schema must not be silently rewritten.
+        return null;
+      }
+
+      const knownUserIds = new Set(accountUsers.map((user) => user.id));
+      for (const user of accountUsers) {
+        let membership = directory.memberships.find((item) =>
+          item.tenantId === LEGACY_TENANT_ID && item.userId === user.id
+        );
+        const expectedRole = user.role === "admin" ? "owner" : "guest";
+        if (!membership) {
+          membership = {
+            tenantId: LEGACY_TENANT_ID,
+            userId: user.id,
+            role: expectedRole,
+            status: "active",
+            membershipVersion: 1,
+            capabilities: [...TENANT_ROLE_CAPABILITIES[expectedRole]],
+            createdAt: user.createdAt || now,
+            createdBy: null,
+            legacy: true
+          };
+          directory.memberships.push(membership);
+          changedUsers += 1;
+        } else if (membership.status !== "active" || membership.role !== expectedRole) {
+          membership.role = expectedRole;
+          membership.status = "active";
+          membership.membershipVersion = Math.max(1, Number(membership.membershipVersion) || 0) + 1;
+          membership.capabilities = [...TENANT_ROLE_CAPABILITIES[expectedRole]];
+          membership.updatedAt = now;
+          changedUsers += 1;
+        }
+
+        if (expectedRole === "guest") {
+          let grant = directory.grants.find((item) =>
+            item.tenantId === LEGACY_TENANT_ID &&
+            item.portfolioId === LEGACY_PORTFOLIO_ID &&
+            item.userId === user.id
+          );
+          if (!grant) {
+            directory.grants.push({
+              tenantId: LEGACY_TENANT_ID,
+              portfolioId: LEGACY_PORTFOLIO_ID,
+              userId: user.id,
+              scope: "projection",
+              capabilities: ["portfolio.projection.read"],
+              status: "active",
+              membershipVersion: membership.membershipVersion,
+              createdAt: user.createdAt || now,
+              createdBy: null,
+              legacy: true
+            });
+            changedUsers += 1;
+          } else if (grant.status !== "active" ||
+              grant.capabilities.length !== 1 ||
+              grant.capabilities[0] !== "portfolio.projection.read") {
+            grant.status = "active";
+            grant.scope = "projection";
+            grant.capabilities = ["portfolio.projection.read"];
+            grant.membershipVersion = membership.membershipVersion;
+            grant.updatedAt = now;
+            changedUsers += 1;
+          }
+        } else {
+          for (const grant of directory.grants) {
+            if (grant.tenantId === LEGACY_TENANT_ID && grant.userId === user.id && grant.status === "active") {
+              grant.status = "revoked";
+              grant.updatedAt = now;
+              changedUsers += 1;
+            }
+          }
+        }
+      }
+
+      for (const membership of directory.memberships) {
+        if (membership.tenantId === LEGACY_TENANT_ID &&
+            membership.status === "active" && !knownUserIds.has(membership.userId)) {
+          membership.status = "revoked";
+          membership.membershipVersion = Math.max(1, Number(membership.membershipVersion) || 0) + 1;
+          membership.updatedAt = now;
+          changedUsers += 1;
+          for (const grant of directory.grants) {
+            if (grant.tenantId === LEGACY_TENANT_ID && grant.userId === membership.userId && grant.status === "active") {
+              grant.status = "revoked";
+              grant.updatedAt = now;
+            }
+          }
+        }
+      }
+
+      if (created || changedUsers > 0) {
+        if (!created) directory.revision += 1;
+        directory.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, directory);
+        await transaction.put(tenantAuditKey(), {
+          version: 1,
+          eventId: crypto.randomUUID(),
+          type: created ? "legacy_directory_initialized" : "legacy_memberships_reconciled",
+          tenantId: LEGACY_TENANT_ID,
+          actorUserId: null,
+          recordedAt: now,
+          details: { changedAccountMemberships: changedUsers }
+        });
+      }
+      return directory;
+    });
+  }
+
+  buildTenantDirectoryView(directory, userId) {
+    const memberships = directory.memberships.filter((item) =>
+      item.userId === userId && item.status === "active"
+    );
+    const tenants = [];
+    for (const membership of memberships) {
+      const tenant = directory.tenants.find((item) =>
+        item.id === membership.tenantId && item.status === "active"
+      );
+      if (!tenant) continue;
+      const grants = directory.grants.filter((item) =>
+        item.tenantId === tenant.id && item.userId === userId && item.status === "active"
+      );
+      const isOwner = membership.role === "owner";
+      const visiblePortfolios = directory.portfolios.filter((portfolio) =>
+        portfolio.tenantId === tenant.id && portfolio.status === "active" &&
+        (isOwner || grants.some((grant) => grant.portfolioId === portfolio.id))
+      );
+      const visibleWorkspaceIds = new Set(visiblePortfolios.map((portfolio) => portfolio.workspaceId));
+      const visibleWorkspaces = directory.workspaces.filter((workspace) =>
+        workspace.tenantId === tenant.id && workspace.status === "active" &&
+        (isOwner || visibleWorkspaceIds.has(workspace.id))
+      );
+
+      tenants.push({
+        tenant: {
+          id: tenant.id,
+          name: tenant.name,
+          status: tenant.status,
+          createdAt: tenant.createdAt
+        },
+        membership: {
+          role: membership.role,
+          status: membership.status,
+          membershipVersion: membership.membershipVersion,
+          capabilities: [...(membership.capabilities || TENANT_ROLE_CAPABILITIES[membership.role] || [])]
+        },
+        workspaces: visibleWorkspaces.map((workspace) => ({
+          id: workspace.id,
+          name: workspace.name,
+          status: workspace.status
+        })),
+        portfolios: visiblePortfolios.map((portfolio) => {
+          const grant = grants.find((item) => item.portfolioId === portfolio.id);
+          return {
+            id: portfolio.id,
+            workspaceId: portfolio.workspaceId,
+            name: portfolio.name,
+            status: portfolio.status,
+            access: isOwner ? "owner" : grant?.scope || "portfolio",
+            capabilities: isOwner
+              ? [...TENANT_ROLE_CAPABILITIES.owner]
+              : [...(grant?.capabilities || [])]
+          };
+        })
+      });
+    }
+
+    return {
+      version: 1,
+      revision: directory.revision,
+      mode: "directory-metadata-only",
+      financialDataEnabled: false,
+      tenants
+    };
+  }
+
+  async handleTenantDirectory(request) {
+    const session = await this.resolveSession(request);
+    if (!session) return jsonResponse({ error: "Authentication required." }, 401);
+
+    const directory = await this.ensureTenantDirectory();
+    if (!directory) return jsonResponse({ error: "Tenant directory is unavailable or requires recovery." }, 503);
+
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    if (request.method === "GET") {
+      if (pathname !== "/api/tenants") return jsonResponse({ error: "Not found." }, 404);
+      return new Response(JSON.stringify(this.buildTenantDirectoryView(directory, session.user.id)), {
+        status: 200,
+        headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
+      });
+    }
+
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > TENANT_DIRECTORY_MAX_BODY_BYTES) {
+      return jsonResponse({ error: "Tenant directory request exceeds the 16 KB limit." }, 413);
+    }
+    const body = rawBody ? JSON.parse(rawBody) : null;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
+
+    if (pathname === "/api/tenants") {
+      if (session.user.role !== "admin") {
+        return jsonResponse({ error: "Administrator access is required to provision a tenant." }, 403);
+      }
+      const allowedKeys = new Set(["name", "workspaceName", "portfolioName"]);
+      if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+        return jsonResponse({ error: "Tenant creation accepts only name, workspaceName, and portfolioName." }, 400);
+      }
+      const name = normalizeTenantDisplayName(body.name);
+      const workspaceName = normalizeTenantDisplayName(body.workspaceName, "Main workspace");
+      const portfolioName = normalizeTenantDisplayName(body.portfolioName, "Main portfolio");
+      if (!name || !workspaceName || !portfolioName) {
+        return jsonResponse({ error: "Tenant, workspace, and portfolio names must contain 2–80 characters." }, 400);
+      }
+
+      const tenantId = crypto.randomUUID();
+      const workspaceId = crypto.randomUUID();
+      const portfolioId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const result = await this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get(TENANT_DIRECTORY_KEY);
+        if (!isTenantDirectoryRecord(current)) return { error: "Tenant directory is unavailable.", status: 503 };
+        if (current.revision !== directory.revision) return { error: "Tenant directory changed. Refresh and retry.", status: 409 };
+        if (current.tenants.length >= TENANT_DIRECTORY_MAX_TENANTS ||
+            current.workspaces.length >= TENANT_DIRECTORY_MAX_WORKSPACES ||
+            current.portfolios.length >= TENANT_DIRECTORY_MAX_PORTFOLIOS ||
+            current.memberships.length >= TENANT_DIRECTORY_MAX_MEMBERSHIPS) {
+          return { error: "Tenant directory capacity has been reached.", status: 409 };
+        }
+        const tenant = {
+          id: tenantId, name, status: "active", createdAt: now,
+          createdBy: session.user.id, legacy: false
+        };
+        const workspace = {
+          id: workspaceId, tenantId, name: workspaceName, status: "active",
+          createdAt: now, createdBy: session.user.id, legacy: false
+        };
+        const portfolio = {
+          id: portfolioId, tenantId, workspaceId, name: portfolioName, status: "active",
+          createdAt: now, createdBy: session.user.id, legacy: false
+        };
+        const membership = {
+          tenantId, userId: session.user.id, role: "owner", status: "active",
+          membershipVersion: 1, capabilities: [...TENANT_ROLE_CAPABILITIES.owner],
+          createdAt: now, createdBy: session.user.id
+        };
+        current.tenants.push(tenant);
+        current.workspaces.push(workspace);
+        current.portfolios.push(portfolio);
+        current.memberships.push(membership);
+        current.revision += 1;
+        current.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, current);
+        await transaction.put(tenantAuditKey(), {
+          version: 1, eventId: crypto.randomUUID(), type: "tenant_created",
+          tenantId, workspaceId, portfolioId, actorUserId: session.user.id,
+          recordedAt: now
+        });
+        return { tenant, workspace, portfolio, revision: current.revision };
+      });
+      if (result.error) return jsonResponse({ error: result.error }, result.status);
+      return jsonResponse({
+        success: true,
+        revision: result.revision,
+        financialDataEnabled: false,
+        tenant: result.tenant,
+        workspace: result.workspace,
+        portfolio: result.portfolio,
+        membership: { role: "owner", capabilities: [...TENANT_ROLE_CAPABILITIES.owner] }
+      }, 201);
+    }
+
+    const route = pathname.match(/^\/api\/tenants\/([A-Za-z0-9_-]{8,80})\/memberships(?:\/(revoke))?$/);
+    if (!route) return jsonResponse({ error: "Not found." }, 404);
+    const tenantId = route[1];
+    const isRevoke = route[2] === "revoke";
+    const allowedKeys = isRevoke
+      ? new Set(["userId"])
+      : new Set(["userId", "role", "portfolioIds"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      return jsonResponse({ error: "Membership requests contain unsupported fields." }, 400);
+    }
+
+    const actorMembership = directory.memberships.find((item) =>
+      item.tenantId === tenantId && item.userId === session.user.id &&
+      item.status === "active" && item.role === "owner" &&
+      item.capabilities?.includes("tenant.members.manage")
+    );
+    if (!actorMembership) return jsonResponse({ error: "Tenant not found or membership management is not permitted." }, 404);
+
+    if (typeof body.userId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(body.userId) ||
+        body.userId === session.user.id) {
+      return jsonResponse({ error: "A different valid userId is required." }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const result = await this.ctx.storage.transaction(async (transaction) => {
+      const current = await transaction.get(TENANT_DIRECTORY_KEY);
+      if (!isTenantDirectoryRecord(current)) return { error: "Tenant directory is unavailable.", status: 503 };
+      if (current.revision !== directory.revision) return { error: "Tenant directory changed. Refresh and retry.", status: 409 };
+      const existing = current.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === body.userId
+      );
+
+      if (isRevoke) {
+        if (!existing || existing.status !== "active") return { error: "Membership not found.", status: 404 };
+        if (existing.role === "owner") return { error: "Owner transfer is a separate, gated operation.", status: 409 };
+        existing.status = "revoked";
+        existing.membershipVersion = Math.max(1, Number(existing.membershipVersion) || 0) + 1;
+        existing.updatedAt = now;
+        for (const grant of current.grants) {
+          if (grant.tenantId === tenantId && grant.userId === body.userId && grant.status === "active") {
+            grant.status = "revoked";
+            grant.updatedAt = now;
+          }
+        }
+        current.revision += 1;
+        current.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, current);
+        await transaction.put(tenantAuditKey(), {
+          version: 1, eventId: crypto.randomUUID(), type: "tenant_membership_revoked",
+          tenantId, targetUserId: body.userId, actorUserId: session.user.id,
+          recordedAt: now, membershipVersion: existing.membershipVersion
+        });
+        return { success: true, revision: current.revision, membershipVersion: existing.membershipVersion };
+      }
+
+      if (!["manager", "investor", "guest"].includes(body.role)) {
+        return { error: "Membership role must be manager, investor, or guest. Owner assignment is not supported here.", status: 400 };
+      }
+      if (!Array.isArray(body.portfolioIds) || body.portfolioIds.length < 1 ||
+          body.portfolioIds.length > 50 ||
+          body.portfolioIds.some((id) => typeof id !== "string") ||
+          new Set(body.portfolioIds).size !== body.portfolioIds.length) {
+        return { error: "Provide 1–50 unique portfolioIds.", status: 400 };
+      }
+      if (body.role === "guest" && body.portfolioIds.length !== 1) {
+        return { error: "Guest membership must be scoped to exactly one portfolio projection.", status: 400 };
+      }
+      const users = await transaction.get(AUTH_USERS_KEY) || [];
+      if (!Array.isArray(users) || !users.some((user) => user.id === body.userId)) {
+        return { error: "Target user not found.", status: 404 };
+      }
+      const tenant = current.tenants.find((item) => item.id === tenantId && item.status === "active");
+      if (!tenant) return { error: "Tenant not found.", status: 404 };
+      const portfolios = body.portfolioIds.map((id) => current.portfolios.find((portfolio) =>
+        portfolio.id === id && portfolio.tenantId === tenantId && portfolio.status === "active"
+      ));
+      if (portfolios.some((portfolio) => !portfolio)) {
+        return { error: "One or more portfolios are outside this tenant or unavailable.", status: 404 };
+      }
+      if (existing?.status === "active" && existing.role === "owner") {
+        return { error: "An owner cannot be replaced by a scoped membership.", status: 409 };
+      }
+
+      const membershipVersion = Math.max(0, Number(existing?.membershipVersion) || 0) + 1;
+      const capabilities = [...TENANT_ROLE_CAPABILITIES[body.role]];
+      const membership = {
+        tenantId, userId: body.userId, role: body.role, status: "active",
+        membershipVersion, capabilities,
+        createdAt: existing?.createdAt || now, createdBy: existing?.createdBy || session.user.id,
+        updatedAt: now
+      };
+      if (existing) Object.assign(existing, membership);
+      else current.memberships.push(membership);
+
+      for (const grant of current.grants) {
+        if (grant.tenantId === tenantId && grant.userId === body.userId && grant.status === "active") {
+          grant.status = "revoked";
+          grant.updatedAt = now;
+        }
+      }
+      for (const portfolio of portfolios) {
+        current.grants.push({
+          tenantId, portfolioId: portfolio.id, userId: body.userId,
+          scope: body.role === "guest" ? "projection" : "portfolio",
+          capabilities: body.role === "guest" ? ["portfolio.projection.read"] : capabilities.filter((capability) => capability.startsWith("portfolio.")),
+          status: "active", membershipVersion,
+          createdAt: now, createdBy: session.user.id
+        });
+      }
+      if (current.grants.length > TENANT_DIRECTORY_MAX_GRANTS ||
+          current.memberships.length > TENANT_DIRECTORY_MAX_MEMBERSHIPS) {
+        return { error: "Tenant directory capacity has been reached.", status: 409 };
+      }
+      current.revision += 1;
+      current.updatedAt = now;
+      await transaction.put(TENANT_DIRECTORY_KEY, current);
+      await transaction.put(tenantAuditKey(), {
+        version: 1, eventId: crypto.randomUUID(), type: "tenant_membership_granted",
+        tenantId, targetUserId: body.userId, role: body.role,
+        portfolioIds: [...body.portfolioIds], actorUserId: session.user.id,
+        recordedAt: now, membershipVersion
+      });
+      return {
+        success: true, revision: current.revision,
+        membership: { userId: body.userId, role: body.role, status: "active", membershipVersion, capabilities }
+      };
+    });
+    if (result.error) return jsonResponse({ error: result.error }, result.status);
+    return jsonResponse(result);
+  }
+
   async handleGuestPortfolio(request) {
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
@@ -2469,6 +2990,7 @@ export class PortfolioStateDO {
     }
     await this.clearRetiredTradeNetSession();
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
+    if (requestUrl.pathname === "/api/tenants" || requestUrl.pathname.startsWith("/api/tenants/")) return this.handleTenantDirectory(request);
     if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
 
     await this.ensureInitialized();

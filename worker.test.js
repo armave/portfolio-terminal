@@ -4116,6 +4116,305 @@ describe('Durable Object guest portfolio ownership', () => {
 });
 
 
+
+describe('Durable Object tenant directory ownership foundation', () => {
+  async function makeTenantStore() {
+    const values = new Map();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
+      list: async ({ prefix = "", limit = Number.POSITIVE_INFINITY, startAfter } = {}) =>
+        new Map([...values.entries()]
+          .filter(([key]) => key.startsWith(prefix) && (typeof startAfter !== "string" || key > startAfter))
+          .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+          .slice(0, limit)),
+      transaction: async (callback) => callback({
+        get: async (key) => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
+      })
+    };
+    const users = [
+      { id: 'admin-1', name: 'Admin', role: 'admin', createdAt: '2026-11-01T00:00:00.000Z' },
+      { id: 'guest-1', name: 'Guest One', role: 'guest', createdAt: '2026-11-02T00:00:00.000Z' },
+      { id: 'guest-2', name: 'Guest Two', role: 'guest', createdAt: '2026-11-03T00:00:00.000Z' }
+    ];
+    values.set('auth:users', users);
+    values.set('auth:cloud-encryption-key', 'legacy-workspace-key');
+    const issueSession = async (token, userId) => {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+      const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      const issuedAt = Date.now();
+      values.set('auth:session:' + hex, {
+        userId, issuedAt, expiresAt: issuedAt + 60_000
+      });
+    };
+    await issueSession('tenant-admin-token', 'admin-1');
+    await issueSession('tenant-guest-one-token', 'guest-1');
+    await issueSession('tenant-guest-two-token', 'guest-2');
+    return { store: new PortfolioStateDO({ storage }, {}), values };
+  }
+
+  const headers = (token) => ({
+    'Content-Type': 'application/json',
+    'X-App-Auth': token,
+    Authorization: 'Bearer ' + token
+  });
+
+  it('lazily maps the current shared admin workspace and read-only guest projections into a legacy tenant', async () => {
+    const { store, values } = await makeTenantStore();
+    const ownerResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(ownerResponse.status).toBe(200);
+    const ownerView = await ownerResponse.json();
+    expect(ownerView).toMatchObject({
+      version: 1,
+      mode: 'directory-metadata-only',
+      financialDataEnabled: false,
+      tenants: [{
+        tenant: { id: 'legacy-tenant-v1', legacy: undefined },
+        membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) },
+        portfolios: [{ id: 'legacy-portfolio-v1', access: 'owner' }]
+      }]
+    });
+
+    const guestResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-one-token')
+    }));
+    expect(guestResponse.status).toBe(200);
+    const guestView = await guestResponse.json();
+    expect(guestView.tenants).toHaveLength(1);
+    expect(guestView.tenants[0]).toMatchObject({
+      tenant: { id: 'legacy-tenant-v1' },
+      membership: { role: 'guest', capabilities: ['portfolio.projection.read'] },
+      portfolios: [{ id: 'legacy-portfolio-v1', access: 'projection', capabilities: ['portfolio.projection.read'] }]
+    });
+    expect(JSON.stringify(guestView)).not.toContain('guest-2');
+    expect(values.get('tenant:directory:v1').memberships).toHaveLength(3);
+    expect([...values.keys()].some((key) => key.startsWith('tenant:audit:v1:'))).toBe(true);
+  });
+
+  it('creates a tenant, workspace and portfolio with explicit creator ownership and audit metadata only', async () => {
+    const { store, values } = await makeTenantStore();
+    const response = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({
+        name: 'Family Investments',
+        workspaceName: 'Family Workspace',
+        portfolioName: 'Long-term Portfolio'
+      })
+    }));
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      success: true,
+      financialDataEnabled: false,
+      tenant: { name: 'Family Investments', status: 'active' },
+      workspace: { name: 'Family Workspace' },
+      portfolio: { name: 'Long-term Portfolio' },
+      membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) }
+    });
+    const directory = values.get('tenant:directory:v1');
+    expect(directory.tenants).toHaveLength(2);
+    expect(directory.memberships.find((item) => item.tenantId === body.tenant.id)).toMatchObject({
+      userId: 'admin-1', role: 'owner', status: 'active'
+    });
+    expect(values.get('tenant:audit:v1:' + Object.keys(Object.fromEntries(values)).filter((key) => key.startsWith('tenant:audit:v1:')).slice(-1)[0]?.split(':').slice(3).join(':'))).toBeUndefined();
+    expect(directory).not.toHaveProperty('portfolioStates');
+    expect(directory).not.toHaveProperty('encryptedPayload');
+    expect(values.has('record')).toBe(false);
+    expect(values.has('historyRecord')).toBe(false);
+  });
+
+  it('grants scoped investor/manager reads and a guest projection-only grant', async () => {
+    const { store } = await makeTenantStore();
+    const create = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Research', workspaceName: 'Research workspace', portfolioName: 'Core book' })
+    }));
+    const { tenant, portfolio } = await create.json();
+
+    const investor = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [portfolio.id] })
+    }));
+    expect(investor.status).toBe(200);
+    const investorBody = await investor.json();
+    expect(investorBody.membership.capabilities).toContain('portfolio.performance.read');
+    expect(investorBody.membership.capabilities).not.toContain('portfolio.transactions.write');
+
+    const guest = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-1', role: 'guest', portfolioIds: [portfolio.id] })
+    }));
+    expect(guest.status).toBe(200);
+    const guestBody = await guest.json();
+    expect(guestBody.membership.capabilities).toEqual(['portfolio.projection.read']);
+
+    const guestView = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-one-token')
+    }));
+    const visible = await guestView.json();
+    const newTenantView = visible.tenants.find((item) => item.tenant.id === tenant.id);
+    expect(newTenantView.portfolios).toEqual([expect.objectContaining({
+      id: portfolio.id,
+      access: 'projection',
+      capabilities: ['portfolio.projection.read']
+    })]);
+  });
+
+  it('revokes a scoped membership immediately and retains an auditable revoked record', async () => {
+    const { store, values } = await makeTenantStore();
+    const create = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Private Book' })
+    }));
+    const { tenant, portfolio } = await create.json();
+    const grant = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'manager', portfolioIds: [portfolio.id] })
+    }));
+    expect(grant.status).toBe(200);
+
+    const before = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-two-token')
+    }));
+    expect((await before.json()).tenants.some((item) => item.tenant.id === tenant.id)).toBe(true);
+
+    const revoke = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships/revoke', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2' })
+    }));
+    expect(revoke.status).toBe(200);
+    const after = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-two-token')
+    }));
+    expect((await after.json()).tenants.some((item) => item.tenant.id === tenant.id)).toBe(false);
+    const directory = values.get('tenant:directory:v1');
+    expect(directory.memberships.find((item) => item.tenantId === tenant.id && item.userId === 'guest-2').status).toBe('revoked');
+    expect(directory.grants.find((item) => item.tenantId === tenant.id && item.userId === 'guest-2').status).toBe('revoked');
+  });
+
+  it('rejects cross-tenant management, owner self-assignment, forged capabilities and non-owner mutation', async () => {
+    const { store } = await makeTenantStore();
+    const first = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'First tenant' })
+    }));
+    const firstBody = await first.json();
+    const second = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Second tenant' })
+    }));
+    const secondBody = await second.json();
+
+    const forged = await store.fetch(new Request('https://store.test/api/tenants/' + secondBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-guest-one-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [secondBody.portfolio.id] })
+    }));
+    expect(forged.status).toBe(404);
+
+    const selfElevation = await store.fetch(new Request('https://store.test/api/tenants/' + firstBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'owner', portfolioIds: [firstBody.portfolio.id] })
+    }));
+    expect(selfElevation.status).toBe(400);
+
+    const forgedCapabilities = await store.fetch(new Request('https://store.test/api/tenants/' + firstBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [firstBody.portfolio.id], capabilities: ['portfolio.transactions.write'] })
+    }));
+    expect(forgedCapabilities.status).toBe(400);
+  });
+
+  it('fails closed for missing, invalid or expired authentication and malformed stored directory records', async () => {
+    const { store, values } = await makeTenantStore();
+    const unauthorized = await store.fetch(new Request('https://store.test/api/tenants'));
+    expect(unauthorized.status).toBe(401);
+
+    values.set('tenant:directory:v1', { version: 1, tenants: [], memberships: [] });
+    const invalid = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(invalid.status).toBe(503);
+    expect(values.get('tenant:directory:v1')).toMatchObject({ version: 1, tenants: [], memberships: [] });
+  });
+});
+
+describe('tenant directory Worker routing', () => {
+  it('routes authenticated guest directory reads to the identity Durable Object', async () => {
+    const calls = [];
+    const stub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        calls.push({ path: url.pathname, authorization: request.headers.get('Authorization') });
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), { status: 200 });
+        }
+        if (url.pathname === '/api/tenants') {
+          return new Response(JSON.stringify({
+            version: 1, mode: 'directory-metadata-only', financialDataEnabled: false, tenants: []
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Not found.' }), { status: 404 });
+      })
+    };
+    const binding = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stub)
+    };
+    const response = await worker.fetch(new Request('https://worker.test/api/tenants', {
+      headers: { 'X-App-Auth': 'guest-token' }
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ mode: 'directory-metadata-only', financialDataEnabled: false });
+    expect(binding.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(calls.map((call) => call.path)).toEqual(['/api/auth/verify', '/api/tenants']);
+  });
+
+  it('delegates tenant membership writes to scoped DO authorization but keeps shared portfolio writes guest-blocked', async () => {
+    const calls = [];
+    const stub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        calls.push(url.pathname);
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Tenant not found or membership management is not permitted.' }), { status: 404 });
+      })
+    };
+    const binding = { idFromName: vi.fn((name) => name), get: vi.fn(() => stub) };
+    const body = JSON.stringify({ userId: 'guest-2' });
+    const delegated = await worker.fetch(new Request('https://worker.test/api/tenants/tenant-id-123456/memberships/revoke', {
+      method: 'POST',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(delegated.status).toBe(404);
+    expect(calls).toEqual(['/api/auth/verify', '/api/tenants/tenant-id-123456/memberships/revoke']);
+
+    calls.length = 0;
+    const legacyWrite = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body: '{}'
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(legacyWrite.status).toBe(403);
+    expect(calls).toEqual(['/api/auth/verify']);
+  });
+});
+
+
 describe('retired TradeNet session cleanup', () => {
   it('deletes the stored Market Depth SID once and records the migration', async () => {
     const values = new Map([['freedom:tradenet-session', {

@@ -1569,14 +1569,18 @@ export default {
         if (gatewayAdmin && !accountRole) accountRole = "admin";
         if (gatewayAdmin && !accountId) accountId = "legacy-admin";
         if (!gatewayAdmin && !accountRole) return jsonError("Unauthorized gateway access.", 401, corsHeaders);
-        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin) {
+        // Tenant-directory writes are separately authorized by the Durable Object
+        // against the caller's stored tenant-owner membership. Do not treat the
+        // current global admin/guest role as tenant authorization.
+        const url = new URL(request.url);
+        const action = url.searchParams.get("action");
+        const pathname = url.pathname;
+        const tenantDirectoryRoute = /^\\/api\\/tenants(?:\\/|$)/.test(pathname);
+        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin && !tenantDirectoryRoute) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
         // Parse and validate the request contract before reading any POST body.
         // Authenticated but invalid requests should not consume the body budget.
-        const url = new URL(request.url);
-        const action = url.searchParams.get("action");
-        const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
         if (accountRole === "guest") {
@@ -2241,15 +2245,18 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
+            const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
+            if (tenantDirectoryPath || pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,
                         headers: corsHeaders
                     });
                 }
-                // The app intentionally has one shared personal portfolio across the owner's
-                // devices. Do not change this identity to a client-controlled value.
+                // Tenant directory metadata remains in the authenticated identity/legacy DO.
+                // Financial tenant data is not routed here; do not derive any DO ID from
+                // untrusted tenant/workspace/portfolio identifiers.
+                // The legacy portfolio remains on its fixed canonical identity.
                 const id = env.PORTFOLIO_STATE_DO.idFromName("portfolio_state");
                 const stub = env.PORTFOLIO_STATE_DO.get(id);
                 const stateResponse = await stub.fetch(new Request(request.url, {
