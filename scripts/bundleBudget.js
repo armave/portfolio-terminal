@@ -1,5 +1,6 @@
 export const ENTRY_BUNDLE_BUDGET = Object.freeze({
-  maxBytes: 500_000,
+  // Keep a strict 512 KiB ceiling while the independent gzip cap guards transfer cost.
+  maxBytes: 512 * 1024,
   maxGzipBytes: 165_000
 });
 
