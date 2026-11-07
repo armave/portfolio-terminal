@@ -34,6 +34,7 @@ function selectTradesPortfolioState(state: PortfolioState) {
   return {
     brokerExecutedTrades: state.brokerExecutedTrades,
     cashflows: state.cashflows,
+    transactionEvents: state.transactionEvents,
     closedTrades: state.closedTrades,
     activeTrancheTypes: state.activeTrancheTypes,
     activeTrancheMixes: state.activeTrancheMixes,
@@ -49,6 +50,7 @@ function areTradesPortfolioStatesEqual(
 ): boolean {
   return previous.brokerExecutedTrades === next.brokerExecutedTrades &&
     previous.cashflows === next.cashflows &&
+    previous.transactionEvents === next.transactionEvents &&
     previous.closedTrades === next.closedTrades &&
     previous.activeTrancheTypes === next.activeTrancheTypes &&
     previous.activeTrancheMixes === next.activeTrancheMixes &&
@@ -79,6 +81,17 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const brokerTradesRefreshing = brokerExecutionHistory.status === 'refreshing';
   const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
     brokerExecutionHistory.status === 'error';
+  const [brokerReconciliationOpen, setBrokerReconciliationOpen] = useState(false);
+  const [BrokerReconciliationView, setBrokerReconciliationView] = useState<
+    typeof import('./BrokerTransactionReconciliation').BrokerTransactionReconciliation | null
+  >(null);
+  const openBrokerReconciliation = async () => {
+    setBrokerReconciliationOpen(true);
+    if (BrokerReconciliationView) return;
+    void import('./BrokerTransactionReconciliation')
+      .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
+      .catch(() => setBrokerReconciliationOpen(false));
+  };
   // Keep the first cached range for both API requests. The broker trade refresh
   // may return newer sells before the cashflow request starts; that must not move
   // the cashflow cursor forward and skip fees for those newly fetched trades.
@@ -748,6 +761,34 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
             {trades.length} records
           </div>
         </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
+        <button
+          type="button"
+          class="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
+          aria-expanded={brokerReconciliationOpen}
+          onClick={() => brokerReconciliationOpen
+            ? setBrokerReconciliationOpen(false)
+            : void openBrokerReconciliation()}
+        >
+          <span>{getAppLanguage() === 'ru' ? 'Сверить активность брокера' : 'Reconcile broker activity'}</span>
+          <span class="text-xs text-slate-400">
+            {getAppLanguage() === 'ru' ? (brokerReconciliationOpen ? 'Скрыть сверку' : 'Открыть сверку') : (brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation')}
+          </span>
+        </button>
+        {brokerReconciliationOpen && BrokerReconciliationView && (
+          <div class="mt-3">
+            <BrokerReconciliationView
+              executions={brokerTrades}
+              cashflows={(state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} }))}
+              appEvents={state.transactionEvents || []}
+              executionStatus={brokerTradesLoading || brokerTradesError ? 'partial' : 'complete'}
+              cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
+              appHistoryStatus="partial"
+            />
+          </div>
+        )}
       </div>
 
       {cloudHistoryWarning && (
