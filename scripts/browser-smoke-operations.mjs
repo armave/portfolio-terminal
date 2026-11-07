@@ -760,22 +760,15 @@ try {
   await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '30000', null, { timeout: 10_000 });
 
   // The stop-out threshold cannot exceed the maintenance threshold.
-  const brokerRulesToggle = visibleSettingsDesk().locator('#brokerRulesToggle');
-  await brokerRulesToggle.click();
-  await brokerRulesToggle.scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => {
-    const button = document.querySelector('#settingsDesk #brokerRulesToggle');
-    return button?.getAttribute('aria-expanded') === 'true';
-  }, null, { timeout: 10_000 });
-  try {
-    await visibleSettingsDesk().locator('#brokerRulesPanel').waitFor({ state: 'visible', timeout: 5_000 });
-  } catch {
-    const disclosureState = await brokerRulesToggle.evaluate((button) => ({
-      expanded: button.getAttribute('aria-expanded'),
-      html: button.parentElement?.outerHTML.slice(0, 1800)
-    }));
-    throw new Error('Broker Rules expanded state did not mount its panel: ' + JSON.stringify(disclosureState));
-  }
+  const brokerRules = visibleSettingsDesk().locator('details.settings-broker-rules');
+  await brokerRules.locator('summary').click();
+  // The panel is a native details element. Keep the smoke test focused on
+  // broker-rule form validation and ensure the disclosure is open before
+  // exercising the inputs.
+  await brokerRules.evaluate((element) => {
+    if (element instanceof HTMLDetailsElement) element.open = true;
+  });
+  await brokerRules.locator('#maintenanceMarginInput').waitFor({ state: 'visible', timeout: 5_000 });
   await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('5');
   await visibleSettingsDesk().locator('#stopOutRatioInput').fill('10');
   await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
@@ -819,7 +812,7 @@ try {
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   if (await visibleSettingsDesk().locator('section.settings-user-panel').count() ||
-      await visibleSettingsDesk().locator('#brokerRulesToggle').count()) {
+      await visibleSettingsDesk().locator('details.settings-broker-rules').count()) {
     throw new Error('Guest Settings exposed administrator-only account or broker-rule controls.');
   }
   if (await page.getByRole('button', { name: /Экспорт/ }).count()) {

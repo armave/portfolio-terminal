@@ -79,18 +79,4 @@ describe('multi-portfolio ownership Settings surface', () => {
 });
 
 
-describe('broker rules disclosure state', () => {
-  it('uses an explicit accessible toggle and preserves its expanded state across input rerenders', () => {
-    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
-    expect(source).toContain('id="brokerRulesToggle"');
-    expect(source).toContain('aria-expanded={brokerRulesOpen}');
-    expect(source).toContain('aria-controls="brokerRulesPanel"');
-    expect(source).toContain('onPointerDown={() => setBrokerRulesOpen(true)}');
-    expect(source).toContain('onClick={() => setBrokerRulesOpen(true)}');
-    expect(source).toContain("if (event.key === 'Enter' || event.key === ' ') setBrokerRulesOpen(true);");
-    expect(source).toContain('onClick={() => setBrokerRulesOpen(false)}');
-    expect(source).toContain('{brokerRulesOpen && <div id="brokerRulesPanel" role="region"');
-    expect(source).toContain('value={ruleValues.annualRate}');
-  });
-});
+

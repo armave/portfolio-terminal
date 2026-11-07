@@ -77,7 +77,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
-  const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
@@ -400,27 +399,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </div>
       )}
 
-      {permissions.canEditBrokerRules && <section class="settings-panel settings-broker-rules space-y-3">
-        <button
-          id="brokerRulesToggle"
-          type="button"
-          aria-expanded={brokerRulesOpen}
-          aria-controls="brokerRulesPanel"
-          onPointerDown={() => setBrokerRulesOpen(true)}
-          onClick={() => setBrokerRulesOpen(true)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') setBrokerRulesOpen(true);
-          }}
-          class="w-full cursor-pointer text-center text-xs font-bold text-slate-300 hover:text-cyan-300"
-        >
+      {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
+        <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
-        </button>
-        {brokerRulesOpen && <div id="brokerRulesPanel" role="region" aria-labelledby="brokerRulesToggle" class="mt-3">
-          <div class="mb-2 flex justify-end">
-            <button type="button" onClick={() => setBrokerRulesOpen(false)} class="text-[10px] text-slate-400 hover:text-cyan-300">
-              Hide broker rules
-            </button>
-          </div>
+        </summary>
+        <div class="mt-3">
           <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
@@ -565,8 +548,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               </span>
             </div>
           </form>
-        </div>}
-      </section>}
+        </div>
+      </details>}
 
       <PortfolioMethodologyPanel />
     </div>
