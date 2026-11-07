@@ -2770,6 +2770,30 @@ describe('portfolio transaction journal integration', () => {
   });
 
 
+  it('records explicit actor and source for manual and confirmed cash/debt adjustments', () => {
+    const store = new PortfolioStore();
+    expect(store.setCashBalance(250)).toBe(true);
+    expect(store.setMarginDebt(50, {
+      actor: { type: 'ai' },
+      source: 'ai-confirmed',
+      idempotencyKey: 'ai-margin-adjustment-01'
+    })).toBe(true);
+    expect(store.setFreeCash(75)).toBe(true);
+
+    const events = store.getState().transactionEvents || [];
+    expect(events.filter((event) => event.type === 'cash.adjustment')).toMatchObject([
+      { actor: { type: 'user' }, source: 'manual-cash-adjustment', cashDelta: 250 },
+      { actor: { type: 'user' }, source: 'manual-cash-adjustment', cashDelta: -175 }
+    ]);
+    expect(events.find((event) => event.type === 'margin.adjustment')).toMatchObject({
+      actor: { type: 'ai' },
+      source: 'ai-confirmed',
+      marginDebtDelta: 50,
+      idempotencyKey: 'ai-margin-adjustment-01'
+    });
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+  });
+
   it('journals imported broker executions and cashflows without posting them twice, then reconciles canonical baselines', () => {
     const store = new PortfolioStore();
     const execution = {
