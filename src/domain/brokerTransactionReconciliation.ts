@@ -99,7 +99,7 @@ function currency(value: unknown): string {
   return text(value).toUpperCase();
 }
 function ticker(value: unknown): string {
-  return text(value).toUpperCase().replace(/\\.US$/i, '');
+  return text(value).toUpperCase().replace(/\.US$/i, '');
 }
 function number(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -503,8 +503,41 @@ export function reconcileBrokerActivity(
       }, confidence));
       continue;
     }
+    const amountMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
+      .map(candidate => ({
+        ...candidate,
+        appAmount: eventAmount(candidate.event),
+        timeDelta: Math.abs(candidate.event.effectiveAt - (broker.at ?? candidate.event.effectiveAt))
+      }))
+      .filter(candidate => candidate.event.type === broker.type &&
+        (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+        candidate.appAmount !== null &&
+        Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) > amountTolerance &&
+        candidate.timeDelta <= maxTimingDifference)
+      .sort((a, b) => a.timeDelta - b.timeDelta)[0];
+    if (amountMismatch) {
+      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
+      unmatchedCashflowApp.delete(amountMismatch.index);
+      findings.push(makeFinding({
+        id: `cashflow-amount:${broker.id}:${amountMismatch.event.id}`,
+        type: 'cashflow_amount_mismatch',
+        subject: broker.type,
+        currency: broker.currency || undefined,
+        brokerValue: broker.amount,
+        appValue: amountMismatch.appAmount,
+        difference: broker.amount - (amountMismatch.appAmount ?? 0),
+        brokerReferences: [broker.id],
+        appEventIds: [amountMismatch.event.id],
+        brokerAt: broker.at ?? undefined,
+        appAt: amountMismatch.event.effectiveAt,
+        explanation: 'The broker and app cashflow amounts differ; no balance adjustment was made.'
+      }, confidence));
+      continue;
+    }
     const currencyMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
-      .find(({ event }) => event.type === broker.type && Math.abs(Math.abs(eventAmount(event) ?? 0) - Math.abs(broker.amount)) <= amountTolerance &&
+      .find(({ event }) => event.type === broker.type &&
+        Math.abs(Math.abs(eventAmount(event) ?? 0) - Math.abs(broker.amount)) <= amountTolerance &&
+        Boolean(currency(event.currency)) && Boolean(broker.currency) &&
         currency(event.currency) !== broker.currency);
     if (currencyMismatch) {
       unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
