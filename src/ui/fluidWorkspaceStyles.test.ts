@@ -132,6 +132,8 @@ describe('Margin desk localization', () => {
       'Portfolio workspace',
       'Portfolio summary metrics',
       'Market insights',
+      'Preparing portfolio metrics',
+      'Loading portfolio metrics…',
       'Portfolio projection by date',
       'Projected portfolio net value, fees and commissions, margin fee, and balance by date.',
       'Date',
