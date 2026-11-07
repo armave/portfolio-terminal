@@ -74,8 +74,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     (rules.stopOutRatio * 100).toFixed(2) + '% stop-out equity. Not a live broker risk indicator.';
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
-  const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
-  const stopOutBuffer = Number.isFinite(risk.stopOutBufferPct) ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
   return (
     <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity" title={marginRiskTitle}>
       <div class="margin-risk-gauge-heading">
