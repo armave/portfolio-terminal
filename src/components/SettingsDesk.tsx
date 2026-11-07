@@ -406,7 +406,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           type="button"
           aria-expanded={brokerRulesOpen}
           aria-controls="brokerRulesPanel"
-          onClick={() => setBrokerRulesOpen((current) => !current)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setBrokerRulesOpen((current) => !current);
+          }}
           class="w-full cursor-pointer text-center text-xs font-bold text-slate-300 hover:text-cyan-300"
         >
           Broker Rules

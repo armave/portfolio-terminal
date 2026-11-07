@@ -86,7 +86,8 @@ describe('broker rules disclosure state', () => {
     expect(source).toContain('id="brokerRulesToggle"');
     expect(source).toContain('aria-expanded={brokerRulesOpen}');
     expect(source).toContain('aria-controls="brokerRulesPanel"');
-    expect(source).toContain('onClick={() => setBrokerRulesOpen((current) => !current)}');
+    expect(source).toContain('event.stopPropagation();');
+    expect(source).toContain('setBrokerRulesOpen((current) => !current)');
     expect(source).toContain('{brokerRulesOpen && <div id="brokerRulesPanel" role="region"');
     expect(source).toContain('value={ruleValues.annualRate}');
   });

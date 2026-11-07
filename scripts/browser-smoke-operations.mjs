@@ -762,9 +762,18 @@ try {
   // The stop-out threshold cannot exceed the maintenance threshold.
   const brokerRulesToggle = visibleSettingsDesk().locator('#brokerRulesToggle');
   await brokerRulesToggle.click();
-  await visibleSettingsDesk().locator('#brokerRulesPanel').waitFor({ state: 'visible', timeout: 5_000 });
-  if (await brokerRulesToggle.getAttribute('aria-expanded') !== 'true') {
-    throw new Error('Broker Rules disclosure did not report its expanded state.');
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk #brokerRulesToggle');
+    return button?.getAttribute('aria-expanded') === 'true';
+  }, null, { timeout: 5_000 });
+  try {
+    await visibleSettingsDesk().locator('#brokerRulesPanel').waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    const disclosureState = await brokerRulesToggle.evaluate((button) => ({
+      expanded: button.getAttribute('aria-expanded'),
+      html: button.parentElement?.outerHTML.slice(0, 1800)
+    }));
+    throw new Error('Broker Rules expanded state did not mount its panel: ' + JSON.stringify(disclosureState));
   }
   await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('5');
   await visibleSettingsDesk().locator('#stopOutRatioInput').fill('10');
