@@ -93,12 +93,12 @@ function TenantCard({
       <div class="grid gap-2 sm:grid-cols-2">
         <div class="rounded bg-slate-950/60 p-2">
           <div class="text-[10px] uppercase tracking-wide text-slate-500">{label('Workspace')}</div>
-          <div class="mt-1 text-xs text-slate-200">{tenant.workspaces.map((item) => item.name).join(', ') || '—'}</div>
+          <div class="mt-1 text-xs text-slate-200">{(tenant.workspaces || []).map((item) => item.name).join(', ') || '—'}</div>
         </div>
         <div class="rounded bg-slate-950/60 p-2">
           <div class="text-[10px] uppercase tracking-wide text-slate-500">{label('Portfolios')}</div>
           <div class="mt-1 space-y-1">
-            {tenant.portfolios.map((portfolio) => (
+            {(tenant.portfolios || []).map((portfolio) => (
               <div key={portfolio.id} class="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-200">
                 <span>{portfolio.name}</span>
                 {(portfolio.access === 'projection' || portfolio.capabilities.includes('portfolio.projection.read')) && (
@@ -106,7 +106,7 @@ function TenantCard({
                 )}
               </div>
             ))}
-            {tenant.portfolios.length === 0 && <span class="text-xs text-slate-500">—</span>}
+            {(tenant.portfolios || []).length === 0 && <span class="text-xs text-slate-500">—</span>}
           </div>
         </div>
       </div>
@@ -291,7 +291,7 @@ export function TenantDirectoryPanel({ currentUser }: TenantDirectoryPanelProps)
         <p class="text-xs text-slate-400">{label('No tenant memberships are available for this account.')}</p>
       )}
 
-      {directory?.tenants.map((tenant) => (
+      {(directory?.tenants || []).map((tenant) => (
         <TenantCard
           key={tenant.tenant.id}
           tenant={tenant}

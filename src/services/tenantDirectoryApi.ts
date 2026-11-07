@@ -49,6 +49,43 @@ export interface TenantDirectoryGrantedMembership {
   capabilities: string[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Validate the runtime response before a typed value reaches the Settings UI. */
+export function isTenantDirectoryResponse(value: unknown): value is TenantDirectoryResponse {
+  if (!isRecord(value) || value.version !== 1 ||
+      !Number.isSafeInteger(value.revision) || (value.revision as number) < 0 ||
+      value.mode !== 'directory-metadata-only' || value.financialDataEnabled !== false ||
+      !Array.isArray(value.tenants)) return false;
+
+  return value.tenants.every((item) => {
+    if (!isRecord(item) || !isRecord(item.tenant) || !isRecord(item.membership) ||
+        !Array.isArray(item.workspaces) || !Array.isArray(item.portfolios)) return false;
+    if (typeof item.tenant.id !== 'string' || typeof item.tenant.name !== 'string' ||
+        !['active', 'suspended'].includes(String(item.tenant.status))) return false;
+    if (!['owner', 'manager', 'investor', 'guest'].includes(String(item.membership.role)) ||
+        item.membership.status !== 'active' || !Array.isArray(item.membership.capabilities)) return false;
+    if (!item.workspaces.every((workspace) => isRecord(workspace) &&
+        typeof workspace.id === 'string' && typeof workspace.name === 'string' &&
+        typeof workspace.status === 'string')) return false;
+    if (!item.portfolios.every((portfolio) => isRecord(portfolio) &&
+        typeof portfolio.id === 'string' && typeof portfolio.workspaceId === 'string' &&
+        typeof portfolio.name === 'string' && typeof portfolio.status === 'string' &&
+        ['owner', 'portfolio', 'projection'].includes(String(portfolio.access)) &&
+        Array.isArray(portfolio.capabilities))) return false;
+    if (item.memberships !== undefined && !Array.isArray(item.memberships)) return false;
+    return item.memberships === undefined || item.memberships.every((member) =>
+      isRecord(member) && typeof member.userId === 'string' &&
+      ['owner', 'manager', 'investor', 'guest'].includes(String(member.role)) &&
+      ['active', 'revoked'].includes(String(member.status)) &&
+      Array.isArray(member.portfolioIds)
+    );
+  });
+}
+
+
 function getTenantDirectorySessionToken(): string {
   const token = getGatewaySecret().trim();
   if (!token) throw new Error('A signed-in account is required to access portfolio ownership.');
@@ -82,8 +119,12 @@ async function tenantDirectoryRequest<T>(path: string, body?: Record<string, unk
   );
 }
 
-export function getTenantDirectory(): Promise<TenantDirectoryResponse> {
-  return tenantDirectoryRequest<TenantDirectoryResponse>('/api/tenants');
+export async function getTenantDirectory(): Promise<TenantDirectoryResponse> {
+  const payload = await tenantDirectoryRequest<unknown>('/api/tenants');
+  if (!isTenantDirectoryResponse(payload)) {
+    throw new Error('The tenant directory response is malformed or incomplete.');
+  }
+  return payload;
 }
 
 export function createTenantDirectory(input: {

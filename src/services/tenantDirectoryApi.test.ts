@@ -113,4 +113,19 @@ describe('tenant directory authenticated transport', () => {
       tenantId: 'tenant-123', userId: 'guest-1', role: 'guest', portfolioIds: ['portfolio-456']
     })).rejects.toThrow('Tenant not found or membership management is not permitted.');
   });
+  it('rejects malformed directory payloads before they reach the Settings view', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      version: 1,
+      revision: 1,
+      mode: 'directory-metadata-only',
+      financialDataEnabled: false,
+      tenants: [{ tenant: { id: 'tenant-1', name: 'Broken', status: 'active' }, portfolios: [] }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getTenantDirectory()).rejects.toThrow(
+      'The tenant directory response is malformed or incomplete.'
+    );
+  });
+
 });
