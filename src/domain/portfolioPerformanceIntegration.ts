@@ -15,11 +15,24 @@ import {
   type PerformanceIncomeCostSummary
 } from './portfolioPerformance';
 import { isPortfolioPerformanceValuationSnapshot } from './portfolioPerformanceCapture';
-import type {
-  PortfolioPerformanceValuationSnapshot,
-  PortfolioState
-} from '../types/portfolio';
+import type { PortfolioState } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
+
+const CASH_ITEM_KEY = 'cash';
+const MARGIN_DEBT_ITEM_KEY = 'margin-debt';
+
+function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function currencyCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : null;
+}
+
 
 export interface PortfolioPerformanceReport {
   status: 'available' | 'provisional' | 'unavailable';
