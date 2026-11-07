@@ -54,7 +54,9 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Partial provider coverage': 'Неполные данные провайдера',
   'Events unavailable': 'События недоступны',
   'No earnings events in this period.': 'Нет событий отчётности за этот период.',
+  'Earnings unavailable': 'Данные об отчётности недоступны',
   'No dividend events in this period.': 'Нет дивидендных событий за этот период.',
+  'Dividends unavailable': 'Данные о дивидендах недоступны',
   'Daily history unavailable': 'Дневная история недоступна',
   'No historical prices loaded.': 'Исторические цены не загружены.',
   'Observed time unavailable': 'Время наблюдения недоступно',
@@ -89,6 +91,30 @@ function marketEventTimingLabel(value: string): string {
     case 'during_market': return marketEventLabel('During market');
     default: return marketEventLabel('Timing unavailable');
   }
+}
+
+/** Selects events closest to today, then returns them in chronological display order. */
+export function getClosestDatedMarketEvents<T>(
+  events: readonly T[],
+  getDate: (event: T) => string,
+  now = Date.now(),
+  limit = 5
+): T[] {
+  const today = new Date(now);
+  const todayAtUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const ranked = events.flatMap((event, index) => {
+    const value = getDate(event);
+    const parsed = typeof value === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+      ? Date.parse(value + 'T00:00:00.000Z')
+      : Number.NaN;
+    return Number.isFinite(parsed)
+      ? [{ event, index, date: parsed, distance: Math.abs(parsed - todayAtUtc) }]
+      : [];
+  }).sort((a, b) => a.distance - b.distance || a.date - b.date || a.index - b.index);
+
+  return ranked.slice(0, Math.max(0, Math.floor(limit)))
+    .sort((a, b) => a.date - b.date || a.index - b.index)
+    .map(item => item.event);
 }
 
 const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
@@ -661,10 +687,12 @@ function MarketInsightsPanelView() {
       const currentHistory = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
       const historyLoading = marketHistoryState.ticker === ticker && marketHistoryState.loading;
       const historyError = marketHistoryState.ticker === ticker ? marketHistoryState.error : null;
-      const upcomingEarnings = [...(currentEvents?.earnings ?? [])]
-        .sort((a, b) => a.eventDate.localeCompare(b.eventDate)).slice(0, 5);
-      const upcomingDividends = [...(currentEvents?.dividends ?? [])]
-        .sort((a, b) => a.exDate.localeCompare(b.exDate)).slice(0, 5);
+      const upcomingEarnings = getClosestDatedMarketEvents(
+        currentEvents?.earnings ?? [], event => event.eventDate
+      );
+      const upcomingDividends = getClosestDatedMarketEvents(
+        currentEvents?.dividends ?? [], event => event.exDate
+      );
       const latestHistory = currentHistory?.points.slice(-5).reverse() ?? [];
 
       return (
@@ -689,7 +717,9 @@ function MarketInsightsPanelView() {
             <div class="space-y-2">
               <div>
                 <h5 class="mb-1 text-[10px] font-semibold text-slate-300">{marketEventLabel('Earnings')}</h5>
-                {upcomingEarnings.length ? upcomingEarnings.map(event => (
+                {currentEvents?.earningsAvailable === false ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('Earnings unavailable')}</p>
+                ) : upcomingEarnings.length ? upcomingEarnings.map(event => (
                   <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-1.5 last:border-0">
                     <div>
                       <span class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.eventDate)}</span>
@@ -700,13 +730,15 @@ function MarketInsightsPanelView() {
                       {' · '}{marketEventLabel('Actual')}: {event.epsActual ?? '—'}
                     </div>
                   </div>
-                )) : !eventsLoading && (
+                )) : currentEvents?.earningsAvailable === true && !eventsLoading ? (
                   <p class="text-[10px] text-slate-500">{marketEventLabel('No earnings events in this period.')}</p>
-                )}
+                ) : null}
               </div>
               <div>
                 <h5 class="mb-1 text-[10px] font-semibold text-slate-300">{marketEventLabel('Dividends')}</h5>
-                {upcomingDividends.length ? upcomingDividends.map(event => (
+                {currentEvents?.dividendsAvailable === false ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('Dividends unavailable')}</p>
+                ) : upcomingDividends.length ? upcomingDividends.map(event => (
                   <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-1.5 last:border-0">
                     <span class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.exDate)}</span>
                     <span class="text-[10px] text-slate-400">
@@ -715,9 +747,9 @@ function MarketInsightsPanelView() {
                         : event.amount + (event.currency ? ' ' + event.currency : ' (' + marketEventLabel('Currency unknown; no conversion applied.') + ')')}
                     </span>
                   </div>
-                )) : !eventsLoading && (
+                )) : currentEvents?.dividendsAvailable === true && !eventsLoading ? (
                   <p class="text-[10px] text-slate-500">{marketEventLabel('No dividend events in this period.')}</p>
-                )}
+                ) : null}
               </div>
             </div>
 
