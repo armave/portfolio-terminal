@@ -34,7 +34,6 @@ function makeState(overrides: Partial<PortfolioState> = {}): PortfolioState {
       status: 'current',
       provider: 'freedom-tradenet',
       quality: 'complete',
-      source: 'api',
       observedAt: BASE,
       receivedAt: BASE,
       warnings: []
@@ -166,15 +165,15 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.status).toBe('available');
     expect(report.currency).toBe('USD');
     expect(report.timeWeighted?.status).toBe('available');
-    if (report.timeWeighted?.status !== 'unavailable') {
+    if (report.timeWeighted && report.timeWeighted.status !== 'unavailable') {
       expect(report.timeWeighted.value.totalReturn).toBeCloseTo(0.1, 12);
     }
     expect(report.incomeCosts?.status).toBe('available');
-    if (report.incomeCosts?.status !== 'unavailable') {
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
       expect(report.incomeCosts.value.commissions).toBe(2);
     }
     expect(report.latestAttribution?.status).toBe('available');
-    if (report.latestAttribution?.status !== 'unavailable') {
+    if (report.latestAttribution && report.latestAttribution.status !== 'unavailable') {
       expect(report.latestAttribution.value.items.find(item => item.key === 'position:GOOGL')?.profit).toBeCloseTo(100, 8);
       expect(report.latestAttribution.value.items.find(item => item.key === 'cash')?.profit).toBeCloseTo(0, 8);
     }
