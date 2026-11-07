@@ -49,7 +49,7 @@ describe('market history daily fallback', () => {
     expect(actual.provider).toBe('Freedom TradeNet');
     expect(actual.quality).toBe('partial');
     expect(actual.issues).toContain(
-      'Finnhub history unavailable (HTTP 403 forbidden); daily candles were loaded from Freedom TradeNet.'
+      'Finnhub history unavailable; daily candles were loaded from Freedom TradeNet.'
     );
   });
 
