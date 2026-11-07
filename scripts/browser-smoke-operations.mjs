@@ -805,7 +805,12 @@ try {
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
     throw new Error('Admin position exposure table was not visible.');
   }
-  for (const legacyRiskLabel of ['Account equity health', 'Margin-call buffer', 'Stop-out threshold']) {
+  for (const summaryLabel of ['Position basis', 'Market valuation', 'Debt & carrying costs']) {
+    if (!(await page.getByText(summaryLabel, { exact: true }).first().isVisible())) {
+      throw new Error('Integrated legacy summary metric was not visible: ' + summaryLabel);
+    }
+  }
+  for (const legacyRiskLabel of ['Estimated equity ratio', 'Margin-call buffer', 'Stop-out threshold']) {
     if (!(await page.getByText(legacyRiskLabel, { exact: true }).first().isVisible())) {
       throw new Error('Integrated legacy risk metric was not visible: ' + legacyRiskLabel);
     }
