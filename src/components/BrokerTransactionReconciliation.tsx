@@ -45,12 +45,12 @@ export function BrokerTransactionReconciliation({
     cashflowStatus,
     appHistoryStatus
   });
-  const label = report.status === 'matched' ? 'Matched' :
-    report.status === 'differences' ? 'Differences found' :
+  const label = report.findings.length > 0 ? 'Differences found' :
+    report.status === 'matched' ? 'Matched' :
       report.status === 'unavailable' ? 'History unavailable' : 'Provisional review';
-  const labelClass = report.status === 'matched'
-    ? 'text-emerald-300'
-    : report.status === 'differences' ? 'text-amber-300' : 'text-slate-300';
+  const labelClass = report.findings.length > 0
+    ? 'text-amber-300'
+    : report.status === 'matched' ? 'text-emerald-300' : 'text-slate-300';
 
   return (
     <details class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">

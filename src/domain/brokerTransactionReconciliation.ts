@@ -430,6 +430,7 @@ export function reconcileBrokerActivity(
   const appCashflows = input.appEvents.filter(event => CASHFLOW_EVENT_TYPES.has(event.type) && event.actor.type !== 'broker');
   const brokerCashflows = input.brokerCashflows.map(normalizeCashflow).filter((row): row is NormalizedCashflow => row !== null);
   const unmatchedCashflowBroker = new Set(brokerCashflows.map((_, index) => index));
+  let matchedCashflowCount = 0;
   const unmatchedCashflowApp = new Set(appCashflows.map((_, index) => index));
   for (const broker of brokerCashflows) {
     const candidate = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
@@ -445,6 +446,7 @@ export function reconcileBrokerActivity(
     if (candidate[0]) {
       unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
       unmatchedCashflowApp.delete(candidate[0].index);
+      matchedCashflowCount += 1;
       continue;
     }
     const classificationMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
@@ -532,7 +534,7 @@ export function reconcileBrokerActivity(
     brokerCashflowCount: brokerCashflows.length,
     appCashflowCount: appCashflows.length,
     matchedExecutionCount: matchedPairs.length,
-    matchedCashflowCount: brokerCashflows.length - unmatchedCashflowBroker.size,
+    matchedCashflowCount,
     findings,
     warnings: [...new Set(warnings)]
   };
