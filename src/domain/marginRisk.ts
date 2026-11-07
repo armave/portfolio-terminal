@@ -1,5 +1,18 @@
 import type { BrokerAssumptions } from '../types/portfolio';
 
+/** The gauge uses 40% as its visual healthy-reference threshold. */
+export const ACCOUNT_EQUITY_HEALTH_REFERENCE = 0.4;
+
+export type MarginRiskLevel = 'Healthy' | 'Elevated' | 'Margin-call level' | 'Stop-out level';
+
+/** Classify equity against the same 40% reference shown on the account-health meter. */
+export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions): MarginRiskLevel {
+  if (equityRatio <= rules.stopOutRatio) return 'Stop-out level';
+  if (equityRatio <= rules.maintenanceEquityRatio) return 'Margin-call level';
+  if (equityRatio < ACCOUNT_EQUITY_HEALTH_REFERENCE) return 'Elevated';
+  return 'Healthy';
+}
+
 export interface MarginRiskMetrics {
   assets: number;
   equity: number;
