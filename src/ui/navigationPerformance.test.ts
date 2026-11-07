@@ -80,6 +80,6 @@ describe('Settings layout organization', () => {
     expect(styles).toContain('@container settings-workspace (min-width: 54rem)');
     expect(styles).toContain('#settingsDesk .settings-data-safety-note p');
     expect(translations).toContain('"Account actions": "Действия с учётной записью"');
-    expect(translations).toContain('"Portfolio data refresh and backup controls": "Обновление данных портфеля и резервные копии"');
+    expect(translations).toContain("'Portfolio data refresh and backup controls': 'Обновление данных портфеля и управление резервными копиями'");
   });
 });
