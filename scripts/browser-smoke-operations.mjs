@@ -103,7 +103,7 @@ async function mockWorkerApi(page) {
   };
 
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
-    if (call) call.responseStatus = status;
+    if (call) { call.responseStatus = status; call.responsePayload = payload; }
     const origin = route.request().headers().origin || '*';
     await route.fulfill({
       status,
@@ -1059,14 +1059,41 @@ try {
   await waitForAuthOverlay(page, false, worker);
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
-  await page.waitForFunction(() => {
-    return Array.from(document.querySelectorAll('#settingsDesk')).some((element) => {
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
-      return visible && element.querySelector('select[aria-label="Account language"]')?.value === 'ru';
-    });
-  }, null, { timeout: 20_000 });
+  try {
+    await page.waitForFunction(() => {
+      return Array.from(document.querySelectorAll('#settingsDesk')).some((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        return visible && element.querySelector('select[aria-label="Account language"]')?.value === 'ru';
+      });
+    }, null, { timeout: 20_000 });
+  } catch {
+    const restoredState = await page.evaluate(() => ({
+      authClass: document.querySelector('#auth-container')?.className || '',
+      desks: Array.from(document.querySelectorAll('#settingsDesk')).map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        const language = element.querySelector('select[aria-label="Account language"]');
+        return {
+          visible: rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden',
+          language: language?.value ?? null,
+          languageCount: element.querySelectorAll('select[aria-label="Account language"]').length,
+          text: (element.textContent || '').trim().slice(0, 180)
+        };
+      })
+    }));
+    throw new Error('Account language was not restored after reload: ' + JSON.stringify({
+      restoredState,
+      workerUser: worker.users.find((user) => user.id === 'admin-operations'),
+      authMe: worker.findCalls('GET', '/api/auth/me').slice(-3).map((call) => ({
+        status: call.responseStatus, payload: call.responsePayload
+      })),
+      languagePosts: worker.findCalls('POST', '/api/auth/me').map((call) => ({
+        language: call.body.language, status: call.responseStatus, payload: call.responsePayload
+      }))
+    }));
+  }
   // Continue the admin journey in English; the created guest keeps its Russian preference.
   const adminLanguageSaveCount = worker.findCalls('POST', '/api/auth/me').length;
   const adminLanguageSelect = page.locator('#settingsDesk:visible select[aria-label="Account language"]').first();
