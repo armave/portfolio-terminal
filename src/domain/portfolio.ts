@@ -103,6 +103,7 @@ export interface MarginInterestOptions {
   now?: Date | string | number;
   rolloverHour?: number;
   rolloverMinute?: number;
+  rolloverTimeZone?: string;
 }
 
 /** Canonical and legacy tranche fields accepted at the margin-interest boundary. */
@@ -235,7 +236,7 @@ export function calculateMarginInterest(
       } else if (typeof opts.annualRate === 'number') {
         dailyRate = opts.annualRate / (Number(opts.dayCountBasis) || DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis);
       } else if (typeof opts.annualBorrowRate === 'number') {
-        dailyRate = opts.annualBorrowRate / (Number(opts.dayCountBasis) || 365);
+        dailyRate = opts.annualBorrowRate / (Number(opts.dayCountBasis) || DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis);
       }
 
       if (typeof opts.marginUtilizationRatio === 'number') {
@@ -379,22 +380,21 @@ export function calculateMarginInterest(
       }
       if (!Number.isFinite(trancheTimestamp)) trancheTimestamp = now.getTime();
 
-      // Shift timestamps by four hours, then compare calendar dates in Asia/Yerevan.
-      const offsetMs = 4 * 60 * 60 * 1000;
-      const localTranche = new Date(trancheTimestamp + offsetMs);
-      const localNow = new Date(now.getTime() + offsetMs);
-      const trancheDay = Date.UTC(localTranche.getUTCFullYear(), localTranche.getUTCMonth(), localTranche.getUTCDate());
-      const nowDay = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
-      const elapsedCalendarDays = Math.max(0, Math.round((nowDay - trancheDay) / 86400000));
+      const timeZone = options.rolloverTimeZone || DEFAULT_BROKER_ASSUMPTIONS.rolloverTimeZone;
+      const localTranche = getBrokerClockParts(new Date(trancheTimestamp), timeZone);
+      const localNow = getBrokerClockParts(now, timeZone);
+      const trancheDay = Date.UTC(localTranche.year, localTranche.month - 1, localTranche.day);
+      const nowDay = Date.UTC(localNow.year, localNow.month - 1, localNow.day);
+      const elapsedCalendarDays = Math.max(0, Math.round((nowDay - trancheDay) / 86_400_000));
       const configuredHour = Number(options.rolloverHour);
       const configuredMinute = Number(options.rolloverMinute);
       const rolloverHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
         ? configuredHour
-        : 4;
+        : DEFAULT_BROKER_ASSUMPTIONS.rolloverHour;
       const rolloverMinute = Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
         ? configuredMinute
-        : 0;
-      const localMinutes = localNow.getUTCHours() * 60 + localNow.getUTCMinutes();
+        : DEFAULT_BROKER_ASSUMPTIONS.rolloverMinute;
+      const localMinutes = localNow.hour * 60 + localNow.minute;
       const cutoffMinutes = rolloverHour * 60 + rolloverMinute;
       days = Math.max(0, elapsedCalendarDays - (localMinutes < cutoffMinutes ? 1 : 0));
     }
