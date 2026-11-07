@@ -1,10 +1,12 @@
 import { useMemo } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD, getQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatQuoteVolume, getQuoteFreshness } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { buildAdminDashboardSummary } from '../domain/adminDashboard';
 import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from '../domain/portfolio';
+import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
+import { MarginMarketTools } from './MarginMarketTools';
 
 function label(value: string): string {
   return translateText(value, getAppLanguage());
@@ -39,57 +41,88 @@ export function AdminExecutiveDashboard() {
   const cashHoldings = (state.cashCushion?.holdings || []).filter(holding => Number(holding.shares) > 0);
   const totalValue = summary.marketValue;
   const marginShares = positions.reduce((sum, position) => sum + Number(position.shares), 0);
-  const marginTranches = positions.reduce((sum, position) => sum + (position.tranches || []).filter(t => Number(t.qty) > 0).length, 0);
-  const marginInvested = positions.reduce((sum, position) => sum + (position.tranches || []).reduce((sub, tranche) => sub + Number(tranche.qty) * Number(tranche.price), 0), 0);
+  const marginTranches = positions.flatMap(position => position.tranches || []);
+  const marginTrancheCount = positions.reduce(
+    (sum, position) => sum + (position.tranches || []).filter(t => Number(t.qty) > 0 && Number(t.price) > 0).length,
+    0
+  );
+  const marginInvested = positions.reduce((sum, position) => sum + (position.tranches || []).reduce((sub, tranche) => {
+    const qty = Number(tranche.qty);
+    const price = Number(tranche.price);
+    return sub + (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price > 0 ? qty * price : 0);
+  }, 0), 0);
   const marginAverageEntry = marginShares > 0 ? marginInvested / marginShares : null;
-  const currentMarginValue = positions.reduce((sum, position) => {
-    const price = Number(position.currentPrice);
-    return sum + (Number.isFinite(price) && price > 0 ? Number(position.shares) * price : 0);
-  }, 0);
   const commissionRules = resolveCommissionConfig(state.brokerAssumptions);
-  const estimatedCommissions = positions.reduce((sum, position) => {
-    const price = Number(position.currentPrice);
-    const sellFee = Number.isFinite(price) && price > 0
-      ? calculateCommission(Number(position.shares), Number(position.shares) * price, commissionRules) : 0;
-    return sum + (Number(position.commBuy) || 0) + sellFee;
+  const buyCommissions = positions.reduce((sum, position) => sum + (Number(position.commBuy) || 0), 0);
+  // Match the legacy projection: sell commission is estimated at each position's target price.
+  const estimatedSellCommissions = positions.reduce((sum, position) => {
+    const shares = Number(position.shares);
+    const targetPrice = Number(position.pt);
+    return Number.isFinite(shares) && shares > 0 && Number.isFinite(targetPrice) && targetPrice > 0
+      ? sum + calculateCommission(shares, shares * targetPrice, commissionRules)
+      : sum;
   }, 0);
-  const accruedMarginInterest = positions.reduce((sum, position) => {
-    const invested = (position.tranches || []).reduce((sub, tranche) => sub + Number(tranche.qty) * Number(tranche.price), 0);
-    const allocatedDebt = marginInvested > 0 ? summary.marginDebt * invested / marginInvested : 0;
-    const dailyRate = state.brokerAssumptions.annualBorrowRate / state.brokerAssumptions.dayCountBasis;
-    return sum + calculateMarginInterest(position.tranches || [], { dailyRate, marginDebt: allocatedDebt, totalDebt: summary.marginDebt });
+  const dailyRate = state.brokerAssumptions.annualBorrowRate / state.brokerAssumptions.dayCountBasis;
+  const debt = summary.marginDebt;
+  const interestTranches = state.tranches?.length ? state.tranches : marginTranches;
+  const accruedMarginInterest = (Number(state.realizedMarginCharged) || 0) + calculateMarginInterest(interestTranches, {
+    dailyRate, marginDebt: debt, totalDebt: debt
+  });
+  const cashHoldingsValue = cashHoldings.reduce((sum, holding) => {
+    const price = Number(holding.currentPrice ?? holding.price);
+    return sum + (Number.isFinite(price) && price > 0 ? Number(holding.shares) * price : 0);
   }, 0);
 
+  const marginRows = positions.map(position => {
+    const shares = Number(position.shares);
+    const price = Number(position.currentPrice);
+    const hasPrice = Number.isFinite(price) && price > 0;
+    const marketValue = hasPrice ? shares * price : null;
+    const validTranches = (position.tranches || []).filter(tranche =>
+      Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
+      Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
+    );
+    const basisShares = validTranches.reduce((sum, tranche) => sum + Number(tranche.qty), 0);
+    const basis = validTranches.reduce((sum, tranche) => sum + Number(tranche.qty) * Number(tranche.price), 0);
+    const basisComplete = Math.abs(basisShares - shares) <= Math.max(0.000001, shares * 0.000001);
+    const pnl = hasPrice && basisComplete && basis > 0 ? marketValue! - basis : null;
+    const details = position.quoteDetails;
+    const hasDayMove = Number.isFinite(Number(details?.change)) && Number.isFinite(Number(details?.changePercent));
+    const dayMove = hasDayMove
+      ? `${Number(details!.change) >= 0 ? '+' : '−'}${formatUSD(Math.abs(Number(details!.change)))} (${Number(details!.changePercent) >= 0 ? '+' : '−'}${Math.abs(Number(details!.changePercent)).toFixed(2)}%)`
+      : null;
+    return {
+      ticker: position.ticker, shares, price: hasPrice ? price : null, marketValue, pnl,
+      pnlPercent: pnl !== null && basis > 0 ? pnl / basis * 100 : null,
+      targetPrice: Number(position.pt) > 0 ? Number(position.pt) : null,
+      dayMove, volume: formatQuoteVolume(details?.volume), quote: getQuoteFreshness(position)
+    };
+  });
+
   const rows = [
-    ...positions.map(position => {
-      const price = Number(position.currentPrice);
-      const validPrice = Number.isFinite(price) && price > 0;
-      const marketValue = validPrice ? Number(position.shares) * price : null;
-      const tranches = (position.tranches || []).filter(tranche => Number(tranche.qty) > 0 && Number(tranche.price) > 0);
-      const basisShares = tranches.reduce((sum, tranche) => sum + Number(tranche.qty), 0);
-      const basis = tranches.reduce((sum, tranche) => sum + Number(tranche.qty) * Number(tranche.price), 0);
-      const basisComplete = Math.abs(basisShares - Number(position.shares)) <= Math.max(0.000001, Number(position.shares) * 0.000001);
-      const pnl = validPrice && basisComplete && basis > 0 ? marketValue! - basis : null;
-      return {
-        ticker: position.ticker, kind: 'Margin', shares: Number(position.shares),
-        marketValue, pnl, weight: marketValue !== null && totalValue > 0 ? marketValue / totalValue * 100 : null,
-        quote: getQuoteFreshness(position)
-      };
-    }),
+    ...marginRows.map(row => ({
+      ticker: row.ticker, kind: 'Margin', shares: row.shares,
+      marketValue: row.marketValue, pnl: row.pnl,
+      weight: row.marketValue !== null && totalValue > 0 ? row.marketValue / totalValue * 100 : null,
+      quote: row.quote
+    })),
     ...cashHoldings.map(holding => {
       const price = Number(holding.currentPrice ?? holding.price);
       const validPrice = Number.isFinite(price) && price > 0;
       const marketValue = validPrice ? Number(holding.shares) * price : null;
-      const basisPrice = Number(holding.averagePrice);
-      const pnl = validPrice && Number.isFinite(basisPrice) && basisPrice > 0
-        ? marketValue! - Number(holding.shares) * basisPrice : null;
       return {
         ticker: holding.ticker, kind: 'Cash', shares: Number(holding.shares),
-        marketValue, pnl, weight: marketValue !== null && totalValue > 0 ? marketValue / totalValue * 100 : null,
+        marketValue, pnl: null,
+        weight: marketValue !== null && totalValue > 0 ? marketValue / totalValue * 100 : null,
         quote: getQuoteFreshness(holding)
       };
     })
   ].sort((a, b) => (b.marketValue ?? -1) - (a.marketValue ?? -1));
+
+  const quoteHoldings: QuoteProvenanceHolding[] = [
+    ...positions.map(position => ({ ...position, kind: 'Margin position' as const })),
+    ...cashHoldings.map(holding => ({ ...holding, kind: 'Cash holding' as const }))
+  ];
 
   const dataStatus = summary.status;
   const riskStatus = summary.marginRiskStatus;
@@ -116,38 +149,82 @@ export function AdminExecutiveDashboard() {
         </span>
       </div>
 
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-3">
-        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Position basis')}</h3>
-          <p class="mt-2 text-sm font-bold text-slate-100">{marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTranches} {label('tranches')}</p>
+          <p class="mt-2 text-sm font-bold text-slate-100">
+            {marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTrancheCount} {label('tranches')}
+          </p>
           <p class="mt-1 text-xs text-slate-300">{formatUSD(marginInvested)} {label('invested')}</p>
           <p class="mt-1 text-[10px] text-slate-500">{label('Average entry')}: {marginAverageEntry === null ? '—' : formatUSD(marginAverageEntry)}</p>
+          <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2">
+            {positions.length === 0
+              ? <p class="text-[10px] text-slate-500">{label('No margin positions')}</p>
+              : positions.map(position => (
+                <p key={position.ticker} class="text-[10px] text-slate-400">
+                  <span class="font-semibold text-slate-200">{position.ticker}</span>
+                  {' · '}{Number(position.shares).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} sh
+                  {' @ PT '}{Number(position.pt) > 0 ? formatUSD(Number(position.pt)) : '—'}
+                </p>
+              ))}
+          </div>
         </section>
-        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+
+        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
-          <p class="mt-2 text-sm font-bold text-slate-100">{summary.unpricedHoldings > 0 ? `≥${formatUSD(summary.pricedMarketValue)}` : formatUSD(summary.marketValue)}</p>
-          <p class="mt-1 text-xs text-slate-300">{label('Margin positions')}: {formatUSD(currentMarginValue)}</p>
-          <p class="mt-1 text-[10px] text-slate-500">{label('Unrealized P/L')}: {summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}</p>
+          <p class="mt-2 text-sm font-bold text-slate-100">{formatUSD(summary.marginMarketValue)}</p>
+          <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
+          <p class={`mt-1 text-xs font-semibold ${pnlTone}`}>
+            {label('Unrealized P/L (margin only)')}: {summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}
+            {summary.unrealizedPnlPercent === null ? '' : ` (${summary.unrealizedPnlPercent >= 0 ? '+' : ''}${summary.unrealizedPnlPercent.toFixed(2)}%)`}
+          </p>
+          <div class="mt-2 space-y-2 border-t border-slate-800/70 pt-2">
+            {marginRows.length === 0
+              ? <p class="text-[10px] text-slate-500">{label('No margin positions')}</p>
+              : marginRows.map(row => (
+                <div key={row.ticker} class="space-y-0.5 text-[10px]">
+                  <div class="flex flex-wrap justify-between gap-x-2">
+                    <span class="font-semibold text-slate-200">{row.ticker}</span>
+                    <span class="font-mono text-slate-300">{row.price === null ? '—' : formatUSD(row.price)} · {row.marketValue === null ? '—' : formatUSD(row.marketValue)}</span>
+                  </div>
+                  <div class="flex flex-wrap justify-between gap-x-2 text-slate-500">
+                    <span class={row.pnl === null ? '' : row.pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                      {label('Unrealized P/L')}: {row.pnl === null ? '—' : `${row.pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(row.pnl))}`}
+                      {row.pnlPercent === null ? '' : ` (${row.pnlPercent >= 0 ? '+' : ''}${row.pnlPercent.toFixed(2)}%)`}
+                    </span>
+                    <span>{row.dayMove ? `${label('Day')}: ${row.dayMove}` : ''}{row.volume ? ` · ${label('Volume')} ${row.volume}` : ''}</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+          <QuoteProvenanceList holdings={quoteHoldings} />
         </section>
-        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+
+        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Debt & carrying costs')}</h3>
-          <p class="mt-2 text-sm font-bold text-rose-300">{formatUSD(summary.marginDebt)} {label('margin debt')}</p>
-          <p class="mt-1 text-xs text-slate-300">{label('Estimated total commissions')}: {formatUSD(estimatedCommissions)}</p>
-          <p class="mt-1 text-[10px] text-slate-500">{label('Accrued margin interest')}: {formatUSD(accruedMarginInterest)}</p>
+          <p class="mt-2 text-sm font-bold text-rose-300">{formatUSD(debt)} {label('margin debt')}</p>
+          <p class="mt-1 text-[10px] text-slate-400">
+            {label('Daily margin cost')}: {formatUSD(summary.dailyMarginCost)} · {label('Annual margin rate')} {(state.brokerAssumptions.annualBorrowRate * 100).toFixed(2)}%
+          </p>
+          <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2 text-[10px]">
+            <p class="text-slate-300">{label('Buy commissions')}: {formatUSD(buyCommissions)}</p>
+            <p class="text-slate-300">{label('Estimated sell commissions')}: {formatUSD(estimatedSellCommissions)}</p>
+            <p class="font-semibold text-slate-200">{label('Total commissions')}: {formatUSD(buyCommissions + estimatedSellCommissions)}</p>
+            <p class="pt-1 text-slate-400">{label('Accrued margin interest')}: {formatUSD(accruedMarginInterest)}</p>
+          </div>
+        </section>
+
+        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+          <MarginMarketTools ticker={positions.length === 1 ? positions[0].ticker : undefined} isAdmin={true} />
         </section>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 lg:grid-cols-3">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Metric title="Total equity" value={summary.equity === null ? '—' : formatUSD(summary.equity)}
           detail={label('Holdings plus cash less margin debt')} />
-        <Metric title="Total market value" value={summary.unpricedHoldings > 0 ? `≥${formatUSD(summary.pricedMarketValue)}` : formatUSD(summary.marketValue)}
-          detail={`${summary.pricedHoldings} ${label('priced holdings')} · ${summary.unpricedHoldings} ${label('unpriced')}`} />
-        <Metric title="Margin debt" value={formatUSD(summary.marginDebt)} tone={summary.marginDebt > 0 ? 'text-rose-300' : 'text-slate-100'} />
+        <Metric title="Cash holdings value" value={formatUSD(cashHoldingsValue)}
+          detail={`${summary.cashHoldingCount} ${label('cash holdings')}`} />
         <Metric title="Free cash" value={formatUSD(summary.freeCash)} detail={label('Unallocated cash balance')} />
-        <Metric title="Unrealized P/L" value={summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}
-          detail={summary.unrealizedPnlPercent === null ? label('Cost basis or quote data incomplete') : `${summary.unrealizedPnlPercent >= 0 ? '+' : ''}${summary.unrealizedPnlPercent.toFixed(2)}%`}
-          tone={pnlTone} />
-        <Metric title="Daily margin cost" value={formatUSD(summary.dailyMarginCost)} detail={label('Estimated from configured annual rate')} />
       </div>
 
       <div class="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
@@ -221,7 +298,7 @@ export function AdminExecutiveDashboard() {
                   <th class="px-3 py-2 text-left">{label('Funding')}</th>
                   <th class="px-3 py-2 text-right">{label('Shares')}</th>
                   <th class="px-3 py-2 text-right">{label('Market value')}</th>
-                  <th class="px-3 py-2 text-right">{label('Unrealized P/L')}</th>
+                  <th class="px-3 py-2 text-right">{label('Unrealized P/L (margin only)')}</th>
                   <th class="px-3 py-2 text-right">{label('Weight')}</th>
                 </tr>
               </thead>
