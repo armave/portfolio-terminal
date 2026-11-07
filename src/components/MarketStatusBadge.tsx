@@ -159,10 +159,13 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     let authenticated = false;
     let hasLoaded = false;
     let authGeneration = 0;
+    let activeIdentity: string | null = null;
     let transitionTimeoutId: number | undefined;
 
     const refresh = async () => {
-      if (!active || document.visibilityState === 'hidden') return;
+      // Wait for the authenticated identity event. An eager public request here
+      // races the startup auth event and used to fetch the same status twice.
+      if (!active || !authenticated || document.visibilityState === 'hidden') return;
       if (inFlight) {
         refreshPending = true;
         return;
@@ -193,6 +196,13 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     };
 
     const handleUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => {
+      const nextIdentity = event.detail.user
+        ? `${event.detail.user.role}:${event.detail.user.id}`
+        : null;
+      // Startup can publish the same identity more than once (credential
+      // validation followed by workspace hydration). Ignore those repeats.
+      if (nextIdentity === activeIdentity) return;
+      activeIdentity = nextIdentity;
       authGeneration += 1;
       authenticated = Boolean(event.detail.user);
       setHasAuthenticatedSession(authenticated);
@@ -222,7 +232,8 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
     addUiEventListener('auth:user-changed', handleUserChanged);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    void refresh();
+    // The first authenticated user event starts the initial request. Do not
+    // fetch before identity resolution; that request would race the auth event.
     const intervalId = window.setInterval(() => void refresh(), MARKET_STATUS_REFRESH_MS);
 
     return () => {
@@ -232,7 +243,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       removeUiEventListener('auth:user-changed', handleUserChanged);
     };
-  }, [snapshot?.marketStatus.status, status]);
+  }, []);
 
   useEffect(() => {
     if (!hasAuthenticatedSession) return;
