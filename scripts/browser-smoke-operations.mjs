@@ -798,6 +798,7 @@ try {
   // The executive overview is available to admins in Combined Portfolio and
   // individual ticker views, including the single-ticker navigation layout.
   const executiveOverview = page.locator('#adminExecutiveDashboardTitle');
+  const executiveOverviewPanel = page.locator('section[aria-labelledby="adminExecutiveDashboardTitle"]');
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
   if (!(await executiveOverview.innerText()).toLowerCase().includes('admin executive overview')) {
     throw new Error('Admin executive overview heading was not rendered for the authenticated admin.');
@@ -806,7 +807,7 @@ try {
     throw new Error('Admin position exposure table was not visible.');
   }
   for (const sectionId of ['adminPositionBasisTitle', 'adminMarketValuationTitle', 'adminDebtCarryingCostsTitle']) {
-    if (await executiveOverview.locator('#' + sectionId).count() !== 1) {
+    if (await executiveOverviewPanel.locator('#' + sectionId).count() !== 1) {
       throw new Error('Expected exactly one integrated legacy metric section: #' + sectionId);
     }
   }
