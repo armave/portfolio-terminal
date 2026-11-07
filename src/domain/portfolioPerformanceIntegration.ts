@@ -70,7 +70,6 @@ function mapExternalCashFlows(
     'portfolio.reset',
     'correction',
     'cash-holding.buy',
-    'cash-holding.sell',
     'cash-holding.adjustment',
     'cash.transfer',
     'corporate-action'
@@ -168,7 +167,9 @@ function mapAttributionItemFlows(
 
   for (const event of events) {
     if (event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
-    if (event.type !== 'trade.buy' && event.type !== 'trade.sell') continue;
+    const isTrade = event.type === 'trade.buy' || event.type === 'trade.sell';
+    const isCashHoldingSale = event.type === 'cash-holding.sell';
+    if (!isTrade && !isCashHoldingSale) continue;
 
     const ticker = typeof event.ticker === 'string' ? event.ticker.trim().toUpperCase() : '';
     const gross = finiteNumber(event.grossAmount);
@@ -205,6 +206,7 @@ function mapAttributionItemFlows(
     let positionFlow: number;
     let cashFlow: number;
     const debtItemFlow = -debtDelta;
+    let itemKey = 'position:' + ticker;
 
     if (event.type === 'trade.buy') {
       // The buy cash movement includes the buy commission. Add it back to the
@@ -232,6 +234,23 @@ function mapAttributionItemFlows(
       }
       positionFlow = -gross;
       cashFlow = cashDelta + sellFee;
+      if (isCashHoldingSale) itemKey = 'cash-holding:' + ticker;
+    }
+
+    if (isCashHoldingSale) {
+      const quantityDelta = finiteNumber(event.cashHoldingQuantityDelta);
+      if (event.type !== 'cash-holding.sell' || quantityDelta === null || quantityDelta >= 0) {
+        return {
+          reason: 'A cash-holding sale is missing a valid negative quantity movement; attribution is withheld.',
+          warnings
+        };
+      }
+      if (Math.abs(Math.abs(quantityDelta) - Number(event.quantity)) > 1e-8) {
+        return {
+          reason: 'A cash-holding sale quantity does not reconcile to its journal quantity; attribution is withheld.',
+          warnings
+        };
+      }
     }
 
     const netInternalFlow = positionFlow + cashFlow + debtItemFlow;
@@ -243,7 +262,7 @@ function mapAttributionItemFlows(
       };
     }
 
-    add('position:' + ticker, event.effectiveAt, positionFlow, flowQuality);
+    add(itemKey, event.effectiveAt, positionFlow, flowQuality);
     add(CASH_ITEM_KEY, event.effectiveAt, cashFlow, flowQuality);
     add(MARGIN_DEBT_ITEM_KEY, event.effectiveAt, debtItemFlow, flowQuality);
   }
@@ -266,6 +285,7 @@ function mapIncomeCostAdjustments(
   currency: string
 ): AdapterResult<PerformanceAdjustment[]> {
   const adjustments: PerformanceAdjustment[] = [];
+  const warnings: string[] = [];
   for (const row of rows) {
     const timestamp = parseCashflowTimestamp(row.date);
     if (timestamp === null || timestamp <= startAt || timestamp > endAt) continue;
@@ -287,15 +307,21 @@ function mapIncomeCostAdjustments(
     if (!Number.isFinite(amount) || rowCurrency !== currency) {
       return { reason: 'An income or cost cashflow has an invalid amount or a different/unknown currency.', warnings: [] };
     }
+    const quality = typeof row.id === 'string' && row.id.startsWith('freedom-')
+      ? 'current'
+      : 'provisional';
+    if (quality === 'provisional') {
+      warnings.push('One or more income/cost rows are not verified Freedom broker-history records.');
+    }
     adjustments.push({
       timestamp,
       type,
       amount,
       currency,
-      quality: 'current'
+      quality
     });
   }
-  return { value: adjustments, warnings: [] };
+  return { value: adjustments, warnings: [...new Set(warnings)] };
 }
 
 export function buildPortfolioPerformanceReport(
@@ -393,6 +419,9 @@ export function buildPortfolioPerformanceReport(
   const incomeCosts = 'reason' in incomeCostResult
     ? { status: 'unavailable' as const, reason: incomeCostResult.reason, warnings: [] }
     : summarizePerformanceIncomeAndCosts(incomeCostResult.value, currency);
+  if (incomeCosts.status !== 'unavailable' && 'warnings' in incomeCostResult) {
+    incomeCosts.warnings.push(...incomeCostResult.warnings);
+  }
 
   const latestStart = usableSnapshots[usableSnapshots.length - 2];
   const latestEnd = usableSnapshots[usableSnapshots.length - 1];
@@ -446,7 +475,8 @@ export function buildPortfolioPerformanceReport(
   ];
   const status = timeWeighted.status === 'provisional' ||
     (moneyWeighted.status !== 'unavailable' && moneyWeighted.status === 'provisional') ||
-    (latestAttribution.status !== 'unavailable' && latestAttribution.status === 'provisional')
+    (latestAttribution.status !== 'unavailable' && latestAttribution.status === 'provisional') ||
+    (incomeCosts.status !== 'unavailable' && incomeCosts.status === 'provisional')
     ? 'provisional'
     : 'available';
 

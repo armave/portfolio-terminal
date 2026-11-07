@@ -564,15 +564,21 @@ createPortfolioEquitySyncRuntime({
       let changed = false;
       do {
         performanceSnapshotPending = false;
+        // A login switch may have happened while the lazy module was resolving.
+        // Rebind to the active administrator only after that await; never save a
+        // previous account's state into the newly authenticated account.
+        const activeAccountId = currentAccountId;
+        const activeSession = currentAccountSessionGuard.capture();
         const isCurrentSession = currentAccountRole === 'admin' &&
-          currentAccountId === accountId &&
-          currentAccountSessionGuard.isCurrent(session);
-        if (!isCurrentSession) return changed;
+          Boolean(activeAccountId) &&
+          activeSession !== null &&
+          currentAccountSessionGuard.isCurrent(activeSession);
+        if (!isCurrentSession || !activeAccountId) return changed;
 
         // Read after the lazy import resolves, not from the potentially stale
         // notification that initiated this asynchronous capture.
         const latestState = portfolioStore.getState();
-        const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(accountId);
+        const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(activeAccountId);
         const observedAt = Math.max(timestamp, Date.now());
         const snapshot = capturePortfolioPerformanceValuation(
           latestState,

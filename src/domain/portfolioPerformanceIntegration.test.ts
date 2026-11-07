@@ -115,6 +115,17 @@ describe('appendDailyPerformanceValuation', () => {
     expect(appendDailyPerformanceValuation(withUpgrade, nextDay)).toHaveLength(2);
   });
 
+  it('keeps one valuation per UTC day and permits only quality or coverage upgrades', () => {
+    const first = snapshot(BASE, 300, false, undefined, 'provisional');
+    const laterSameQuality = snapshot(BASE + 6 * 60 * 60 * 1000, 310, false, undefined, 'provisional');
+    const upgraded = snapshot(BASE + 8 * 60 * 60 * 1000, 315, true, undefined, 'current');
+    const withFirst = appendDailyPerformanceValuation([], first);
+    expect(appendDailyPerformanceValuation(withFirst, laterSameQuality)).toEqual(withFirst);
+    expect(appendDailyPerformanceValuation(withFirst, upgraded)).toMatchObject([
+      { timestamp: upgraded.timestamp, equity: 315, quality: 'current', cashflowHistoryComplete: true }
+    ]);
+  });
+
   it('bounds retained daily history', () => {
     let values: PortfolioPerformanceValuationSnapshot[] = [];
     for (let day = 0; day < 5; day += 1) {
@@ -173,6 +184,165 @@ describe('buildPortfolioPerformanceReport', () => {
       expect(report.latestAttribution.value.items.find(item => item.key === 'position:GOOGL')?.profit).toBeCloseTo(100, 8);
       expect(report.latestAttribution.value.items.find(item => item.key === 'cash')?.profit).toBeCloseTo(0, 8);
     }
+  });
+
+  it('attributes manual buys from signed cash/debt movements and marks legacy currency metadata provisional', () => {
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true, [
+          { key: 'position:GOOGL', value: 0 },
+          { key: 'cash', value: 1000 },
+          { key: 'margin-debt', value: 0 }
+        ]),
+        snapshot(BASE + DAY, 999, true, [
+          { key: 'position:GOOGL', value: 200 },
+          { key: 'cash', value: 799 },
+          { key: 'margin-debt', value: 0 }
+        ])
+      ],
+      transactionEvents: [{
+        id: 'manual-buy-1', schemaVersion: 1, type: 'trade.buy',
+        actor: { type: 'user' }, source: 'manual',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'GOOGL', quantity: 2, grossAmount: 200, fees: 1,
+        cashDelta: -201, marginDebtDelta: 0
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.status).toBe('provisional');
+    expect(report.latestAttribution?.status).toBe('provisional');
+    if (report.latestAttribution && report.latestAttribution.status !== 'unavailable') {
+      expect(report.latestAttribution.value.profit).toBeCloseTo(-1, 8);
+      expect(report.latestAttribution.value.items.find(item => item.key === 'position:GOOGL')?.profit).toBeCloseTo(0, 8);
+      expect(report.latestAttribution.value.items.find(item => item.key === 'cash')?.profit).toBeCloseTo(-1, 8);
+    }
+    expect(report.warnings.some(warning => warning.includes('predate explicit currency metadata'))).toBe(true);
+  });
+
+  it('does not double-count allocated buy commission when attributing a margin-position sale', () => {
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 999, true, [
+          { key: 'position:GOOGL', value: 200 },
+          { key: 'cash', value: 799 },
+          { key: 'margin-debt', value: 0 }
+        ]),
+        snapshot(BASE + DAY, 998, true, [
+          { key: 'position:GOOGL', value: 100 },
+          { key: 'cash', value: 898 },
+          { key: 'margin-debt', value: 0 }
+        ])
+      ],
+      transactionEvents: [{
+        id: 'manual-sale-1', schemaVersion: 1, type: 'trade.sell',
+        actor: { type: 'user' }, source: 'manual',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'GOOGL', quantity: 1, grossAmount: 100, fees: 6,
+        cashDelta: 99, marginDebtDelta: 0, netAmount: 99, realizedPnl: 4
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.status).toBe('provisional');
+    expect(report.latestAttribution?.status).toBe('provisional');
+    if (report.latestAttribution && report.latestAttribution.status !== 'unavailable') {
+      expect(report.latestAttribution.value.profit).toBeCloseTo(-1, 8);
+      expect(report.latestAttribution.value.items.find(item => item.key === 'position:GOOGL')?.profit).toBeCloseTo(0, 8);
+      expect(report.latestAttribution.value.items.find(item => item.key === 'cash')?.profit).toBeCloseTo(-1, 8);
+    }
+  });
+
+  it('attributes cash-holding sales when net proceeds reconcile and keeps unmodeled cash-holding buys unavailable', () => {
+    const saleReport = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true, [
+          { key: 'cash-holding:VTI', value: 200 },
+          { key: 'cash', value: 800 },
+          { key: 'margin-debt', value: 0 }
+        ]),
+        snapshot(BASE + DAY, 999, true, [
+          { key: 'cash-holding:VTI', value: 100 },
+          { key: 'cash', value: 899 },
+          { key: 'margin-debt', value: 0 }
+        ])
+      ],
+      transactionEvents: [{
+        id: 'cash-holding-sale-1', schemaVersion: 1, type: 'cash-holding.sell',
+        actor: { type: 'user' }, source: 'manual-cash-holding',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'VTI', quantity: 1, cashHoldingQuantityDelta: -1,
+        grossAmount: 100, fees: 1, netAmount: 99, cashDelta: 99, marginDebtDelta: 0
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(saleReport.latestAttribution?.status).toBe('provisional');
+    if (saleReport.latestAttribution && saleReport.latestAttribution.status !== 'unavailable') {
+      expect(saleReport.latestAttribution.value.items.find(item => item.key === 'cash-holding:VTI')?.profit).toBeCloseTo(0, 8);
+      expect(saleReport.latestAttribution.value.items.find(item => item.key === 'cash')?.profit).toBeCloseTo(-1, 8);
+    }
+
+    const buyReport = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true),
+        snapshot(BASE + DAY, 1200, true)
+      ],
+      transactionEvents: [{
+        id: 'cash-holding-buy-1', schemaVersion: 1, type: 'cash-holding.buy',
+        actor: { type: 'user' }, source: 'manual-cash-holding',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'VTI', quantity: 2, cashHoldingQuantityDelta: 2,
+        grossAmount: 200, cashDelta: 0
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+    expect(buyReport.status).toBe('unavailable');
+    expect(buyReport.reason).toContain('cannot yet be classified');
+  });
+
+  it('rejects corrected or conflicting broker cashflow revisions instead of counting both versions', () => {
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true),
+        snapshot(BASE + DAY, 1100, true)
+      ],
+      transactionEvents: [
+        {
+          id: 'deposit-original', schemaVersion: 1, type: 'cash.deposit',
+          actor: { type: 'broker' }, source: 'freedom-tradenet-cashflow',
+          effectiveAt: BASE + DAY / 3, recordedAt: BASE + DAY / 2,
+          currency: 'USD', externalCashFlowAmount: 50, externalReferenceId: 'cashflow-1',
+          requestFingerprint: 'cashflow-v1-original'
+        },
+        {
+          id: 'deposit-correction', schemaVersion: 1, type: 'cash.deposit',
+          actor: { type: 'broker' }, source: 'freedom-tradenet-cashflow',
+          effectiveAt: BASE + DAY / 3, recordedAt: BASE + DAY / 2,
+          currency: 'USD', externalCashFlowAmount: 60, externalReferenceId: 'cashflow-1',
+          requestFingerprint: 'cashflow-v1-corrected'
+        }
+      ],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.status).toBe('unavailable');
+    expect(report.reason).toContain('corrected or conflicting source record');
+  });
+
+  it('marks non-Freedom income/cost rows provisional rather than presenting them as verified broker history', () => {
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1100)],
+      transactionEvents: [],
+      cashflows: [{
+        id: 'imported-fee-1', date: new Date(BASE + DAY / 2).toISOString(),
+        type: 'Commission', amount: -2, currency: 'USD', description: 'Imported commission'
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('provisional');
+    expect(report.status).toBe('provisional');
+    expect(report.warnings.some(warning => warning.includes('not verified Freedom broker-history records'))).toBe(true);
   });
 
   it('does not produce performance without verified cashflow history coverage', () => {
