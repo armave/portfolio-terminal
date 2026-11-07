@@ -2,6 +2,8 @@
 export const RU_TRANSLATIONS: Record<string, string> = {
   'MARGIN DESK': 'МАРЖИНАЛЬНЫЙ РАЗДЕЛ',
   'Margin fee': 'Проценты по марже',
+  'Rows {start}–{end} of {total}': 'Строки {start}–{end} из {total}',
+  'Page {current} of {total}': 'Страница {current} из {total}',
   'COMBINED PORTFOLIO': 'ОБЩИЙ ПОРТФЕЛЬ',
   'BALANCE': 'БАЛАНС',
   'Refreshing balance…': 'Обновление баланса…',
