@@ -896,7 +896,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Portfolio ownership could not be loaded.": "Не удалось загрузить раздел владения портфелями.",
   "Loading portfolio ownership…": "Загрузка раздела владения портфелями…",
   "Account actions": "Действия с учётной записью",
-  "Portfolio data refresh and backup controls": "Обновление данных портфеля и резервные копии",
   "Loading users…": "Загрузка списка пользователей…",
   "Stale cached fallback": "Устаревшая резервная котировка из кэша",
 };
