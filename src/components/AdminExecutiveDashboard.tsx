@@ -158,7 +158,7 @@ export function AdminExecutiveDashboard() {
                 <div key={position.ticker} class="space-y-1">
                   <p class="text-[10px] text-slate-400">
                     <span class="font-semibold text-slate-200">{position.ticker}</span>
-                    {' · '}{Number(position.shares).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} sh
+                    {positions.length > 1 && <> · {Number(position.shares).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} sh</>}
                     {' @ PT '}{Number(position.pt) > 0 ? formatUSD(Number(position.pt)) : '—'}
                   </p>
                   {(position.tranches || []).length > 0 && (
@@ -181,7 +181,9 @@ export function AdminExecutiveDashboard() {
 
         <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <h3 id="adminMarketValuationTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
-          <p class="mt-2 text-sm font-bold text-slate-100">{summary.marginUnpricedPositions > 0 ? '≥' : ''}{formatUSD(summary.marginMarketValue)}</p>
+          <p class="mt-2 text-sm font-bold text-slate-100">{positions.length === 1
+            ? label('See position exposure below')
+            : `${summary.marginUnpricedPositions > 0 ? '≥' : ''}${formatUSD(summary.marginMarketValue)}`}</p>
           <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
           {summary.marginUnpricedPositions > 0 && <p class="mt-1 text-[10px] text-amber-300">{summary.marginUnpricedPositions} {label('unpriced')}</p>}
           <p class="mt-1 text-[10px] text-slate-500">
@@ -273,7 +275,7 @@ export function AdminExecutiveDashboard() {
               </p>
               {(state.brokerAccountInfo?.warnings?.length || state.brokerAccountInfo?.lastRefreshIssue) && (
                 <p class="mt-1 break-words text-[10px] text-amber-300">
-                  {state.brokerAccountInfo.warnings?.join(' · ') || state.brokerAccountInfo.lastRefreshIssue?.message || label('Broker refresh issue')}
+                  {state.brokerAccountInfo.warnings?.join(' · ') || label('Broker refresh issue')}
                 </p>
               )}
             </div>
