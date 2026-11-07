@@ -51,6 +51,11 @@ const MemoSummaryMetricsGrid = lazy(() =>
     default: memo(SummaryMetricsGrid)
   }))
 );
+const PortfolioPerformancePanel = lazy(() =>
+  import('./components/PortfolioPerformancePanel').then(({ PortfolioPerformancePanel }) => ({
+    default: memo(PortfolioPerformancePanel)
+  }))
+);
 const MemoProjectionsTable = memo(ProjectionsTable);
 const MemoTradingConsole = memo(TradingConsole);
 
@@ -769,6 +774,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     </Suspense>
                   )}
               </div>
+
+              {permissions.isAdmin && activeDeskView === 'COMBINED' && (
+                <Suspense fallback={<DeskLoading title="Preparing performance" message="Loading portfolio performance…" accent="cyan" />}>
+                  <PortfolioPerformancePanel />
+                </Suspense>
+              )}
 
               <div id="marginDataWorkspace" class="margin-data-workspace">
                 {/* Projection Table */}

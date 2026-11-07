@@ -101,6 +101,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
+import { appendDailyPerformanceValuation, capturePortfolioPerformanceValuation } from './src/domain/portfolioPerformanceIntegration';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
@@ -541,7 +542,25 @@ createPortfolioEquitySyncRuntime({
       portfolioEquityUpdatedAt: updatedAt
     }, persist);
   },
-  onDurableEquityChanged: () => { void pushStateToCloud(); }
+  onDurableEquityChanged: () => { void pushStateToCloud(); },
+  recordPerformanceSnapshot: (nextStoreState, timestamp) => {
+    // Performance history is administrator-owned until PT-05 tenant isolation is implemented.
+    if (currentAccountRole !== 'admin' || !currentAccountId) return false;
+    const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(currentAccountId);
+    const snapshot = capturePortfolioPerformanceValuation(nextStoreState, timestamp, cashflowHistoryComplete);
+    if (!snapshot) return false;
+
+    const existing = nextStoreState.performanceValuations || [];
+    const next = appendDailyPerformanceValuation(existing, snapshot);
+    const unchanged = next.length === existing.length &&
+      next.every((item, index) => item === existing[index]);
+    if (unchanged) return false;
+
+    const saved = portfolioStore.setDerivedState({ performanceValuations: next }, true);
+    state = portfolioStore.getState();
+    return saved;
+  },
+  onPerformanceSnapshotChanged: () => { void pushStateToCloud(); }
 });
 
 async function pushStateToCloud(forceImmediate = false): Promise<boolean> {

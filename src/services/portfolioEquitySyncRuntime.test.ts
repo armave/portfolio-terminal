@@ -81,4 +81,52 @@ describe('portfolio equity synchronization', () => {
 
     runtime.dispose();
   });
+  it('records performance observations independently of equity projection changes', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 1, currentPrice: 100, pt: 120, commBuy: 0,
+          tranches: [{ qty: 1, price: 90, date: '2026-10-01' }]
+        }
+      },
+      portfolioEquity: 100,
+      balance: 0,
+      cashCushion: { freeCash: 0, holdings: [] }
+    });
+
+    const recordPerformanceSnapshot = vi.fn(() => true);
+    const onPerformanceSnapshotChanged = vi.fn();
+    const runtime = createPortfolioEquitySyncRuntime({
+      subscribe: (listener) => store.subscribe(listener),
+      getState: () => store.getState(),
+      calculateEquity: (state) => Object.values(state.positions).reduce(
+        (total, position) => total + position.currentPrice * position.shares,
+        Number(state.balance || 0) + Number(state.cashCushion?.freeCash || 0)
+      ),
+      setDerivedEquity: (equity, updatedAt, persist) => {
+        store.setDerivedState({ portfolioEquity: equity, portfolioEquityUpdatedAt: updatedAt }, persist);
+      },
+      onDurableEquityChanged: vi.fn(),
+      recordPerformanceSnapshot,
+      onPerformanceSnapshotChanged,
+      now: () => 1_800_000_000_000
+    });
+
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(1);
+    expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
+
+    store.updateLiveQuote('AAPL', {
+      price: 100,
+      quoteUpdatedAt: 1_800_000_000_001,
+      requestStartedAt: 1_800_000_000_001,
+      quoteDetails: { currency: 'USD', freshness: 'fresh', sourceTimestamp: 1_800_000_000_001 }
+    });
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(2);
+
+    store.setDerivedState({ portfolioEquityUpdatedAt: 1_800_000_000_002 });
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(2);
+    runtime.dispose();
+  });
+
 });
