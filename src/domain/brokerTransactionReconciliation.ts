@@ -3,6 +3,7 @@ import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 
 export type ReconciliationFeedStatus = 'complete' | 'partial' | 'unavailable';
 
+// Internal evidence shapes stay private; consumers use the stable report contract only.
 type BrokerActivityFindingType =
   | 'duplicate_broker_execution'
   | 'execution_missing_in_app'
