@@ -227,3 +227,36 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
     issues
   };
 }
+
+export interface MarketEventDateRange {
+  from: string;
+  to: string;
+}
+
+/** Keep event requests inside the Worker/provider one-year range contract. */
+export function createMarketEventDateRange(now = new Date()): MarketEventDateRange {
+  const center = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dayMs = 24 * 60 * 60 * 1000;
+  return {
+    from: new Date(center - 180 * dayMs).toISOString().slice(0, 10),
+    to: new Date(center + 180 * dayMs).toISOString().slice(0, 10)
+  };
+}
+
+/** Return the nearest non-past earnings date; never label a stale date as upcoming. */
+export function getNextUpcomingEarningsDate(
+  events: readonly { eventDate: string }[],
+  now = Date.now()
+): string | null {
+  const date = new Date(now);
+  const today = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return events
+    .map((event) => event.eventDate)
+    .filter((value) => {
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+      const parsed = Date.parse(value + 'T00:00:00.000Z');
+      return Number.isFinite(parsed) && parsed >= today &&
+        new Date(parsed).toISOString().slice(0, 10) === value;
+    })
+    .sort((a, b) => a.localeCompare(b))[0] ?? null;
+}
