@@ -778,12 +778,33 @@ try {
   await visibleSettingsDesk().locator('#stopOutRatioInput').fill('3');
   await visibleSettingsDesk().locator('#annualMarginRateInput').fill('18');
   await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
-  await page.waitForFunction(() => {
-    const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
-    return stored && Math.abs(stored.annualBorrowRate - 0.18) < 0.000001 &&
-      Math.abs(stored.maintenanceEquityRatio - 0.125) < 0.000001 &&
-      Math.abs(stored.stopOutRatio - 0.03) < 0.000001;
-  }, null, { timeout: 10_000 });
+  try {
+    await page.waitForFunction(() => {
+      const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
+      return stored && Math.abs(stored.annualBorrowRate - 0.18) < 0.000001 &&
+        Math.abs(stored.maintenanceEquityRatio - 0.125) < 0.000001 &&
+        Math.abs(stored.stopOutRatio - 0.03) < 0.000001;
+    }, null, { timeout: 10_000 });
+  } catch {
+    const brokerRulesState = await page.locator('#brokerRulesForm').evaluate((form) => {
+      const ids = ['annualMarginRateInput', 'maintenanceMarginInput', 'stopOutRatioInput', 'rolloverTimeInput'];
+      const inputs = Object.fromEntries(ids.map((id) => {
+        const input = form.querySelector('#' + id);
+        return [id, input ? {
+          value: input.value,
+          valid: input.validity.valid,
+          customError: input.validity.customError,
+          validationMessage: input.validationMessage
+        } : null];
+      }));
+      return {
+        inputs,
+        formValid: form.checkValidity(),
+        savedRules: JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null')
+      };
+    });
+    throw new Error('Broker Rules values did not persist after a valid submission: ' + JSON.stringify(brokerRulesState));
+  }
 
   // Per-account language is server-backed and is restored after a browser reload.
   await visibleSettingsDesk().getByLabel('Account language').selectOption('ru');
