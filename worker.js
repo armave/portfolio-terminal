@@ -6,8 +6,8 @@ export { sanitizeFreedomMarketDepth };
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
-const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000, finnhub_calendar: 6 * 60 * 60 * 1000 };
-const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000, finnhub_calendar: 30_000 };
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000, finnhub_calendar: 6 * 60 * 60 * 1000, finnhub_market_status: 15_000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000, finnhub_calendar: 30_000, finnhub_market_status: 5_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
@@ -2545,82 +2545,93 @@ export default {
                 if (!providerExchange) return jsonError("Unsupported market calendar exchange.", 400, corsHeaders);
                 if (!key) return jsonError("Finnhub provider key is not configured.", 503, corsHeaders);
                 try {
-                    const data = await withProviderCache("finnhub_calendar", providerExchange, async () => {
-                        const holidayUrl = new URL("https://finnhub.io/api/v1/stock/market-holiday");
-                        holidayUrl.searchParams.set("exchange", providerExchange);
-                        holidayUrl.searchParams.set("token", key);
-                        const statusUrl = new URL("https://finnhub.io/api/v1/stock/market-status");
-                        statusUrl.searchParams.set("exchange", providerExchange);
-                        statusUrl.searchParams.set("token", key);
-                        const [holidayResponse, statusResponse] = await Promise.all([
-                            fetchWithTimeout(holidayUrl.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } }),
-                            fetchWithTimeout(statusUrl.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } })
-                        ]);
-                        if (!holidayResponse.ok || !statusResponse.ok) {
-                            throw Object.assign(new Error("Finnhub exchange calendar is temporarily unavailable."), {
-                                status: holidayResponse.status === 429 || statusResponse.status === 429 ? 429 : 502
+                    // Holiday/early-close definitions change infrequently; the
+                    // current market-status snapshot must never inherit that long TTL.
+                    const [holidayPayload, statusPayload] = await Promise.all([
+                        withProviderCache("finnhub_calendar", providerExchange, async () => {
+                            const endpoint = new URL("https://finnhub.io/api/v1/stock/market-holiday");
+                            endpoint.searchParams.set("exchange", providerExchange);
+                            endpoint.searchParams.set("token", key);
+                            const response = await fetchWithTimeout(endpoint.toString(), {
+                                headers: { "Accept": "application/json", "User-Agent": USER_AGENT }
                             });
-                        }
-                        const [holidayPayload, statusPayload] = await Promise.all([
-                            holidayResponse.json().catch(() => null),
-                            statusResponse.json().catch(() => null)
-                        ]);
-                        if (!holidayPayload || holidayPayload.exchange !== providerExchange ||
-                            typeof holidayPayload.timezone !== "string" || !Array.isArray(holidayPayload.data) ||
-                            !statusPayload || statusPayload.exchange !== providerExchange ||
-                            typeof statusPayload.timezone !== "string" || !Number.isFinite(Number(statusPayload.t))) {
-                            throw Object.assign(new Error("Finnhub returned an invalid exchange calendar."), { status: 502 });
-                        }
-                        const events = holidayPayload.data.slice(0, 300).flatMap(row => {
-                            if (!row || typeof row !== "object" || Array.isArray(row) ||
-                                typeof row.atDate !== "string" || !isValidDateOnly(row.atDate)) return [];
-                            const eventName = typeof row.eventName === "string" && row.eventName.length <= 100
-                                ? row.eventName : null;
-                            const tradingHour = typeof row.tradingHour === "string" && row.tradingHour.length <= 32
-                                ? row.tradingHour : "";
-                            let earlyCloseMinute = null;
-                            if (tradingHour) {
-                                const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(tradingHour);
-                                if (match) {
-                                    const openHour = Number(match[1]), openMinute = Number(match[2]);
-                                    const closeHour = Number(match[3]), closeMinute = Number(match[4]);
-                                    const valid = openHour < 24 && closeHour < 24 && openMinute < 60 && closeMinute < 60 &&
-                                        closeHour * 60 + closeMinute > openHour * 60 + openMinute;
-                                    if (valid) earlyCloseMinute = closeHour * 60 + closeMinute;
-                                }
+                            const raw = await response.json().catch(() => null);
+                            if (!response.ok || !raw || raw.exchange !== providerExchange ||
+                                typeof raw.timezone !== "string" || !Array.isArray(raw.data)) {
+                                throw Object.assign(new Error("Finnhub exchange holiday calendar is temporarily unavailable."), {
+                                    status: response.status === 429 ? 429 : 502
+                                });
                             }
-                            return [{
-                                date: row.atDate,
-                                name: eventName,
-                                tradingHour: tradingHour || null,
-                                kind: earlyCloseMinute === null ? "CLOSED" : "EARLY_CLOSE",
-                                earlyCloseMinute
-                            }];
-                        });
-                        const holidays = events.filter(event => event.kind === "CLOSED").map(event => event.date);
-                        const earlyCloses = Object.fromEntries(events
-                            .filter(event => event.kind === "EARLY_CLOSE" && event.earlyCloseMinute !== null)
-                            .map(event => [event.date, event.earlyCloseMinute]));
-                        return {
-                            ok: true,
-                            provider: "Finnhub",
-                            exchange: requestedExchange,
-                            providerExchange,
-                            timeZone: holidayPayload.timezone,
-                            receivedAt: Date.now(),
-                            events,
-                            holidays,
-                            earlyCloses,
-                            marketStatus: {
-                                isOpen: statusPayload.isOpen === true,
-                                session: typeof statusPayload.session === "string" ? statusPayload.session : null,
-                                holiday: typeof statusPayload.holiday === "string" ? statusPayload.holiday : null,
-                                timeZone: statusPayload.timezone,
-                                timestamp: Number(statusPayload.t) * 1000
+                            return raw;
+                        }),
+                        withProviderCache("finnhub_market_status", providerExchange, async () => {
+                            const endpoint = new URL("https://finnhub.io/api/v1/stock/market-status");
+                            endpoint.searchParams.set("exchange", providerExchange);
+                            endpoint.searchParams.set("token", key);
+                            const response = await fetchWithTimeout(endpoint.toString(), {
+                                headers: { "Accept": "application/json", "User-Agent": USER_AGENT }
+                            });
+                            const raw = await response.json().catch(() => null);
+                            if (!response.ok || !raw || raw.exchange !== providerExchange ||
+                                typeof raw.timezone !== "string" || !Number.isFinite(Number(raw.t))) {
+                                throw Object.assign(new Error("Finnhub current market status is temporarily unavailable."), {
+                                    status: response.status === 429 ? 429 : 502
+                                });
                             }
-                        };
+                            return raw;
+                        })
+                    ]);
+                    if (holidayPayload.timezone !== statusPayload.timezone) {
+                        throw Object.assign(new Error("Finnhub exchange calendar timezone sources disagree."), { status: 502 });
+                    }
+                    const events = holidayPayload.data.slice(0, 300).flatMap(row => {
+                        if (!row || typeof row !== "object" || Array.isArray(row) ||
+                            typeof row.atDate !== "string" || !isValidDateOnly(row.atDate)) return [];
+                        const eventName = typeof row.eventName === "string" && row.eventName.length <= 100
+                            ? row.eventName : null;
+                        const tradingHour = typeof row.tradingHour === "string" && row.tradingHour.length <= 32
+                            ? row.tradingHour : "";
+                        let earlyCloseMinute = null;
+                        if (tradingHour) {
+                            const match = /^(\\d{2}):(\\d{2})-(\\d{2}):(\\d{2})$/.exec(tradingHour);
+                            if (match) {
+                                const openHour = Number(match[1]), openMinute = Number(match[2]);
+                                const closeHour = Number(match[3]), closeMinute = Number(match[4]);
+                                const valid = openHour < 24 && closeHour < 24 && openMinute < 60 && closeMinute < 60 &&
+                                    closeHour * 60 + closeMinute > openHour * 60 + openMinute;
+                                if (valid) earlyCloseMinute = closeHour * 60 + closeMinute;
+                            }
+                        }
+                        return [{
+                            date: row.atDate,
+                            name: eventName,
+                            tradingHour: tradingHour || null,
+                            kind: earlyCloseMinute === null ? "CLOSED" : "EARLY_CLOSE",
+                            earlyCloseMinute
+                        }];
                     });
-                    return new Response(JSON.stringify({ ...data, receivedAt: Date.now() }), { headers: corsHeaders });
+                    const holidays = events.filter(event => event.kind === "CLOSED").map(event => event.date);
+                    const earlyCloses = Object.fromEntries(events
+                        .filter(event => event.kind === "EARLY_CLOSE" && event.earlyCloseMinute !== null)
+                        .map(event => [event.date, event.earlyCloseMinute]));
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Finnhub",
+                        exchange: requestedExchange,
+                        providerExchange,
+                        timeZone: holidayPayload.timezone,
+                        receivedAt: Date.now(),
+                        events,
+                        holidays,
+                        earlyCloses,
+                        marketStatus: {
+                            isOpen: statusPayload.isOpen === true,
+                            session: typeof statusPayload.session === "string" ? statusPayload.session : null,
+                            holiday: typeof statusPayload.holiday === "string" ? statusPayload.holiday : null,
+                            timeZone: statusPayload.timezone,
+                            timestamp: Number(statusPayload.t) * 1000
+                        }
+                    }), { headers: corsHeaders });
                 } catch (error) {
                     const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
                     return jsonError(status === 429
