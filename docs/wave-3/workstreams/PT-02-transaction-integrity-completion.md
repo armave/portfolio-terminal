@@ -42,7 +42,7 @@ Vitest lifecycle fixtures: buy/add/partial sell/full close; cash/debt settlement
 
 ## Client entry bundle guard
 
-The production minified entry bundle is capped at **575,000 bytes**. The separate gzip ceiling remains **165,000 bytes** so the raw-size headroom does not relax the compressed-transfer constraint. The current measured entry is 358,436 bytes / 112,388 bytes gzip at the passing exact-head validation for the prior PR commit; re-measurement is required for the updated bundle-limit commit.
+The production minified entry bundle is capped at **575,000 bytes**. The separate gzip ceiling remains **165,000 bytes** so the raw-size headroom does not relax the compressed-transfer constraint. The latest completed production build before the 575,000-byte limit update measured 358,436 bytes / 112,388 bytes gzip. The 575,000-byte raw limit is intentionally a hard ceiling, not a target; the 165,000-byte gzip ceiling remains the tighter transfer guard. Exact-head CI re-measures both values on every PR update.
 
 ## Mutation-path inventory — current audited coverage
 
