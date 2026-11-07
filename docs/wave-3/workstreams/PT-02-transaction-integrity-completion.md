@@ -45,3 +45,24 @@ Vitest lifecycle fixtures: buy/add/partial sell/full close; cash/debt settlement
 - PT-04 may derive matching and discrepancy evidence from existing PT-02 events, but any correction must wait for accepted PT-02 correction/audit semantics.
 - PT-05 may build tenant directory/read authorization in parallel, but must not enable independent tenant financial writes until PT-02 acceptance and PT-16 security/key review pass.
 - PT-06 consumes only the accepted external-flow and transaction contract; it must not reinterpret raw broker events independently.
+
+
+## Implementation slice 1 — cloud write retry integrity
+
+**Client branch:** `feat/wave3-pt02-transaction-integrity-completion`  
+**Server deployment commit on `main`:** [`c6201c528977`](https://github.com/armave/portfolio-terminal/commit/c6201c528977bd2dd2bf9fe2ef05fb28dbec9772)
+
+- [x] Add optional server-side idempotency receipts to encrypted `/api/state`, `/api/history`, and keyed cloud-record writes. The receipt stores only a digest of the exact JSON request envelope, its committed revision and an expiry — not a second copy of the portfolio or ciphertext.
+- [x] Persist the cloud record and receipt in the same Durable Object storage transaction.
+- [x] Bound receipt storage to 100 entries per record with a seven-day expiry.
+- [x] Reject reuse of a key with a different request fingerprint.
+- [x] Return a replay acknowledgement only when the original commit is still the latest record revision. If a later device has superseded it, return a revision conflict so an old retry cannot be mistaken for a current snapshot.
+- [x] Add one client retry for ambiguous network failures and transient 5xx responses, reusing the same body, `If-Match` and `Idempotency-Key`; never retry 4xx conflicts or a stale account session.
+- [x] Add Worker regression fixtures for duplicate commit, conflicting key reuse, superseded retry, invalid keys and legacy clients without the optional header.
+- [x] Add client Vitest coverage for retry identity on portfolio and closed-history writes.
+- [ ] Validate exact-head PR CI and direct-to-main Worker deployment status.
+- [ ] Complete authenticated live-account/manual device QA; deterministic fixtures are not a substitute.
+ 
+### Remaining PT-02 acceptance scope
+
+This implementation slice closes the lost-response retry gap; it does **not** close PT-02. Still required: end-to-end inventory of every financial mutation call path, explicit correction/reversal semantics and unsupported-path handling, full lifecycle/backup-import/restore/reload parity, cross-tab conflict UX under real multi-device use, and a reviewed versioned migration/rollback procedure. The event journal and `PortfolioState.positions` remain additive/canonical respectively.
