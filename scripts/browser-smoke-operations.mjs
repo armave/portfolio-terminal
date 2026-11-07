@@ -46,6 +46,61 @@ async function mockWorkerApi(page) {
   let stateRevision = 0;
   let historyRevision = 0;
   let newsRequestCount = 0;
+  let tenantDirectoryRevision = 0;
+  const tenantDirectories = [];
+  const tenantCapabilities = {
+    owner: ['tenant.read', 'tenant.manage', 'workspace.manage', 'portfolio.manage', 'membership.manage'],
+    manager: ['tenant.read', 'portfolio.read', 'portfolio.write'],
+    investor: ['tenant.read', 'portfolio.read'],
+    guest: ['portfolio.projection.read']
+  };
+  const tenantDirectoryViewFor = (user) => {
+    const visibleTenants = tenantDirectories.flatMap((entry) => {
+      const membership = entry.memberships.find((item) =>
+        item.userId === user.id && item.status === 'active'
+      );
+      if (!membership) return [];
+      const isOwner = membership.role === 'owner';
+      const grants = membership.portfolioIds || [];
+      const portfolios = entry.portfolios.filter((portfolio) =>
+        isOwner || grants.includes(portfolio.id)
+      ).map((portfolio) => ({
+        ...portfolio,
+        access: isOwner ? 'owner' : membership.role === 'guest' ? 'projection' : 'portfolio',
+        capabilities: isOwner ? tenantCapabilities.owner : tenantCapabilities[membership.role]
+      }));
+      const workspaceIds = new Set(portfolios.map((portfolio) => portfolio.workspaceId));
+      const view = {
+        tenant: entry.tenant,
+        membership: {
+          role: membership.role,
+          status: 'active',
+          membershipVersion: membership.membershipVersion,
+          capabilities: tenantCapabilities[membership.role]
+        },
+        workspaces: entry.workspaces.filter((workspace) => isOwner || workspaceIds.has(workspace.id)),
+        portfolios
+      };
+      if (isOwner) {
+        view.memberships = entry.memberships.map((item) => ({
+          userId: item.userId,
+          role: item.role,
+          status: item.status,
+          membershipVersion: item.membershipVersion,
+          createdAt: item.createdAt,
+          portfolioIds: [...(item.portfolioIds || [])]
+        }));
+      }
+      return [view];
+    });
+    return {
+      version: 1,
+      revision: tenantDirectoryRevision,
+      mode: 'directory-metadata-only',
+      financialDataEnabled: false,
+      tenants: visibleTenants
+    };
+  };
 
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
     if (call) call.responseStatus = status;
@@ -244,6 +299,120 @@ async function mockWorkerApi(page) {
         await json(route, 200, { success: true }, {}, call);
         return;
       }
+    }
+
+    if (pathname === '/api/tenants' && method === 'GET') {
+      if (!currentUser || token !== currentToken) {
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
+        return;
+      }
+      await json(route, 200, tenantDirectoryViewFor(currentUser), {}, call);
+      return;
+    }
+    if (pathname === '/api/tenants' && method === 'POST') {
+      if (!currentUser || token !== currentToken || currentUser.role !== 'admin') {
+        await json(route, 403, { error: 'Administrator access is required to provision a tenant.' }, {}, call);
+        return;
+      }
+      const name = String(body.name || '').trim();
+      const workspaceName = String(body.workspaceName || 'Main workspace').trim();
+      const portfolioName = String(body.portfolioName || 'Main portfolio').trim();
+      if (name.length < 2 || name.length > 80 ||
+          workspaceName.length < 2 || workspaceName.length > 80 ||
+          portfolioName.length < 2 || portfolioName.length > 80) {
+        await json(route, 400, { error: 'Tenant, workspace and portfolio names must contain 2–80 characters.' }, {}, call);
+        return;
+      }
+      const tenantId = 'tenant-' + (tenantDirectories.length + 1);
+      const workspaceId = 'workspace-' + (tenantDirectories.length + 1);
+      const portfolioId = 'portfolio-' + (tenantDirectories.length + 1);
+      const createdAt = new Date().toISOString();
+      const entry = {
+        tenant: { id: tenantId, name, status: 'active', createdAt },
+        workspaces: [{ id: workspaceId, name: workspaceName, status: 'active' }],
+        portfolios: [{ id: portfolioId, workspaceId, name: portfolioName, status: 'active' }],
+        memberships: [{
+          userId: currentUser.id, role: 'owner', status: 'active',
+          membershipVersion: 1, createdAt, portfolioIds: [portfolioId]
+        }]
+      };
+      tenantDirectories.push(entry);
+      tenantDirectoryRevision += 1;
+      await json(route, 201, {
+        success: true,
+        revision: tenantDirectoryRevision,
+        financialDataEnabled: false,
+        tenant: { id: tenantId, name, status: 'active' },
+        workspace: { id: workspaceId, tenantId, name: workspaceName },
+        portfolio: { id: portfolioId, tenantId, workspaceId, name: portfolioName }
+      }, {}, call);
+      return;
+    }
+    const revokeMatch = pathname.match(/^\/api\/tenants\/([^/]+)\/memberships\/revoke$/);
+    if (revokeMatch && method === 'POST') {
+      const entry = tenantDirectories.find((item) => item.tenant.id === revokeMatch[1]);
+      const owner = entry?.memberships.find((item) =>
+        item.userId === currentUser?.id && item.role === 'owner' && item.status === 'active'
+      );
+      const target = entry?.memberships.find((item) =>
+        item.userId === body.userId && item.status === 'active'
+      );
+      if (!entry || !owner || !target || target.role === 'owner') {
+        await json(route, 404, { error: 'Tenant not found or membership management is not permitted.' }, {}, call);
+        return;
+      }
+      target.status = 'revoked';
+      target.membershipVersion += 1;
+      tenantDirectoryRevision += 1;
+      await json(route, 200, {
+        success: true,
+        revision: tenantDirectoryRevision,
+        membershipVersion: target.membershipVersion
+      }, {}, call);
+      return;
+    }
+    const grantMatch = pathname.match(/^\/api\/tenants\/([^/]+)\/memberships$/);
+    if (grantMatch && method === 'POST') {
+      const entry = tenantDirectories.find((item) => item.tenant.id === grantMatch[1]);
+      const owner = entry?.memberships.find((item) =>
+        item.userId === currentUser?.id && item.role === 'owner' && item.status === 'active'
+      );
+      const role = body.role;
+      const portfolioIds = Array.isArray(body.portfolioIds) ? body.portfolioIds : [];
+      if (!entry || !owner || !['manager', 'investor', 'guest'].includes(role) ||
+          typeof body.userId !== 'string' || body.userId === currentUser?.id ||
+          portfolioIds.length < 1 || (role === 'guest' && portfolioIds.length !== 1) ||
+          portfolioIds.some((id) => !entry.portfolios.some((portfolio) => portfolio.id === id)) ||
+          !users.some((user) => user.id === body.userId)) {
+        await json(route, 404, { error: 'Tenant not found or membership management is not permitted.' }, {}, call);
+        return;
+      }
+      let membership = entry.memberships.find((item) => item.userId === body.userId);
+      if (membership) {
+        membership.role = role;
+        membership.status = 'active';
+        membership.membershipVersion += 1;
+        membership.portfolioIds = [...portfolioIds];
+      } else {
+        membership = {
+          userId: body.userId, role, status: 'active', membershipVersion: 1,
+          createdAt: new Date().toISOString(), portfolioIds: [...portfolioIds]
+        };
+        entry.memberships.push(membership);
+      }
+      tenantDirectoryRevision += 1;
+      await json(route, 201, {
+        success: true,
+        revision: tenantDirectoryRevision,
+        membership: {
+          userId: membership.userId,
+          role: membership.role,
+          status: 'active',
+          membershipVersion: membership.membershipVersion,
+          capabilities: tenantCapabilities[role]
+        }
+      }, {}, call);
+      return;
     }
 
     if (pathname === '/api/state') {
@@ -775,6 +944,37 @@ try {
   );
   await waitForUserSaveReady('Browser Guest Updated');
 
+  // Tenant directory: owner metadata creation, least-privilege guest grant,
+  // and guest projection-only view without an owner membership roster.
+  const tenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
+  await tenantPanel.locator('details').filter({ hasText: 'Create tenant metadata' }).locator('summary').click();
+  await tenantPanel.getByLabel('Tenant name').fill('Operations Family');
+  await tenantPanel.getByLabel('Workspace name').fill('Family workspace');
+  await tenantPanel.getByLabel('Portfolio name').fill('Core portfolio');
+  const tenantCreateCountBefore = worker.count('POST', '/api/tenants');
+  await tenantPanel.getByRole('button', { name: 'Create directory entry' }).click();
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/tenants').slice(tenantCreateCountBefore)
+      .some((call) => call.body.name === 'Operations Family' && call.responseStatus === 201),
+    'tenant metadata creation'
+  );
+  await tenantPanel.getByText('Operations Family', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await tenantPanel.locator('details').filter({ hasText: 'Grant access' }).locator('summary').click();
+  await tenantPanel.getByLabel('Member').selectOption({ label: 'Browser Guest Updated · Guest' });
+  await tenantPanel.getByLabel('Access role').selectOption('guest');
+  await tenantPanel.getByLabel('Core portfolio').check();
+  const grantCountBefore = worker.findCalls('POST', '/api/tenants/tenant-1/memberships').length;
+  await tenantPanel.getByRole('button', { name: 'Grant access' }).click();
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/tenants/tenant-1/memberships').slice(grantCountBefore)
+      .some((call) => call.body.role === 'guest' && call.body.portfolioIds.length === 1 && call.responseStatus === 201),
+    'single-portfolio guest membership grant'
+  );
+  await tenantPanel.getByText('Browser Guest Updated', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  if (await tenantPanel.getByText('Directory only — financial storage is not enabled for newly created tenants.').count() !== 1) {
+    throw new Error('Tenant directory UI did not disclose its metadata-only storage boundary.');
+  }
+
   // The server remains authoritative: the sole administrator cannot be demoted.
   const adminRow = rowForUser('Operations Admin');
   if (await adminRow.getByRole('button', { name: 'Delete' }).count() !== 0) {
@@ -875,6 +1075,12 @@ try {
   await waitForAuthOverlay(page, false);
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
+  await guestTenantPanel.getByText('Operations Family', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  if (await guestTenantPanel.locator('h5').filter({ hasText: 'Manage members' }).count() !== 0 ||
+      await guestTenantPanel.getByRole('button', { name: 'Revoke' }).count() !== 0) {
+    throw new Error('Guest tenant directory response exposed the owner-only membership roster or revocation controls.');
+  }
   if (await visibleSettingsDesk().locator('section.settings-user-panel').count() ||
       await visibleSettingsDesk().locator('details.settings-broker-rules').count()) {
     throw new Error('Guest Settings exposed administrator-only account or broker-rule controls.');
