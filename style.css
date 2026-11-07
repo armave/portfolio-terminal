@@ -3776,3 +3776,204 @@ table tbody tr:hover {
     flex-direction: column;
   }
 }
+
+/* Margin desk UX: clear financial hierarchy, risk confidence, and mobile navigation. */
+.portfolio-metrics-grid>.portfolio-micro-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(0.5rem, 0.8vw, 0.75rem);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.portfolio-micro-column,
+.portfolio-micro-column+.portfolio-micro-column {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.875rem;
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.34), rgba(15, 23, 42, 0.7));
+  padding: clamp(0.65rem, 0.95vw, 0.9rem);
+}
+
+.portfolio-micro-column {
+  gap: 0.7rem;
+}
+
+.portfolio-micro-heading {
+  color: #a8b8ca;
+  font-size: 0.66rem;
+  letter-spacing: 0.085em;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  text-align: right;
+  font-weight: 600;
+}
+
+.portfolio-micro-actions button {
+  min-height: 2.375rem;
+  padding-inline: 0.7rem;
+}
+
+@container portfolio-metrics (max-width: 52rem) {
+  .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-micro-column+.portfolio-micro-column {
+    border-left: 1px solid rgba(148, 163, 184, 0.15);
+  }
+
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
+    grid-column: auto;
+    border-top: 1px solid rgba(148, 163, 184, 0.15);
+    padding-top: clamp(0.65rem, 0.95vw, 0.9rem);
+  }
+}
+
+@container portfolio-metrics (max-width: 36rem) {
+  .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container portfolio-metrics (max-width: 22rem) {
+  .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.margin-risk-gauge-heading {
+  align-items: flex-start;
+}
+
+.margin-risk-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 62%;
+}
+
+.margin-risk-data-status {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #fcd34d;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.margin-risk-data-note {
+  margin-top: 0.8rem;
+  border-left: 3px solid #f59e0b;
+  border-radius: 0.5rem;
+  background: rgba(245, 158, 11, 0.075);
+  color: #fcd34d;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.6875rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.margin-risk-disclaimer {
+  display: block;
+  margin-top: 0.75rem;
+  color: #8493a8;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+
+#projectionTableContainer {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--surface-radius, 0.875rem);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.2), transparent 65%), #0b0f17;
+  padding: clamp(0.65rem, 1.1vw, 1rem);
+}
+
+.projection-table-caption {
+  caption-side: top;
+  padding: 0.15rem 0.5rem 0.85rem;
+  text-align: left;
+}
+
+.projection-table-caption span {
+  display: block;
+}
+
+.projection-table-caption span:first-child {
+  color: #f1f5f9;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+}
+
+.projection-table-caption span:last-child {
+  margin-top: 0.2rem;
+  color: #94a3b8;
+  font-size: 0.67rem;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+#projectionTableContainer table thead th {
+  color: #b6c4d6;
+}
+
+@media (max-width: 768px) {
+  #tickerTabs {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    row-gap: 0.4rem;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list {
+    display: flex;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    min-height: 2.75rem;
+    padding-bottom: 0.35rem;
+  }
+
+  #tickerTabs>button {
+    min-height: 2.75rem;
+    padding-inline: 0.85rem;
+  }
+
+  .margin-risk-gauge-heading {
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+
+  .margin-risk-status-group {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .margin-risk-mobile-details summary {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+}
+
+@media (max-width: 420px) {
+  #projectionTableContainer {
+    padding: 0.625rem;
+  }
+
+  .projection-table-caption {
+    padding-inline: 0.25rem;
+  }
+}
