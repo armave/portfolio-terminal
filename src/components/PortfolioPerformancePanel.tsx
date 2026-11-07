@@ -36,7 +36,14 @@ const PERFORMANCE_RU_COPY: Record<string, string> = {
   "Margin debt": "Маржинальный долг",
   "Cash": "Денежные средства",
   "Cash holding": "Актив за денежные средства",
-  "TWR uses linked Modified Dietz, a flow-weighted approximation. MWR uses XIRR with ACT/365. Historical FX and benchmark comparison are not enabled. See Performance methodology in Settings.": "TWR использует связанный метод Modified Dietz — приближённый метод с весами денежных потоков. MWR использует XIRR с базой ACT/365. Историческая конвертация валют и сравнение с бенчмарком не включены. См. методологию доходности в настройках."
+  "TWR uses linked Modified Dietz, a flow-weighted approximation. MWR uses XIRR with ACT/365. Historical FX and benchmark comparison are not enabled. See Performance methodology in Settings.": "TWR использует связанный метод Modified Dietz — приближённый метод с весами денежных потоков. MWR использует XIRR с базой ACT/365. Историческая конвертация валют и сравнение с бенчмарком не включены. См. методологию доходности в настройках.",
+  "The broker cashflow history contains a corrected or conflicting source record; performance is unavailable until the revision is reconciled.": "В истории денежных потоков брокера обнаружена исправленная или конфликтующая запись. До сверки этой версии расчёт доходности недоступен.",
+  "A trade event uses a different or unknown currency; attribution is unavailable.": "Сделка указана в другой или неизвестной валюте. Распределение доходности недоступно.",
+  "A trade event has an explicit fee currency that differs from the portfolio currency; attribution is unavailable.": "Валюта комиссии сделки отличается от валюты портфеля. Распределение доходности недоступно.",
+  "A sale journal event is missing valid net proceeds; sale attribution is withheld.": "В журнале продажи отсутствуют подтверждённые чистые поступления. Распределение результата продажи не выполняется.",
+  "A sale journal event does not reconcile net proceeds, cash and margin-debt movements; sale attribution is withheld.": "Чистые поступления от продажи не согласуются с изменениями денежных средств и маржинального долга. Распределение результата продажи не выполняется.",
+  "A buy or sell journal event is missing its ticker, gross amount, cash movement, debt movement or fee evidence required for attribution.": "В записи покупки или продажи отсутствуют данные, необходимые для распределения результата.",
+  "One or more trade journal events predate explicit currency metadata; attribution is provisional.": "В некоторых записях сделок отсутствуют явные сведения о валюте. Распределение результата является предварительным."
 };
 
 export function translatePortfolioPerformanceText(value: string, language = getAppLanguage()): string {

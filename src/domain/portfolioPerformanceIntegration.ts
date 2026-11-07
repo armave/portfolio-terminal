@@ -60,7 +60,7 @@ function mapExternalCashFlows(
   currency: string
 ): AdapterResult<PerformanceExternalCashFlow[]> {
   const flows: PerformanceExternalCashFlow[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, PortfolioTransactionEvent>();
   const unsupported = new Set([
     'cash.adjustment',
     'margin.adjustment',
@@ -100,10 +100,22 @@ function mapExternalCashFlows(
     }
 
     const identity = event.externalReferenceId || event.id;
-    if (seen.has(identity)) continue;
-    seen.add(identity);
+    const previous = seen.get(identity);
+    if (previous) {
+      const sameSourceObservation =
+        previous.type === event.type &&
+        previous.requestFingerprint !== undefined &&
+        previous.requestFingerprint === event.requestFingerprint &&
+        previous.effectiveAt === event.effectiveAt;
+      if (sameSourceObservation) continue;
+      return {
+        reason: 'The broker cashflow history contains a corrected or conflicting source record; performance is unavailable until the revision is reconciled.',
+        warnings: []
+      };
+    }
+    seen.set(identity, event);
     const brokerSourced = event.actor?.type === 'broker' &&
-      event.source.toLowerCase().includes('freedom');
+      String(event.source || '').toLowerCase().includes('freedom');
     flows.push({
       timestamp: event.effectiveAt,
       amount,
@@ -129,24 +141,29 @@ function mapAttributionItemFlows(
   currency: string
 ): AdapterResult<Map<string, PerformanceExternalCashFlow[]>> {
   const result = new Map<string, PerformanceExternalCashFlow[]>();
-  const add = (key: string, timestamp: number, amount: number) => {
+  const warnings: string[] = [];
+  const add = (
+    key: string,
+    timestamp: number,
+    amount: number,
+    quality: 'current' | 'provisional' = 'current'
+  ) => {
     if (Math.abs(amount) < 1e-10) return;
     const flow: PerformanceExternalCashFlow = {
       timestamp,
       amount: Math.abs(amount),
       type: amount >= 0 ? 'contribution' : 'withdrawal',
       currency,
-      quality: 'current'
+      quality
     };
     const current = result.get(key) || [];
     current.push(flow);
     result.set(key, current);
   };
 
-  // External flows belong to the cash bucket. Security/debt purchase and sale
-  // flows below are internal reallocations and must net to zero across buckets.
+  // External flows belong to cash. Security/debt flows are internal reallocations.
   for (const flow of externalFlows) {
-    add(CASH_ITEM_KEY, flow.timestamp, flow.type === 'contribution' ? flow.amount : -flow.amount);
+    add(CASH_ITEM_KEY, flow.timestamp, flow.type === 'contribution' ? flow.amount : -flow.amount, flow.quality);
   }
 
   for (const event of events) {
@@ -154,42 +171,84 @@ function mapAttributionItemFlows(
     if (event.type !== 'trade.buy' && event.type !== 'trade.sell') continue;
 
     const ticker = typeof event.ticker === 'string' ? event.ticker.trim().toUpperCase() : '';
-    const eventCurrency = currencyCode(event.currency);
     const gross = finiteNumber(event.grossAmount);
     const cashDelta = finiteNumber(event.cashDelta);
     const debtDelta = event.marginDebtDelta === undefined ? 0 : finiteNumber(event.marginDebtDelta);
     const fees = event.fees === undefined ? 0 : finiteNumber(event.fees);
-    if (!ticker || eventCurrency !== currency || gross === null || gross <= 0 ||
-        cashDelta === null || debtDelta === null || fees === null || fees < 0) {
+
+    // Older/manual store events omit currency. The valuation is single-currency,
+    // so infer the currency but keep the attribution explicitly provisional.
+    let flowQuality: 'current' | 'provisional' = 'current';
+    if (event.currency === undefined) {
+      flowQuality = 'provisional';
+      warnings.push('One or more trade journal events predate explicit currency metadata; attribution is provisional.');
+    } else if (currencyCode(event.currency) !== currency) {
       return {
-        reason: 'A buy or sell journal event is missing the currency, gross amount, cash delta, debt delta or fee evidence required for attribution.',
-        warnings: []
+        reason: 'A trade event uses a different or unknown currency; attribution is unavailable.',
+        warnings
+      };
+    }
+    if (event.feeCurrency !== undefined && currencyCode(event.feeCurrency) !== currency) {
+      return {
+        reason: 'A trade event has an explicit fee currency that differs from the portfolio currency; attribution is unavailable.',
+        warnings
+      };
+    }
+    if (!ticker || gross === null || gross <= 0 || cashDelta === null ||
+        debtDelta === null || fees === null || fees < 0) {
+      return {
+        reason: 'A buy or sell journal event is missing its ticker, gross amount, cash movement, debt movement or fee evidence required for attribution.',
+        warnings
       };
     }
 
-    const direction = event.type === 'trade.buy' ? 1 : -1;
-    const positionFlow = direction * gross;
-    // cashDelta is net of commission in the store's transaction commands.
-    // Add the fee back here so the fee remains investment cost, not a transfer
-    // of capital between attribution buckets.
-    const cashFlow = cashDelta + fees;
-    // Positive marginDebtDelta increases a liability; the item value is negative debt.
+    let positionFlow: number;
+    let cashFlow: number;
     const debtItemFlow = -debtDelta;
+
+    if (event.type === 'trade.buy') {
+      // The buy cash movement includes the buy commission. Add it back to the
+      // transfer so commission remains portfolio profit/cost, not a transfer.
+      positionFlow = gross;
+      cashFlow = cashDelta + fees;
+    } else {
+      // Sale fees include previously allocated buy commissions and sell fees.
+      // netAmount identifies only proceeds after the sell-side commission.
+      const netAmount = finiteNumber(event.netAmount);
+      const tolerance = Math.max(0.02, gross * 1e-8);
+      if (netAmount === null || netAmount < 0 || netAmount > gross + tolerance) {
+        return {
+          reason: 'A sale journal event is missing valid net proceeds; sale attribution is withheld.',
+          warnings
+        };
+      }
+      const sellFee = Math.max(0, gross - netAmount);
+      if (fees + tolerance < sellFee ||
+          Math.abs((cashDelta - debtDelta) - netAmount) > tolerance) {
+        return {
+          reason: 'A sale journal event does not reconcile net proceeds, cash and margin-debt movements; sale attribution is withheld.',
+          warnings
+        };
+      }
+      positionFlow = -gross;
+      cashFlow = cashDelta + sellFee;
+    }
+
     const netInternalFlow = positionFlow + cashFlow + debtItemFlow;
     const tolerance = Math.max(0.02, gross * 1e-8);
     if (!Number.isFinite(netInternalFlow) || Math.abs(netInternalFlow) > tolerance) {
       return {
         reason: 'A buy or sell journal event does not reconcile across security, cash and margin-debt buckets; latest-period attribution is withheld.',
-        warnings: []
+        warnings
       };
     }
 
-    add('position:' + ticker, event.effectiveAt, positionFlow);
-    add(CASH_ITEM_KEY, event.effectiveAt, cashFlow);
-    add(MARGIN_DEBT_ITEM_KEY, event.effectiveAt, debtItemFlow);
+    add('position:' + ticker, event.effectiveAt, positionFlow, flowQuality);
+    add(CASH_ITEM_KEY, event.effectiveAt, cashFlow, flowQuality);
+    add(MARGIN_DEBT_ITEM_KEY, event.effectiveAt, debtItemFlow, flowQuality);
   }
 
-  return { value: result, warnings: [] };
+  return { value: result, warnings: [...new Set(warnings)] };
 }
 
 function parseCashflowTimestamp(value: unknown): number | null {
@@ -386,7 +445,8 @@ export function buildPortfolioPerformanceReport(
     ...(latestAttribution.status === 'unavailable' ? [latestAttribution.reason] : latestAttribution.warnings)
   ];
   const status = timeWeighted.status === 'provisional' ||
-    (moneyWeighted.status !== 'unavailable' && moneyWeighted.status === 'provisional')
+    (moneyWeighted.status !== 'unavailable' && moneyWeighted.status === 'provisional') ||
+    (latestAttribution.status !== 'unavailable' && latestAttribution.status === 'provisional')
     ? 'provisional'
     : 'available';
 

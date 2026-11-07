@@ -522,6 +522,8 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
+let performanceSnapshotInFlight = false;
+let performanceSnapshotPending = false;
 
 createPortfolioEquitySyncRuntime({
   subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
@@ -542,26 +544,61 @@ createPortfolioEquitySyncRuntime({
     }, persist);
   },
   onDurableEquityChanged: () => { void pushStateToCloud(); },
-  recordPerformanceSnapshot: async (nextStoreState, timestamp) => {
+  recordPerformanceSnapshot: async (_nextStoreState, timestamp) => {
     // Performance history is administrator-owned until PT-05 tenant isolation is implemented.
-    if (currentAccountRole !== 'admin' || !currentAccountId) return false;
-    const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(currentAccountId);
-    const {
-      appendDailyPerformanceValuation,
-      capturePortfolioPerformanceValuation
-    } = await import('./src/domain/portfolioPerformanceCapture');
-    const snapshot = capturePortfolioPerformanceValuation(nextStoreState, timestamp, cashflowHistoryComplete);
-    if (!snapshot) return false;
+    if (performanceSnapshotInFlight) {
+      performanceSnapshotPending = true;
+      return false;
+    }
+    const accountId = currentAccountId;
+    const session = currentAccountSessionGuard.capture();
+    if (currentAccountRole !== 'admin' || !accountId || !session) return false;
 
-    const existing = nextStoreState.performanceValuations || [];
-    const next = appendDailyPerformanceValuation(existing, snapshot);
-    const unchanged = next.length === existing.length &&
-      next.every((item, index) => item === existing[index]);
-    if (unchanged) return false;
+    performanceSnapshotInFlight = true;
+    try {
+      const {
+        appendDailyPerformanceValuation,
+        capturePortfolioPerformanceValuation
+      } = await import('./src/domain/portfolioPerformanceCapture');
 
-    const saved = portfolioStore.setDerivedState({ performanceValuations: next }, true);
-    state = portfolioStore.getState();
-    return saved;
+      let changed = false;
+      do {
+        performanceSnapshotPending = false;
+        const isCurrentSession = currentAccountRole === 'admin' &&
+          currentAccountId === accountId &&
+          currentAccountSessionGuard.isCurrent(session);
+        if (!isCurrentSession) return changed;
+
+        // Read after the lazy import resolves, not from the potentially stale
+        // notification that initiated this asynchronous capture.
+        const latestState = portfolioStore.getState();
+        const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(accountId);
+        const observedAt = Math.max(timestamp, Date.now());
+        const snapshot = capturePortfolioPerformanceValuation(
+          latestState,
+          observedAt,
+          cashflowHistoryComplete
+        );
+        if (snapshot) {
+          const existing = latestState.performanceValuations || [];
+          const next = appendDailyPerformanceValuation(existing, snapshot);
+          const unchanged = next.length === existing.length &&
+            next.every((item, index) => item === existing[index]);
+          if (!unchanged) {
+            const saved = portfolioStore.setDerivedState({ performanceValuations: next }, true);
+            if (saved) {
+              state = portfolioStore.getState();
+              changed = true;
+            }
+          }
+        }
+      } while (performanceSnapshotPending);
+
+      return changed;
+    } finally {
+      performanceSnapshotInFlight = false;
+      performanceSnapshotPending = false;
+    }
   },
   onPerformanceSnapshotChanged: () => { void pushStateToCloud(); }
 });

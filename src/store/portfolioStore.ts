@@ -8,7 +8,6 @@ import {
 } from './portfolioSubscriptions';
 import {
   PortfolioState,
-  PortfolioPerformanceValuationSnapshot,
   PositionRecord,
   Holding,
   TrancheItem,
@@ -51,25 +50,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-/**
- * Validate the containers at the import boundary before merging a snapshot.
- * A malformed collection must not be normalized to an empty collection and
- * accidentally replace recoverable portfolio data.
- */
-function isPerformanceValuationSnapshot(value: unknown): value is PortfolioPerformanceValuationSnapshot {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const row = value as Record<string, unknown>;
-  return Number.isSafeInteger(row.timestamp) && Number(row.timestamp) > 0 &&
-    typeof row.equity === 'number' && Number.isFinite(row.equity) &&
-    typeof row.currency === 'string' && /^[A-Z]{3}$/.test(row.currency) &&
-    (row.quality === 'current' || row.quality === 'provisional') &&
-    typeof row.cashflowHistoryComplete === 'boolean' &&
-    Array.isArray(row.items) && row.items.length > 0 &&
-    row.items.every(item => item && typeof item === 'object' &&
-      typeof (item as Record<string, unknown>).key === 'string' &&
-      typeof (item as Record<string, unknown>).value === 'number' &&
-      Number.isFinite((item as Record<string, unknown>).value));
-}
 
 function hasValidPortfolioImportShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
@@ -123,12 +103,6 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
 
   if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
       value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
-    return false;
-  }
-  if (Object.prototype.hasOwnProperty.call(value, 'performanceValuations') &&
-      value.performanceValuations !== undefined &&
-      (!Array.isArray(value.performanceValuations) ||
-        !value.performanceValuations.every(isPerformanceValuationSnapshot))) {
     return false;
   }
 

@@ -184,9 +184,20 @@ export function appendDailyPerformanceValuation(
   const last = safeExisting[safeExisting.length - 1];
 
   if (last && utcDay(last.timestamp) === utcDay(incoming.timestamp)) {
-    const coverageUpgrade = !last.cashflowHistoryComplete && incoming.cashflowHistoryComplete;
+    const coverageDowngrade = last.cashflowHistoryComplete && !incoming.cashflowHistoryComplete;
+    const qualityDowngrade = last.quality === 'current' && incoming.quality !== 'current';
+    if (coverageDowngrade || qualityDowngrade || incoming.timestamp < last.timestamp) return safeExisting;
+
+    // Keep the latest trustworthy observation for the UTC day rather than
+    // locking in the first quote received after the market opens.
+    const sameQualityAndCoverage =
+      last.quality === incoming.quality &&
+      last.cashflowHistoryComplete === incoming.cashflowHistoryComplete;
     const qualityUpgrade = last.quality === 'provisional' && incoming.quality === 'current';
-    if (!coverageUpgrade && !qualityUpgrade) return safeExisting;
+    const coverageUpgrade = !last.cashflowHistoryComplete && incoming.cashflowHistoryComplete;
+    const newerObservation = incoming.timestamp > last.timestamp;
+    if (!sameQualityAndCoverage && !qualityUpgrade && !coverageUpgrade) return safeExisting;
+    if (!newerObservation && !qualityUpgrade && !coverageUpgrade) return safeExisting;
     safeExisting[safeExisting.length - 1] = incoming;
   } else {
     if (last && incoming.timestamp <= last.timestamp) return safeExisting;
