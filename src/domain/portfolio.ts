@@ -1,4 +1,4 @@
-import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE } from './brokerAssumptions';
+import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE, normalizeBrokerAssumptions } from './brokerAssumptions';
 import { getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './rolloverCalendar';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
@@ -942,21 +942,22 @@ export function processRollovers(state: RolloverState | null | undefined): boole
   }
 
   const rules = state.brokerAssumptions || {};
+  const normalizedRules = normalizeBrokerAssumptions(rules);
   const configuredRate = Number(
-    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? DEFAULT_BROKER_ASSUMPTIONS.annualBorrowRate
+    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? normalizedRules.annualBorrowRate
   );
   // Corrupted cloud/imported settings must never turn debt into Infinity.
   // Match the supported broker-settings range; invalid rates accrue no interest.
   const annualRate = Number.isFinite(configuredRate) && configuredRate >= 0 && configuredRate <= 1
     ? configuredRate
     : 0;
-  const configuredDayCount = Number(rules.dayCountBasis ?? DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis);
+  const configuredDayCount = normalizedRules.dayCountBasis;
   const dayCountBasis = [360, 365].includes(configuredDayCount)
     ? configuredDayCount
     : DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
   const dailyRate = annualRate / dayCountBasis;
-  const configuredHour = rules.rolloverHour;
-  const configuredMinute = rules.rolloverMinute;
+  const configuredHour = normalizedRules.rolloverHour;
+  const configuredMinute = normalizedRules.rolloverMinute;
   const rolloverHour = typeof configuredHour === 'number' &&
     Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
     ? configuredHour
@@ -965,9 +966,7 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
     ? configuredMinute
     : DEFAULT_BROKER_ASSUMPTIONS.rolloverMinute;
-  const timeZone = typeof rules.rolloverTimeZone === 'string' && rules.rolloverTimeZone.trim()
-    ? rules.rolloverTimeZone
-    : DEFAULT_BROKER_ASSUMPTIONS.rolloverTimeZone;
+  const timeZone = normalizedRules.rolloverTimeZone;
   const now = new Date();
   const lastTimestamp = Number(state.lastRolloverTimestamp);
   const lastDate = new Date(lastTimestamp);
