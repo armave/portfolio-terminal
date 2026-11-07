@@ -1,7 +1,62 @@
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { reconcileBrokerActivity, type ReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
-import { translateText } from '../services/i18n';
+import { getAppLanguage } from '../services/i18n';
+
+const RU_COPY: Record<string, string> = {
+  'Reconcile broker activity': 'Сверить активность брокера',
+  'Matched': 'Совпадает',
+  'Differences found': 'Обнаружены расхождения',
+  'History unavailable': 'История недоступна',
+  'Provisional review': 'Предварительная проверка',
+  'findings': 'расхождений',
+  'Read-only comparison of broker executions and cashflows with app-authored journal events. No portfolio data is changed.': 'Сверка исполнений и денежных потоков брокера с журналом операций приложения. Данные портфеля не изменяются.',
+  'Broker executions': 'Исполнения брокера',
+  'Matched executions': 'Совпавшие исполнения',
+  'Broker cashflows': 'Денежные потоки брокера',
+  'Matched cashflows': 'Совпавшие денежные потоки',
+  'Duplicate broker execution': 'Дублирующееся исполнение брокера',
+  'Execution not found in app journal': 'Исполнение не найдено в журнале приложения',
+  'App trade not found in broker history': 'Сделка приложения не найдена в истории брокера',
+  'Execution quantity differs': 'Количество исполнения отличается',
+  'Execution price differs': 'Цена исполнения отличается',
+  'Commission differs': 'Комиссия отличается',
+  'Commission currency differs': 'Валюта комиссии отличается',
+  'Execution timestamp differs': 'Время исполнения отличается',
+  'Cashflow not found in app journal': 'Денежный поток не найден в журнале приложения',
+  'App cashflow not found in broker history': 'Денежный поток приложения не найден в истории брокера',
+  'Cashflow amount differs': 'Сумма денежного потока отличается',
+  'Cashflow currency differs': 'Валюта денежного потока отличается',
+  'Cashflow classification differs': 'Классификация денежного потока отличается',
+  'Confirmed': 'Подтверждено',
+  'Provisional': 'Предварительно',
+  'Broker': 'Брокер',
+  'App': 'Приложение',
+  'Broker ref': 'ID брокера',
+  'App event': 'Событие приложения',
+  'Showing first 30 findings': 'Показаны первые 30 расхождений',
+  'No transaction-level differences were found in the available records.': 'В доступных записях расхождений на уровне транзакций не обнаружено.',
+  'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.': 'Несовпавшие записи остаются предварительными до полного охвата журнала транзакций. В этой проверке доступны только просмотр и сверка, без исправлений и записи данных.',
+  'The broker execution history is incomplete; absence-based findings are suppressed.': 'История исполнений брокера неполная; выводы об отсутствии записей не делаются.',
+  'Broker cashflow history is incomplete; absence-based findings are suppressed.': 'История денежных потоков брокера неполная; выводы об отсутствии записей не делаются.',
+  'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.': 'Журнал транзакций приложения заполнен не полностью; несовпавшие записи предварительные и не считаются подтверждёнными пропусками.',
+  'The broker and app cashflow records use different currencies; no conversion was attempted.': 'Записи денежных потоков брокера и приложения используют разные валюты; конвертация не выполнялась.',
+  'No corresponding app-authored trade was found in the available transaction journal.': 'В доступном журнале транзакций не найдена соответствующая сделка приложения.',
+  'No corresponding broker execution was found in the available provider history.': 'В доступной истории провайдера не найдено соответствующее исполнение брокера.',
+  'The broker fill quantity differs from the app transaction quantity.': 'Количество исполнения брокера отличается от количества в транзакции приложения.',
+  'The broker execution price differs from the app transaction price.': 'Цена исполнения брокера отличается от цены транзакции приложения.',
+  'The broker commission differs from the app-recorded transaction fee.': 'Комиссия брокера отличается от комиссии, записанной в приложении.',
+  'The broker and app transaction fees use different currencies; no conversion was attempted.': 'Комиссии брокера и приложения указаны в разных валютах; конвертация не выполнялась.',
+  'The broker and app transaction timestamps differ beyond the normal matching tolerance.': 'Время транзакции брокера и приложения отличается больше допустимого интервала сверки.',
+  'No corresponding app-authored cashflow event was found in the available journal.': 'В доступном журнале не найдено соответствующее событие денежного потока приложения.',
+  'No corresponding broker cashflow was found in the available provider history.': 'В доступной истории провайдера не найден соответствующий денежный поток брокера.',
+  'Broker time': 'Время брокера',
+  'App time': 'Время приложения'
+};
+
+export function translateBrokerReconciliationCopy(value: string, language = getAppLanguage()): string {
+  return language === 'ru' ? RU_COPY[value] || value : value;
+}
 
 interface BrokerTransactionReconciliationProps {
   executions: readonly BrokerExecution[];
@@ -55,20 +110,20 @@ export function BrokerTransactionReconciliation({
 
   return (
     <div class="space-y-3 text-xs">
-      <p class="text-slate-400">{translateText('Read-only comparison of broker executions and cashflows with app-authored journal events. No portfolio data is changed.')}</p>
+      <p class="text-slate-400">{translateBrokerReconciliationCopy('Read-only comparison of broker executions and cashflows with app-authored journal events. No portfolio data is changed.')}</p>
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <strong class={labelClass}>{translateText(label)}</strong>
-        <span class="text-slate-500">{report.findings.length} {translateText('findings')}</span>
+        <strong class={labelClass}>{translateBrokerReconciliationCopy(label)}</strong>
+        <span class="text-slate-500">{report.findings.length} {translateBrokerReconciliationCopy('findings')}</span>
       </div>
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div><div class="text-slate-500">{translateText('Broker executions')}</div><strong>{report.brokerExecutionCount}</strong></div>
-        <div><div class="text-slate-500">{translateText('Matched executions')}</div><strong>{report.matchedExecutionCount}</strong></div>
-        <div><div class="text-slate-500">{translateText('Broker cashflows')}</div><strong>{report.brokerCashflowCount}</strong></div>
-        <div><div class="text-slate-500">{translateText('Matched cashflows')}</div><strong>{report.matchedCashflowCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Broker executions')}</div><strong>{report.brokerExecutionCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched executions')}</div><strong>{report.matchedExecutionCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Broker cashflows')}</div><strong>{report.brokerCashflowCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched cashflows')}</div><strong>{report.matchedCashflowCount}</strong></div>
       </div>
       {report.warnings.length > 0 && (
         <ul class="list-disc space-y-1 pl-4 text-amber-200">
-          {report.warnings.map(warning => <li key={warning}>{translateText(warning)}</li>)}
+          {report.warnings.map(warning => <li key={warning}>{translateBrokerReconciliationCopy(warning)}</li>)}
         </ul>
       )}
       {report.findings.length > 0 ? (
@@ -76,26 +131,26 @@ export function BrokerTransactionReconciliation({
           {report.findings.slice(0, 30).map(finding => (
             <article key={finding.id} class="rounded border border-slate-800 px-2.5 py-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <strong>{translateText(FINDING_LABELS[finding.type] || finding.type)} · {finding.subject}</strong>
+                <strong>{translateBrokerReconciliationCopy(FINDING_LABELS[finding.type] || finding.type)} · {finding.subject}</strong>
                 <span class={finding.confidence === 'confirmed' ? 'text-emerald-300' : 'text-amber-300'}>
-                  {translateText(finding.confidence === 'confirmed' ? 'Confirmed' : 'Provisional')}
+                  {translateBrokerReconciliationCopy(finding.confidence === 'confirmed' ? 'Confirmed' : 'Provisional')}
                 </span>
               </div>
-              <p class="mt-1 text-slate-400">{translateText(finding.explanation)}</p>
+              <p class="mt-1 text-slate-400">{translateBrokerReconciliationCopy(finding.explanation)}</p>
               <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
-                <span>{translateText('Broker')}: {formatValue(finding.brokerValue, finding.currency)}</span>
-                <span>{translateText('App')}: {formatValue(finding.appValue, finding.currency)}</span>
-                {finding.brokerReferences.length > 0 && <span>{translateText('Broker ref')}: {finding.brokerReferences.join(', ')}</span>}
-                {finding.appEventIds.length > 0 && <span>{translateText('App event')}: {finding.appEventIds.join(', ')}</span>}
-                {finding.brokerAt !== undefined && <span>{translateText('Broker time')}: {formatTimestamp(finding.brokerAt)}</span>}
-                {finding.appAt !== undefined && <span>{translateText('App time')}: {formatTimestamp(finding.appAt)}</span>}
+                <span>{translateBrokerReconciliationCopy('Broker')}: {formatValue(finding.brokerValue, finding.currency)}</span>
+                <span>{translateBrokerReconciliationCopy('App')}: {formatValue(finding.appValue, finding.currency)}</span>
+                {finding.brokerReferences.length > 0 && <span>{translateBrokerReconciliationCopy('Broker ref')}: {finding.brokerReferences.join(', ')}</span>}
+                {finding.appEventIds.length > 0 && <span>{translateBrokerReconciliationCopy('App event')}: {finding.appEventIds.join(', ')}</span>}
+                {finding.brokerAt !== undefined && <span>{translateBrokerReconciliationCopy('Broker time')}: {formatTimestamp(finding.brokerAt)}</span>}
+                {finding.appAt !== undefined && <span>{translateBrokerReconciliationCopy('App time')}: {formatTimestamp(finding.appAt)}</span>}
               </div>
             </article>
           ))}
-          {report.findings.length > 30 && <p class="text-slate-500">{translateText('Showing first 30 findings')}.</p>}
+          {report.findings.length > 30 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 30 findings')}.</p>}
         </div>
-      ) : <p class="text-emerald-300">{translateText('No transaction-level differences were found in the available records.')}</p>}
-      <p class="border-t border-slate-800 pt-2 text-slate-500">{translateText('Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.')}</p>
+      ) : <p class="text-emerald-300">{translateBrokerReconciliationCopy('No transaction-level differences were found in the available records.')}</p>}
+      <p class="border-t border-slate-800 pt-2 text-slate-500">{translateBrokerReconciliationCopy('Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.')}</p>
     </div>
   );
 }

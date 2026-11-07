@@ -772,9 +772,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
             ? setBrokerReconciliationOpen(false)
             : void openBrokerReconciliation()}
         >
-          <span>{translateText('Reconcile broker activity')}</span>
+          <span>{getAppLanguage() === 'ru' ? 'Сверить активность брокера' : 'Reconcile broker activity'}</span>
           <span class="text-xs text-slate-400">
-            {translateText(brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation')}
+            {getAppLanguage() === 'ru' ? (brokerReconciliationOpen ? 'Скрыть сверку' : 'Открыть сверку') : (brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation')}
           </span>
         </button>
         {brokerReconciliationOpen && BrokerReconciliationView && (

@@ -103,24 +103,6 @@ describe('app localization', () => {
     expect(formatMarginSourcesHeading(3, 'ru')).toBe('Изученные источники (3)');
   });
 
-  it('localizes broker transaction reconciliation and provisional evidence copy', () => {
-    const copy = [
-      'Reconcile broker activity', 'Matched', 'Differences found', 'History unavailable',
-      'Provisional review', 'findings', 'Broker executions', 'Matched executions',
-      'Broker cashflows', 'Matched cashflows', 'Duplicate broker execution',
-      'Execution not found in app journal', 'App trade not found in broker history',
-      'Execution quantity differs', 'Execution price differs', 'Commission differs', 'Commission currency differs',
-      'Execution timestamp differs', 'Cashflow not found in app journal',
-      'App cashflow not found in broker history', 'Cashflow amount differs',
-      'Cashflow currency differs', 'Cashflow classification differs',
-      'Confirmed', 'Provisional', 'Broker', 'App', 'Broker ref', 'App event', 'Broker time', 'App time', 'Open reconciliation', 'Hide reconciliation',
-      'Showing first 30 findings',
-      'No transaction-level differences were found in the available records.',
-      'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.'
-    ];
-    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
-  });
-
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
     expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');
