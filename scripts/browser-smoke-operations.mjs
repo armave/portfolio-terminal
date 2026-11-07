@@ -958,7 +958,7 @@ try {
       .some((call) => call.body.name === 'Operations Family' && call.responseStatus === 201),
     'tenant metadata creation'
   );
-  await tenantPanel.getByText('Operations Family', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await tenantPanel.locator('article h4').filter({ hasText: 'Operations Family' }).first().waitFor({ state: 'visible', timeout: 10_000 });
   await tenantPanel.locator('details').filter({ hasText: 'Grant access' }).locator('summary').click();
   await tenantPanel.getByLabel('Member').selectOption({ label: 'Browser Guest Updated · Guest' });
   await tenantPanel.getByLabel('Access role').selectOption('guest');
@@ -970,7 +970,7 @@ try {
       .some((call) => call.body.role === 'guest' && call.body.portfolioIds.length === 1 && call.responseStatus === 201),
     'single-portfolio guest membership grant'
   );
-  await tenantPanel.getByText('Browser Guest Updated', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await tenantPanel.locator('article').getByText('Browser Guest Updated', { exact: true }).first().waitFor({ state: 'visible', timeout: 10_000 });
   if (await tenantPanel.getByText('Directory only — financial storage is not enabled for newly created tenants.').count() !== 1) {
     throw new Error('Tenant directory UI did not disclose its metadata-only storage boundary.');
   }
@@ -1084,7 +1084,7 @@ try {
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
-  await guestTenantPanel.getByText('Operations Family', { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
+  await guestTenantPanel.locator('article h4').filter({ hasText: 'Operations Family' }).first().waitFor({ state: 'visible', timeout: 10_000 });
   if (await guestTenantPanel.locator('h5').filter({ hasText: 'Manage members' }).count() !== 0 ||
       await guestTenantPanel.getByRole('button', { name: 'Revoke' }).count() !== 0) {
     throw new Error('Guest tenant directory response exposed the owner-only membership roster or revocation controls.');
