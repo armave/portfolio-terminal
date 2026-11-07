@@ -264,7 +264,7 @@ export function reconcileBrokerActivity(
           (acceptableTime ? 10 : 0) - (timeDelta ?? 0) / Math.max(maxTimingDifference, 1);
         return { ...candidate, quantityMatch, priceMatch, exactTime, acceptableTime, timeDelta, score };
       })
-      .filter(candidate => candidate.acceptableTime)
+      .filter(candidate => candidate.acceptableTime && !candidate.partialFillAggregateMatch)
       .sort((a, b) => b.score - a.score || a.event.recordedAt - b.event.recordedAt);
     const best = candidates[0];
     if (!best) return;

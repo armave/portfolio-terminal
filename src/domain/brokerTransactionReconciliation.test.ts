@@ -92,7 +92,7 @@ describe('reconcileBrokerActivity', () => {
       execution({ id: 'fill-1', quantity: 0.75, price: 100, commission: 0.4 }),
       execution({ id: 'fill-2', quantity: 1.25, price: 100, commission: 0.6 })
     ], [appEvent('trade.buy')]);
-    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.matchedExecutionCount).toBe(2);
     expect(report.findings).toEqual([]);
     expect(report.status).toBe('matched');
   });
