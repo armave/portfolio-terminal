@@ -113,7 +113,7 @@ describe('app localization', () => {
       'Execution timestamp differs', 'Cashflow not found in app journal',
       'App cashflow not found in broker history', 'Cashflow amount differs',
       'Cashflow currency differs', 'Cashflow classification differs',
-      'Confirmed', 'Provisional', 'Broker', 'App', 'Broker ref', 'App event', 'Loading reconciliation…', 'Broker time', 'App time',
+      'Confirmed', 'Provisional', 'Broker', 'App', 'Broker ref', 'App event', 'Loading reconciliation…', 'Broker time', 'App time', 'Reconciliation could not be loaded', 'Open reconciliation', 'Hide reconciliation',
       'Showing first 30 findings',
       'No transaction-level differences were found in the available records.',
       'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.'

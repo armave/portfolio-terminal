@@ -25,7 +25,6 @@ import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import type { PortfolioState } from '../types/portfolio';
-import type { BrokerActivityReconciliationReport } from '../domain/brokerTransactionReconciliation';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
@@ -84,7 +83,24 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     brokerExecutionHistory.status === 'error';
   const [brokerReconciliationOpen, setBrokerReconciliationOpen] = useState(false);
   const [brokerReconciliationLoading, setBrokerReconciliationLoading] = useState(false);
-  const [brokerReconciliationReport, setBrokerReconciliationReport] = useState<BrokerActivityReconciliationReport | null>(null);
+  const [BrokerReconciliationView, setBrokerReconciliationView] = useState<
+    typeof import('./BrokerTransactionReconciliation').BrokerTransactionReconciliation | null
+  >(null);
+  const [brokerReconciliationLoadError, setBrokerReconciliationLoadError] = useState(false);
+  const openBrokerReconciliation = async () => {
+    setBrokerReconciliationOpen(true);
+    if (BrokerReconciliationView) return;
+    setBrokerReconciliationLoading(true);
+    setBrokerReconciliationLoadError(false);
+    try {
+      const module = await import('./BrokerTransactionReconciliation');
+      setBrokerReconciliationView(() => module.BrokerTransactionReconciliation);
+    } catch {
+      setBrokerReconciliationLoadError(true);
+    } finally {
+      setBrokerReconciliationLoading(false);
+    }
+  };
   // Keep the first cached range for both API requests. The broker trade refresh
   // may return newer sells before the cashflow request starts; that must not move
   // the cashflow cursor forward and skip fees for those newly fetched trades.
@@ -99,32 +115,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
-  useEffect(() => {
-    if (!brokerReconciliationOpen) return;
-    let active = true;
-    setBrokerReconciliationLoading(true);
-    void import('../domain/brokerTransactionReconciliation').then(({ reconcileBrokerActivity }) => {
-      if (!active) return;
-      const report = reconcileBrokerActivity({
-        brokerExecutions: brokerTrades,
-        brokerCashflows: (state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} })),
-        appEvents: state.transactionEvents || [],
-        executionStatus: brokerTradesLoading || brokerTradesError ? 'partial' : 'complete',
-        cashflowStatus: cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial',
-        // PT-02 journal coverage is still incomplete; unmatched rows stay provisional.
-        appHistoryStatus: 'partial'
-      });
-      setBrokerReconciliationReport(report);
-    }).catch(() => {
-      if (active) setBrokerReconciliationReport(null);
-    }).finally(() => {
-      if (active) setBrokerReconciliationLoading(false);
-    });
-    return () => { active = false; };
-  }, [
-    brokerReconciliationOpen, brokerTrades, state.cashflows, state.transactionEvents,
-    brokerTradesLoading, brokerTradesError, cashflowHistoryReady, cashflowSyncReady
-  ]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
@@ -787,73 +777,27 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           type="button"
           class="flex w-full flex-wrap items-center justify-between gap-2 text-left text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
           aria-expanded={brokerReconciliationOpen}
-          onClick={() => setBrokerReconciliationOpen(open => !open)}
+          onClick={() => brokerReconciliationOpen
+            ? setBrokerReconciliationOpen(false)
+            : void openBrokerReconciliation()}
         >
           <span>{translateText('Reconcile broker activity')}</span>
           <span class="text-xs text-slate-400">
             {brokerReconciliationLoading ? translateText('Loading reconciliation…') :
-              brokerReconciliationReport?.findings.length
-                ? `${translateText('Differences found')} · ${brokerReconciliationReport.findings.length} ${translateText('findings')}`
-                : brokerReconciliationReport?.status === 'matched' ? translateText('Matched') : translateText('Provisional review')}
+              brokerReconciliationLoadError ? translateText('Reconciliation could not be loaded') :
+                brokerReconciliationOpen ? translateText('Hide reconciliation') : translateText('Open reconciliation')}
           </span>
         </button>
-        {brokerReconciliationOpen && (
-          <div class="mt-3 space-y-3 text-xs">
-            <p class="text-slate-400">{translateText('Read-only comparison of broker executions and cashflows with app-authored journal events. No portfolio data is changed.')}</p>
-            {brokerReconciliationReport && (
-              <>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div><div class="text-slate-500">{translateText('Broker executions')}</div><strong>{brokerReconciliationReport.brokerExecutionCount}</strong></div>
-                  <div><div class="text-slate-500">{translateText('Matched executions')}</div><strong>{brokerReconciliationReport.matchedExecutionCount}</strong></div>
-                  <div><div class="text-slate-500">{translateText('Broker cashflows')}</div><strong>{brokerReconciliationReport.brokerCashflowCount}</strong></div>
-                  <div><div class="text-slate-500">{translateText('Matched cashflows')}</div><strong>{brokerReconciliationReport.matchedCashflowCount}</strong></div>
-                </div>
-                {brokerReconciliationReport.warnings.length > 0 && (
-                  <ul class="list-disc space-y-1 pl-4 text-amber-200">
-                    {brokerReconciliationReport.warnings.map(warning => <li key={warning}>{translateText(warning)}</li>)}
-                  </ul>
-                )}
-                {brokerReconciliationReport.findings.length > 0 ? (
-                  <div class="space-y-2">
-                    {brokerReconciliationReport.findings.slice(0, 30).map(finding => (
-                      <article key={finding.id} class="rounded border border-slate-800 px-2.5 py-2">
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                          <strong>{translateText({
-                            duplicate_broker_execution: 'Duplicate broker execution',
-                            execution_missing_in_app: 'Execution not found in app journal',
-                            execution_missing_in_broker: 'App trade not found in broker history',
-                            execution_quantity_mismatch: 'Execution quantity differs',
-                            execution_price_mismatch: 'Execution price differs',
-                            execution_fee_mismatch: 'Commission differs',
-                            execution_fee_currency_mismatch: 'Commission currency differs',
-                            execution_timing_difference: 'Execution timestamp differs',
-                            cashflow_missing_in_app: 'Cashflow not found in app journal',
-                            cashflow_missing_in_broker: 'App cashflow not found in broker history',
-                            cashflow_amount_mismatch: 'Cashflow amount differs',
-                            cashflow_currency_mismatch: 'Cashflow currency differs',
-                            cashflow_type_mismatch: 'Cashflow classification differs'
-                          }[finding.type])} · {finding.subject}</strong>
-                          <span class={finding.confidence === 'confirmed' ? 'text-emerald-300' : 'text-amber-300'}>
-                            {translateText(finding.confidence === 'confirmed' ? 'Confirmed' : 'Provisional')}
-                          </span>
-                        </div>
-                        <p class="mt-1 text-slate-400">{translateText(finding.explanation)}</p>
-                        <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
-                          <span>{translateText('Broker')}: {finding.brokerValue ?? '—'} {finding.currency || ''}</span>
-                          <span>{translateText('App')}: {finding.appValue ?? '—'} {finding.currency || ''}</span>
-                          {finding.brokerReferences.length > 0 && <span>{translateText('Broker ref')}: {finding.brokerReferences.join(', ')}</span>}
-                          {finding.appEventIds.length > 0 && <span>{translateText('App event')}: {finding.appEventIds.join(', ')}</span>}
-                          {finding.brokerAt !== undefined && <span>{translateText('Broker time')}: {new Date(finding.brokerAt).toLocaleString()}</span>}
-                          {finding.appAt !== undefined && <span>{translateText('App time')}: {new Date(finding.appAt).toLocaleString()}</span>}
-                        </div>
-                      </article>
-                    ))}
-                    {brokerReconciliationReport.findings.length > 30 && <p class="text-slate-500">{translateText('Showing first 30 findings')}.</p>}
-                  </div>
-                ) : <p class="text-emerald-300">{translateText('No transaction-level differences were found in the available records.')}</p>}
-              </>
-            )}
-            <p class="border-t border-slate-800 pt-2 text-slate-500">{translateText('Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.')}</p>
+        {brokerReconciliationOpen && BrokerReconciliationView && (
+          <div class="mt-3">
+            <BrokerReconciliationView
+              executions={brokerTrades}
+              cashflows={(state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} }))}
+              appEvents={state.transactionEvents || []}
+              executionStatus={brokerTradesLoading || brokerTradesError ? 'partial' : 'complete'}
+              cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
+              appHistoryStatus="partial"
+            />
           </div>
         )}
       </div>

@@ -940,4 +940,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Loading reconciliation…': 'Загрузка сверки…',
   'Broker time': 'Время брокера',
   'App time': 'Время приложения',
+  'Reconciliation could not be loaded': 'Не удалось загрузить сверку',
+  'Open reconciliation': 'Открыть сверку',
+  'Hide reconciliation': 'Скрыть сверку',
 };
