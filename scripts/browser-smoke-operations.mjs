@@ -372,7 +372,10 @@ async function waitForAuthOverlay(page, open) {
   await page.waitForFunction(
     (shouldBeOpen) => document.querySelector('#auth-container')?.classList.contains('auth-overlay-open') === shouldBeOpen,
     open,
-    { timeout: 20_000 }
+    { timeout: 20_000   if (!open) {
+    await page.locator('.startup-loading').waitFor({ state: 'detached', timeout: 20_000 });
+  }
+}
   );
 }
 async function submitAuth(page, { name, password, bootstrapSecret }) {

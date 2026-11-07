@@ -53,6 +53,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
   const [account, setAccount] = useState<AuthUser | null>(currentUser);
+  const [tenantDirectoryModule, setTenantDirectoryModule] = useState<typeof import('./TenantDirectoryPanel') | null>(null);
+  const [tenantDirectoryLoadFailed, setTenantDirectoryLoadFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void import('./TenantDirectoryPanel').then((module) => {
+      if (!cancelled) setTenantDirectoryModule(() => module);
+    }).catch(() => {
+      if (!cancelled) setTenantDirectoryLoadFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
@@ -377,6 +389,15 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </section>}
 
       <DeviceCheckSummary />
+      {LoadedTenantDirectoryPanel ? (
+        <LoadedTenantDirectoryPanel currentUser={account} />
+      ) : (
+        <div class="settings-panel text-xs text-slate-500" role="status">
+          {tenantDirectoryLoadFailed
+            ? translateText('Portfolio ownership could not be loaded.')
+            : translateText('Loading portfolio ownership…')}
+        </div>
+      )}
 
       {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">

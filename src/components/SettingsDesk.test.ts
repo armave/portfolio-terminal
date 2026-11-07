@@ -61,3 +61,19 @@ describe('Device Check placement', () => {
     expect(cashSource).not.toContain('BrokerReconciliationPanel');
   });
 });
+
+
+describe('multi-portfolio ownership Settings surface', () => {
+  it('loads the tenant directory lazily in Settings and keeps financial tenancy disabled', () => {
+    const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const componentSource = readFileSync(new URL('./TenantDirectoryPanel.tsx', import.meta.url), 'utf8');
+
+    expect(settingsSource).toContain("import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("useState<typeof import('./TenantDirectoryPanel') | null>(null)");
+    expect(settingsSource).toContain('const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;');
+    expect(settingsSource).toContain('<LoadedTenantDirectoryPanel currentUser={account} />');
+    expect(componentSource).toContain("directory.financialDataEnabled === false");
+    expect(componentSource).toContain('Directory only — financial storage is not enabled for newly created tenants.');
+    expect(componentSource).toContain('Guests receive projection-only access.');
+  });
+});

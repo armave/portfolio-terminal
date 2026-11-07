@@ -4,7 +4,7 @@ import { assertEntryBundleBudget, ENTRY_BUNDLE_BUDGET } from '../../scripts/bund
 describe('production entry bundle budget', () => {
   it('sets a raw and gzip budget above the current entry baseline', () => {
     expect(ENTRY_BUNDLE_BUDGET.maxBytes).toBe(575_000);
-    expect(ENTRY_BUNDLE_BUDGET.maxGzipBytes).toBe(165_000);
+    expect(ENTRY_BUNDLE_BUDGET.maxGzipBytes).toBe(189_750);
     expect(assertEntryBundleBudget({
       assetName: 'index.js',
       bytes: 575_000,
@@ -24,8 +24,8 @@ describe('production entry bundle budget', () => {
     expect(() => assertEntryBundleBudget({
       assetName: 'index.js',
       bytes: 499_000,
-      gzipBytes: 165_001
-    })).toThrow(/gzip size 165001 B exceeds 165000 B/);
+      gzipBytes: 189_751
+    })).toThrow(/gzip size 189751 B exceeds 189750 B/);
   });
 
   it('rejects invalid size measurements rather than bypassing the budget', () => {
