@@ -847,7 +847,7 @@ try {
   // backup or broker-rule management. The shared owner workspace is not read.
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   const userDirectoryReadsBeforeGuest = worker.count('GET', '/api/auth/users');
-  await page.getByRole('button', { name: 'Выйти' }).click();
+  await visibleSettingsDesk().getByRole('button', { name: 'Выйти' }).click();
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
   await waitForAuthOverlay(page, false);
