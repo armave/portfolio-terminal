@@ -73,6 +73,17 @@ describe('reconcileBrokerActivity', () => {
     ]));
   });
 
+  it('reports execution fee currency differences without attempting FX conversion', () => {
+    const report = reconcile(
+      [execution({ commission: 1, commissionCurrency: 'USD' })],
+      [appEvent('trade.buy', { fees: 1, feeCurrency: 'EUR' })]
+    );
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_fee_currency_mismatch',
+      currency: 'USD'
+    }));
+  });
+
   it('does not compare broker sell commission to the app sell event total-cost field', () => {
     const report = reconcile(
       [execution({ side: 'SELL', commission: 1 })],

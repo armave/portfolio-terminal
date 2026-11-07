@@ -109,7 +109,7 @@ describe('app localization', () => {
       'Provisional review', 'findings', 'Broker executions', 'Matched executions',
       'Broker cashflows', 'Matched cashflows', 'Duplicate broker execution',
       'Execution not found in app journal', 'App trade not found in broker history',
-      'Execution quantity differs', 'Execution price differs', 'Commission differs',
+      'Execution quantity differs', 'Execution price differs', 'Commission differs', 'Commission currency differs',
       'Execution timestamp differs', 'Cashflow not found in app journal',
       'App cashflow not found in broker history', 'Cashflow amount differs',
       'Cashflow currency differs', 'Cashflow classification differs',

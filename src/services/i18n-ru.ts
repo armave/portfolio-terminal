@@ -912,6 +912,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Execution quantity differs': 'Количество исполнения отличается',
   'Execution price differs': 'Цена исполнения отличается',
   'Commission differs': 'Комиссия отличается',
+  'Commission currency differs': 'Валюта комиссии отличается',
   'Execution timestamp differs': 'Время исполнения отличается',
   'Cashflow not found in app journal': 'Денежный поток не найден в журнале приложения',
   'App cashflow not found in broker history': 'Денежный поток приложения не найден в истории брокера',
@@ -936,6 +937,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'The broker fill quantity differs from the app transaction quantity.': 'Количество исполнения брокера отличается от количества в транзакции приложения.',
   'The broker execution price differs from the app transaction price.': 'Цена исполнения брокера отличается от цены транзакции приложения.',
   'The broker commission differs from the app-recorded transaction fee.': 'Комиссия брокера отличается от комиссии, записанной в приложении.',
+  'The broker and app transaction fees use different currencies; no conversion was attempted.': 'Комиссии брокера и приложения указаны в разных валютах; конвертация не выполнялась.',
   'The broker and app transaction timestamps differ beyond the normal matching tolerance.': 'Время транзакции брокера и приложения отличается больше допустимого интервала сверки.',
   'No corresponding app-authored cashflow event was found in the available journal.': 'В доступном журнале не найдено соответствующее событие денежного потока приложения.',
   'No corresponding broker cashflow was found in the available provider history.': 'В доступной истории провайдера не найден соответствующий денежный поток брокера.'

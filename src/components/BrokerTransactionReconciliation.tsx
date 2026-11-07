@@ -19,6 +19,7 @@ const FINDING_LABELS: Record<string, string> = {
   execution_quantity_mismatch: 'Execution quantity differs',
   execution_price_mismatch: 'Execution price differs',
   execution_fee_mismatch: 'Commission differs',
+  execution_fee_currency_mismatch: 'Commission currency differs',
   execution_timing_difference: 'Execution timestamp differs',
   cashflow_missing_in_app: 'Cashflow not found in app journal',
   cashflow_missing_in_broker: 'App cashflow not found in broker history',

@@ -10,6 +10,7 @@ export type BrokerActivityFindingType =
   | 'execution_quantity_mismatch'
   | 'execution_price_mismatch'
   | 'execution_fee_mismatch'
+  | 'execution_fee_currency_mismatch'
   | 'execution_timing_difference'
   | 'cashflow_missing_in_app'
   | 'cashflow_missing_in_broker'
@@ -309,6 +310,24 @@ export function reconcileBrokerActivity(
       }, confidence));
     }
     const appFee = number(best.event.fees);
+    const brokerFeeCurrency = broker.feeCurrency || broker.currency;
+    const appFeeCurrency = currency(best.event.feeCurrency) || currency(best.event.currency);
+    if (best.event.type !== 'trade.sell' && broker.fee !== null && appFee !== null &&
+      brokerFeeCurrency && appFeeCurrency && brokerFeeCurrency !== appFeeCurrency) {
+      findings.push(makeFinding({
+        id: `execution-fee-currency:${broker.id}:${best.event.id}`,
+        type: 'execution_fee_currency_mismatch',
+        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
+        currency: brokerFeeCurrency,
+        brokerValue: Math.abs(broker.fee),
+        appValue: Math.abs(appFee),
+        brokerReferences: [broker.id],
+        appEventIds: [best.event.id],
+        brokerAt: broker.at ?? undefined,
+        appAt: best.event.effectiveAt,
+        explanation: 'The broker and app transaction fees use different currencies; no conversion was attempted.'
+      }, confidence));
+    }
     if (best.event.type !== 'trade.sell' && broker.fee !== null && appFee !== null &&
       (!broker.feeCurrency || !best.event.feeCurrency || broker.feeCurrency === currency(best.event.feeCurrency)) &&
       Math.abs(Math.abs(broker.fee) - Math.abs(appFee)) > amountTolerance) {
