@@ -89,12 +89,12 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div class="margin-risk-buffer-stat">
           <span class="margin-risk-label">MARGIN-CALL BUFFER</span>
           <strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong>
-          <span class="margin-risk-buffer-trigger">{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</span>
+          {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</span>}
         </div>
         <div class="margin-risk-buffer-stat" title={stopOutTitle}>
           <span class="margin-risk-label">STOP-OUT BUFFER</span>
           <strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '%' : '—'}</strong>
-          <span class="margin-risk-buffer-trigger">{risk.showStopOut ? risk.stopOutText : '—'}</span>
+          {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.showStopOut ? risk.stopOutText : '—'}</span>}
         </div>
       </div>
       <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>

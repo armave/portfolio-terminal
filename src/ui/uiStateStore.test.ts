@@ -30,7 +30,7 @@ afterEach(() => {
 describe('runtime presentation store subscriptions', () => {
   afterEach(() => {
     setAiStatus('READY');
-    setBreakevenText('Combined Breakeven: 0 days');
+    setBreakevenText('Breakeven: 0 days');
     setCloudStatusState({ status: 'idle', text: 'OFFLINE' });
     setCloudSyncStatus({ status: 'idle', text: '' });
     setBoardTitle({ title: 'COMBINED PORTFOLIO', showDailyMove: false });
@@ -38,7 +38,7 @@ describe('runtime presentation store subscriptions', () => {
 
   it('delivers current snapshots and stops updates after cleanup', () => {
     setAiStatus('ANALYZING');
-    setBreakevenText('Combined Breakeven: 12 days');
+    setBreakevenText('Breakeven: 12 days');
     const currentCloudStatus: CloudStatus = { status: 'online', text: 'CONNECTED' };
     const currentCloudSyncStatus: CloudStatus = { status: 'syncing', text: 'UPLOADING' };
     const currentBoardTitle: BoardTitleState = { title: 'AAPL', showDailyMove: true };
@@ -61,19 +61,19 @@ describe('runtime presentation store subscriptions', () => {
     ];
 
     expect(receivedAiStatus).toEqual(['ANALYZING']);
-    expect(receivedBreakevenText).toEqual(['Combined Breakeven: 12 days']);
+    expect(receivedBreakevenText).toEqual(['Breakeven: 12 days']);
     expect(receivedCloudStatus).toEqual([currentCloudStatus]);
     expect(receivedCloudSyncStatus).toEqual([currentCloudSyncStatus]);
     expect(receivedBoardTitle).toEqual([currentBoardTitle]);
 
     setAiStatus('READY');
-    setBreakevenText('Combined Breakeven: 14 days');
+    setBreakevenText('Breakeven: 14 days');
     setCloudStatusState({ status: 'offline', text: 'OFFLINE' });
     setCloudSyncStatus({ status: 'error', text: 'SYNC FAILED' });
     setBoardTitle({ title: 'MSFT', showDailyMove: false });
 
     expect(receivedAiStatus).toEqual(['ANALYZING', 'READY']);
-    expect(receivedBreakevenText).toEqual(['Combined Breakeven: 12 days', 'Combined Breakeven: 14 days']);
+    expect(receivedBreakevenText).toEqual(['Breakeven: 12 days', 'Breakeven: 14 days']);
     expect(receivedCloudStatus).toEqual([
       currentCloudStatus,
       { status: 'offline', text: 'OFFLINE' }
@@ -89,7 +89,7 @@ describe('runtime presentation store subscriptions', () => {
 
     unsubscribe.forEach((cleanup) => cleanup());
     setAiStatus('LOADING');
-    setBreakevenText('Combined Breakeven: 15 days');
+    setBreakevenText('Breakeven: 15 days');
     setCloudStatusState({ status: 'online', text: 'CONNECTED AGAIN' });
     setCloudSyncStatus({ status: 'idle', text: 'SYNCED' });
     setBoardTitle({ title: 'NVDA', showDailyMove: true });

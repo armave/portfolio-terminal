@@ -586,7 +586,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "BREAKEVEN": "БЕЗУБЫТОЧНОСТЬ",
   "Portfolio CLI ready. Broker-synced portfolio data is available; refresh quotes or choose a quick action below.": "Терминал портфеля готов. Доступны синхронизированные с брокером данные; обновите котировки или выберите быстрое действие ниже.",
   "Position value": "Стоимость позиции",
-  "Combined Breakeven": "Безубыточность портфеля",
+  "Breakeven": "Безубыточность портфеля",
   "Buy More Projection": "Прогноз дополнительной покупки",
   "MARGIN": "МАРЖА",
   "Rows": "Строки",
