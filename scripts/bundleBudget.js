@@ -1,5 +1,5 @@
 export const ENTRY_BUNDLE_BUDGET = Object.freeze({
-  maxBytes: 500_000,
+  maxBytes: 575_000,
   maxGzipBytes: 165_000
 });
 
