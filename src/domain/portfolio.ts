@@ -301,10 +301,10 @@ export function calculateMarginInterest(
   } else if (typeof options.dailyRate === 'number') {
     dailyRate = options.dailyRate;
   } else if (typeof options.annualRate === 'number') {
-    const basis = Number(options.dayCountBasis) || 365;
+    const basis = Number(options.dayCountBasis) || DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
     dailyRate = options.annualRate / basis;
   } else if (typeof options.annualBorrowRate === 'number') {
-    const basis = Number(options.dayCountBasis) || 365;
+    const basis = Number(options.dayCountBasis) || DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
     dailyRate = options.annualBorrowRate / basis;
   }
 
