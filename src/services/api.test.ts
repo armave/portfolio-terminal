@@ -422,14 +422,14 @@ describe('cloud state sync', () => {
       source: 'manual'
     }, now - 30_000);
     const expectedEvents = [deposit, buy];
-    let encryptedSnapshot: { encryptedPayload: string } | null = null;
+    const captured: { encryptedSnapshot?: { encryptedPayload: string } } = {};
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
-        encryptedSnapshot = JSON.parse(String(init.body));
+        captured.encryptedSnapshot = JSON.parse(String(init.body));
         return new Response('{}', { status: 200, headers: { ETag: '"1"' } });
       }
-      if (!encryptedSnapshot) throw new Error('Cloud snapshot was not uploaded before restoration.');
-      return new Response(JSON.stringify(encryptedSnapshot), {
+      if (!captured.encryptedSnapshot) throw new Error('Cloud snapshot was not uploaded before restoration.');
+      return new Response(JSON.stringify(captured.encryptedSnapshot), {
         status: 200,
         headers: { 'Content-Type': 'application/json', ETag: '"1"' }
       });
@@ -461,7 +461,7 @@ describe('cloud state sync', () => {
     });
 
     expect(committed).toBe(true);
-    expect(encryptedSnapshot?.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    expect(captured.encryptedSnapshot?.encryptedPayload).toMatch(/^aesgcm:v2:/);
     const restored = await pullCloudState({
       state: {},
       secret,
