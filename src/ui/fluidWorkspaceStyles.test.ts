@@ -124,6 +124,7 @@ describe('desk transitions and supporting layouts', () => {
 describe('Margin desk localization', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+  const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
   const russianSource = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
 
   it('routes projection table labels and its accessible description through i18n', () => {
@@ -149,6 +150,27 @@ describe('Margin desk localization', () => {
     for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value']) {
       expect(summarySource).toContain(`translateText('${label}', getAppLanguage())`);
     }
+  });
+
+  it('localizes projection entry, status, and pagination copy', () => {
+    for (const label of [
+      'No active position to project.',
+      'Entry',
+      'Position opened · projection values start today',
+      'TODAY',
+      'BREAKEVEN',
+      'Projection table pagination',
+      'Previous projection page',
+      'Next projection page',
+      'Previous',
+      'Next',
+      'Rows {start}–{end} of {total}',
+      'Page {current} of {total}'
+    ]) {
+      expect(projectionSource).toContain(`translateText('${label}', getAppLanguage())`);
+    }
+    expect(russianSource).toContain("'Rows {start}–{end} of {total}':");
+    expect(russianSource).toContain("'Page {current} of {total}':");
   });
 
   it('provides a Russian translation for the full margin-fee label', () => {
