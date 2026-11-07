@@ -94,3 +94,12 @@ describe('broker rules disclosure state', () => {
     expect(source).toContain('value={ruleValues.annualRate}');
   });
 });
+
+describe('broker rules stop-out validation wiring', () => {
+  it('updates custom validity as maintenance or stop-out values change', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
+    expect(source).toContain('updateStopOutValidity();');
+    expect(source).toContain('updateStopOutValidity(); if (!form.reportValidity()) return;');
+  });
+});

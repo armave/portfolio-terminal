@@ -14,6 +14,7 @@ import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync'
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
+import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
 
 
@@ -206,6 +207,15 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   );
 
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
+
+  const updateStopOutValidity = () => {
+    const stopOutInput = stopOutInputRef.current;
+    const maintenanceInput = stopOutInput?.form?.querySelector<HTMLInputElement>('#maintenanceMarginInput');
+    if (!stopOutInput || !maintenanceInput) return;
+    stopOutInput.setCustomValidity(
+      getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value) || ''
+    );
+  };
 
   // Sync local form values whenever rules prop updates (e.g. Restore defaults)
   useEffect(() => {
@@ -412,18 +422,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <form id="brokerRulesForm" onSubmit={(event) => {
             event.preventDefault();
             const form = event.currentTarget as HTMLFormElement;
+            updateStopOutValidity();
             if (!form.reportValidity()) return;
             const values = { ...ruleValues };
-            const stopOutInput = form.querySelector<HTMLInputElement>('#stopOutRatioInput');
-            const maintenanceInput = form.querySelector<HTMLInputElement>('#maintenanceMarginInput');
-            const stopOut = Number(stopOutInput?.value ?? values.stopOutRatio);
-            const maintenance = Number(maintenanceInput?.value ?? values.maintenanceMargin);
-            if (stopOut > maintenance) {
-              stopOutInput?.setCustomValidity("Stop-out equity must not exceed maintenance equity.");
-              stopOutInput?.reportValidity();
-              return;
-            }
-            stopOutInput?.setCustomValidity("");
             emitUiEvent('settings:save-broker-rules', { values });
           }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
@@ -470,7 +471,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   value={ruleValues.maintenanceMargin}
                   onInput={(e) => {
                     updateRuleValue('maintenanceMargin', (e.target as HTMLInputElement).value);
-                    stopOutInputRef.current?.setCustomValidity('');
+                    updateStopOutValidity();
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
@@ -489,7 +490,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   value={ruleValues.stopOutRatio}
                   onInput={(e) => {
                     updateRuleValue('stopOutRatio', (e.target as HTMLInputElement).value);
-                    stopOutInputRef.current?.setCustomValidity('');
+                    updateStopOutValidity();
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
