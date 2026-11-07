@@ -45,7 +45,6 @@ export function createMarketHistoryProviderRegistry(adapters: readonly MarketHis
       if (!result.points.length || result.quality === 'unavailable') {
         throw new Error('Freedom TradeNet returned no usable daily candles.');
       }
-      const reason = primaryError instanceof Error ? primaryError.message : String(primaryError);
       return {
         ...result,
         quality: result.quality === 'complete' ? 'partial' : result.quality,
