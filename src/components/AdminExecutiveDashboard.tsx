@@ -151,7 +151,7 @@ export function AdminExecutiveDashboard() {
 
       <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
         <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Position basis')}</h3>
+          <h3 id="adminPositionBasisTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Position basis')}</h3>
           <p class="mt-2 text-sm font-bold text-slate-100">
             {marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTrancheCount} {label('tranches')}
           </p>
@@ -186,7 +186,7 @@ export function AdminExecutiveDashboard() {
         </section>
 
         <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
+          <h3 id="adminMarketValuationTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
           <p class="mt-2 text-sm font-bold text-slate-100">{formatUSD(summary.marginMarketValue)}</p>
           <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
           <p class={`mt-1 text-xs font-semibold ${pnlTone}`}>
@@ -216,7 +216,7 @@ export function AdminExecutiveDashboard() {
         </section>
 
         <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Debt & carrying costs')}</h3>
+          <h3 id="adminDebtCarryingCostsTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Debt & carrying costs')}</h3>
           <p class="mt-2 text-sm font-bold text-rose-300">{formatUSD(debt)} {label('margin debt')}</p>
           <p class="mt-1 text-[10px] text-slate-400">
             {label('Daily margin cost')}: {formatUSD(summary.dailyMarginCost)} · {label('Annual margin rate')} {(state.brokerAssumptions.annualBorrowRate * 100).toFixed(2)}%
