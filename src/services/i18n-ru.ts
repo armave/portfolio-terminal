@@ -4,6 +4,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Margin fee': 'Проценты по марже',
   'Rows {start}–{end} of {total}': 'Строки {start}–{end} из {total}',
   'Page {current} of {total}': 'Страница {current} из {total}',
+  'EOW · +{days}d': 'Конец недели · +{days}д',
+  'NTD · +{days}d': 'Следующий торговый день · +{days}д',
   'COMBINED PORTFOLIO': 'ОБЩИЙ ПОРТФЕЛЬ',
   'BALANCE': 'БАЛАНС',
   'Refreshing balance…': 'Обновление баланса…',
