@@ -81,6 +81,15 @@ export function createCloudStateSyncRuntime({
       ? (data.error || data.message || `HTTP ${response.status}`)
       : `HTTP ${response.status}`;
   };
+  async function pushCloudWrite(
+    input: RequestInfo | URL,
+    init: RequestInit,
+    isCurrentSession: () => boolean
+  ): Promise<Response> {
+    const { fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
+    return fetchIdempotentCloudWrite(fetchImpl, input, init, isCurrentSession);
+  }
+
   const cloudStatePushFingerprints = new Map<string, string>();
 
   function hasAesGcmV2Envelope(value: unknown): value is string {
@@ -422,8 +431,7 @@ async function performPushCloudHistory(
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const { fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
-  const res = await fetchIdempotentCloudWrite(fetchImpl, apiUrl('/api/history'), {
+  const res = await pushCloudWrite(apiUrl('/api/history'), {
     method: 'POST',
     headers: authHeaders(secret, `\"${revision}\"`),
     body: JSON.stringify({ encryptedPayload })
@@ -642,8 +650,7 @@ async function performPushCloudState(
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
-    const { fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
-    const res = await fetchIdempotentCloudWrite(fetchImpl, url.toString(), {
+    const res = await pushCloudWrite(url.toString(), {
       method: 'POST',
       headers: authHeaders(currentSecret, `\"${expectedRevision}\"`),
       body: JSON.stringify(payload)
