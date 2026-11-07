@@ -46,3 +46,20 @@ describe('navigation performance wiring', () => {
     expect(runtime).not.toContain('portfolioStore.setState({ activeView: normalizedView });');
   });
 });
+
+
+describe('Settings navigation loading stability', () => {
+  it('uses one lazy-load fallback and does not replace the whole Settings desk while users load', () => {
+    const app = readSource('../App.tsx');
+    const settings = readSource('../components/SettingsDesk.tsx');
+    const translations = readSource('../services/i18n-ru.ts');
+
+    expect(app).toContain("const shouldRenderSettings = hasOpenedSettings || activeDeskView === 'SETTINGS';");
+    expect(app).toContain('{shouldRenderSettings');
+    expect(app).not.toContain('{hasOpenedSettings\n          ?');
+    expect(settings).not.toContain('if (initialUsersLoading) {');
+    expect(settings).toContain("{initialUsersLoading && <tr>");
+    expect(settings).toContain("translateText('Loading users…')");
+    expect(translations).toContain('"Loading users…": "Загрузка списка пользователей…"');
+  });
+});

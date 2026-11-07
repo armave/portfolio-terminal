@@ -895,5 +895,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Cached": "Из кэша",
   "Portfolio ownership could not be loaded.": "Не удалось загрузить раздел владения портфелями.",
   "Loading portfolio ownership…": "Загрузка раздела владения портфелями…",
+  "Loading users…": "Загрузка списка пользователей…",
   "Stale cached fallback": "Устаревшая резервная котировка из кэша",
 };
