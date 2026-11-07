@@ -8,6 +8,7 @@ import {
 } from './portfolioSubscriptions';
 import {
   PortfolioState,
+  PortfolioPerformanceValuationSnapshot,
   PositionRecord,
   Holding,
   TrancheItem,
@@ -50,6 +51,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Validate persisted daily valuation rows before exposing them to calculations. */
+function isPerformanceValuationSnapshot(value: unknown): value is PortfolioPerformanceValuationSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return Number.isSafeInteger(row.timestamp) && Number(row.timestamp) > 0 &&
+    typeof row.equity === 'number' && Number.isFinite(row.equity) &&
+    typeof row.currency === 'string' && /^[A-Z]{3}$/.test(row.currency) &&
+    (row.quality === 'current' || row.quality === 'provisional') &&
+    typeof row.cashflowHistoryComplete === 'boolean' &&
+    Array.isArray(row.items) && row.items.length > 0 &&
+    row.items.every(item => item && typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).key === 'string' &&
+      typeof (item as Record<string, unknown>).value === 'number' &&
+      Number.isFinite((item as Record<string, unknown>).value));
+}
+
+
 /**
  * Validate the containers at the import boundary before merging a snapshot.
  * A malformed collection must not be normalized to an empty collection and
@@ -72,7 +90,8 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'tranches',
     'cashStocks',
     'guestTrancheLedger',
-    'transactionEvents'
+    'transactionEvents',
+    'performanceValuations'
   ] as const;
   for (const field of arrayFields) {
     if (Object.prototype.hasOwnProperty.call(value, field) &&
@@ -378,6 +397,9 @@ export class PortfolioStore {
           ? freezePortfolioTransactionEventList(raw.transactionEvents)
           : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
         : freezePortfolioTransactionEventList([]),
+      performanceValuations: Array.isArray(raw.performanceValuations)
+        ? raw.performanceValuations.filter(isPerformanceValuationSnapshot).slice(-1095)
+        : [],
       activeView,
       positions,
       holdings,

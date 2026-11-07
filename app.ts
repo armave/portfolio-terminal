@@ -522,6 +522,8 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
+let performanceSnapshotInFlight = false;
+let performanceSnapshotPending = false;
 
 createPortfolioEquitySyncRuntime({
   subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
@@ -541,7 +543,70 @@ createPortfolioEquitySyncRuntime({
       portfolioEquityUpdatedAt: updatedAt
     }, persist);
   },
-  onDurableEquityChanged: () => { void pushStateToCloud(); }
+  onDurableEquityChanged: () => { void pushStateToCloud(); },
+  recordPerformanceSnapshot: async (_nextStoreState, timestamp) => {
+    // Performance history is administrator-owned until PT-05 tenant isolation is implemented.
+    if (performanceSnapshotInFlight) {
+      performanceSnapshotPending = true;
+      return false;
+    }
+    const accountId = currentAccountId;
+    const session = currentAccountSessionGuard.capture();
+    if (currentAccountRole !== 'admin' || !accountId || !session) return false;
+
+    performanceSnapshotInFlight = true;
+    try {
+      const {
+        appendDailyPerformanceValuation,
+        capturePortfolioPerformanceValuation
+      } = await import('./src/domain/portfolioPerformanceCapture');
+
+      let changed = false;
+      do {
+        performanceSnapshotPending = false;
+        // A login switch may have happened while the lazy module was resolving.
+        // Rebind to the active administrator only after that await; never save a
+        // previous account's state into the newly authenticated account.
+        const activeAccountId = currentAccountId;
+        const activeSession = currentAccountSessionGuard.capture();
+        const isCurrentSession = currentAccountRole === 'admin' &&
+          Boolean(activeAccountId) &&
+          activeSession !== null &&
+          currentAccountSessionGuard.isCurrent(activeSession);
+        if (!isCurrentSession || !activeAccountId) return changed;
+
+        // Read after the lazy import resolves, not from the potentially stale
+        // notification that initiated this asynchronous capture.
+        const latestState = portfolioStore.getState();
+        const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(activeAccountId);
+        const observedAt = Math.max(timestamp, Date.now());
+        const snapshot = capturePortfolioPerformanceValuation(
+          latestState,
+          observedAt,
+          cashflowHistoryComplete
+        );
+        if (snapshot) {
+          const existing = latestState.performanceValuations || [];
+          const next = appendDailyPerformanceValuation(existing, snapshot);
+          const unchanged = next.length === existing.length &&
+            next.every((item, index) => item === existing[index]);
+          if (!unchanged) {
+            const saved = portfolioStore.setDerivedState({ performanceValuations: next }, true);
+            if (saved) {
+              state = portfolioStore.getState();
+              changed = true;
+            }
+          }
+        }
+      } while (performanceSnapshotPending);
+
+      return changed;
+    } finally {
+      performanceSnapshotInFlight = false;
+      performanceSnapshotPending = false;
+    }
+  },
+  onPerformanceSnapshotChanged: () => { void pushStateToCloud(); }
 });
 
 async function pushStateToCloud(forceImmediate = false): Promise<boolean> {

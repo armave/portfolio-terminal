@@ -655,4 +655,5 @@ describe('app localization', () => {
     expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
   });
 
+
 });

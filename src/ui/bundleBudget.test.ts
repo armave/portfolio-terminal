@@ -7,7 +7,7 @@ describe('production entry bundle budget', () => {
     expect(ENTRY_BUNDLE_BUDGET.maxGzipBytes).toBe(165_000);
     expect(assertEntryBundleBudget({
       assetName: 'index.js',
-      bytes: 488_790,
+      bytes: 575_000,
       gzipBytes: 155_920
     })).toBe(true);
   });
