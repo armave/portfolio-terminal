@@ -128,6 +128,9 @@ describe('Margin desk localization', () => {
 
   it('routes projection table labels and its accessible description through i18n', () => {
     for (const label of [
+      'Portfolio workspace',
+      'Portfolio summary metrics',
+      'Market insights',
       'Portfolio projection by date',
       'Projected portfolio net value, fees and commissions, margin fee, and balance by date.',
       'Date',
