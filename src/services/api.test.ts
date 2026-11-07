@@ -574,6 +574,58 @@ describe('cloud revision conflict handling', () => {
     expect(secondHeaders['If-Match']).toBe('"42"');
   });
 
+  it('retries an ambiguous cloud snapshot write with the same idempotency key and request body', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('connection reset after request submission'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, revision: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudState({ positions: { AAPL: { shares: 2 } }, balance: -200 }, {
+      secret: 'cloud-idempotency-client-secret',
+      showToast: vi.fn()
+    })).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    const retry = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit];
+    const firstHeaders = first[1].headers as Record<string, string>;
+    const retryHeaders = retry[1].headers as Record<string, string>;
+    expect(firstHeaders['Idempotency-Key']).toMatch(/^cloud:/);
+    expect(retryHeaders['Idempotency-Key']).toBe(firstHeaders['Idempotency-Key']);
+    expect(retryHeaders['If-Match']).toBe(firstHeaders['If-Match']);
+    expect(retry[1].body).toBe(first[1].body);
+  });
+
+  it('retries a transient server failure but does not retry a cloud revision conflict', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporary failure' }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, revision: 1 }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudState({ activeView: 'AAPL', balance: 100 }, {
+      secret: 'cloud-idempotency-503-secret',
+      showToast: vi.fn()
+    })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers)
+      .toMatchObject((fetchMock.mock.calls[1][1] as RequestInit).headers as Record<string, string>);
+
+    const conflictMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: 'Cloud portfolio changed on another device.'
+    }), { status: 409, headers: { 'Content-Type': 'application/json', ETag: '"8"' } }));
+    vi.stubGlobal('fetch', conflictMock);
+    await expect(pushCloudState({ activeView: 'MSFT', balance: 200 }, {
+      secret: 'cloud-idempotency-conflict-secret',
+      showToast: vi.fn()
+    })).resolves.toBe(false);
+    expect(conflictMock).toHaveBeenCalledTimes(1);
+  });
+
   it('drops a queued push when its account session changes before the write starts', async () => {
     let resolveFirstResponse!: (response: Response) => void;
     const firstResponse = new Promise<Response>((resolve) => { resolveFirstResponse = resolve; });
@@ -1644,6 +1696,31 @@ describe('closed-history cloud write serialization', () => {
       'GET', 'POST', 'GET', 'GET', 'POST', 'GET'
     ]);
     expect((historyCalls[4][1] as RequestInit).headers).toMatchObject({ 'If-Match': `"${revision - 1}"` });
+  });
+
+  it('retries an ambiguous broker-history cloud write with its original idempotency key', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('connection reset after commit'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, revision: 1 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'execution-retry-1', ticker: 'AAPL', quantity: 1 }],
+      cashflows: [{ id: 'commission-retry-1', amount: -1 }]
+    }, 'history-cloud-idempotency-secret', 0)).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = fetchMock.mock.calls[0][1] as RequestInit;
+    const retry = fetchMock.mock.calls[1][1] as RequestInit;
+    const firstHeaders = first.headers as Record<string, string>;
+    const retryHeaders = retry.headers as Record<string, string>;
+    expect(firstHeaders['Idempotency-Key']).toMatch(/^cloud:/);
+    expect(retryHeaders['Idempotency-Key']).toBe(firstHeaders['Idempotency-Key']);
+    expect(retryHeaders['If-Match']).toBe('"0"');
+    expect(retry[1]?.body).toBe(first[1]?.body);
   });
 
   it('drops a queued history write when its account session becomes stale', async () => {
