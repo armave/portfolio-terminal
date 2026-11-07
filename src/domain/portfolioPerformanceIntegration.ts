@@ -6,7 +6,6 @@ import {
   summarizePerformanceIncomeAndCosts,
   type PerformanceAdjustment,
   type PerformanceExternalCashFlow,
-  type PerformanceFrequency,
   type PerformanceValuationPoint,
   type PerformanceCalculation,
   type PeriodAttribution,

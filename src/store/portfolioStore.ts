@@ -40,6 +40,7 @@ import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
+import { isPortfolioPerformanceValuationSnapshot } from '../domain/portfolioPerformanceIntegration';
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
@@ -72,7 +73,8 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'tranches',
     'cashStocks',
     'guestTrancheLedger',
-    'transactionEvents'
+    'transactionEvents',
+    'performanceValuations'
   ] as const;
   for (const field of arrayFields) {
     if (Object.prototype.hasOwnProperty.call(value, field) &&
@@ -106,6 +108,12 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
 
   if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
       value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'performanceValuations') &&
+      value.performanceValuations !== undefined &&
+      (!Array.isArray(value.performanceValuations) ||
+        !value.performanceValuations.every(isPortfolioPerformanceValuationSnapshot))) {
     return false;
   }
 
@@ -378,6 +386,9 @@ export class PortfolioStore {
           ? freezePortfolioTransactionEventList(raw.transactionEvents)
           : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
         : freezePortfolioTransactionEventList([]),
+      performanceValuations: Array.isArray(raw.performanceValuations)
+        ? raw.performanceValuations.filter(isPortfolioPerformanceValuationSnapshot).slice(-1095)
+        : [],
       activeView,
       positions,
       holdings,
