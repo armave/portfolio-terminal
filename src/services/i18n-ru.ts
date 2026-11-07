@@ -427,7 +427,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'guest': 'гость',
   'No active cash-funded stocks are linked to your account yet.': 'К вашей учётной записи пока не привязаны акции, приобретённые за собственные средства.',
   'Stocktwits': 'Stocktwits',
-  'Margin risk and account equity': 'Маржинальный риск и капитал счёта',
+  'Margin risk and account equity': 'Маржинальный риск и собственный капитал счёта',
   'Account equity percentage': 'Доля собственного капитала счёта',
   'Margin-call buffer': 'Запас до маржин-колла',
   'Portfolio financial summary': 'Финансовая сводка портфеля',
@@ -899,7 +899,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Loading users…": "Загрузка списка пользователей…",
   "Stale cached fallback": "Устаревшая резервная котировка из кэша",
   "Margin risk estimate unavailable": "Оценка маржинального риска недоступна",
-  "Margin risk and account equity": "Маржинальный риск и собственный капитал счёта",
+  
   "STOP-OUT BUFFER": "ЗАПАС ДО СТОП-АУТА",
   "Estimate assumes the configured {threshold}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.": "Оценка предполагает заданный порог капитала стоп-аута {threshold}% и полное использование выделенного резерва в качестве обеспечения. Фактические требования брокера могут отличаться.",
   "Estimated from portfolio equity and configured thresholds: {maintenance}% maintenance equity and {stopOut}% stop-out equity. Not a live broker risk indicator.": "Оценка рассчитана по капиталу портфеля и заданным порогам: поддерживающая маржа {maintenance}% и стоп-аут {stopOut}%. Это не текущий индикатор риска брокера.",
