@@ -32,6 +32,13 @@ describe('broker history adapter boundary', () => {
 });
 
 describe('Balance guest grouping', () => {
+  it('keeps guest group rows keyed and centered from their first render', () => {
+    const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+    expect(deskSource).toMatch(/<Fragment key=\{\`\$\{h\.groupKey\}-\$\{h\.ticker\}\`\}>/);
+    expect(deskSource).toMatch(/<td colSpan=\{8\} class="[^"]*text-center" style=\{\{ textAlign: 'center' \}\}>\{h\.groupLabel\}<\/td>/);
+  });
+
   it('uses stable assigned guest IDs rather than asynchronous directory order', () => {
     expect(getAssignedGuestIds({
       trancheC: 'guest-c',
