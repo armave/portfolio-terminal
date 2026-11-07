@@ -406,7 +406,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       >
         <summary
           class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300"
-          onClick={() => setBrokerRulesOpen((current) => !current)}
+          onClick={(event) => {
+            event.preventDefault();
+            setBrokerRulesOpen((current) => !current);
+          }}
         >
           Broker Rules
         </summary>

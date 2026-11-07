@@ -84,7 +84,9 @@ describe('broker rules disclosure state', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
     expect(source).toContain('open={brokerRulesOpen}');
-    expect(source).toContain('onClick={() => setBrokerRulesOpen((current) => !current)}');
+    expect(source).toContain('event.preventDefault();');
+    expect(source).toContain('setBrokerRulesOpen((current) => !current)');
+
     expect(source).toContain('value={ruleValues.annualRate}');
   });
 });
