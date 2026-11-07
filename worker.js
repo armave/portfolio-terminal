@@ -6,8 +6,8 @@ export { sanitizeFreedomMarketDepth };
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
-const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000 };
-const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000 };
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
@@ -1603,10 +1603,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -2487,6 +2487,84 @@ export default {
                     const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
                     return jsonError(error instanceof Error ? error.message : `${providerName} quote failed.`, status, corsHeaders);
                 }
+            }
+
+            if (action === "provider-history") {
+                const ticker = symbol.trim();
+                const resolution = url.searchParams.get("resolution") || "D";
+                const from = Number(url.searchParams.get("from"));
+                const to = Number(url.searchParams.get("to"));
+                const supported = new Set(["1", "5", "15", "30", "60", "D", "W", "M"]);
+                const key = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
+                if (!ticker || ticker.includes(",") || !/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) return jsonError("A single valid historical symbol is required.", 400, corsHeaders);
+                if (!supported.has(resolution)) return jsonError("Unsupported Finnhub candle resolution.", 400, corsHeaders);
+                if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from <= 0 || to <= from || to - from > 20 * 366 * 86400) return jsonError("Historical date range is invalid or exceeds the 20-year limit.", 400, corsHeaders);
+                if (!key) return jsonError("Finnhub provider key is not configured.", 503, corsHeaders);
+                try {
+                    const data = await withProviderCache("finnhub_history", [ticker, resolution, from, to].join(":"), async () => {
+                        const endpoint = new URL("https://finnhub.io/api/v1/stock/candle");
+                        endpoint.searchParams.set("symbol", ticker);
+                        endpoint.searchParams.set("resolution", resolution);
+                        endpoint.searchParams.set("from", String(from));
+                        endpoint.searchParams.set("to", String(to));
+                        endpoint.searchParams.set("token", key);
+                        const response = await fetchWithTimeout(endpoint.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } });
+                        const raw = await response.json().catch(() => null);
+                        if (!response.ok) throw Object.assign(new Error("Finnhub historical data is temporarily unavailable."), { status: response.status });
+                        if (!raw || raw.s !== "ok" || !Array.isArray(raw.t) || !Array.isArray(raw.c) || raw.t.length !== raw.c.length || raw.t.length > 20000) throw Object.assign(new Error("Finnhub returned invalid historical candles."), { status: 502 });
+                        const points = [];
+                        for (let i=0;i<raw.t.length;i++) {
+                            const seconds=Number(raw.t[i]), close=Number(raw.c[i]);
+                            if (!Number.isSafeInteger(seconds)||seconds<=0||!Number.isFinite(close)||close<=0) continue;
+                            const point={timestamp:seconds*1000,price:close};
+                            for (const [field,values] of [["open",raw.o],["high",raw.h],["low",raw.l],["volume",raw.v]]) {
+                                const value=Array.isArray(values)?Number(values[i]):NaN;
+                                if(Number.isFinite(value)&&(field==="volume"?value>=0:value>0)) point[field]=value;
+                            }
+                            points.push(point);
+                        }
+                        if(!points.length) throw Object.assign(new Error("Finnhub returned no valid historical prices."),{status:502});
+                        points.sort((a,b)=>a.timestamp-b.timestamp);
+                        return {ok:true,provider:"Finnhub",symbol:ticker,interval:resolution,observedAt:points[points.length-1].timestamp,points};
+                    });
+                    return new Response(JSON.stringify({...data,receivedAt:Date.now()}),{headers:corsHeaders});
+                } catch(error) {
+                    const status=Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:502;
+                    return jsonError(status===429?"Finnhub historical data is rate limited; retry later.":"Finnhub historical data is temporarily unavailable.",status,corsHeaders);
+                }
+            }
+
+            if (action === "market-events") {
+                const ticker=symbol.trim(), fromDate=url.searchParams.get("from"), toDate=url.searchParams.get("to");
+                const key=env.FINNHUB_KEY||env.FINNHUB_API_KEY;
+                if(!ticker||ticker.includes(",")||!/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) return jsonError("A single valid market-events symbol is required.",400,corsHeaders);
+                if(!isValidDateOnly(fromDate)||!isValidDateOnly(toDate)||toDate<fromDate||Date.parse(toDate+"T00:00:00Z")-Date.parse(fromDate+"T00:00:00Z")>366*86400000) return jsonError("Market-event date range must be valid YYYY-MM-DD dates within one year.",400,corsHeaders);
+                if(!key) return jsonError("Finnhub provider key is not configured.",503,corsHeaders);
+                const safeText=v=>typeof v==="string"&&v.length<=64?v:null;
+                const safeNumber=v=>{if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null;};
+                const fetchFeed=feed=>withProviderCache("finnhub_events",[feed,ticker,fromDate,toDate].join(":"),async()=>{
+                    const endpoint=new URL(feed==="earnings"?"https://finnhub.io/api/v1/calendar/earnings":"https://finnhub.io/api/v1/stock/dividend");
+                    endpoint.searchParams.set("symbol",ticker);endpoint.searchParams.set("from",fromDate);endpoint.searchParams.set("to",toDate);endpoint.searchParams.set("token",key);
+                    const response=await fetchWithTimeout(endpoint.toString(),{headers:{"Accept":"application/json","User-Agent":USER_AGENT}});
+                    if(!response.ok)throw new Error("Finnhub event feed unavailable");
+                    const raw=await response.json().catch(()=>null);
+                    if(feed==="earnings"){if(!Array.isArray(raw?.earningsCalendar))throw new Error("Invalid earnings response");return raw.earningsCalendar;}
+                    if(!Array.isArray(raw))throw new Error("Invalid dividend response");return raw;
+                });
+                const [earningsResult,dividendsResult]=await Promise.allSettled([fetchFeed("earnings"),fetchFeed("dividends")]);
+                const earningsAvailable=earningsResult.status==="fulfilled",dividendsAvailable=dividendsResult.status==="fulfilled";
+                if(!earningsAvailable&&!dividendsAvailable)return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
+                const earnings=(earningsAvailable?earningsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
+                    return[{symbol:safeText(row.symbol)||ticker,date,hour:safeText(row.hour),epsActual:safeNumber(row.epsActual),epsEstimate:safeNumber(row.epsEstimate),revenueActual:safeNumber(row.revenueActual),revenueEstimate:safeNumber(row.revenueEstimate),quarter:safeNumber(row.quarter),year:safeNumber(row.year),currency:safeText(row.currency)}];
+                });
+                const dividends=(dividendsAvailable?dividendsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
+                    return[{symbol:safeText(row.symbol)||ticker,date,amount:safeNumber(row.amount),adjustedAmount:safeNumber(row.adjustedAmount),payDate:safeText(row.payDate),recordDate:safeText(row.recordDate),declarationDate:safeText(row.declarationDate),currency:safeText(row.currency),frequency:safeNumber(row.freq)}];
+                });
+                return new Response(JSON.stringify({ok:true,provider:"Finnhub",symbol:ticker,from:fromDate,to:toDate,receivedAt:Date.now(),earnings,dividends,earningsAvailable,dividendsAvailable}),{headers:corsHeaders});
             }
 
             // Lightweight Yahoo quote path: chart metadata avoids quoteSummary's

@@ -4444,3 +4444,37 @@ describe('retired TradeNet session cleanup', () => {
     expect(storage.put).toHaveBeenCalledTimes(1);
   });
 });
+
+
+
+describe('Finnhub market-data routes',()=>{
+ afterEach(()=>vi.unstubAllGlobals());
+ it('returns sanitized historical OHLCV candles',async()=>{
+  const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({s:'ok',t:[1793966400],o:[280],h:[286],l:[279],c:[284.64],v:[1000]}),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=D&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);const data=await response.json();
+  expect(data).toMatchObject({provider:'Finnhub',symbol:'GOOGL',points:[{timestamp:1793966400000,price:284.64,open:280,high:286,low:279,volume:1000}]});
+  expect(JSON.stringify(data)).not.toContain('private-key');
+ });
+ it('rejects invalid history range/resolution and missing credentials',async()=>{
+  const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+  const bad=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=2&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
+  const noKey=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=D&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret'});
+  expect(bad.status).toBe(400);expect(noKey.status).toBe(503);expect(fetchMock).not.toHaveBeenCalled();
+ });
+ it('returns typed earnings/dividend events and allows partial feed failure',async()=>{
+  const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07',hour:'amc',epsEstimate:2.1,rawSecret:'hidden'}]}),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD',rawSecret:'hidden'}]),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);const data=await response.json();
+  expect(data).toMatchObject({earnings:[{date:'2026-11-07',epsEstimate:2.1}],dividends:[{date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD'}]});
+  expect(JSON.stringify(data)).not.toContain('rawSecret');expect(JSON.stringify(data)).not.toContain('private-key');
+ });
+ it('keeps the available feed when the other feed fails',async()=>{
+  const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07'}]}),{status:200})).mockResolvedValueOnce(new Response('{}',{status:503}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
+  expect(response.status).toBe(200);await expect(response.json()).resolves.toMatchObject({earningsAvailable:true,dividendsAvailable:false,earnings:[{date:'2026-11-07'}],dividends:[]});
+ });
+});
