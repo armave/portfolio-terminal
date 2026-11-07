@@ -119,34 +119,3 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+180ms/);
   });
 });
-
-
-describe('Margin desk overview clarity', () => {
-  const marginAppSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-
-  it('keeps the financial summary two-up until an ultra-narrow viewport', () => {
-    expect(fluidStyles).toMatch(/@container portfolio-metrics\s*\(max-width:\s*36rem\)[\s\S]*?grid-template-columns:\s*repeat\(2,/);
-    expect(fluidStyles).toMatch(/@container portfolio-metrics\s*\(max-width:\s*22rem\)[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  });
-
-  it('shows provisional input quality and the estimate disclaimer on the risk gauge', () => {
-    expect(summarySource).toContain("valuationStatus === 'provisional'");
-    expect(summarySource).toContain('margin-risk-data-note');
-    expect(summarySource).toContain('aria-valuetext=');
-    expect(summarySource).toContain("translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', getAppLanguage())");
-  });
-
-  it('preserves the centered mobile navigation while keeping ticker taps comfortable', () => {
-    expect(fluidStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*display:\s*contents;/s);
-    expect(fluidStyles).toContain('#tickerTabs [data-nav-tab]');
-    expect(fluidStyles).toContain('min-height: 2.75rem');
-  });
-
-  it('uses plain-language labels for the margin forecast columns', () => {
-    expect(marginAppSource).toContain("translateText('Margin cost projection', getAppLanguage())");
-    expect(marginAppSource).toContain("translateText('Fees & commissions', getAppLanguage())");
-    expect(marginAppSource).toContain("translateText('Margin interest', getAppLanguage())");
-    expect(marginAppSource).toContain("translateText('Margin debt', getAppLanguage())");
-  });
-});

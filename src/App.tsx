@@ -794,17 +794,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
                 >
                   <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
-                    <caption class="projection-table-caption">
-                      <span>{translateText('Margin cost projection', getAppLanguage())}</span>
-                      <span>{translateText('Projected net value after financing and commissions', getAppLanguage())}</span>
-                    </caption>
+                    <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
                     <thead>
                       <tr class="border-b border-slate-800 text-slate-400">
                         <th scope="col" class="py-2 px-3">Date</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Net value', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Fees & commissions', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Margin interest', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Margin debt', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">Net</th>
+                        <th scope="col" class="py-2 px-3">F&amp;C</th>
+                        <th scope="col" class="py-2 px-3">M Fee</th>
+                        <th scope="col" class="py-2 px-3">Balance</th>
                       </tr>
                     </thead>
                     <tbody

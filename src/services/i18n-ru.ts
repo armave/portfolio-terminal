@@ -1,11 +1,5 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
-  'Margin cost projection': 'Прогноз маржинальных затрат',
-  'Projected net value after financing and commissions': 'Прогноз чистой стоимости с учётом процентов и комиссий',
-  'Net value': 'Чистая стоимость',
-  'Margin interest': 'Проценты по марже',
-  'Margin debt': 'Маржинальный долг',
-  'Provisional data': 'Предварительные данные',
   'MARGIN DESK': 'МАРЖИНАЛЬНЫЙ РАЗДЕЛ',
   'COMBINED PORTFOLIO': 'ОБЩИЙ ПОРТФЕЛЬ',
   'BALANCE': 'БАЛАНС',

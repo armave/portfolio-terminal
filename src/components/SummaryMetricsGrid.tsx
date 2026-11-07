@@ -72,27 +72,19 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const marginRiskTitle = 'Estimated from portfolio equity and configured thresholds: ' +
     (rules.maintenanceEquityRatio * 100).toFixed(2) + '% maintenance equity and ' +
     (rules.stopOutRatio * 100).toFixed(2) + '% stop-out equity. Not a live broker risk indicator.';
-  const dataQualityMessage = translateText(
-    'Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified. Review quote sources and observation times before relying on this risk estimate.',
-    getAppLanguage()
-  );
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   return (
     <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity" title={marginRiskTitle}>
       <div class="margin-risk-gauge-heading">
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
-        <div class="margin-risk-status-group">
-          <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
-          {valuationStatus === 'provisional' && <span class="margin-risk-data-status" title={dataQualityMessage}>{translateText('Provisional data', getAppLanguage())}</span>}
-        </div>
+        <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
-      <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', getAppLanguage())}>
+      <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
       </div>
       <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
-      {valuationStatus === 'provisional' && <p class="margin-risk-data-note" role="note">{dataQualityMessage}</p>}
       <div class="margin-risk-buffer-summary">
         <div class="margin-risk-buffer-stat">
           <span class="margin-risk-label">MARGIN-CALL BUFFER</span>
@@ -105,8 +97,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.showStopOut ? risk.stopOutText : '—'}</span>}
         </div>
       </div>
-      <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', getAppLanguage())}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', getAppLanguage())}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', getAppLanguage())}</span><strong>{collateralText}</strong></div></details>
-      <p class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', getAppLanguage())}</p>
+      <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>
     </section>
   );
 }
