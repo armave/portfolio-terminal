@@ -795,6 +795,16 @@ try {
     throw new Error('Quick Buy did not show the expected local-only trade confirmation: ' + tradeConfirmationMessage.slice(0, 700));
   }
 
+  // The new executive overview is available to admins on Combined Portfolio only.
+  const executiveOverview = page.locator('#adminExecutiveDashboardTitle');
+  await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
+  if (!(await executiveOverview.innerText()).toLowerCase().includes('admin executive overview')) {
+    throw new Error('Admin executive overview heading was not rendered for the authenticated admin.');
+  }
+  if (!(await page.locator('#adminExposureTitle').isVisible())) {
+    throw new Error('Admin position exposure table was not visible.');
+  }
+
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
   await waitForCondition(
@@ -1116,6 +1126,9 @@ try {
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
   await waitForAuthOverlay(page, false);
+  if (await page.locator('#adminExecutiveDashboardTitle').count()) {
+    throw new Error('Guest session rendered the admin executive dashboard.');
+  }
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
