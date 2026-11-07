@@ -712,7 +712,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <main
         ref={mainWorkspaceRef}
         id="mainTerminalView"
-        aria-label="Portfolio workspace"
+        aria-label={translateText('Portfolio workspace', getAppLanguage())}
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
       >
         {/* Asset View Tabs */}
@@ -769,7 +769,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="portfolioMetricsGrid"
-                aria-label="Portfolio summary metrics"
+                aria-label={translateText('Portfolio summary metrics', getAppLanguage())}
                 class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
               >
                 {permissions.canViewMarginDesk &&
@@ -813,7 +813,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <section
                   id="marketInsightsPanel"
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-                  aria-label="Market insights"
+                  aria-label={translateText('Market insights', getAppLanguage())}
                 >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
                   <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
                     <MarketInsightsPanel />
