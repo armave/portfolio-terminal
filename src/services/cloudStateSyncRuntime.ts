@@ -422,14 +422,10 @@ async function performPushCloudHistory(
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const { createCloudWriteIdempotencyKey, fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
-  const idempotencyKey = createCloudWriteIdempotencyKey();
+  const { fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
   const res = await fetchIdempotentCloudWrite(fetchImpl, apiUrl('/api/history'), {
     method: 'POST',
-    headers: {
-      ...authHeaders(secret, `\"${revision}\"`),
-      'Idempotency-Key': idempotencyKey
-    },
+    headers: authHeaders(secret, `\"${revision}\"`),
     body: JSON.stringify({ encryptedPayload })
   }, isCurrentSession);
   if (!isCurrentSession()) return false;
@@ -646,14 +642,10 @@ async function performPushCloudState(
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
-    const { createCloudWriteIdempotencyKey, fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
-    const idempotencyKey = createCloudWriteIdempotencyKey();
+    const { fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
     const res = await fetchIdempotentCloudWrite(fetchImpl, url.toString(), {
       method: 'POST',
-      headers: {
-        ...authHeaders(currentSecret, `\"${expectedRevision}\"`),
-        'Idempotency-Key': idempotencyKey
-      },
+      headers: authHeaders(currentSecret, `\"${expectedRevision}\"`),
       body: JSON.stringify(payload)
     }, isCurrentSession);
     if (!isCurrentSession()) return false;
