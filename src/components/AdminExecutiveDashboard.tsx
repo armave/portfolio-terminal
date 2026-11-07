@@ -37,6 +37,27 @@ export function AdminExecutiveDashboard() {
   const positions = Object.values(state.positions || {}).filter(position => Number(position.shares) > 0);
   const cashHoldings = (state.cashCushion?.holdings || []).filter(holding => Number(holding.shares) > 0);
   const totalValue = summary.marketValue;
+  const marginShares = positions.reduce((sum, position) => sum + Number(position.shares), 0);
+  const marginTranches = positions.reduce((sum, position) => sum + (position.tranches || []).filter(t => Number(t.qty) > 0).length, 0);
+  const marginInvested = positions.reduce((sum, position) => sum + (position.tranches || []).reduce((sub, tranche) => sub + Number(tranche.qty) * Number(tranche.price), 0), 0);
+  const marginAverageEntry = marginShares > 0 ? marginInvested / marginShares : null;
+  const currentMarginValue = positions.reduce((sum, position) => {
+    const price = Number(position.currentPrice);
+    return sum + (Number.isFinite(price) && price > 0 ? Number(position.shares) * price : 0);
+  }, 0);
+  const commissionRules = resolveCommissionConfig(state.brokerAssumptions);
+  const estimatedCommissions = positions.reduce((sum, position) => {
+    const price = Number(position.currentPrice);
+    const sellFee = Number.isFinite(price) && price > 0
+      ? calculateCommission(Number(position.shares), Number(position.shares) * price, commissionRules) : 0;
+    return sum + (Number(position.commBuy) || 0) + sellFee;
+  }, 0);
+  const accruedMarginInterest = positions.reduce((sum, position) => {
+    const invested = (position.tranches || []).reduce((sub, tranche) => sub + Number(tranche.qty) * Number(tranche.price), 0);
+    const allocatedDebt = marginInvested > 0 ? summary.marginDebt * invested / marginInvested : 0;
+    const dailyRate = state.brokerAssumptions.annualBorrowRate / state.brokerAssumptions.dayCountBasis;
+    return sum + calculateMarginInterest(position.tranches || [], { dailyRate, marginDebt: allocatedDebt, totalDebt: summary.marginDebt });
+  }, 0);
 
   const rows = [
     ...positions.map(position => {
@@ -92,6 +113,27 @@ export function AdminExecutiveDashboard() {
         <span class={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusTone(dataStatus)}`}>
           {label(dataStatus === 'current' ? 'Valuation current' : dataStatus === 'provisional' ? 'Valuation provisional' : 'Valuation incomplete')}
         </span>
+      </div>
+
+      <div class="grid grid-cols-1 gap-2 lg:grid-cols-3">
+        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Position basis')}</h3>
+          <p class="mt-2 text-sm font-bold text-slate-100">{marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTranches} {label('tranches')}</p>
+          <p class="mt-1 text-xs text-slate-300">{formatUSD(marginInvested)} {label('invested')}</p>
+          <p class="mt-1 text-[10px] text-slate-500">{label('Average entry')}: {marginAverageEntry === null ? '—' : formatUSD(marginAverageEntry)}</p>
+        </section>
+        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
+          <p class="mt-2 text-sm font-bold text-slate-100">{summary.unpricedHoldings > 0 ? `≥${formatUSD(summary.pricedMarketValue)}` : formatUSD(summary.marketValue)}</p>
+          <p class="mt-1 text-xs text-slate-300">{label('Margin positions')}: {formatUSD(currentMarginValue)}</p>
+          <p class="mt-1 text-[10px] text-slate-500">{label('Unrealized P/L')}: {summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}</p>
+        </section>
+        <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+          <h3 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Debt & carrying costs')}</h3>
+          <p class="mt-2 text-sm font-bold text-rose-300">{formatUSD(summary.marginDebt)} {label('margin debt')}</p>
+          <p class="mt-1 text-xs text-slate-300">{label('Estimated total commissions')}: {formatUSD(estimatedCommissions)}</p>
+          <p class="mt-1 text-[10px] text-slate-500">{label('Accrued margin interest')}: {formatUSD(accruedMarginInterest)}</p>
+        </section>
       </div>
 
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-3">
