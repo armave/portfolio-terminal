@@ -2523,7 +2523,23 @@ export class PortfolioStateDO {
               ? [...TENANT_ROLE_CAPABILITIES.owner]
               : [...(grant?.capabilities || [])]
           };
-        })
+        }),
+        // Only tenant owners receive the roster, and it contains directory
+        // metadata only. Financial history, credentials and session tokens
+        // remain outside this response.
+        memberships: isOwner ? directory.memberships
+          .filter((item) => item.tenantId === tenant.id)
+          .map((item) => ({
+            userId: item.userId,
+            role: item.role,
+            status: item.status,
+            membershipVersion: item.membershipVersion,
+            createdAt: item.createdAt,
+            portfolioIds: directory.grants
+              .filter((grant) => grant.tenantId === tenant.id &&
+                grant.userId === item.userId && grant.status === "active")
+              .map((grant) => grant.portfolioId)
+          })) : undefined
       });
     }
 

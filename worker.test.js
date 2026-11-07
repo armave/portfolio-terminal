@@ -4176,7 +4176,11 @@ describe('Durable Object tenant directory ownership foundation', () => {
       tenants: [{
         tenant: { id: 'legacy-tenant-v1' },
         membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) },
-        portfolios: [{ id: 'legacy-portfolio-v1', access: 'owner' }]
+        portfolios: [{ id: 'legacy-portfolio-v1', access: 'owner' }],
+        memberships: expect.arrayContaining([
+          expect.objectContaining({ userId: 'admin-1', role: 'owner', status: 'active' }),
+          expect.objectContaining({ userId: 'guest-1', role: 'guest', status: 'active' })
+        ])
       }]
     });
 
@@ -4186,6 +4190,7 @@ describe('Durable Object tenant directory ownership foundation', () => {
     expect(guestResponse.status).toBe(200);
     const guestView = await guestResponse.json();
     expect(guestView.tenants).toHaveLength(1);
+    expect(guestView.tenants[0]).not.toHaveProperty('memberships');
     expect(guestView.tenants[0]).toMatchObject({
       tenant: { id: 'legacy-tenant-v1' },
       membership: { role: 'guest', capabilities: ['portfolio.projection.read'] },
