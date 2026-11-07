@@ -3832,11 +3832,3 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .workspace-header-navigation,
-  .workspace-header-status,
-  #tickerTabs,
-  .workspace-nav-ticker-list {
-    transition: none;
-  }
-}
