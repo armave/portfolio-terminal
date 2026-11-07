@@ -145,7 +145,7 @@ function mapAttributionItemFlows(
     key: string,
     timestamp: number,
     amount: number,
-    quality: 'current' | 'provisional' = 'current'
+    quality: PerformanceExternalCashFlow['quality'] = 'current'
   ) => {
     if (Math.abs(amount) < 1e-10) return;
     const flow: PerformanceExternalCashFlow = {
