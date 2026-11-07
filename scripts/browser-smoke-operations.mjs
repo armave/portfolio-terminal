@@ -805,6 +805,11 @@ try {
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
     throw new Error('Admin position exposure table was not visible.');
   }
+  for (const legacyRiskLabel of ['Account equity health', 'Margin-call buffer', 'Stop-out threshold']) {
+    if (!(await page.getByText(legacyRiskLabel, { exact: true }).first().isVisible())) {
+      throw new Error('Integrated legacy risk metric was not visible: ' + legacyRiskLabel);
+    }
+  }
   await page.getByRole('button', { name: 'Margin: AAPL' }).click();
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
