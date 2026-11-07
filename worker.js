@@ -2593,7 +2593,7 @@ export default {
                             ? row.tradingHour : "";
                         let earlyCloseMinute = null;
                         if (tradingHour) {
-                            const match = /^(\\d{2}):(\\d{2})-(\\d{2}):(\\d{2})$/.exec(tradingHour);
+                            const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(tradingHour);
                             if (match) {
                                 const openHour = Number(match[1]), openMinute = Number(match[2]);
                                 const closeHour = Number(match[3]), closeMinute = Number(match[4]);
