@@ -4732,3 +4732,69 @@ describe('Finnhub market-data routes',()=>{
   expect(response.status).toBe(200);await expect(response.json()).resolves.toMatchObject({earningsAvailable:true,dividendsAvailable:false,earnings:[{date:'2026-12-07'}],dividends:[]});
  });
 });
+
+
+describe("Freedom daily historical candles", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("calls TradeNet getHloc with the documented daily timeframe and requested UTC date range", async () => {
+    const hloc = [{ t: 1793491200, o: 280, h: 286, l: 279, c: 284.64, v: 1000 }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ hloc }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const startAt = Date.parse("2026-11-01T00:00:00.000Z");
+    const endAt = Date.parse("2026-11-07T23:59:00.000Z");
+    const response = await worker.fetch(new Request(
+      "https://worker.test/?action=freedom-history&symbol=GOOGL.US&startAt=" + startAt + "&endAt=" + endAt,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), {
+      GATEWAY_SECRET: "test-secret",
+      FREEDOM_PUBLIC_KEY: "public-key",
+      FREEDOM_PRIVATE_KEY: "private-key"
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: "Freedom TradeNet",
+      symbol: "GOOGL.US",
+      data: { hloc }
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://tradernet.com/api/getHloc");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      id: "GOOGL.US",
+      timeframe: 1440,
+      date_from: "01.11.2026 00:00",
+      date_to: "07.11.2026 23:59",
+      count: 0,
+      intervalMode: "ClosedRay"
+    });
+    const serialized = JSON.stringify(await response.clone().json());
+    expect(serialized).not.toContain("public-key");
+    expect(serialized).not.toContain("private-key");
+  });
+
+  it("rejects malformed or overlong date ranges before reaching TradeNet", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const startAt = Date.parse("2025-01-01T00:00:00.000Z");
+    const endAt = Date.parse("2026-11-07T00:00:00.000Z");
+    const response = await worker.fetch(new Request(
+      "https://worker.test/?action=freedom-history&symbol=GOOGL.US&startAt=" + startAt + "&endAt=" + endAt,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), {
+      GATEWAY_SECRET: "test-secret",
+      FREEDOM_PUBLIC_KEY: "public-key",
+      FREEDOM_PRIVATE_KEY: "private-key"
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Freedom history date range is invalid or exceeds the one-year limit."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

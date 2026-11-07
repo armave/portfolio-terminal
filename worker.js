@@ -154,6 +154,19 @@ function isValidDateOnly(value) {
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function formatTradeNetHistoryDate(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) {
+        throw new Error("Historical date range is invalid.");
+    }
+    const pad = value => String(value).padStart(2, "0");
+    return pad(date.getUTCDate()) + "." +
+        pad(date.getUTCMonth() + 1) + "." +
+        date.getUTCFullYear() + " " +
+        pad(date.getUTCHours()) + ":" +
+        pad(date.getUTCMinutes());
+}
+
 export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
@@ -2141,7 +2154,37 @@ export default {
                 const command = action === "freedom-quote" ? "getStockQuotesJson" : action === "freedom-news" ? "getNews" : "getHloc";
                 // requestTradeNet targets the API-key v2 route: the command is in the URL,
                 // and the signed JSON body contains only these method parameters.
-                const params = action === "freedom-quote" ? { tickers: [symbol] } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
+                let params;
+                if (action === "freedom-quote") {
+                    params = { tickers: [symbol] };
+                } else if (action === "freedom-news") {
+                    params = { ticker: symbol, limit: 10 };
+                } else {
+                    // TradeNet getHloc uses a ticker ID, a minute-based timeframe,
+                    // and DD.MM.YYYY HH:mm date bounds. The previous {ticker, interval,
+                    // limit} shape was rejected by the broker with HTTP 400.
+                    const startAtParam = incomingUrl.searchParams.get("startAt");
+                    const endAtParam = incomingUrl.searchParams.get("endAt");
+                    const hasRange = startAtParam !== null || endAtParam !== null;
+                    const endAt = hasRange ? Number(endAtParam) : Date.now();
+                    const startAt = hasRange
+                        ? Number(startAtParam)
+                        : endAt - 90 * 24 * 60 * 60 * 1000;
+                    const maxRangeMs = 366 * 24 * 60 * 60 * 1000;
+                    if ((hasRange && (startAtParam === null || endAtParam === null)) ||
+                        !Number.isSafeInteger(startAt) || !Number.isSafeInteger(endAt) ||
+                        startAt <= 0 || endAt <= startAt || endAt - startAt > maxRangeMs) {
+                        return jsonError("Freedom history date range is invalid or exceeds the one-year limit.", 400, corsHeaders);
+                    }
+                    params = {
+                        id: symbol,
+                        timeframe: 1440,
+                        date_from: formatTradeNetHistoryDate(startAt),
+                        date_to: formatTradeNetHistoryDate(endAt),
+                        count: 0,
+                        intervalMode: "ClosedRay"
+                    };
+                }
                 try {
                     const data = action === "freedom-quote"
                         ? await withProviderCache("freedom_quote", symbol, () => requestTradeNet(env, command, params))
