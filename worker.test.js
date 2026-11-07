@@ -4554,6 +4554,64 @@ describe('retired TradeNet session cleanup', () => {
 
 
 
+describe('Finnhub exchange calendar route', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns sanitized holiday and early-close events plus a current session snapshot', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'L', timezone: 'Europe/London',
+        data: [
+          { eventName: 'Christmas Day', atDate: '2026-12-25', tradingHour: '' },
+          { eventName: 'Christmas Eve', atDate: '2026-12-24', tradingHour: '08:00-12:30', rawSecret: 'hidden' },
+          { eventName: 'Invalid date', atDate: '2026-02-30', tradingHour: '' }
+        ]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'L', timezone: 'Europe/London', isOpen: false,
+        session: null, holiday: null, t: 1793966400, token: 'hidden'
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=LSE',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'private-key' });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toMatchObject({
+      provider: 'Finnhub',
+      exchange: 'LSE',
+      providerExchange: 'L',
+      timeZone: 'Europe/London',
+      holidays: ['2026-12-25'],
+      earlyCloses: { '2026-12-24': 750 },
+      marketStatus: { isOpen: false, timeZone: 'Europe/London', timestamp: 1793966400000 }
+    });
+    expect(data.events).toHaveLength(2);
+    expect(JSON.stringify(data)).not.toContain('rawSecret');
+    expect(JSON.stringify(data)).not.toContain('private-key');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects unsupported exchanges and missing provider credentials before fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const unsupported = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=UNKNOWN',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'key' });
+    const missingKey = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=NASDAQ',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+    expect(unsupported.status).toBe(400);
+    expect(missingKey.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('Finnhub market-data routes',()=>{
  afterEach(()=>vi.unstubAllGlobals());
  it('returns sanitized historical OHLCV candles',async()=>{

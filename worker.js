@@ -6,8 +6,8 @@ export { sanitizeFreedomMarketDepth };
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
-const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000 };
-const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000 };
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000, finnhub_calendar: 6 * 60 * 60 * 1000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000, finnhub_calendar: 30_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
@@ -1603,10 +1603,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -2531,6 +2531,101 @@ export default {
                 } catch(error) {
                     const status=Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:502;
                     return jsonError(status===429?"Finnhub historical data is rate limited; retry later.":"Finnhub historical data is temporarily unavailable.",status,corsHeaders);
+                }
+            }
+
+            if (action === "market-calendar") {
+                const requestedExchange = (url.searchParams.get("exchange") || "").trim().toUpperCase();
+                const exchangeCodes = {
+                    US: "US", NASDAQ: "US", NYSE: "US",
+                    LSE: "L", XETRA: "DE", TSX: "TO", TSE: "T", HKEX: "HK"
+                };
+                const providerExchange = exchangeCodes[requestedExchange];
+                const key = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
+                if (!providerExchange) return jsonError("Unsupported market calendar exchange.", 400, corsHeaders);
+                if (!key) return jsonError("Finnhub provider key is not configured.", 503, corsHeaders);
+                try {
+                    const data = await withProviderCache("finnhub_calendar", providerExchange, async () => {
+                        const holidayUrl = new URL("https://finnhub.io/api/v1/stock/market-holiday");
+                        holidayUrl.searchParams.set("exchange", providerExchange);
+                        holidayUrl.searchParams.set("token", key);
+                        const statusUrl = new URL("https://finnhub.io/api/v1/stock/market-status");
+                        statusUrl.searchParams.set("exchange", providerExchange);
+                        statusUrl.searchParams.set("token", key);
+                        const [holidayResponse, statusResponse] = await Promise.all([
+                            fetchWithTimeout(holidayUrl.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } }),
+                            fetchWithTimeout(statusUrl.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } })
+                        ]);
+                        if (!holidayResponse.ok || !statusResponse.ok) {
+                            throw Object.assign(new Error("Finnhub exchange calendar is temporarily unavailable."), {
+                                status: holidayResponse.status === 429 || statusResponse.status === 429 ? 429 : 502
+                            });
+                        }
+                        const [holidayPayload, statusPayload] = await Promise.all([
+                            holidayResponse.json().catch(() => null),
+                            statusResponse.json().catch(() => null)
+                        ]);
+                        if (!holidayPayload || holidayPayload.exchange !== providerExchange ||
+                            typeof holidayPayload.timezone !== "string" || !Array.isArray(holidayPayload.data) ||
+                            !statusPayload || statusPayload.exchange !== providerExchange ||
+                            typeof statusPayload.timezone !== "string" || !Number.isFinite(Number(statusPayload.t))) {
+                            throw Object.assign(new Error("Finnhub returned an invalid exchange calendar."), { status: 502 });
+                        }
+                        const events = holidayPayload.data.slice(0, 300).flatMap(row => {
+                            if (!row || typeof row !== "object" || Array.isArray(row) ||
+                                typeof row.atDate !== "string" || !isValidDateOnly(row.atDate)) return [];
+                            const eventName = typeof row.eventName === "string" && row.eventName.length <= 100
+                                ? row.eventName : null;
+                            const tradingHour = typeof row.tradingHour === "string" && row.tradingHour.length <= 32
+                                ? row.tradingHour : "";
+                            let earlyCloseMinute = null;
+                            if (tradingHour) {
+                                const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(tradingHour);
+                                if (match) {
+                                    const openHour = Number(match[1]), openMinute = Number(match[2]);
+                                    const closeHour = Number(match[3]), closeMinute = Number(match[4]);
+                                    const valid = openHour < 24 && closeHour < 24 && openMinute < 60 && closeMinute < 60 &&
+                                        closeHour * 60 + closeMinute > openHour * 60 + openMinute;
+                                    if (valid) earlyCloseMinute = closeHour * 60 + closeMinute;
+                                }
+                            }
+                            return [{
+                                date: row.atDate,
+                                name: eventName,
+                                tradingHour: tradingHour || null,
+                                kind: earlyCloseMinute === null ? "CLOSED" : "EARLY_CLOSE",
+                                earlyCloseMinute
+                            }];
+                        });
+                        const holidays = events.filter(event => event.kind === "CLOSED").map(event => event.date);
+                        const earlyCloses = Object.fromEntries(events
+                            .filter(event => event.kind === "EARLY_CLOSE" && event.earlyCloseMinute !== null)
+                            .map(event => [event.date, event.earlyCloseMinute]));
+                        return {
+                            ok: true,
+                            provider: "Finnhub",
+                            exchange: requestedExchange,
+                            providerExchange,
+                            timeZone: holidayPayload.timezone,
+                            receivedAt: Date.now(),
+                            events,
+                            holidays,
+                            earlyCloses,
+                            marketStatus: {
+                                isOpen: statusPayload.isOpen === true,
+                                session: typeof statusPayload.session === "string" ? statusPayload.session : null,
+                                holiday: typeof statusPayload.holiday === "string" ? statusPayload.holiday : null,
+                                timeZone: statusPayload.timezone,
+                                timestamp: Number(statusPayload.t) * 1000
+                            }
+                        };
+                    });
+                    return new Response(JSON.stringify({ ...data, receivedAt: Date.now() }), { headers: corsHeaders });
+                } catch (error) {
+                    const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
+                    return jsonError(status === 429
+                        ? "Finnhub exchange calendar is rate limited; retry later."
+                        : "Finnhub exchange calendar is temporarily unavailable.", status, corsHeaders);
                 }
             }
 
