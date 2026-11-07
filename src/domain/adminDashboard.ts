@@ -10,6 +10,8 @@ export interface AdminDashboardSummary {
   equity: number | null;
   marketValue: number;
   pricedMarketValue: number;
+  marginMarketValue: number;
+  marginUnpricedPositions: number;
   marginDebt: number;
   freeCash: number;
   dailyMarginCost: number;
@@ -65,30 +67,31 @@ export function buildAdminDashboardSummary(
     unavailableQuotes: quoteSummary.unavailable
   });
 
+  // Unrealized P/L is a margin-book metric only. Cash-funded holdings still
+  // contribute to total equity and market value, but never to this cost basis.
   let investedCostBasis = 0;
-  let costBasisComplete = true;
+  let costBasisComplete = positions.length > 0;
+  let marginMarketValue = 0;
+  let marginUnpricedPositions = 0;
   for (const position of positions) {
+    const shares = Number(position.shares);
     const tranches = (position.tranches || []).filter(tranche =>
       Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
       Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
     );
     const trancheShares = tranches.reduce((sum, tranche) => sum + Number(tranche.qty), 0);
-    if (Math.abs(trancheShares - Number(position.shares)) > Math.max(0.000001, Number(position.shares) * 0.000001)) {
+    if (Math.abs(trancheShares - shares) > Math.max(0.000001, shares * 0.000001)) {
       costBasisComplete = false;
     }
     investedCostBasis += tranches.reduce((sum, tranche) => sum + Number(tranche.qty) * Number(tranche.price), 0);
+    const marketPrice = Number(position.currentPrice);
+    if (Number.isFinite(marketPrice) && marketPrice > 0) marginMarketValue += shares * marketPrice;
+    else marginUnpricedPositions += 1;
   }
-  for (const holding of cashHoldings) {
-    const shares = Number(holding.shares);
-    const averagePrice = Number(holding.averagePrice);
-    if (!Number.isFinite(averagePrice) || averagePrice <= 0) costBasisComplete = false;
-    else investedCostBasis += shares * averagePrice;
-  }
-  if (valuation.unpricedHoldings > 0 || !costBasisComplete) investedCostBasis = Number.NaN;
+  if (!costBasisComplete) investedCostBasis = Number.NaN;
 
-  const unrealizedPnl = status === 'incomplete' || !Number.isFinite(investedCostBasis)
-    ? null
-    : valuation.totalHoldingsValue - investedCostBasis;
+  const marginPnlAvailable = positions.length > 0 && costBasisComplete && marginUnpricedPositions === 0;
+  const unrealizedPnl = marginPnlAvailable ? marginMarketValue - investedCostBasis : null;
   const unrealizedPnlPercent = unrealizedPnl !== null && investedCostBasis > 0
     ? unrealizedPnl / investedCostBasis * 100
     : null;
@@ -113,7 +116,9 @@ export function buildAdminDashboardSummary(
     marginDebt: debt,
     freeCash: Math.max(0, Number(state.cashCushion?.freeCash) || 0),
     dailyMarginCost,
-    investedCostBasis: Number.isFinite(investedCostBasis) ? investedCostBasis : null,
+    investedCostBasis: positions.length > 0 && Number.isFinite(investedCostBasis) ? investedCostBasis : null,
+    marginMarketValue,
+    marginUnpricedPositions,
     unrealizedPnl,
     unrealizedPnlPercent,
     positionCount: positions.length,
