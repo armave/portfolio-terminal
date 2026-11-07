@@ -838,6 +838,9 @@ describe('versioned cloud encryption', () => {
       }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporarily unavailable' }), {
         status: 503, headers: { 'Content-Type': 'application/json' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporarily unavailable again' }), {
+        status: 503, headers: { 'Content-Type': 'application/json' }
       }));
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
@@ -851,7 +854,7 @@ describe('versioned cloud encryption', () => {
     });
 
     expect(result.activeView).toBe('AAPL');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(showToast).toHaveBeenCalledWith(
       expect.stringContaining('Cloud encryption upgrade could not be verified'),
       'error'
@@ -1900,11 +1903,11 @@ describe('closed-history request deduplication', () => {
     const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify(originalHistory), secret).toString();
     let storedPayload = legacyPayload;
     let revision = 30;
-    let failFirstWrite = true;
+    let writesToFail = 2;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
-        if (failFirstWrite) {
-          failFirstWrite = false;
+        if (writesToFail > 0) {
+          writesToFail -= 1;
           return new Response(JSON.stringify({ error: 'temporary write failure' }), {
             status: 503, headers: { 'Content-Type': 'application/json' }
           });
@@ -1932,7 +1935,7 @@ describe('closed-history request deduplication', () => {
 
     await expect(pullCloudHistory(secret)).resolves.toEqual(originalHistory);
     expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit).method || 'GET')).toEqual([
-      'GET', 'POST', 'GET', 'POST', 'GET'
+      'GET', 'POST', 'POST', 'GET', 'POST', 'GET'
     ]);
     expect(storedPayload).toMatch(/^aesgcm:v2:/);
   });

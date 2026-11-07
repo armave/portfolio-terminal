@@ -81,51 +81,6 @@ export function createCloudStateSyncRuntime({
       ? (data.error || data.message || `HTTP ${response.status}`)
       : `HTTP ${response.status}`;
   };
-  function createCloudWriteIdempotencyKey(): string {
-    const cryptoApi = globalThis.crypto;
-    if (typeof cryptoApi?.randomUUID === 'function') {
-      return `cloud:${cryptoApi.randomUUID()}`;
-    }
-    const bytes = new Uint8Array(16);
-    if (typeof cryptoApi?.getRandomValues === 'function') {
-      cryptoApi.getRandomValues(bytes);
-    } else {
-      // Idempotency is not an authentication mechanism; this fallback only
-      // supplies a collision-resistant per-attempt identifier in old runtimes.
-      for (let index = 0; index < bytes.length; index += 1) {
-        bytes[index] = Math.floor(Math.random() * 256);
-      }
-    }
-    return `cloud:${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`;
-  }
-
-  /**
-   * Retry one ambiguous cloud write with exactly the same body, If-Match
-   * revision and idempotency key. Never retry a 4xx response or a stale session.
-   */
-  async function fetchIdempotentCloudWrite(
-    input: RequestInfo | URL,
-    init: RequestInit,
-    isCurrentSession: () => boolean
-  ): Promise<Response> {
-    let firstResponse: Response | undefined;
-    try {
-      firstResponse = await fetchImpl(input, init);
-      if (firstResponse.status < 500 || firstResponse.status > 599 || !isCurrentSession()) {
-        return firstResponse;
-      }
-    } catch (error) {
-      if (!isCurrentSession()) throw error;
-    }
-
-    if (!isCurrentSession()) {
-      throw new Error('Cloud account session changed before the write retry.');
-    }
-    // A first response may have been lost after the Durable Object committed.
-    // The server receipt makes this exact retry safe without weakening If-Match.
-    return fetchImpl(input, init);
-  }
-
   const cloudStatePushFingerprints = new Map<string, string>();
 
   function hasAesGcmV2Envelope(value: unknown): value is string {
@@ -467,8 +422,9 @@ async function performPushCloudHistory(
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
+  const { createCloudWriteIdempotencyKey, fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
   const idempotencyKey = createCloudWriteIdempotencyKey();
-  const res = await fetchIdempotentCloudWrite(apiUrl('/api/history'), {
+  const res = await fetchIdempotentCloudWrite(fetchImpl, apiUrl('/api/history'), {
     method: 'POST',
     headers: {
       ...authHeaders(secret, `\"${revision}\"`),
@@ -690,8 +646,9 @@ async function performPushCloudState(
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
+    const { createCloudWriteIdempotencyKey, fetchIdempotentCloudWrite } = await import('./cloudWriteRetry');
     const idempotencyKey = createCloudWriteIdempotencyKey();
-    const res = await fetchIdempotentCloudWrite(url.toString(), {
+    const res = await fetchIdempotentCloudWrite(fetchImpl, url.toString(), {
       method: 'POST',
       headers: {
         ...authHeaders(currentSecret, `\"${expectedRevision}\"`),
