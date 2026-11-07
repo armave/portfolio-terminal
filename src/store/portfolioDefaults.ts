@@ -21,6 +21,7 @@ export function createBlankPortfolioState(now = Date.now()): PortfolioState {
     cashCushion: { freeCash: 0, holdings: [] },
     balance: 0,
     portfolioEquity: undefined,
+    performanceValuations: [],
     portfolioEquityUpdatedAt: undefined,
     realizedMarginCharged: 0,
     tranches: [],

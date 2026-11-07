@@ -81,6 +81,9 @@ export function createCloudStateSyncRuntime({
       ? (data.error || data.message || `HTTP ${response.status}`)
       : `HTTP ${response.status}`;
   };
+  const pushCloudWrite = (...args: [RequestInfo | URL, RequestInit, () => boolean]) =>
+    import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
+
   const cloudStatePushFingerprints = new Map<string, string>();
 
   function hasAesGcmV2Envelope(value: unknown): value is string {
@@ -145,6 +148,7 @@ async function pullCloudState(
   };
 
   if (!currentSecret) {
+    handlers.onStatusChange?.('error');
     reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
     return loadSavedState(state || {});
@@ -164,6 +168,8 @@ async function pullCloudState(
     const pulledRevision = readCloudRevision(res.headers);
 
     if (res.status === 404) {
+      // A 404 is a healthy, authorized KV response with no saved portfolio yet.
+      handlers.onStatusChange?.('synced');
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
@@ -326,10 +332,12 @@ async function pullCloudState(
       pullCloudAndRewriteLocal(parsedState);
     }
 
+    handlers.onStatusChange?.('synced');
     reportResult?.(true);
     return parsedState;
   } catch (err: any) {
     if (!isCurrentSession()) return stalePullFallback();
+    handlers.onStatusChange?.('error');
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${err.message}`, 'error');
@@ -422,11 +430,11 @@ async function performPushCloudHistory(
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const res = await fetchImpl(apiUrl('/api/history'), {
+  const res = await pushCloudWrite(apiUrl('/api/history'), {
     method: 'POST',
     headers: authHeaders(secret, `\"${revision}\"`),
     body: JSON.stringify({ encryptedPayload })
-  });
+  }, isCurrentSession);
   if (!isCurrentSession()) return false;
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
   const savedRevision = readCloudRevision(res.headers) ?? (revision as number) + 1;
@@ -641,11 +649,11 @@ async function performPushCloudState(
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
-    const res = await fetchImpl(url.toString(), {
+    const res = await pushCloudWrite(url.toString(), {
       method: 'POST',
       headers: authHeaders(currentSecret, `\"${expectedRevision}\"`),
       body: JSON.stringify(payload)
-    });
+    }, isCurrentSession);
     if (!isCurrentSession()) return false;
 
     if (!res.ok) {

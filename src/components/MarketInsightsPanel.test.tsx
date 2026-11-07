@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime } from '../utils/relativeTime';
+import { getClosestDatedMarketEvents } from './MarketInsightsPanel';
 import { formatNewsRelativeTime, getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
 
 describe('formatNewsRelativeTime', () => {
@@ -121,5 +123,52 @@ describe('getVisibleStocktwitsMessages', () => {
       { id: 3, body: 'Bullish $AAPL $MSFT' },
       { id: 4, body: 'Bearish $AAPL', sentiment: { basic: 'Bearish' } }
     ])).toHaveLength(2);
+  });
+});
+
+describe('getClosestDatedMarketEvents', () => {
+  const now = Date.parse('2026-11-07T12:00:00.000Z');
+
+  it('shows nearby recent and upcoming events instead of the oldest rows first', () => {
+    const events = [
+      { date: '2026-05-01', id: 'oldest' },
+      { date: '2026-10-31', id: 'recent' },
+      { date: '2026-11-10', id: 'soon' },
+      { date: '2027-05-01', id: 'far' },
+      { date: '2026-11-20', id: 'later' },
+      { date: '2026-11-06', id: 'yesterday' }
+    ];
+    expect(getClosestDatedMarketEvents(events, event => event.date, now).map(event => event.id))
+      .toEqual(['recent', 'yesterday', 'soon', 'later', 'far'].sort((a, b) => {
+        const dates: Record<string, string> = {
+          recent: '2026-10-31', yesterday: '2026-11-06', soon: '2026-11-10',
+          later: '2026-11-20', far: '2027-05-01'
+        };
+        return dates[a].localeCompare(dates[b]);
+      }));
+  });
+
+  it('ignores invalid event dates and respects a bounded result count', () => {
+    const events = [
+      { date: 'invalid', id: 'invalid' },
+      { date: '2026-11-08', id: 'tomorrow' },
+      { date: '2026-11-09', id: 'next' }
+    ];
+    expect(getClosestDatedMarketEvents(events, event => event.date, now, 1).map(event => event.id))
+      .toEqual(['tomorrow']);
+    expect(getClosestDatedMarketEvents(events, event => event.date, now, 0)).toEqual([]);
+  });
+});
+
+describe('earnings and daily history request wiring', () => {
+  it('uses a bounded market-event date range and a source-aware daily history fallback', () => {
+    const source = readFileSync(new URL('./MarketInsightsPanel.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('createMarketEventDateRange(new Date())');
+    expect(source).toContain("marketHistoryProviderRegistry.fetchDailyHistory({");
+    expect(source).toContain("marketEventLabel(currentHistory ? 'Refresh history' : 'Load daily history')");
+    expect(source).toContain('{currentHistory.provider || \'Provider\'}');
+    expect(source).toContain('getNextUpcomingEarningsDate(');
+    expect(source).not.toContain('Load Finnhub history');
+    expect(source).not.toContain('FINNHUB · {marketEventLabel(\'Received\')}');
   });
 });

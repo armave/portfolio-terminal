@@ -158,6 +158,8 @@ export async function fetchFreedomHistory(
     currency?: string;
     exchange?: string;
     assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN';
+    startAt?: number;
+    endAt?: number;
   } = {}
 ): Promise<MarketHistoryResult> {
   const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
@@ -166,11 +168,21 @@ export async function fetchFreedomHistory(
   if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
     throw new Error('Enter one valid TradeNet ticker symbol.');
   }
+  const hasRequestedRange = options.startAt !== undefined || options.endAt !== undefined;
+  if (hasRequestedRange &&
+      (!Number.isSafeInteger(options.startAt) || !Number.isSafeInteger(options.endAt) ||
+       (options.startAt ?? 0) <= 0 || (options.endAt ?? 0) <= (options.startAt ?? 0))) {
+    throw new Error('A valid historical date range is required.');
+  }
 
   const payload = await retryMarketDataRequest(
     () => proxyFetch(
       'freedom-history',
-      { symbol: ticker },
+      {
+        symbol: ticker,
+        ...(options.startAt !== undefined ? { startAt: options.startAt } : {}),
+        ...(options.endAt !== undefined ? { endAt: options.endAt } : {})
+      },
       {
         ...(options.force ? { cache: 'no-store' as RequestCache } : {}),
         ...(options.signal ? { signal: options.signal } : {})

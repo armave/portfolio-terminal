@@ -55,7 +55,7 @@ export function CloudSyncIndicator({
     >
       <span class="cloud-sync-indicator__dot" aria-hidden="true" />
       <span class="cloud-sync-indicator__primary">KV: {primaryText}</span>
-      {detailText && <span class="cloud-sync-indicator__detail">{detailText}</span>}
+      <span class="cloud-sync-indicator__detail" aria-hidden={!detailText}>{detailText || '\u00a0'}</span>
     </div>
   );
 }

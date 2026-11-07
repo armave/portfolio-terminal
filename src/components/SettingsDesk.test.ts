@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { toBrokerRulesFormValues } from './SettingsDesk';
+import { readBrokerRulesFormValues, toBrokerRulesFormValues } from './SettingsDesk';
 
 describe('toBrokerRulesFormValues', () => {
   it('formats persisted broker rules once for controlled form inputs', () => {
@@ -59,5 +59,83 @@ describe('Device Check placement', () => {
     expect(settingsSource).toContain('<DeviceCheckSummary />');
     expect(cashSource).not.toContain('AccountIntegrityCenter');
     expect(cashSource).not.toContain('BrokerReconciliationPanel');
+  });
+});
+
+
+describe('multi-portfolio ownership Settings surface', () => {
+  it('loads the tenant directory lazily in Settings and keeps financial tenancy disabled', () => {
+    const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const componentSource = readFileSync(new URL('./TenantDirectoryPanel.tsx', import.meta.url), 'utf8');
+
+    expect(settingsSource).toContain("import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("useState<typeof import('./TenantDirectoryPanel') | null>(null)");
+    expect(settingsSource).toContain('const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;');
+    expect(settingsSource).toContain('<LoadedTenantDirectoryPanel currentUser={account} />');
+    expect(componentSource).toContain("directory.financialDataEnabled === false");
+    expect(componentSource).toContain('Directory only — financial storage is not enabled for newly created tenants.');
+    expect(componentSource).toContain('Guests receive projection-only access.');
+  });
+});
+
+
+
+
+
+describe('broker rules disclosure state', () => {
+  it('synchronizes native details toggles with Preact state across controlled form rerenders', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
+    expect(source).toContain('open={brokerRulesOpen}');
+    expect(source).toContain('onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}');
+    expect(source).toContain("stopOutInput?.form?.querySelector<HTMLInputElement>('#maintenanceMarginInput')");
+    expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
+    expect(source).toContain('stopOutInput.setCustomValidity(');
+    expect(source).toContain('value={ruleValues.annualRate}');
+  });
+});
+
+describe('broker rules stop-out validation wiring', () => {
+  it('updates custom validity as maintenance or stop-out values change', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
+    expect(source).toContain('updateStopOutValidity();');
+    expect(source).toContain('updateStopOutValidity();');
+    expect(source).toContain('if (!form.reportValidity()) return;');
+  });
+});
+
+describe('readBrokerRulesFormValues', () => {
+  it('uses the current submitted controls rather than a stale controlled-state snapshot', () => {
+    const values: Record<string, string> = {
+      '#annualMarginRateInput': '18',
+      '#interestDayCountInput': '365',
+      '#maintenanceMarginInput': '12.5',
+      '#stopOutRatioInput': '3',
+      '#rolloverTimeInput': '04:00',
+      '#commissionPerShareInput': '0.02',
+      '#commissionVolumeInput': '0.15',
+      '#minimumCommissionInput': '1.5'
+    };
+    const form = {
+      querySelector: (selector: string) => values[selector] === undefined ? null : { value: values[selector] }
+    } as unknown as HTMLFormElement;
+
+    expect(readBrokerRulesFormValues(form, {
+      annualRate: '15', dayCountBasis: '360', maintenanceMargin: '10', stopOutRatio: '5',
+      rolloverTime: '03:00', commPerShare: '0.01', commVolumePct: '0.1', minCommOrder: '1'
+    })).toEqual({
+      annualRate: '18', dayCountBasis: '365', maintenanceMargin: '12.5', stopOutRatio: '3',
+      rolloverTime: '04:00', commPerShare: '0.02', commVolumePct: '0.15', minCommOrder: '1.5'
+    });
+  });
+
+  it('falls back to the current state only for missing controls', () => {
+    const form = { querySelector: () => null } as unknown as HTMLFormElement;
+    const fallback = {
+      annualRate: '15', dayCountBasis: '360', maintenanceMargin: '10', stopOutRatio: '5',
+      rolloverTime: '03:00', commPerShare: '0.01', commVolumePct: '0.1', minCommOrder: '1'
+    };
+    expect(readBrokerRulesFormValues(form, fallback)).toEqual(fallback);
   });
 });

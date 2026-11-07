@@ -9,6 +9,9 @@ export interface PortfolioEquitySyncRuntimeDependencies {
   calculateEquity: (state: PortfolioState) => number;
   setDerivedEquity: (equity: number, updatedAt: number, persist: boolean) => void;
   onDurableEquityChanged: () => void;
+  /** Capture daily performance evidence independently of equity projection changes. */
+  recordPerformanceSnapshot?: (state: PortfolioState, timestamp: number) => boolean | Promise<boolean>;
+  onPerformanceSnapshotChanged?: () => void;
   now?: () => number;
 }
 
@@ -29,6 +32,18 @@ export function createPortfolioEquitySyncRuntime(
   const sync = (state: PortfolioState, source: PortfolioStoreChangeSource = 'durable'): void => {
     if (source === 'derived') return;
 
+    const timestamp = now();
+    const recordedSnapshot = dependencies.recordPerformanceSnapshot?.(state, timestamp);
+    if (recordedSnapshot && typeof (recordedSnapshot as Promise<boolean>).then === 'function') {
+      void Promise.resolve(recordedSnapshot)
+        .then((changed) => {
+          if (changed) dependencies.onPerformanceSnapshotChanged?.();
+        })
+        .catch(() => undefined);
+    } else if (recordedSnapshot) {
+      dependencies.onPerformanceSnapshotChanged?.();
+    }
+
     const rawEquity = Number(dependencies.calculateEquity(state));
     if (!Number.isFinite(rawEquity)) return;
     const equity = Number(rawEquity.toFixed(2));
@@ -38,7 +53,7 @@ export function createPortfolioEquitySyncRuntime(
     ) return;
 
     const isLiveQuote = source === 'live-quote';
-    dependencies.setDerivedEquity(equity, now(), !isLiveQuote);
+    dependencies.setDerivedEquity(equity, timestamp, !isLiveQuote);
     if (!isLiveQuote) dependencies.onDurableEquityChanged();
   };
 

@@ -272,6 +272,26 @@ export interface GuestTrancheLedgerRecord {
   status: GuestTrancheLedgerStatus;
 }
 
+interface PortfolioPerformanceValuationItem {
+  key: string;
+  value: number;
+}
+
+/** Bounded account-currency valuation evidence used by deterministic performance calculations. */
+export interface PortfolioPerformanceValuationSnapshot {
+  timestamp: number;
+  equity: number;
+  currency: string;
+  quality: 'current' | 'provisional';
+  cashflowHistoryComplete: boolean;
+  items: PortfolioPerformanceValuationItem[];
+  pricedHoldings: number;
+  unpricedHoldings: number;
+  provider: string;
+  brokerObservedAt: number | null;
+  brokerReceivedAt: number | null;
+}
+
 export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
@@ -313,6 +333,8 @@ export interface PortfolioState {
   };
   cashCushion: CashCushionState;
   balance: number;
+  /** Bounded daily valuation observations consumed by the performance engine. */
+  performanceValuations?: PortfolioPerformanceValuationSnapshot[];
   /** Derived total equity synced with the rest of the portfolio snapshot. */
   portfolioEquity?: number;
   /** Timestamp of the last persisted equity recalculation. */

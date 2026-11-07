@@ -2,6 +2,28 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
 
+describe('Margin hardcode centralization', () => {
+  it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
+    expect(source).not.toMatch(/40\s*-\s*Math\.min/);
+    expect(source).not.toContain("'Asia/Yerevan'");
+    expect(source).toContain('FREEDOM_BROKER_TIME_ZONE');
+    expect(source).not.toContain('showRiskTriggers');
+    expect(source).not.toContain('summaryText.startsWith');
+  });
+
+  it('localizes visible Margin risk labels and accessible text', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain("translateText('STOP-OUT BUFFER', language)");
+    expect(source).toContain("translateText('Account equity percentage', language)");
+    expect(source).toContain("translateText('Across {count} assets', getAppLanguage())");
+    expect(source).toContain("translateText('Show {count} tranches', getAppLanguage())");
+  });
+});
+
 describe('broker history adapter boundary', () => {
   it('normalizes saved executions through the provider adapter', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');

@@ -257,6 +257,8 @@ These are baseline constraints, not claims that every target capability is curre
 
 **Wave 2 execution plan:** see [docs/wave-2/README.md](wave-2/README.md) for the five merged implementation foundations, exact merge SHAs and CI evidence, Wave 2.5 transparency slice, and open follow-ups (#334, #365, #366).
 
+**Wave 3 preparation:** see [docs/wave-3/README.md](wave-3/README.md) for the current-state audit and five prepared streams (PT-02 transaction integrity completion, PT-04 reconciliation completion, PT-05 tenant ownership, PT-06 performance integration, PT-07 market-data lifecycle). The Wave 3 branches share one dev baseline. PT-09 projections move to the next wave after transaction, performance and market-data integration are complete.
+
 The roadmap is split into 18 independently scoped workstreams. Child issues hold task-level scope, acceptance criteria, required tests, and the dedicated implementation branch.
 
 ### Stage 0 — Baseline and delivery discipline

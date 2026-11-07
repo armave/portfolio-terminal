@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
@@ -6,6 +7,7 @@ import type { ActiveTrancheMix, ActiveTrancheType, PortfolioState, QuoteDetails 
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
+import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
 import { listUsers, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
@@ -158,7 +160,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
-  const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
+  const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS, guestUserId ? 'guest' : 'admin');
   const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
   const [balanceSync, dispatchBalanceSync] = useReducer(
     balanceSyncReducer,
@@ -667,9 +669,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     const volume = '$' + formatQuoteVolume(h.quoteDetails?.volume)
 
                     return (
-                      <>
+                      <Fragment key={`${h.groupKey}-${h.ticker}`}>
                         {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
-                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300">{h.groupLabel}</td>
+                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>{h.groupLabel}</td>
                         </tr>}
                         <tr key={`${h.groupKey}-${h.ticker}`} class="cash-holding-row hover:bg-slate-900/40">
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
@@ -745,7 +747,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {allocation !== null ? allocation.toFixed(1) + '%' : '—'}
                           </td>
                         </tr>
-                      </>
+                      </Fragment>
                     );
                   })
                 )}

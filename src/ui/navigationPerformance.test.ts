@@ -46,3 +46,40 @@ describe('navigation performance wiring', () => {
     expect(runtime).not.toContain('portfolioStore.setState({ activeView: normalizedView });');
   });
 });
+
+
+describe('Settings navigation loading stability', () => {
+  it('uses one lazy-load fallback and does not replace the whole Settings desk while users load', () => {
+    const app = readSource('../App.tsx');
+    const settings = readSource('../components/SettingsDesk.tsx');
+    const translations = readSource('../services/i18n-ru.ts');
+
+    expect(app).toContain("const shouldRenderSettings = hasOpenedSettings || activeDeskView === 'SETTINGS';");
+    expect(app).toContain('{shouldRenderSettings');
+    expect(app).not.toContain('{hasOpenedSettings\n          ?');
+    expect(settings).not.toContain('if (initialUsersLoading) {');
+    expect(settings).toContain("{initialUsersLoading && <tr>");
+    expect(settings).toContain("translateText('Loading users…')");
+    expect(translations).toContain('"Loading users…": "Загрузка списка пользователей…"');
+  });
+});
+
+describe('Settings layout organization', () => {
+  it('separates account actions from refresh and backup controls with responsive groups', () => {
+    const settings = readSource('../components/SettingsDesk.tsx');
+    const styles = readSource('../../style.css');
+    const translations = readSource('../services/i18n-ru.ts');
+
+    expect(settings).toContain('settings-account-summary');
+    expect(settings).toContain('settings-account-actions');
+    expect(settings).toContain('settings-refresh-card');
+    expect(settings).toContain('settings-backup-actions');
+    expect(settings).toContain('settings-data-safety-note');
+    expect(settings).toContain('settings-user-heading');
+    expect(styles).toContain('#settingsDesk .settings-toolbar--organized');
+    expect(styles).toContain('@container settings-workspace (min-width: 54rem)');
+    expect(styles).toContain('#settingsDesk .settings-data-safety-note p');
+    expect(translations).toContain('"Account actions": "Действия с учётной записью"');
+    expect(translations).toContain("'Portfolio data refresh and backup controls': 'Обновление данных портфеля и управление резервными копиями'");
+  });
+});

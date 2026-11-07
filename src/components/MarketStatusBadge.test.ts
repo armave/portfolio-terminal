@@ -35,6 +35,18 @@ describe('US-equities market status presentation', () => {
     expect(source).toContain('setSnapshot(null);');
   });
 
+
+  it('deduplicates repeated startup auth events and does not fetch before identity is known', () => {
+    const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('let activeIdentity: string | null = null;');
+    expect(source).toContain('if (nextIdentity === activeIdentity) return;');
+    expect(source).toContain('if (!active || !authenticated || document.visibilityState === \'hidden\') return;');
+    expect(source).toContain('}, []);');
+    expect(source).not.toContain('}, [snapshot?.marketStatus.status, status]);');
+    expect(source).not.toContain('    void refresh();\n    const intervalId');
+  });
+
   it('uses different labels for administrator and guest workspaces', () => {
     expect(getMarketStatusRoleLabel(true)).toBe('Portfolio market');
     expect(getMarketStatusRoleLabel(false)).toBe('Your market');

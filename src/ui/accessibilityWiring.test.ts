@@ -131,7 +131,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('valuationStatus={positionValuationStatus}');
     expect(source).toContain('cashHoldingsForQuotes');
     expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
-    expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', getAppLanguage())");
+    expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)");
     expect(source).not.toContain('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times.');
   });
 
@@ -162,7 +162,7 @@ describe('Stage 10 accessibility wiring', () => {
   it('makes the Margin projection table a named keyboard-scrollable region', () => {
     const source = readSource('../App.tsx');
     expect(source).toContain('<TableScrollRegion');
-    expect(source).toContain('label="Portfolio projection by date"');
+    expect(source).toContain("label={translateText('Portfolio projection by date', getAppLanguage())}");
     expect(source).toContain('id="projectionTableContainer"');
     expect(source).toContain('</TableScrollRegion>');
   });

@@ -232,7 +232,7 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Synced: ', 'Synced', ': '],
     ['Synced ', 'Synced', ' '],
     ['MARGIN: ', 'MARGIN', ': '],
-    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Breakeven: ', 'Breakeven', ': '],
     ['Exit Comparison · ', 'Exit Comparison', ' · '],
     ['Buy More Projection · ', 'Buy More Projection', ' · '],
     ['Read news: ', 'Read news', ': '],

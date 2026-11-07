@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import {
   calculateMarginInterest,
@@ -32,6 +33,23 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  it('uses the canonical broker assumptions for omitted commission rules', () => {
+    expect(resolveCommissionConfig({})).toEqual({
+      commPerShare: DEFAULT_BROKER_ASSUMPTIONS.commissionPerShare,
+      commVolumePct: DEFAULT_BROKER_ASSUMPTIONS.commissionRatePct,
+      minCommOrder: DEFAULT_BROKER_ASSUMPTIONS.commissionMin
+    });
+  });
+  it('uses the canonical broker day-count basis when annual rates omit one', () => {
+    const principal = 10_000;
+    const days = 7;
+    const interest = calculateMarginInterest(principal, { annualRate: 0.15, days });
+    const dailyRate = 0.15 / DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
+
+    expect(interest).toBeCloseTo(principal * (Math.pow(1 + dailyRate, days) - 1), 8);
+  });
+
+
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -717,6 +735,29 @@ describe('portfolio domain', () => {
       ...options,
       now: new Date('2026-10-02T03:00:00Z')
     })).toBeCloseTo(1, 8);
+  });
+
+  it('uses the configured IANA timezone instead of a fixed Armenia UTC offset', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-10-01T18:00:00Z').getTime(),
+      brokerAssumptions: {
+        annualRate: 0.365,
+        dayCountBasis: 365,
+        rolloverHour: 4,
+        rolloverMinute: 0,
+        rolloverTimeZone: 'Asia/Tokyo'
+      }
+    };
+
+    // 03:00 in Tokyo at the stored baseline; advance to 05:00, after its cutoff.
+    vi.setSystemTime(new Date('2026-10-01T20:00:00Z'));
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(-1001);
+    expect(state.lastRolloverTimestamp).toBe(new Date('2026-10-01T19:00:00Z').getTime());
+
+    vi.useRealTimers();
   });
 
   it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {

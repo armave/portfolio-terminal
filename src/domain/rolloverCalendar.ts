@@ -1,3 +1,5 @@
+import { FREEDOM_BROKER_TIME_ZONE } from './brokerAssumptions';
+
 export interface ZonedDateParts {
   year: number;
   month: number;
@@ -8,7 +10,7 @@ export interface ZonedDateParts {
 }
 
 /** Extract calendar/time parts in the supplied IANA timezone. */
-export function getZonedDateParts(date: Date, timeZone = 'Asia/Yerevan'): ZonedDateParts {
+export function getZonedDateParts(date: Date, timeZone = FREEDOM_BROKER_TIME_ZONE): ZonedDateParts {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -31,7 +33,7 @@ export function zonedLocalTimeToTimestamp(
   day: number,
   hour: number,
   minute: number,
-  timeZone = 'Asia/Yerevan'
+  timeZone = FREEDOM_BROKER_TIME_ZONE
 ): number {
   const targetUtc = Date.UTC(year, month - 1, day, hour, minute);
   let timestamp = targetUtc;
@@ -61,7 +63,7 @@ export function getRolloverTimestampForLocalDate(
   day: number,
   rolloverHour = 4,
   rolloverMinute = 0,
-  timeZone = 'Asia/Yerevan'
+  timeZone = FREEDOM_BROKER_TIME_ZONE
 ): number {
   return zonedLocalTimeToTimestamp(year, month, day, rolloverHour, rolloverMinute, timeZone);
 }
@@ -71,7 +73,7 @@ export function getLatestRolloverTimestamp(
   now = new Date(),
   rolloverHour = 4,
   rolloverMinute = 0,
-  timeZone = 'Asia/Yerevan'
+  timeZone = FREEDOM_BROKER_TIME_ZONE
 ): number {
   const local = getZonedDateParts(now, timeZone);
   let rollover = getRolloverTimestampForLocalDate(
