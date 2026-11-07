@@ -117,7 +117,7 @@ export function AdminExecutiveDashboard() {
             <>
               <div class="mt-3 flex items-end justify-between gap-3">
                 <div>
-                  <p class="text-[10px] text-slate-500">{label('Account equity health')}</p>
+                  <p class="text-[10px] text-slate-500">{label('Estimated equity ratio')}</p>
                   <p class="mt-1 text-2xl font-bold tabular-nums text-slate-100">
                     {Number.isFinite(summary.marginRisk.equityRatio) ? `${(summary.marginRisk.equityRatio * 100).toFixed(1)}%` : '—'}
                   </p>
@@ -129,38 +129,11 @@ export function AdminExecutiveDashboard() {
                   </p>
                 </div>
               </div>
-              <div class="mt-2 relative h-3 overflow-hidden rounded-full bg-slate-800" role="progressbar"
-                aria-label={label('Account equity percentage')} aria-valuemin={0} aria-valuemax={100}
-                aria-valuenow={Math.max(0, Math.min(100, summary.marginRisk.equityRatio * 100))}>
-                <span class="absolute inset-y-0 left-0 bg-rose-500/80" style={{ width: `${Math.max(0, Math.min(100, state.brokerAssumptions.maintenanceEquityRatio * 100))}%` }} />
-                <span class="absolute inset-y-0 bg-amber-400/70" style={{ left: `${Math.max(0, Math.min(100, state.brokerAssumptions.maintenanceEquityRatio * 100))}%`, width: `${Math.max(0, Math.min(100, 40 - state.brokerAssumptions.maintenanceEquityRatio * 100))}%` }} />
-                <span class="absolute inset-y-0 left-0 border-l-2 border-white" style={{ left: `${Math.max(0, Math.min(100, summary.marginRisk.equityRatio * 100))}%` }} />
-              </div>
-              <div class="mt-1 flex justify-between text-[9px] text-slate-500">
-                <span>{(state.brokerAssumptions.maintenanceEquityRatio * 100).toFixed(1)}% {label('maintenance')}</span>
-                <span>{label('40% reference')}</span><span>100% {label('assets')}</span>
-              </div>
-              <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <div class="flex justify-between gap-2 text-[10px]">
-                    <span class="font-semibold text-slate-400">{label('Margin-call buffer')}</span>
-                    <strong class="tabular-nums text-amber-200">{Number.isFinite(summary.marginRisk.marginCallBufferPct) ? `${summary.marginRisk.marginCallBufferPct.toFixed(1)}%` : '—'}</strong>
-                  </div>
-                  <div class="mt-1 h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label={label('Margin-call buffer')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, summary.marginRisk.marginCallBufferPct))}>
-                    <span class="block h-full rounded-full bg-amber-400" style={{ width: `${Math.max(0, Math.min(100, summary.marginRisk.marginCallBufferPct))}%` }} />
-                  </div>
-                  <p class="mt-1 text-[9px] text-slate-500">{label('Trigger estimate')}: {formatUSD(summary.marginRisk.marginCallValue)}</p>
-                </div>
-                <div>
-                  <div class="flex justify-between gap-2 text-[10px]">
-                    <span class="font-semibold text-slate-400">{label('Stop-out threshold')}</span>
-                    <strong class="tabular-nums text-emerald-200">{Number.isFinite(summary.marginRisk.stopOutBufferPct) ? `${summary.marginRisk.stopOutBufferPct.toFixed(1)}% ${label('buffer')}` : '—'}</strong>
-                  </div>
-                  <div class="mt-1 h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label={label('Stop-out threshold')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, summary.marginRisk.stopOutBufferPct))}>
-                    <span class="block h-full rounded-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, summary.marginRisk.stopOutBufferPct))}%` }} />
-                  </div>
-                  <p class="mt-1 text-[9px] text-slate-500">{label('Trigger estimate')}: {formatUSD(summary.marginRisk.stopOutValue)}</p>
-                </div>
+              <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar"
+                aria-label={label('Estimated maintenance buffer')} aria-valuemin={0} aria-valuemax={100}
+                aria-valuenow={Math.max(0, Math.min(100, summary.marginBufferPct ?? 0))}>
+                <span class={`block h-full rounded-full ${(summary.marginBufferPct ?? 0) < 0 ? 'bg-rose-500' : (summary.marginBufferPct ?? 0) < 30 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, summary.marginBufferPct ?? 0))}%` }} />
               </div>
               <p class="mt-2 text-[10px] leading-4 text-slate-500">
                 {label('Uses configured broker assumptions; this is not a live broker liquidation indicator.')}
