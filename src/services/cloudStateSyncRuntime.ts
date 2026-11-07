@@ -81,10 +81,10 @@ export function createCloudStateSyncRuntime({
       ? (data.error || data.message || `HTTP ${response.status}`)
       : `HTTP ${response.status}`;
   };
-  const pushCloudWrite = async (
+  const pushCloudWrite = (
     input: RequestInfo | URL, init: RequestInit, isCurrentSession: () => boolean
-  ): Promise<Response> => (await import('./cloudWriteRetry'))
-    .fetchIdempotentCloudWrite(fetchImpl, input, init, isCurrentSession);
+  ): Promise<Response> => import('./cloudWriteRetry').then(({ fetchIdempotentCloudWrite }) =>
+    fetchIdempotentCloudWrite(fetchImpl, input, init, isCurrentSession));
 
   const cloudStatePushFingerprints = new Map<string, string>();
 
