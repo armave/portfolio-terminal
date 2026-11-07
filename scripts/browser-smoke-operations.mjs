@@ -760,13 +760,12 @@ try {
   await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '30000', null, { timeout: 10_000 });
 
   // The stop-out threshold cannot exceed the maintenance threshold.
-  const brokerRules = visibleSettingsDesk().locator('details.settings-broker-rules');
-  await brokerRules.locator('summary').click();
-  await brokerRules.evaluate((element) => {
-    if (!(element instanceof HTMLDetailsElement) || !element.open) {
-      throw new Error('Broker Rules disclosure did not remain open after activation.');
-    }
-  });
+  const brokerRulesToggle = visibleSettingsDesk().locator('#brokerRulesToggle');
+  await brokerRulesToggle.click();
+  await visibleSettingsDesk().locator('#brokerRulesPanel').waitFor({ state: 'visible', timeout: 5_000 });
+  if (await brokerRulesToggle.getAttribute('aria-expanded') !== 'true') {
+    throw new Error('Broker Rules disclosure did not report its expanded state.');
+  }
   await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('5');
   await visibleSettingsDesk().locator('#stopOutRatioInput').fill('10');
   await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
@@ -810,7 +809,7 @@ try {
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   if (await visibleSettingsDesk().locator('section.settings-user-panel').count() ||
-      await visibleSettingsDesk().locator('details.settings-broker-rules').count()) {
+      await visibleSettingsDesk().locator('#brokerRulesToggle').count()) {
     throw new Error('Guest Settings exposed administrator-only account or broker-rule controls.');
   }
   if (await page.getByRole('button', { name: /Экспорт/ }).count()) {
