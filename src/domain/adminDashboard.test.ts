@@ -41,6 +41,9 @@ describe('admin dashboard summary', () => {
     expect(summary.unrealizedPnl).toBe(40);
     expect(summary.unrealizedPnlPercent).toBe(20);
     expect(summary.marginMarketValue).toBe(240);
+    expect(summary.cashInvestedCostBasis).toBe(80);
+    expect(summary.cashUnrealizedPnl).toBe(10);
+    expect(summary.cashUnrealizedPnlPercent).toBe(12.5);
   });
 
   it('keeps account equity incomplete but calculates margin-only P/L when a cash holding is unpriced', () => {
@@ -56,6 +59,33 @@ describe('admin dashboard summary', () => {
     expect(summary.unrealizedPnlPercent).toBe(20);
     expect(summary.unpricedHoldings).toBe(1);
     expect(summary.marginRisk).toBeNull();
+  });
+
+  it('withholds aggregate cash unrealized P/L when any cash holding lacks cost basis', () => {
+    const state = makeState({
+      cashCushion: { freeCash: 50, holdings: [
+        { ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: 90, price: 90 },
+        { ticker: 'NVDA', shares: 2, currentPrice: 120, price: 120 }
+      ] }
+    });
+    const summary = buildAdminDashboardSummary(state, 1000, 60000);
+    expect(summary.cashInvestedCostBasis).toBeNull();
+    expect(summary.cashUnrealizedPnl).toBeNull();
+    expect(summary.cashUnrealizedPnlPercent).toBeNull();
+    expect(summary.cashMissingCostBasisHoldings).toBe(1);
+    expect(summary.cashUnpricedHoldings).toBe(0);
+  });
+
+  it('withholds aggregate cash unrealized P/L when any cash holding has no usable quote', () => {
+    const state = makeState({
+      cashCushion: { freeCash: 50, holdings: [
+        { ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: 90, price: 90 },
+        { ticker: 'NVDA', shares: 2, averagePrice: 100, currentPrice: 0, price: 0 }
+      ] }
+    });
+    const summary = buildAdminDashboardSummary(state, 1000, 60000);
+    expect(summary.cashUnrealizedPnl).toBeNull();
+    expect(summary.cashUnpricedHoldings).toBe(1);
   });
 
   it('withholds margin unrealized P/L when a margin position has no usable quote', () => {
