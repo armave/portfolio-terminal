@@ -333,7 +333,7 @@ summary:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 0.75rem;
 }
 
@@ -2673,7 +2673,7 @@ summary:focus-visible {
 }
 
 @media (max-width: 768px) {
-  .board-header-banner > .flex {
+  .board-header-banner>.flex {
     width: 100%;
     min-width: 0;
     max-width: 100%;
@@ -2785,7 +2785,7 @@ summary:focus-visible {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   column-gap: 0.75rem;
   row-gap: 0.5rem;
 }
@@ -3416,15 +3416,15 @@ table tbody tr:hover {
   animation: projection-page-swap 160ms ease-out both;
 }
 
-.projection-page-row > td:nth-child(1) {
+.projection-page-row>td:nth-child(1) {
   min-width: 5.5rem;
 }
 
-.projection-page-row:nth-child(odd) > td:nth-child(1) {
+.projection-page-row:nth-child(odd)>td:nth-child(1) {
   background-color: rgba(20, 24, 35, 0.7);
 }
 
-.projection-page-row:nth-child(even) > td:nth-child(1) {
+.projection-page-row:nth-child(even)>td:nth-child(1) {
   background-color: rgba(26, 29, 41, 0.7);
 }
 
@@ -3485,10 +3485,7 @@ table tbody tr:hover {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding:
-    max(0.75rem, env(safe-area-inset-top))
-    max(0.75rem, env(safe-area-inset-right))
-    max(0.75rem, env(safe-area-inset-bottom))
-    max(0.75rem, env(safe-area-inset-left));
+    max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
 }
 
 .news-article-dialog {
@@ -3500,7 +3497,7 @@ table tbody tr:hover {
   max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);
 }
 
-.news-article-dialog > header {
+.news-article-dialog>header {
   flex: 0 0 auto;
 }
 
@@ -3596,7 +3593,9 @@ table tbody tr:hover {
 }
 
 @keyframes cloud-sync-pulse {
-  50% { opacity: 0.4; }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3642,6 +3641,7 @@ table tbody tr:hover {
 
 /* One reduced-motion policy for the entire terminal. */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -3689,7 +3689,7 @@ table tbody tr:hover {
   gap: clamp(0.75rem, 1.4cqw, 1.125rem);
 }
 
-#settingsDesk .settings-toolbar--organized > .settings-toolbar__card {
+#settingsDesk .settings-toolbar--organized>.settings-toolbar__card {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -3712,8 +3712,8 @@ table tbody tr:hover {
   width: 100%;
 }
 
-#settingsDesk .settings-account-actions > *,
-#settingsDesk .settings-backup-actions > * {
+#settingsDesk .settings-account-actions>*,
+#settingsDesk .settings-backup-actions>* {
   width: 100%;
   min-width: 0;
   min-height: 2.5rem;
@@ -3770,16 +3770,12 @@ table tbody tr:hover {
 
   #settingsDesk .settings-user-form {
     grid-template-columns:
-      minmax(0, 1.4fr)
-      minmax(0, 1.4fr)
-      minmax(7rem, 0.8fr)
-      minmax(7.5rem, 0.85fr)
-      minmax(7rem, auto);
+      minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(7rem, 0.8fr) minmax(7.5rem, 0.85fr) minmax(7rem, auto);
   }
 }
 
 @media (max-width: 420px) {
-  #settingsDesk .settings-toolbar--organized > .settings-toolbar__card {
+  #settingsDesk .settings-toolbar--organized>.settings-toolbar__card {
     padding: 0.75rem;
   }
 

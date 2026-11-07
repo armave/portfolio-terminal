@@ -720,17 +720,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2 justify-center">
+          <div class="flex flex-wrap gap-2 justify-center items-baseline">
             <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
             <MarketStatusBadge isAdmin={permissions.isAdmin} />
             {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
           </div>
-          {permissions.isAdmin && <div
-            class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            id="daysToBreakeven"
-          >
-            {breakevenText}
-          </div>}
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
@@ -753,6 +747,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <div class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
                   {boardTitle}
                 </div>
+
+                {permissions.isAdmin && <div
+                  class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+                  id="daysToBreakeven"
+                >
+                  {breakevenText}
+                </div>}
+
                 <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>
 
