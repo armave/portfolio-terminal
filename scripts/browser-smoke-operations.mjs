@@ -818,6 +818,15 @@ try {
       !(await page.locator('[aria-labelledby="adminRiskTitle"] [role="progressbar"]').isVisible())) {
     throw new Error('Admin margin risk summary is missing its risk buffer gauge.');
   }
+  if (!(await executiveOverviewPanel.getByText('Cash unrealized P/L', { exact: true }).isVisible())) {
+    throw new Error('Cash-funded unrealized P/L summary is missing below the exposure table.');
+  }
+  if (await executiveOverviewPanel.getByText('Unrealized P/L (margin only)', { exact: true }).count() !== 1) {
+    throw new Error('Margin unrealized P/L is duplicated in the admin overview.');
+  }
+  if (!(await executiveOverviewPanel.getByText('Market quotes', { exact: true }).isVisible())) {
+    throw new Error('Data health does not expose market quote status.');
+  }
   await page.getByRole('button', { name: 'Margin: AAPL' }).click();
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
