@@ -14,7 +14,6 @@ function makeState(overrides: Partial<PortfolioState> = {}): PortfolioState {
       freeCash: 50,
       holdings: [{ ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: 90, price: 90 }]
     },
-    balance: -100,
     brokerAssumptions: {
       broker: 'test', annualBorrowRate: 0.15, dayCountBasis: 365,
       rolloverHour: 0, rolloverMinute: 0, rolloverTimeZone: 'UTC',
@@ -45,7 +44,7 @@ describe('admin dashboard summary', () => {
   it('withholds equity and total unrealized P/L when any holding is unpriced', () => {
     const state = makeState({
       cashCushion: { freeCash: 50, holdings: [
-        { ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: null, price: null }
+        { ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: 0, price: 0 }
       ] }
     });
     const summary = buildAdminDashboardSummary(state, 1000, 60000);
