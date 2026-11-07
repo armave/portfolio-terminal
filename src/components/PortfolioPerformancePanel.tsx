@@ -3,8 +3,49 @@ import { usePortfolioSelector } from '../store/portfolioStore';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { buildPortfolioPerformanceReport } from '../domain/portfolioPerformanceIntegration';
 
+const PERFORMANCE_RU_COPY: Record<string, string> = {
+  "Portfolio performance": "Доходность портфеля",
+  "Cash-flow-adjusted returns from verified daily valuation history.": "Доходность с поправкой на денежные потоки по подтверждённой ежедневной истории оценки.",
+  "Current": "Актуальные данные",
+  "Provisional": "Предварительно",
+  "History collecting": "Сбор истории",
+  "Time-weighted return": "Доходность, взвешенная по времени",
+  "Money-weighted return": "Доходность, взвешенная по капиталу",
+  "Investment profit": "Инвестиционная прибыль",
+  "Linked Modified Dietz": "Связанный метод Modified Dietz",
+  "Annualized XIRR · ACT/365": "Годовая XIRR · ACT/365",
+  "Since first verified valuation": "С первой подтверждённой оценки",
+  "Performance is not available yet": "Доходность пока недоступна",
+  "More complete source data is required.": "Требуются более полные исходные данные.",
+  "Valuation observations": "Наблюдения оценки",
+  "Period": "Период",
+  "Observations": "Наблюдения",
+  "Monthly performance": "Доходность по месяцам",
+  "Month": "Месяц",
+  "Period return": "Доходность за период",
+  "Cumulative return": "Накопленная доходность",
+  "Income and costs": "Доходы и расходы",
+  "Dividends": "Дивиденды",
+  "Fees": "Сборы",
+  "Commissions": "Комиссии",
+  "Interest": "Проценты",
+  "Net income / costs": "Чистый доход / расходы",
+  "Income and cost totals are explanatory and are not added again to return calculations.": "Суммы доходов и расходов приведены для справки и повторно не включаются в расчёт доходности.",
+  "Latest period contribution": "Вклад за последний период",
+  "Other holdings": "Прочие активы",
+  "Margin debt": "Маржинальный долг",
+  "Cash": "Денежные средства",
+  "Cash holding": "Актив за денежные средства",
+  "TWR uses linked Modified Dietz, a flow-weighted approximation. MWR uses XIRR with ACT/365. Historical FX and benchmark comparison are not enabled. See Performance methodology in Settings.": "TWR использует связанный метод Modified Dietz — приближённый метод с весами денежных потоков. MWR использует XIRR с базой ACT/365. Историческая конвертация валют и сравнение с бенчмарком не включены. См. методологию доходности в настройках."
+};
+
+export function translatePortfolioPerformanceText(value: string, language = getAppLanguage()): string {
+  if (language === 'ru') return PERFORMANCE_RU_COPY[value] || translateText(value, language);
+  return value;
+}
+
 function label(value: string): string {
-  return translateText(value, getAppLanguage());
+  return translatePortfolioPerformanceText(value);
 }
 
 function formatPercent(value: number): string {

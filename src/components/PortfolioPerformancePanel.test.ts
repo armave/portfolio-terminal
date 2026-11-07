@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { translatePortfolioPerformanceText } from './PortfolioPerformancePanel';
 
 describe('Portfolio Performance panel integration', () => {
   it('keeps the performance panel restricted to the administrator combined desk', () => {
@@ -21,4 +22,11 @@ describe('Portfolio Performance panel integration', () => {
     expect(source).not.toContain('S&P 500');
     expect(source).not.toContain('Exact TWR');
   });
+  it('localizes performance copy inside the lazy panel chunk', () => {
+    expect(translatePortfolioPerformanceText('Portfolio performance', 'ru')).toBe('Доходность портфеля');
+    expect(translatePortfolioPerformanceText('History collecting', 'ru')).toBe('Сбор истории');
+    expect(translatePortfolioPerformanceText('Annualized XIRR · ACT/365', 'ru')).toBe('Годовая XIRR · ACT/365');
+    expect(translatePortfolioPerformanceText('Portfolio performance', 'en')).toBe('Portfolio performance');
+  });
+
 });
