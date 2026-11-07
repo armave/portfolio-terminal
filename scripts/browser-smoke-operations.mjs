@@ -1065,7 +1065,7 @@ try {
         const rect = element.getBoundingClientRect();
         const style = window.getComputedStyle(element);
         const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
-        return visible && element.querySelector('select[aria-label="Account language"]')?.value === 'ru';
+        return visible && element.querySelector('.settings-toolbar select')?.value === 'ru';
       });
     }, null, { timeout: 20_000 });
   } catch {
@@ -1085,7 +1085,10 @@ try {
     }));
     throw new Error('Account language was not restored after reload: ' + JSON.stringify({
       restoredState,
-      workerUser: worker.users.find((user) => user.id === 'admin-operations'),
+      workerUser: (() => {
+        const user = worker.users.find((item) => item.id === 'admin-operations');
+        return user ? { id: user.id, role: user.role, language: user.language } : null;
+      })(),
       authMe: worker.findCalls('GET', '/api/auth/me').slice(-3).map((call) => ({
         status: call.responseStatus, payload: call.responsePayload
       })),
@@ -1096,7 +1099,7 @@ try {
   }
   // Continue the admin journey in English; the created guest keeps its Russian preference.
   const adminLanguageSaveCount = worker.findCalls('POST', '/api/auth/me').length;
-  const adminLanguageSelect = page.locator('#settingsDesk:visible select[aria-label="Account language"]').first();
+  const adminLanguageSelect = visibleSettingsDesk().locator('.settings-toolbar select').first();
   await adminLanguageSelect.waitFor({ state: 'visible', timeout: 10_000 });
   await adminLanguageSelect.selectOption('en');
   await waitForCondition(
