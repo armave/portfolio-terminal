@@ -1,3 +1,270 @@
+import type { FreedomExecutedTrade } from './freedomTrade';
+import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
+import type { PortfolioTransactionEvent } from './portfolioTransaction';
+
+export interface Tranche {
+  id: string;
+  shares: number;
+  entryPrice: number;
+  purchaseDate: string;
+  targetPrice?: number;
+  notes?: string;
+}
+
+export interface TrancheItem {
+  qty: number;
+  price: number;
+  /** Legacy aliases retained for normalization and compatibility with older snapshots. */
+  shares?: number;
+  entryPrice?: number;
+  date?: string;
+  acquiredAt?: number;
+  buyCommission?: number;
+}
+
+export interface QuoteDetails {
+  change?: number;
+  changePercent?: number;
+  high?: number;
+  low?: number;
+  /** Provider-reported volume; the reporting period may vary by quote source. */
+  volume?: number;
+  marketState?: string;
+  price?: number;
+  /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */
+  freshness?: 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
+  /** Time this client received the response; not necessarily the market observation time. */
+  receivedAt?: number;
+  /** Provider-reported market observation time, when available. */
+  sourceTimestamp?: number;
+  /** Normalized source metadata; unknown values are omitted, never inferred from receipt time. */
+  provider?: string;
+  instrumentId?: string;
+  exchange?: string;
+  currency?: string;
+  assetType?: 'EQUITY' | 'ETF' | 'FUND' | 'INDEX' | 'FX' | 'CRYPTO' | 'OPTION' | 'FUTURE' | 'BOND' | 'UNKNOWN';
+  marketSession?: 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | 'UNKNOWN';
+  delayClass?: 'live' | 'delayed' | 'indicative' | 'unknown';
+  dataQuality?: 'complete' | 'partial' | 'unknown';
+  cacheStatus?: 'network' | 'fresh-cache' | 'stale-fallback';
+  [key: string]: any;
+}
+
+export interface PositionRecord {
+  ticker: string;
+  shares: number;
+  currentPrice: number;
+  pt: number;
+  commBuy: number;
+  /** Unallocated one-shot financing charge retained until the next realized sale. */
+  marginCharged?: number;
+  startDate?: string;
+  tranches?: TrancheItem[];
+  quoteUpdatedAt?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+  /** Timestamp of the most recent manual trade; protects it from older quote responses. */
+  lastTradeAt?: number;
+}
+
+export interface Holding {
+  ticker: string;
+  isMargin: boolean;
+  tranches: Tranche[];
+  currentPrice?: number;
+  premarketPrice?: number;
+  analystTarget?: number;
+  notes?: string;
+  quoteOverrides?: {
+    finnhub?: string;
+    stooq?: string;
+  };
+}
+
+interface CashStock {
+  ticker: string;
+  shares: number;
+  currentPrice?: number;
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
+}
+
+export interface CashStockHolding {
+  ticker: string;
+  shares: number | string;
+  /** Weighted average entry price of the still-open cash-allocated purchase lots. */
+  averagePrice?: number | null;
+  price?: number | string;
+  currentPrice?: number | string;
+  quoteUpdatedAt?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+}
+
+interface CashCushionState {
+  freeCash: number | string;
+  holdings: CashStockHolding[];
+}
+
+export interface ClosedTrade {
+  id?: string;
+  ticker: string;
+  shares: number;
+  avgBuyPrice?: number;
+  entryPrice?: number;
+  sellPrice?: number;
+  exitPrice?: number;
+  buyDate?: string;
+  purchaseDate?: string;
+  sellDate?: string;
+  exitDate?: string;
+  date?: number | string;
+  closedAt?: number | string;
+  grossProfit?: number;
+  commissions?: number;
+  feesAndCommissions?: number;
+  totalCommissions?: number;
+  marginInterest?: number;
+  netProfit?: number;
+  netRealizedGain?: number;
+  holdingDays?: number;
+}
+
+export interface BrokerAssumptions {
+  broker: string;
+  annualBorrowRate: number;
+  dayCountBasis: 360 | 365;
+  rolloverHour: number;
+  rolloverMinute: number;
+  rolloverTimeZone: string;
+  maintenanceEquityRatio: number;
+  stopOutRatio: number;
+  commissionMin: number;
+  commissionPerShare: number;
+  commissionRatePct: number;
+}
+
+/** Explicit legacy settings keys accepted only by the broker-assumption normalizer. */
+export interface BrokerRules {
+  broker?: string;
+  annualRate?: number | string;
+  annualBorrowRate?: number | string;
+  dayCountBasis?: number | string;
+  dailyRolloverCutoffArmenia?: string;
+  rolloverHour?: number | string;
+  rolloverMinute?: number | string;
+  rolloverTimeZone?: string;
+  maintenanceMarginRatio?: number | string;
+  maintenanceEquityRatio?: number | string;
+  stopOutRatio?: number | string;
+  commissionMin?: number | string;
+  commissionPerShare?: number | string;
+  commissionRatePct?: number | string;
+  commPerShare?: number | string;
+  commVolumePct?: number | string;
+  minCommOrder?: number | string;
+}
+
+interface ApiKeys {
+  finnhub?: string;
+  twelveData?: string;
+  alphaVantage?: string;
+  rapidApiYahoo?: string;
+  gemini?: string;
+  gistToken?: string;
+  gistId?: string;
+}
+
+export interface PendingMutation {
+  id: string;
+  description: string;
+  payload?: unknown;
+  timestamp?: number;
+  commit?: () => void;
+  rollback?: () => void;
+}
+
+export type ActiveTrancheType = 'cash' | 'margin' | 'mix';
+
+export interface ActiveTrancheMix {
+  cash: number;
+  margin: number;
+}
+
+/** A guest who has been linked to a closed trade, retained for assignment history. */
+interface ClosedTradeGuestAssignmentHistory {
+  guestId: string;
+  assignedQuantity: number;
+  assignedAt: number;
+}
+
+/** Persisted administrator-editable funding and guest metadata for a closed-history row. */
+export interface ClosedTradeAllocation {
+  fundingType: ActiveTrancheType;
+  cashQuantity: number;
+  marginQuantity: number;
+  guestId?: string;
+  assignedAt?: number;
+  guestAssignments?: ClosedTradeGuestAssignmentHistory[];
+}
+
+export interface ActiveBrokerTranche {
+  /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
+  id: string;
+  ticker: string;
+  name: string;
+  quantity: number;
+  marketPrice: number | null;
+  averagePrice: number | null;
+  marketValue: number | null;
+  /** Broker purchase timestamp when supplied. */
+  purchasedAt: number | null;
+  /** Estimated or broker-reported buy commission allocated to the still-open quantity. */
+  buyCommission?: number;
+  /** Latest accepted market quote metadata, including the daily move when available. */
+  quoteDetails?: QuoteDetails;
+}
+
+export type GuestTrancheLedgerStatus = 'active' | 'closed' | 'unassigned';
+
+export interface ActiveTrancheGuestAssignmentDetail {
+  assignmentId: string;
+  guestId: string;
+  assignedAt: number;
+  assignedQuantity: number;
+}
+
+/** Durable history for a cash-backed tranche assignment to one guest account. */
+export interface GuestTrancheLedgerRecord {
+  assignmentId: string;
+  trancheId: string;
+  ticker: string;
+  name: string;
+  assignedQuantity: number;
+  openQuantity: number;
+  averagePrice: number | null;
+  /** Realized net profit allocated to this guest's closed-trade shares, when known. */
+  netProfit?: number | null;
+  /** Market value is optional because closed tranches have no current valuation. */
+  marketPrice?: number | null;
+  marketValue?: number | null;
+  /** Date of the transaction represented by this ledger row (buy for Tranche, sell for Trade). */
+  operationAt?: number | null;
+  /** Current market value for open tranches or attributed sale proceeds for closed trades. */
+  value?: number | null;
   purchasedAt: number | null;
   assignedAt: number;
   updatedAt: number;
@@ -33,3 +300,72 @@ export interface PortfolioState {
   activeTrancheTypes?: Record<string, ActiveTrancheType>;
   /** Per-operation share quantities for mixed cash/margin classifications. */
   activeTrancheMixes?: Record<string, ActiveTrancheMix>;
+  /** Guest account linked to each active operation's cash-funded share quantity. */
+  activeTrancheGuestAssignments?: Record<string, string>;
+  /** Stable per-assignment lifecycle metadata used to reconcile persistent guest history. */
+  activeTrancheGuestAssignmentDetails?: Record<string, ActiveTrancheGuestAssignmentDetail>;
+  /** Manual funding / guest overrides keyed by a stable closed-history row identity. */
+  closedTradeAllocations?: Record<string, ClosedTradeAllocation>;
+  /** Server-filtered tranche projection returned only to the signed-in guest. */
+  guestPortfolioSnapshot?: { updatedAt: number; tranches: ActiveBrokerTranche[] };
+  /** Server-filtered assignment history returned only to the signed-in guest. */
+  guestTrancheLedger?: GuestTrancheLedgerRecord[];
+  brokerAccountInfo?: {
+    loaded: boolean;
+    balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
+    positions: Array<{
+      ticker: string; name: string; quantity: number; currency: string;
+      marketPrice: number | null; marketValue: number | null; averagePrice: number | null;
+      profitClose: number | null; accountPositionId: number | null;
+    }>;
+    /** Current when the latest API refresh succeeded; stale after a failed refresh. */
+    status?: 'current' | 'stale' | 'unavailable';
+    /** Provenance retained from the normalized broker adapter snapshot. */
+    provider?: string;
+    quality?: BrokerSnapshotQuality | 'unknown';
+    source?: BrokerSnapshotSource;
+    /** Provider market/account observation time; distinct from client receipt time. */
+    observedAt?: number;
+    warnings?: string[];
+    /** Most recent rejected/failed refresh, kept separately from last-known-good snapshot metadata. */
+    lastRefreshIssue?: BrokerDataQualityIssue;
+    receivedAt: number;
+  };
+  cashCushion: CashCushionState;
+  balance: number;
+  /** Bounded daily valuation observations consumed by the performance engine. */
+  performanceValuations?: PortfolioPerformanceValuationSnapshot[];
+  /** Derived total equity synced with the rest of the portfolio snapshot. */
+  portfolioEquity?: number;
+  /** Timestamp of the last persisted equity recalculation. */
+  portfolioEquityUpdatedAt?: number;
+  realizedMarginCharged: number;
+  tranches?: TrancheItem[];
+  startDate?: string;
+  activeView: string;
+  closedTrades: ClosedTrade[];
+  /** Persisted raw executed-trade snapshot from the broker, used to reconcile closed history and allocate broker cashflow fees. */
+  brokerExecutedTrades?: FreedomExecutedTrade[];
+  /** Append-only app-owned mutation journal; positions remain canonical active state. */
+  transactionEvents?: PortfolioTransactionEvent[];
+  closedHistory?: ClosedTrade[];
+  /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
+  cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
+  brokerAssumptions: BrokerAssumptions;
+  lastRolloverTimestamp?: number;
+  lastUpdated?: number;
+  gatewaySecret?: string;
+
+  // Compatibility projections. Active positions are canonical; holdings is
+  // regenerated from positions during normalization and must not be mutated directly.
+  cashBalance: number;
+  /** @deprecated Legacy bridge; derive from positions instead of treating as source data. */
+  holdings: Holding[];
+  cashStocks?: CashStock[];
+  apiKeys: ApiKeys;
+  selectedTicker?: string | null;
+  autoRefreshInterval?: number;
+  pendingMutation?: PendingMutation | null;
+}
+
+export type BoardState = Partial<PortfolioState>;
