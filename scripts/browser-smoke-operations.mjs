@@ -368,7 +368,7 @@ async function mockWorkerApi(page) {
   };
 }
 
-async function waitForAuthOverlay(page, open) {
+async function waitForAuthOverlay(page, open, worker = null) {
   await page.waitForFunction(
     (shouldBeOpen) => document.querySelector('#auth-container')?.classList.contains('auth-overlay-open') === shouldBeOpen,
     open,
@@ -388,7 +388,14 @@ async function waitForAuthOverlay(page, open) {
         savedPortfolioPresent: localStorage.getItem('margin_portfolio_state_dynamic_v2') !== null,
         savedHistoryPresent: localStorage.getItem('portfolio_closed_history_v1') !== null
       }));
-      throw new Error('Application startup overlay did not detach: ' + JSON.stringify(startupState));
+      const recentWorkerCalls = worker?.calls?.slice(-20).map((call) => ({
+        method: call.method,
+        pathname: call.pathname,
+        action: call.action,
+        responseStatus: call.responseStatus
+      })) || [];
+      throw new Error('Application startup overlay did not detach: ' +
+        JSON.stringify({ startupState, recentWorkerCalls }));
     }
   }
 }
@@ -827,7 +834,7 @@ try {
     'account language preference save'
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await waitForAuthOverlay(page, false);
+  await waitForAuthOverlay(page, false, worker);
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(
