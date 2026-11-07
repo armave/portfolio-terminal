@@ -51,7 +51,7 @@ export function AdminExecutiveDashboard() {
     const price = Number(tranche.price);
     return sub + (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price > 0 ? qty * price : 0);
   }, 0), 0);
-  const marginAverageEntry = marginShares > 0 ? marginInvested / marginShares : null;
+  const marginAverageEntry = summary.investedCostBasis !== null && marginShares > 0 ? marginInvested / marginShares : null;
   const commissionRules = resolveCommissionConfig(state.brokerAssumptions);
   const buyCommissions = positions.reduce((sum, position) => sum + (Number(position.commBuy) || 0), 0);
   // Match the legacy projection: sell commission is estimated at each position's target price.
@@ -155,7 +155,7 @@ export function AdminExecutiveDashboard() {
           <p class="mt-2 text-sm font-bold text-slate-100">
             {marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTrancheCount} {label('tranches')}
           </p>
-          <p class="mt-1 text-xs text-slate-300">{formatUSD(marginInvested)} {label('invested')}</p>
+          <p class="mt-1 text-xs text-slate-300">{summary.investedCostBasis === null ? label('Cost basis or quote data incomplete') : formatUSD(summary.investedCostBasis) + ' ' + label('invested')}</p>
           <p class="mt-1 text-[10px] text-slate-500">{label('Average entry')}: {marginAverageEntry === null ? '—' : formatUSD(marginAverageEntry)}</p>
           <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2">
             {positions.length === 0
@@ -187,8 +187,9 @@ export function AdminExecutiveDashboard() {
 
         <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
           <h3 id="adminMarketValuationTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Market valuation')}</h3>
-          <p class="mt-2 text-sm font-bold text-slate-100">{formatUSD(summary.marginMarketValue)}</p>
+          <p class="mt-2 text-sm font-bold text-slate-100">{summary.marginUnpricedPositions > 0 ? '≥' : ''}{formatUSD(summary.marginMarketValue)}</p>
           <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
+          {summary.marginUnpricedPositions > 0 && <p class="mt-1 text-[10px] text-amber-300">{summary.marginUnpricedPositions} {label('unpriced')}</p>}
           <p class={`mt-1 text-xs font-semibold ${pnlTone}`}>
             {label('Unrealized P/L (margin only)')}: {summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}
             {summary.unrealizedPnlPercent === null ? '' : ` (${summary.unrealizedPnlPercent >= 0 ? '+' : ''}${summary.unrealizedPnlPercent.toFixed(2)}%)`}
