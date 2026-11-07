@@ -24,6 +24,7 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
+import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -783,7 +784,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               executions={brokerTrades}
               cashflows={(state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} }))}
               appEvents={state.transactionEvents || []}
-              executionStatus={brokerTradesLoading || brokerTradesError ? 'partial' : 'complete'}
+              executionStatus={getExecutionReconciliationFeedStatus(brokerExecutionHistory.status)}
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
             />

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import type { PortfolioTransactionEvent, PortfolioTransactionEventType } from '../types/portfolioTransaction';
-import { reconcileBrokerActivity } from './brokerTransactionReconciliation';
+import { getExecutionReconciliationFeedStatus, reconcileBrokerActivity } from './brokerTransactionReconciliation';
 
 const at = Date.parse('2026-11-06T10:00:00.000Z');
 
@@ -39,6 +39,19 @@ function reconcile(
     ...extra
   });
 }
+
+
+describe('broker execution feed readiness', () => {
+  it.each([
+    ['ready', 'complete'],
+    ['loading', 'partial'],
+    ['refreshing', 'partial'],
+    ['stale', 'partial'],
+    ['error', 'partial']
+  ] as const)('treats %s as %s for reconciliation', (status, expected) => {
+    expect(getExecutionReconciliationFeedStatus(status)).toBe(expected);
+  });
+});
 
 describe('reconcileBrokerActivity', () => {
   it('matches an execution by normalized ticker, side, quantity, price, currency and timestamp', () => {

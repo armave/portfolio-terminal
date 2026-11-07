@@ -3,6 +3,15 @@ import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 
 export type ReconciliationFeedStatus = 'complete' | 'partial' | 'unavailable';
 
+export type BrokerExecutionLoadStatus = 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
+
+/** A cached snapshot is not a complete current feed while a refresh is pending or has failed. */
+export function getExecutionReconciliationFeedStatus(
+  status: BrokerExecutionLoadStatus
+): ReconciliationFeedStatus {
+  return status === 'ready' ? 'complete' : 'partial';
+}
+
 // Internal evidence shapes stay private; consumers use the stable report contract only.
 type BrokerActivityFindingType =
   | 'duplicate_broker_execution'
