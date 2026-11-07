@@ -22,7 +22,7 @@ describe('market history daily fallback', () => {
   const request = { instrument: {} as never, startAt: 1, endAt: 2, interval: '1D' };
 
   it('keeps Finnhub as the source when it returns usable candles', async () => {
-    const finnhubResult = { ...result, points: [{ timestamp: 2, price: 101 }], provider: 'Finnhub' };
+    const finnhubResult = { ...result, points: [{ timestamp: 2, price: 101 }], provider: 'Finnhub', quality: 'complete' as const };
     const finnhub = { providerId: 'FINNHUB' as const, fetchHistory: vi.fn().mockResolvedValue(finnhubResult) };
     const freedom = { providerId: 'FREEDOM_TRADENET' as const, fetchHistory: vi.fn().mockResolvedValue(result) };
     const registry = createMarketHistoryProviderRegistry([finnhub, freedom]);
