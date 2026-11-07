@@ -956,4 +956,12 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'unknown': 'неизвестно',
   'unavailable': 'недоступно',
   'unknown / unavailable': 'неизвестно / недоступно',
+  'Margin market value': 'Маржинальные позиции: рыночная стоимость',
+  'Unrealized P/L (margin only)': 'Нереализованная прибыль/убыток (только маржинальные позиции)',
+  'Buy commissions': 'Комиссии за покупку',
+  'Estimated sell commissions': 'Расчётные комиссии за продажу',
+  'Total commissions': 'Комиссии всего',
+  'Annual margin rate': 'Годовая ставка маржи',
+  'Day': 'День',
+  'Cash holdings value': 'Рыночная стоимость денежных активов',
 };
