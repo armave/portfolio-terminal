@@ -137,6 +137,12 @@ describe('Margin desk overview clarity', () => {
     expect(summarySource).toContain("translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', getAppLanguage())");
   });
 
+  it('preserves the centered mobile navigation while keeping ticker taps comfortable', () => {
+    expect(fluidStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*display:\s*contents;/s);
+    expect(fluidStyles).toContain('#tickerTabs [data-nav-tab]');
+    expect(fluidStyles).toContain('min-height: 2.75rem');
+  });
+
   it('uses plain-language labels for the margin forecast columns', () => {
     expect(marginAppSource).toContain("translateText('Margin cost projection', getAppLanguage())");
     expect(marginAppSource).toContain("translateText('Fees & commissions', getAppLanguage())");

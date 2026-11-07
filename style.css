@@ -3933,20 +3933,16 @@ table tbody tr:hover {
   #tickerTabs {
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-start;
-    row-gap: 0.4rem;
+    justify-content: center;
+    row-gap: 0.5rem;
   }
 
+  /* Preserve the centred wrapping navigation contract used by the mobile desk. */
   #tickerTabs>.workspace-nav-ticker-list {
-    display: flex;
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
-    min-height: 2.75rem;
-    padding-bottom: 0.35rem;
+    display: contents;
   }
 
-  #tickerTabs>button {
+  #tickerTabs [data-nav-tab] {
     min-height: 2.75rem;
     padding-inline: 0.85rem;
   }
