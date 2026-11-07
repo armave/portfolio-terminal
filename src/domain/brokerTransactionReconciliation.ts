@@ -252,12 +252,17 @@ export function reconcileBrokerActivity(
         // App trade dates are often recorded at UTC midnight while broker fills
         // carry intraday timestamps. A same-calendar-day date-only event is not
         // a timing discrepancy; explicit app timestamps still use the tolerance.
-        const appDateOnly = new Date(eventAt).getUTCHours() === 0 &&
-          new Date(eventAt).getUTCMinutes() === 0 &&
-          new Date(eventAt).getUTCSeconds() === 0 &&
-          new Date(eventAt).getUTCMilliseconds() === 0;
-        const sameUtcDay = broker.at !== null &&
-          new Date(broker.at).toISOString().slice(0, 10) === new Date(eventAt).toISOString().slice(0, 10);
+        const appDate = new Date(eventAt);
+        const brokerDate = broker.at === null ? null : new Date(broker.at);
+        const validAppDate = Number.isFinite(appDate.getTime());
+        const validBrokerDate = brokerDate !== null && Number.isFinite(brokerDate.getTime());
+        const appDateOnly = validAppDate && appDate.getUTCHours() === 0 &&
+          appDate.getUTCMinutes() === 0 && appDate.getUTCSeconds() === 0 &&
+          appDate.getUTCMilliseconds() === 0;
+        const sameUtcDay = validBrokerDate && validAppDate &&
+          brokerDate!.getUTCFullYear() === appDate.getUTCFullYear() &&
+          brokerDate!.getUTCMonth() === appDate.getUTCMonth() &&
+          brokerDate!.getUTCDate() === appDate.getUTCDate();
         const exactTime = timeDelta === null || timeDelta <= timeTolerance || (appDateOnly && sameUtcDay);
         const acceptableTime = timeDelta === null || timeDelta <= maxTimingDifference;
         const score = (quantityMatch ? 100 : 0) + (priceMatch ? 30 : 0) + (exactTime ? 20 : 0) +
