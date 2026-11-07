@@ -128,7 +128,7 @@ export default defineConfig({
           if (id.includes('/node_modules/crypto-js/')) {
             return 'legacy-crypto';
           }
-          if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
+          if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime|cloudStateSyncRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }
           // The immutable transaction journal is shared by the store, backup,
@@ -141,7 +141,8 @@ export default defineConfig({
           }
           // Keep the on-demand reconciliation review and its deterministic
           // matching engine out of the initial Trades/portfolio entry bundle.
-          if (/\/src\/(domain\/brokerTransactionReconciliation|components\/BrokerTransactionReconciliation)\.(ts|tsx)$/.test(id)) {
+          if (id.endsWith('/src/domain/brokerTransactionReconciliation.ts') ||
+              id.endsWith('/src/components/BrokerTransactionReconciliation.tsx')) {
             return 'broker-reconciliation';
           }
           return undefined;

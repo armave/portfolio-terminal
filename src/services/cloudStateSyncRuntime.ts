@@ -81,6 +81,9 @@ export function createCloudStateSyncRuntime({
       ? (data.error || data.message || `HTTP ${response.status}`)
       : `HTTP ${response.status}`;
   };
+  const pushCloudWrite = (...args: [RequestInfo | URL, RequestInit, () => boolean]) =>
+    import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
+
   const cloudStatePushFingerprints = new Map<string, string>();
 
   function hasAesGcmV2Envelope(value: unknown): value is string {
@@ -422,11 +425,11 @@ async function performPushCloudHistory(
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const res = await fetchImpl(apiUrl('/api/history'), {
+  const res = await pushCloudWrite(apiUrl('/api/history'), {
     method: 'POST',
     headers: authHeaders(secret, `\"${revision}\"`),
     body: JSON.stringify({ encryptedPayload })
-  });
+  }, isCurrentSession);
   if (!isCurrentSession()) return false;
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
   const savedRevision = readCloudRevision(res.headers) ?? (revision as number) + 1;
@@ -641,11 +644,11 @@ async function performPushCloudState(
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
-    const res = await fetchImpl(url.toString(), {
+    const res = await pushCloudWrite(url.toString(), {
       method: 'POST',
       headers: authHeaders(currentSecret, `\"${expectedRevision}\"`),
       body: JSON.stringify(payload)
-    });
+    }, isCurrentSession);
     if (!isCurrentSession()) return false;
 
     if (!res.ok) {
