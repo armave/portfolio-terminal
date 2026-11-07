@@ -159,6 +159,8 @@ describe('Margin desk localization', () => {
       'Position opened · projection values start today',
       'TODAY',
       'BREAKEVEN',
+      'EOW · +{days}d',
+      'NTD · +{days}d',
       'Projection table pagination',
       'Previous projection page',
       'Next projection page',
