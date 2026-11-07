@@ -184,7 +184,7 @@ export function AdminExecutiveDashboard() {
           <p class="mt-2 text-sm font-bold text-slate-100">{positions.length === 1
             ? label('See position exposure below')
             : `${summary.marginUnpricedPositions > 0 ? '≥' : ''}${formatUSD(summary.marginMarketValue)}`}</p>
-          <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
+          <p class="mt-1 text-xs text-slate-300">{label(positions.length === 1 ? 'Per-position values shown in table' : 'Margin market value')}</p>
           {summary.marginUnpricedPositions > 0 && <p class="mt-1 text-[10px] text-amber-300">{summary.marginUnpricedPositions} {label('unpriced')}</p>}
           <p class="mt-1 text-[10px] text-slate-500">
             {positions.length} {label('margin positions')} · {summary.marginUnpricedPositions} {label('unpriced')}
