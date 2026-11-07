@@ -720,7 +720,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         <div class="portfolio-micro-column portfolio-micro-basis">
           <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
           <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">Shares / Tranches</span>
+            <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Tranches', getAppLanguage())}</span>
             <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
               <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
                 <span class="whitespace-nowrap">{pos.shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} {translateText('shares', getAppLanguage())}</span>
@@ -752,14 +752,14 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             </div>
           </div>
           <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">Invested / Avg. Entry</span>
+            <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
             <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
           </div>
         </div>
         <div class="portfolio-micro-column portfolio-micro-market">
           <span class="portfolio-micro-heading">{translateText('MARKET VALUATION', getAppLanguage())}</span>
           <div class="portfolio-micro-row portfolio-micro-market-primary">
-            <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
+            <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
             <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
               {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}
               {unrealized !== null && unrealizedPct !== null ? (
