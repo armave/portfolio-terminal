@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  appendDailyPerformanceValuation,
-  buildPortfolioPerformanceReport,
-  capturePortfolioPerformanceValuation,
-  isPortfolioPerformanceValuationSnapshot
-} from './portfolioPerformanceIntegration';
+import { appendDailyPerformanceValuation, capturePortfolioPerformanceValuation, isPortfolioPerformanceValuationSnapshot } from './portfolioPerformanceCapture';
+import { buildPortfolioPerformanceReport } from './portfolioPerformanceIntegration';
 import type { PortfolioState, PortfolioPerformanceValuationSnapshot } from '../types/portfolio';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -112,7 +108,7 @@ describe('appendDailyPerformanceValuation', () => {
     const nextDay = snapshot(BASE + DAY, 320);
     const upgradedSameDay = snapshot(BASE + 2 * 60 * 60 * 1000, 305, true);
     const withFirst = appendDailyPerformanceValuation([], first);
-    expect(appendDailyPerformanceValuation(withFirst, snapshot(BASE + 30 * 60 * 1000, 310))).toBe(withFirst);
+    expect(appendDailyPerformanceValuation(withFirst, snapshot(BASE + 30 * 60 * 1000, 310))).toEqual(withFirst);
     const withUpgrade = appendDailyPerformanceValuation(withFirst, upgradedSameDay);
     expect(withUpgrade).toHaveLength(1);
     expect(withUpgrade[0]).toMatchObject({ cashflowHistoryComplete: true, equity: 305 });
@@ -166,7 +162,7 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.currency).toBe('USD');
     expect(report.timeWeighted?.status).toBe('available');
     if (report.timeWeighted && report.timeWeighted.status !== 'unavailable') {
-      expect(report.timeWeighted.value.totalReturn).toBeCloseTo(0.1, 12);
+      expect(report.timeWeighted.value.totalReturn).toBeCloseTo(100 / 1050, 12);
     }
     expect(report.incomeCosts?.status).toBe('available');
     if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {

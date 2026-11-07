@@ -101,7 +101,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
-import { appendDailyPerformanceValuation, capturePortfolioPerformanceValuation } from './src/domain/portfolioPerformanceIntegration';
+import { appendDailyPerformanceValuation, capturePortfolioPerformanceValuation } from './src/domain/portfolioPerformanceCapture';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';

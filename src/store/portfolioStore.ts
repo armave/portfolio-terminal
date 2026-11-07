@@ -40,7 +40,7 @@ import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
-import { isPortfolioPerformanceValuationSnapshot } from '../domain/portfolioPerformanceIntegration';
+import { isPortfolioPerformanceValuationSnapshot } from '../domain/portfolioPerformanceCapture';
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
