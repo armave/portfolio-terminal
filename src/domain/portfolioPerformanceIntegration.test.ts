@@ -97,6 +97,12 @@ describe('capturePortfolioPerformanceValuation', () => {
       positions: { GOOGL: { ...makeState().positions.GOOGL, quoteDetails: { currency: 'AMD' } } }
     }), BASE, true)).toBeNull();
     expect(capturePortfolioPerformanceValuation(makeState({
+      brokerAccountInfo: { ...makeState().brokerAccountInfo!, balances: [
+        { currency: 'USD', amount: 0, forecastIn: 0, forecastOut: 0, t2In: 0, t2Out: 0 },
+        { currency: '', amount: 0, forecastIn: 0, forecastOut: 0, t2In: 0, t2Out: 0 }
+      ] }
+    }), BASE, true)).toBeNull();
+    expect(capturePortfolioPerformanceValuation(makeState({
       positions: { GOOGL: { ...makeState().positions.GOOGL, currentPrice: 0 } }
     }), BASE, true)).toBeNull();
   });
@@ -108,8 +114,14 @@ describe('appendDailyPerformanceValuation', () => {
     const nextDay = snapshot(BASE + DAY, 320);
     const upgradedSameDay = snapshot(BASE + 2 * 60 * 60 * 1000, 305, true);
     const withFirst = appendDailyPerformanceValuation([], first);
-    expect(appendDailyPerformanceValuation(withFirst, snapshot(BASE + 30 * 60 * 1000, 310, false, undefined, 'provisional'))).toEqual(withFirst);
-    const withUpgrade = appendDailyPerformanceValuation(withFirst, upgradedSameDay);
+    const refreshed = appendDailyPerformanceValuation(
+      withFirst,
+      snapshot(BASE + 30 * 60 * 1000, 310, false, undefined, 'provisional')
+    );
+    expect(refreshed).toMatchObject([
+      { timestamp: BASE + 30 * 60 * 1000, equity: 310, quality: 'provisional', cashflowHistoryComplete: false }
+    ]);
+    const withUpgrade = appendDailyPerformanceValuation(refreshed, upgradedSameDay);
     expect(withUpgrade).toHaveLength(1);
     expect(withUpgrade[0]).toMatchObject({ cashflowHistoryComplete: true, equity: 305 });
     expect(appendDailyPerformanceValuation(withUpgrade, nextDay)).toHaveLength(2);

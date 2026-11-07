@@ -59,11 +59,11 @@ export function capturePortfolioPerformanceValuation(
   const account = state.brokerAccountInfo;
   if (!account?.loaded || account.status === 'unavailable' || !Array.isArray(account.balances)) return null;
 
-  const balanceCurrencies = new Set(
-    account.balances.map(row => currencyCode(row.currency)).filter((value): value is string => value !== null)
-  );
-  if (balanceCurrencies.size !== 1 || account.balances.length === 0) return null;
-  const currency = [...balanceCurrencies][0];
+  const balanceCurrencyValues = account.balances.map(row => currencyCode(row.currency));
+  if (balanceCurrencyValues.length === 0 || balanceCurrencyValues.some(value => value === null)) return null;
+  const balanceCurrencies = new Set(balanceCurrencyValues as string[]);
+  if (balanceCurrencies.size !== 1) return null;
+  const currency = balanceCurrencyValues[0] as string;
 
   const brokerCurrencyByTicker = new Map<string, string>();
   for (const row of account.positions || []) {
