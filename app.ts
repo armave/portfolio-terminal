@@ -2426,7 +2426,15 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   showGuestBalanceView: () => setActiveView('BALANCE'),
   showSavedAdminView: () => switchView(state.activeView),
   scrollWorkspace: () => emitUiEvent('terminal:scroll-workspace'),
-  refreshLivePrices: () => refreshAllLivePrices(true),
+  refreshLivePrices: () => {
+    // Show the restored workspace promptly; provider snapshots are independent
+    // background refreshes and can take several seconds across fallback sources.
+    launchBackgroundTask(
+      () => refreshAllLivePrices(true),
+      (error) => console.warn('[Startup Quote Refresh]: Initial background quote refresh did not complete.', error)
+    );
+    return Promise.resolve();
+  },
   finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
