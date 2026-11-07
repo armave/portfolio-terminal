@@ -141,7 +141,7 @@ export default defineConfig({
           }
           // Keep the on-demand reconciliation review and its deterministic
           // matching engine out of the initial Trades/portfolio entry bundle.
-          if (/\\/src\\/(domain\\/brokerTransactionReconciliation|components\\/BrokerTransactionReconciliation)\\.(ts|tsx)$/.test(id)) {
+          if (/\/src\/(domain\/brokerTransactionReconciliation|components\/BrokerTransactionReconciliation)\.(ts|tsx)$/.test(id)) {
             return 'broker-reconciliation';
           }
           return undefined;
