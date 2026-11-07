@@ -148,6 +148,7 @@ async function pullCloudState(
   };
 
   if (!currentSecret) {
+    handlers.onStatusChange?.('error');
     reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
     return loadSavedState(state || {});
@@ -167,6 +168,8 @@ async function pullCloudState(
     const pulledRevision = readCloudRevision(res.headers);
 
     if (res.status === 404) {
+      // A 404 is a healthy, authorized KV response with no saved portfolio yet.
+      handlers.onStatusChange?.('synced');
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
@@ -329,10 +332,12 @@ async function pullCloudState(
       pullCloudAndRewriteLocal(parsedState);
     }
 
+    handlers.onStatusChange?.('synced');
     reportResult?.(true);
     return parsedState;
   } catch (err: any) {
     if (!isCurrentSession()) return stalePullFallback();
+    handlers.onStatusChange?.('error');
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${err.message}`, 'error');
