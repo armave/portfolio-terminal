@@ -180,7 +180,6 @@ export function AdminExecutiveDashboard() {
                   <th class="px-3 py-2 text-right">{label('Market value')}</th>
                   <th class="px-3 py-2 text-right">{label('Unrealized P/L')}</th>
                   <th class="px-3 py-2 text-right">{label('Weight')}</th>
-                  <th class="px-3 py-2 text-right">{label('Quote')}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/70">
@@ -192,7 +191,6 @@ export function AdminExecutiveDashboard() {
                     <td class="px-3 py-2 text-right font-mono tabular-nums">{row.marketValue === null ? '—' : formatUSD(row.marketValue)}</td>
                     <td class={`px-3 py-2 text-right font-mono tabular-nums ${row.pnl === null ? 'text-slate-500' : row.pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{row.pnl === null ? '—' : `${row.pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(row.pnl))}`}</td>
                     <td class="px-3 py-2 text-right font-mono tabular-nums">{row.weight === null ? '—' : `${row.weight.toFixed(1)}%`}</td>
-                    <td class="px-3 py-2 text-right text-slate-400">{label(row.quote)}</td>
                   </tr>
                 ))}
               </tbody>
