@@ -60,9 +60,20 @@ Vitest lifecycle fixtures: buy/add/partial sell/full close; cash/debt settlement
 - [x] Add one client retry for ambiguous network failures and transient 5xx responses, reusing the same body, `If-Match` and `Idempotency-Key`; never retry 4xx conflicts or a stale account session.
 - [x] Add Worker regression fixtures for duplicate commit, conflicting key reuse, superseded retry, invalid keys and legacy clients without the optional header.
 - [x] Add client Vitest coverage for retry identity on portfolio and closed-history writes.
-- [ ] Validate exact-head PR CI and direct-to-main Worker deployment status.
+- [x] Validate exact-head PR CI and direct-to-main Worker deployment status.
 - [ ] Complete authenticated live-account/manual device QA; deterministic fixtures are not a substitute.
  
+### Exact-head validation — implementation slice 1
+
+**Client PR head:** `a0097bf7d4a10265e3bb3d5bd5849282d6a042cb` (base `d2263a3c0e83a525009af70069bca91ad03fc70e`).
+
+- [x] [Pull Request CI #42343665738](https://github.com/armave/portfolio-terminal/actions/runs/42343665738) — TypeScript, Vitest and production build/bundle budget passed.
+- [x] [Operations Browser Journey #42343665762](https://github.com/armave/portfolio-terminal/actions/runs/42343665762) — passed.
+- [x] [Trade Lifecycle Browser Smoke #42343665739](https://github.com/armave/portfolio-terminal/actions/runs/42343665739) — passed.
+- [x] [Cloudflare Worker deployment #42343731837](https://github.com/armave/portfolio-terminal/actions/runs/42343731837) — Worker tests, dependency audit and Wrangler deployment passed on main commit `8b38957059b996338ccd85970ad962906537536d`. The deployed main history includes the server idempotency implementation from `c6201c528977bd2dd2bf9fe2ef05fb28dbec9772`.
+
+The Worker deployment workflow required a test-fixture isolation correction for a concurrent Finnhub partial-feed test. No financial or market-data runtime behavior was changed by that fixture correction. Deterministic CI is not authenticated live account or multi-device QA.
+
 ### Remaining PT-02 acceptance scope
 
 This implementation slice closes the lost-response retry gap; it does **not** close PT-02. Still required: end-to-end inventory of every financial mutation call path, explicit correction/reversal semantics and unsupported-path handling, full lifecycle/backup-import/restore/reload parity, cross-tab conflict UX under real multi-device use, and a reviewed versioned migration/rollback procedure. The event journal and `PortfolioState.positions` remain additive/canonical respectively.
