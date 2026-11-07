@@ -266,11 +266,23 @@ export function reconcileBrokerActivity(
           brokerDate!.getUTCDate() === appDate.getUTCDate();
         const exactTime = timeDelta === null || timeDelta <= timeTolerance || (appDateOnly && sameUtcDay);
         const acceptableTime = timeDelta === null || timeDelta <= maxTimingDifference;
-        const score = (quantityMatch ? 100 : 0) + (priceMatch ? 30 : 0) + (exactTime ? 20 : 0) +
+        const sameGroup = uniqueBrokerRows.filter(other =>
+          other.ticker === broker.ticker &&
+          other.side === broker.side &&
+          (!broker.currency || !other.currency || other.currency === broker.currency) &&
+          (other.at === null || Math.abs(other.at - eventAt) <= maxTimingDifference)
+        );
+        const groupedQuantity = sameGroup.reduce((sum, row) => sum + row.quantity, 0);
+        const partialFillAggregateMatch = sameGroup.length > 1 &&
+          quantity !== null && Math.abs(groupedQuantity - quantity) <= quantityTolerance;
+        const identityMatch = Boolean(text(event.externalReferenceId)) && text(event.externalReferenceId) === broker.id;
+        const score = (identityMatch ? 1000 : 0) +
+          (quantityMatch ? 100 : partialFillAggregateMatch ? -1000 : 0) +
+          (priceMatch ? 30 : 0) + (exactTime ? 20 : 0) +
           (acceptableTime ? 10 : 0) - (timeDelta ?? 0) / Math.max(maxTimingDifference, 1);
-        return { ...candidate, quantityMatch, priceMatch, exactTime, acceptableTime, timeDelta, score };
+        return { ...candidate, quantityMatch, priceMatch, exactTime, acceptableTime, timeDelta, score, partialFillAggregateMatch, identityMatch };
       })
-      .filter(candidate => candidate.acceptableTime && !candidate.partialFillAggregateMatch)
+      .filter(candidate => candidate.acceptableTime && (!candidate.partialFillAggregateMatch || candidate.identityMatch))
       .sort((a, b) => b.score - a.score || a.event.recordedAt - b.event.recordedAt);
     const best = candidates[0];
     if (!best) return;

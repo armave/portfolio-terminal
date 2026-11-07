@@ -896,8 +896,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Stale cached fallback": "Устаревшая резервная котировка из кэша",
 
   'Reconcile broker activity': 'Сверить активность брокера',
-  'Matched': 'Совпадает',
-  'Differences found': 'Обнаружены расхождения',
   'History unavailable': 'История недоступна',
   'Provisional review': 'Предварительная проверка',
   'findings': 'расхождений',
@@ -921,8 +919,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Cashflow classification differs': 'Классификация денежного потока отличается',
   'Confirmed': 'Подтверждено',
   'Provisional': 'Предварительно',
-  'Broker': 'Брокер',
-  'App': 'Приложение',
   'Broker ref': 'ID брокера',
   'App event': 'Событие приложения',
   'Showing first 30 findings': 'Показаны первые 30 расхождений',
