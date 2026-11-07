@@ -789,19 +789,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               <div id="marginDataWorkspace" class="margin-data-workspace">
                 {/* Projection Table */}
                 <TableScrollRegion
-                  label="Portfolio projection by date"
+                  label={translateText('Portfolio projection by date', getAppLanguage())}
                   id="projectionTableContainer"
                   className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
                 >
-                  <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
-                    <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
+                  <table aria-label={translateText('Portfolio projection by date', getAppLanguage())} class="w-full min-w-[300px] text-xs border-collapse">
+                    <caption class="sr-only">{translateText('Projected portfolio net value, fees and commissions, margin fee, and balance by date.', getAppLanguage())}</caption>
                     <thead>
                       <tr class="border-b border-slate-800 text-slate-400">
-                        <th scope="col" class="py-2 px-3">Date</th>
-                        <th scope="col" class="py-2 px-3">Net</th>
-                        <th scope="col" class="py-2 px-3">F&amp;C</th>
-                        <th scope="col" class="py-2 px-3">M Fee</th>
-                        <th scope="col" class="py-2 px-3">Balance</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Date', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Net', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Fees & commissions', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Margin fee', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Balance', getAppLanguage())}</th>
                       </tr>
                     </thead>
                     <tbody
