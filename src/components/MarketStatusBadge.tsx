@@ -162,6 +162,21 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     let activeIdentity: string | null = null;
     let transitionTimeoutId: number | undefined;
 
+    const scheduleNextTransition = (providerStatus: string) => {
+      if (transitionTimeoutId !== undefined) window.clearTimeout(transitionTimeoutId);
+      const currentTime = new Date();
+      const effectiveStatus = reconcileMarketStatusWithCalendar(providerStatus, currentTime);
+      const transitionAt = getMarketStatusTransitionAt(effectiveStatus, currentTime);
+      if (!transitionAt) {
+        transitionTimeoutId = undefined;
+        return;
+      }
+      const delay = transitionAt.getTime() - currentTime.getTime();
+      transitionTimeoutId = delay > 0
+        ? window.setTimeout(() => void refresh(), delay + 1000)
+        : undefined;
+    };
+
     const refresh = async () => {
       // Wait for the authenticated identity event. An eager public request here
       // races the startup auth event and used to fetch the same status twice.
@@ -181,6 +196,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         setHasAuthenticatedSession(true);
         setSnapshot(result);
         setFailed(false);
+        scheduleNextTransition(result.marketStatus.status);
       } catch {
         if (isCurrentMarketStatusRequest(active, requestGeneration, authGeneration) && authenticated) {
           setFailed(true);
@@ -222,14 +238,6 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
-    const transitionAt = getMarketStatusTransitionAt(status, now);
-    if (transitionAt) {
-      const delay = transitionAt.getTime() - Date.now();
-      if (delay > 0) {
-        transitionTimeoutId = window.setTimeout(() => void refresh(), delay + 1000);
-      }
-    }
-
     addUiEventListener('auth:user-changed', handleUserChanged);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     // The first authenticated user event starts the initial request. Do not
