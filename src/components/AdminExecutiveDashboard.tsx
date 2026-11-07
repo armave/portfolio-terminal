@@ -169,9 +169,9 @@ export function AdminExecutiveDashboard() {
                   </p>
                   {(position.tranches || []).length > 0 && (
                     <details class="pl-2 text-[10px] text-slate-500">
-                      <summary class="min-h-6 cursor-pointer underline decoration-dotted underline-offset-2">{label('Show tranches')} ({position.tranches.length})</summary>
+                      <summary class="min-h-6 cursor-pointer underline decoration-dotted underline-offset-2">{label('Show tranches')} ({(position.tranches || []).length})</summary>
                       <ul class="space-y-1 py-1">
-                        {position.tranches.map((tranche, index) => (
+                        {(position.tranches || []).map((tranche, index) => (
                           <li key={index}>
                             {Number(tranche.qty).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} @ {formatUSD(Number(tranche.price))}
                             {' · '}{tranche.date ? formatTrancheDate(tranche.date) : label('Date unavailable')}
