@@ -1,6 +1,6 @@
 import { useMemo } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatQuoteVolume, getQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatTrancheDate, formatQuoteVolume, getQuoteFreshness } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { buildAdminDashboardSummary } from '../domain/adminDashboard';
@@ -161,11 +161,26 @@ export function AdminExecutiveDashboard() {
             {positions.length === 0
               ? <p class="text-[10px] text-slate-500">{label('No margin positions')}</p>
               : positions.map(position => (
-                <p key={position.ticker} class="text-[10px] text-slate-400">
-                  <span class="font-semibold text-slate-200">{position.ticker}</span>
-                  {' · '}{Number(position.shares).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} sh
-                  {' @ PT '}{Number(position.pt) > 0 ? formatUSD(Number(position.pt)) : '—'}
-                </p>
+                <div key={position.ticker} class="space-y-1">
+                  <p class="text-[10px] text-slate-400">
+                    <span class="font-semibold text-slate-200">{position.ticker}</span>
+                    {' · '}{Number(position.shares).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} sh
+                    {' @ PT '}{Number(position.pt) > 0 ? formatUSD(Number(position.pt)) : '—'}
+                  </p>
+                  {(position.tranches || []).length > 0 && (
+                    <details class="pl-2 text-[10px] text-slate-500">
+                      <summary class="min-h-6 cursor-pointer underline decoration-dotted underline-offset-2">{label('Show tranches')} ({position.tranches.length})</summary>
+                      <ul class="space-y-1 py-1">
+                        {position.tranches.map((tranche, index) => (
+                          <li key={index}>
+                            {Number(tranche.qty).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} @ {formatUSD(Number(tranche.price))}
+                            {' · '}{tranche.date ? formatTrancheDate(tranche.date) : label('Date unavailable')}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
               ))}
           </div>
         </section>
