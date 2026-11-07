@@ -375,7 +375,21 @@ async function waitForAuthOverlay(page, open) {
     { timeout: 20_000 }
   );
   if (!open) {
-    await page.locator('.startup-loading').waitFor({ state: 'detached', timeout: 20_000 });
+    try {
+      await page.locator('.startup-loading').waitFor({ state: 'detached', timeout: 20_000 });
+    } catch {
+      const startupState = await page.locator('.startup-loading').evaluate((element) => ({
+        message: element.querySelector('.startup-loading__message')?.textContent?.trim() || '',
+        hint: element.querySelector('.startup-loading__hint')?.textContent?.trim() || '',
+        failed: element.textContent?.includes('Could not finish initializing the app.') || false,
+        authOverlayClass: document.querySelector('#auth-container')?.className || '',
+        savedBrokerRulesPresent: localStorage.getItem('tradernet_rules_v1') !== null,
+        savedBrokerRulesBytes: localStorage.getItem('tradernet_rules_v1')?.length || 0,
+        savedPortfolioPresent: localStorage.getItem('margin_portfolio_state_dynamic_v2') !== null,
+        savedHistoryPresent: localStorage.getItem('portfolio_closed_history_v1') !== null
+      }));
+      throw new Error('Application startup overlay did not detach: ' + JSON.stringify(startupState));
+    }
   }
 }
 async function submitAuth(page, { name, password, bootstrapSecret }) {
