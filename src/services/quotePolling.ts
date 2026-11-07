@@ -59,9 +59,12 @@ export async function refreshTrackedQuotes(
     while (nextIndex < tickersToFetch.length) {
       const index = nextIndex++;
       const ticker = tickersToFetch[index];
+      // The app starts one persistent TradeNet q socket for this ticker set.
+      // Keep the bootstrap snapshot on REST so it does not create another upstream
+      // WebSocket subscription for the same symbol while the live socket connects.
       results[index] = force
-        ? await fetchLivePriceFromProviders(ticker, requestStartedAt, true)
-        : await fetchLivePriceFromProviders(ticker, requestStartedAt);
+        ? await fetchLivePriceFromProviders(ticker, requestStartedAt, true, { preferRestSnapshot: true })
+        : await fetchLivePriceFromProviders(ticker, requestStartedAt, false, { preferRestSnapshot: true });
     }
   }));
 

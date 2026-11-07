@@ -151,10 +151,16 @@ function resolveQuoteProvenance(
   return { freshness: 'fresh' as const, sourceTimestamp };
 }
 
+export interface FetchLivePriceOptions {
+  /** Use a REST bootstrap snapshot when the persistent q WebSocket is already responsible for live updates. */
+  preferRestSnapshot?: boolean;
+}
+
 export async function fetchLivePriceFromProviders(
   symbol: string,
   requestStartedAt = Date.now(),
-  force = false
+  force = false,
+  options: FetchLivePriceOptions = {}
 ) {
   const requestSequence = nextLiveQuoteRequestSequence();
   symbol = symbol.toUpperCase();
@@ -167,7 +173,7 @@ export async function fetchLivePriceFromProviders(
   // TradeNet q is authoritative when it returns a valid quote. Do not launch
   // Yahoo in parallel: that was creating a redundant REST quote on every load.
   // The Freedom REST quote is requested only when the q snapshot fails.
-  if (marketDataProviderHealth.canAttempt('FREEDOM_WEBSOCKET')) {
+  if (!options.preferRestSnapshot && marketDataProviderHealth.canAttempt('FREEDOM_WEBSOCKET')) {
     try {
       freedomQuote = await fetchFreedomQuoteWebSocket(symbol);
       if (!freedomQuote || !Number.isFinite(freedomQuote.price) || freedomQuote.price <= 0) {
@@ -184,9 +190,10 @@ export async function fetchLivePriceFromProviders(
     }
   }
 
-  // The REST snapshot is a fallback for an unavailable/failed q request, but
-  // it must observe the same provider cooldown instead of hammering a failed
-  // transport on every quote refresh.
+  // During app bootstrap, a separate persistent q WebSocket already owns
+  // live updates. Use a single REST quote snapshot while that socket connects,
+  // rather than opening a second one-shot TradeNet WebSocket for the same symbols.
+  // Outside that managed-stream path, REST remains the fallback for a failed q snapshot.
   if (!freedomQuote && marketDataProviderHealth.canAttempt('FREEDOM_REST')) {
     try {
       freedomQuote = await fetchFreedomQuote(symbol, true);

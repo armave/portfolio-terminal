@@ -28,6 +28,33 @@ describe('fetchLivePriceFromProviders', () => {
     vi.resetAllMocks();
   });
 
+
+  it('uses one REST bootstrap snapshot when a persistent quote stream owns live updates', async () => {
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'GOOGL',
+      price: 281.25,
+      previousClose: 279,
+      change: 2.25,
+      changePercent: 0.806,
+      sourceTimestamp: null,
+      marketState: 'REGULAR',
+      raw: {}
+    });
+
+    const result = await fetchLivePriceFromProviders('GOOGL', Date.now(), false, {
+      preferRestSnapshot: true
+    });
+
+    expect(fetchFreedomQuoteWebSocket).not.toHaveBeenCalled();
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('GOOGL', true);
+    expect(fetchYahooQuoteData).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      price: 281.25,
+      sourceName: 'Freedom TradeNet',
+      quoteDetails: { transport: 'rest' }
+    });
+  });
+
   it('uses a valid authenticated q quote without launching Yahoo or Freedom REST quote requests', async () => {
     vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
