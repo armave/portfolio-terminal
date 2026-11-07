@@ -806,13 +806,17 @@ try {
     throw new Error('Admin position exposure table was not visible.');
   }
   for (const summaryLabel of ['Position basis', 'Market valuation', 'Debt & carrying costs']) {
-    if (!(await page.getByText(summaryLabel, { exact: true }).first().isVisible())) {
-      throw new Error('Integrated legacy summary metric was not visible: ' + summaryLabel);
+    const count = await executiveOverview.getByText(summaryLabel, { exact: true }).count();
+    if (count !== 1) {
+      throw new Error('Expected exactly one integrated legacy metric section for ' + summaryLabel + ', found ' + count);
     }
   }
-  for (const legacyRiskLabel of ['Estimated equity ratio', 'Margin-call buffer', 'Stop-out threshold']) {
-    if (!(await page.getByText(legacyRiskLabel, { exact: true }).first().isVisible())) {
-      throw new Error('Integrated legacy risk metric was not visible: ' + legacyRiskLabel);
+  if (await page.locator('#portfolioMetricsGrid .portfolio-micro-summary').count() !== 0) {
+    throw new Error('The legacy admin metric strip still renders separately above the executive dashboard.');
+  }
+  for (const riskLabel of ['Estimated equity ratio', 'Maintenance buffer']) {
+    if (!(await executiveOverview.getByText(riskLabel, { exact: true }).first().isVisible())) {
+      throw new Error('Admin risk summary metric was not visible: ' + riskLabel);
     }
   }
   await page.getByRole('button', { name: 'Margin: AAPL' }).click();
