@@ -139,6 +139,11 @@ export default defineConfig({
           if (id.endsWith('/src/services/marketDataContracts.ts')) {
             return 'market-data-contracts';
           }
+          // Keep the on-demand reconciliation review and its deterministic
+          // matching engine out of the initial Trades/portfolio entry bundle.
+          if (/\\/src\\/(domain\\/brokerTransactionReconciliation|components\\/BrokerTransactionReconciliation)\\.(ts|tsx)$/.test(id)) {
+            return 'broker-reconciliation';
+          }
           return undefined;
         }
       }
