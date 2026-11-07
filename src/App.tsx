@@ -51,6 +51,9 @@ const MemoSummaryMetricsGrid = lazy(() =>
     default: memo(SummaryMetricsGrid)
   }))
 );
+const AdminExecutiveDashboard = lazy(() =>
+  import('./components/AdminExecutiveDashboard').then(({ AdminExecutiveDashboard }) => ({ default: memo(AdminExecutiveDashboard) }))
+);
 const PortfolioPerformancePanel = lazy(() =>
   import('./components/PortfolioPerformancePanel').then(({ PortfolioPerformancePanel }) => ({
     default: memo(PortfolioPerformancePanel)
@@ -777,6 +780,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     </Suspense>
                   )}
               </div>
+
+              {permissions.isAdmin && activeDeskView === 'COMBINED' && (
+                <Suspense fallback={<DeskLoading title="Preparing executive overview" message="Loading portfolio-wide risk and exposure…" accent="cyan" />}>
+                  <AdminExecutiveDashboard />
+                </Suspense>
+              )}
 
               {permissions.isAdmin && activeDeskView === 'COMBINED' && (
                 <Suspense fallback={<DeskLoading title="Preparing performance" message="Loading portfolio performance…" accent="cyan" />}>
