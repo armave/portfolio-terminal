@@ -63,3 +63,18 @@ describe('stable workspace header layout', () => {
     expect(cloudIndicator).toContain("detailText || '\\u00a0'");
   });
 });
+
+
+describe('fixed and scrollable workspace navigation groups', () => {
+  it('keeps ticker tabs scrollable while fixed destinations wrap without being clipped', () => {
+    const tabs = readSource('../components/TickerTab.tsx');
+    const styles = readSource('../../style.css');
+    expect(tabs).toContain('class="workspace-nav-ticker-list"');
+    expect(tabs).toContain('class="workspace-nav-fixed-list"');
+    expect(tabs.indexOf('class="workspace-nav-fixed-list"')).toBeGreaterThan(tabs.indexOf('class="workspace-nav-ticker-list"'));
+    expect(styles).toContain('#tickerTabs > .workspace-nav-fixed-list');
+    expect(styles).toContain('flex-wrap: wrap');
+    expect(styles).toContain('overflow: visible');
+    expect(styles).toContain('overflow-x: auto');
+  });
+});
