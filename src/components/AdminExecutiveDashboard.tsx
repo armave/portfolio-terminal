@@ -16,9 +16,9 @@ function Metric({ title, value, detail, tone = 'text-slate-100' }: {
   title: string; value: string; detail?: string; tone?: string;
 }) {
   return (
-    <article class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/75 p-3">
+    <article class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/75 p-2.5">
       <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label(title)}</p>
-      <p class={`mt-1 break-words text-xl font-bold tabular-nums ${tone}`}>{value}</p>
+      <p class={`mt-1 break-words text-lg font-bold tabular-nums ${tone}`}>{value}</p>
       {detail && <p class="mt-1 text-[10px] leading-4 text-slate-500">{detail}</p>}
     </article>
   );
