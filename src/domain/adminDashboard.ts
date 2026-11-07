@@ -18,6 +18,11 @@ export interface AdminDashboardSummary {
   investedCostBasis: number | null;
   unrealizedPnl: number | null;
   unrealizedPnlPercent: number | null;
+  cashInvestedCostBasis: number | null;
+  cashUnrealizedPnl: number | null;
+  cashUnrealizedPnlPercent: number | null;
+  cashUnpricedHoldings: number;
+  cashMissingCostBasisHoldings: number;
   positionCount: number;
   cashHoldingCount: number;
   pricedHoldings: number;
@@ -95,6 +100,28 @@ export function buildAdminDashboardSummary(
   const unrealizedPnlPercent = unrealizedPnl !== null && investedCostBasis > 0
     ? unrealizedPnl / investedCostBasis * 100
     : null;
+  // Cash-funded holdings have an independent P/L calculation; they are never
+  // folded into the margin-book unrealized P/L above.
+  let cashInvestedCostBasis = 0;
+  let cashMarketValue = 0;
+  let cashUnpricedHoldings = 0;
+  let cashMissingCostBasisHoldings = 0;
+  for (const holding of cashHoldings) {
+    const shares = Number(holding.shares);
+    const marketPrice = Number(holding.currentPrice ?? holding.price);
+    const averagePrice = Number(holding.averagePrice);
+    if (!Number.isFinite(marketPrice) || marketPrice <= 0) cashUnpricedHoldings += 1;
+    else cashMarketValue += shares * marketPrice;
+    if (!Number.isFinite(averagePrice) || averagePrice <= 0) cashMissingCostBasisHoldings += 1;
+    else cashInvestedCostBasis += shares * averagePrice;
+  }
+  const cashPnlAvailable = cashHoldings.length > 0 &&
+    cashUnpricedHoldings === 0 && cashMissingCostBasisHoldings === 0;
+  const cashUnrealizedPnl = cashPnlAvailable ? cashMarketValue - cashInvestedCostBasis : null;
+  const cashUnrealizedPnlPercent = cashUnrealizedPnl !== null && cashInvestedCostBasis > 0
+    ? cashUnrealizedPnl / cashInvestedCostBasis * 100
+    : null;
+
   const debt = valuation.marginDebt;
   const dailyMarginCost = debt * (state.brokerAssumptions.annualBorrowRate / state.brokerAssumptions.dayCountBasis);
   const marginCollateral = getCashCushionTotal(state as PortfolioState);
@@ -121,6 +148,11 @@ export function buildAdminDashboardSummary(
     marginUnpricedPositions,
     unrealizedPnl,
     unrealizedPnlPercent,
+    cashInvestedCostBasis: cashPnlAvailable ? cashInvestedCostBasis : null,
+    cashUnrealizedPnl,
+    cashUnrealizedPnlPercent,
+    cashUnpricedHoldings,
+    cashMissingCostBasisHoldings,
     positionCount: positions.length,
     cashHoldingCount: cashHoldings.length,
     pricedHoldings: valuation.pricedHoldings,
