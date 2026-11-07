@@ -781,7 +781,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   )}
               </div>
 
-              {permissions.isAdmin && activeDeskView === 'COMBINED' && (
+              {permissions.isAdmin && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
                 <Suspense fallback={<DeskLoading title="Preparing executive overview" message="Loading portfolio-wide risk and exposure…" accent="cyan" />}>
                   <AdminExecutiveDashboard />
                 </Suspense>
