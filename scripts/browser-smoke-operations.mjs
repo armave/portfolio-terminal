@@ -691,12 +691,34 @@ try {
     const createCallsBefore = worker.count('POST', '/api/auth/users');
     const directoryReadsBefore = worker.count('GET', '/api/auth/users');
     await visibleSettingsDesk().getByRole('button', { name: 'Add user' }).click();
-    await waitForCondition(
-      () => worker.findCalls('POST', '/api/auth/users').slice(createCallsBefore).some((call) =>
-        call.body.action === 'create' && call.body.name === name && call.responseStatus === 201
-      ),
-      'successful creation request for ' + name
-    );
+    try {
+      await waitForCondition(
+        () => worker.findCalls('POST', '/api/auth/users').slice(createCallsBefore).some((call) =>
+          call.body.action === 'create' && call.body.name === name && call.responseStatus === 201
+        ),
+        'successful creation request for ' + name
+      );
+    } catch {
+      const formState = await visibleSettingsDesk().locator('form.settings-user-form').evaluate((form) => {
+        const controls = Array.from(form.querySelectorAll('input, select')).map((control) => ({
+          ariaLabel: control.getAttribute('aria-label'),
+          value: control.value,
+          valid: control.validity.valid,
+          validationMessage: control.validationMessage
+        }));
+        return {
+          controls,
+          formValid: form.checkValidity(),
+          submitDisabled: form.querySelector('button[type="submit"]')?.disabled ?? null,
+          alerts: Array.from(document.querySelectorAll('#settingsDesk [role="alert"]')).map((item) => item.textContent?.trim())
+        };
+      });
+      const recentCalls = worker.findCalls('POST', '/api/auth/users').slice(createCallsBefore)
+        .map((call) => ({ action: call.body.action, name: call.body.name, status: call.responseStatus }));
+      throw new Error('User creation did not submit as expected: ' + JSON.stringify({
+        requestedName: name, formState, recentCalls
+      }));
+    }
     await waitForCondition(
       () => worker.users.some((user) => user.name === name),
       'mock Worker account record for ' + name
