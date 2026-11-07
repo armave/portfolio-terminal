@@ -345,4 +345,26 @@ describe('out-of-order market observations', () => {
     }).observation!;
     expect(shouldAcceptMarketObservation(current, candidate)).toBe(false);
   });
+  it('resolves effective-dated ticker aliases only when a historical date is supplied', () => {
+    const before = normalizeInstrumentIdentity({
+      symbol: 'FB', exchange: 'NASDAQ', assetType: 'EQUITY', quoteCurrency: 'USD', asOf: '2022-06-08'
+    });
+    const after = normalizeInstrumentIdentity({
+      symbol: 'META', exchange: 'NASDAQ', assetType: 'EQUITY', quoteCurrency: 'USD', asOf: '2022-06-09'
+    });
+    const withoutDate = normalizeInstrumentIdentity({
+      symbol: 'FB', exchange: 'NASDAQ', assetType: 'EQUITY', quoteCurrency: 'USD'
+    });
+
+    expect(before.instrument).toMatchObject({
+      id: 'CUSIP:30303M102', symbol: 'FB', aliases: ['META']
+    });
+    expect(after.instrument).toMatchObject({
+      id: 'CUSIP:30303M102', symbol: 'META', aliases: ['FB']
+    });
+    expect(withoutDate.instrument).toMatchObject({
+      id: 'EQUITY:NASDAQ:FB', symbol: 'FB'
+    });
+  });
+
 });
