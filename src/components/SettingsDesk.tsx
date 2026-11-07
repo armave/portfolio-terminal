@@ -406,16 +406,21 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           type="button"
           aria-expanded={brokerRulesOpen}
           aria-controls="brokerRulesPanel"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setBrokerRulesOpen((current) => !current);
+          onPointerDown={() => setBrokerRulesOpen(true)}
+          onClick={() => setBrokerRulesOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') setBrokerRulesOpen(true);
           }}
           class="w-full cursor-pointer text-center text-xs font-bold text-slate-300 hover:text-cyan-300"
         >
           Broker Rules
         </button>
         {brokerRulesOpen && <div id="brokerRulesPanel" role="region" aria-labelledby="brokerRulesToggle" class="mt-3">
+          <div class="mb-2 flex justify-end">
+            <button type="button" onClick={() => setBrokerRulesOpen(false)} class="text-[10px] text-slate-400 hover:text-cyan-300">
+              Hide broker rules
+            </button>
+          </div>
           <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
