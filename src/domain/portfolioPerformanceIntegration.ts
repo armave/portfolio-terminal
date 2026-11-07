@@ -150,7 +150,9 @@ function mapAttributionItemFlows(
     if (Math.abs(amount) < 1e-10) return;
     const flow: PerformanceExternalCashFlow = {
       timestamp,
-      amount: Math.abs(amount),
+      // Attribution item flows are signed movements. The kernel sums these
+      // directly when reconciling item-level capital movements to external flows.
+      amount,
       type: amount >= 0 ? 'contribution' : 'withdrawal',
       currency,
       quality
