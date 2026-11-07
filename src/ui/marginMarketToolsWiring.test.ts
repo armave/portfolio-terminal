@@ -2,19 +2,23 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+const dashboardSource = readFileSync(new URL('../components/AdminExecutiveDashboard.tsx', import.meta.url), 'utf8');
+const marketToolsSource = readFileSync(new URL('../components/MarginMarketTools.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const quickActionsSource = readFileSync(new URL('../components/ConsoleQuickActions.tsx', import.meta.url), 'utf8');
 
 describe('Margin Market Tools placement', () => {
   it('provides news review and external research in the fourth metrics column', () => {
-    expect(summarySource).toContain('class="portfolio-micro-column portfolio-micro-actions"');
-    expect(summarySource).toContain('<BoardExternalLinks />');
+    expect(marketToolsSource).toContain('class="portfolio-micro-column portfolio-micro-actions"');
+    expect(marketToolsSource).toContain('<BoardExternalLinks />');
+    expect(summarySource).toContain("import { MarginMarketTools } from './MarginMarketTools'");
     expect(summarySource).toContain('<MarginMarketTools isAdmin={isAdmin} />');
     expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />');
-    expect(summarySource).toContain("emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})");
-    expect(summarySource).toContain("emitUiEvent('terminal:market-depth-request', { ticker })");
-    expect(summarySource).toContain('ticker && isAdmin && <button');
-    expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
+    expect(dashboardSource).toContain('<MarginMarketTools ticker={positions.length === 1 ? positions[0].ticker : undefined} isAdmin={true} />');
+    expect(marketToolsSource).toContain("emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})");
+    expect(marketToolsSource).toContain("emitUiEvent('terminal:market-depth-request', { ticker })");
+    expect(marketToolsSource).toContain('ticker && isAdmin && <button');
+    expect(marketToolsSource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
   });
 
   it('keeps the analyst target beside the ticker title in one wrapping header row', () => {
