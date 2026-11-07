@@ -62,6 +62,20 @@ describe('reconcileBrokerActivity', () => {
     expect(app).toEqual(beforeApp);
   });
 
+  it('does not flag intraday broker fills against date-only app trade records on the same day', () => {
+    const dateOnly = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: Date.parse('2026-11-06T00:00:00.000Z'),
+      ticker: 'AAPL', quantity: 2, unitPrice: 100, currency: 'USD', fees: 1
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-date-only', recordedAt: at });
+    const report = reconcile(
+      [execution({ executedAt: '2026-11-06T15:30:00.000Z' })],
+      [dateOnly]
+    );
+    expect(report.findings).toEqual([]);
+    expect(report.matchedExecutionCount).toBe(1);
+  });
+
   it('classifies timestamp differences beyond the normal tolerance as timing findings', () => {
     const report = reconcile(
       [execution({ executedAt: new Date(at + 60 * 60_000).toISOString() })],

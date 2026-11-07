@@ -249,7 +249,16 @@ export function reconcileBrokerActivity(
         const timeDelta = broker.at === null ? null : Math.abs(broker.at - eventAt);
         const quantityMatch = quantity !== null && Math.abs(quantity - broker.quantity) <= quantityTolerance;
         const priceMatch = broker.price === null || price === null || Math.abs(price - broker.price) <= priceTolerance;
-        const exactTime = timeDelta === null || timeDelta <= timeTolerance;
+        // App trade dates are often recorded at UTC midnight while broker fills
+        // carry intraday timestamps. A same-calendar-day date-only event is not
+        // a timing discrepancy; explicit app timestamps still use the tolerance.
+        const appDateOnly = new Date(eventAt).getUTCHours() === 0 &&
+          new Date(eventAt).getUTCMinutes() === 0 &&
+          new Date(eventAt).getUTCSeconds() === 0 &&
+          new Date(eventAt).getUTCMilliseconds() === 0;
+        const sameUtcDay = broker.at !== null &&
+          new Date(broker.at).toISOString().slice(0, 10) === new Date(eventAt).toISOString().slice(0, 10);
+        const exactTime = timeDelta === null || timeDelta <= timeTolerance || (appDateOnly && sameUtcDay);
         const acceptableTime = timeDelta === null || timeDelta <= maxTimingDifference;
         const score = (quantityMatch ? 100 : 0) + (priceMatch ? 30 : 0) + (exactTime ? 20 : 0) +
           (acceptableTime ? 10 : 0) - (timeDelta ?? 0) / Math.max(maxTimingDifference, 1);
