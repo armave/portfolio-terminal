@@ -938,4 +938,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'No corresponding app-authored cashflow event was found in the available journal.': 'В доступном журнале не найдено соответствующее событие денежного потока приложения.',
   'No corresponding broker cashflow was found in the available provider history.': 'В доступной истории провайдера не найден соответствующий денежный поток брокера.'
 
+  'Loading reconciliation…': 'Загрузка сверки…',
+  'Broker time': 'Время брокера',
+  'App time': 'Время приложения',
 };
