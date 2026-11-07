@@ -573,16 +573,16 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <MarginMarketTools isAdmin={isAdmin} />
         </section>
 
-        <MarginRiskGaugeCard
-        equityPct={equityPct}
-        risk={risk}
-        equityText={equityText}
-        collateralText={formatUSD(cushionTotal)}
-        rules={rules}
-        valuationStatus={valuationStatus}
-        accountBalanceAvailable={valuation.accountBalanceAvailable}
-        unpricedHoldings={valuation.unpricedHoldings}
-      />
+        {!isAdmin && <MarginRiskGaugeCard
+          equityPct={equityPct}
+          risk={risk}
+          equityText={equityText}
+          collateralText={formatUSD(cushionTotal)}
+          rules={rules}
+          valuationStatus={valuationStatus}
+          accountBalanceAvailable={valuation.accountBalanceAvailable}
+          unpricedHoldings={valuation.unpricedHoldings}
+        />}
       </>
     );
   }
@@ -806,7 +806,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
       </section>
 
-      <MarginRiskGaugeCard
+      {!isAdmin && <MarginRiskGaugeCard
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
@@ -815,7 +815,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         valuationStatus={positionValuationStatus}
         accountBalanceAvailable={accountBalanceAvailable}
         unpricedHoldings={positionUnpricedHoldingCount}
-      />
+      />}
     </>
   );
 }
