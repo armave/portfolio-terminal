@@ -1720,7 +1720,7 @@ describe('closed-history cloud write serialization', () => {
     expect(firstHeaders['Idempotency-Key']).toMatch(/^cloud:/);
     expect(retryHeaders['Idempotency-Key']).toBe(firstHeaders['Idempotency-Key']);
     expect(retryHeaders['If-Match']).toBe('"0"');
-    expect(retry[1]?.body).toBe(first[1]?.body);
+    expect(retry.body).toBe(first.body);
   });
 
   it('drops a queued history write when its account session becomes stale', async () => {
