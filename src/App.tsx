@@ -774,7 +774,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               >
                 {permissions.canViewMarginDesk &&
                   !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
-                    <Suspense fallback={<DeskLoading title="Preparing portfolio metrics" message="Loading portfolio metrics…" accent="cyan" />}>
+                    <Suspense fallback={<DeskLoading title={translateText('Preparing portfolio metrics', getAppLanguage())} message={translateText('Loading portfolio metrics…', getAppLanguage())} accent="cyan" />}>
                       <MemoSummaryMetricsGrid isAdmin={permissions.isAdmin} />
                     </Suspense>
                   )}
