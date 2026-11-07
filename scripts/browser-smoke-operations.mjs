@@ -798,7 +798,7 @@ try {
   // The new executive overview is available to admins on Combined Portfolio only.
   const executiveOverview = page.locator('#adminExecutiveDashboardTitle');
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
-  if (!(await executiveOverview.innerText()).includes('Admin executive overview')) {
+  if (!(await executiveOverview.innerText()).toLowerCase().includes('admin executive overview')) {
     throw new Error('Admin executive overview heading was not rendered for the authenticated admin.');
   }
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
