@@ -108,7 +108,7 @@ describe('appendDailyPerformanceValuation', () => {
     const nextDay = snapshot(BASE + DAY, 320);
     const upgradedSameDay = snapshot(BASE + 2 * 60 * 60 * 1000, 305, true);
     const withFirst = appendDailyPerformanceValuation([], first);
-    expect(appendDailyPerformanceValuation(withFirst, snapshot(BASE + 30 * 60 * 1000, 310))).toEqual(withFirst);
+    expect(appendDailyPerformanceValuation(withFirst, snapshot(BASE + 30 * 60 * 1000, 310, false, undefined, 'provisional'))).toEqual(withFirst);
     const withUpgrade = appendDailyPerformanceValuation(withFirst, upgradedSameDay);
     expect(withUpgrade).toHaveLength(1);
     expect(withUpgrade[0]).toMatchObject({ cashflowHistoryComplete: true, equity: 305 });

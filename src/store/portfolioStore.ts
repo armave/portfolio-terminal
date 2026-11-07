@@ -8,6 +8,7 @@ import {
 } from './portfolioSubscriptions';
 import {
   PortfolioState,
+  PortfolioPerformanceValuationSnapshot,
   PositionRecord,
   Holding,
   TrancheItem,
@@ -40,7 +41,6 @@ import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
-import { isPortfolioPerformanceValuationSnapshot } from '../domain/portfolioPerformanceCapture';
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
@@ -56,6 +56,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * A malformed collection must not be normalized to an empty collection and
  * accidentally replace recoverable portfolio data.
  */
+function isPerformanceValuationSnapshot(value: unknown): value is PortfolioPerformanceValuationSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return Number.isSafeInteger(row.timestamp) && Number(row.timestamp) > 0 &&
+    typeof row.equity === 'number' && Number.isFinite(row.equity) &&
+    typeof row.currency === 'string' && /^[A-Z]{3}$/.test(row.currency) &&
+    (row.quality === 'current' || row.quality === 'provisional') &&
+    typeof row.cashflowHistoryComplete === 'boolean' &&
+    Array.isArray(row.items) && row.items.length > 0 &&
+    row.items.every(item => item && typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).key === 'string' &&
+      typeof (item as Record<string, unknown>).value === 'number' &&
+      Number.isFinite((item as Record<string, unknown>).value));
+}
+
 function hasValidPortfolioImportShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
 
@@ -113,7 +128,7 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
   if (Object.prototype.hasOwnProperty.call(value, 'performanceValuations') &&
       value.performanceValuations !== undefined &&
       (!Array.isArray(value.performanceValuations) ||
-        !value.performanceValuations.every(isPortfolioPerformanceValuationSnapshot))) {
+        !value.performanceValuations.every(isPerformanceValuationSnapshot))) {
     return false;
   }
 
@@ -387,7 +402,7 @@ export class PortfolioStore {
           : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
         : freezePortfolioTransactionEventList([]),
       performanceValuations: Array.isArray(raw.performanceValuations)
-        ? raw.performanceValuations.filter(isPortfolioPerformanceValuationSnapshot).slice(-1095)
+        ? raw.performanceValuations.filter(isPerformanceValuationSnapshot).slice(-1095)
         : [],
       activeView,
       positions,

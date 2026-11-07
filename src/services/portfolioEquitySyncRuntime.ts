@@ -10,7 +10,7 @@ export interface PortfolioEquitySyncRuntimeDependencies {
   setDerivedEquity: (equity: number, updatedAt: number, persist: boolean) => void;
   onDurableEquityChanged: () => void;
   /** Capture daily performance evidence independently of equity projection changes. */
-  recordPerformanceSnapshot?: (state: PortfolioState, timestamp: number) => boolean;
+  recordPerformanceSnapshot?: (state: PortfolioState, timestamp: number) => boolean | Promise<boolean>;
   onPerformanceSnapshotChanged?: () => void;
   now?: () => number;
 }
@@ -33,7 +33,14 @@ export function createPortfolioEquitySyncRuntime(
     if (source === 'derived') return;
 
     const timestamp = now();
-    if (dependencies.recordPerformanceSnapshot?.(state, timestamp)) {
+    const recordedSnapshot = dependencies.recordPerformanceSnapshot?.(state, timestamp);
+    if (recordedSnapshot && typeof (recordedSnapshot as Promise<boolean>).then === 'function') {
+      void Promise.resolve(recordedSnapshot)
+        .then((changed) => {
+          if (changed) dependencies.onPerformanceSnapshotChanged?.();
+        })
+        .catch(() => undefined);
+    } else if (recordedSnapshot) {
       dependencies.onPerformanceSnapshotChanged?.();
     }
 

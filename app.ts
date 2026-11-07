@@ -101,7 +101,6 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
-import { appendDailyPerformanceValuation, capturePortfolioPerformanceValuation } from './src/domain/portfolioPerformanceCapture';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
@@ -543,10 +542,14 @@ createPortfolioEquitySyncRuntime({
     }, persist);
   },
   onDurableEquityChanged: () => { void pushStateToCloud(); },
-  recordPerformanceSnapshot: (nextStoreState, timestamp) => {
+  recordPerformanceSnapshot: async (nextStoreState, timestamp) => {
     // Performance history is administrator-owned until PT-05 tenant isolation is implemented.
     if (currentAccountRole !== 'admin' || !currentAccountId) return false;
     const cashflowHistoryComplete = hasFreedomCashflowHistoryBaseline(currentAccountId);
+    const {
+      appendDailyPerformanceValuation,
+      capturePortfolioPerformanceValuation
+    } = await import('./src/domain/portfolioPerformanceCapture');
     const snapshot = capturePortfolioPerformanceValuation(nextStoreState, timestamp, cashflowHistoryComplete);
     if (!snapshot) return false;
 
