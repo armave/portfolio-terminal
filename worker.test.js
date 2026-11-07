@@ -4652,6 +4652,53 @@ describe('Finnhub exchange calendar route', () => {
   });
 });
 
+  it('refreshes current market status faster than the holiday calendar', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-07T12:00:00.000Z'));
+    try {
+      const initialStatusTime = Math.floor(Date.now() / 1000);
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          exchange: 'HK', timezone: 'Asia/Hong_Kong',
+          data: [{ eventName: 'Christmas Day', atDate: '2026-12-25', tradingHour: '' }]
+        }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          exchange: 'HK', timezone: 'Asia/Hong_Kong', isOpen: false,
+          session: 'closed', holiday: null, t: initialStatusTime
+        }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const env = { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'private-key' };
+      const request = () => worker.fetch(new Request(
+        'https://worker.test/?action=market-calendar&exchange=HKEX',
+        { headers: { 'X-App-Auth': 'test-secret' } }
+      ), env);
+
+      const first = await request();
+      expect(first.status).toBe(200);
+      await first.json();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      vi.setSystemTime(new Date(Date.now() + 16_000));
+      const refreshedStatusTime = Math.floor(Date.now() / 1000);
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'HK', timezone: 'Asia/Hong_Kong', isOpen: true,
+        session: 'regular', holiday: null, t: refreshedStatusTime
+      }), { status: 200 }));
+
+      const second = await request();
+      expect(second.status).toBe(200);
+      await expect(second.json()).resolves.toMatchObject({
+        marketStatus: { isOpen: true, timestamp: refreshedStatusTime * 1000 }
+      });
+      // The 6-hour holiday schedule is reused; the 15-second live session
+      // snapshot has expired and is fetched again.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
 describe('Finnhub market-data routes',()=>{
  afterEach(()=>vi.unstubAllGlobals());
  it('returns sanitized historical OHLCV candles',async()=>{
