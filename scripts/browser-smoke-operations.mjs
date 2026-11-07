@@ -630,11 +630,15 @@ try {
   await page.getByRole('button', { name: 'Refresh Stocktwits messages' }).click();
   await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits'), 'Stocktwits opt-in request');
 
+  const visibleSettingsDesk = () => page.locator('#settingsDesk').filter({ visible: true }).first();
   await page.locator('#settingsBtn').click();
-  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
+  if (await page.locator('#settingsDesk').filter({ visible: true }).count() !== 1) {
+    throw new Error('Expected exactly one visible Settings desk after navigation.');
+  }
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    const layout = await page.locator('#settingsDesk').evaluate((element) => ({
+    const layout = await visibleSettingsDesk().evaluate((element) => ({
       viewportWidth: document.documentElement.clientWidth,
       documentWidth: document.documentElement.scrollWidth,
       left: element.getBoundingClientRect().left,
@@ -649,7 +653,7 @@ try {
   // Create two users, then exercise editing and deletion through the actual Settings form.
   const waitForUserSaveReady = async (name) => {
     await page.waitForFunction((userName) => {
-      const row = Array.from(document.querySelectorAll('#settingsDesk tbody tr')).find((candidate) =>
+      const row = Array.from(Array.from(Array.from(document.querySelectorAll('#settingsDesk')).find((desk) => desk.getClientRects().length > 0)?.querySelectorAll('tbody tr') || [])).find((candidate) =>
         candidate.querySelector('input')?.getAttribute('aria-label') === `Name for ${userName}`
       );
       const saveButton = row?.querySelector('button[type="button"]');
@@ -657,22 +661,22 @@ try {
     }, name, { timeout: 10_000 });
   };
   const createUser = async (name, password) => {
-    await page.getByLabel('User name').fill(name);
-    await page.getByLabel('Password (6+ characters)').fill(password);
-    if (await page.getByLabel('New user role').inputValue() !== 'guest') {
+    await visibleSettingsDesk().getByLabel('User name').fill(name);
+    await visibleSettingsDesk().getByLabel('Password (6+ characters)').fill(password);
+    if (await visibleSettingsDesk().getByLabel('New user role').inputValue() !== 'guest') {
       throw new Error('New accounts must default to the guest role.');
     }
-    await page.getByLabel('New user language').selectOption('en');
-    await page.getByRole('button', { name: 'Add user' }).click();
-    await page.locator('#settingsDesk tbody tr').filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) })
+    await visibleSettingsDesk().getByLabel('New user language').selectOption('en');
+    await visibleSettingsDesk().getByRole('button', { name: 'Add user' }).click();
+    await visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`).locator('xpath=ancestor::tr[1]')
       .waitFor({ state: 'visible', timeout: 10_000 });
     await waitForUserSaveReady(name);
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
   await createUser('Browser Guest Keep', 'keep-guest-password');
 
-  const rowForUser = (name) => page.locator('#settingsDesk tbody tr')
-    .filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) });
+  const rowForUser = (name) => visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`)
+    .locator('xpath=ancestor::tr[1]');
   const deleteRow = rowForUser('Browser Guest Delete');
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await deleteRow.getByRole('button', { name: 'Delete' }).click();
@@ -719,25 +723,25 @@ try {
   if (finalAdminCall.body.id !== 'admin-operations' || finalAdminCall.responseStatus !== 409) {
     throw new Error('Unexpected final-admin update request: ' + JSON.stringify({ body: finalAdminCall.body, responseStatus: finalAdminCall.responseStatus, users: worker.users.map(({ id, name, role }) => ({ id, name, role })) }));
   }
-  const adminError = page.locator('#settingsDesk [role="alert"]').filter({ hasText: 'At least one admin account must remain.' });
+  const adminError = visibleSettingsDesk().locator('[role="alert"]').filter({ hasText: 'At least one admin account must remain.' });
   await adminError.waitFor({ state: 'visible', timeout: 10_000 });
   await adminRow.getByLabel('Role for Operations Admin').selectOption('admin');
 
   // Role-specific cadence is persisted in its own browser preference.
-  await page.locator('#quoteRefreshInterval').selectOption('30000');
+  await visibleSettingsDesk().locator('#quoteRefreshInterval').selectOption('30000');
   await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '30000', null, { timeout: 10_000 });
 
   // The stop-out threshold cannot exceed the maintenance threshold.
-  const brokerRules = page.locator('details.settings-broker-rules');
+  const brokerRules = visibleSettingsDesk().locator('details.settings-broker-rules');
   await brokerRules.locator('summary').click();
-  await page.locator('#maintenanceMarginInput').fill('5');
-  await page.locator('#stopOutRatioInput').fill('10');
-  await page.locator('#brokerRulesForm button[type="submit"]').click();
+  await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('5');
+  await visibleSettingsDesk().locator('#stopOutRatioInput').fill('10');
+  await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
   const invalidStopOut = await page.locator('#stopOutRatioInput').evaluate((input) => input.validity.customError);
   if (!invalidStopOut) throw new Error('Settings accepted a stop-out threshold above maintenance equity.');
   await page.locator('#maintenanceMarginInput').fill('12.5');
   await page.locator('#stopOutRatioInput').fill('3');
-  await page.locator('#annualMarginRateInput').fill('18');
+  await visibleSettingsDesk().locator('#annualMarginRateInput').fill('18');
   await page.locator('#brokerRulesForm button[type="submit"]').click();
   await page.waitForFunction(() => {
     const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
@@ -747,7 +751,7 @@ try {
   }, null, { timeout: 10_000 });
 
   // Per-account language is server-backed and is restored after a browser reload.
-  await page.getByLabel('Account language').selectOption('ru');
+  await visibleSettingsDesk().getByLabel('Account language').selectOption('ru');
   await waitForCondition(
     () => worker.findCalls('POST', '/api/auth/me').some((call) => call.body.language === 'ru' && call.responseStatus === 200),
     'account language preference save'
@@ -755,9 +759,9 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForAuthOverlay(page, false);
   await page.locator('#settingsBtn').click();
-  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(
-    () => document.querySelector('#settingsDesk select')?.value === 'ru',
+    () => document.querySelector('#settingsDesk:not([hidden]) select')?.value === 'ru',
     null,
     { timeout: 20_000 }
   );
@@ -772,14 +776,14 @@ try {
   await waitForAuthOverlay(page, false);
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
-  if (await page.locator('#settingsDesk section.settings-user-panel').count() ||
-      await page.locator('#settingsDesk details.settings-broker-rules').count()) {
+  if (await visibleSettingsDesk().locator('section.settings-user-panel').count() ||
+      await visibleSettingsDesk().locator('details.settings-broker-rules').count()) {
     throw new Error('Guest Settings exposed administrator-only account or broker-rule controls.');
   }
   if (await page.getByRole('button', { name: /Экспорт/ }).count()) {
     throw new Error('Guest Settings exposed the administrator backup action.');
   }
-  if (!(await page.getByRole('button', { name: 'Синхронизировать портфель' }).count())) {
+  if (!(await visibleSettingsDesk().getByRole('button', { name: 'Синхронизировать портфель' }).count())) {
     throw new Error('Guest Settings lost the manual portfolio sync control.');
   }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
@@ -788,7 +792,7 @@ try {
   if (worker.count('GET', '/api/auth/users') !== userDirectoryReadsBeforeGuest) {
     throw new Error('Guest sign-in requested the administrator user directory.');
   }
-  if (await page.locator('#quoteRefreshInterval').inputValue() !== '15000') {
+  if (await visibleSettingsDesk().locator('#quoteRefreshInterval').inputValue() !== '15000') {
     throw new Error('Guest refresh cadence inherited the administrator 30-second preference.');
   }
   if (worker.count('GET', '/api/state') !== sharedWorkspaceReadsBeforeGuest) {
