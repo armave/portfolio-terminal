@@ -773,7 +773,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 aria-label="Portfolio summary metrics"
                 class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
               >
-                {permissions.canViewMarginDesk &&
+                {permissions.canViewMarginDesk && !permissions.isAdmin &&
                   !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
                     <Suspense fallback={<DeskLoading title="Preparing portfolio metrics" message="Loading portfolio metrics…" accent="cyan" />}>
                       <MemoSummaryMetricsGrid isAdmin={permissions.isAdmin} />
