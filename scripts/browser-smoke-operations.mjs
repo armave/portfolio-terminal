@@ -1064,6 +1064,14 @@ try {
     null,
     { timeout: 20_000 }
   );
+  // Continue the admin journey in English; the created guest keeps its Russian preference.
+  const adminLanguageSaveCount = worker.findCalls('POST', '/api/auth/me').length;
+  await visibleSettingsDesk().getByLabel('Account language').selectOption('en');
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/auth/me').slice(adminLanguageSaveCount)
+      .some((call) => call.body.language === 'en' && call.responseStatus === 200),
+    'restore administrator language for remaining browser assertions'
+  );
 
   // A guest sees the account preference and manual sync controls, never admin-only user,
   // backup or broker-rule management. The shared owner workspace is not read.
