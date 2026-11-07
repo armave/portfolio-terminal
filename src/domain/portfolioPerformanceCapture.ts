@@ -1,7 +1,7 @@
 import { calculatePortfolioValuation, getPortfolioValuationReliability } from './portfolioValuation';
 import type { PortfolioPerformanceValuationSnapshot, PortfolioState } from '../types/portfolio';
 
-export const MAX_PORTFOLIO_PERFORMANCE_SNAPSHOTS = 1095;
+const MAX_PORTFOLIO_PERFORMANCE_SNAPSHOTS = 1095;
 const MAX_ATTRIBUTION_POSITION_ITEMS = 40;
 const CASH_ITEM_KEY = 'cash';
 const MARGIN_DEBT_ITEM_KEY = 'margin-debt';
