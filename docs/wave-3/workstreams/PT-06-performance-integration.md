@@ -41,3 +41,16 @@ Turn the pure PT-06 calculation kernel into actual portfolio performance intelli
 ## Required tests and QA
 
 Independent known-answer TWR/MWR fixtures from actual event shapes; irregular deposits/withdrawals; staged buys/sells; dividends/fees/interest; partial and reordered history; negative/zero equity; duplicate events; missing observations; currency mismatch; UTC/Armenia boundary dates; attribution tolerance. Vitest for adapters and UI/i18n parity. Browser validation in admin and read-only guest-compatible states, but do not claim independent guest tenancy before PT-05 cutover.
+
+
+## Wave 3 implementation — performance integration
+
+- [x] Add a bounded persisted daily valuation history (up to 1,095 UTC-day observations) with account currency, provider, observation/receipt time, quote quality and item buckets that reconcile to equity.
+- [x] Capture observations through the existing portfolio-equity lifecycle for administrator sessions only; guest projections are not used for owner performance.
+- [x] Require the signed-in account's completed Freedom cashflow-history baseline before enabling cash-flow-adjusted results. Earlier provisional valuation points are excluded from the calculation window.
+- [x] Adapt PT-02 cash deposit/withdrawal journal events to external flows. Unknown adjustments, corrections and unsupported financial changes fail closed.
+- [x] Produce linked Modified Dietz TWR, ACT/365 XIRR MWR, monthly series, explanatory income/cost totals and latest-period attribution using the existing pure calculation kernel.
+- [x] Reject multi-currency histories until PT-07 historical FX provenance/conversion is implemented. Benchmark comparison remains unavailable until validated total-return history is provided.
+- [x] Add the performance panel to the administrator Combined Portfolio desk with data-quality, as-of, methodology and limitation disclosures.
+- [x] Add English/Russian UI copy and Vitest coverage for capture, bounds, flow classification, localization and panel placement.
+- [ ] Authenticated live Freedom history/quote verification and broader currency/benchmark integration remain release gates/follow-up work.

@@ -655,4 +655,34 @@ describe('app localization', () => {
     expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
   });
 
+  it('localizes portfolio performance metrics and methodology disclosures', () => {
+    const copy = [
+      'Portfolio performance',
+      'Cash-flow-adjusted returns from verified daily valuation history.',
+      'Current',
+      'Provisional',
+      'History collecting',
+      'Time-weighted return',
+      'Money-weighted return',
+      'Investment profit',
+      'Linked Modified Dietz',
+      'Annualized XIRR · ACT/365',
+      'Since first verified valuation',
+      'Performance is not available yet',
+      'More complete source data is required.',
+      'Valuation observations',
+      'Monthly performance',
+      'Period return',
+      'Cumulative return',
+      'Income and costs',
+      'Net income / costs',
+      'Other holdings',
+      'Margin debt',
+      'TWR uses linked Modified Dietz, a flow-weighted approximation. MWR uses XIRR with ACT/365. Historical FX and benchmark comparison are not enabled. See Performance methodology in Settings.'
+    ];
+    for (const value of copy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
+  });
+
 });
