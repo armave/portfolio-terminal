@@ -88,9 +88,9 @@ describe('broker rules disclosure state', () => {
     expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
     expect(source).toContain('open={brokerRulesOpen}');
     expect(source).toContain('onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}');
-    expect(source).toContain("form.querySelector<HTMLInputElement>('#stopOutRatioInput')");
-    expect(source).toContain("form.querySelector<HTMLInputElement>('#maintenanceMarginInput')");
-    expect(source).toContain('stopOutInput?.setCustomValidity("Stop-out equity must not exceed maintenance equity.")');
+    expect(source).toContain("stopOutInput?.form?.querySelector<HTMLInputElement>('#maintenanceMarginInput')");
+    expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
+    expect(source).toContain('stopOutInput.setCustomValidity(');
     expect(source).toContain('value={ruleValues.annualRate}');
   });
 });
@@ -100,6 +100,7 @@ describe('broker rules stop-out validation wiring', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
     expect(source).toContain('updateStopOutValidity();');
-    expect(source).toContain('updateStopOutValidity(); if (!form.reportValidity()) return;');
+    expect(source).toContain('updateStopOutValidity();');
+    expect(source).toContain('if (!form.reportValidity()) return;');
   });
 });
