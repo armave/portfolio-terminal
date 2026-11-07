@@ -54,7 +54,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Validate the runtime response before a typed value reaches the Settings UI. */
-export function isTenantDirectoryResponse(value: unknown): value is TenantDirectoryResponse {
+function isTenantDirectoryResponse(value: unknown): value is TenantDirectoryResponse {
   if (!isRecord(value) || value.version !== 1 ||
       !Number.isSafeInteger(value.revision) || (value.revision as number) < 0 ||
       value.mode !== 'directory-metadata-only' || value.financialDataEnabled !== false ||
