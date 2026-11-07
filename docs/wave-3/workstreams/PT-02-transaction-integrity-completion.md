@@ -63,6 +63,21 @@ The expanded regression fixtures assert broker cashflow classification for divid
 
 **Explicit limits:** broker corporate-action rows remain external evidence only. This implementation does not apply split ratios, merger consideration, spin-off cost-basis allocations, tax treatment or cash-in-lieu settlement to canonical holdings. Closed-trade removal is a history correction, not a reversal of the underlying position or cash transaction. No generic financial reversal command is claimed until its lot, cash, debt, fee and realized-P&L effects are specified and independently tested. Imported cashflows with unsupported or ambiguous descriptions remain generic `cash.adjustment` evidence rather than guessed classifications.
 
+## Proposed reversible migration sequence — design only, no cutover approval
+
+The current snapshot remains authoritative. This plan describes the minimum gates for a future canonical-ledger decision; none of these stages automatically changes read ownership.
+
+1. **Freeze the current snapshot contract.** Keep `PortfolioState.positions`, `cashCushion`, `balance` and `closedTrades` as the authoritative snapshot fields. Keep the existing event `schemaVersion` as the per-event format version. A future snapshot-envelope version must be introduced separately and must not be inferred from an event's version.
+2. **Capture a recoverable baseline.** Before any migration, create and verify a backup that contains both the full canonical snapshot and the append-only `transactionEvents` array. Record the snapshot version, journal event version range, counts and canonical parity result. Preserve an untouched pre-migration backup.
+3. **Complete write coverage before replay can own anything.** Each supported financial command must append its state delta and event in one persistence boundary, with stable actor/source, effective/recorded timestamps and idempotency semantics. Broker source facts remain evidence-only unless a separately approved reconciliation contract explicitly posts them. Unknown/unsupported corporate actions and unexplained direct edits block migration readiness; they must not be assigned guessed trade types.
+4. **Run shadow replay and parity.** Rebuild quantities, cash and debt into a separate comparison object while the canonical snapshot remains live. Compare position quantities, cash-holding quantities, free cash and margin debt with documented tolerances. Investigate every discrepancy and verify backup export/import, encrypted cloud pull, reset markers and reload before proceeding. Shadow replay must not publish or persist replacement canonical state.
+5. **Introduce a reversible, versioned read gate.** Only after complete event coverage and signed acceptance evidence may a separately reviewed release add a versioned read-mode flag. Default and rollback mode remain snapshot-authoritative. Any ledger-derived projection is read-only during the canary and must be compared against the snapshot on every supported financial mutation.
+6. **Require an explicit cutover decision.** A later PR must include migration tooling, schema-version compatibility rules, legacy-client behavior, cross-device concurrency tests, restore rehearsal, performance evidence and owner approval. It must not be bundled into this integrity PR or silently activated by a successful deploy.
+
+**Rollback rules:** switch the read gate back to snapshot-authoritative mode; keep the append-only journal and reconciliation evidence intact; restore the pre-migration snapshot only through the validated backup boundary; never truncate, rewrite or discard events to make replay match. If an event schema is unknown to the running client, reject/restrict the incompatible import or preserve the source backup rather than silently dropping unknown history. Re-run parity after rollback and retain both pre- and post-migration artifacts for diagnosis.
+
+**Status:** proposed operating plan only. PT-02 remains in the additive phase, and this document does not authorize a canonical-ledger cutover.
+
 ## Downstream gates
 
 - PT-04 may derive matching and discrepancy evidence from existing PT-02 events, but any correction must wait for accepted PT-02 correction/audit semantics.
