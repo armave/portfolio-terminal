@@ -16,7 +16,7 @@ import {
   calculatePortfolioValuation,
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
-import { calculateMarginRiskMetrics } from '../domain/marginRisk';
+import { calculateMarginRiskMetrics, getMarginRiskLevel } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
@@ -161,22 +161,12 @@ function computeMarginRiskDisplay(
   const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
   const equityRatio = metrics.equityRatio * 100;
   const maintenanceRatio = rules.maintenanceEquityRatio * 100;
-  const stopOutRatio = rules.stopOutRatio * 100;
-
-  let riskLevel = 'Healthy';
-  let riskClass = 'text-emerald-400';
-
-  if (equityRatio <= stopOutRatio) {
-    riskLevel = 'Stop-out level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio) {
-    riskLevel = 'Margin-call level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio + 5) {
-    riskLevel = 'Elevated';
-    riskClass = 'text-amber-400';
-  }
-
+  const riskLevel = getMarginRiskLevel(metrics.equityRatio, rules);
+  const riskClass = riskLevel === 'Healthy'
+    ? 'text-emerald-400'
+    : riskLevel === 'Elevated'
+      ? 'text-amber-400'
+      : 'text-rose-400';
   const summaryText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
     } (${maintenanceRatio.toFixed(1)}% maintenance)`;
 
