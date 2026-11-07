@@ -46,3 +46,20 @@ describe('navigation performance wiring', () => {
     expect(runtime).not.toContain('portfolioStore.setState({ activeView: normalizedView });');
   });
 });
+
+
+describe('stable workspace header layout', () => {
+  it('reserves a fixed KV status slot beside the navigation without flex reflow', () => {
+    const app = readSource('../App.tsx');
+    const styles = readSource('../../style.css');
+    const cloudIndicator = readSource('../components/CloudSyncIndicator.tsx');
+    expect(app).toContain('class="workspace-header-navigation"');
+    expect(app).toContain('class="workspace-header-status"');
+    expect(styles).toContain('.workspace-header-navigation');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr) auto');
+    expect(styles).toContain('width: 12.5rem');
+    expect(styles).toContain('flex-wrap: nowrap');
+    expect(cloudIndicator).toContain('cloud-sync-indicator__detail');
+    expect(cloudIndicator).toContain("detailText || '\\u00a0'");
+  });
+});
