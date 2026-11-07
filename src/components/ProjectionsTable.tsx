@@ -9,7 +9,7 @@ import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 
 const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
@@ -30,7 +30,7 @@ function ProjectionsTableView() {
     return (
       <tr>
         <td colSpan={5} class="py-4 text-center text-slate-500 italic">
-          No active position to project.
+          {translateText('No active position to project.', getAppLanguage())}
         </td>
       </tr>
     );
@@ -66,11 +66,11 @@ function ProjectionsTableView() {
           return (
             <tr key={`entry-${daysFromToday}-${idx}`} class="projection-page-row border-b border-slate-800/50 text-slate-500">
               <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-left projection-date-cell">
-                <span class="text-[10px] font-medium text-slate-400">Entry</span>
+                <span class="text-[10px] font-medium text-slate-400">{translateText('Entry', getAppLanguage())}</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
               <td colSpan={4} class="py-1 px-2 text-[10px] italic text-center">
-                Position opened · projection values start today
+                {translateText('Position opened · projection values start today', getAppLanguage())}
               </td>
             </tr>
           );
@@ -97,14 +97,14 @@ function ProjectionsTableView() {
 
         if (kind === 'today') {
           badgeClass = 'text-xs text-sky-400 font-mono';
-          badgeText = 'TODAY';
+          badgeText = translateText('TODAY', getAppLanguage());
         } else if (kind === 'next-trading-day' || kind === 'week-end') {
           badgeClass = 'text-xs text-slate-400 font-mono';
           const defaultTag = kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
           badgeText = (item.label || defaultTag).replace(/^\(|\)$/g, '');
         } else if (kind === 'breakeven') {
           badgeClass = 'text-xs text-amber-300 font-mono';
-          badgeText = 'BREAKEVEN';
+          badgeText = translateText('BREAKEVEN', getAppLanguage());
         }
 
         return (
@@ -127,29 +127,29 @@ function ProjectionsTableView() {
       {pageCount > 1 && (
         <tr class="border-t border-slate-800">
           <td colSpan={5} class="px-2 py-3">
-            <div class="projection-pagination flex items-center justify-between gap-3 text-xs text-slate-400" aria-label="Projection table pagination" aria-live="polite">
+            <div class="projection-pagination flex items-center justify-between gap-3 text-xs text-slate-400" aria-label={translateText('Projection table pagination', getAppLanguage())} aria-live="polite">
               <span>
-                Rows {currentPage * ROWS_PER_PAGE + 1}–{Math.min((currentPage + 1) * ROWS_PER_PAGE, projectionItems.length)} of {projectionItems.length}
+                {translateText('Rows {start}–{end} of {total}', getAppLanguage()).replace('{start}', String(currentPage * ROWS_PER_PAGE + 1)).replace('{end}', String(Math.min((currentPage + 1) * ROWS_PER_PAGE, projectionItems.length))).replace('{total}', String(projectionItems.length))}
               </span>
               <div class="projection-pagination-controls flex items-center gap-2">
                 <button
                   type="button"
                   class="projection-pagination-button rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
-                  aria-label="Previous projection page"
+                  aria-label={translateText('Previous projection page', getAppLanguage())}
                   disabled={currentPage === 0}
                   onClick={() => setPage(Math.max(0, currentPage - 1))}
                 >
-                  Previous
+                  {translateText('Previous', getAppLanguage())}
                 </button>
-                <span class="whitespace-nowrap">Page {currentPage + 1} of {pageCount}</span>
+                <span class="whitespace-nowrap">{translateText('Page {current} of {total}', getAppLanguage()).replace('{current}', String(currentPage + 1)).replace('{total}', String(pageCount))}</span>
                 <button
                   type="button"
                   class="rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
-                  aria-label="Next projection page"
+                  aria-label={translateText('Next projection page', getAppLanguage())}
                   disabled={currentPage >= pageCount - 1}
                   onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
                 >
-                  Next
+                  {translateText('Next', getAppLanguage())}
                 </button>
               </div>
             </div>
