@@ -366,6 +366,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const shouldRenderCashCushion = hasOpenedCashCushion ||
     activeDeskView === 'CASH_CUSHION' ||
     activeDeskView === 'BALANCE';
+  // Render Settings on the same navigation update that activates its view.
+  // The first-open flag only keeps the section mounted after the user leaves it.
+  const shouldRenderSettings = hasOpenedSettings || activeDeskView === 'SETTINGS';
 
 
 
@@ -877,7 +880,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
-        {hasOpenedSettings
+        {shouldRenderSettings
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
             <SettingsDesk currentUser={currentUser} />
           </Suspense></div>
