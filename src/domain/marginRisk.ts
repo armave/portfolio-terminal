@@ -25,7 +25,6 @@ export interface MarginRiskMetrics {
   stopOutBufferPct: number;
   showMarginCall: boolean;
   showStopOut: boolean;
-  showRiskTriggers: boolean;
 }
 
 /** Calculate estimates using configured broker thresholds, not live broker rules. */
@@ -66,7 +65,6 @@ export function calculateMarginRiskMetrics(
     marginCallBufferPct,
     stopOutBufferPct,
     showMarginCall,
-    showStopOut,
-    showRiskTriggers: showMarginCall && marginCallBufferPct < 60
+    showStopOut
   };
 }
