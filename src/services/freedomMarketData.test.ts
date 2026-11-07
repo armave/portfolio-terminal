@@ -39,6 +39,26 @@ describe('fetchFreedomHistory', () => {
     expect(proxyFetch).toHaveBeenCalledWith('freedom-history', { symbol: 'AAPL.US' }, {});
   });
 
+
+  it('forwards the requested daily candle window to the Worker', async () => {
+    const startAt = Date.parse('2026-11-01T00:00:00.000Z');
+    const endAt = Date.parse('2026-11-07T23:59:00.000Z');
+    vi.mocked(proxyFetch).mockResolvedValue({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      symbol: 'GOOGL.US',
+      data: [{ t: 1793966400, c: 284.64 }]
+    });
+
+    await expect(fetchFreedomHistory('GOOGL', { startAt, endAt }))
+      .resolves.toMatchObject({ points: [{ price: 284.64 }] });
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-history',
+      { symbol: 'GOOGL.US', startAt, endAt },
+      {}
+    );
+  });
+
   it('uses only explicitly supplied instrument metadata and supports a forced uncached history request', async () => {
     vi.mocked(proxyFetch).mockResolvedValue({
       ok: true, provider: 'Freedom TradeNet', symbol: 'AAPL.US',

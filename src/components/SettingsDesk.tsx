@@ -11,7 +11,6 @@ import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type A
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
-import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
 import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
@@ -282,14 +281,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
-  if (initialUsersLoading) {
-    return <DeskLoading
-      title="Preparing settings"
-      message="Loading account access, preferences and workspace settings…"
-      accent="blue"
-    />;
-  }
-
   return (
     <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
       <div class="settings-header border-b border-slate-800 pb-3">
@@ -406,7 +397,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <TableScrollRegion label="User management table" className="table-scroll-wrapper settings-table-scroll"><table class="w-full min-w-[790px] text-left text-xs">
             <caption class="sr-only">User management table</caption>
             <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">Name</th><th scope="col" class="p-2">Role</th><th scope="col" class="p-2">Language</th><th scope="col" class="p-2">New password</th><th scope="col" class="p-2">Actions</th></tr></thead>
-            <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
+            <tbody>
+              {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
+              {users.map((user) => <tr key={user.id} class="border-t border-slate-800">
               <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
               <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
               <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>

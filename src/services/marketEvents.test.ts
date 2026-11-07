@@ -35,3 +35,26 @@ describe('market event normalization', () => {
     expect(result.events).toHaveLength(1);
   });
 });
+
+describe('market event request boundaries', () => {
+  it('keeps recent and upcoming event requests within a single year', async () => {
+    const { createMarketEventDateRange } = await import('./marketEvents');
+    const now = new Date('2026-11-07T12:56:00.000Z');
+    const range = createMarketEventDateRange(now);
+    const from = Date.parse(range.from + 'T00:00:00.000Z');
+    const to = Date.parse(range.to + 'T00:00:00.000Z');
+
+    expect(range).toEqual({ from: '2026-05-11', to: '2027-05-06' });
+    expect(to - from).toBe(360 * 24 * 60 * 60 * 1000);
+    expect(to - from).toBeLessThan(365 * 24 * 60 * 60 * 1000);
+  });
+
+  it('does not present past Yahoo calendar dates as the next earnings date', async () => {
+    const { getNextUpcomingEarningsDate } = await import('./marketEvents');
+    const now = Date.parse('2026-11-07T12:00:00.000Z');
+    expect(getNextUpcomingEarningsDate([{ eventDate: '2026-10-28' }], now)).toBeNull();
+    expect(getNextUpcomingEarningsDate([
+      { eventDate: '2026-10-28' }, { eventDate: '2026-11-20' }, { eventDate: 'bad' }
+    ], now)).toBe('2026-11-20');
+  });
+});

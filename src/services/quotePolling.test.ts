@@ -47,8 +47,12 @@ describe('refreshTrackedQuotes', () => {
     await expect(refreshTrackedQuotes([' aapl ', 'AAPL', ' msft ', ''], 123, record)).resolves.toEqual({ updatedCount: 2, skipped: false });
 
     expect(fetchLivePriceFromProviders).toHaveBeenCalledTimes(2);
-    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(1, 'AAPL', 123);
-    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(2, 'MSFT', 123);
+    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(
+      1, 'AAPL', 123, false, { preferRestSnapshot: true }
+    );
+    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(
+      2, 'MSFT', 123, false, { preferRestSnapshot: true }
+    );
     expect(record).toHaveBeenNthCalledWith(
       1, 'AAPL', 100, 'Yahoo', 133, expect.objectContaining({ sourceTimestamp: 123 }), 123
     );
@@ -92,8 +96,12 @@ describe('refreshTrackedQuotes', () => {
 
     await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 321, record, true)).resolves.toEqual({ updatedCount: 2, skipped: false });
 
-    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(1, 'AAPL', 321, true);
-    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(2, 'MSFT', 321, true);
+    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(
+      1, 'AAPL', 321, true, { preferRestSnapshot: true }
+    );
+    expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(
+      2, 'MSFT', 321, true, { preferRestSnapshot: true }
+    );
   });
 
   it('counts only quotes accepted by the portfolio store', async () => {

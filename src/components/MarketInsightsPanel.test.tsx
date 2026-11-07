@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getClosestDatedMarketEvents } from './MarketInsightsPanel';
@@ -156,5 +157,18 @@ describe('getClosestDatedMarketEvents', () => {
     expect(getClosestDatedMarketEvents(events, event => event.date, now, 1).map(event => event.id))
       .toEqual(['tomorrow']);
     expect(getClosestDatedMarketEvents(events, event => event.date, now, 0)).toEqual([]);
+  });
+});
+
+describe('earnings and daily history request wiring', () => {
+  it('uses a bounded market-event date range and a source-aware daily history fallback', () => {
+    const source = readFileSync(new URL('./MarketInsightsPanel.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('createMarketEventDateRange(new Date())');
+    expect(source).toContain("marketHistoryProviderRegistry.fetchDailyHistory({");
+    expect(source).toContain("marketEventLabel(currentHistory ? 'Refresh history' : 'Load daily history')");
+    expect(source).toContain('{currentHistory.provider || \'Provider\'}');
+    expect(source).toContain('getNextUpcomingEarningsDate(');
+    expect(source).not.toContain('Load Finnhub history');
+    expect(source).not.toContain('FINNHUB · {marketEventLabel(\'Received\')}');
   });
 });

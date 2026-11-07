@@ -519,6 +519,7 @@ const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function pullGuestPortfolioSnapshot(): Promise<void> {
   await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
+  setCloudStatus('synced', 'READY');
 }
 
 let startupCloudWritesSuppressed = true;
@@ -698,8 +699,10 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      setCloudSyncStatus(status === 'synced'
-        ? { text: `${translateText('Synced')}: ${new Date().toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}`, status: 'synced' }
+      const synced = status === 'synced';
+      setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : 'UNAVAILABLE');
+      setCloudSyncStatus(synced
+        ? { text: `Synced: ${new Date().toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}`, status: 'synced' }
         : { text: 'Sync failed', status: 'error' });
     }
   });
@@ -2415,7 +2418,10 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     state = portfolioStore.getState();
   },
   applyOvernightRollover,
-  pullSharedCloudState: () => syncCloudState('pull'),
+  pullSharedCloudState: async () => {
+    setCloudStatus('syncing', 'CHECKING...');
+    await syncCloudState('pull');
+  },
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role === 'guest' ? 'guest' : 'admin'
@@ -2441,7 +2447,13 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     startupCloudWritesSuppressed = false;
     if (startupCloudWritePending) {
       startupCloudWritePending = false;
-      await pushStateToCloud();
+      launchBackgroundTask(
+        async () => {
+          const saved = await pushStateToCloud();
+          if (!saved) console.warn('[Startup Cloud Sync]: Pending cloud write was not confirmed; retry from the KV status control.');
+        },
+        (error) => console.warn('[Startup Cloud Sync]: Pending cloud write could not be started.', error)
+      );
     }
   },
   hideStartupLoading
