@@ -100,8 +100,10 @@ function ProjectionsTableView() {
           badgeText = translateText('TODAY', getAppLanguage());
         } else if (kind === 'next-trading-day' || kind === 'week-end') {
           badgeClass = 'text-xs text-slate-400 font-mono';
-          const defaultTag = kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
-          badgeText = (item.label || defaultTag).replace(/^\(|\)$/g, '');
+          const defaultTag = kind === 'week-end'
+            ? translateText('EOW · +{days}d', getAppLanguage())
+            : translateText('NTD · +{days}d', getAppLanguage());
+          badgeText = defaultTag.replace('{days}', String(daysFromToday));
         } else if (kind === 'breakeven') {
           badgeClass = 'text-xs text-amber-300 font-mono';
           badgeText = translateText('BREAKEVEN', getAppLanguage());
