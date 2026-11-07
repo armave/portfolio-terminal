@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { toBrokerRulesFormValues } from './SettingsDesk';
+import { readBrokerRulesFormValues, toBrokerRulesFormValues } from './SettingsDesk';
 
 describe('toBrokerRulesFormValues', () => {
   it('formats persisted broker rules once for controlled form inputs', () => {
@@ -102,5 +102,40 @@ describe('broker rules stop-out validation wiring', () => {
     expect(source).toContain('updateStopOutValidity();');
     expect(source).toContain('updateStopOutValidity();');
     expect(source).toContain('if (!form.reportValidity()) return;');
+  });
+});
+
+describe('readBrokerRulesFormValues', () => {
+  it('uses the current submitted controls rather than a stale controlled-state snapshot', () => {
+    const values: Record<string, string> = {
+      '#annualMarginRateInput': '18',
+      '#interestDayCountInput': '365',
+      '#maintenanceMarginInput': '12.5',
+      '#stopOutRatioInput': '3',
+      '#rolloverTimeInput': '04:00',
+      '#commissionPerShareInput': '0.02',
+      '#commissionVolumeInput': '0.15',
+      '#minimumCommissionInput': '1.5'
+    };
+    const form = {
+      querySelector: (selector: string) => values[selector] === undefined ? null : { value: values[selector] }
+    } as unknown as HTMLFormElement;
+
+    expect(readBrokerRulesFormValues(form, {
+      annualRate: '15', dayCountBasis: '360', maintenanceMargin: '10', stopOutRatio: '5',
+      rolloverTime: '03:00', commPerShare: '0.01', commVolumePct: '0.1', minCommOrder: '1'
+    })).toEqual({
+      annualRate: '18', dayCountBasis: '365', maintenanceMargin: '12.5', stopOutRatio: '3',
+      rolloverTime: '04:00', commPerShare: '0.02', commVolumePct: '0.15', minCommOrder: '1.5'
+    });
+  });
+
+  it('falls back to the current state only for missing controls', () => {
+    const form = { querySelector: () => null } as unknown as HTMLFormElement;
+    const fallback = {
+      annualRate: '15', dayCountBasis: '360', maintenanceMargin: '10', stopOutRatio: '5',
+      rolloverTime: '03:00', commPerShare: '0.01', commVolumePct: '0.1', minCommOrder: '1'
+    };
+    expect(readBrokerRulesFormValues(form, fallback)).toEqual(fallback);
   });
 });

@@ -30,6 +30,26 @@ export interface BrokerRulesFormValues {
 }
 
 /** Converts persisted numeric rules into the strings controlled form inputs require. */
+/** Reads the values the user actually submitted, falling back only when a control is absent. */
+export function readBrokerRulesFormValues(
+  form: HTMLFormElement,
+  fallback: BrokerRulesFormValues
+): BrokerRulesFormValues {
+  const read = (id: string, defaultValue: string): string =>
+    form.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.value ?? defaultValue;
+
+  return {
+    annualRate: read('annualMarginRateInput', fallback.annualRate),
+    dayCountBasis: read('interestDayCountInput', fallback.dayCountBasis),
+    maintenanceMargin: read('maintenanceMarginInput', fallback.maintenanceMargin),
+    stopOutRatio: read('stopOutRatioInput', fallback.stopOutRatio),
+    rolloverTime: read('rolloverTimeInput', fallback.rolloverTime),
+    commPerShare: read('commissionPerShareInput', fallback.commPerShare),
+    commVolumePct: read('commissionVolumeInput', fallback.commVolumePct),
+    minCommOrder: read('minimumCommissionInput', fallback.minCommOrder)
+  };
+}
+
 export function toBrokerRulesFormValues(rules: BrokerAssumptions): BrokerRulesFormValues {
   const hours = String(rules.rolloverHour ?? 4).padStart(2, '0');
   const minutes = String(rules.rolloverMinute ?? 0).padStart(2, '0');
@@ -424,7 +444,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             const form = event.currentTarget as HTMLFormElement;
             updateStopOutValidity();
             if (!form.reportValidity()) return;
-            const values = { ...ruleValues };
+            const values = readBrokerRulesFormValues(form, ruleValues);
             emitUiEvent('settings:save-broker-rules', { values });
           }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
