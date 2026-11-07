@@ -40,6 +40,15 @@ describe('portfolio domain', () => {
       minCommOrder: DEFAULT_BROKER_ASSUMPTIONS.commissionMin
     });
   });
+  it('uses the canonical broker day-count basis when annual rates omit one', () => {
+    const principal = 10_000;
+    const days = 7;
+    const interest = calculateMarginInterest(principal, { annualRate: 0.15, days });
+    const dailyRate = 0.15 / DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
+
+    expect(interest).toBeCloseTo(principal * (Math.pow(1 + dailyRate, days) - 1), 8);
+  });
+
 
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
