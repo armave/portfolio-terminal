@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
+import { lazy, Suspense } from 'preact/compat';
 import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
@@ -25,7 +26,7 @@ import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import type { PortfolioState } from '../types/portfolio';
-import { BrokerTransactionReconciliation } from './BrokerTransactionReconciliation';
+const BrokerTransactionReconciliation = lazy(() => import('./BrokerTransactionReconciliation').then(module => ({ default: module.BrokerTransactionReconciliation })));
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
@@ -753,14 +754,16 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
       </div>
 
-      <BrokerTransactionReconciliation
-        executions={brokerTrades}
-        cashflows={(state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} }))}
-        appEvents={state.transactionEvents || []}
-        executionStatus={brokerTradesLoading || brokerTradesError ? 'partial' : 'complete'}
-        cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
-        appHistoryStatus="partial"
-      />
+      <Suspense fallback={null}>
+        <BrokerTransactionReconciliation
+          executions={brokerTrades}
+          cashflows={(state.cashflows || []).map(row => ({ ...row, raw: row.raw || {} }))}
+          appEvents={state.transactionEvents || []}
+          executionStatus={brokerTradesLoading || brokerTradesError ? 'partial' : 'complete'}
+          cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
+          appHistoryStatus="partial"
+        />
+      </Suspense>
 
       {cloudHistoryWarning && (
         <div role="alert" class="flex flex-col gap-2 rounded border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">

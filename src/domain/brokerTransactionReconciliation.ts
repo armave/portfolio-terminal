@@ -404,7 +404,10 @@ export function reconcileBrokerActivity(
     if (Math.abs(quantityTotal - appQuantity) > quantityTolerance || !selected.length) continue;
     const weightedPrice = quantityTotal > 0 ? grossTotal / quantityTotal : null;
     if (appPrice !== null && weightedPrice !== null && Math.abs(weightedPrice - appPrice) > priceTolerance) continue;
-    selected.forEach(index => unmatchedBroker.delete(index));
+    selected.forEach(index => {
+      unmatchedBroker.delete(index);
+      matchedPairs.push({ broker: uniqueBrokerRows[index], app });
+    });
     unmatchedApp.delete(appIndex);
     const refs = selected.map(index => uniqueBrokerRows[index].id);
     const totalFees = selected.reduce((sum, index) => sum + (uniqueBrokerRows[index].fee ?? 0), 0);
