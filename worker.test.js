@@ -1992,6 +1992,46 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('replays an identical idempotent write for a keyed encrypted cloud record', async () => {
+    const store = makeDurableObject();
+    const envelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-margin-digest-retry-0001'
+    };
+    const body = JSON.stringify(envelope);
+
+    const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST', headers, body
+    }));
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+
+    const retry = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST', headers, body
+    }));
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    expect(await retry.json()).toMatchObject({
+      success: true, revision: 1, committedRevision: 1, replayed: true
+    });
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:marginDigestRecord:portfolio');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ key: 'cloud-margin-digest-retry-0001', revision: 1 });
+    expect(JSON.stringify(receipts)).not.toContain(envelope.encryptedPayload);
+
+    const latest = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(latest.status).toBe(200);
+    expect(await latest.json()).toEqual(envelope);
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
   it('keeps legacy plaintext digest reads and writes available during the compatibility window', async () => {
     const store = makeDurableObject();
     const legacyDigest = {
