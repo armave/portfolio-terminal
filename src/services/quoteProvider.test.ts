@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFallbackQuote, fetchYahooQuoteData } from './api';
 import { fetchLivePriceFromProviders } from './quoteProvider';
+import { marketDataProviderHealth } from './marketDataProviderHealth';
 import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 
 vi.mock('./api', () => ({
@@ -15,6 +16,7 @@ vi.mock('./freedomMarketData', () => ({
 
 describe('fetchLivePriceFromProviders', () => {
   beforeEach(() => {
+    marketDataProviderHealth.reset();
     vi.mocked(fetchFreedomQuoteWebSocket).mockRejectedValue(new Error('Freedom WebSocket unavailable'));
     vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('Freedom REST unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -418,4 +420,63 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.updatedAt).toBeNull();
     expect(result.error).toContain('Quote unavailable');
   });
+  it('does not count malformed provider responses as healthy', async () => {
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
+      symbol: 'AAPL', price: 0, previousClose: null, change: null,
+      changePercent: null, sourceTimestamp: null, raw: {}
+    } as never);
+    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('REST unavailable'));
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue(null as never);
+    vi.mocked(fetchFallbackQuote).mockRejectedValue(new Error('Fallback unavailable'));
+
+    await fetchLivePriceFromProviders('AAPL');
+
+    expect(marketDataProviderHealth.getSnapshot('FREEDOM_WEBSOCKET')).toMatchObject({
+      failures: 1, successes: 0, status: 'degraded'
+    });
+    expect(marketDataProviderHealth.getSnapshot('YAHOO')).toMatchObject({
+      failures: 1, successes: 0, status: 'degraded'
+    });
+  });
+
+  it('skips providers while their circuit-breaker cooldown is active', async () => {
+    vi.mocked(fetchFreedomQuoteWebSocket).mockRejectedValue(new Error('socket down'));
+    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('rest down'));
+    vi.mocked(fetchYahooQuoteData).mockRejectedValue(new Error('yahoo down'));
+
+    // Three attempts cross the default threshold for each provider. The fourth
+    // request must return promptly without calling any provider in cooldown.
+    for (let index = 0; index < 3; index += 1) {
+      await fetchLivePriceFromProviders('AAPL');
+    }
+    vi.mocked(fetchFreedomQuoteWebSocket).mockClear();
+    vi.mocked(fetchFreedomQuote).mockClear();
+    vi.mocked(fetchYahooQuoteData).mockClear();
+    vi.mocked(fetchFallbackQuote).mockClear();
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBeNull();
+    expect(fetchFreedomQuoteWebSocket).not.toHaveBeenCalled();
+    expect(fetchFreedomQuote).not.toHaveBeenCalled();
+    expect(fetchYahooQuoteData).not.toHaveBeenCalled();
+    expect(fetchFallbackQuote).not.toHaveBeenCalled();
+  });
+
+  it('records one-shot Freedom and fallback provider health without changing quote selection', async () => {
+    vi.mocked(fetchFreedomQuoteWebSocket).mockRejectedValueOnce(new Error('socket down'));
+    vi.mocked(fetchFreedomQuote).mockResolvedValueOnce({
+      symbol: 'AAPL', price: 210, previousClose: 200, change: 10,
+      changePercent: 5, sourceTimestamp: null, marketState: 'CLOSED', raw: {}
+    });
+    const result = await fetchLivePriceFromProviders('AAPL');
+    expect(result.sourceName).toBe('Freedom TradeNet');
+    expect(marketDataProviderHealth.getSnapshot('FREEDOM_WEBSOCKET')).toMatchObject({
+      status: 'degraded', failures: 1, consecutiveFailures: 1
+    });
+    expect(marketDataProviderHealth.getSnapshot('FREEDOM_REST')).toMatchObject({
+      status: 'healthy', successes: 1
+    });
+  });
+
 });

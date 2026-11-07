@@ -1,3 +1,4 @@
+import { instrumentAliasRegistry } from './instrumentAliasRegistry';
 /**
  * Provider-neutral market-data contracts.
  *
@@ -19,6 +20,8 @@ export interface InstrumentIdentityInput {
   quoteCurrency?: unknown;
   aliases?: readonly unknown[];
   providerSymbols?: Readonly<Record<string, unknown>>;
+  /** Optional historical effective date for auditable ticker-alias resolution. */
+  asOf?: unknown;
 }
 
 export interface InstrumentIdentity {
@@ -109,8 +112,14 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
       }
     : suffixParsed;
   const exchange = parsed.exchange || explicitExchange;
-  const symbol = parsed.symbol;
-  if (!symbol) return { instrument: null, issues: ['Instrument symbol is empty after exchange normalization.'] };
+  const sourceSymbol = parsed.symbol;
+  if (!sourceSymbol) return { instrument: null, issues: ['Instrument symbol is empty after exchange normalization.'] };
+  // Historical alias resolution is explicitly opt-in: transactions without an
+  // effective date keep their stored ticker, and no persisted history is rewritten.
+  const effectiveAlias = exchange && typeof input.asOf === 'string'
+    ? instrumentAliasRegistry.resolve(sourceSymbol, exchange, input.asOf)
+    : null;
+  const symbol = effectiveAlias?.historicalSymbol ?? sourceSymbol;
 
   const assetToken = normalizeToken(input.assetType);
   const assetType = normalizeAssetType(input.assetType);
@@ -126,9 +135,13 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
   if (input.aliases !== undefined && !Array.isArray(input.aliases)) {
     issues.push('Instrument aliases must be provided as an array.');
   }
-  const aliases = [...new Set((Array.isArray(input.aliases) ? input.aliases : [])
-    .map(normalizeToken)
-    .filter((alias): alias is string => Boolean(alias) && alias !== symbol))];
+  const recordedAliases = effectiveAlias?.record.symbols
+    .map(version => normalizeToken(version.symbol))
+    .filter((alias): alias is string => Boolean(alias) && alias !== symbol) ?? [];
+  const aliases = [...new Set([
+    ...(Array.isArray(input.aliases) ? input.aliases : []).map(normalizeToken),
+    ...recordedAliases
+  ].filter((alias): alias is string => Boolean(alias) && alias !== symbol))];
 
   const providerSymbols: Record<string, string> = {};
   const providerSymbolEntries = input.providerSymbols && typeof input.providerSymbols === 'object' &&
@@ -146,7 +159,7 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
     else issues.push('An invalid provider symbol mapping was ignored.');
   }
 
-  const id = assetType + ':' + (exchange || 'UNSPECIFIED') + ':' + symbol;
+  const id = effectiveAlias?.instrumentId ?? assetType + ':' + (exchange || 'UNSPECIFIED') + ':' + symbol;
   return {
     instrument: { id, symbol, exchange, assetType, quoteCurrency, aliases, providerSymbols },
     issues

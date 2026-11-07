@@ -39,3 +39,10 @@ Make instrument identity and provider data trustworthy across ticker changes, hi
 ## Required tests and QA
 
 Alias effective-date/ticker-change fixtures; corporate-action continuity; provider timeout/cancellation/retry/coalescing/backoff/stale fallback; out-of-order responses; historical series validation; exchange timezone/holiday/early-close boundaries; interval freshness; event corrections/duplicates/currency/missing dates; i18n and browser freshness states. Authenticated live provider QA is a separate manual release gate.
+
+## Delivery and validation record
+
+- The raw minified application entry bundle hard limit is **575,000 bytes**; the separate gzip limit remains **165,000 bytes**. Both limits are enforced by `scripts/bundleBudget.js` and covered by `src/ui/bundleBudget.test.ts`.
+- Client implementation is delivered as one PR against `dev`; Worker/server-only calendar proxy and cache changes are committed directly to `main`.
+- The client fails closed on missing, stale or mismatched exchange calendar status. History data remains available with freshness reported as `unknown` when calendar verification is unavailable.
+- Authenticated live broker/provider QA remains a manual release gate; mocked CI is not evidence of live provider availability.

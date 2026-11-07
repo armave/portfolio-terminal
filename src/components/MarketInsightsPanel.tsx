@@ -8,6 +8,12 @@ import { usePortfolioSelector } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
+import { fetchFinnhubMarketEvents } from '../services/finnhubMarketData';
+import { marketHistoryProviderRegistry } from '../services/marketHistoryProviders';
+import { normalizeInstrumentIdentity } from '../services/marketDataContracts';
+import type { MarketEventsResult } from '../services/marketEvents';
+import type { MarketHistoryResult } from '../services/marketDataContracts';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 
 type InsightSection = MarketInsightsSection;
@@ -35,6 +41,81 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
   { id: 'earnings', domId: 'insightTabEarnings', label: 'Earnings' },
   { id: 'analysts', domId: 'insightTabAnalysts', label: 'Analysts' }
 ];
+
+const MARKET_EVENT_RU_COPY: Record<string, string> = {
+  'Upcoming and recent events': 'Предстоящие и недавние события',
+  'Earnings': 'Отчётность',
+  'Dividends': 'Дивиденды',
+  'Daily price history': 'Дневная история цен',
+  'Load Finnhub history': 'Загрузить историю Finnhub',
+  'Refresh history': 'Обновить историю',
+  'Loading events…': 'Загрузка событий…',
+  'Loading history…': 'Загрузка истории…',
+  'Partial provider coverage': 'Неполные данные провайдера',
+  'Events unavailable': 'События недоступны',
+  'No earnings events in this period.': 'Нет событий отчётности за этот период.',
+  'Earnings unavailable': 'Данные об отчётности недоступны',
+  'No dividend events in this period.': 'Нет дивидендных событий за этот период.',
+  'Dividends unavailable': 'Данные о дивидендах недоступны',
+  'Daily history unavailable': 'Дневная история недоступна',
+  'No historical prices loaded.': 'Исторические цены не загружены.',
+  'Observed time unavailable': 'Время наблюдения недоступно',
+  'Received': 'Получено',
+  'Estimate': 'Оценка',
+  'Actual': 'Факт',
+  'Ex-date': 'Дата отсечки',
+  'Amount unavailable': 'Сумма недоступна',
+  'Before market': 'До открытия рынка',
+  'After market': 'После закрытия рынка',
+  'During market': 'Во время торгов',
+  'Timing unavailable': 'Время неизвестно',
+  'Currency unknown; no conversion applied.': 'Валюта неизвестна; пересчёт не выполнялся.',
+  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.'
+};
+
+function marketEventLabel(value: string): string {
+  return getAppLanguage() === 'ru' ? MARKET_EVENT_RU_COPY[value] || translateText(value, 'ru') : value;
+}
+
+function formatMarketEventDate(value: string): string {
+  const date = new Date(value + 'T00:00:00.000Z');
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    : value;
+}
+
+function marketEventTimingLabel(value: string): string {
+  switch (value) {
+    case 'before_market': return marketEventLabel('Before market');
+    case 'after_market': return marketEventLabel('After market');
+    case 'during_market': return marketEventLabel('During market');
+    default: return marketEventLabel('Timing unavailable');
+  }
+}
+
+/** Selects events closest to today, then returns them in chronological display order. */
+export function getClosestDatedMarketEvents<T>(
+  events: readonly T[],
+  getDate: (event: T) => string,
+  now = Date.now(),
+  limit = 5
+): T[] {
+  const today = new Date(now);
+  const todayAtUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const ranked = events.flatMap((event, index) => {
+    const value = getDate(event);
+    const parsed = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? Date.parse(value + 'T00:00:00.000Z')
+      : Number.NaN;
+    return Number.isFinite(parsed)
+      ? [{ event, index, date: parsed, distance: Math.abs(parsed - todayAtUtc) }]
+      : [];
+  }).sort((a, b) => a.distance - b.distance || a.date - b.date || a.index - b.index);
+
+  return ranked.slice(0, Math.max(0, Math.floor(limit)))
+    .sort((a, b) => a.date - b.date || a.index - b.index)
+    .map(item => item.event);
+}
 
 const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
 
@@ -130,6 +211,16 @@ function MarketInsightsPanelView() {
     restoreFocusRef: newsTriggerRef,
     onEscape: closeNewsDialog
   });
+  const [marketEventsState, setMarketEventsState] = useState<{
+    ticker: string | null; data: MarketEventsResult | null; loading: boolean; error: string | null;
+  }>({ ticker: null, data: null, loading: false, error: null });
+  const [marketEventsRefreshRequest, setMarketEventsRefreshRequest] = useState(0);
+  const [marketHistoryState, setMarketHistoryState] = useState<{
+    ticker: string | null; data: MarketHistoryResult | null; loading: boolean; error: string | null;
+  }>({ ticker: null, data: null, loading: false, error: null });
+  const [marketHistoryRequest, setMarketHistoryRequest] = useState(0);
+  const marketEventsRequestIdRef = useRef(0);
+  const marketHistoryRequestIdRef = useRef(0);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsRequested, setStocktwitsRequested] = useState(false);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
@@ -279,6 +370,90 @@ function MarketInsightsPanelView() {
       stocktwitsRequestIdRef.current += 1;
     };
   }, [ticker, stocktwitsRefreshRequest, stocktwitsRequested, requestPlan.stocktwits]);
+
+  // Earnings/dividend events are fetched only when the Earnings tab is opened.
+  // The Worker supplies server receipt time; provider observation/publication time
+  // remains unknown unless a provider explicitly returns it.
+  useEffect(() => {
+    if (activeSection !== 'earnings' || !ticker) return;
+    const requestId = ++marketEventsRequestIdRef.current;
+    const controller = new AbortController();
+    const now = new Date();
+    const from = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const to = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const symbol = ticker.trim().toUpperCase().replace(/\.US$/i, '');
+    setMarketEventsState(current => ({
+      ticker,
+      data: current.ticker === ticker ? current.data : null,
+      loading: true,
+      error: null
+    }));
+
+    void fetchFinnhubMarketEvents(symbol, from, to, { signal: controller.signal })
+      .then(data => {
+        if (requestId !== marketEventsRequestIdRef.current) return;
+        setMarketEventsState({ ticker, data, loading: false, error: null });
+      })
+      .catch((error: unknown) => {
+        if (requestId !== marketEventsRequestIdRef.current || isAbortError(error)) return;
+        setMarketEventsState({
+          ticker,
+          data: null,
+          loading: false,
+          error: error instanceof Error ? error.message : 'Events unavailable'
+        });
+      });
+
+    return () => {
+      controller.abort();
+      marketEventsRequestIdRef.current += 1;
+    };
+  }, [ticker, activeSection, marketEventsRefreshRequest]);
+
+  // Historical candles are opt-in rather than added to every earnings-tab load.
+  // No exchange or currency is guessed from a bare ticker; the shared normalizer
+  // marks provenance partial when the instrument mapping is incomplete.
+  useEffect(() => {
+    if (!marketHistoryRequest || activeSection !== 'earnings' || !ticker) return;
+    const requestId = ++marketHistoryRequestIdRef.current;
+    const controller = new AbortController();
+    const symbol = ticker.trim().toUpperCase().replace(/\.US$/i, '');
+    const identity = normalizeInstrumentIdentity({ symbol, assetType: 'EQUITY' }).instrument;
+    if (!identity) {
+      setMarketHistoryState({ ticker, data: null, loading: false, error: 'Daily history unavailable' });
+      return;
+    }
+    const endAt = Date.now();
+    const startAt = endAt - 90 * 24 * 60 * 60 * 1000;
+    setMarketHistoryState(current => ({
+      ticker,
+      data: current.ticker === ticker ? current.data : null,
+      loading: true,
+      error: null
+    }));
+    void marketHistoryProviderRegistry.fetch('FINNHUB', {
+      instrument: identity,
+      startAt,
+      endAt,
+      interval: '1D',
+      signal: controller.signal
+    }).then(data => {
+      if (requestId !== marketHistoryRequestIdRef.current) return;
+      setMarketHistoryState({ ticker, data, loading: false, error: null });
+    }).catch((error: unknown) => {
+      if (requestId !== marketHistoryRequestIdRef.current || isAbortError(error)) return;
+      setMarketHistoryState({
+        ticker,
+        data: null,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Daily history unavailable'
+      });
+    });
+    return () => {
+      controller.abort();
+      marketHistoryRequestIdRef.current += 1;
+    };
+  }, [ticker, activeSection, marketHistoryRequest]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -506,12 +681,125 @@ function MarketInsightsPanelView() {
       const cal = data.calendar || {};
       const eh = data.earningsHistory || [];
 
+      const currentEvents = marketEventsState.ticker === ticker ? marketEventsState.data : null;
+      const eventsLoading = marketEventsState.ticker === ticker && marketEventsState.loading;
+      const currentEventsError = marketEventsState.ticker === ticker ? marketEventsState.error : null;
+      const currentHistory = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const historyLoading = marketHistoryState.ticker === ticker && marketHistoryState.loading;
+      const historyError = marketHistoryState.ticker === ticker ? marketHistoryState.error : null;
+      const upcomingEarnings = getClosestDatedMarketEvents(
+        currentEvents?.earnings ?? [], event => event.eventDate
+      );
+      const upcomingDividends = getClosestDatedMarketEvents(
+        currentEvents?.dividends ?? [], event => event.exDate
+      );
+      const latestHistory = currentHistory?.points.slice(-5).reverse() ?? [];
+
       return (
-        <div>
+        <div class="space-y-3">
           <div class="bg-slate-900/70 p-2.5 rounded border border-slate-800/80 mb-3">
             <span class="text-[10px] text-slate-500 uppercase block">Next Earnings Date</span>
             <span class="text-purple-300 font-bold text-sm">{cal.earningsDate || 'TBD'}</span>
           </div>
+
+          <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Upcoming and recent events')}>
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Upcoming and recent events')}</h4>
+              {eventsLoading && <span class="text-[10px] text-slate-500" role="status">{marketEventLabel('Loading events…')}</span>}
+            </div>
+            {currentEvents?.quality === 'partial' && (
+              <p class="mb-2 text-[10px] text-amber-300">{marketEventLabel('Partial provider coverage')}</p>
+            )}
+            {currentEventsError && !currentEvents && (
+              <p class="mb-2 text-[10px] text-slate-500">{marketEventLabel('Events unavailable')}</p>
+            )}
+
+            <div class="space-y-2">
+              <div>
+                <h5 class="mb-1 text-[10px] font-semibold text-slate-300">{marketEventLabel('Earnings')}</h5>
+                {currentEvents?.earningsAvailable === false ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('Earnings unavailable')}</p>
+                ) : upcomingEarnings.length ? upcomingEarnings.map(event => (
+                  <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-1.5 last:border-0">
+                    <div>
+                      <span class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.eventDate)}</span>
+                      <span class="ml-2 text-[10px] text-slate-500">{marketEventTimingLabel(event.timing)}</span>
+                    </div>
+                    <div class="text-right text-[10px] text-slate-400">
+                      {marketEventLabel('Estimate')}: {event.epsEstimate ?? '—'}
+                      {' · '}{marketEventLabel('Actual')}: {event.epsActual ?? '—'}
+                    </div>
+                  </div>
+                )) : currentEvents?.earningsAvailable === true && !eventsLoading ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('No earnings events in this period.')}</p>
+                ) : null}
+              </div>
+              <div>
+                <h5 class="mb-1 text-[10px] font-semibold text-slate-300">{marketEventLabel('Dividends')}</h5>
+                {currentEvents?.dividendsAvailable === false ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('Dividends unavailable')}</p>
+                ) : upcomingDividends.length ? upcomingDividends.map(event => (
+                  <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-1.5 last:border-0">
+                    <span class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.exDate)}</span>
+                    <span class="text-[10px] text-slate-400">
+                      {marketEventLabel('Ex-date')} · {event.amount === null
+                        ? marketEventLabel('Amount unavailable')
+                        : event.amount + (event.currency ? ' ' + event.currency : ' (' + marketEventLabel('Currency unknown; no conversion applied.') + ')')}
+                    </span>
+                  </div>
+                )) : currentEvents?.dividendsAvailable === true && !eventsLoading ? (
+                  <p class="text-[10px] text-slate-500">{marketEventLabel('No dividend events in this period.')}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {currentEvents && (
+              <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
+                {currentEvents.provider || 'Provider'} · {marketEventLabel('Received')}: {currentEvents.receivedAt ? formatRelativeTime(currentEvents.receivedAt) : '—'}
+                {' · '}{currentEvents.observedAt === null ? marketEventLabel('Observed time unavailable') : formatRelativeTime(currentEvents.observedAt)}
+              </p>
+            )}
+            <div class="mt-2">
+              <button type="button" onClick={() => setMarketEventsRefreshRequest(value => value + 1)}
+                disabled={eventsLoading}
+                class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
+                {eventsLoading ? marketEventLabel('Loading events…') : marketEventLabel('Refresh')}
+              </button>
+            </div>
+          </section>
+
+          <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Daily price history')}>
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Daily price history')}</h4>
+              <button type="button" onClick={() => setMarketHistoryRequest(value => value + 1)}
+                disabled={historyLoading}
+                class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
+                {historyLoading ? marketEventLabel('Loading history…') : marketEventLabel(currentHistory ? 'Refresh history' : 'Load Finnhub history')}
+              </button>
+            </div>
+            {historyError && !currentHistory && <p class="text-[10px] text-slate-500">{marketEventLabel('Daily history unavailable')}</p>}
+            {!currentHistory && !historyError && !historyLoading && <p class="text-[10px] text-slate-500">{marketEventLabel('No historical prices loaded.')}</p>}
+            {historyLoading && !currentHistory && <p class="text-[10px] text-slate-500" role="status">{marketEventLabel('Loading history…')}</p>}
+            {latestHistory.length > 0 && (
+              <div class="space-y-1">
+                {latestHistory.map(point => (
+                  <div key={point.timestamp} class="flex justify-between gap-2 text-[10px]">
+                    <span class="text-slate-400">{new Date(point.timestamp).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
+                    <span class="font-mono text-slate-200">{point.price.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {currentHistory?.quality === 'partial' && (
+              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Currency unknown; no conversion applied.')}</p>
+            )}
+            {currentHistory && (
+              <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
+                FINNHUB · {marketEventLabel('Received')}: {currentHistory.receivedAt ? formatRelativeTime(currentHistory.receivedAt) : '—'}
+                {' · '}{currentHistory.observedAt === null ? marketEventLabel('Observed time unavailable') : formatRelativeTime(currentHistory.observedAt)}
+              </p>
+            )}
+          </section>
           <div>
             <span class="text-[10px] text-slate-500 uppercase block mb-2">
               Past Earnings Surprises

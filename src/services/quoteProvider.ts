@@ -3,6 +3,7 @@ import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketDa
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 import { normalizeMarketQuoteObservation, type MarketDelayClass } from './marketDataContracts';
+import { marketDataProviderHealth } from './marketDataProviderHealth';
 
 function describeProviderError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -26,10 +27,15 @@ export function nextLiveQuoteRequestSequence(): number {
 
 async function fetchFallbackPrice(symbol: string, force = false) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
+    if (!marketDataProviderHealth.canAttempt(provider)) continue;
     try {
       const fallback = force
         ? await fetchFallbackQuote(symbol, provider, true)
         : await fetchFallbackQuote(symbol, provider);
+      if (!fallback || !Number.isFinite(fallback.price) || fallback.price <= 0) {
+        throw new Error('Provider returned an invalid fallback quote.');
+      }
+      marketDataProviderHealth.recordSuccess(provider);
       return {
         price: fallback.price,
         sourceName: fallback.sourceName,
@@ -56,6 +62,7 @@ async function fetchFallbackPrice(symbol: string, force = false) {
         })
       };
     } catch (error: unknown) {
+      marketDataProviderHealth.recordFailure(provider);
       console.warn(`[${provider} Quote Error for ${symbol}]:`, describeProviderError(error));
     }
   }
@@ -160,18 +167,36 @@ export async function fetchLivePriceFromProviders(
   // TradeNet q is authoritative when it returns a valid quote. Do not launch
   // Yahoo in parallel: that was creating a redundant REST quote on every load.
   // The Freedom REST quote is requested only when the q snapshot fails.
-  try {
-    freedomQuote = await fetchFreedomQuoteWebSocket(symbol);
-    freedomTransport = 'websocket';
-  } catch (websocketError) {
-    console.warn(
-      `[Freedom WebSocket Quote Error for ${symbol}]:`,
-      describeProviderError(websocketError)
-    );
+  if (marketDataProviderHealth.canAttempt('FREEDOM_WEBSOCKET')) {
+    try {
+      freedomQuote = await fetchFreedomQuoteWebSocket(symbol);
+      if (!freedomQuote || !Number.isFinite(freedomQuote.price) || freedomQuote.price <= 0) {
+        throw new Error('Freedom WebSocket returned an invalid quote.');
+      }
+      freedomTransport = 'websocket';
+      marketDataProviderHealth.recordSuccess('FREEDOM_WEBSOCKET');
+    } catch (websocketError) {
+      marketDataProviderHealth.recordFailure('FREEDOM_WEBSOCKET');
+      console.warn(
+        `[Freedom WebSocket Quote Error for ${symbol}]:`,
+        describeProviderError(websocketError)
+      );
+    }
+  }
+
+  // The REST snapshot is a fallback for an unavailable/failed q request, but
+  // it must observe the same provider cooldown instead of hammering a failed
+  // transport on every quote refresh.
+  if (!freedomQuote && marketDataProviderHealth.canAttempt('FREEDOM_REST')) {
     try {
       freedomQuote = await fetchFreedomQuote(symbol, true);
+      if (!freedomQuote || !Number.isFinite(freedomQuote.price) || freedomQuote.price <= 0) {
+        throw new Error('Freedom REST returned an invalid quote.');
+      }
       freedomTransport = 'rest';
+      marketDataProviderHealth.recordSuccess('FREEDOM_REST');
     } catch (restError) {
+      marketDataProviderHealth.recordFailure('FREEDOM_REST');
       console.warn(`[Freedom REST Quote Error for ${symbol}]:`, describeProviderError(restError));
     }
   }
@@ -228,7 +253,7 @@ export async function fetchLivePriceFromProviders(
   // Only if both authenticated TradeNet paths failed do we try the external
   // Yahoo quote endpoint, followed by Finnhub/Twelve Data. These are true
   // fallbacks now, not parallel requests competing with a successful q event.
-  if (price === null) {
+  if (price === null && marketDataProviderHealth.canAttempt('YAHOO')) {
     try {
       const data = force
         ? await fetchYahooQuoteData(symbol, true)
@@ -246,7 +271,8 @@ export async function fetchLivePriceFromProviders(
           marketState
         });
 
-        if (current !== null) {
+        if (current !== null && current > 0) {
+          marketDataProviderHealth.recordSuccess('YAHOO');
           price = current;
           sourceName = 'Yahoo';
           const change = resolveMarketSessionChange({
@@ -300,7 +326,9 @@ export async function fetchLivePriceFromProviders(
           });
         }
       }
+      if (price === null) marketDataProviderHealth.recordFailure('YAHOO');
     } catch (error: unknown) {
+      marketDataProviderHealth.recordFailure('YAHOO');
       console.warn(`[Proxy Quote Error for ${symbol}]:`, describeProviderError(error));
     }
   }
