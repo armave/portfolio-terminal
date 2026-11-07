@@ -1060,16 +1060,16 @@ try {
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(() => {
-    const desk = Array.from(document.querySelectorAll('#settingsDesk')).find((element) => {
+    return Array.from(document.querySelectorAll('#settingsDesk')).some((element) => {
       const rect = element.getBoundingClientRect();
       const style = window.getComputedStyle(element);
-      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      return visible && element.querySelector('select[aria-label="Account language"]')?.value === 'ru';
     });
-    return desk?.querySelector('select[aria-label="Account language"]')?.value === 'ru';
   }, null, { timeout: 20_000 });
   // Continue the admin journey in English; the created guest keeps its Russian preference.
   const adminLanguageSaveCount = worker.findCalls('POST', '/api/auth/me').length;
-  const adminLanguageSelect = visibleSettingsDesk().locator('select[aria-label="Account language"]');
+  const adminLanguageSelect = page.locator('#settingsDesk:visible select[aria-label="Account language"]').first();
   await adminLanguageSelect.waitFor({ state: 'visible', timeout: 10_000 });
   await adminLanguageSelect.selectOption('en');
   await waitForCondition(
