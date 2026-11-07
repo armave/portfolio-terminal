@@ -9,7 +9,8 @@ export interface MarketHistoryProviderAdapter {
 export interface MarketHistoryProviderRegistry {
   list(): readonly string[];
   get(providerId: string): MarketHistoryProviderAdapter | null;
-  fetch(providerId: string, request: MarketHistoryRequest): Promise<MarketHistoryResult>;\n  fetchDailyHistory(request: MarketHistoryRequest): Promise<MarketHistoryResult>;
+  fetch(providerId: string, request: MarketHistoryRequest): Promise<MarketHistoryResult>;
+  fetchDailyHistory(request: MarketHistoryRequest): Promise<MarketHistoryResult>;
 }
 export function createMarketHistoryProviderRegistry(adapters: readonly MarketHistoryProviderAdapter[]): MarketHistoryProviderRegistry {
   const providers=new Map<string,MarketHistoryProviderAdapter>();
