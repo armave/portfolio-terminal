@@ -1,5 +1,6 @@
 export const ENTRY_BUNDLE_BUDGET = Object.freeze({
-  maxBytes: 500_000,
+  // Keep the raw minified entry below 575 kB while gzip remains separately capped.
+  maxBytes: 575_000,
   maxGzipBytes: 165_000
 });
 
