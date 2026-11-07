@@ -3,7 +3,7 @@
 **Status:** Prepared for parallel implementation  
 **Umbrella PR target:** dev  
 **Umbrella branch:** docs/wave-3-trusted-portfolio-intelligence  
-**Implementation baseline:** 09b62aaefce8eb283294d6de7b5aab50dc7c9d1b (dev, 2026-11-06)  
+**Implementation baseline:** d2263a3c0e83a525009af70069bca91ad03fc70e (dev, after Wave 3 umbrella merge)  
 **Parent:** docs/product-vision-roadmap.md  
 **Current-state audit:** current-state-audit.md
 
@@ -57,7 +57,7 @@ All five branches have been created from the same dev baseline above. Do not cre
 | PT-06 — Performance integration | #334 | feat/wave3-pt06-performance-integration | Wire deterministic TWR/MWR and attribution to actual source events/valuations |
 | PT-07 — Market-data lifecycle | #365 | feat/wave3-pt07-market-data-lifecycle | Complete aliases, provider resilience, additional history, calendars and typed events |
 
-Detailed charters are in docs/wave-3/workstreams/.
+Detailed charters are in docs/wave-3/workstreams/. Stream 1 client implementation slice 1 is merged in [PR #382](https://github.com/armave/portfolio-terminal/pull/382) at merge commit [dc6e232](https://github.com/armave/portfolio-terminal/commit/dc6e232b781dfc27ffad46bb4d2a074af01582dc) (tested source head `549d3f651bf3e80666ebdc2f4ede8e3f31164676`). Exact-head validation passed: [Pull Request CI #42346056384](https://github.com/armave/portfolio-terminal/actions/runs/42346056384), [Trade Lifecycle Browser Smoke #42346056348](https://github.com/armave/portfolio-terminal/actions/runs/42346056348) and [Operations Browser Journey #42346056330](https://github.com/armave/portfolio-terminal/actions/runs/42346056330). The measured entry bundle is 358,436 / 575,000 raw bytes and 112,388 / 165,000 gzip bytes. The paired Worker/Durable Object idempotency implementation is deployed from main commit [c6201c5](https://github.com/armave/portfolio-terminal/commit/c6201c528977bd2dd2bf9fe2ef05fb28dbec9772). This is a bounded implementation slice, not PT-02 completion: authenticated live-account and real multi-device QA remain outstanding, as do executable financial reversals and corporate-action accounting; issue [#330](https://github.com/armave/portfolio-terminal/issues/330) remains open.
 
 ## 4. Why PT-02 is explicitly included
 

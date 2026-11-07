@@ -68,6 +68,11 @@ function isPerformanceValuationSnapshot(value: unknown): value is PortfolioPerfo
 }
 
 
+/**
+ * Validate the containers at the import boundary before merging a snapshot.
+ * A malformed collection must not be normalized to an empty collection and
+ * accidentally replace recoverable portfolio data.
+ */
 function hasValidPortfolioImportShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
 
@@ -854,7 +859,9 @@ export class PortfolioStore {
 
     return this.updateFinancialMutation({
       ...context,
-      requestFingerprint: createMutationFingerprint(['cash.set-free', num])
+      requestFingerprint: createMutationFingerprint(['cash.set-free', num]),
+      source: context?.source ?? 'manual-cash-adjustment',
+      actor: context?.actor ?? { type: 'user' }
     }, (state) => {
       const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       return {
@@ -882,7 +889,9 @@ export class PortfolioStore {
     const num = amount;
     return this.updateFinancialMutation({
       ...context,
-      requestFingerprint: createMutationFingerprint(['cash.set-balance', num])
+      requestFingerprint: createMutationFingerprint(['cash.set-balance', num]),
+      source: context?.source ?? 'manual-cash-adjustment',
+      actor: context?.actor ?? { type: 'user' }
     }, (state) => {
       const previousCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const previousDebt = Math.abs(Number(state.balance) || 0);
@@ -918,7 +927,9 @@ export class PortfolioStore {
     const debt = Math.abs(amount);
     return this.updateFinancialMutation({
       ...context,
-      requestFingerprint: createMutationFingerprint(['margin.set-debt', debt])
+      requestFingerprint: createMutationFingerprint(['margin.set-debt', debt]),
+      source: context?.source ?? 'manual-margin-adjustment',
+      actor: context?.actor ?? { type: 'user' }
     }, (state) => {
       const previousDebt = Math.abs(Number(state.balance) || 0);
       return {

@@ -128,7 +128,7 @@ export default defineConfig({
           if (id.includes('/node_modules/crypto-js/')) {
             return 'legacy-crypto';
           }
-          if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
+          if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime|cloudStateSyncRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }
           // The immutable transaction journal is shared by the store, backup,

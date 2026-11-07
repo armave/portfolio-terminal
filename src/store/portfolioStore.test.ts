@@ -2770,6 +2770,30 @@ describe('portfolio transaction journal integration', () => {
   });
 
 
+  it('records explicit actor and source for manual and confirmed cash/debt adjustments', () => {
+    const store = new PortfolioStore();
+    expect(store.setCashBalance(250)).toBe(true);
+    expect(store.setMarginDebt(50, {
+      actor: { type: 'ai' },
+      source: 'ai-confirmed',
+      idempotencyKey: 'ai-margin-adjustment-01'
+    })).toBe(true);
+    expect(store.setFreeCash(75)).toBe(true);
+
+    const events = store.getState().transactionEvents || [];
+    expect(events.filter((event) => event.type === 'cash.adjustment')).toMatchObject([
+      { actor: { type: 'user' }, source: 'manual-cash-adjustment', cashDelta: 250 },
+      { actor: { type: 'user' }, source: 'manual-cash-adjustment', cashDelta: -175 }
+    ]);
+    expect(events.find((event) => event.type === 'margin.adjustment')).toMatchObject({
+      actor: { type: 'ai' },
+      source: 'ai-confirmed',
+      marginDebtDelta: 50,
+      idempotencyKey: 'ai-margin-adjustment-01'
+    });
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+  });
+
   it('journals imported broker executions and cashflows without posting them twice, then reconciles canonical baselines', () => {
     const store = new PortfolioStore();
     const execution = {
@@ -2796,6 +2820,14 @@ describe('portfolio transaction journal integration', () => {
       description: 'Quarterly dividend',
       raw: {}
     };
+    const additionalCashflows = [
+      { id: 'freedom-deposit-501', date: '2026-11-03', type: 'Deposit', amount: 100, currency: 'USD', description: 'External deposit' },
+      { id: 'freedom-withdrawal-502', date: '2026-11-04', type: 'Withdrawal', amount: -20, currency: 'USD', description: 'External withdrawal' },
+      { id: 'freedom-transfer-503', date: '2026-11-05', type: 'Transfer', amount: -30, currency: 'USD', description: 'Cash transfer' },
+      { id: 'freedom-fee-504', date: '2026-11-06', type: 'Commission', amount: -1.5, currency: 'USD', description: 'Execution commission' },
+      { id: 'freedom-interest-505', date: '2026-11-07', type: 'Margin Interest', amount: -2, currency: 'USD', description: 'Borrowing interest' },
+      { id: 'freedom-action-506', date: '2026-11-08', type: 'Corporate Action', amount: 8, currency: 'USD', description: 'Cash in lieu stock split' }
+    ];
     const imported = {
       positions: {
         GOOGL: {
@@ -2813,7 +2845,7 @@ describe('portfolio transaction journal integration', () => {
         holdings: [{ ticker: 'MSFT', shares: 3, price: 50 }]
       },
       brokerExecutedTrades: [execution],
-      cashflows: [cashflow]
+      cashflows: [cashflow, ...additionalCashflows]
     } as any;
 
     expect(store.importState(imported)).toBe(true);
@@ -2834,6 +2866,37 @@ describe('portfolio transaction journal integration', () => {
       currency: 'USD'
     });
     expect(brokerCashflow?.cashDelta).toBeUndefined();
+    const evidenceTypes = [
+      'cash.deposit',
+      'cash.withdrawal',
+      'cash.transfer',
+      'fee',
+      'margin.interest',
+      'corporate-action'
+    ];
+    const additionalEvents = additionalCashflows.map((row) =>
+      events.find((event) => event.externalReferenceId === row.id)
+    );
+    expect(additionalEvents.map((event) => event?.type)).toEqual(evidenceTypes);
+    expect(additionalEvents.map((event) => event?.externalCashFlowAmount)).toEqual([100, -20, -30, -1.5, -2, 8]);
+    for (const event of additionalEvents) {
+      expect(event).toMatchObject({ actor: { type: 'broker' }, source: 'freedom-tradenet-cashflow' });
+      expect(event?.cashDelta).toBeUndefined();
+      expect(event?.marginDebtDelta).toBeUndefined();
+      expect(event?.positionQuantityDelta).toBeUndefined();
+      expect(event?.realizedPnl).toBeUndefined();
+    }
+    expect(additionalEvents[3]?.fees).toBe(1.5);
+    expect(additionalEvents[4]?.financingCost).toBe(2);
+
+    // Imported broker flows are evidence only: they must not be applied on top
+    // of the broker-refreshed canonical cash/debt snapshot.
+    expect(store.getState().cashCushion?.freeCash).toBe(40);
+    expect(store.getState().balance).toBe(-75);
+    expect(store.getState().positions.GOOGL?.shares).toBe(5);
+    expect(store.getState().transactionEvents?.filter((event) =>
+      evidenceTypes.includes(event.type)
+    )).toHaveLength(evidenceTypes.length);
 
     const reconciliation = events.filter((event) => event.type === 'portfolio.reconciliation');
     expect(reconciliation.length).toBeGreaterThanOrEqual(4);
@@ -2855,7 +2918,7 @@ describe('portfolio transaction journal integration', () => {
     expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()).matches).toBe(true);
   });
 
-  it('journals any direct canonical state edit as a reconciliation delta rather than a guessed trade', () => {
+  it('journals direct position, cash-holding, free-cash and debt edits as observed reconciliation deltas', () => {
     const store = new PortfolioStore();
     expect(store.setState({
       positions: {
@@ -2867,18 +2930,47 @@ describe('portfolio transaction journal integration', () => {
           commBuy: 0,
           tranches: [{ qty: 4, price: 100, date: '2026-11-01' }]
         }
+      },
+      balance: -123,
+      cashCushion: {
+        freeCash: 45,
+        holdings: [{ ticker: 'MSFT', shares: 2, price: 50 }]
       }
     })).toBe(true);
 
-    const event = store.getState().transactionEvents?.at(-1);
-    expect(event).toMatchObject({
-      type: 'portfolio.reconciliation',
-      ticker: 'NVDA',
-      positionQuantityDelta: 4
-    });
-    expect(event?.realizedPnl).toBeUndefined();
-    expect(event?.netAmount).toBeUndefined();
-    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()).matches).toBe(true);
+    const events = store.getState().transactionEvents || [];
+    const reconciliations = events.filter((event) => event.type === 'portfolio.reconciliation');
+    expect(reconciliations).toHaveLength(4);
+    expect(reconciliations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ticker: 'NVDA',
+        positionQuantityDelta: 4,
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        ticker: 'MSFT',
+        cashHoldingQuantityDelta: 2,
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        cashDelta: 45,
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        marginDebtDelta: 123,
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-reconciliation'
+      })
+    ]));
+    for (const event of reconciliations) {
+      expect(event.realizedPnl).toBeUndefined();
+      expect(event.netAmount).toBeUndefined();
+      expect(event.fees).toBeUndefined();
+    }
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
   });
 
   it('does not publish a financial mutation or append its event when persistence fails', () => {
