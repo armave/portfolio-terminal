@@ -805,19 +805,17 @@ try {
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
     throw new Error('Admin position exposure table was not visible.');
   }
-  for (const summaryLabel of ['Position basis', 'Market valuation', 'Debt & carrying costs']) {
-    const count = await executiveOverview.getByText(summaryLabel, { exact: true }).count();
-    if (count !== 1) {
-      throw new Error('Expected exactly one integrated legacy metric section for ' + summaryLabel + ', found ' + count);
+  for (const sectionId of ['adminPositionBasisTitle', 'adminMarketValuationTitle', 'adminDebtCarryingCostsTitle']) {
+    if (await executiveOverview.locator('#' + sectionId).count() !== 1) {
+      throw new Error('Expected exactly one integrated legacy metric section: #' + sectionId);
     }
   }
   if (await page.locator('#portfolioMetricsGrid .portfolio-micro-summary').count() !== 0) {
     throw new Error('The legacy admin metric strip still renders separately above the executive dashboard.');
   }
-  for (const riskLabel of ['Estimated equity ratio', 'Maintenance buffer']) {
-    if (!(await executiveOverview.getByText(riskLabel, { exact: true }).first().isVisible())) {
-      throw new Error('Admin risk summary metric was not visible: ' + riskLabel);
-    }
+  if (!(await page.locator('#adminRiskTitle').isVisible()) ||
+      !(await page.locator('[aria-labelledby="adminRiskTitle"] [role="progressbar"]').isVisible())) {
+    throw new Error('Admin margin risk summary is missing its risk buffer gauge.');
   }
   await page.getByRole('button', { name: 'Margin: AAPL' }).click();
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
