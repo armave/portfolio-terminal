@@ -795,7 +795,8 @@ try {
     throw new Error('Quick Buy did not show the expected local-only trade confirmation: ' + tradeConfirmationMessage.slice(0, 700));
   }
 
-  // The new executive overview is available to admins on Combined Portfolio only.
+  // The executive overview is available to admins in Combined Portfolio and
+  // individual ticker views, including the single-ticker navigation layout.
   const executiveOverview = page.locator('#adminExecutiveDashboardTitle');
   await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
   if (!(await executiveOverview.innerText()).toLowerCase().includes('admin executive overview')) {
@@ -803,6 +804,11 @@ try {
   }
   if (!(await page.locator('#adminExposureTitle').isVisible())) {
     throw new Error('Admin position exposure table was not visible.');
+  }
+  await page.getByRole('button', { name: 'Margin: AAPL' }).click();
+  await executiveOverview.waitFor({ state: 'visible', timeout: 10_000 });
+  if (!(await page.locator('#adminExposureTitle').isVisible())) {
+    throw new Error('Admin executive overview disappeared in the individual AAPL ticker view.');
   }
 
   // Market Insights: provider outages must be visible and recoverable; deep data
