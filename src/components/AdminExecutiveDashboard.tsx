@@ -4,6 +4,7 @@ import { formatUSD, getQuoteFreshness } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { buildAdminDashboardSummary } from '../domain/adminDashboard';
+import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from '../domain/portfolio';
 
 function label(value: string): string {
   return translateText(value, getAppLanguage());
