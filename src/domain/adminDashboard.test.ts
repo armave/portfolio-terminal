@@ -58,6 +58,19 @@ describe('admin dashboard summary', () => {
     expect(summary.marginRisk).toBeNull();
   });
 
+  it('withholds margin unrealized P/L when a margin position has no usable quote', () => {
+    const state = makeState({
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 2, currentPrice: 0, pt: 130, commBuy: 0, tranches: [{ qty: 2, price: 100 }] }
+      }
+    });
+    const summary = buildAdminDashboardSummary(state, 1000, 60000);
+    expect(summary.marginMarketValue).toBe(0);
+    expect(summary.marginUnpricedPositions).toBe(1);
+    expect(summary.investedCostBasis).toBe(200);
+    expect(summary.unrealizedPnl).toBeNull();
+  });
+
   it('withholds unrealized P/L when cost basis does not cover all open shares', () => {
     const state = makeState({
       positions: {
