@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import {
   calculateMarginInterest,
@@ -32,6 +33,14 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  it('uses the canonical broker assumptions for omitted commission rules', () => {
+    expect(resolveCommissionConfig({})).toEqual({
+      commPerShare: DEFAULT_BROKER_ASSUMPTIONS.commissionPerShare,
+      commVolumePct: DEFAULT_BROKER_ASSUMPTIONS.commissionRatePct,
+      minCommOrder: DEFAULT_BROKER_ASSUMPTIONS.commissionMin
+    });
+  });
+
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
