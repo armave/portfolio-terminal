@@ -1,4 +1,5 @@
-import { FREEDOM_BROKER_TIME_ZONE } from './brokerAssumptions';
+import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE } from './brokerAssumptions';
+import { getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './rolloverCalendar';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
 
@@ -78,9 +79,9 @@ export interface CommissionRuleSource {
 
 export function resolveCommissionConfig(rules: CommissionRuleSource): CommissionConfig {
   return {
-    commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012),
-    commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012),
-    minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2)
+    commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? DEFAULT_BROKER_ASSUMPTIONS.commissionPerShare),
+    commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? DEFAULT_BROKER_ASSUMPTIONS.commissionRatePct),
+    minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? DEFAULT_BROKER_ASSUMPTIONS.commissionMin)
   };
 }
 
@@ -172,24 +173,8 @@ export function calculateTrancheCommissions(
  * Returns Armenia's local date and time parts regardless of the host machine's timezone.
  * Armenia is UTC+04:00 and does not currently observe daylight saving time.
  */
-function getArmeniaClockParts(date: Date): { year: number; month: number; day: number; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: FREEDOM_BROKER_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date);
-  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
-  return {
-    year: value('year'),
-    month: value('month'),
-    day: value('day'),
-    hour: value('hour'),
-    minute: value('minute')
-  };
+function getBrokerClockParts(date: Date, timeZone = FREEDOM_BROKER_TIME_ZONE) {
+  return getZonedDateParts(date, timeZone);
 }
 
 /**
@@ -212,14 +197,16 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
   const parsedPurchaseDate = new Date(Date.UTC(pYear, pMonth, pDay));
   if (parsedPurchaseDate.getUTCFullYear() !== pYear || parsedPurchaseDate.getUTCMonth() !== pMonth || parsedPurchaseDate.getUTCDate() !== pDay) return 0;
 
-  const localNow = getArmeniaClockParts(now);
+  const localNow = getBrokerClockParts(now);
   const purchaseDay = parsedPurchaseDate.getTime();
   const currentDay = Date.UTC(localNow.year, localNow.month - 1, localNow.day);
   const diffDays = Math.round((currentDay - purchaseDay) / 86_400_000);
   if (diffDays <= 0) return 0;
 
-  // Count today's cycle only after 04:00 in Asia/Yerevan, independent of host timezone.
-  const hasPassedTodayCutoff = localNow.hour > 4 || (localNow.hour === 4 && localNow.minute >= 0);
+  // The cutoff is sourced from the same broker assumptions used by daily accrual.
+  const { rolloverHour, rolloverMinute } = DEFAULT_BROKER_ASSUMPTIONS;
+  const hasPassedTodayCutoff = localNow.hour > rolloverHour ||
+    (localNow.hour === rolloverHour && localNow.minute >= rolloverMinute);
   return hasPassedTodayCutoff ? diffDays : Math.max(0, diffDays - 1);
 }
 
@@ -246,7 +233,7 @@ export function calculateMarginInterest(
       if (typeof opts.dailyRate === 'number') {
         dailyRate = opts.dailyRate;
       } else if (typeof opts.annualRate === 'number') {
-        dailyRate = opts.annualRate / (Number(opts.dayCountBasis) || 365);
+        dailyRate = opts.annualRate / (Number(opts.dayCountBasis) || DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis);
       } else if (typeof opts.annualBorrowRate === 'number') {
         dailyRate = opts.annualBorrowRate / (Number(opts.dayCountBasis) || 365);
       }
@@ -956,26 +943,31 @@ export function processRollovers(state: RolloverState | null | undefined): boole
 
   const rules = state.brokerAssumptions || {};
   const configuredRate = Number(
-    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? 0.15
+    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? DEFAULT_BROKER_ASSUMPTIONS.annualBorrowRate
   );
   // Corrupted cloud/imported settings must never turn debt into Infinity.
   // Match the supported broker-settings range; invalid rates accrue no interest.
   const annualRate = Number.isFinite(configuredRate) && configuredRate >= 0 && configuredRate <= 1
     ? configuredRate
     : 0;
-  const configuredDayCount = Number(rules.dayCountBasis ?? 365);
-  const dayCountBasis = [360, 365].includes(configuredDayCount) ? configuredDayCount : 365;
+  const configuredDayCount = Number(rules.dayCountBasis ?? DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis);
+  const dayCountBasis = [360, 365].includes(configuredDayCount)
+    ? configuredDayCount
+    : DEFAULT_BROKER_ASSUMPTIONS.dayCountBasis;
   const dailyRate = annualRate / dayCountBasis;
   const configuredHour = rules.rolloverHour;
   const configuredMinute = rules.rolloverMinute;
   const rolloverHour = typeof configuredHour === 'number' &&
     Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
     ? configuredHour
-    : 4;
+    : DEFAULT_BROKER_ASSUMPTIONS.rolloverHour;
   const rolloverMinute = typeof configuredMinute === 'number' &&
     Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
     ? configuredMinute
-    : 0;
+    : DEFAULT_BROKER_ASSUMPTIONS.rolloverMinute;
+  const timeZone = typeof rules.rolloverTimeZone === 'string' && rules.rolloverTimeZone.trim()
+    ? rules.rolloverTimeZone
+    : DEFAULT_BROKER_ASSUMPTIONS.rolloverTimeZone;
   const now = new Date();
   const lastTimestamp = Number(state.lastRolloverTimestamp);
   const lastDate = new Date(lastTimestamp);
@@ -984,16 +976,18 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     return false;
   }
 
-  const lastParts = getArmeniaClockParts(lastDate);
-  // Armenia uses UTC+04:00 and currently has no daylight-saving transitions.
-  const boundaryFor = (year: number, month: number, day: number) =>
-    Date.UTC(year, month - 1, day, rolloverHour, rolloverMinute) - 4 * 60 * 60 * 1000;
-  let boundary = boundaryFor(lastParts.year, lastParts.month, lastParts.day);
+  const lastParts = getBrokerClockParts(lastDate, timeZone);
+  let nextDate = { year: lastParts.year, month: lastParts.month, day: lastParts.day };
+  let boundary = getRolloverTimestampForLocalDate(
+    nextDate.year, nextDate.month, nextDate.day, rolloverHour, rolloverMinute, timeZone
+  );
 
-  // If the stored timestamp is at or after today's cutoff, start tomorrow.
+  // If the stored timestamp is at or after today's cutoff, start with tomorrow's local date.
   if (boundary <= lastTimestamp) {
-    const nextDay = new Date(Date.UTC(lastParts.year, lastParts.month - 1, lastParts.day + 1));
-    boundary = boundaryFor(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate());
+    nextDate = shiftCalendarDate(nextDate.year, nextDate.month, nextDate.day, 1);
+    boundary = getRolloverTimestampForLocalDate(
+      nextDate.year, nextDate.month, nextDate.day, rolloverHour, rolloverMinute, timeZone
+    );
   }
 
   let rolloversApplied = 0;
@@ -1009,12 +1003,9 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     }
     rolloversApplied++;
     lastProcessedBoundary = boundary;
-
-    const boundaryDate = new Date(boundary + 4 * 60 * 60 * 1000);
-    boundary = boundaryFor(
-      boundaryDate.getUTCFullYear(),
-      boundaryDate.getUTCMonth() + 1,
-      boundaryDate.getUTCDate() + 1
+    nextDate = shiftCalendarDate(nextDate.year, nextDate.month, nextDate.day, 1);
+    boundary = getRolloverTimestampForLocalDate(
+      nextDate.year, nextDate.month, nextDate.day, rolloverHour, rolloverMinute, timeZone
     );
   }
 
@@ -1023,7 +1014,7 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     // pulls cannot skip or double-count a rollover.
     state.lastRolloverTimestamp = lastProcessedBoundary;
     console.log(
-      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} Asia/Yerevan rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
+      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} ${timeZone} rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
     );
     return true;
   }
