@@ -3,7 +3,7 @@ import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 
 export type ReconciliationFeedStatus = 'complete' | 'partial' | 'unavailable';
 
-export type BrokerActivityFindingType =
+type BrokerActivityFindingType =
   | 'duplicate_broker_execution'
   | 'execution_missing_in_app'
   | 'execution_missing_in_broker'
@@ -18,7 +18,7 @@ export type BrokerActivityFindingType =
   | 'cashflow_currency_mismatch'
   | 'cashflow_type_mismatch';
 
-export interface BrokerActivityFinding {
+interface BrokerActivityFinding {
   id: string;
   type: BrokerActivityFindingType;
   subject: string;
