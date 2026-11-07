@@ -37,11 +37,13 @@ describe('admin dashboard summary', () => {
     expect(summary.freeCash).toBe(50);
     expect(summary.equity).toBe(280);
     expect(summary.dailyMarginCost).toBeCloseTo(100 * 0.15 / 365);
-    expect(summary.investedCostBasis).toBe(280);
-    expect(summary.unrealizedPnl).toBe(50);
+    expect(summary.investedCostBasis).toBe(200);
+    expect(summary.unrealizedPnl).toBe(40);
+    expect(summary.unrealizedPnlPercent).toBe(20);
+    expect(summary.marginMarketValue).toBe(240);
   });
 
-  it('withholds equity and total unrealized P/L when any holding is unpriced', () => {
+  it('keeps account equity incomplete but calculates margin-only P/L when a cash holding is unpriced', () => {
     const state = makeState({
       cashCushion: { freeCash: 50, holdings: [
         { ticker: 'MSFT', shares: 1, averagePrice: 80, currentPrice: 0, price: 0 }
@@ -50,7 +52,8 @@ describe('admin dashboard summary', () => {
     const summary = buildAdminDashboardSummary(state, 1000, 60000);
     expect(summary.status).toBe('incomplete');
     expect(summary.equity).toBeNull();
-    expect(summary.unrealizedPnl).toBeNull();
+    expect(summary.unrealizedPnl).toBe(40);
+    expect(summary.unrealizedPnlPercent).toBe(20);
     expect(summary.unpricedHoldings).toBe(1);
     expect(summary.marginRisk).toBeNull();
   });
