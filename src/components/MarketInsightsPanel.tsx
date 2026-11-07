@@ -11,7 +11,7 @@ import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../fea
 import { fetchFinnhubMarketEvents } from '../services/finnhubMarketData';
 import { marketHistoryProviderRegistry } from '../services/marketHistoryProviders';
 import { normalizeInstrumentIdentity } from '../services/marketDataContracts';
-import type { MarketEventsResult } from '../services/marketEvents';
+import { createMarketEventDateRange, getNextUpcomingEarningsDate, type MarketEventsResult } from '../services/marketEvents';
 import type { MarketHistoryResult } from '../services/marketDataContracts';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
@@ -47,7 +47,7 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Earnings': 'Отчётность',
   'Dividends': 'Дивиденды',
   'Daily price history': 'Дневная история цен',
-  'Load Finnhub history': 'Загрузить историю Finnhub',
+  'Load daily history': 'Загрузить дневную историю',
   'Refresh history': 'Обновить историю',
   'Loading events…': 'Загрузка событий…',
   'Loading history…': 'Загрузка истории…',
@@ -57,7 +57,7 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Earnings unavailable': 'Данные об отчётности недоступны',
   'No dividend events in this period.': 'Нет дивидендных событий за этот период.',
   'Dividends unavailable': 'Данные о дивидендах недоступны',
-  'Daily history unavailable': 'Дневная история недоступна',
+  'Daily history unavailable': 'Дневная история недоступна',\n  'Finnhub history unavailable; daily candles were loaded from Freedom TradeNet.': 'История Finnhub недоступна; дневные свечи загружены из Freedom TradeNet.',
   'No historical prices loaded.': 'Исторические цены не загружены.',
   'Observed time unavailable': 'Время наблюдения недоступно',
   'Received': 'Получено',
@@ -378,9 +378,7 @@ function MarketInsightsPanelView() {
     if (activeSection !== 'earnings' || !ticker) return;
     const requestId = ++marketEventsRequestIdRef.current;
     const controller = new AbortController();
-    const now = new Date();
-    const from = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const to = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { from, to } = createMarketEventDateRange(new Date());
     const symbol = ticker.trim().toUpperCase().replace(/\.US$/i, '');
     setMarketEventsState(current => ({
       ticker,
@@ -431,7 +429,7 @@ function MarketInsightsPanelView() {
       loading: true,
       error: null
     }));
-    void marketHistoryProviderRegistry.fetch('FINNHUB', {
+    void marketHistoryProviderRegistry.fetchDailyHistory({
       instrument: identity,
       startAt,
       endAt,
@@ -693,13 +691,18 @@ function MarketInsightsPanelView() {
       const upcomingDividends = getClosestDatedMarketEvents(
         currentEvents?.dividends ?? [], event => event.exDate
       );
+      const nextEarningsDate = getNextUpcomingEarningsDate(
+        currentEvents?.earnings ?? [], Date.now()
+      ) ?? getNextUpcomingEarningsDate(
+        typeof cal.earningsDate === 'string' ? [{ eventDate: cal.earningsDate }] : [], Date.now()
+      ) ?? 'TBD';
       const latestHistory = currentHistory?.points.slice(-5).reverse() ?? [];
 
       return (
         <div class="space-y-3">
           <div class="bg-slate-900/70 p-2.5 rounded border border-slate-800/80 mb-3">
             <span class="text-[10px] text-slate-500 uppercase block">Next Earnings Date</span>
-            <span class="text-purple-300 font-bold text-sm">{cal.earningsDate || 'TBD'}</span>
+            <span class="text-purple-300 font-bold text-sm">{nextEarningsDate}</span>
           </div>
 
           <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Upcoming and recent events')}>
@@ -774,7 +777,7 @@ function MarketInsightsPanelView() {
               <button type="button" onClick={() => setMarketHistoryRequest(value => value + 1)}
                 disabled={historyLoading}
                 class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
-                {historyLoading ? marketEventLabel('Loading history…') : marketEventLabel(currentHistory ? 'Refresh history' : 'Load Finnhub history')}
+                {historyLoading ? marketEventLabel('Loading history…') : marketEventLabel(currentHistory ? 'Refresh history' : 'Load daily history')}
               </button>
             </div>
             {historyError && !currentHistory && <p class="text-[10px] text-slate-500">{marketEventLabel('Daily history unavailable')}</p>}
@@ -791,11 +794,11 @@ function MarketInsightsPanelView() {
               </div>
             )}
             {currentHistory?.quality === 'partial' && (
-              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Currency unknown; no conversion applied.')}</p>
+              <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map(marketEventLabel).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
             )}
             {currentHistory && (
               <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
-                FINNHUB · {marketEventLabel('Received')}: {currentHistory.receivedAt ? formatRelativeTime(currentHistory.receivedAt) : '—'}
+                {currentHistory.provider || 'Provider'} · {marketEventLabel('Received')}: {currentHistory.receivedAt ? formatRelativeTime(currentHistory.receivedAt) : '—'}
                 {' · '}{currentHistory.observedAt === null ? marketEventLabel('Observed time unavailable') : formatRelativeTime(currentHistory.observedAt)}
               </p>
             )}
