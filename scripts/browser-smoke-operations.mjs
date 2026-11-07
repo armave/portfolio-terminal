@@ -667,9 +667,37 @@ try {
       throw new Error('New accounts must default to the guest role.');
     }
     await visibleSettingsDesk().getByLabel('New user language').selectOption('en');
+    const createCallsBefore = worker.count('POST', '/api/auth/users');
+    const directoryReadsBefore = worker.count('GET', '/api/auth/users');
     await visibleSettingsDesk().getByRole('button', { name: 'Add user' }).click();
-    await visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`).locator('xpath=ancestor::tr[1]')
-      .waitFor({ state: 'visible', timeout: 10_000 });
+    await waitForCondition(
+      () => worker.findCalls('POST', '/api/auth/users').slice(createCallsBefore).some((call) =>
+        call.body.action === 'create' && call.body.name === name && call.responseStatus === 201
+      ),
+      'successful creation request for ' + name
+    );
+    await waitForCondition(
+      () => worker.users.some((user) => user.name === name),
+      'mock Worker account record for ' + name
+    );
+    await waitForCondition(
+      () => worker.findCalls('GET', '/api/auth/users').slice(directoryReadsBefore)
+        .some((call) => call.responseStatus === 200),
+      'refreshed administrator user directory after creating ' + name
+    );
+    const row = visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`).locator('xpath=ancestor::tr[1]');
+    try {
+      await row.waitFor({ state: 'visible', timeout: 20_000 });
+    } catch {
+      const visibleRows = await visibleSettingsDesk().locator('tbody tr').allInnerTexts();
+      const alerts = await visibleSettingsDesk().locator('[role="alert"]').allInnerTexts();
+      const recentRequests = worker.findCalls('GET', '/api/auth/users').slice(-3)
+        .map((call) => ({ status: call.responseStatus, token: call.token }));
+      throw new Error('Created account did not render in Settings: ' + JSON.stringify({
+        requestedName: name, workerUsers: worker.users.map((user) => user.name),
+        visibleRows, alerts, recentRequests
+      }));
+    }
     await waitForUserSaveReady(name);
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
