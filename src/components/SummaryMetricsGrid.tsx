@@ -328,7 +328,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('terminal:market-depth-request', { ticker })}
           class="rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50"
         >
-          ▤ Market Depth
+          ▤ Depth
         </button>}
       </div>
       {ticker && (
