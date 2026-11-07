@@ -297,7 +297,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       previous.brokerAccountInfo === next.brokerAccountInfo
   );
   const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
-    60000,
+    DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     currentUser?.role === 'guest' ? 'guest' : 'admin'
   );
   const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
