@@ -973,4 +973,5 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Cash unrealized P/L': 'Нереализованная прибыль/убыток по денежным активам',
   'Cash cost basis': 'Себестоимость денежных активов',
   'missing cost basis': 'нет данных о себестоимости',
+  'Per-position values shown in table': 'Значения по позициям показаны в таблице',
 };
