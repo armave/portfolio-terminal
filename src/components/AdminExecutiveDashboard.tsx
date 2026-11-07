@@ -68,10 +68,6 @@ export function AdminExecutiveDashboard() {
   const accruedMarginInterest = (Number(state.realizedMarginCharged) || 0) + calculateMarginInterest(interestTranches, {
     dailyRate, marginDebt: debt, totalDebt: debt
   });
-  const cashHoldingsValue = cashHoldings.reduce((sum, holding) => {
-    const price = Number(holding.currentPrice ?? holding.price);
-    return sum + (Number.isFinite(price) && price > 0 ? Number(holding.shares) * price : 0);
-  }, 0);
 
   const marginRows = positions.map(position => {
     const shares = Number(position.shares);
@@ -131,11 +127,9 @@ export function AdminExecutiveDashboard() {
       : riskStatus === 'elevated' ? 'Elevated risk' : riskStatus === 'healthy'
         ? 'Within configured thresholds' : 'Risk estimate unavailable';
   const quoteCounts = summary.quoteSummary;
-  const pnlTone = summary.unrealizedPnl === null ? 'text-slate-400'
-    : summary.unrealizedPnl >= 0 ? 'text-emerald-300' : 'text-rose-300';
 
   return (
-    <section class="mt-3 space-y-3 rounded-xl border border-cyan-900/50 bg-slate-950/70 p-3 sm:p-4"
+    <section class="mt-2 space-y-2 rounded-xl border border-cyan-900/50 bg-slate-950/70 p-2 sm:p-3"
       aria-labelledby="adminExecutiveDashboardTitle">
       <div class="flex flex-wrap items-start justify-between gap-2">
         <div>
@@ -149,8 +143,8 @@ export function AdminExecutiveDashboard() {
         </span>
       </div>
 
-      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-4">
-        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+      <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+        <section class="min-w-0 rounded-lg border border-slate-800 bg-slate-900/60 p-2.5">
           <h3 id="adminPositionBasisTitle" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label('Position basis')}</h3>
           <p class="mt-2 text-sm font-bold text-slate-100">
             {marginShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {label('shares')} · {marginTrancheCount} {label('tranches')}
@@ -190,29 +184,9 @@ export function AdminExecutiveDashboard() {
           <p class="mt-2 text-sm font-bold text-slate-100">{summary.marginUnpricedPositions > 0 ? '≥' : ''}{formatUSD(summary.marginMarketValue)}</p>
           <p class="mt-1 text-xs text-slate-300">{label('Margin market value')}</p>
           {summary.marginUnpricedPositions > 0 && <p class="mt-1 text-[10px] text-amber-300">{summary.marginUnpricedPositions} {label('unpriced')}</p>}
-          <p class={`mt-1 text-xs font-semibold ${pnlTone}`}>
-            {label('Unrealized P/L (margin only)')}: {summary.unrealizedPnl === null ? '—' : `${summary.unrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.unrealizedPnl))}`}
-            {summary.unrealizedPnlPercent === null ? '' : ` (${summary.unrealizedPnlPercent >= 0 ? '+' : ''}${summary.unrealizedPnlPercent.toFixed(2)}%)`}
+          <p class="mt-1 text-[10px] text-slate-500">
+            {positions.length} {label('margin positions')} · {summary.marginUnpricedPositions} {label('unpriced')}
           </p>
-          <div class="mt-2 space-y-2 border-t border-slate-800/70 pt-2">
-            {marginRows.length === 0
-              ? <p class="text-[10px] text-slate-500">{label('No margin positions')}</p>
-              : marginRows.map(row => (
-                <div key={row.ticker} class="space-y-0.5 text-[10px]">
-                  <div class="flex flex-wrap justify-between gap-x-2">
-                    <span class="font-semibold text-slate-200">{row.ticker}</span>
-                    <span class="font-mono text-slate-300">{row.price === null ? '—' : formatUSD(row.price)} · {row.marketValue === null ? '—' : formatUSD(row.marketValue)}</span>
-                  </div>
-                  <div class="flex flex-wrap justify-between gap-x-2 text-slate-500">
-                    <span class={row.pnl === null ? '' : row.pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
-                      {label('Unrealized P/L')}: {row.pnl === null ? '—' : `${row.pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(row.pnl))}`}
-                      {row.pnlPercent === null ? '' : ` (${row.pnlPercent >= 0 ? '+' : ''}${row.pnlPercent.toFixed(2)}%)`}
-                    </span>
-                    <span>{row.dayMove ? `${label('Day')}: ${row.dayMove}` : ''}{row.volume ? ` · ${label('Volume')} ${row.volume}` : ''}</span>
-                  </div>
-                </div>
-              ))}
-          </div>
           <QuoteProvenanceList holdings={quoteHoldings} />
         </section>
 
@@ -235,15 +209,13 @@ export function AdminExecutiveDashboard() {
         </section>
       </div>
 
-      <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         <Metric title="Total equity" value={summary.equity === null ? '—' : formatUSD(summary.equity)}
           detail={label('Holdings plus cash less margin debt')} />
-        <Metric title="Cash holdings value" value={formatUSD(cashHoldingsValue)}
-          detail={`${summary.cashHoldingCount} ${label('cash holdings')}`} />
         <Metric title="Free cash" value={formatUSD(summary.freeCash)} detail={label('Unallocated cash balance')} />
       </div>
 
-      <div class="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
+      <div class="grid grid-cols-1 gap-1.5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
         <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-3" aria-labelledby="adminRiskTitle">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 id="adminRiskTitle" class="text-xs font-bold uppercase tracking-wide text-slate-200">{label('Margin risk monitor')}</h3>
@@ -285,14 +257,43 @@ export function AdminExecutiveDashboard() {
             <h3 id="adminDataHealthTitle" class="text-xs font-bold uppercase tracking-wide text-slate-200">{label('Data health')}</h3>
             <span class={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone(dataStatus)}`}>{label(summary.statusReason)}</span>
           </div>
-          <div class="mt-3 grid grid-cols-2 gap-3">
-            <div>
+          <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div class="min-w-0">
               <p class="text-[10px] text-slate-500">{label('Broker snapshot')}</p>
-              <p class="mt-1 text-xs font-semibold text-slate-200">{label(state.brokerAccountInfo?.status === 'current' ? 'Current' : state.brokerAccountInfo?.status === 'stale' ? 'Stale' : state.brokerAccountInfo?.loaded ? 'Unverified' : 'Unavailable')}</p>
+              <p class="mt-0.5 text-xs font-semibold text-slate-200">{label(state.brokerAccountInfo?.status === 'current' ? 'Current' : state.brokerAccountInfo?.status === 'stale' ? 'Stale' : state.brokerAccountInfo?.loaded ? 'Unverified' : 'Unavailable')}</p>
+              <p class="mt-0.5 break-words text-[10px] text-slate-400">
+                {[state.brokerAccountInfo?.provider, state.brokerAccountInfo?.source, state.brokerAccountInfo?.quality].filter(Boolean).join(' · ') || label('Broker source metadata unavailable')}
+              </p>
+              <p class="mt-0.5 text-[10px] text-slate-500">
+                {state.brokerAccountInfo?.observedAt
+                  ? `${label('Observed')}: ${new Date(state.brokerAccountInfo.observedAt).toLocaleString()}`
+                  : state.brokerAccountInfo?.receivedAt
+                    ? `${label('Received')}: ${new Date(state.brokerAccountInfo.receivedAt).toLocaleString()}`
+                    : label('Snapshot timestamp unavailable')}
+              </p>
+              {(state.brokerAccountInfo?.warnings?.length || state.brokerAccountInfo?.lastRefreshIssue) && (
+                <p class="mt-1 break-words text-[10px] text-amber-300">
+                  {state.brokerAccountInfo.warnings?.join(' · ') || state.brokerAccountInfo.lastRefreshIssue?.message || label('Broker refresh issue')}
+                </p>
+              )}
             </div>
-            <div>
+            <div class="min-w-0">
               <p class="text-[10px] text-slate-500">{label('Market quotes')}</p>
-              <p class="mt-1 text-xs font-semibold text-slate-200">{quoteCounts.fresh} {label('fresh')} · {quoteCounts.stale} {label('stale')} · {quoteCounts.delayed} {label('delayed')} · {quoteCounts.unknown + quoteCounts.unavailable} {label('unknown / unavailable')}</p>
+              <p class="mt-0.5 text-xs font-semibold text-slate-200">
+                {quoteCounts.fresh} {label('fresh')} · {quoteCounts.stale} {label('stale')} · {quoteCounts.delayed} {label('delayed')} · {quoteCounts.unknown + quoteCounts.unavailable} {label('unknown / unavailable')}
+              </p>
+              <div class="mt-1 space-y-1">
+                {quoteHoldings.length === 0
+                  ? <p class="text-[10px] text-slate-500">{label('No open holdings to check')}</p>
+                  : quoteHoldings.map(holding => (
+                    <div key={holding.ticker + '-' + holding.kind} class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 text-[10px]">
+                      <span class="font-semibold text-slate-300">{holding.ticker} · {label(holding.kind)}</span>
+                      <span class="min-w-0 break-words text-right text-slate-400">
+                        {label(getQuoteFreshness(holding))}{holding.quoteSource ? ` · ${holding.quoteSource}` : ''}
+                      </span>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         </section>
@@ -307,7 +308,7 @@ export function AdminExecutiveDashboard() {
           <p class="p-4 text-center text-xs text-slate-500">{label('No open positions or cash holdings')}</p>
         ) : (
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[640px] text-xs">
+            <table class="w-full min-w-[560px] text-xs">
               <thead class="bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
                   <th class="px-3 py-2 text-left">{label('Ticker')}</th>
@@ -334,6 +335,20 @@ export function AdminExecutiveDashboard() {
           </div>
         )}
       </section>
+      <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2">
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label('Cash unrealized P/L')}</p>
+          <p class={`mt-0.5 text-sm font-bold tabular-nums ${summary.cashUnrealizedPnl === null ? 'text-slate-400' : summary.cashUnrealizedPnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+            {summary.cashUnrealizedPnl === null ? '—' : `${summary.cashUnrealizedPnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(summary.cashUnrealizedPnl))}`}
+            {summary.cashUnrealizedPnlPercent === null ? '' : ` (${summary.cashUnrealizedPnlPercent >= 0 ? '+' : ''}${summary.cashUnrealizedPnlPercent.toFixed(2)}%)`}
+          </p>
+        </div>
+        <p class="text-right text-[10px] text-slate-500">
+          {summary.cashInvestedCostBasis === null
+            ? `${summary.cashUnpricedHoldings} ${label('unpriced')} · ${summary.cashMissingCostBasisHoldings} ${label('missing cost basis')}`
+            : `${label('Cash cost basis')}: ${formatUSD(summary.cashInvestedCostBasis)}`}
+        </p>
+      </div>
     </section>
   );
 }
