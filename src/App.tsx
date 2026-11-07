@@ -24,6 +24,7 @@ import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } f
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
 import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
+import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
@@ -101,7 +102,7 @@ function buildMarginReviewContext(
   snapshot: BoardState,
   requestedTicker: string | null,
   now = Date.now(),
-  refreshIntervalMs = 60000
+  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
 ) {
   const allPositions = Object.values(snapshot.positions || {}).filter(
     (position): position is PositionRecord => Boolean(position && Number(position.shares) > 0)
@@ -296,7 +297,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       previous.brokerAccountInfo === next.brokerAccountInfo
   );
   const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
-    60000,
+    DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     currentUser?.role === 'guest' ? 'guest' : 'admin'
   );
   const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
@@ -712,7 +713,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <main
         ref={mainWorkspaceRef}
         id="mainTerminalView"
-        aria-label="Portfolio workspace"
+        aria-label={translateText('Portfolio workspace', getAppLanguage())}
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
       >
         {/* Asset View Tabs */}
@@ -769,12 +770,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="portfolioMetricsGrid"
-                aria-label="Portfolio summary metrics"
+                aria-label={translateText('Portfolio summary metrics', getAppLanguage())}
                 class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
               >
                 {permissions.canViewMarginDesk &&
                   !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
-                    <Suspense fallback={<DeskLoading title="Preparing portfolio metrics" message="Loading portfolio metrics…" accent="cyan" />}>
+                    <Suspense fallback={<DeskLoading title={translateText('Preparing portfolio metrics', getAppLanguage())} message={translateText('Loading portfolio metrics…', getAppLanguage())} accent="cyan" />}>
                       <MemoSummaryMetricsGrid isAdmin={permissions.isAdmin} />
                     </Suspense>
                   )}
@@ -789,19 +790,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               <div id="marginDataWorkspace" class="margin-data-workspace">
                 {/* Projection Table */}
                 <TableScrollRegion
-                  label="Portfolio projection by date"
+                  label={translateText('Portfolio projection by date', getAppLanguage())}
                   id="projectionTableContainer"
                   className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
                 >
-                  <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
-                    <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
+                  <table aria-label={translateText('Portfolio projection by date', getAppLanguage())} class="w-full min-w-[300px] text-xs border-collapse">
+                    <caption class="sr-only">{translateText('Projected portfolio net value, fees and commissions, margin fee, and balance by date.', getAppLanguage())}</caption>
                     <thead>
                       <tr class="border-b border-slate-800 text-slate-400">
-                        <th scope="col" class="py-2 px-3">Date</th>
-                        <th scope="col" class="py-2 px-3">Net</th>
-                        <th scope="col" class="py-2 px-3">F&amp;C</th>
-                        <th scope="col" class="py-2 px-3">M Fee</th>
-                        <th scope="col" class="py-2 px-3">Balance</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Date', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Net', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Fees & commissions', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Margin fee', getAppLanguage())}</th>
+                        <th scope="col" class="py-2 px-3">{translateText('Balance', getAppLanguage())}</th>
                       </tr>
                     </thead>
                     <tbody
@@ -813,7 +814,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <section
                   id="marketInsightsPanel"
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-                  aria-label="Market insights"
+                  aria-label={translateText('Market insights', getAppLanguage())}
                 >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
                   <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
                     <MarketInsightsPanel />

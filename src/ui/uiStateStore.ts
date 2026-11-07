@@ -23,7 +23,7 @@ export function useAiStatus(): string {
   return status;
 }
 
-let breakevenText = 'Combined Breakeven: 0 days';
+let breakevenText = 'Breakeven: 0 days';
 const breakevenTextListeners = new Set<(text: string) => void>();
 
 /** Publish the current combined-portfolio breakeven label. */

@@ -103,6 +103,18 @@ describe('app localization', () => {
     expect(formatMarginSourcesHeading(3, 'ru')).toBe('Изученные источники (3)');
   });
 
+  it('localizes Margin risk and financial-summary copy with dynamic values', () => {
+    expect(translateText('Margin risk and account equity', 'ru')).toBe('Маржинальный риск и собственный капитал счёта');
+    expect(translateText('Estimate assumes the configured {threshold}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.', 'ru'))
+      .toContain('{threshold}%');
+    expect(translateText('Estimated from portfolio equity and configured thresholds: {maintenance}% maintenance equity and {stopOut}% stop-out equity. Not a live broker risk indicator.', 'ru'))
+      .toContain('{maintenance}%');
+    expect(translateText('{value}% reference', 'ru').replace('{value}', '40')).toBe('Ориентир 40%');
+    expect(translateText('Show {count} tranches', 'ru').replace('{count}', '7')).toBe('Показать лоты: 7');
+    expect(translateText('View live market depth for {ticker}', 'ru').replace('{ticker}', 'GOOGL')).toBe('Открыть стакан заявок для GOOGL');
+    expect(translateText('per day', 'ru')).toBe('в день');
+  });
+
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
     expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');

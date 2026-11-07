@@ -1,4 +1,5 @@
 import { getAppLanguage, translateText } from '../services/i18n';
+import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -82,7 +83,7 @@ interface QuoteFreshnessInput {
 export function getQuoteFreshness(
   holding: QuoteFreshnessInput,
   now = Date.now(),
-  refreshIntervalMs = 60000
+  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
 ): QuoteFreshness {
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
   if (holding.quoteDetails?.cacheStatus === 'stale-fallback') return 'stale';
@@ -122,7 +123,7 @@ export interface QuoteFreshnessSummary {
 export function summarizeQuoteFreshness(
   holdings: readonly QuoteFreshnessInput[],
   now = Date.now(),
-  refreshIntervalMs = 60000
+  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
 ): QuoteFreshnessSummary {
   const summary: QuoteFreshnessSummary = {
     total: holdings.length,
@@ -156,7 +157,7 @@ export function formatQuoteFreshnessSummary(summary: QuoteFreshnessSummary): str
 
 export function formatQuoteMetadata(
   holding: QuoteFreshnessInput,
-  refreshIntervalMs = 60000
+  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
 ): string {
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
   if (freshness === 'unavailable') return holding.quoteSource || translateText('Not fetched');

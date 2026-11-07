@@ -32,6 +32,13 @@ describe('broker history adapter boundary', () => {
 });
 
 describe('Balance guest grouping', () => {
+  it('keeps guest group rows keyed and centered from their first render', () => {
+    const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+    expect(deskSource).toMatch(/<Fragment key=\{\`\$\{h\.groupKey\}-\$\{h\.ticker\}\`\}>/);
+    expect(deskSource).toMatch(/<td colSpan=\{8\} class="[^"]*text-center" style=\{\{ textAlign: 'center' \}\}>\{h\.groupLabel\}<\/td>/);
+  });
+
   it('uses stable assigned guest IDs rather than asynchronous directory order', () => {
     expect(getAssignedGuestIds({
       trancheC: 'guest-c',
@@ -221,6 +228,17 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain('usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual)');
     expect(deskSource).not.toContain('const state = usePortfolio();');
     expect(deskSource).toContain('useMemo(() => activeTrancheSource.map');
+  });
+
+  it('uses the shared role-specific quote refresh defaults', () => {
+    const refreshHookSource = readFileSync(new URL('../ui/useQuoteRefreshInterval.ts', import.meta.url), 'utf8');
+
+    expect(deskSource).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
+    expect(deskSource).toContain('DEFAULT_GUEST_REFRESH_INTERVAL_MS');
+    expect(deskSource).toContain("useQuoteRefreshInterval(guestUserId ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS");
+    expect(deskSource).not.toContain('guestUserId ? 15_000 : 60_000');
+    expect(refreshHookSource).toContain('fallbackMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
+    expect(refreshHookSource).not.toContain('fallbackMs = 60000');
   });
 
   it('refreshes the full Balance snapshot without a date cursor', () => {

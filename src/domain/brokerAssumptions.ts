@@ -1,5 +1,8 @@
 import type { BrokerAssumptions, BrokerRules } from '../types/portfolio';
 
+/** Freedom Broker Armenia timestamps use the broker's local calendar zone. */
+export const FREEDOM_BROKER_TIME_ZONE = 'Asia/Yerevan';
+
 /** Default Freedom Broker assumptions. Rates are decimal fractions, not percentages. */
 export const DEFAULT_BROKER_ASSUMPTIONS: BrokerAssumptions = {
   broker: 'Freedom Broker Armenia (Tradernet)',
@@ -7,7 +10,7 @@ export const DEFAULT_BROKER_ASSUMPTIONS: BrokerAssumptions = {
   dayCountBasis: 365,
   rolloverHour: 4,
   rolloverMinute: 0,
-  rolloverTimeZone: 'Asia/Yerevan',
+  rolloverTimeZone: FREEDOM_BROKER_TIME_ZONE,
   maintenanceEquityRatio: 0.1,
   stopOutRatio: 0,
   commissionMin: 1.2,

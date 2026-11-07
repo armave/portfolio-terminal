@@ -940,28 +940,28 @@ function updateCombinedBreakeven() {
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
 
   if (tickers.length === 0 || totalInvested === 0) {
-    setText("Combined Breakeven: No active trades");
+    setText("Breakeven: No active trades");
     return;
   }
 
   if (totalDebt <= 0) {
-    setText("Combined Breakeven: No margin debt");
+    setText("Breakeven: No margin debt");
     return;
   }
 
   if (netTargetProfit <= 0) {
-    setText("Combined Breakeven: No date");
+    setText("Breakeven: No date");
     return;
   }
 
   if (getDailyRate() === 0) {
-    setText("Combined Breakeven: No date");
+    setText("Breakeven: No date");
     return;
   }
 
   const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
   if (beDays === null) {
-    setText("Combined Breakeven: No non-negative breakeven date");
+    setText("Breakeven: No non-negative breakeven date");
     return;
   }
 
@@ -969,7 +969,7 @@ function updateCombinedBreakeven() {
   beDate.setDate(beDate.getDate() + beDays);
   const beDateStr = beDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  setText(`Combined Breakeven: ${beDays} days (${beDateStr})`);
+  setText(`Breakeven: ${beDays} days (${beDateStr})`);
 }
 
 function renderBoard() {

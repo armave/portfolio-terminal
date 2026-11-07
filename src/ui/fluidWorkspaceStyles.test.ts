@@ -119,3 +119,65 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+180ms/);
   });
 });
+
+
+describe('Margin desk localization', () => {
+  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+  const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
+  const russianSource = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
+
+  it('routes projection table labels and its accessible description through i18n', () => {
+    for (const label of [
+      'Portfolio workspace',
+      'Portfolio summary metrics',
+      'Market insights',
+      'Preparing portfolio metrics',
+      'Loading portfolio metrics…',
+      'Portfolio projection by date',
+      'Projected portfolio net value, fees and commissions, margin fee, and balance by date.',
+      'Date',
+      'Net',
+      'Fees & commissions',
+      'Margin fee',
+      'Balance'
+    ]) {
+      expect(appSource).toContain(`translateText('${label}', getAppLanguage())`);
+    }
+    expect(appSource).not.toContain('<th scope="col" class="py-2 px-3">F&amp;C</th>');
+    expect(appSource).not.toContain('<th scope="col" class="py-2 px-3">M Fee</th>');
+  });
+
+  it('localizes all static Margin summary metric labels', () => {
+    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value']) {
+      expect(summarySource).toContain(`translateText('${label}', getAppLanguage())`);
+    }
+  });
+
+  it('localizes projection entry, status, and pagination copy', () => {
+    for (const label of [
+      'No active position to project.',
+      'Entry',
+      'Position opened · projection values start today',
+      'TODAY',
+      'BREAKEVEN',
+      'EOW · +{days}d',
+      'NTD · +{days}d',
+      'Projection table pagination',
+      'Previous projection page',
+      'Next projection page',
+      'Previous',
+      'Next',
+      'Rows {start}–{end} of {total}',
+      'Page {current} of {total}'
+    ]) {
+      expect(projectionSource).toContain(`translateText('${label}', getAppLanguage())`);
+    }
+    expect(russianSource).toContain("'Rows {start}–{end} of {total}':");
+    expect(russianSource).toContain("'Page {current} of {total}':");
+  });
+
+  it('provides a Russian translation for the full margin-fee label', () => {
+    expect(russianSource).toContain("'Margin fee': 'Проценты по марже'");
+  });
+});

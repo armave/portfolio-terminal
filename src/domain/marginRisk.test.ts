@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
-import { calculateMarginRiskMetrics } from './marginRisk';
+import { ACCOUNT_EQUITY_HEALTH_REFERENCE, calculateMarginRiskMetrics, getMarginRiskLevel } from './marginRisk';
 import type { BrokerAssumptions } from '../types/portfolio';
 
 function assumptions(overrides: Partial<BrokerAssumptions> = {}): BrokerAssumptions {
@@ -17,7 +17,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.marginCallAssetsRequired).toBeCloseTo(500 / 0.9);
     expect(metrics.showMarginCall).toBe(false);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(false);
   });
 
   it('reports a maintenance call while remaining above the stop-out threshold', () => {
@@ -28,7 +27,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equityRatio).toBeCloseTo(0.1);
     expect(metrics.showMarginCall).toBe(true);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(true);
   });
 
   it('shows a maintenance trigger at exact threshold equality', () => {
@@ -49,7 +47,6 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equity).toBe(-100);
     expect(metrics.showMarginCall).toBe(true);
     expect(metrics.showStopOut).toBe(true);
-    expect(metrics.showRiskTriggers).toBe(true);
   });
 
   it('does not claim a margin trigger when debt is absent', () => {
@@ -58,6 +55,20 @@ describe('calculateMarginRiskMetrics', () => {
     expect(metrics.equityRatio).toBe(1);
     expect(metrics.showMarginCall).toBe(false);
     expect(metrics.showStopOut).toBe(false);
-    expect(metrics.showRiskTriggers).toBe(false);
+  });
+});
+
+describe('account equity health status', () => {
+  it('matches the 40% reference shown on the account-equity meter', () => {
+    expect(ACCOUNT_EQUITY_HEALTH_REFERENCE).toBe(0.4);
+    expect(getMarginRiskLevel(0.2618, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Elevated');
+    expect(getMarginRiskLevel(0.3999, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Elevated');
+    expect(getMarginRiskLevel(0.4, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Healthy');
+  });
+
+  it('keeps maintenance-call and stop-out states more severe than elevated', () => {
+    expect(getMarginRiskLevel(0.1, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Margin-call level');
+    expect(getMarginRiskLevel(0, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Stop-out level');
+    expect(getMarginRiskLevel(-0.05, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Stop-out level');
   });
 });

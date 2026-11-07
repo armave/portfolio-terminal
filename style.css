@@ -825,6 +825,7 @@ summary:hover {
 
 #boardHeaderBanner {
   padding-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 #portfolioMetricsGrid {
@@ -1429,54 +1430,39 @@ summary:hover {
   font-size: 9px
 }
 
-.margin-risk-gauge-grid {
+.margin-risk-buffer-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 16px
+  margin-top: 14px
 }
 
-.margin-risk-gauge-item {
+.margin-risk-buffer-stat {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 4px
+}
+
+.margin-risk-buffer-stat .margin-risk-label {
   min-width: 0
 }
 
-.margin-risk-gauge-row {
-  margin-bottom: 7px
+.margin-risk-buffer-stat>strong {
+  color: #fbbf24;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap
 }
 
-.margin-risk-gauge-row strong {
-  color: #fbbf24
-}
-
-.margin-risk-buffer-track {
-  height: 8px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: #273244
-}
-
-.margin-risk-buffer-track>span {
-  display: block;
-  height: 100%;
-  border-radius: 999px
-}
-
-.margin-risk-buffer-track .warning {
-  background: #f59e0b
-}
-
-.margin-risk-buffer-track .danger {
-  background: #ef4444
-}
-
-.margin-risk-buffer-track .safe {
-  background: #22c55e
-}
-
-.margin-risk-detail {
-  margin-top: 6px;
+.margin-risk-buffer-trigger {
+  grid-column: 1 / -1;
   color: #94a3b8;
-  font-size: 10px
+  font-size: 10px;
+  overflow-wrap: anywhere
 }
 
 .margin-risk-detail strong {
@@ -1507,9 +1493,8 @@ summary:hover {
     padding: 12px
   }
 
-  .margin-risk-gauge-grid {
-    grid-template-columns: 1fr;
-    gap: 12px
+  .margin-risk-buffer-summary {
+    gap: 10px
   }
 
   .margin-risk-mobile-details {
