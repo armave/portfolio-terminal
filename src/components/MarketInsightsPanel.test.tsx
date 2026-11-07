@@ -158,3 +158,16 @@ describe('getClosestDatedMarketEvents', () => {
     expect(getClosestDatedMarketEvents(events, event => event.date, now, 0)).toEqual([]);
   });
 });
+
+describe('earnings and daily history request wiring', () => {
+  it('uses a bounded market-event date range and a source-aware daily history fallback', () => {
+    const source = readFileSync(new URL('./MarketInsightsPanel.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('createMarketEventDateRange(new Date())');
+    expect(source).toContain("marketHistoryProviderRegistry.fetchDailyHistory({");
+    expect(source).toContain("marketEventLabel(currentHistory ? 'Refresh history' : 'Load daily history')");
+    expect(source).toContain('{currentHistory.provider || \'Provider\'}');
+    expect(source).toContain('getNextUpcomingEarningsDate(');
+    expect(source).not.toContain('Load Finnhub history');
+    expect(source).not.toContain('FINNHUB · {marketEventLabel(\'Received\')}');
+  });
+});
