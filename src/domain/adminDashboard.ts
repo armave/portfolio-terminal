@@ -4,7 +4,7 @@ import { getCashCushionTotal } from './portfolioSelectors';
 import { summarizeQuoteFreshness } from '../utils/formatters';
 import { calculateMarginRiskMetrics } from './marginRisk';
 
-export type AdminDashboardStatus = 'current' | 'provisional' | 'incomplete';
+type AdminDashboardStatus = 'current' | 'provisional' | 'incomplete';
 
 export interface AdminDashboardSummary {
   equity: number | null;
