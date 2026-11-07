@@ -263,7 +263,12 @@ function mapExternalCashFlows(
     'history.correction',
     'portfolio.reconciliation',
     'portfolio.reset',
-    'correction'
+    'correction',
+    'cash-holding.buy',
+    'cash-holding.sell',
+    'cash-holding.adjustment',
+    'cash.transfer',
+    'corporate-action'
   ]);
 
   for (const event of events) {
@@ -309,6 +314,77 @@ function mapExternalCashFlows(
       ? ['One or more external flows come from app-side journal events; source coverage is provisional.']
       : []
   };
+}
+
+function mapAttributionItemFlows(
+  events: readonly PortfolioTransactionEvent[],
+  externalFlows: readonly PerformanceExternalCashFlow[],
+  startAt: number,
+  endAt: number,
+  currency: string
+): AdapterResult<Map<string, PerformanceExternalCashFlow[]>> {
+  const result = new Map<string, PerformanceExternalCashFlow[]>();
+  const add = (key: string, timestamp: number, amount: number) => {
+    if (Math.abs(amount) < 1e-10) return;
+    const flow: PerformanceExternalCashFlow = {
+      timestamp,
+      amount: Math.abs(amount),
+      type: amount >= 0 ? 'contribution' : 'withdrawal',
+      currency,
+      quality: 'current'
+    };
+    const current = result.get(key) || [];
+    current.push(flow);
+    result.set(key, current);
+  };
+
+  // External flows belong to the cash bucket. Security/debt purchase and sale
+  // flows below are internal reallocations and must net to zero across buckets.
+  for (const flow of externalFlows) {
+    add(CASH_ITEM_KEY, flow.timestamp, flow.type === 'contribution' ? flow.amount : -flow.amount);
+  }
+
+  for (const event of events) {
+    if (event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
+    if (event.type !== 'trade.buy' && event.type !== 'trade.sell') continue;
+
+    const ticker = typeof event.ticker === 'string' ? event.ticker.trim().toUpperCase() : '';
+    const eventCurrency = currencyCode(event.currency);
+    const gross = finiteNumber(event.grossAmount);
+    const cashDelta = finiteNumber(event.cashDelta);
+    const debtDelta = event.marginDebtDelta === undefined ? 0 : finiteNumber(event.marginDebtDelta);
+    const fees = event.fees === undefined ? 0 : finiteNumber(event.fees);
+    if (!ticker || eventCurrency !== currency || gross === null || gross <= 0 ||
+        cashDelta === null || debtDelta === null || fees === null || fees < 0) {
+      return {
+        reason: 'A buy or sell journal event is missing the currency, gross amount, cash delta, debt delta or fee evidence required for attribution.',
+        warnings: []
+      };
+    }
+
+    const direction = event.type === 'trade.buy' ? 1 : -1;
+    const positionFlow = direction * gross;
+    // cashDelta is net of commission in the store's transaction commands.
+    // Add the fee back here so the fee remains investment cost, not a transfer
+    // of capital between attribution buckets.
+    const cashFlow = cashDelta + fees;
+    // Positive marginDebtDelta increases a liability; the item value is negative debt.
+    const debtItemFlow = -debtDelta;
+    const netInternalFlow = positionFlow + cashFlow + debtItemFlow;
+    const tolerance = Math.max(0.02, gross * 1e-8);
+    if (!Number.isFinite(netInternalFlow) || Math.abs(netInternalFlow) > tolerance) {
+      return {
+        reason: 'A buy or sell journal event does not reconcile across security, cash and margin-debt buckets; latest-period attribution is withheld.',
+        warnings: []
+      };
+    }
+
+    add('position:' + ticker, event.effectiveAt, positionFlow);
+    add(CASH_ITEM_KEY, event.effectiveAt, cashFlow);
+    add(MARGIN_DEBT_ITEM_KEY, event.effectiveAt, debtItemFlow);
+  }
+
+  return { value: result, warnings: [] };
 }
 
 function parseCashflowTimestamp(value: unknown): number | null {
@@ -468,13 +544,16 @@ export function buildPortfolioPerformanceReport(
   const quality = latestStart.quality === 'provisional' || latestEnd.quality === 'provisional'
     ? 'provisional'
     : 'current';
-  const itemFlows = periodFlows.map(flow => ({
-    timestamp: flow.timestamp,
-    amount: flow.type === 'contribution' ? flow.amount : -flow.amount,
-    currency,
-    quality: flow.quality
-  }));
-  const latestAttribution = calculatePeriodAttribution({
+  const attributionFlowResult = mapAttributionItemFlows(
+    state.transactionEvents || [],
+    periodFlows,
+    latestStart.timestamp,
+    latestEnd.timestamp,
+    currency
+  );
+  const latestAttribution = 'reason' in attributionFlowResult
+    ? { status: 'unavailable' as const, reason: attributionFlowResult.reason, warnings: [] }
+    : calculatePeriodAttribution({
     startAt: latestStart.timestamp,
     endAt: latestEnd.timestamp,
     currency,
@@ -488,7 +567,7 @@ export function buildPortfolioPerformanceReport(
       startValue: startItems.get(key) ?? 0,
       endValue: endItems.get(key) ?? 0,
       quality,
-      flows: key === CASH_ITEM_KEY ? itemFlows : []
+      flows: attributionFlowResult.value.get(key) || []
     })),
     tolerance: 0.05
   });
