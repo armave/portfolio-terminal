@@ -470,6 +470,7 @@ export function buildPortfolioPerformanceReport(
   const profit = timeWeighted.value.periods.reduce((sum, period) => sum + period.profit, 0);
   const warnings = [
     ...externalFlowResult.warnings,
+    ...('reason' in attributionFlowResult ? [] : attributionFlowResult.warnings),
     ...timeWeighted.warnings,
     ...(moneyWeighted.status === 'unavailable' ? [moneyWeighted.reason] : moneyWeighted.warnings),
     ...(incomeCosts.status === 'unavailable' ? [incomeCosts.reason] : incomeCosts.warnings),
