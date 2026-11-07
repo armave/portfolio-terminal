@@ -24,6 +24,7 @@ import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } f
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
 import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
+import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
@@ -101,7 +102,7 @@ function buildMarginReviewContext(
   snapshot: BoardState,
   requestedTicker: string | null,
   now = Date.now(),
-  refreshIntervalMs = 60000
+  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
 ) {
   const allPositions = Object.values(snapshot.positions || {}).filter(
     (position): position is PositionRecord => Boolean(position && Number(position.shares) > 0)
