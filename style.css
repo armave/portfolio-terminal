@@ -3680,3 +3680,118 @@ table tbody tr:hover {
     transform: none !important;
   }
 }
+
+
+/* Settings layout: keep account actions and data/backup controls in clear groups. */
+#settingsDesk .settings-toolbar--organized {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(0.75rem, 1.4cqw, 1.125rem);
+}
+
+#settingsDesk .settings-toolbar--organized > .settings-toolbar__card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-content: stretch;
+  gap: 0.85rem;
+  padding: clamp(0.85rem, 1.5cqw, 1.2rem);
+}
+
+#settingsDesk .settings-account-summary {
+  min-width: 0;
+}
+
+#settingsDesk .settings-account-identity {
+  overflow-wrap: anywhere;
+}
+
+#settingsDesk .settings-account-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+#settingsDesk .settings-account-actions > *,
+#settingsDesk .settings-backup-actions > * {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+
+#settingsDesk .settings-sync-button {
+  grid-column: 1 / -1;
+}
+
+#settingsDesk .settings-refresh-description {
+  max-width: 72ch;
+  margin: 0;
+}
+
+#settingsDesk .settings-backup-actions {
+  width: 100%;
+}
+
+#settingsDesk .settings-data-safety-note {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+#settingsDesk .settings-data-safety-note p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+#settingsDesk .settings-user-heading {
+  min-width: 0;
+}
+
+#settingsDesk .settings-user-heading p {
+  max-width: 68ch;
+}
+
+#settingsDesk .settings-user-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.65rem;
+}
+
+@container settings-workspace (min-width: 54rem) {
+  #settingsDesk .settings-toolbar--organized {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #settingsDesk .settings-account-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #settingsDesk .settings-sync-button {
+    grid-column: auto;
+  }
+
+  #settingsDesk .settings-user-form {
+    grid-template-columns:
+      minmax(0, 1.4fr)
+      minmax(0, 1.4fr)
+      minmax(7rem, 0.8fr)
+      minmax(7.5rem, 0.85fr)
+      minmax(7rem, auto);
+  }
+}
+
+@media (max-width: 420px) {
+  #settingsDesk .settings-toolbar--organized > .settings-toolbar__card {
+    padding: 0.75rem;
+  }
+
+  #settingsDesk .settings-account-summary {
+    align-items: flex-start;
+  }
+
+  #settingsDesk .settings-refresh-description {
+    font-size: 0.625rem;
+  }
+
+  #settingsDesk .settings-user-heading {
+    flex-direction: column;
+  }
+}

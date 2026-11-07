@@ -294,97 +294,100 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </p>
       </div>
 
-      <div class="terminal-toolbar settings-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-2 lg:px-2">
-          <div class="text-xs text-slate-300">
-            {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
+      <div class="terminal-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
+        <div class="settings-toolbar__card settings-account-card flex flex-col gap-3" role="group" aria-label={translateText('Account actions')}>
+          <div class="settings-account-summary flex flex-wrap items-center justify-between gap-3">
+            <div class="settings-account-identity flex min-w-0 flex-wrap items-center gap-2">
+              <span class="text-sm font-bold text-slate-200">{account?.name || translateText('Account information unavailable')}</span>
+              {account && <span class="rounded bg-slate-800 px-2 py-1 uppercase text-[10px] font-bold text-cyan-300">{account.role}</span>}
+            </div>
+            {account && <label class="settings-account-language flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+              {translateText('Language')}
+              <select aria-label={translateText('Account language')} value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 text-center px-2 text-xs text-slate-300">
+                <option value="en" class="text-center">English</option>
+                <option value="ru" class="text-center">Russian</option>
+              </select>
+            </label>}
           </div>
-          {account && <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-            Language
-            <select aria-label="Account language" value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 text-center px-2 text-xs text-slate-300">
-              <option value="en" class="text-center">English</option>
-              <option value="ru" class="text-center">Russian</option>
-            </select>
-          </label>}
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-          <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
-          {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
-          {(account?.role === "admin" || account?.role === "guest") && <button
-            type="button"
-            onClick={() => void handleManualPortfolioSync()}
-            disabled={syncingPortfolio}
-            aria-busy={syncingPortfolio}
-            aria-label={translateText('Sync portfolio')}
-            title={translateText('Sync portfolio')}
-            class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio')}</button>}
+          <div class="settings-account-actions grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
+            {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-9 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">{translateText('Pull cloud')}</button>}
+            {(account?.role === "admin" || account?.role === "guest") && <button
+              type="button"
+              onClick={() => void handleManualPortfolioSync()}
+              disabled={syncingPortfolio}
+              aria-busy={syncingPortfolio}
+              aria-label={translateText('Sync portfolio')}
+              title={translateText('Sync portfolio')}
+              class="settings-sync-button h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio')}</button>}
+          </div>
         </div>
 
-        {/* Cluster 2: Polling & Backups */}
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Portfolio data refresh and backup controls">
-          <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-            {translateText('Mandatory Sync Interval')}
-            <select
-              id="quoteRefreshInterval"
-              value={refreshInterval}
-              onChange={handleIntervalChange}
-              aria-label={translateText('Mandatory automatic portfolio sync interval')}
-              title={translateText(account?.role === 'guest'
-                ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
-                : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
-              class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
-            >
-              <option value="15000">{translateText('15 sec')}</option>
-              <option value="30000">{translateText('30 sec')}</option>
-              <option value="60000">{translateText('1 min')}</option>
-            </select>
-          </label>
-          <p class="basis-full text-center text-[10px] leading-relaxed text-slate-500">
+        <div class="settings-toolbar__card settings-refresh-card flex flex-col gap-3" role="group" aria-label={translateText('Portfolio data refresh and backup controls')}>
+          <div class="settings-refresh-heading flex flex-wrap items-center justify-between gap-2">
+            <label class="settings-refresh-interval flex min-w-0 flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+              {translateText('Mandatory Sync Interval')}
+              <select
+                id="quoteRefreshInterval"
+                value={refreshInterval}
+                onChange={handleIntervalChange}
+                aria-label={translateText('Mandatory automatic portfolio sync interval')}
+                title={translateText(account?.role === 'guest'
+                  ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
+                  : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
+                class="h-9 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
+              >
+                <option value="15000">{translateText('15 sec')}</option>
+                <option value="30000">{translateText('30 sec')}</option>
+                <option value="60000">{translateText('1 min')}</option>
+              </select>
+            </label>
+          </div>
+          <p class="settings-refresh-description text-left text-[10px] leading-relaxed text-slate-500">
             {translateText(account?.role === 'guest'
               ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
               : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
           </p>
-          {permissions.canManageBackups && <>
+          {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => emitUiEvent('settings:export-backup')}
               aria-label="Export portfolio backup as JSON"
               title="Export portfolio state to JSON file"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-            >
-              Export
-            </button>
+              class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+            >{translateText('Export')}</button>
             <button
               type="button"
               onClick={() => emitUiEvent('terminal:backup-import-request')}
               title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
               aria-label="Import portfolio backup from JSON"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
-            >
-              Import
-            </button>
+              class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
+            >{translateText('Import')}</button>
             <button
               type="button"
               onClick={() => emitUiEvent('settings:reset-to-blank-state')}
               title={translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}
               aria-label={translateText('Reset local and cloud portfolio data')}
-              class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-            >
-              Reset
-            </button>
-          </>}
+              class="h-9 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+            >{translateText('Reset')}</button>
+          </div>}
         </div>
       </div>
 
-      {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
-        <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
+      {permissions.canManageBackups && <div class="settings-data-safety-note flex w-full items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
+        <span aria-hidden="true" class="shrink-0 text-sm text-amber-300">⚠</span>
+        <p class="min-w-0 font-semibold text-left text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
-            <p class="text-[10px] text-slate-500">Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.</p></div>
-          {account?.role === "admin" && <span class="text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
+        <div class="settings-user-heading flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
+            <p class="mt-1 max-w-prose text-[10px] leading-relaxed text-slate-500">Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.</p>
+          </div>
+          {account?.role === "admin" && <span class="shrink-0 rounded border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
         </div>
         {account?.role === "admin" ? <>
           <form onSubmit={handleCreateUser} class="settings-user-form grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
