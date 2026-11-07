@@ -737,6 +737,29 @@ describe('portfolio domain', () => {
     })).toBeCloseTo(1, 8);
   });
 
+  it('uses the configured IANA timezone instead of a fixed Armenia UTC offset', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-10-01T18:00:00Z').getTime(),
+      brokerAssumptions: {
+        annualRate: 0.365,
+        dayCountBasis: 365,
+        rolloverHour: 4,
+        rolloverMinute: 0,
+        rolloverTimeZone: 'Asia/Tokyo'
+      }
+    };
+
+    // 03:00 in Tokyo at the stored baseline; advance to 05:00, after its cutoff.
+    vi.setSystemTime(new Date('2026-10-01T20:00:00Z'));
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(-1001);
+    expect(state.lastRolloverTimestamp).toBe(new Date('2026-10-01T19:00:00Z').getTime());
+
+    vi.useRealTimers();
+  });
+
   it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {
     vi.useFakeTimers();
     const state = {
