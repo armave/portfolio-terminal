@@ -50,7 +50,7 @@ export function createMarketHistoryProviderRegistry(adapters: readonly MarketHis
         quality: result.quality === 'complete' ? 'partial' : result.quality,
         issues: [
           ...result.issues,
-          'Finnhub history unavailable (' + reason + '); daily candles were loaded from Freedom TradeNet.'
+          'Finnhub history unavailable; daily candles were loaded from Freedom TradeNet.'
         ]
       };
     } catch (fallbackError) {
