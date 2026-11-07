@@ -3680,3 +3680,163 @@ table tbody tr:hover {
     transform: none !important;
   }
 }
+
+
+/* Keep workspace navigation and cloud readiness in reserved, stable slots. */
+.board-header-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.workspace-header-navigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 2.75rem;
+  width: 100%;
+}
+
+.workspace-header-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 2.5rem;
+  white-space: nowrap;
+}
+
+#tickerTabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  min-height: 2.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tickerTabs::-webkit-scrollbar {
+  display: none;
+}
+
+#tickerTabs > .workspace-nav-ticker-list {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  width: auto;
+  min-width: 0;
+  min-height: 2.5rem;
+  max-width: none;
+  overflow: visible;
+}
+
+.workspace-nav-ticker-list > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* KV status never reflows when its state or detail text changes. */
+#cloudStatus.cloud-sync-indicator {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 12.5rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: 12.5rem;
+  min-width: 12.5rem;
+  max-width: 12.5rem;
+  height: 2.375rem;
+  min-height: 2.375rem;
+  max-height: 2.375rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+#cloudStatus .cloud-sync-indicator__primary {
+  flex: 0 0 auto;
+}
+
+#cloudStatus .cloud-sync-indicator__detail {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-header-navigation,
+.workspace-header-status,
+#tickerTabs,
+.workspace-nav-ticker-list {
+  transition: opacity 160ms ease-out;
+}
+
+@media (max-width: 768px) {
+  .workspace-header-navigation {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+
+  .workspace-header-status {
+    grid-row: 1;
+    justify-self: end;
+    width: 100%;
+    min-height: 2.375rem;
+  }
+
+  #tickerTabs {
+    grid-row: 2;
+    min-height: 2.5rem;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.125rem 0;
+  }
+
+  #tickerTabs > .workspace-nav-ticker-list {
+    display: flex;
+    width: auto;
+    max-width: none;
+    min-height: 2.5rem;
+    flex-wrap: nowrap;
+  }
+
+  #cloudStatus.cloud-sync-indicator {
+    flex-basis: 8.75rem;
+    width: 8.75rem;
+    min-width: 8.75rem;
+    max-width: 8.75rem;
+    justify-content: flex-start;
+    padding-inline: 0.5rem;
+  }
+
+  #cloudStatus .cloud-sync-indicator__detail {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-header-navigation,
+  .workspace-header-status,
+  #tickerTabs,
+  .workspace-nav-ticker-list {
+    transition: none;
+  }
+}
