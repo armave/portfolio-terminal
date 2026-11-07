@@ -40,6 +40,10 @@ Complete the additive transaction journal foundation so supported financial muta
 
 Vitest lifecycle fixtures: buy/add/partial sell/full close; cash/debt settlement; deposits/withdrawals/transfers; dividends/fees/interest; rollover; cash-holding operations; corporate-action adjustment; imported broker executions; duplicates/conflicts; journal replay after reload; failed persistence rollback; cross-tab and cloud revision conflict; backup/export/import/reset round trips. Exact-head CI and manual review of mutation inventory are required.
 
+## Client entry bundle guard
+
+The production minified entry bundle is capped at **575,000 bytes**. The separate gzip ceiling remains **165,000 bytes** so the raw-size headroom does not relax the compressed-transfer constraint. The current measured entry is 358,436 bytes / 112,388 bytes gzip at the passing exact-head validation for the prior PR commit; re-measurement is required for the updated bundle-limit commit.
+
 ## Mutation-path inventory — current audited coverage
 
 The current client store audit distinguishes app-owned financial commands from broker facts, derived display changes and raw snapshot replacement:

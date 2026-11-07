@@ -38,6 +38,7 @@ import {
 import * as storage from './storage';
 import { setMarketRequestSessionForTests } from './marketRequestGate';
 import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
+import { createPortfolioTransactionEvent, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 
 // Most API tests exercise successful proxy requests; give them a deterministic
 // credential. Tests for missing credentials explicitly override this value.
@@ -390,6 +391,94 @@ describe('cloud state sync', () => {
     );
     expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('[Cloud Conflict]'));
     expect(onStatusChange).toHaveBeenCalledWith('error');
+  });
+
+  it('round-trips the append-only journal through encrypted cloud snapshot restoration', async () => {
+    const secret = 'cloud-journal-round-trip-secret';
+    const now = Date.now();
+    const deposit = createPortfolioTransactionEvent({
+      type: 'cash.deposit',
+      effectiveAt: now - 60_000,
+      grossAmount: 1_000,
+      cashDelta: 1_000,
+      note: 'Opening cash funding'
+    }, {
+      eventId: 'cloud-journal-deposit-001',
+      actor: { type: 'user' },
+      source: 'manual-funding'
+    }, now - 60_000);
+    const buy = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: now - 30_000,
+      ticker: 'AAPL',
+      quantity: 2,
+      positionQuantityDelta: 2,
+      unitPrice: 100,
+      grossAmount: 200,
+      cashDelta: -200
+    }, {
+      eventId: 'cloud-journal-buy-001',
+      actor: { type: 'user' },
+      source: 'manual'
+    }, now - 30_000);
+    const expectedEvents = [deposit, buy];
+    let encryptedSnapshot: { encryptedPayload: string } | null = null;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        encryptedSnapshot = JSON.parse(String(init.body));
+        return new Response('{}', { status: 200, headers: { ETag: '"1"' } });
+      }
+      if (!encryptedSnapshot) throw new Error('Cloud snapshot was not uploaded before restoration.');
+      return new Response(JSON.stringify(encryptedSnapshot), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const onRestored = vi.fn();
+
+    const committed = await pushCloudState({
+      activeView: 'AAPL',
+      balance: 0,
+      cashBalance: 800,
+      cashCushion: { freeCash: 800, holdings: [] },
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: [{ qty: 2, price: 100, date: '2026-11-06' }]
+        }
+      },
+      transactionEvents: expectedEvents,
+      lastRolloverTimestamp: now
+    }, {
+      secret,
+      showToast: vi.fn()
+    });
+
+    expect(committed).toBe(true);
+    expect(encryptedSnapshot?.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    const restored = await pullCloudState({
+      state: {},
+      secret,
+      allowCloudWrites: false,
+      pullCloudAndRewriteLocal: onRestored,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    expect(restored.transactionEvents).toEqual(expectedEvents);
+    expect(onRestored).toHaveBeenCalledWith(expect.objectContaining({
+      transactionEvents: expectedEvents,
+      positions: expect.objectContaining({ AAPL: expect.objectContaining({ shares: 2 }) }),
+      cashCushion: expect.objectContaining({ freeCash: 800 })
+    }));
+    expect(verifyPortfolioTransactionParity(restored.transactionEvents, restored).matches).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('does not mutate the live state when excluding local-only fields from cloud backup', async () => {
