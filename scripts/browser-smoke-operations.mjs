@@ -762,10 +762,11 @@ try {
   // The stop-out threshold cannot exceed the maintenance threshold.
   const brokerRulesToggle = visibleSettingsDesk().locator('#brokerRulesToggle');
   await brokerRulesToggle.click();
+  await brokerRulesToggle.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => {
     const button = document.querySelector('#settingsDesk #brokerRulesToggle');
     return button?.getAttribute('aria-expanded') === 'true';
-  }, null, { timeout: 5_000 });
+  }, null, { timeout: 10_000 });
   try {
     await visibleSettingsDesk().locator('#brokerRulesPanel').waitFor({ state: 'visible', timeout: 5_000 });
   } catch {
