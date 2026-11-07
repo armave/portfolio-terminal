@@ -3181,6 +3181,7 @@ export class PortfolioStateDO {
       if (idempotencyKey && idempotencyFingerprint) {
         // Keep a small rolling window of receipts. The seven-day TTL bounds
         // stale keys; the count cap bounds Durable Object storage growth.
+        // Receipts remain coupled to the encrypted snapshot in this transaction.
         const nextReceipts = [...receipts, {
           key: idempotencyKey,
           fingerprint: idempotencyFingerprint,
