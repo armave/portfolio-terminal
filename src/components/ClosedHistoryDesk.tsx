@@ -82,24 +82,15 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
     brokerExecutionHistory.status === 'error';
   const [brokerReconciliationOpen, setBrokerReconciliationOpen] = useState(false);
-  const [brokerReconciliationLoading, setBrokerReconciliationLoading] = useState(false);
   const [BrokerReconciliationView, setBrokerReconciliationView] = useState<
     typeof import('./BrokerTransactionReconciliation').BrokerTransactionReconciliation | null
   >(null);
-  const [brokerReconciliationLoadError, setBrokerReconciliationLoadError] = useState(false);
   const openBrokerReconciliation = async () => {
     setBrokerReconciliationOpen(true);
     if (BrokerReconciliationView) return;
-    setBrokerReconciliationLoading(true);
-    setBrokerReconciliationLoadError(false);
-    try {
-      const module = await import('./BrokerTransactionReconciliation');
-      setBrokerReconciliationView(() => module.BrokerTransactionReconciliation);
-    } catch {
-      setBrokerReconciliationLoadError(true);
-    } finally {
-      setBrokerReconciliationLoading(false);
-    }
+    void import('./BrokerTransactionReconciliation')
+      .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
+      .catch(() => setBrokerReconciliationOpen(false));
   };
   // Keep the first cached range for both API requests. The broker trade refresh
   // may return newer sells before the cashflow request starts; that must not move
@@ -783,9 +774,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         >
           <span>{translateText('Reconcile broker activity')}</span>
           <span class="text-xs text-slate-400">
-            {brokerReconciliationLoading ? translateText('Loading reconciliation…') :
-              brokerReconciliationLoadError ? translateText('Reconciliation could not be loaded') :
-                brokerReconciliationOpen ? translateText('Hide reconciliation') : translateText('Open reconciliation')}
+            {translateText(brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation')}
           </span>
         </button>
         {brokerReconciliationOpen && BrokerReconciliationView && (
