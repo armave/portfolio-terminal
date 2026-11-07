@@ -409,7 +409,23 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           Broker Rules
         </summary>
         <div class="mt-3">
-          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="settings-rules-form space-y-2">
+          <form id="brokerRulesForm" onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget as HTMLFormElement;
+            if (!form.reportValidity()) return;
+            const values = { ...ruleValues };
+            const stopOutInput = form.querySelector<HTMLInputElement>('#stopOutRatioInput');
+            const maintenanceInput = form.querySelector<HTMLInputElement>('#maintenanceMarginInput');
+            const stopOut = Number(stopOutInput?.value ?? values.stopOutRatio);
+            const maintenance = Number(maintenanceInput?.value ?? values.maintenanceMargin);
+            if (stopOut > maintenance) {
+              stopOutInput?.setCustomValidity("Stop-out equity must not exceed maintenance equity.");
+              stopOutInput?.reportValidity();
+              return;
+            }
+            stopOutInput?.setCustomValidity("");
+            emitUiEvent('settings:save-broker-rules', { values });
+          }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
