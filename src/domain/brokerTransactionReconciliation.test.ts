@@ -62,6 +62,17 @@ describe('reconcileBrokerActivity', () => {
     expect(app).toEqual(beforeApp);
   });
 
+  it('reports quantity and price differences against a same-instrument app trade', () => {
+    const report = reconcile(
+      [execution({ quantity: 3, price: 101 })],
+      [appEvent('trade.buy')]
+    );
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_quantity_mismatch', brokerValue: 3, appValue: 2 }),
+      expect.objectContaining({ type: 'execution_price_mismatch', brokerValue: 101, appValue: 100 })
+    ]));
+  });
+
   it('does not compare broker sell commission to the app sell event total-cost field', () => {
     const report = reconcile(
       [execution({ side: 'SELL', commission: 1 })],
@@ -149,6 +160,23 @@ describe('reconcileBrokerActivity', () => {
     const report = reconcile([], [importedAudit, appDividend], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(1);
     expect(report.findings).toEqual([]);
+  });
+
+  it('reports cashflow amount mismatches against a same-currency app event', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'fee-amount-1', date: new Date(at).toISOString(), type: 'Fee',
+      amount: -7, currency: 'USD', description: 'Account fee', raw: {}
+    };
+    const appFee = createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at, currency: 'USD', fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-fee-amount', recordedAt: at });
+    const report = reconcile([], [appFee], { brokerCashflows: [brokerCashflow] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_amount_mismatch',
+      brokerValue: -7,
+      appValue: 5,
+      appEventIds: ['app-fee-amount']
+    }));
   });
 
   it('classifies cashflow category mismatches separately from missing rows', () => {
