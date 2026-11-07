@@ -172,7 +172,7 @@ function utcDay(timestamp: number): string {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
 
-/** Retain one daily point, allowing only an explicit same-day quality/coverage upgrade. */
+/** Retain one daily point, refreshing same-day observations without downgrading verified evidence. */
 export function appendDailyPerformanceValuation(
   existing: readonly PortfolioPerformanceValuationSnapshot[] | undefined,
   incoming: PortfolioPerformanceValuationSnapshot,
@@ -184,9 +184,10 @@ export function appendDailyPerformanceValuation(
   const last = safeExisting[safeExisting.length - 1];
 
   if (last && utcDay(last.timestamp) === utcDay(incoming.timestamp)) {
-    const coverageUpgrade = !last.cashflowHistoryComplete && incoming.cashflowHistoryComplete;
-    const qualityUpgrade = last.quality === 'provisional' && incoming.quality === 'current';
-    if (!coverageUpgrade && !qualityUpgrade) return safeExisting;
+    const isNewerObservation = incoming.timestamp > last.timestamp;
+    const qualityDowngrade = last.quality === 'current' && incoming.quality !== 'current';
+    const coverageDowngrade = last.cashflowHistoryComplete && !incoming.cashflowHistoryComplete;
+    if (!isNewerObservation || qualityDowngrade || coverageDowngrade) return safeExisting;
     safeExisting[safeExisting.length - 1] = incoming;
   } else {
     if (last && incoming.timestamp <= last.timestamp) return safeExisting;

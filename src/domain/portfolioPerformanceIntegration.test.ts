@@ -115,15 +115,24 @@ describe('appendDailyPerformanceValuation', () => {
     expect(appendDailyPerformanceValuation(withUpgrade, nextDay)).toHaveLength(2);
   });
 
-  it('keeps one valuation per UTC day and permits only quality or coverage upgrades', () => {
+  it('refreshes same-day observations without downgrading verified quality or cashflow coverage', () => {
     const first = snapshot(BASE, 300, false, undefined, 'provisional');
     const laterSameQuality = snapshot(BASE + 6 * 60 * 60 * 1000, 310, false, undefined, 'provisional');
     const upgraded = snapshot(BASE + 8 * 60 * 60 * 1000, 315, true, undefined, 'current');
     const withFirst = appendDailyPerformanceValuation([], first);
-    expect(appendDailyPerformanceValuation(withFirst, laterSameQuality)).toEqual(withFirst);
-    expect(appendDailyPerformanceValuation(withFirst, upgraded)).toMatchObject([
+    const refreshed = appendDailyPerformanceValuation(withFirst, laterSameQuality);
+    expect(refreshed).toMatchObject([
+      { timestamp: laterSameQuality.timestamp, equity: 310, quality: 'provisional', cashflowHistoryComplete: false }
+    ]);
+    const withUpgrade = appendDailyPerformanceValuation(refreshed, upgraded);
+    expect(withUpgrade).toMatchObject([
       { timestamp: upgraded.timestamp, equity: 315, quality: 'current', cashflowHistoryComplete: true }
     ]);
+
+    const downgraded = snapshot(BASE + 10 * 60 * 60 * 1000, 320, false, undefined, 'provisional');
+    expect(appendDailyPerformanceValuation(withUpgrade, downgraded)).toEqual(withUpgrade);
+    const older = snapshot(BASE + 7 * 60 * 60 * 1000, 330, true, undefined, 'current');
+    expect(appendDailyPerformanceValuation(withUpgrade, older)).toEqual(withUpgrade);
   });
 
   it('bounds retained daily history', () => {
