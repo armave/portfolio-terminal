@@ -2415,7 +2415,7 @@ export class PortfolioStateDO {
             });
             changedUsers += 1;
           } else if (grant.status !== "active" ||
-              grant.capabilities.length !== 1 ||
+              !Array.isArray(grant.capabilities) || grant.capabilities.length !== 1 ||
               grant.capabilities[0] !== "portfolio.projection.read") {
             grant.status = "active";
             grant.scope = "projection";
@@ -2554,11 +2554,19 @@ export class PortfolioStateDO {
       });
     }
 
+    if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+      return jsonResponse({ error: "Tenant directory writes must use application/json." }, 415);
+    }
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > TENANT_DIRECTORY_MAX_BODY_BYTES) {
       return jsonResponse({ error: "Tenant directory request exceeds the 16 KB limit." }, 413);
     }
-    const body = rawBody ? JSON.parse(rawBody) : null;
+    let body;
+    try {
+      body = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return jsonResponse({ error: "A valid JSON request body is required." }, 400);
     }

@@ -1575,7 +1575,7 @@ export default {
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
-        const tenantDirectoryRoute = /^\\/api\\/tenants(?:\\/|$)/.test(pathname);
+        const tenantDirectoryRoute = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
         if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin && !tenantDirectoryRoute) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }

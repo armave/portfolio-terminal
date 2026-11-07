@@ -4174,7 +4174,7 @@ describe('Durable Object tenant directory ownership foundation', () => {
       mode: 'directory-metadata-only',
       financialDataEnabled: false,
       tenants: [{
-        tenant: { id: 'legacy-tenant-v1', legacy: undefined },
+        tenant: { id: 'legacy-tenant-v1' },
         membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) },
         portfolios: [{ id: 'legacy-portfolio-v1', access: 'owner' }]
       }]
@@ -4222,7 +4222,8 @@ describe('Durable Object tenant directory ownership foundation', () => {
     expect(directory.memberships.find((item) => item.tenantId === body.tenant.id)).toMatchObject({
       userId: 'admin-1', role: 'owner', status: 'active'
     });
-    expect(values.get('tenant:audit:v1:' + Object.keys(Object.fromEntries(values)).filter((key) => key.startsWith('tenant:audit:v1:')).slice(-1)[0]?.split(':').slice(3).join(':'))).toBeUndefined();
+    const auditEvents = [...values.entries()].filter(([key]) => key.startsWith('tenant:audit:v1:')).map(([, value]) => value);
+    expect(auditEvents.some((event) => event.type === 'tenant_created' && event.tenantId === body.tenant.id)).toBe(true);
     expect(directory).not.toHaveProperty('portfolioStates');
     expect(directory).not.toHaveProperty('encryptedPayload');
     expect(values.has('record')).toBe(false);
