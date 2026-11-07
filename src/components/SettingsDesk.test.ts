@@ -77,3 +77,14 @@ describe('multi-portfolio ownership Settings surface', () => {
     expect(componentSource).toContain('Guests receive projection-only access.');
   });
 });
+
+
+describe('broker rules disclosure state', () => {
+  it('preserves the open state when controlled rule inputs rerender', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);');
+    expect(source).toContain('open={brokerRulesOpen}');
+    expect(source).toContain('onClick={() => setBrokerRulesOpen((current) => !current)}');
+    expect(source).toContain('value={ruleValues.annualRate}');
+  });
+});

@@ -734,15 +734,20 @@ try {
   // The stop-out threshold cannot exceed the maintenance threshold.
   const brokerRules = visibleSettingsDesk().locator('details.settings-broker-rules');
   await brokerRules.locator('summary').click();
+  await brokerRules.evaluate((element) => {
+    if (!(element instanceof HTMLDetailsElement) || !element.open) {
+      throw new Error('Broker Rules disclosure did not remain open after activation.');
+    }
+  });
   await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('5');
   await visibleSettingsDesk().locator('#stopOutRatioInput').fill('10');
   await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
-  const invalidStopOut = await page.locator('#stopOutRatioInput').evaluate((input) => input.validity.customError);
+  const invalidStopOut = await visibleSettingsDesk().locator('#stopOutRatioInput').evaluate((input) => input.validity.customError);
   if (!invalidStopOut) throw new Error('Settings accepted a stop-out threshold above maintenance equity.');
-  await page.locator('#maintenanceMarginInput').fill('12.5');
-  await page.locator('#stopOutRatioInput').fill('3');
+  await visibleSettingsDesk().locator('#maintenanceMarginInput').fill('12.5');
+  await visibleSettingsDesk().locator('#stopOutRatioInput').fill('3');
   await visibleSettingsDesk().locator('#annualMarginRateInput').fill('18');
-  await page.locator('#brokerRulesForm button[type="submit"]').click();
+  await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
   await page.waitForFunction(() => {
     const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
     return stored && Math.abs(stored.annualBorrowRate - 0.18) < 0.000001 &&

@@ -77,6 +77,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
+  const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
@@ -399,8 +400,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </div>
       )}
 
-      {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
-        <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
+      {permissions.canEditBrokerRules && <details
+        class="settings-panel settings-broker-rules space-y-3"
+        open={brokerRulesOpen}
+      >
+        <summary
+          class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300"
+          onClick={() => setBrokerRulesOpen((current) => !current)}
+        >
           Broker Rules
         </summary>
         <div class="mt-3">
