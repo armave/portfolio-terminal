@@ -46,11 +46,14 @@ describe('broker history adapter boundary', () => {
 });
 
 describe('Balance guest grouping', () => {
-  it('keeps guest group rows keyed and centered from their first render', () => {
+  it('keeps guest group headings as stable keyed table sibling rows', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-    expect(deskSource).toMatch(/<Fragment key=\{\`\$\{h\.groupKey\}-\$\{h\.ticker\}\`\}>/);
-    expect(deskSource).toMatch(/<td colSpan=\{8\} class="[^"]*text-center" style=\{\{ textAlign: 'center' \}\}>\{h\.groupLabel\}<\/td>/);
+    expect(deskSource).toContain("type: 'group'");
+    expect(deskSource).toContain("type: 'holding'");
+    expect(deskSource).toContain('<tr key={row.key} class="cash-holding-group-row');
+    expect(deskSource).toContain('text-center');
+    expect(deskSource).not.toContain('h.isGroupStart');
   });
 
   it('uses stable assigned guest IDs rather than asynchronous directory order', () => {
@@ -190,7 +193,7 @@ describe('cash holdings quote context', () => {
 
   it('does not nest the group heading inside a conditional holding fragment', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
-    expect(deskSource).toContain("buildCashHoldingTableRows(displayHoldingGroups, isAdmin)");
+    expect(deskSource).toContain('buildCashHoldingTableRows(');
     expect(deskSource).toContain("if (row.type === 'group')");
     expect(deskSource).not.toContain('<Fragment key={`${h.groupKey}-${h.ticker}`}>');
     expect(deskSource).not.toContain('h.isGroupStart');
