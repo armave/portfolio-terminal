@@ -70,7 +70,7 @@ export interface MarginRiskSnapshot {
   concentrationAddOn: MarginRequirementValue;
   totalMaintenanceRequirement: number | null;
   /** Estimate before any broker concentration add-on that was not supplied. */
-  baseMaintenanceBuffer: number;
+  baseMaintenanceBuffer: number | null;
   /** null when an unreported concentration add-on prevents a complete buffer calculation. */
   maintenanceBuffer: number | null;
   maintenanceBufferPct: number | null;
@@ -188,12 +188,19 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const grossExposure = input.longExposure + input.shortExposure;
   const netExposure = input.longExposure - input.shortExposure;
   const equityRatio = assets > 0 ? equity / assets : null;
-  const baseMaintenanceAmount = requirements?.maintenanceMarginRequired ?? assets * input.assumptions.maintenanceEquityRatio;
-  const maintenanceSource = requirements?.maintenanceMarginRequired !== null &&
-    requirements?.maintenanceMarginRequired !== undefined ? 'broker' : 'configured-assumption';
+  const hasBrokerMaintenanceRequirement = requirements?.maintenanceMarginRequired !== null &&
+    requirements?.maintenanceMarginRequired !== undefined;
+  const canUseLongOnlyMaintenanceAssumption = input.shortExposure === 0;
+  const baseMaintenanceAmount = hasBrokerMaintenanceRequirement
+    ? requirements!.maintenanceMarginRequired!
+    : canUseLongOnlyMaintenanceAssumption ? assets * input.assumptions.maintenanceEquityRatio : null;
+  const maintenanceSource = hasBrokerMaintenanceRequirement
+    ? 'broker'
+    : canUseLongOnlyMaintenanceAssumption ? 'configured-assumption' : 'unavailable';
   const concentrationAmount = requirements?.concentrationAddOn ?? null;
-  const totalMaintenanceRequirement = concentrationAmount === null ? null : baseMaintenanceAmount + concentrationAmount;
-  const baseMaintenanceBuffer = equity - baseMaintenanceAmount;
+  const totalMaintenanceRequirement = concentrationAmount === null || baseMaintenanceAmount === null
+    ? null : baseMaintenanceAmount + concentrationAmount;
+  const baseMaintenanceBuffer = baseMaintenanceAmount === null ? null : equity - baseMaintenanceAmount;
   const maintenanceBuffer = totalMaintenanceRequirement === null ? null : equity - totalMaintenanceRequirement;
   const stopOutRequirement = assets * input.assumptions.stopOutRatio;
   const stopOutBuffer = equity - stopOutRequirement;
@@ -238,6 +245,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   if (input.marginDebt > 0 && maintenanceSource === 'configured-assumption') {
     quality = 'provisional';
     warnings.push('Maintenance requirement uses the configured equity ratio, not a broker-reported requirement.');
+  } else if (input.marginDebt > 0 && maintenanceSource === 'unavailable') {
+    quality = 'provisional';
+    warnings.push('A short-position maintenance requirement was not reported; long-only maintenance assumptions are not applied to short exposure.');
   }
   if (input.marginDebt > 0 && concentrationAmount === null) {
     quality = 'provisional';
@@ -253,12 +263,16 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
 
   const ratioForClassification = equityRatio ?? Number.NEGATIVE_INFINITY;
   let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
-  if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) riskLevel = 'Elevated';
+  if (input.marginDebt > 0 && input.shortExposure > 0 && !hasBrokerMaintenanceRequirement && equity > 0) {
+    riskLevel = 'Elevated';
+  } else if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) {
+    riskLevel = 'Elevated';
+  }
 
   const maintenanceState: MarginRiskSnapshot['maintenanceState'] = input.marginDebt <= 0
     ? 'above-maintenance'
     : maintenanceBuffer === null
-      ? (baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
+      ? (baseMaintenanceBuffer !== null && baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
       : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
   const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer <= 0
     ? 'stop-out-breach' : 'above-stop-out';

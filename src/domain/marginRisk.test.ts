@@ -76,6 +76,21 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.value.maintenanceBuffer).toBe(470);
   });
 
+  it('does not apply the long-only maintenance ratio to short exposure when broker requirements are missing', () => {
+    const result = calculateMarginRiskSnapshot(riskInput({
+      shortExposure: 400,
+      brokerRequirements: null
+    }));
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.maintenanceMarginRequirement).toEqual({ amount: null, source: 'unavailable' });
+    expect(result.value.baseMaintenanceBuffer).toBeNull();
+    expect(result.value.maintenanceBuffer).toBeNull();
+    expect(result.value.maintenanceState).toBe('unknown');
+    expect(result.value.riskLevel).toBe('Elevated');
+    expect(result.warnings.some(item => item.includes('short-position maintenance requirement was not reported'))).toBe(true);
+  });
+
   it('does not turn missing initial margin or concentration add-ons into zero', () => {
     const result = calculateMarginRiskSnapshot(riskInput({ brokerRequirements: null }));
     expect(result.status).toBe('provisional');
