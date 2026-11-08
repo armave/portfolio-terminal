@@ -220,6 +220,7 @@ describe('broker history audit events', () => {
   it('imports read-only broker executions exactly once and links source revisions', () => {
     const firstRows = [{
       id: 'exec-100',
+      orderId: 'order-100',
       ticker: 'aapl',
       side: 'BUY',
       quantity: 2,
@@ -236,6 +237,7 @@ describe('broker history audit events', () => {
       actor: { type: 'broker' },
       source: 'freedom-tradenet',
       externalReferenceId: 'exec-100',
+      externalOrderReferenceId: 'order-100',
       ticker: 'AAPL',
       quantity: 2,
       unitPrice: 100,

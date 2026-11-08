@@ -113,6 +113,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.fees !== undefined && Number(value.fees) < 0) return false;
   if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
   if (value.externalReferenceId !== undefined && (typeof value.externalReferenceId !== 'string' || !value.externalReferenceId.trim())) return false;
+  if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -178,6 +179,7 @@ export function createPortfolioTransactionEvent(
     ...(draft.fees !== undefined ? { fees: draft.fees } : {}),
     ...(draft.externalCashFlowAmount !== undefined ? { externalCashFlowAmount: draft.externalCashFlowAmount } : {}),
     ...(draft.externalReferenceId ? { externalReferenceId: draft.externalReferenceId } : {}),
+    ...(draft.externalOrderReferenceId ? { externalOrderReferenceId: draft.externalOrderReferenceId } : {}),
     ...(draft.positionQuantityDelta !== undefined ? { positionQuantityDelta: draft.positionQuantityDelta } : {}),
     ...(draft.cashHoldingQuantityDelta !== undefined ? { cashHoldingQuantityDelta: draft.cashHoldingQuantityDelta } : {}),
     ...(draft.financingCost !== undefined ? { financingCost: draft.financingCost } : {}),
@@ -219,6 +221,7 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     fees: event.fees,
     externalCashFlowAmount: event.externalCashFlowAmount,
     externalReferenceId: event.externalReferenceId,
+    externalOrderReferenceId: event.externalOrderReferenceId,
     positionQuantityDelta: event.positionQuantityDelta,
     cashHoldingQuantityDelta: event.cashHoldingQuantityDelta,
     financingCost: event.financingCost,
@@ -471,9 +474,14 @@ export function appendBrokerHistoryAuditEvents(
     const tradeValue = Number(raw.tradeValue);
     const gross = Number.isFinite(tradeValue) && tradeValue > 0 ? Math.abs(tradeValue) : price ? quantity * price : undefined;
     const at = raw.executedAt ?? raw.date;
-    const fallback = hash(JSON.stringify([ticker, side, quantity, price, currency, at]));
+    const orderValue = raw.orderId ?? raw.order_id ??
+      (isPlainRecord(raw.raw) ? raw.raw.order_id ?? raw.raw.orderId : undefined);
+    const orderRef = typeof orderValue === 'string' || typeof orderValue === 'number'
+      ? String(orderValue).trim() || undefined
+      : undefined;
+    const fallback = hash(JSON.stringify([ticker, side, quantity, price, currency, at, orderRef]));
     const ref = sourceId(raw.id ?? raw.executionId ?? raw.tradeId, fallback);
-    const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross]);
+    const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross, orderRef]);
     const fingerprint = hash(facts);
     const previous = executionRefs.get(ref);
     const requestFingerprint = `broker-execution-v1:${fingerprint}`;
@@ -485,6 +493,7 @@ export function appendBrokerHistoryAuditEvents(
     const event = createPortfolioTransactionEvent({
       type: 'broker.execution', effectiveAt: timestamp(at, recordedAt), ticker, side, currency, feeCurrency,
       quantity, ...(price ? { unitPrice: price } : {}), ...(gross !== undefined ? { grossAmount: gross } : {}),
+      ...(orderRef ? { externalOrderReferenceId: orderRef } : {}),
       ...(fees !== undefined ? { fees } : {}), externalReferenceId: ref,
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
