@@ -86,6 +86,40 @@ describe('portfolio transaction journal', () => {
     expect(result).toEqual({ events: journal, appended: false, duplicate: true });
   });
 
+  it('rejects conflicting reuse of an idempotency key when no request fingerprint is supplied', () => {
+    const first = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-idempotency-first',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+    const retry = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-idempotency-retry',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal',
+      recordedAt: first.recordedAt + 5_000
+    });
+    const conflict = createPortfolioTransactionEvent({
+      ...draft,
+      quantity: 3,
+      grossAmount: 300,
+      cashDelta: -301.25
+    }, {
+      eventId: 'event-idempotency-conflict',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+
+    expect(appendPortfolioTransactionEvent([first], retry)).toMatchObject({
+      appended: false,
+      duplicate: true
+    });
+    expect(() => appendPortfolioTransactionEvent([first], conflict))
+      .toThrow(/conflicts with a different command/i);
+  });
+
   it('rejects invalid idempotency keys rather than silently disabling deduplication', () => {
     expect(normalizePortfolioTransactionIdempotencyKey(undefined)).toBeUndefined();
     expect(normalizePortfolioTransactionIdempotencyKey(' request-123 ')).toBe('request-123');

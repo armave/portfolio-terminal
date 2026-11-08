@@ -199,6 +199,38 @@ export function createPortfolioTransactionEvent(
  * Append one immutable event to the journal. A matching idempotency key is a
  * successful no-op; existing events and the input array are never modified.
  */
+function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent): string {
+  // Do not include generated event IDs or recordedAt: a retry is a new
+  // envelope for the same command. Include every financial/business field so
+  // callers that omit an explicit requestFingerprint still cannot reuse a key
+  // for a different command and accidentally suppress a real mutation.
+  return JSON.stringify({
+    type: event.type,
+    actor: event.actor,
+    source: event.source,
+    effectiveAt: event.effectiveAt,
+    ticker: event.ticker,
+    currency: event.currency,
+    side: event.side,
+    feeCurrency: event.feeCurrency,
+    quantity: event.quantity,
+    unitPrice: event.unitPrice,
+    grossAmount: event.grossAmount,
+    fees: event.fees,
+    externalCashFlowAmount: event.externalCashFlowAmount,
+    externalReferenceId: event.externalReferenceId,
+    positionQuantityDelta: event.positionQuantityDelta,
+    cashHoldingQuantityDelta: event.cashHoldingQuantityDelta,
+    financingCost: event.financingCost,
+    cashDelta: event.cashDelta,
+    marginDebtDelta: event.marginDebtDelta,
+    netAmount: event.netAmount,
+    realizedPnl: event.realizedPnl,
+    relatedEventId: event.relatedEventId,
+    note: event.note
+  });
+}
+
 export function appendPortfolioTransactionEvent(
   current: readonly PortfolioTransactionEvent[],
   event: PortfolioTransactionEvent
@@ -211,8 +243,11 @@ export function appendPortfolioTransactionEvent(
       isPortfolioTransactionEvent(existing) && existing.idempotencyKey === event.idempotencyKey
     );
     if (duplicate) {
-      if (duplicate.type !== event.type ||
-        duplicate.requestFingerprint !== event.requestFingerprint) {
+      const hasExplicitFingerprint = duplicate.requestFingerprint !== undefined || event.requestFingerprint !== undefined;
+      const sameCommand = hasExplicitFingerprint
+        ? duplicate.requestFingerprint === event.requestFingerprint
+        : portfolioTransactionCommandFingerprint(duplicate) === portfolioTransactionCommandFingerprint(event);
+      if (duplicate.type !== event.type || !sameCommand) {
         throw new Error(`Portfolio transaction idempotency key "${event.idempotencyKey}" conflicts with a different command.`);
       }
       return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
