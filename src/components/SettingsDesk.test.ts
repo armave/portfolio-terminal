@@ -139,3 +139,28 @@ describe('readBrokerRulesFormValues', () => {
     expect(readBrokerRulesFormValues(form, fallback)).toEqual(fallback);
   });
 });
+
+
+describe('temporary TradeNet position probe in Settings', () => {
+  it('is exposed only to administrators and requests a fresh read-only response', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("{account?.role === 'admin' && <section");
+    expect(source).toContain("proxyFetch('freedom-position-probe', {}, { cache: 'no-store' })");
+    expect(source).toContain('positionProbeLoading');
+    expect(source).toContain('navigator.clipboard.writeText(positionProbeJson)');
+    expect(source).toContain('positionProbeTextAreaRef');
+    expect(source).toContain('readOnly');
+    expect(source).toContain('positionProbeJson');
+    expect(source).toContain('No changes are made');
+    expect(source).toContain('Admin only · temporary');
+  });
+
+  it('shows a copyable payload only after a successful probe and surfaces failures accessibly', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("if (response?.ok !== true)");
+    expect(source).toContain("setPositionProbeJson(JSON.stringify(response, null, 2))");
+    expect(source).toContain('role="alert">{positionProbeError}');
+    expect(source).toContain('role="status">{positionProbeCopyStatus}');
+    expect(source).toContain('disabled={!positionProbeJson || positionProbeLoading}');
+  });
+});
