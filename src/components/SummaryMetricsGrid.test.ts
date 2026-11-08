@@ -261,9 +261,13 @@ describe('maintenance buffer presentation', () => {
   it('shows the base maintenance cushion with a concentration qualifier when the full requirement is unknown', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("risk.maintenanceState === 'unknown' ? 'BASE MAINTENANCE BUFFER' : 'MARGIN-CALL BUFFER'");
-    expect(source).toContain('formatUSD(risk.baseMaintenanceBuffer)');
-    expect(source).toContain("translateText('Before concentration add-on', language)");
+    expect(source).toContain("Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'");
+    expect(source).not.toContain('formatUSD(risk.baseMaintenanceBuffer)');
+    expect(source).not.toContain("translateText('Before concentration add-on', language)");
+    expect(source).not.toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');
+    expect(source).not.toContain('Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.');
     expect(source).toContain('baseMaintenanceBuffer: metrics.baseMaintenanceBuffer ?? Number.NaN');
+    expect(source).toContain('baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN');
     expect(source).toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');
   });
 });

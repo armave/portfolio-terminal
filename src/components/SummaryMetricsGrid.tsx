@@ -120,10 +120,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           <span class="margin-risk-label">{translateText(risk.maintenanceState === 'unknown' ? 'BASE MAINTENANCE BUFFER' : 'MARGIN-CALL BUFFER', language)}</span>
           <strong>{Number.isFinite(risk.marginCallBufferPct)
             ? risk.marginCallBufferPct.toFixed(1) + '%'
-            : Number.isFinite(risk.baseMaintenanceBuffer) ? formatUSD(risk.baseMaintenanceBuffer) : '—'}</strong>
-          {risk.maintenanceState === 'unknown' && Number.isFinite(risk.baseMaintenanceBuffer) && (
-            <span class="text-[10px] text-amber-200">{translateText('Before concentration add-on', language)}</span>
-          )}
+            : Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'}</strong>
           {risk.showMarginCall && <span class="margin-risk-buffer-trigger">{risk.marginCallText}</span>}
         </div>
         <div class="margin-risk-buffer-stat" title={stopOutTitle}>
@@ -132,16 +129,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.stopOutText}</span>}
         </div>
       </div>
-      {risk.status === 'provisional' && (
-        <p class="mt-2 text-[10px] leading-relaxed text-amber-200">
-          {translateText('Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.', language)}
-        </p>
-      )}
-      {risk.maintenanceState === 'unknown' && (
-        <p class="mt-1 text-[10px] text-amber-200">
-          {translateText('Complete maintenance buffer unavailable because the concentration add-on was not reported. Base amount is shown before this add-on.', language)}
-        </p>
-      )}
+
       {risk.stopOutState === 'unknown' && (
         <p class="mt-1 text-[10px] text-amber-200">
           {translateText('Short-position stop-out buffer unavailable until broker-specific requirements are verified.', language)}
@@ -205,6 +193,7 @@ interface MarginRiskDisplay {
   marginCallBufferPct: number;
   stopOutBufferPct: number;
   baseMaintenanceBuffer: number;
+  baseMaintenanceBufferPct: number;
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
   stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
   hasShortExposure: boolean;
@@ -228,6 +217,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
       marginCallBufferPct: Number.NaN,
       stopOutBufferPct: Number.NaN,
       baseMaintenanceBuffer: Number.NaN,
+      baseMaintenanceBufferPct: Number.NaN,
       maintenanceState: 'unknown',
       stopOutState: 'unknown',
       hasShortExposure: false
@@ -262,6 +252,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
     marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
     stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
     baseMaintenanceBuffer: metrics.baseMaintenanceBuffer ?? Number.NaN,
+    baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN,
     maintenanceState: metrics.maintenanceState,
     stopOutState: metrics.stopOutState,
     hasShortExposure: input.shortExposure > 0
