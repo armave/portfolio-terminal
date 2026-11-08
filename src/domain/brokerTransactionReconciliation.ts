@@ -15,6 +15,8 @@ export function getExecutionReconciliationFeedStatus(
 // Internal evidence shapes stay private; consumers use the stable report contract only.
 type BrokerActivityFindingType =
   | 'duplicate_broker_execution'
+  | 'execution_revision_conflict'
+  | 'execution_unclassified'
   | 'execution_missing_in_app'
   | 'execution_missing_in_broker'
   | 'execution_quantity_mismatch'
@@ -22,6 +24,10 @@ type BrokerActivityFindingType =
   | 'execution_fee_mismatch'
   | 'execution_fee_currency_mismatch'
   | 'execution_timing_difference'
+  | 'duplicate_broker_cashflow'
+  | 'cashflow_revision_conflict'
+  | 'cashflow_unclassified'
+  | 'cashflow_direction_mismatch'
   | 'cashflow_missing_in_app'
   | 'cashflow_missing_in_broker'
   | 'cashflow_amount_mismatch'
@@ -180,6 +186,28 @@ function eventAmount(event: PortfolioTransactionEvent): number | null {
   return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
     (event.type === 'fee' ? event.fees : event.type === 'margin.interest' ? event.financingCost : undefined));
 }
+function sameExecutionObservation(left: NormalizedExecution, right: NormalizedExecution): boolean {
+  return left.ticker === right.ticker &&
+    left.side === right.side &&
+    left.quantity === right.quantity &&
+    left.price === right.price &&
+    left.currency === right.currency &&
+    left.fee === right.fee &&
+    left.feeCurrency === right.feeCurrency &&
+    left.at === right.at;
+}
+
+function sameCashflowObservation(left: NormalizedCashflow, right: NormalizedCashflow): boolean {
+  return left.type === right.type &&
+    left.amount === right.amount &&
+    left.currency === right.currency &&
+    left.at === right.at;
+}
+
+function hasExplicitSignedCashflowAmount(event: PortfolioTransactionEvent): boolean {
+  return event.externalCashFlowAmount !== undefined || event.cashDelta !== undefined;
+}
+
 function makeFinding(
   finding: Omit<BrokerActivityFinding, 'confidence'>,
   confidence: BrokerActivityFinding['confidence']
@@ -212,29 +240,80 @@ export function reconcileBrokerActivity(
   if (appStatus !== 'complete') warnings.push('App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.');
 
   const findings: BrokerActivityFinding[] = [];
-  const brokerRows = input.brokerExecutions.map(normalizeExecution).filter((row): row is NormalizedExecution => row !== null);
+  let sourceDataIncomplete = false;
+  const normalizedExecutionRows: NormalizedExecution[] = [];
+  input.brokerExecutions.forEach((raw, index) => {
+    const row = normalizeExecution(raw);
+    if (row) {
+      normalizedExecutionRows.push(row);
+      if (/^(?:anonymous:|fallback-)/i.test(row.id)) {
+        sourceDataIncomplete = true;
+        warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
+      }
+      return;
+    }
+    sourceDataIncomplete = true;
+    const tickerValue = ticker((raw as BrokerExecution | null)?.ticker);
+    const ref = text((raw as BrokerExecution | null)?.id);
+    findings.push(makeFinding({
+      id: `execution-unclassified:${ref || index}`,
+      type: 'execution_unclassified',
+      subject: tickerValue || `Broker execution row ${index + 1}`,
+      currency: currency((raw as BrokerExecution | null)?.currency) || undefined,
+      brokerValue: number((raw as BrokerExecution | null)?.quantity),
+      appValue: null,
+      brokerReferences: ref ? [ref] : [],
+      appEventIds: [],
+      brokerAt: timestamp((raw as BrokerExecution | null)?.executedAt) ?? undefined,
+      explanation: 'The broker execution is missing a usable instrument, supported side or positive quantity and was excluded from matching.'
+    }, 'provisional'));
+  });
+
   const uniqueBrokerRows: NormalizedExecution[] = [];
   const seenExecutionIds = new Map<string, NormalizedExecution>();
-  for (const row of brokerRows) {
+  const conflictingExecutionIds = new Set<string>();
+  for (const row of normalizedExecutionRows) {
+    if (conflictingExecutionIds.has(row.id)) continue;
     const prior = seenExecutionIds.get(row.id);
     if (prior) {
-      findings.push(makeFinding({
-        id: `duplicate-execution:${row.id}:${uniqueBrokerRows.length}`,
-        type: 'duplicate_broker_execution',
-        subject: `${row.ticker} ${row.side.toUpperCase()}`,
-        currency: row.currency || undefined,
-        brokerValue: row.quantity,
-        appValue: null,
-        brokerReferences: [row.id],
-        appEventIds: [],
-        brokerAt: row.at ?? undefined,
-        explanation: 'The broker history contains the same execution identifier more than once.'
-      }, confidence));
+      if (sameExecutionObservation(prior, row)) {
+        findings.push(makeFinding({
+          id: `duplicate-execution:${row.id}:${uniqueBrokerRows.length}`,
+          type: 'duplicate_broker_execution',
+          subject: `${row.ticker} ${row.side.toUpperCase()}`,
+          currency: row.currency || undefined,
+          brokerValue: row.quantity,
+          appValue: null,
+          brokerReferences: [row.id],
+          appEventIds: [],
+          brokerAt: row.at ?? undefined,
+          explanation: 'The broker history contains the same execution identifier and facts more than once.'
+        }, confidence));
+      } else {
+        sourceDataIncomplete = true;
+        conflictingExecutionIds.add(row.id);
+        const priorIndex = uniqueBrokerRows.findIndex(candidate => candidate.id === row.id);
+        if (priorIndex >= 0) uniqueBrokerRows.splice(priorIndex, 1);
+        findings.push(makeFinding({
+          id: `execution-revision-conflict:${row.id}`,
+          type: 'execution_revision_conflict',
+          subject: `${row.ticker} ${row.side.toUpperCase()}`,
+          currency: row.currency || undefined,
+          brokerValue: row.quantity,
+          appValue: prior.quantity,
+          brokerReferences: [row.id],
+          appEventIds: [],
+          brokerAt: row.at ?? undefined,
+          explanation: 'The same broker execution identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.'
+        }, 'provisional'));
+        warnings.push('One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.');
+      }
       continue;
     }
     seenExecutionIds.set(row.id, row);
     uniqueBrokerRows.push(row);
   }
+  if (sourceDataIncomplete) confidence = 'provisional';
 
   const appExecutions = input.appEvents.filter(event => EXECUTION_EVENT_TYPES.has(event.type));
   const unmatchedBroker = new Set(uniqueBrokerRows.map((_, index) => index));
@@ -472,7 +551,77 @@ export function reconcileBrokerActivity(
   }
 
   const appCashflows = input.appEvents.filter(event => CASHFLOW_EVENT_TYPES.has(event.type) && event.actor.type !== 'broker');
-  const brokerCashflows = input.brokerCashflows.map(normalizeCashflow).filter((row): row is NormalizedCashflow => row !== null);
+  const normalizedCashflowRows: NormalizedCashflow[] = [];
+  input.brokerCashflows.forEach((raw, index) => {
+    const row = normalizeCashflow(raw);
+    if (row) {
+      normalizedCashflowRows.push(row);
+      if (/^anonymous:/i.test(row.id) || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)) {
+        sourceDataIncomplete = true;
+        warnings.push('One or more broker cashflows lack a provider-stable cashflow ID; matching is provisional.');
+      }
+      return;
+    }
+    sourceDataIncomplete = true;
+    const ref = text((raw as BrokerCashflow | null)?.id);
+    findings.push(makeFinding({
+      id: `cashflow-unclassified:${ref || index}`,
+      type: 'cashflow_unclassified',
+      subject: text((raw as BrokerCashflow | null)?.type) || `Broker cashflow row ${index + 1}`,
+      currency: currency((raw as BrokerCashflow | null)?.currency) || undefined,
+      brokerValue: null,
+      appValue: null,
+      brokerReferences: ref ? [ref] : [],
+      appEventIds: [],
+      explanation: 'The broker cashflow has no usable amount and was excluded from matching.'
+    }, 'provisional'));
+  });
+
+  const brokerCashflowById = new Map<string, NormalizedCashflow>();
+  const conflictingCashflowIds = new Set<string>();
+  const brokerCashflows: NormalizedCashflow[] = [];
+  for (const row of normalizedCashflowRows) {
+    if (conflictingCashflowIds.has(row.id)) continue;
+    const prior = brokerCashflowById.get(row.id);
+    if (prior) {
+      if (sameCashflowObservation(prior, row)) {
+        findings.push(makeFinding({
+          id: `duplicate-cashflow:${row.id}`,
+          type: 'duplicate_broker_cashflow',
+          subject: row.type,
+          currency: row.currency || undefined,
+          brokerValue: row.amount,
+          appValue: null,
+          brokerReferences: [row.id],
+          appEventIds: [],
+          brokerAt: row.at ?? undefined,
+          explanation: 'The broker history contains the same cashflow identifier and facts more than once.'
+        }, confidence));
+      } else {
+        sourceDataIncomplete = true;
+        conflictingCashflowIds.add(row.id);
+        const priorIndex = brokerCashflows.findIndex(candidate => candidate.id === row.id);
+        if (priorIndex >= 0) brokerCashflows.splice(priorIndex, 1);
+        findings.push(makeFinding({
+          id: `cashflow-revision-conflict:${row.id}`,
+          type: 'cashflow_revision_conflict',
+          subject: row.type,
+          currency: row.currency || undefined,
+          brokerValue: row.amount,
+          appValue: prior.amount,
+          brokerReferences: [row.id],
+          appEventIds: [],
+          brokerAt: row.at ?? undefined,
+          explanation: 'The same broker cashflow identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.'
+        }, 'provisional'));
+        warnings.push('One or more broker cashflow IDs have conflicting revisions; affected records were excluded from matching.');
+      }
+      continue;
+    }
+    brokerCashflowById.set(row.id, row);
+    brokerCashflows.push(row);
+  }
+  if (sourceDataIncomplete) confidence = 'provisional';
   const unmatchedCashflowBroker = new Set(brokerCashflows.map((_, index) => index));
   let matchedCashflowCount = 0;
   const unmatchedCashflowApp = new Set(appCashflows.map((_, index) => index));
@@ -487,6 +636,41 @@ export function reconcileBrokerActivity(
       })
       .filter(candidate => candidate.delta <= amountTolerance && candidate.timeDelta <= maxTimingDifference)
       .sort((a, b) => a.timeDelta - b.timeDelta);
+    const signedDirectionMismatch = [...unmatchedCashflowApp].map(index => ({
+      index,
+      event: appCashflows[index],
+      appAmount: eventAmount(appCashflows[index]),
+      timeDelta: Math.abs(appCashflows[index].effectiveAt - (broker.at ?? appCashflows[index].effectiveAt))
+    })).filter(candidate =>
+      candidate.event.type === broker.type &&
+      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      candidate.appAmount !== null &&
+      hasExplicitSignedCashflowAmount(candidate.event) &&
+      Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
+      candidate.timeDelta <= maxTimingDifference &&
+      Math.sign(candidate.appAmount) !== 0 &&
+      Math.sign(broker.amount) !== 0 &&
+      Math.sign(candidate.appAmount) !== Math.sign(broker.amount)
+    ).sort((a, b) => a.timeDelta - b.timeDelta)[0];
+    if (signedDirectionMismatch) {
+      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
+      unmatchedCashflowApp.delete(signedDirectionMismatch.index);
+      findings.push(makeFinding({
+        id: `cashflow-direction:${broker.id}:${signedDirectionMismatch.event.id}`,
+        type: 'cashflow_direction_mismatch',
+        subject: broker.type,
+        currency: broker.currency || undefined,
+        brokerValue: broker.amount,
+        appValue: signedDirectionMismatch.appAmount,
+        difference: broker.amount - (signedDirectionMismatch.appAmount ?? 0),
+        brokerReferences: [broker.id],
+        appEventIds: [signedDirectionMismatch.event.id],
+        brokerAt: broker.at ?? undefined,
+        appAt: signedDirectionMismatch.event.effectiveAt,
+        explanation: 'The broker and app record opposite signed cash movements for the same cashflow. No balance adjustment was made.'
+      }, confidence));
+      continue;
+    }
     if (candidate[0]) {
       unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
       unmatchedCashflowApp.delete(candidate[0].index);
@@ -602,7 +786,8 @@ export function reconcileBrokerActivity(
   }
 
   const unavailable = input.executionStatus === 'unavailable' && input.cashflowStatus === 'unavailable';
-  const partial = input.executionStatus !== 'complete' || input.cashflowStatus !== 'complete' || appStatus !== 'complete';
+  const partial = input.executionStatus !== 'complete' || input.cashflowStatus !== 'complete' ||
+    appStatus !== 'complete' || sourceDataIncomplete;
   return {
     status: unavailable ? 'unavailable' : partial ? 'partial' : findings.length ? 'differences' : 'matched',
     comparedAt: now,
