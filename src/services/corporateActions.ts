@@ -1,39 +1,21 @@
 import type { PositionRecord } from '../types/portfolio';
+import type {
+  CorporateActionEvent,
+  CorporateActionFeedQuality,
+  CorporateActionFeedResult,
+  CorporateActionKind,
+  PortfolioCorporateActionEvent,
+  PortfolioCorporateActionStatus
+} from '../types/corporateAction';
+export type {
+  CorporateActionEvent,
+  CorporateActionFeedQuality,
+  CorporateActionFeedResult,
+  CorporateActionKind,
+  PortfolioCorporateActionEvent,
+  PortfolioCorporateActionStatus
+} from '../types/corporateAction';
 
-export type CorporateActionKind =
-  | 'stock_split'
-  | 'reverse_split'
-  | 'cash_dividend'
-  | 'symbol_change'
-  | 'merger'
-  | 'spin_off';
-
-export interface CorporateActionEvent {
-  id: string;
-  sourceId: string;
-  symbol: string;
-  kind: 'stock_split' | 'reverse_split' | 'cash_dividend';
-  effectiveDate: string;
-  fromFactor?: number;
-  toFactor?: number;
-  /** New shares received per old share. A 2-for-1 split is represented as 1 -> 2. */
-  sharesAfterPerShareBefore?: number;
-  amountPerShare?: number;
-  currency?: string | null;
-  payDate?: string | null;
-  recordDate?: string | null;
-  declarationDate?: string | null;
-  provider: string;
-  receivedAt: number;
-}
-
-export type CorporateActionFeedQuality = 'complete' | 'partial' | 'unavailable';
-
-export interface CorporateActionFeedResult {
-  events: CorporateActionEvent[];
-  quality: CorporateActionFeedQuality;
-  issues: string[];
-}
 
 export type PortfolioCorporateActionStatus = 'applied' | 'review_required' | 'not_applicable';
 
