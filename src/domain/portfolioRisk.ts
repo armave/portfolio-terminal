@@ -351,10 +351,15 @@ function buildMarginRisk(
   }
   for (const position of positions) {
     const brokerId = position.brokerId ?? 'Unclassified';
+    const accountId = position.accountId ?? 'Unclassified';
+    if (brokerId === 'Unclassified' || accountId === 'Unclassified') {
+      return unavailable('A position is missing broker or account identity and cannot be assigned safely to a margin account.');
+    }
     const accounts = marginAccountsByBroker.get(brokerId);
-    if (accounts && (position.accountId ?? 'Unclassified') === 'Unclassified' &&
-        !accounts.has('Unclassified') && accounts.size > 0) {
-      return unavailable('A position for broker ' + brokerId + ' has no account id and cannot be assigned safely to a margin account.');
+    if (accounts && !accounts.has(accountId) && accounts.size > 0) {
+      // The position belongs to another account at this broker. It is intentionally
+      // excluded from this account's risk calculation rather than rolled into it.
+      continue;
     }
   }
 

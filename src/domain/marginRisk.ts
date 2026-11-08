@@ -74,7 +74,7 @@ export interface MarginRiskSnapshot {
   /** null when an unreported concentration add-on prevents a complete buffer calculation. */
   maintenanceBuffer: number | null;
   maintenanceBufferPct: number | null;
-  stopOutBuffer: number;
+  stopOutBuffer: number | null;
   stopOutBufferPct: number | null;
   marginCallValue: number | null;
   stopOutValue: number | null;
@@ -83,7 +83,7 @@ export interface MarginRiskSnapshot {
   showMarginCall: boolean;
   showStopOut: boolean;
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
-  stopOutState: 'above-stop-out' | 'stop-out-breach';
+  stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
   annualInterestCost: number;
   dailyInterestCost: number;
   riskLevel: MarginRiskLevel;
@@ -177,6 +177,10 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
         return unavailable('Broker-reported margin requirements must be finite non-negative amounts or explicitly unknown.');
       }
     }
+    if (requirements.concentrationAddOnSource !== undefined &&
+        !['broker', 'configured-assumption'].includes(requirements.concentrationAddOnSource)) {
+      return unavailable('Broker concentration add-on provenance is invalid.');
+    }
     if (requirements.observedAt !== null &&
         (!validTimestamp(requirements.observedAt) || requirements.observedAt > input.calculatedAt)) {
       return unavailable('The broker margin-requirement timestamp is invalid or later than the calculation.');
@@ -202,8 +206,12 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     ? null : baseMaintenanceAmount + concentrationAmount;
   const baseMaintenanceBuffer = baseMaintenanceAmount === null ? null : equity - baseMaintenanceAmount;
   const maintenanceBuffer = totalMaintenanceRequirement === null ? null : equity - totalMaintenanceRequirement;
-  const stopOutRequirement = assets * input.assumptions.stopOutRatio;
-  const stopOutBuffer = equity - stopOutRequirement;
+  // The configured stop-out ratio belongs to the existing long-only model.
+  // Without an explicit broker short-account rule, do not invent a short stop-out buffer.
+  const stopOutRequirement = input.shortExposure === 0
+    ? assets * input.assumptions.stopOutRatio
+    : null;
+  const stopOutBuffer = stopOutRequirement === null ? null : equity - stopOutRequirement;
   const annualInterestCost = input.marginDebt * input.assumptions.annualBorrowRate;
   const dailyInterestCost = annualInterestCost / input.assumptions.dayCountBasis;
 
@@ -226,13 +234,17 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const maintenanceBufferPct = maintenanceBuffer !== null && assets > 0
     ? maintenanceBuffer / assets * 100
     : null;
-  const stopOutBufferPct = assets > 0 ? stopOutBuffer / assets * 100 : null;
+  const stopOutBufferPct = stopOutBuffer !== null && assets > 0 ? stopOutBuffer / assets * 100 : null;
 
   const warnings: string[] = [];
   let quality: 'current' | 'provisional' = input.quality;
   if (input.freshness !== 'fresh' || input.observedAt === null) {
     quality = 'provisional';
     warnings.push('Quote or account observation freshness cannot be confirmed.');
+  }
+  if (input.shortExposure > 0) {
+    quality = 'provisional';
+    warnings.push('A broker-specific short-position stop-out rule is unavailable; short stop-out buffers are not estimated.');
   }
   if (input.marginDebt > 0 && input.eligibleCollateralSource !== 'broker') {
     quality = 'provisional';
@@ -263,8 +275,10 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
 
   const ratioForClassification = equityRatio ?? Number.NEGATIVE_INFINITY;
   let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
-  if (input.marginDebt > 0 && input.shortExposure > 0 && !hasBrokerMaintenanceRequirement && equity > 0) {
-    riskLevel = 'Elevated';
+  if (input.shortExposure > 0) {
+    if (equity <= 0) riskLevel = 'Stop-out level';
+    else if (maintenanceBuffer !== null && maintenanceBuffer <= 0) riskLevel = 'Margin-call level';
+    else riskLevel = 'Elevated';
   } else if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) {
     riskLevel = 'Elevated';
   }
@@ -274,8 +288,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     : maintenanceBuffer === null
       ? (baseMaintenanceBuffer !== null && baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
       : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
-  const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer <= 0
-    ? 'stop-out-breach' : 'above-stop-out';
+  const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer === null
+    ? 'unknown'
+    : stopOutBuffer <= 0 ? 'stop-out-breach' : 'above-stop-out';
   const value: MarginRiskSnapshot = {
     currency, calculatedAt: input.calculatedAt,
     longExposure: input.longExposure, shortExposure: input.shortExposure, grossExposure, netExposure,
@@ -296,7 +311,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     stopOutBuffer, stopOutBufferPct, marginCallValue, stopOutValue,
     marginCallBufferPct, stopOutBufferPctOfLongExposure,
     showMarginCall: maintenanceState === 'maintenance-breach',
-    showStopOut: stopOutBuffer <= 0,
+    showStopOut: stopOutBuffer !== null && stopOutBuffer <= 0,
     maintenanceState, stopOutState,
     annualInterestCost, dailyInterestCost, riskLevel, quality, warnings,
     disclaimer: 'This is an estimate from the supplied snapshot and configured assumptions, not a broker maintenance calculation, buying-power result, liquidation quote, or forecast.'
