@@ -55,10 +55,10 @@ describe('storage service', () => {
     storageMap.clear();
     vi.clearAllMocks();
     vi.stubGlobal('localStorage', localStorageMock);
-    await clearSavedHistoryPersistence();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
+    await clearSavedHistoryPersistence();
   });
 
   afterEach(() => {
@@ -565,9 +565,10 @@ describe('storage service', () => {
       };
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
 
+      const indexedDbAvailable = typeof indexedDB !== 'undefined';
       await initializeSavedHistoryStorage();
       expect(loadSavedHistory()).toEqual(expected);
-      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(!indexedDbAvailable);
     });
 
     it('recovers embedded history without overwriting an unreadable sidecar', () => {
@@ -592,9 +593,16 @@ describe('storage service', () => {
       }));
       await initializeSavedHistoryStorage();
 
+      const indexedDbAvailable = typeof indexedDB !== 'undefined';
       expect(await saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(true);
       expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
-      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      if (indexedDbAvailable) {
+        expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      } else {
+        expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
+          brokerExecutedTrades: [], cashflows: []
+        });
+      }
     });
 
     it('reports when IndexedDB and the bounded legacy history fallback are unavailable', async () => {

@@ -560,9 +560,9 @@ interface PortfolioSnapshotPersistResult {
 }
 
 /**
- * Persists the portfolio state and any changed closed-history sidecar as one
- * best-effort local transaction. If a later key fails, already-written keys
- * are restored to their previous values before the call reports failure.
+ * Persists only the compact portfolio snapshot and small device preferences.
+ * Large closed-history collections are stored independently in IndexedDB.
+ * If a later localStorage key fails, earlier compact writes are rolled back.
  */
 function persistPortfolioSnapshot(
   state: Record<string, any>,
