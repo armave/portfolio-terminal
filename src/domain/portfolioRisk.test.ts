@@ -227,7 +227,7 @@ describe('broker margin estimates', () => {
       brokerId: 'freedom', debt: 300, positions: snapshot.positions, capital: snapshot.capital,
       assumptions: DEFAULT_BROKER_ASSUMPTIONS, requirements: snapshot.brokerRequirements![0]
     });
-    expect(result.status).toBe('provisional');
+    expect(result.status).toBe('available');
     if (result.status === 'unavailable') return;
     expect(result.value.annualInterestCost).toBeCloseTo(45);
     expect(result.value.maintenanceEquityRatio).toBe(0.1);

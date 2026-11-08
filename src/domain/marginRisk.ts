@@ -227,22 +227,22 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     quality = 'provisional';
     warnings.push('Quote or account observation freshness cannot be confirmed.');
   }
-  if (input.eligibleCollateralSource !== 'broker') {
+  if (input.marginDebt > 0 && input.eligibleCollateralSource !== 'broker') {
     quality = 'provisional';
     warnings.push('Eligible collateral is a configured assumption, not a broker-confirmed amount.');
   }
-  if (!requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
+  if (input.marginDebt > 0 && !requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
     quality = 'provisional';
     warnings.push('Initial margin requirement is unavailable; buying power is not estimated.');
   }
-  if (maintenanceSource === 'configured-assumption') {
+  if (input.marginDebt > 0 && maintenanceSource === 'configured-assumption') {
     quality = 'provisional';
     warnings.push('Maintenance requirement uses the configured equity ratio, not a broker-reported requirement.');
   }
-  if (concentrationAmount === null) {
+  if (input.marginDebt > 0 && concentrationAmount === null) {
     quality = 'provisional';
     warnings.push('Concentration add-on is unavailable; the complete maintenance buffer cannot be calculated.');
-  } else if (requirements?.concentrationAddOnSource === 'configured-assumption') {
+  } else if (input.marginDebt > 0 && requirements?.concentrationAddOnSource === 'configured-assumption') {
     quality = 'provisional';
     warnings.push('Concentration add-on uses a configured assumption, not a broker-reported amount.');
   }
@@ -255,9 +255,11 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
   if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) riskLevel = 'Elevated';
 
-  const maintenanceState: MarginRiskSnapshot['maintenanceState'] = maintenanceBuffer === null
-    ? (baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
-    : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
+  const maintenanceState: MarginRiskSnapshot['maintenanceState'] = input.marginDebt <= 0
+    ? 'above-maintenance'
+    : maintenanceBuffer === null
+      ? (baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
+      : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
   const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer <= 0
     ? 'stop-out-breach' : 'above-stop-out';
   const value: MarginRiskSnapshot = {

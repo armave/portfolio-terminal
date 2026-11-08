@@ -92,6 +92,32 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.warnings.some(item => item.includes('Concentration add-on is unavailable'))).toBe(true);
   });
 
+  it('deducts margin debt exactly once from equity', () => {
+    const lowerDebt = calculateMarginRiskSnapshot(riskInput({ marginDebt: 200 }));
+    const higherDebt = calculateMarginRiskSnapshot(riskInput({ marginDebt: 300 }));
+    expect(lowerDebt.status).not.toBe('unavailable');
+    expect(higherDebt.status).not.toBe('unavailable');
+    if (lowerDebt.status === 'unavailable' || higherDebt.status === 'unavailable') return;
+    expect(lowerDebt.value.equity - higherDebt.value.equity).toBe(100);
+    expect(lowerDebt.value.assets).toBe(higherDebt.value.assets);
+  });
+
+  it('reports a definite maintenance breach even when the concentration add-on is unknown', () => {
+    const result = calculateMarginRiskSnapshot(riskInput({
+      longExposure: 100,
+      cashBalance: 0,
+      marginDebt: 100,
+      eligibleCollateral: 0,
+      brokerRequirements: null
+    }));
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.baseMaintenanceBuffer).toBeLessThan(0);
+    expect(result.value.maintenanceBuffer).toBeNull();
+    expect(result.value.maintenanceState).toBe('maintenance-breach');
+    expect(result.value.showMarginCall).toBe(true);
+  });
+
   it('marks configured collateral and stale market inputs provisional', () => {
     const result = calculateMarginRiskSnapshot(riskInput({
       eligibleCollateralSource: 'configured-assumption',
