@@ -130,9 +130,9 @@ export function hasUnresolvedBrokerPositionIntegrity(snapshot: unknown): boolean
     : null;
   if (hasIssues(account.positionIntegrityIssues) ||
       hasIssues(lastRefreshIssue?.positionIntegrityIssues) ||
-      account.quality === 'partial' || account.quality === 'empty' ||
-      account.snapshotQuality === 'partial' || account.snapshotQuality === 'empty' ||
-      lastRefreshIssue?.quality === 'partial' || lastRefreshIssue?.quality === 'empty') return true;
+      account.quality === 'partial' || account.quality === 'empty' || account.quality === 'unknown' ||
+      account.snapshotQuality === 'partial' || account.snapshotQuality === 'empty' || account.snapshotQuality === 'unknown' ||
+      lastRefreshIssue?.quality === 'partial' || lastRefreshIssue?.quality === 'empty' || lastRefreshIssue?.quality === 'unknown') return true;
   if (!Array.isArray(account.positions)) return false;
   return account.positions.some(value => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return true;

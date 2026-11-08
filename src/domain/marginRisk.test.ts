@@ -151,6 +151,11 @@ describe('calculateMarginRiskSnapshot', () => {
     })).toBe(true);
     expect(hasUnresolvedBrokerPositionIntegrity({ quality: 'partial', positions: [] })).toBe(true);
     expect(hasUnresolvedBrokerPositionIntegrity({ snapshotQuality: 'partial', positions: [] })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({ quality: 'unknown', positions: [] })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({ snapshotQuality: 'unknown', positions: [] })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      lastRefreshIssue: { quality: 'unknown', positionIntegrityIssues: [] }
+    })).toBe(true);
   });
 
   it('applies an explicit collateral haircut before calculating collateral coverage', () => {
