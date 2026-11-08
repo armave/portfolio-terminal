@@ -31,7 +31,7 @@ Server changes are committed directly to `main` and deployed separately:
 
 ## Client validation
 
-Validated PR head: `0a953322ea34da247916cf76e688d312f76b97ac`.
+Validated PR head: `4a70b5923ed76387b9a308cf1f8ae74e1b9adf92`.
 
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/42468474351) — success; 157 test files / 1,875 tests passed, typecheck, production build, browser smoke, dead-code validation and dependency audits.
 - [x] [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/42468474583) — success.
