@@ -22,6 +22,8 @@ const RU_COPY: Record<string, string> = {
   'Matched legacy sales': 'Совпавшие исторические продажи',
   'Matched legacy sell fills': 'Совпавшие исполнения исторических продаж',
   'provisional items': 'предварительных записей',
+  'No confirmed differences were found in the available records; incomplete coverage prevents a full match confirmation.': 'В доступных записях не обнаружено подтверждённых расхождений; неполнота истории не позволяет подтвердить полное совпадение.',
+  'Broker history is unavailable; no transaction-level comparison could be confirmed.': 'История брокера недоступна; сверку на уровне транзакций подтвердить невозможно.',
   'Duplicate broker execution': 'Дублирующееся исполнение брокера',
   'Execution not found in app journal': 'Исполнение не найдено в журнале приложения',
   'App trade not found in broker history': 'Сделка приложения не найдена в истории брокера',
@@ -82,6 +84,14 @@ export function getBrokerReconciliationCountLabel(
   return status === 'partial' || status === 'unavailable' ? 'provisional items' : 'findings';
 }
 
+export function getBrokerReconciliationEmptyMessage(
+  status: 'matched' | 'differences' | 'partial' | 'unavailable'
+): string {
+  if (status === 'partial') return 'No confirmed differences were found in the available records; incomplete coverage prevents a full match confirmation.';
+  if (status === 'unavailable') return 'Broker history is unavailable; no transaction-level comparison could be confirmed.';
+  return 'No transaction-level differences were found in the available records.';
+}
+
 
 interface BrokerTransactionReconciliationProps {
   executions: readonly BrokerExecution[];
@@ -130,6 +140,8 @@ export function BrokerTransactionReconciliation({
   });
   const label = getBrokerReconciliationHeadline(report.status, report.findings.length);
   const countLabel = getBrokerReconciliationCountLabel(report.status);
+  const emptyMessage = getBrokerReconciliationEmptyMessage(report.status);
+  const emptyMessageClass = report.status === 'matched' ? 'text-emerald-300' : 'text-slate-400';
   const labelClass = report.status === 'matched' ? 'text-emerald-300' :
     report.status === 'differences' ? 'text-amber-300' : 'text-slate-300';
 
@@ -184,7 +196,7 @@ export function BrokerTransactionReconciliation({
           ))}
           {report.findings.length > 30 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 30 findings')}.</p>}
         </div>
-      ) : <p class="text-emerald-300">{translateBrokerReconciliationCopy('No transaction-level differences were found in the available records.')}</p>}
+      ) : <p class={emptyMessageClass}>{translateBrokerReconciliationCopy(emptyMessage)}</p>}
       <p class="border-t border-slate-800 pt-2 text-slate-500">{translateBrokerReconciliationCopy('Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.')}</p>
     </div>
   );

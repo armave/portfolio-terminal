@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getBrokerReconciliationCountLabel,
+  getBrokerReconciliationEmptyMessage,
   getBrokerReconciliationHeadline,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
@@ -37,5 +38,13 @@ describe('broker reconciliation status wording', () => {
   it('localizes the additional journal and legacy-sale evidence labels', () => {
     expect(translateBrokerReconciliationCopy('App journal executions', 'ru')).toBe('Исполнения в журнале приложения');
     expect(translateBrokerReconciliationCopy('provisional items', 'ru')).toBe('предварительных записей');
+  });
+});
+
+describe('broker reconciliation empty-state wording', () => {
+  it('does not show a successful match for incomplete or unavailable feeds', () => {
+    expect(getBrokerReconciliationEmptyMessage('partial')).toContain('incomplete coverage');
+    expect(getBrokerReconciliationEmptyMessage('unavailable')).toContain('unavailable');
+    expect(getBrokerReconciliationEmptyMessage('matched')).toBe('No transaction-level differences were found in the available records.');
   });
 });
