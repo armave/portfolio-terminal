@@ -66,7 +66,7 @@ describe('market history correction journal', () => {
     const result = replayMarketHistoryCorrections([{ timestamp, price: 95 }], [event]);
     expect(result.status).toBe('review_required');
     expect(result.points).toEqual([{ timestamp, price: 95 }]);
-    expect(result.issues[0]).toContain('before-value');
+    expect(result.issues[0]).toContain('before/after value');
   });
 
   it('treats provider values at an intermediate or final revision as idempotently replayed', () => {

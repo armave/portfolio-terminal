@@ -408,8 +408,10 @@ function acquiredAtForTranche(
   tranche: TrancheItem
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
-  if (timestamp !== null && timestamp > 0) {
-    const isoDate = new Date(timestamp).toISOString().slice(0, 10);
+  if (timestamp !== null && Number.isSafeInteger(timestamp) && timestamp > 0) {
+    const acquiredDate = new Date(timestamp);
+    if (!Number.isFinite(acquiredDate.getTime())) return null;
+    const isoDate = acquiredDate.toISOString().slice(0, 10);
     return dateOnly(isoDate) ? Date.parse(isoDate + 'T00:00:00.000Z') : null;
   }
   const date = typeof tranche.date === 'string' && tranche.date.trim()
@@ -500,6 +502,12 @@ export function adjustPositionForSplit(
   let currentPrice = position.currentPrice;
   let quoteDetails = position.quoteDetails;
   const quoteObservedAt = finiteNumber(quoteDetails?.sourceTimestamp);
+  if (position.currentPrice > 0 && quoteObservedAt === null) {
+    return {
+      status: 'review_required',
+      reason: 'The open position has no verifiable quote observation timestamp. Refresh its market quote before applying the split.'
+    };
+  }
   if (quoteObservedAt !== null && quoteObservedAt < effectiveAt && quoteDetails) {
     currentPrice = position.currentPrice > 0 ? position.currentPrice / multiplier : position.currentPrice;
     quoteDetails = {

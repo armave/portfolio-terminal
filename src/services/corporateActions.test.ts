@@ -137,6 +137,17 @@ describe('split position adjustment', () => {
     expect(result.position.commBuy).toBe(12);
   });
 
+  it('requires review when the current quote cannot be ordered around the action date', () => {
+    const unverifiedQuote = {
+      ...preSplitPosition,
+      quoteDetails: { ...preSplitPosition.quoteDetails, sourceTimestamp: undefined }
+    };
+    expect(adjustPositionForSplit(unverifiedQuote, splitEvent())).toMatchObject({
+      status: 'review_required',
+      reason: 'The open position has no verifiable quote observation timestamp. Refresh its market quote before applying the split.'
+    });
+  });
+
   it('retains a quote observed after the action and requires review for mixed or undated lots', () => {
     const afterQuote = {
       ...preSplitPosition,
