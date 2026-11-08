@@ -118,7 +118,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -234,6 +234,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
   const positionIntegrityIssues = classified.positionIntegrityIssues || [];
+  const canApplyBrokerBalance = canApplyFreedomBrokerBalance(positionIntegrityIssues);
   const positionIntegrityWarnings = positionIntegrityIssues.length
     ? ['One or more broker positions have unverified direction or incomplete long-position history; the previous tracked values were retained.']
     : [];
@@ -241,14 +242,17 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   portfolioStore.setState({
     brokerAccountInfo: {
       ...snapshot,
+      // Short proceeds or unresolved position effects can change available cash.
+      // Retain the last accepted broker balance until every affected ticker is understood.
+      balances: canApplyBrokerBalance ? snapshot.balances : current.brokerAccountInfo?.balances || [],
       receivedAt: Date.now(),
       status: 'current',
-      quality: positionIntegrityIssues.length ? 'partial' : 'complete',
+      quality: canApplyBrokerBalance ? 'complete' : 'partial',
       snapshotQuality: 'complete',
       positionIntegrityIssues,
       warnings: positionIntegrityWarnings
     },
-    ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
+    ...(canApplyBrokerBalance && usdBalance ? { balance: Number(usdBalance.amount) } : {}),
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
