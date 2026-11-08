@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
+import { normalizeFinnhubStockSplits, toPortfolioCorporateActionEvent } from '../services/corporateActions';
+import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import {
   calculateMarginInterest,
   collectOpenPositionTranches,
@@ -981,4 +983,42 @@ describe('Stage 2 financial domain guarantees', () => {
       minCommOrder: 1.2
     });
   });
+  it('preserves sourced corporate-action history through backup export and restore', () => {
+    const feedEvent = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const event = toPortfolioCorporateActionEvent(
+      feedEvent, 'applied', Date.parse('2026-11-08T10:00:00Z'), 'Applied in the portfolio.'
+    );
+    const exported = createPortfolioBackupSnapshot({ positions: {}, corporateActionEvents: [event] });
+    expect(exported).toMatchObject({ corporateActionEvents: [event] });
+    expect(normalizePortfolioBackup(exported, Date.now()).corporateActionEvents).toEqual([event]);
+    expect(() => normalizePortfolioBackup({
+      positions: {}, corporateActionEvents: [{ ...event, receivedAt: 'invalid' }]
+    }, Date.now())).toThrow('Invalid corporateActionEvents');
+  });
+
+  it('preserves before/after market-history correction evidence through backup restore', () => {
+    const timestamp = 1_793_966_400_000;
+    const event = createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp,
+      provider: 'FINNHUB',
+      receivedAt: timestamp + 10,
+      recordedAt: timestamp + 20,
+      previous: { timestamp, price: 100 },
+      corrected: { timestamp, price: 101 },
+      reason: 'Verified source revision.'
+    });
+    const exported = createPortfolioBackupSnapshot({
+      positions: {},
+      marketHistoryCorrections: [event]
+    });
+    expect(normalizePortfolioBackup(exported, Date.now()).marketHistoryCorrections).toEqual([event]);
+    expect(() => normalizePortfolioBackup({
+      positions: {}, marketHistoryCorrections: [{ ...event, corrected: { timestamp, price: -1 } }]
+    }, Date.now())).toThrow('Invalid marketHistoryCorrections');
+  });
+
 });

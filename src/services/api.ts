@@ -24,7 +24,9 @@ export {
   normalizeMarketQuoteObservation,
   normalizeMarketHistoryPoints,
   normalizeMarketHistoryResponse,
+  findMissingMarketHistoryTimestamps,
   normalizeFxRate,
+  createFxRateProviderRegistry,
   isFxRateUsableForConversion,
   getFxConversionRate,
   shouldAcceptMarketObservation
@@ -49,7 +51,9 @@ export type {
   MarketHistoryResponseInput,
   FxRateInput,
   FxRate,
-  FxRateProviderAdapter
+  FxRateProviderAdapter,
+  FxRateProviderRegistry,
+  FxRateProviderRegistryResult
 } from './marketDataContracts';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
 
