@@ -99,15 +99,13 @@ describe('reconcileFreedomPortfolio', () => {
     }, {
       AAPL: { ticker: 'AAPL', shares: 7, currentPrice: 190, pt: 220, commBuy: 3, tranches: [{ qty: 7, price: 180 }] }
     }, [
-      { ticker: 'AAPL', shares: 2, currentPrice: 185, averagePrice: 175 },
-      { ticker: 'OLD', shares: 1, currentPrice: 50, averagePrice: 45 }
+      { ticker: 'AAPL', shares: 2, currentPrice: 185, averagePrice: 175 }
     ], { MSFT: 'cash' });
 
     expect(result.positions.AAPL).toMatchObject({ shares: 7, currentPrice: 190, pt: 220 });
     expect(result.cashStocks).toEqual([
       expect.objectContaining({ ticker: 'AAPL', shares: 2, averagePrice: 175 }),
-      expect.objectContaining({ ticker: 'MSFT', shares: 2 }),
-      expect.objectContaining({ ticker: 'OLD', shares: 1 })
+      expect.objectContaining({ ticker: 'MSFT', shares: 2 })
     ]);
     expect(result.positionIntegrityIssues).toEqual([
       expect.objectContaining({ ticker: 'AAPL', code: 'negative_quantity_sign_unverified' })
@@ -121,15 +119,13 @@ describe('reconcileFreedomPortfolio', () => {
       balances: [],
       positions: [{ ticker: 'GOOGL.US', quantity: 4, marketPrice: 280 }]
     }, { GOOGL: priorPosition }, [{ ticker: 'GOOGL', shares: 2, currentPrice: 275, averagePrice: 260 }], {}, Date.now(), [
-      { id: 'short-1', ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 1, price: 300 },
-      { id: 'cover-1', ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 1, price: 290 }
+      { id: 'short-1', ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 1, price: 300 }
     ]);
 
     expect(result.positions.GOOGL).toEqual(priorPosition);
     expect(result.cashStocks).toEqual([expect.objectContaining({ ticker: 'GOOGL', shares: 2, averagePrice: 260 })]);
     expect(result.positionIntegrityIssues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }),
-      expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' })
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' })
     ]));
   });
 

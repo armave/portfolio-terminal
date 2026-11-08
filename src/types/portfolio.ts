@@ -321,6 +321,8 @@ export interface PortfolioState {
     /** Provenance retained from the normalized broker adapter snapshot. */
     provider?: string;
     quality?: BrokerSnapshotQuality | 'unknown';
+    /** Provider quality before app-side position/execution integrity checks. */
+    snapshotQuality?: BrokerSnapshotQuality | 'unknown';
     source?: BrokerSnapshotSource;
     /** Provider market/account observation time; distinct from client receipt time. */
     observedAt?: number;

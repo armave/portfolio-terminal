@@ -244,6 +244,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
       receivedAt: Date.now(),
       status: 'current',
       quality: positionIntegrityIssues.length ? 'partial' : 'complete',
+      snapshotQuality: 'complete',
       positionIntegrityIssues,
       warnings: positionIntegrityWarnings
     },
@@ -283,6 +284,7 @@ addBrokerEventListener('broker:account-info-snapshot', (snapshot) => {
       ...accountInfo,
       provider: snapshot.provider,
       quality: positionIntegrityIssues.length ? 'partial' : snapshot.quality,
+      snapshotQuality: snapshot.quality,
       source: snapshot.source,
       receivedAt: snapshot.receivedAt,
       ...(snapshot.observedAt === undefined ? { observedAt: undefined } : { observedAt: snapshot.observedAt }),
@@ -345,7 +347,8 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
   portfolioStore.setState({
     brokerAccountInfo: {
       ...snapshot,
-      quality: positionIntegrityIssues.length ? 'partial' : snapshot.quality ?? 'complete',
+      snapshotQuality: snapshot.snapshotQuality ?? snapshot.quality ?? 'complete',
+      quality: positionIntegrityIssues.length ? 'partial' : snapshot.snapshotQuality ?? snapshot.quality ?? 'complete',
       positionIntegrityIssues,
       warnings: [
         ...previousWarnings.filter(warning => warning !== integrityWarning),
