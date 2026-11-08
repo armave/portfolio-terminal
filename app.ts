@@ -745,7 +745,7 @@ async function syncCloudState(mode = 'push') {
       const synced = status === 'synced';
       setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : 'UNAVAILABLE');
       setCloudSyncStatus(synced
-        ? { text: `Synced: ${new Date().toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}`, status: 'synced' }
+        ? { text: 'Synced', status: 'synced', lastSyncedAt: Date.now() }
         : { text: 'Sync failed', status: 'error' });
     }
   });
