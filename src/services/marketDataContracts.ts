@@ -348,6 +348,9 @@ export interface MarketHistoryResult {
   interval?: string;
   /** Explicit caller-supplied expected observations; omitted when no verified calendar is available. */
   missingTimestamps?: number[];
+  /** App-owned manual corrections applied on top of the unchanged provider snapshot. */
+  correctionStatus?: 'applied' | 'review_required';
+  correctionCount?: number;
 }
 
 export interface MarketQuoteRequest {
