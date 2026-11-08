@@ -17,6 +17,8 @@ export interface BrokerReportedMarginRequirements {
   maintenanceMarginRequired: number | null;
   /** null means the broker did not report an add-on; it is not zero. */
   concentrationAddOn: number | null;
+  /** Explicitly distinguishes a broker-reported add-on from a local assumption. */
+  concentrationAddOnSource?: 'broker' | 'configured-assumption';
   observedAt: number | null;
 }
 
@@ -267,7 +269,10 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
       source: requirements?.initialMarginRequired === null || requirements?.initialMarginRequired === undefined ? 'unavailable' : 'broker'
     },
     maintenanceMarginRequirement: { amount: baseMaintenanceAmount, source: maintenanceSource },
-    concentrationAddOn: { amount: concentrationAmount, source: concentrationAmount === null ? 'unavailable' : 'broker' },
+    concentrationAddOn: {
+      amount: concentrationAmount,
+      source: concentrationAmount === null ? 'unavailable' : (requirements?.concentrationAddOnSource ?? 'broker')
+    },
     totalMaintenanceRequirement, baseMaintenanceBuffer, maintenanceBuffer, maintenanceBufferPct,
     stopOutBuffer, stopOutBufferPct, marginCallValue, stopOutValue,
     marginCallBufferPct, stopOutBufferPctOfLongExposure,
@@ -311,7 +316,17 @@ export function calculateMarginRiskMetrics(
     cashBalance: collateral, marginDebt: debt,
     eligibleCollateral: collateral, eligibleCollateralSource: 'configured-assumption',
     assumptions: rules, quality: 'provisional', freshness: 'unknown', observedAt: null,
-    calculatedAt: Date.now()
+    calculatedAt: Date.now(),
+    brokerRequirements: {
+      currency: 'USD',
+      initialMarginRequired: null,
+      maintenanceMarginRequired: null,
+      // The legacy API had no concentration field; retain its zero-add-on
+      // behavior as a disclosed local assumption, never as a broker fact.
+      concentrationAddOn: 0,
+      concentrationAddOnSource: 'configured-assumption',
+      observedAt: null
+    }
   });
   if (result.status === 'unavailable') {
     return {
