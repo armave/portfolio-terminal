@@ -181,7 +181,7 @@ export function collectFreedomPositionIntegrityIssues(
     const at = timestamp(trade?.executedAt ?? trade?.date ?? trade?.time ?? raw.date ?? raw.time ?? raw.datetime ?? raw.exec_time);
     return {
       index,
-      ticker: ticker || \`ROW \${index + 1}\`,
+      ticker: ticker || 'ROW ' + (index + 1),
       hasTicker: Boolean(ticker),
       side: resolveTradeSide(trade, raw),
       rawSide: typeof sideValue === 'string' || typeof sideValue === 'number' ? sideValue : null,
@@ -267,7 +267,7 @@ export function collectFreedomPositionIntegrityIssues(
 function deduplicate(findings: BrokerPositionIntegrityIssue[]): BrokerPositionIntegrityIssue[] {
   const seen = new Set<string>();
   return findings.filter(finding => {
-    const key = `${finding.ticker}|${finding.code}|${finding.source}`;
+    const key = finding.ticker + '|' + finding.code + '|' + finding.source;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
