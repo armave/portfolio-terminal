@@ -101,7 +101,7 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     }, [{
       ticker: 'AAPL',
       side: 'Unknown',
-      raw: { operation: '2', instr_nm: 'AAPL', q: 2 }
+      raw: { oper: '2', instr_nm: 'AAPL', q: 2 }
     }]);
     const historySell = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
