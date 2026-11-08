@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, proxyFetch, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -97,6 +97,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
+  const [positionProbeLoading, setPositionProbeLoading] = useState(false);
+  const [positionProbeJson, setPositionProbeJson] = useState('');
+  const [positionProbeError, setPositionProbeError] = useState('');
+  const [positionProbeCopyStatus, setPositionProbeCopyStatus] = useState('');
+  const positionProbeTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
@@ -281,6 +286,47 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
+  const handleCapturePositionProbe = async (): Promise<void> => {
+    if (account?.role !== 'admin' || positionProbeLoading) return;
+    setPositionProbeLoading(true);
+    setPositionProbeError('');
+    setPositionProbeJson('');
+    setPositionProbeCopyStatus('');
+    try {
+      const response = await proxyFetch('freedom-position-probe', {}, { cache: 'no-store' });
+      if (response?.ok !== true) {
+        throw new Error(response?.error || translateText('Could not retrieve the TradeNet position response.'));
+      }
+      setPositionProbeJson(JSON.stringify(response, null, 2));
+    } catch (error) {
+      setPositionProbeError(error instanceof Error
+        ? error.message
+        : translateText('Could not retrieve the TradeNet position response.'));
+    } finally {
+      setPositionProbeLoading(false);
+    }
+  };
+
+  const handleCopyPositionProbe = async (): Promise<void> => {
+    if (!positionProbeJson) return;
+    const selectResponse = () => {
+      const textArea = positionProbeTextAreaRef.current;
+      textArea?.focus();
+      textArea?.select();
+      setPositionProbeCopyStatus(translateText('Select the JSON below and copy it manually.'));
+    };
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        selectResponse();
+        return;
+      }
+      await navigator.clipboard.writeText(positionProbeJson);
+      setPositionProbeCopyStatus(translateText('Response copied. Paste it into the chat.'));
+    } catch {
+      selectResponse();
+    }
+  };
+
   return (
     <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
       <div class="settings-header border-b border-slate-800 pb-3">
@@ -413,6 +459,61 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </table></TableScrollRegion>
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
+      </section>}
+
+      {account?.role === 'admin' && <section
+        class="settings-panel settings-position-probe space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+        aria-labelledby="positionProbeTitle"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 id="positionProbeTitle" class="text-sm font-bold text-slate-200">{translateText('TradeNet position probe')}</h3>
+            <p class="mt-1 max-w-prose text-[10px] leading-relaxed text-slate-500">
+              {translateText("Fetch one fresh, read-only getPositionJson response to inspect the broker's actual position fields. This does not change holdings or place orders.")}
+            </p>
+          </div>
+          <span class="shrink-0 rounded border border-amber-900/50 bg-amber-950/20 px-2 py-1 text-[10px] uppercase tracking-wider text-amber-300">
+            {translateText('Admin only · temporary')}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleCapturePositionProbe()}
+            disabled={positionProbeLoading}
+            aria-busy={positionProbeLoading}
+            class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {positionProbeLoading ? translateText('Capturing…') : translateText('Capture position response')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopyPositionProbe()}
+            disabled={!positionProbeJson || positionProbeLoading}
+            class="rounded border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {translateText('Copy response')}
+          </button>
+        </div>
+        <p class="text-[10px] leading-relaxed text-slate-500">
+          {translateText('The response is sanitized: account and balance rows plus account, login, session and credential fields are removed; position fields are retained.')}
+        </p>
+        {positionProbeError && <p class="text-xs text-rose-300" role="alert">{positionProbeError}</p>}
+        {positionProbeJson && <>
+          <label for="positionProbeResponse" class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {translateText('Sanitized TradeNet network response')}
+          </label>
+          <textarea
+            id="positionProbeResponse"
+            ref={positionProbeTextAreaRef}
+            readOnly
+            rows={12}
+            value={positionProbeJson}
+            aria-label={translateText('Sanitized TradeNet network response')}
+            class="w-full rounded border border-slate-700 bg-slate-950 p-2 font-mono text-[10px] leading-relaxed text-slate-300"
+          />
+        </>}
+        {positionProbeCopyStatus && <p class="text-xs text-cyan-300" role="status">{positionProbeCopyStatus}</p>}
       </section>}
 
       <DeviceCheckSummary />
