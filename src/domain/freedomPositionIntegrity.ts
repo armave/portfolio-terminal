@@ -63,7 +63,7 @@ function resolveTradeSide(
   }
 
   // TradeNet order/action codes: 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
-  for (const value of [raw.oper, raw.action_id, trade.operation, raw.operation]) {
+  for (const value of [raw.oper, raw.action_id]) {
     const code = String(value ?? '').trim();
     if (code === '1' || code === '2') return 'buy';
     if (code === '3') return 'sell';
