@@ -186,6 +186,7 @@ export function normalizeDividendEvents(
       ...(amount === null ? ['Dividend amount is unavailable.'] : []),
       ...(!currency ? ['Dividend currency is unknown; no conversion was applied.'] : [])
     ];
+    issues.push(...rowIssues.map(issue => 'Dividend row ' + (index + 1) + ': ' + issue));
     const stableSourceId = safeText(raw.id ?? raw.sourceId, 128);
     const id = stableSourceId
       ? provider + ':' + stableSourceId
@@ -234,16 +235,13 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
   const dividendsResult = normalizeDividendEvents(input.dividends, {
     symbol, provider, receivedAt, available: input.dividendsAvailable === true
   });
-  const corporateActionsResult = normalizeFinnhubStockSplits(input.corporateActions, {
-    symbol, provider, receivedAt
-  });
   const corporateActionsAvailable = input.corporateActionsAvailable === true;
-  if (!corporateActionsAvailable) {
-    corporateActionsResult.quality = 'unavailable';
-    corporateActionsResult.issues.push('Corporate-action split feed is unavailable.');
-  }
+  const corporateActionsResult = normalizeFinnhubStockSplits(input.corporateActions, {
+    symbol, provider, receivedAt, available: corporateActionsAvailable
+  });
   const issues = [...earningsResult.issues, ...dividendsResult.issues, ...corporateActionsResult.issues];
-  const hasAvailableFeed = earningsResult.quality !== 'unavailable' || dividendsResult.quality !== 'unavailable';
+  const hasAvailableFeed = earningsResult.quality !== 'unavailable' ||
+    dividendsResult.quality !== 'unavailable' || corporateActionsResult.quality !== 'unavailable';
   const quality: MarketEventQuality = !hasAvailableFeed ? 'unavailable'
     : earningsResult.quality === 'partial' || dividendsResult.quality === 'partial' ||
       earningsResult.quality === 'unavailable' || dividendsResult.quality === 'unavailable' ||

@@ -36,11 +36,26 @@ function validateRecord(record: InstrumentAliasRecord): void {
   }
 }
 
+function cloneRecord(record: InstrumentAliasRecord): InstrumentAliasRecord {
+  return {
+    ...record,
+    symbols: record.symbols.map(version => ({ ...version }))
+  };
+}
+
+function freezeRecord(record: InstrumentAliasRecord): InstrumentAliasRecord {
+  const copy = cloneRecord(record);
+  copy.symbols.forEach(version => Object.freeze(version));
+  Object.freeze(copy.symbols);
+  return Object.freeze(copy);
+}
+
 export function createInstrumentAliasRegistry(records: readonly InstrumentAliasRecord[]) {
   const byId = new Map<string, InstrumentAliasRecord>();
   const bySymbol = new Map<string, InstrumentAliasRecord[]>();
-  for (const record of records) {
-    validateRecord(record);
+  for (const input of records) {
+    validateRecord(input);
+    const record = freezeRecord(input);
     if (byId.has(record.instrumentId)) throw new Error('Instrument alias instrument IDs must be unique.');
     byId.set(record.instrumentId, record);
     for (const version of record.symbols) {
@@ -52,11 +67,12 @@ export function createInstrumentAliasRegistry(records: readonly InstrumentAliasR
           (version.validThrough === null || version.validThrough >= match.validFrom);
         if (overlap) throw new Error('Instrument alias symbol is assigned to overlapping instrument records.');
       }
-      assigned.push(record); bySymbol.set(key, assigned);
+      assigned.push(record);
+      bySymbol.set(key, assigned);
     }
   }
   return {
-    list: () => [...byId.values()],
+    list: () => [...byId.values()].map(cloneRecord),
     resolve(symbolValue: string, exchangeValue: string, asOf: string): ResolvedInstrumentAlias | null {
       const symbol = normalizeSymbol(symbolValue), exchange = normalizeSymbol(exchangeValue);
       if (!symbol || !exchange || !isDateOnly(asOf)) return null;
@@ -70,26 +86,32 @@ export function createInstrumentAliasRegistry(records: readonly InstrumentAliasR
       return {
         instrumentId: record.instrumentId, canonicalSymbol: record.canonicalSymbol,
         historicalSymbol: normalizeSymbol(active.symbol), exchange: record.exchange,
-        assetType: record.assetType, quoteCurrency: record.quoteCurrency, asOf, record
+        assetType: record.assetType, quoteCurrency: record.quoteCurrency, asOf,
+        record: cloneRecord(record)
       };
     },
-    resolveCurrentSymbol(symbolValue: string, exchangeValue: string): ResolvedInstrumentAlias | null {
+    resolveCurrentSymbol(
+      symbolValue: string,
+      exchangeValue: string,
+      asOf = new Date().toISOString().slice(0, 10)
+    ): ResolvedInstrumentAlias | null {
       const symbol = normalizeSymbol(symbolValue), exchange = normalizeSymbol(exchangeValue);
-      if (!symbol || !exchange) return null;
+      if (!symbol || !exchange || !isDateOnly(asOf)) return null;
       const record = (bySymbol.get(exchange + ':' + symbol) ?? []).find(candidate =>
         candidate.symbols.some(version => normalizeSymbol(version.symbol) === symbol));
       if (!record) return null;
-      const active = [...record.symbols].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
-      const today = new Date().toISOString().slice(0, 10);
+      const active = record.symbols.find(version => version.validFrom <= asOf &&
+        (version.validThrough === null || asOf <= version.validThrough));
+      if (!active) return null;
       return {
         instrumentId: record.instrumentId, canonicalSymbol: record.canonicalSymbol,
         historicalSymbol: normalizeSymbol(active.symbol), exchange: record.exchange,
-        assetType: record.assetType, quoteCurrency: record.quoteCurrency, asOf: today, record
+        assetType: record.assetType, quoteCurrency: record.quoteCurrency, asOf,
+        record: cloneRecord(record)
       };
     }
   };
 }
-
 /** Nasdaq Equity Corporate Actions Alert #2022-125: FB→META, effective 2022-06-09. */
 export const DEFAULT_INSTRUMENT_ALIAS_RECORDS: readonly InstrumentAliasRecord[] = [{
   instrumentId: 'CUSIP:30303M102',

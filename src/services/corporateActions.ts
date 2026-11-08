@@ -99,7 +99,7 @@ function currencyCode(value: unknown): string | null {
  */
 export function normalizeFinnhubStockSplits(
   input: unknown,
-  options: { symbol: string; provider?: unknown; receivedAt?: unknown }
+  options: { symbol: string; provider?: unknown; receivedAt?: unknown; available?: boolean }
 ): CorporateActionFeedResult {
   const expectedSymbol = normalizeSymbol(options.symbol);
   const provider = typeof options.provider === 'string' ? options.provider.trim().toUpperCase() : '';
@@ -110,6 +110,9 @@ export function normalizeFinnhubStockSplits(
   }
   if (!provider || !Number.isFinite(receivedAt) || receivedAt <= 0) {
     return { events: [], quality: 'unavailable', issues: ['Corporate-action source provenance is incomplete.'] };
+  }
+  if (options.available === false) {
+    return { events: [], quality: 'unavailable', issues: ['Corporate-action split feed is unavailable.'] };
   }
   if (!Array.isArray(input)) {
     return { events: [], quality: 'unavailable', issues: ['Corporate-action split feed is not an array.'] };
