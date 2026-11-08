@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -86,6 +86,82 @@ describe('reconcileFreedomPortfolio', () => {
     ], { AAPL: 'margin' });
 
     expect(result.positions.AAPL.currentPrice).toBe(150);
+  });
+
+  it('preserves previously accepted long and cash values when a negative broker quantity is unverified', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [
+        { ticker: 'AAPL.US', quantity: -5, marketPrice: 200, direction: 'unknown', rawQuantity: -5 },
+        { ticker: 'MSFT.US', quantity: 2, marketPrice: 400, direction: 'long' }
+      ]
+    }, {
+      AAPL: { ticker: 'AAPL', shares: 7, currentPrice: 190, pt: 220, commBuy: 3, tranches: [{ qty: 7, price: 180 }] }
+    }, [
+      { ticker: 'AAPL', shares: 2, currentPrice: 185, averagePrice: 175 }
+    ], { MSFT: 'cash' });
+
+    expect(result.positions.AAPL).toMatchObject({ shares: 7, currentPrice: 190, pt: 220 });
+    expect(result.cashStocks).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 2, averagePrice: 175 }),
+      expect.objectContaining({ ticker: 'MSFT', shares: 2 })
+    ]);
+    expect(result.positionIntegrityIssues).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', code: 'negative_quantity_sign_unverified' })
+    ]);
+  });
+
+  it('does not treat short-sale, cover or excess-sell history as ordinary long holdings', () => {
+    const priorPosition = { ticker: 'GOOGL', shares: 4, currentPrice: 280, pt: 310, commBuy: 1, tranches: [{ qty: 4, price: 300 }] };
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'GOOGL.US', quantity: 4, marketPrice: 280 }]
+    }, { GOOGL: priorPosition }, [{ ticker: 'GOOGL', shares: 2, currentPrice: 275, averagePrice: 260 }], {}, Date.now(), [
+      { id: 'short-1', ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 1, price: 300 }
+    ]);
+
+    expect(result.positions.GOOGL).toEqual(priorPosition);
+    expect(result.cashStocks).toEqual([expect.objectContaining({ ticker: 'GOOGL', shares: 2, averagePrice: 260 })]);
+    expect(result.positionIntegrityIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' })
+    ]));
+  });
+
+  it('reports a long sell that exceeds known buys instead of silently discarding the remainder', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'META.US', quantity: 1, marketPrice: 500 }]
+    }, {
+      META: { ticker: 'META', shares: 6, currentPrice: 480, pt: 520, commBuy: 0, tranches: [{ qty: 6, price: 450 }] }
+    }, [{ ticker: 'META', shares: 2, currentPrice: 490 }], {}, Date.now(), [
+      { id: 'sell-1', ticker: 'META', side: 'SELL', quantity: 3, price: 500, executedAt: '2026-01-02T10:00:00Z' }
+    ]);
+
+    expect(result.positions.META).toMatchObject({ shares: 6, currentPrice: 480 });
+    expect(result.cashStocks).toEqual([expect.objectContaining({ ticker: 'META', shares: 2 })]);
+    expect(result.positionIntegrityIssues).toContainEqual(expect.objectContaining({
+      ticker: 'META',
+      code: 'unmatched_sell_quantity'
+    }));
+  });
+
+  it('preserves local cash and suppresses synthetic zero-quantity reconciliation for unsupported positions', () => {
+    const result = reconcileFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: -5, marketPrice: 190, direction: 'unknown' }]
+    }, {
+      AAPL: { ticker: 'AAPL', shares: 4, currentPrice: 185 }
+    }, [{ ticker: 'AAPL', shares: 2, currentPrice: 180 }]);
+
+    expect(result.cashStocks).toEqual([expect.objectContaining({ ticker: 'AAPL', shares: 2 })]);
+    expect(result.mismatches).toEqual([]);
+    expect(result.positionIntegrityIssues).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', code: 'negative_quantity_sign_unverified' })
+    ]);
   });
 
   it('preserves cash holdings for a margin ticker missing from the broker snapshot', () => {
@@ -411,6 +487,17 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('does not treat an undocumented numeric action_id alias as a buy or sell', () => {
+    const lots = getActiveTranchesFromTrades([{
+      id: 'unknown-action',
+      ticker: '',
+      side: 'Unknown',
+      quantity: null,
+      raw: { instr_nm: 'AAPL.US', action_id: '1', q: '2', p: '100' }
+    }]);
+    expect(lots).toEqual([]);
+  });
+
   it('recovers quantities from legacy persisted raw TradeNet rows', () => {
     const trades = [
       {
@@ -650,5 +737,18 @@ describe('cash holdings average purchase price', () => {
 
     expect(result.cashStocks[0].shares).toBe(5);
     expect(result.cashStocks[0].averagePrice).toBeNull();
+  });
+});
+
+
+describe('canApplyFreedomBrokerBalance', () => {
+  it('allows complete snapshots and blocks any snapshot with unresolved position or execution evidence', () => {
+    expect(canApplyFreedomBrokerBalance()).toBe(true);
+    expect(canApplyFreedomBrokerBalance([])).toBe(true);
+    expect(canApplyFreedomBrokerBalance([{
+      ticker: 'GOOGL',
+      code: 'short_execution_unsupported',
+      source: 'execution_history'
+    }])).toBe(false);
   });
 });

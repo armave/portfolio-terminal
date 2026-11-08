@@ -191,6 +191,19 @@ describe('guest portfolio assignment runtime', () => {
     fixture.state.brokerAccountInfo = { ...fixture.state.brokerAccountInfo!, status: 'unavailable' };
     await fixture.runtime.publishGuestPortfolioSnapshots();
     expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
+
+    fixture.state.brokerAccountInfo = {
+      ...fixture.state.brokerAccountInfo!,
+      status: 'current',
+      quality: 'partial',
+      positionIntegrityIssues: [{
+        ticker: 'AAPL',
+        code: 'negative_quantity_sign_unverified',
+        source: 'account_snapshot'
+      }]
+    };
+    await fixture.runtime.publishGuestPortfolioSnapshots();
+    expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
     expect(fixture.dependencies.publishBatch).not.toHaveBeenCalled();
   });
 

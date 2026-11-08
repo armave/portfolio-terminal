@@ -51,7 +51,10 @@ export function createFreedomAccountStreamAppRuntime(
           source: brokerSnapshot.source,
           receivedAt: brokerSnapshot.receivedAt,
           ...(brokerSnapshot.observedAt === undefined ? {} : { observedAt: brokerSnapshot.observedAt }),
-          warnings: [...brokerSnapshot.warnings]
+          warnings: [...brokerSnapshot.warnings],
+          ...(brokerSnapshot.positionIntegrityIssues?.length
+            ? { positionIntegrityIssues: [...brokerSnapshot.positionIntegrityIssues] }
+            : {})
         });
         return false;
       }

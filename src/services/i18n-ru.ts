@@ -930,6 +930,20 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Depth": "Стакан",
   "View live market depth for {ticker}": "Открыть стакан заявок для {ticker}",
   "Market Depth for {ticker}": "Стакан заявок для {ticker}",
+  'Some broker positions need review': 'Некоторые позиции брокера требуют проверки',
+  'The app retained the last accepted tracked values and did not guess long/short direction from unverified broker data.': 'Приложение сохранило последние подтверждённые значения и не стало угадывать направление длинной или короткой позиции по непроверенным данным брокера.',
+  'Broker reported a negative position quantity; its long/short sign convention is unverified.': 'Брокер сообщил отрицательное количество позиции; соглашение о знаке для длинной или короткой позиции не подтверждено.',
+  'Broker position side indicates a short position; short valuation is not yet supported.': 'Сторона позиции брокера указывает на короткую позицию; её оценка пока не поддерживается.',
+  'Broker position side is not recognized; the position was not applied.': 'Сторона позиции брокера не распознана; позиция не была применена.',
+  'A sell-short execution was detected; short positions are not yet supported.': 'Обнаружено исполнение короткой продажи; короткие позиции пока не поддерживаются.',
+  'A buy-to-cover execution was detected; short positions are not yet supported.': 'Обнаружено исполнение покупки для закрытия короткой позиции; короткие позиции пока не поддерживаются.',
+  'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.': 'Объём продажи превышает известную историю длинных покупок; невозможно отличить короткую позицию от неполной истории.',
+  'An execution has an unknown side; its position effect cannot be safely classified.': 'У исполнения неизвестна сторона; его влияние на позицию нельзя безопасно определить.',
+  'A broker execution has no verifiable instrument identifier.': 'У исполнения брокера отсутствует подтверждённый идентификатор инструмента.',
+  'A broker position has invalid quantity or instrument details.': 'У позиции брокера некорректное количество или данные инструмента.',
+  'Some broker position data could not be classified safely.': 'Некоторые данные о позициях брокера не удалось безопасно классифицировать.',
+  'Unknown instrument': 'Неизвестный инструмент',
+
 'Margin Intelligence encryption migration': 'Миграция шифрования Margin Intelligence',
   'Inventory reports counts only; it never returns saved analysis or article content.': 'Отчёт показывает только количество записей и не возвращает сохранённый анализ или тексты статей.',
   'Scan saved digests': 'Проверить сохранённые анализы',
@@ -959,5 +973,4 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.': 'Старые зашифрованные записи не обрабатываются пакетным инструментом. Откройте каждый сохранённый анализ в Margin Intelligence, чтобы расшифровать и обновить его.',
   'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.': 'Нечитаемые записи сохранены. Проверьте их или восстановите, прежде чем принимать решение об их хранении или удалении.',
   'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.': 'Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.',
-
 };

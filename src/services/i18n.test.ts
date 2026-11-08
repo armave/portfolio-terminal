@@ -143,40 +143,13 @@ describe('app localization', () => {
     }
   });
 
-  it('localizes the cached digest encryption-upgrade warning', () => {
-    expect(translateText(
-      'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.',
-      'ru'
-    )).toBe('Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.');
-  });
-
-  it('localizes the resumable Margin Intelligence encryption migration controls', () => {
-    const migrationCopy = [
-      'Continue migration',
-      'Each run processes up to 500 records. Continue to resume from the last completed batch.',
-      'Migration paused safely. Select Continue migration to resume from the last completed batch.'
-    ];
-    for (const value of migrationCopy) {
-      expect(translateText(value, 'ru'), value).not.toBe(value);
-    }
-  });
-
-  it('localizes Margin Intelligence migration conflict and legacy-record guidance', () => {
-    const copy = [
-      'Some records changed during migration. Run the migration again to retry remaining plaintext records.',
-      'Records changed during migration:',
-      'Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.',
-      'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.'
-    ];
-    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
-  });
-
   it('localizes transaction journal backup and cloud restore conflicts', () => {
     expect(translateText('Backup transaction history conflicts with this device or is not supported.', 'ru'))
       .toBe('История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.');
     expect(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', 'ru'))
       .toBe('Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.');
   });
+
 
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
@@ -637,6 +610,25 @@ describe('app localization', () => {
     )).toBe('Стоимость показывает текущую рыночную стоимость открытых лотов и выручку от закрытых сделок. Чистая прибыль или убыток отображается только при наличии итогового результата закрытой сделки.');
   });
 
+  it('localizes every broker position-integrity warning in Russian', () => {
+    const copy = [
+      'Some broker positions need review',
+      'The app retained the last accepted tracked values and did not guess long/short direction from unverified broker data.',
+      'Broker reported a negative position quantity; its long/short sign convention is unverified.',
+      'Broker position side indicates a short position; short valuation is not yet supported.',
+      'Broker position side is not recognized; the position was not applied.',
+      'A sell-short execution was detected; short positions are not yet supported.',
+      'A buy-to-cover execution was detected; short positions are not yet supported.',
+      'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.',
+      'An execution has an unknown side; its position effect cannot be safely classified.',
+      'A broker execution has no verifiable instrument identifier.',
+      'A broker position has invalid quantity or instrument details.',
+      'Some broker position data could not be classified safely.',
+      'Unknown instrument'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
   it('localizes workspace cloud status labels and sync feedback', () => {
     expect(translateText('Cloud storage', 'ru')).toBe('Облачное хранилище');
     expect(translateText('OFFLINE', 'ru')).toBe('НЕ В СЕТИ');
@@ -701,5 +693,35 @@ describe('app localization', () => {
     expect(translateText('Loading portfolio ownership…', 'ru')).toBe('Загрузка раздела владения портфелями…');
     expect(translateText('Portfolio ownership could not be loaded.', 'ru')).toBe('Не удалось загрузить раздел владения портфелями.');
   });
+
+
+  it('localizes the cached digest encryption-upgrade warning', () => {
+    expect(translateText(
+      'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.',
+      'ru'
+    )).toBe('Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.');
+  });
+
+  it('localizes the resumable Margin Intelligence encryption migration controls', () => {
+    const migrationCopy = [
+      'Continue migration',
+      'Each run processes up to 500 records. Continue to resume from the last completed batch.',
+      'Migration paused safely. Select Continue migration to resume from the last completed batch.'
+    ];
+    for (const value of migrationCopy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
+  });
+
+  it('localizes Margin Intelligence migration conflict and legacy-record guidance', () => {
+    const copy = [
+      'Some records changed during migration. Run the migration again to retry remaining plaintext records.',
+      'Records changed during migration:',
+      'Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.',
+      'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
 
 });

@@ -9,7 +9,7 @@
 
 Raise confidence in Portfolio Terminal as an investment-management system by closing the highest-risk gaps in:
 
-1. Position and broker-side semantics, including short-position lifecycle support.
+1. Position-data integrity and safe long-only accounting; full short-position lifecycle remains gated on broker-confirmed position semantics.
 2. Margin exposure, collateral and risk calculations.
 3. Transaction lifecycle, execution idempotency and broker reconciliation.
 4. Encryption, authorization and independent portfolio ownership.
@@ -31,7 +31,7 @@ The goal is not to add more dashboard features. It is to ensure that holdings, c
 
 ### 3.1 Position and valuation invariants
 
-- Every supported position has an explicit direction: `long` or `short`. The chosen canonical quantity representation must be documented once, with conversion at broker boundaries.
+- Every supported position has an explicit direction: `long` or `short`. The chosen canonical quantity representation must be documented once, with conversion at broker boundaries. Until TradeNet documents how current short positions are represented, the app must not create a canonical short direction from portfolio fields `t` or `k`.
 - Preserve raw broker side, quantity, instrument identifier and source payload/metadata needed for audit. Normalize separately; do not discard the original evidence.
 - Long market value, short liability/exposure, short-sale proceeds, cash balance, collateral and margin debit are distinct concepts.
 - Do not subtract margin debt twice or count short-sale proceeds as free cash without broker evidence.
@@ -79,33 +79,36 @@ The plan is PR 0. Five implementation PRs are child branches from the exact plan
 | PR | Workstream | Branch | Primary outcome |
 |---|---|---|---|
 | #0 | Coordination plan | `plan/portfolio-integrity-reliability-2026-11-08` | Shared contracts, file ownership, dependencies and acceptance gates |
-| #1 | Position integrity & short lifecycle | `impl/position-integrity-short-support` | Correctly preserve, classify, value and reconcile long/short positions |
+| #1 | Position integrity guard (long-only; short accounting gated) | `impl/position-integrity-short-support` | Preserve raw broker evidence and fail closed when current position direction or execution history is unsupported |
 | #2 | Margin risk engine | `impl/margin-risk-engine` | One transparent, broker-aware risk model with explicit collateral semantics |
 | #3 | Transaction integrity & reconciliation | `impl/transaction-reconciliation` | Idempotent fill history, corrections, fees and explainable broker differences |
 | #4 | Security & portfolio isolation | `impl/security-tenant-isolation` | Complete encryption migration path and server-enforced portfolio boundaries |
 | #5 | Market data, corporate actions & history | `impl/market-data-corporate-actions` | Quote/FX provenance, corporate-action accounting and reliable historical data |
 
-### PR #1 — Position integrity & short lifecycle
+### PR #1 — Position-data integrity guard (short accounting gated)
 
 **Scope**
-- Inventory every broker-to-domain position mapping, normalization step, selector, valuation formula, P&L calculation, portfolio grouping and persistence path.
-- Obtain and store anonymized contract fixtures for open long, open short, partial close, full close, short cover, fractional shares, zero quantity and unsupported instrument responses.
-- Define and document canonical position direction and quantity semantics. Keep raw broker side and quantity alongside normalized values for support and audit.
-- Map broker actions without collapsing `SELL_SHORT` into an ordinary sale or `BUY_TO_COVER` into an ordinary purchase.
-- Support short market exposure/liability separately from proceeds and cash; ensure realized/unrealized P&L and average cost are direction-aware.
-- Replace any silent filtering of unsupported/negative quantity inputs with a typed warning/reconciliation state.
-- Ensure persistence, backup, restore, selectors and exports preserve side and instrument identity.
+- Trace the existing TradeNet portfolio path from REST/WebSocket adapters through domain normalization, store state, valuation gates, persistence and backup/restore.
+- Preserve the raw position row, quantity/sign, supplied side fields and instrument identifier separately from normalized values.
+- Keep the existing positive-quantity long compatibility path; mark negative quantities, explicit short sides, unknown side codes, malformed positions and incomplete execution evidence as unresolved rather than guessing.
+- Decode documented fields only in their correct context: `getTradesHistory.type` uses 1=Buy and 2=Sell; order-action `action_id` values are documented for order submission; undocumented numeric aliases are not mapped. `notifyPortfolio.t` is security type and `k` is security kind, not position direction.
+- Detect explicit short-sale and cover evidence as unsupported activity in the long-only ledger; do not calculate short liabilities, proceeds, average cost or P&L.
+- Retain the last accepted account/cash values for unresolved symbols; suppress margin/performance/guest projections that would otherwise treat unknown exposure as zero.
+- Preserve the integrity evidence through local storage, backup import/restore and localized admin review.
 
-**Out of scope**
+**Out of scope / deferred**
+- Canonical long/short position accounting and direction-aware short valuation. The published portfolio schema does not document a current-position side/sign field; no safe mapping can be established from `t`/`k`.
 - Broker maintenance-margin policy and collateral haircuts (PR #2).
-- Transaction revision/deduplication engine (PR #3), except the minimum mapping needed to represent a position event.
+- Transaction revision/deduplication and correction semantics (PR #3), beyond recognizing available execution evidence.
 - Corporate actions (PR #5).
 
 **Acceptance**
-- Tests cover open/add/reduce/close long and short; partial fill; cover; sign conventions; zero/malformed quantity; missing price; fractional quantity; and reload/restore.
-- Position quantity, market value, cash, short liability and realized/unrealized P&L reconcile against hand-calculated fixtures.
-- Unsupported broker position types remain visible as unsupported; no position vanishes silently.
-- No change to existing long-only behavior except where a demonstrated defect is corrected.
+- Positive long fixture remains compatible and raw broker evidence is retained.
+- Negative/malformed/unknown-side position rows and explicit short/cover executions become visible unresolved findings; they are not applied as ordinary long holdings.
+- Account balance, cash, margin-risk valuation, performance capture and guest publication fail closed while affected broker data remains unresolved.
+- Local persistence and backup import/restore preserve position evidence and integrity findings.
+- Vitest, i18n, typecheck, build and browser checks pass on the exact integration head.
+- Short accounting remains explicitly deferred until authoritative current-position direction/sign semantics and independent hand-calculated fixtures are available; no test short trade is required.
 
 ### PR #2 — Margin risk engine
 
@@ -226,9 +229,9 @@ Rules:
 
 Recommended integration order into the plan branch:
 
-1. PR #1 establishes long/short position semantics and fixtures.
+1. PR #1 establishes the fail-closed position-integrity boundary and records the provider's documented field limitations; it does not claim short-accounting support.
 2. PR #3 establishes transaction identity/reconciliation and can proceed independently; reconcile its event model with the position contract before final merge.
-3. PR #2 integrates the signed exposure adapter against PR #1 and verifies the shared risk model.
+3. PR #2 consumes PR #1's completeness/integrity status and must keep unsupported short exposure unavailable rather than estimating it.
 4. PR #5 integrates corporate-action/history events against the position and transaction contracts.
 5. PR #4's client-side branch merges when ready. Its Worker/server companion commits deploy to `main` only after migration and isolation gates pass.
 
