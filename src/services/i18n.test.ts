@@ -150,6 +150,25 @@ describe('app localization', () => {
       .toBe('Не удалось объединить облачный портфель: журнал транзакций конфликтует с данными этого устройства. Локальное состояние сохранено.');
   });
 
+  it('localizes the temporary TradeNet position probe in Russian', () => {
+    const probeCopy = [
+      'TradeNet position probe',
+      "Fetch one fresh, read-only getPositionJson response to inspect the broker's actual position fields. This does not change holdings or place orders.",
+      'Admin only · temporary',
+      'Capturing…',
+      'Capture position response',
+      'Copy response',
+      'The response is sanitized: account and balance rows plus account, login, session and credential fields are removed; position fields are retained.',
+      'Could not retrieve the TradeNet position response.',
+      'Select the JSON below and copy it manually.',
+      'Response copied. Paste it into the chat.',
+      'Sanitized TradeNet network response'
+    ];
+    for (const copy of probeCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
