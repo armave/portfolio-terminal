@@ -442,6 +442,10 @@ export function appendBrokerHistoryAuditEvents(
   const cashflowRefs = new Map<string, PortfolioTransactionEvent>();
   for (const e of current) {
     if (e.idempotencyKey) keys.set(e.idempotencyKey, e);
+  }
+  // Imported backups can be re-sorted by recordedAt across devices. Resolve
+  // broker revision heads from their explicit parent links, not wall-clock order.
+  for (const e of resolveLatestBrokerHistoryAuditEvents(current)) {
     if (e.type === 'broker.execution' && e.externalReferenceId) {
       executionRefs.set(`${e.source}:${e.externalReferenceId}`, e);
     }
@@ -582,7 +586,7 @@ export function resolveLatestBrokerHistoryAuditEvents(
   if (!isPortfolioTransactionEventList(events)) {
     throw new TypeError('Portfolio transaction event history is malformed.');
   }
-  const latest = new Map<string, PortfolioTransactionEvent>();
+  const groups = new Map<string, PortfolioTransactionEvent[]>();
   for (const event of events) {
     if (event.actor.type !== 'broker' || !event.externalReferenceId) continue;
     const family = event.type === 'broker.execution'
@@ -592,13 +596,28 @@ export function resolveLatestBrokerHistoryAuditEvents(
         : null;
     if (!family) continue;
     const key = `${family}:${event.source}:${event.externalReferenceId}`;
-    const previous = latest.get(key);
-    // Journal order is authoritative for equal recordedAt values, allowing a
-    // correction recorded in the same millisecond to supersede the prior row.
-    if (!previous || event.recordedAt >= previous.recordedAt) latest.set(key, event);
+    const group = groups.get(key) || [];
+    group.push(event);
+    groups.set(key, group);
   }
+
+  const latest: PortfolioTransactionEvent[] = [];
+  for (const [key, group] of groups) {
+    const ids = new Set(group.map(event => event.id));
+    const supersededIds = new Set(
+      group
+        .map(event => event.relatedEventId)
+        .filter((id): id is string => Boolean(id) && ids.has(id as string))
+    );
+    const heads = group.filter(event => !supersededIds.has(event.id));
+    if (heads.length !== 1) {
+      throw new Error(`Broker history revision chain "${key}" does not have one unambiguous head.`);
+    }
+    latest.push(heads[0]);
+  }
+
   return freezePortfolioTransactionEventList(
-    [...latest.values()].sort((left, right) =>
+    latest.sort((left, right) =>
       left.effectiveAt - right.effectiveAt || left.recordedAt - right.recordedAt
     )
   );

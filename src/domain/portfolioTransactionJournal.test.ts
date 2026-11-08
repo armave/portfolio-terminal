@@ -364,6 +364,34 @@ describe('broker history audit events', () => {
     expect(resolveLatestBrokerHistoryAuditEvents(reverted)[0].id).toBe(reverted[2].id);
   });
 
+  it('resolves a corrected execution after backup ordering changes its recorded-time order', () => {
+    const original = {
+      id: 'exec-clock-skew',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1
+    };
+    const first = appendBrokerHistoryAuditEvents([], [original], [], 2_000);
+    const corrected = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.5
+    }], [], 1_000);
+    const restored = mergePortfolioTransactionEvents([], corrected);
+
+    // The backup merge sorts the corrected event before its parent by timestamp.
+    expect(restored[0].id).toBe(corrected[1].id);
+    expect(resolveLatestBrokerHistoryAuditEvents(restored)[0].id).toBe(corrected[1].id);
+    // Re-importing the corrected provider observation after restore is still a no-op.
+    expect(appendBrokerHistoryAuditEvents(restored, [{
+      ...original,
+      commission: 1.5
+    }], [], 3_000)).toHaveLength(2);
+  });
+
   it('resolves only the latest broker cashflow revision without deleting audit history', () => {
     const first = appendBrokerHistoryAuditEvents([], [], [{
       id: 'div-revision-1',
