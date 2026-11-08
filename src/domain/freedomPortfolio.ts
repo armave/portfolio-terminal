@@ -92,7 +92,7 @@ export interface FreedomReconciliationResult {
 export interface FreedomPortfolioClassificationResult {
   positions: Record<string, PositionRecord>;
   cashStocks: CashStockHolding[];
-  positionIntegrityIssues: BrokerPositionIntegrityIssue[];
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
 function tickerKey(value: unknown): string {
