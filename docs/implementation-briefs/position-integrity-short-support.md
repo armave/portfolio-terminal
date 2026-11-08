@@ -3,11 +3,25 @@
 **Parent contract:** `docs/plans/2026-11-08-portfolio-integrity-reliability-implementation-plan.md`  
 **Branch:** `impl/position-integrity-short-support`  
 **Target:** plan branch  
-**Status:** implementation scaffold
+**Status:** fail-closed long-only integrity guard ready for integration; full short support deferred pending broker semantics
 
 ## Mission
 
 Make every broker-reported position either correctly represented and valued or visibly unsupported. No short position, invalid quantity, or unknown instrument state may silently disappear.
+
+## Delivered scope — fail-closed guard, not short accounting
+
+The implementation now provides a conservative integrity boundary for the existing long-only ledger:
+
+- Negative quantities, explicit/unrecognized position sides, malformed rows and executions without usable identifiers are retained as reviewable integrity findings. They are not normalized into ordinary long holdings.
+- TradeNet numeric fields are decoded only according to their documented field contracts: order field `oper` uses 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short; trade-history field `type` uses 1=Buy and 2=Sell. Numeric values in undocumented `operation` or generic `side` aliases remain unknown.
+- Any recognized short-sale or buy-to-cover history for a supplied execution history remains an integrity finding, including a fully covered short lifecycle and activity for a ticker no longer open. This prevents a long-only ledger from silently discarding realized short accounting.
+- A snapshot with integrity findings does not replace the last accepted app balance or broker cash balances. Margin-risk valuation is marked incomplete; performance capture and guest portfolio publication are blocked; admins see a localized review warning.
+- Position evidence is preserved through the existing local state and backup import/restore paths. No short liability, proceeds, average cost, realized P&L or unrealized P&L is calculated.
+
+This is a completed safety guard for the current long-only accounting model. It does **not** implement short positions or establish TradeNet's position-side/sign semantics. A follow-up short-accounting workstream must wait for authoritative broker semantics and must not infer `t` or `k`.
+
+
 
 ## Required investigation
 
@@ -63,14 +77,17 @@ Discover exact owners before editing; this list is an investigation map, not per
 
 ## Acceptance checklist
 
-- [ ] Anonymized real broker fixtures and field semantics documented.
-- [ ] No unsupported position silently disappears.
-- [ ] Canonical direction/quantity invariant documented and enforced.
-- [ ] Short lifecycle correctly valued or explicitly marked unsupported pending broker evidence.
-- [ ] Persistence, sync, restore, selectors and exports preserve position direction.
-- [ ] Vitest regression and golden calculations pass.
-- [ ] Typecheck, lint, build, browser smoke and i18n checks pass.
-- [ ] PR description lists any broker assumptions that still require manual verification.
+- [x] Unsupported/malformed broker position rows and unknown direction evidence remain visible rather than silently applied.
+- [x] TradeNet's documented numeric `oper` and trade-history `type` fields are handled separately; undocumented numeric aliases are not guessed.
+- [x] Short-sale and cover history, including completed short lifecycles, remains explicitly unsupported in the long-only ledger.
+- [x] Unresolved position/execution data retains previous tracked and broker-balance values; margin-risk valuation, performance capture and guest publication are gated.
+- [x] Raw position evidence and integrity findings survive local state normalization and backup import/restore.
+- [x] Vitest regression coverage, English/Russian warning localization and adapter-fixture coverage are included.
+- [x] Exact-head CI and browser journey pass for the final PR head.
+- [ ] Broker-confirmed current-position short-side/sign semantics; no test short trade is required.
+- [ ] Canonical direction-aware position contract and short liability/proceeds/average-cost/realized/unrealized P&L calculations.
+- [ ] Final cloud-sync and export validation for a canonical long/short direction contract.
+- [ ] Manual authenticated verification of short behavior against authoritative provider documentation/support.
 
 ## Explicit non-goals
 
