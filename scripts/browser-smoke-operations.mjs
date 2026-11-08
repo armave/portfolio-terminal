@@ -1125,10 +1125,22 @@ try {
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
-  await guestTenantPanel.locator('article h4').filter({ hasText: 'Operations Family' }).first().waitFor({ state: 'visible', timeout: 10_000 });
-  if (await guestTenantPanel.locator('h5').filter({ hasText: 'Manage members' }).count() !== 0 ||
-      await guestTenantPanel.getByRole('button', { name: 'Revoke' }).count() !== 0) {
-    throw new Error('Guest tenant directory response exposed the owner-only membership roster or revocation controls.');
+  if (await guestTenantPanel.count() !== 0) {
+    throw new Error('Guest Settings exposed the administrator-only Portfolio Ownership section.');
+  }
+  const guestAccountActions = visibleSettingsDesk().locator('.settings-account-actions--guest');
+  await guestAccountActions.waitFor({ state: 'visible', timeout: 10_000 });
+  const guestActionLayout = await guestAccountActions.evaluate((element) => {
+    const cardWidth = element.getBoundingClientRect().width;
+    const buttons = Array.from(element.querySelectorAll('button')).map((button) => ({
+      width: button.getBoundingClientRect().width,
+      gridColumn: window.getComputedStyle(button).gridColumn
+    }));
+    return { cardWidth, buttons };
+  });
+  if (guestActionLayout.buttons.length !== 2 ||
+      guestActionLayout.buttons.some((button) => Math.abs(button.width - guestActionLayout.cardWidth) > 2)) {
+    throw new Error('Guest account actions are not arranged as full-width stacked buttons: ' + JSON.stringify(guestActionLayout));
   }
   if (await visibleSettingsDesk().locator('section.settings-user-panel').count() ||
       await visibleSettingsDesk().locator('details.settings-broker-rules').count()) {
