@@ -20,6 +20,7 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [migratedCount, setMigratedCount] = useState(0);
+  const [conflictCount, setConflictCount] = useState(0);
   const [migrationCursor, setMigrationCursor] = useState<string | null>(null);
 
   const refresh = async () => {
@@ -62,14 +63,18 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
     setMigrating(true);
     setError('');
     setStatus(translateText('Migrating saved digest records…'));
+    setConflictCount(0);
 
     let cursor = migrationCursor;
     let totalMigrated = migratedCount;
+    let totalConflicts = 0;
     let batches = 0;
     try {
       while (batches < MAX_MIGRATION_BATCHES_PER_RUN) {
         const result = await migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE });
         totalMigrated += result.migrated;
+        totalConflicts += result.conflicts;
+        setConflictCount(totalConflicts);
         batches += 1;
         cursor = result.nextCursor;
         setMigratedCount(totalMigrated);
@@ -90,6 +95,8 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
 
       if (cursor && next.plaintextRecords > 0) {
         setStatus(translateText('Migration paused safely. Select Continue migration to resume from the last completed batch.'));
+      } else if (next.plaintextRecords > 0 || totalConflicts > 0) {
+        setStatus(translateText('Some records changed during migration. Run the migration again to retry remaining plaintext records.'));
       } else {
         setStatus(translateText('Migration complete. Re-scan to verify the remaining records.'));
       }
@@ -146,12 +153,21 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         {migratedCount > 0 && <span class="text-[11px] text-slate-400 tabular-nums">
           {translateText('Migrated plaintext records:')} {migratedCount}
         </span>}
+        {conflictCount > 0 && <span class="text-[11px] text-amber-300 tabular-nums">
+          {translateText('Records changed during migration:')} {conflictCount}
+        </span>}
       </div>
       <p class="text-[10px] leading-4 text-slate-500">
         {translateText('Each run processes up to 500 records. Continue to resume from the last completed batch.')}
       </p>
       {status && <p class="text-[11px] text-cyan-200" role="status">{status}</p>}
       {error && <p class="text-[11px] text-amber-200" role="alert">{error}</p>}
+      {inventory?.legacyEncryptedRecords ? <p class="text-[10px] leading-4 text-amber-200">
+        {translateText('Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.')}
+      </p> : null}
+      {inventory?.unreadableRecords ? <p class="text-[10px] leading-4 text-amber-200">
+        {translateText('Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.')}
+      </p> : null}
       <p class="text-[10px] leading-4 text-slate-500">
         {translateText('This report does not prove that every active client has stopped sending legacy writes.')}
       </p>
