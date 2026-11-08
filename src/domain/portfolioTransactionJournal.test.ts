@@ -317,6 +317,27 @@ describe('broker history audit events', () => {
     expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].relatedEventId).toBe(revised[0].id);
   });
 
+  it('keeps identical provider execution references isolated by source', () => {
+    const execution = {
+      id: 'same-provider-id',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1,
+      commissionCurrency: 'USD'
+    };
+    const firstSource = appendBrokerHistoryAuditEvents([], [execution], [], 1_000, 'provider-one');
+    const secondSource = appendBrokerHistoryAuditEvents(firstSource, [execution], [], 2_000, 'provider-two');
+
+    expect(secondSource).toHaveLength(2);
+    expect(secondSource.map(event => event.source)).toEqual(['provider-one', 'provider-two']);
+    expect(secondSource.map(event => event.relatedEventId)).toEqual([undefined, undefined]);
+    expect(resolveLatestBrokerHistoryAuditEvents(secondSource)).toHaveLength(2);
+  });
+
   it('classifies external cashflows without posting their amounts to local cash or debt', () => {
     const cashflows = [
       { id: 'div-1', date: '2026-11-01', type: 'Dividend', amount: 12, currency: 'USD' },

@@ -442,8 +442,12 @@ export function appendBrokerHistoryAuditEvents(
   const cashflowRefs = new Map<string, PortfolioTransactionEvent>();
   for (const e of current) {
     if (e.idempotencyKey) keys.set(e.idempotencyKey, e);
-    if (e.type === 'broker.execution' && e.externalReferenceId) executionRefs.set(e.externalReferenceId, e);
-    if (e.idempotencyKey?.startsWith('broker-cashflow:') && e.externalReferenceId) cashflowRefs.set(e.externalReferenceId, e);
+    if (e.type === 'broker.execution' && e.externalReferenceId) {
+      executionRefs.set(`${e.source}:${e.externalReferenceId}`, e);
+    }
+    if (e.idempotencyKey?.startsWith('broker-cashflow:') && e.externalReferenceId) {
+      cashflowRefs.set(`${e.source}:${e.externalReferenceId}`, e);
+    }
   }
   const append = (event: PortfolioTransactionEvent) => {
     const prior = event.idempotencyKey ? keys.get(event.idempotencyKey) : undefined;
@@ -483,8 +487,10 @@ export function appendBrokerHistoryAuditEvents(
     const ref = sourceId(raw.id ?? raw.executionId ?? raw.tradeId, fallback);
     const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross, orderRef]);
     const fingerprint = hash(facts);
-    const previous = executionRefs.get(ref);
-    const requestFingerprint = `broker-execution-v1:${fingerprint}`;
+    const sourceKey = `${source}:${ref}`;
+    const sourceFingerprint = hash(source);
+    const previous = executionRefs.get(sourceKey);
+    const requestFingerprint = `broker-execution-v1:${sourceFingerprint}:${fingerprint}`;
     // A replay of the latest known facts is a no-op. If the broker reverts to
     // an earlier value after a later correction, link a new revision to the
     // current head rather than reusing the historical revision's old key.
@@ -498,12 +504,12 @@ export function appendBrokerHistoryAuditEvents(
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source,
-      idempotencyKey: `broker-execution:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      idempotencyKey: `broker-execution:${sourceFingerprint}:${hash(ref)}:${revisionParent}:${fingerprint}`,
       requestFingerprint,
-      eventId: `broker-execution-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
+      eventId: `broker-execution-${sourceFingerprint}-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
-    executionRefs.set(ref, event);
+    executionRefs.set(sourceKey, event);
   }
 
   for (const raw of cashflows) {
@@ -533,8 +539,11 @@ export function appendBrokerHistoryAuditEvents(
     const ref = sourceId(raw.id, fallback);
     const facts = JSON.stringify([type, date, amount, currency, raw.description]);
     const fingerprint = hash(facts);
-    const previous = cashflowRefs.get(ref);
-    const requestFingerprint = `broker-cashflow-v1:${fingerprint}`;
+    const cashflowSource = `${source}-cashflow`;
+    const sourceKey = `${cashflowSource}:${ref}`;
+    const sourceFingerprint = hash(cashflowSource);
+    const previous = cashflowRefs.get(sourceKey);
+    const requestFingerprint = `broker-cashflow-v1:${sourceFingerprint}:${fingerprint}`;
     if (previous?.requestFingerprint === requestFingerprint) continue;
     const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
@@ -545,12 +554,12 @@ export function appendBrokerHistoryAuditEvents(
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source: `${source}-cashflow`,
-      idempotencyKey: `broker-cashflow:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      idempotencyKey: `broker-cashflow:${sourceFingerprint}:${hash(ref)}:${revisionParent}:${fingerprint}`,
       requestFingerprint,
-      eventId: `broker-cashflow-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
+      eventId: `broker-cashflow-${sourceFingerprint}-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
-    cashflowRefs.set(ref, event);
+    cashflowRefs.set(sourceKey, event);
   }
   return freezePortfolioTransactionEventList(events);
 }
