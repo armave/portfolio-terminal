@@ -61,6 +61,8 @@ const publishGuestPortfolioSnapshots = (): Promise<void> => {
     if (dependencies.getAccountRole() !== 'admin') return;
     let current = dependencies.getState();
     if (!current.brokerAccountInfo?.loaded ||
+      current.brokerAccountInfo.quality === 'partial' ||
+      (current.brokerAccountInfo.positionIntegrityIssues?.length || 0) > 0 ||
       current.brokerAccountInfo.status === 'stale' ||
       current.brokerAccountInfo.status === 'unavailable' ||
       !Array.isArray(current.brokerAccountInfo.positions) ||

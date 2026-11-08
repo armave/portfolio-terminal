@@ -58,6 +58,9 @@ export function capturePortfolioPerformanceValuation(
 
   const account = state.brokerAccountInfo;
   if (!account?.loaded || account.status === 'unavailable' || !Array.isArray(account.balances)) return null;
+  if (account.quality === 'partial' ||
+      (account.positionIntegrityIssues?.length ?? 0) > 0 ||
+      (account.lastRefreshIssue?.positionIntegrityIssues?.length ?? 0) > 0) return null;
 
   const balanceCurrencyValues = account.balances.map(row => currencyCode(row.currency));
   if (balanceCurrencyValues.length === 0 || balanceCurrencyValues.some(value => value === null)) return null;

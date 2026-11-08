@@ -159,7 +159,7 @@ describe('normalizeFreedomTrades', () => {
   it('carries normalized broker quantities into classified GOOGL position tranches', () => {
     const rawRows = [
       { id: 'buy-5', instr_nm: 'GOOGL.US', operation: 'unknown', type: '1', q: 0, quantity: 5, p: 0, price: 282, date: '2026-10-29T09:00:00' },
-      { id: 'buy-14', instr_nm: 'GOOGL.US', operation: '1', q: 14, p: 282, date: '2026-10-29T09:10:00' },
+      { id: 'buy-14', instr_nm: 'GOOGL.US', type: '1', q: 14, p: 282, date: '2026-10-29T09:10:00' },
       { id: 'buy-10', instr_nm: 'GOOGL.US', type: '1', q: 10, p: 328, date: '2026-10-22T10:00:00' },
       { id: 'buy-20a', instr_nm: 'GOOGL.US', type: '1', q: 20, p: 336.3, date: '2026-10-21T10:00:00' },
       { id: 'buy-20b', instr_nm: 'GOOGL.US', type: '1', q: 20, p: 341.4, date: '2026-10-20T10:00:00' }

@@ -118,7 +118,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -233,10 +233,26 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   const usdBalance = snapshot.balances.find((item) =>
     String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
+  const positionIntegrityIssues = classified.positionIntegrityIssues || [];
+  const canApplyBrokerBalance = canApplyFreedomBrokerBalance(positionIntegrityIssues);
+  const positionIntegrityWarnings = positionIntegrityIssues.length
+    ? ['One or more broker positions have unverified direction or incomplete long-position history; the previous tracked values were retained.']
+    : [];
 
   portfolioStore.setState({
-    brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
-    ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
+    brokerAccountInfo: {
+      ...snapshot,
+      // Short proceeds or unresolved position effects can change available cash.
+      // Retain the last accepted broker balance until every affected ticker is understood.
+      balances: canApplyBrokerBalance ? snapshot.balances : current.brokerAccountInfo?.balances || [],
+      receivedAt: Date.now(),
+      status: 'current',
+      quality: canApplyBrokerBalance ? 'complete' : 'partial',
+      snapshotQuality: 'complete',
+      positionIntegrityIssues,
+      warnings: positionIntegrityWarnings
+    },
+    ...(canApplyBrokerBalance && usdBalance ? { balance: Number(usdBalance.amount) } : {}),
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
@@ -256,15 +272,28 @@ addBrokerEventListener('broker:account-info-snapshot', (snapshot) => {
   const current = portfolioStore.getState();
   const accountInfo = current.brokerAccountInfo;
   if (!accountInfo?.loaded) return;
+  const positionIntegrityIssues = [
+    ...(accountInfo.positionIntegrityIssues || []),
+    ...(snapshot.positionIntegrityIssues || [])
+  ].filter((finding, index, all) =>
+    all.findIndex(item => item.ticker === finding.ticker && item.code === finding.code && item.source === finding.source) === index
+  );
+  const integrityWarning = 'One or more broker positions have unverified direction or incomplete long-position history; the previous tracked values were retained.';
+  const warnings = [
+    ...snapshot.warnings,
+    ...(positionIntegrityIssues.length ? [integrityWarning] : [])
+  ].filter((warning, index, all) => all.indexOf(warning) === index);
   portfolioStore.setState({
     brokerAccountInfo: {
       ...accountInfo,
       provider: snapshot.provider,
-      quality: snapshot.quality,
+      quality: positionIntegrityIssues.length ? 'partial' : snapshot.quality,
+      snapshotQuality: snapshot.quality,
       source: snapshot.source,
       receivedAt: snapshot.receivedAt,
       ...(snapshot.observedAt === undefined ? { observedAt: undefined } : { observedAt: snapshot.observedAt }),
-      warnings: [...snapshot.warnings],
+      warnings,
+      positionIntegrityIssues,
       lastRefreshIssue: undefined,
       status: 'current'
     }
@@ -290,9 +319,8 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
   );
   portfolioStore.setState({ brokerExecutedTrades: tradesWithPersistedFees });
-  // Execution-history changes affect active/closed guest lots, independent of
-  // whether the latest broker account snapshot is currently available.
-  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
+  // Reclassify the account against the newly persisted executions before
+  // allowing any guest projection to publish.
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
   const classified = classifyFreedomPortfolio(
@@ -316,7 +344,20 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
       ...(price !== null ? { price } : {})
     };
   });
+  const positionIntegrityIssues = classified.positionIntegrityIssues || [];
+  const previousWarnings = snapshot.warnings || [];
+  const integrityWarning = 'One or more broker positions have unverified direction or incomplete long-position history; the previous tracked values were retained.';
   portfolioStore.setState({
+    brokerAccountInfo: {
+      ...snapshot,
+      snapshotQuality: snapshot.snapshotQuality ?? snapshot.quality ?? 'complete',
+      quality: positionIntegrityIssues.length ? 'partial' : snapshot.snapshotQuality ?? snapshot.quality ?? 'complete',
+      positionIntegrityIssues,
+      warnings: [
+        ...previousWarnings.filter(warning => warning !== integrityWarning),
+        ...(positionIntegrityIssues.length ? [integrityWarning] : [])
+      ]
+    },
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
@@ -324,6 +365,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
       holdings: brokerCashHoldings
     }
   });
+  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   renderBoard();
 });
 

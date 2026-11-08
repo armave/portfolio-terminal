@@ -54,6 +54,62 @@ describe('commitPortfolioBackupImport', () => {
     expect(previous).toEqual({ activeView: 'COMBINED', balance: 0 });
   });
 
+  it('preserves broker position evidence and integrity warnings across backup import', () => {
+    const brokerAccountInfo = {
+      loaded: true,
+      receivedAt: 1_800_000_000_000,
+      status: 'stale',
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      balances: [],
+      positions: [{
+        ticker: 'GOOGL.US',
+        name: 'Alphabet',
+        quantity: -2,
+        currency: 'USD',
+        marketPrice: 290,
+        marketValue: -580,
+        averagePrice: 300,
+        profitClose: null,
+        accountPositionId: 42,
+        direction: 'unknown',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42',
+        raw: { i: 'GOOGL.US', q: -2, position_side: 'S' }
+      }],
+      positionIntegrityIssues: [{
+        ticker: 'GOOGL',
+        code: 'negative_quantity_sign_unverified',
+        source: 'account_snapshot',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42',
+        raw: { i: 'GOOGL.US', q: -2, position_side: 'S' }
+      }]
+    };
+    const imported = normalizePortfolioBackup({
+      balance: 0,
+      positions: {},
+      cashCushion: { freeCash: 0, holdings: [] },
+      brokerAccountInfo
+    }, 10_000);
+    const previous = normalizePortfolioBackup({
+      balance: 0,
+      positions: {},
+      cashCushion: { freeCash: 0, holdings: [] }
+    }, 9_999);
+    let active: unknown = previous;
+    commitPortfolioBackupImport(imported, previous, (next) => { active = next; }, () => true);
+
+    expect((active as any).brokerAccountInfo).toMatchObject({
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      positions: [{ quantity: -2, direction: 'unknown', rawQuantity: -2, rawSide: 'S' }],
+      positionIntegrityIssues: [{ ticker: 'GOOGL', code: 'negative_quantity_sign_unverified', rawQuantity: -2 }]
+    });
+  });
+
   it('persists the replacement only after activating it', () => {
     const previous = { activeView: 'AAPL', balance: 100 };
     const imported = { activeView: 'MSFT', balance: 250 };

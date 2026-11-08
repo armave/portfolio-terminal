@@ -209,3 +209,12 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('aria-label="Password (6+ characters)"');
   });
 });
+
+
+describe('position integrity valuation guard wiring', () => {
+  it('marks a partial broker snapshot as stale for the margin-risk valuation gate', () => {
+    const source = readSource('../components/SummaryMetricsGrid.tsx');
+    expect(source).toContain("state.brokerAccountInfo?.quality === 'partial'");
+    expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
+  });
+});
