@@ -2,6 +2,10 @@ import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE, normalizeBrokerAs
 import { getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './rolloverCalendar';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
+import { isPortfolioCorporateActionEventList } from '../services/corporateActions';
+import type { PortfolioCorporateActionEvent } from '../types/corporateAction';
+import { isMarketHistoryCorrectionEventList } from '../services/marketHistoryCorrections';
+import type { MarketHistoryCorrectionEvent } from '../types/marketHistory';
 
 export interface TradeTranche {
   qty: number;
@@ -56,6 +60,8 @@ export interface LegacyPortfolioState {
     [key: string]: unknown;
   };
   closedTrades: ClosedTrade[];
+  corporateActionEvents?: PortfolioCorporateActionEvent[];
+  marketHistoryCorrections?: MarketHistoryCorrectionEvent[];
   quoteSymbols: Record<string, unknown>;
   positions: Record<string, MarginPosition>;
   [key: string]: unknown;
@@ -545,7 +551,9 @@ export function createBlankState(now = Date.now()): LegacyPortfolioState {
     positions: {},
     activeTrancheGuestAssignments: {},
     activeTrancheGuestAssignmentDetails: {},
-    guestTrancheLedger: []
+    guestTrancheLedger: [],
+    corporateActionEvents: [],
+    marketHistoryCorrections: []
   };
 }
 
@@ -561,6 +569,14 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): L
   } = candidate;
 
   const blankState = createBlankState(now);
+  if (Object.hasOwn(candidate, 'corporateActionEvents') &&
+      !isPortfolioCorporateActionEventList(candidate.corporateActionEvents)) {
+    throw new Error('Portfolio corporate-action history is malformed.');
+  }
+  if (Object.hasOwn(candidate, 'marketHistoryCorrections') &&
+      !isMarketHistoryCorrectionEventList(candidate.marketHistoryCorrections)) {
+    throw new Error('Portfolio history-correction journal is malformed.');
+  }
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
   const hasCanonicalPositions = Object.prototype.hasOwnProperty.call(candidate, 'positions');
   const positions: Record<string, unknown> = isRecord(candidate.positions) ? candidate.positions : {};
@@ -643,6 +659,12 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): L
     },
     closedTrades,
     positions: normalizedPositions,
+    corporateActionEvents: Array.isArray(candidate.corporateActionEvents)
+      ? candidate.corporateActionEvents
+      : [],
+    marketHistoryCorrections: Array.isArray(candidate.marketHistoryCorrections)
+      ? candidate.marketHistoryCorrections
+      : [],
     quoteSymbols: isRecord(candidate.quoteSymbols) ? candidate.quoteSymbols : {},
     lastRolloverTimestamp: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : now,
     startDate: typeof candidate.startDate === 'string' && candidate.startDate
@@ -664,7 +686,7 @@ export function createPortfolioBackupSnapshot<T extends object>(state: T): Parti
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents', 'corporateActionEvents', 'marketHistoryCorrections'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
@@ -688,6 +710,14 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
 
   if (Object.hasOwn(candidate, 'transactionEvents') && !isPortfolioTransactionEventList(candidate.transactionEvents)) {
     throw new Error('Invalid transactionEvents in portfolio backup: expected a valid versioned transaction event array.');
+  }
+  if (Object.hasOwn(candidate, 'corporateActionEvents') &&
+      !isPortfolioCorporateActionEventList(candidate.corporateActionEvents)) {
+    throw new Error('Invalid corporateActionEvents in portfolio backup: expected a valid sourced action-event array.');
+  }
+  if (Object.hasOwn(candidate, 'marketHistoryCorrections') &&
+      !isMarketHistoryCorrectionEventList(candidate.marketHistoryCorrections)) {
+    throw new Error('Invalid marketHistoryCorrections in portfolio backup: expected a valid before/after correction array.');
   }
 
   // Backups are user-supplied data. Do not silently coerce invalid financial

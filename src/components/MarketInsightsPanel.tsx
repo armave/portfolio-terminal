@@ -4,7 +4,7 @@ import { createPortal, memo } from 'preact/compat';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
-import { usePortfolioSelector } from '../store/portfolioStore';
+import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
@@ -12,7 +12,11 @@ import { fetchFinnhubMarketEvents } from '../services/finnhubMarketData';
 import { marketHistoryProviderRegistry } from '../services/marketHistoryProviders';
 import { normalizeInstrumentIdentity } from '../services/marketDataContracts';
 import { createMarketEventDateRange, getNextUpcomingEarningsDate, type MarketEventsResult } from '../services/marketEvents';
-import type { MarketHistoryResult } from '../services/marketDataContracts';
+import type { MarketHistoryResult, MarketPricePoint } from '../services/marketDataContracts';
+import {
+  applyMarketHistoryCorrectionsToResult,
+  createMarketHistoryCorrectionEvent
+} from '../services/marketHistoryCorrections';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 
@@ -71,7 +75,41 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'During market': 'Во время торгов',
   'Timing unavailable': 'Время неизвестно',
   'Currency unknown; no conversion applied.': 'Валюта неизвестна; пересчёт не выполнялся.',
-  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.'
+  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.',
+  'Corporate actions': 'Корпоративные действия',
+  'Stock splits and reverse splits': 'Дробления и обратные дробления акций',
+  'Corporate-action data unavailable': 'Данные о корпоративных действиях недоступны',
+  'No verified split events in this period.': 'В этом периоде нет подтверждённых событий дробления.',
+  'Apply split to open position': 'Применить дробление к открытой позиции',
+  'Split already applied': 'Дробление уже применено',
+  'Review required': 'Требуется проверка',
+  'Split applied; cost basis preserved.': 'Дробление применено; себестоимость сохранена.',
+  'Split evidence saved for review. No position or cash was changed.': 'Данные о дроблении сохранены для проверки. Позиция и денежные средства не изменены.',
+  'Could not save this corporate action.': 'Не удалось сохранить это корпоративное действие.',
+  'Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.': 'Применить подтверждённое соотношение ко всем подходящим лотам до даты действия? Общая себестоимость останется неизменной. Денежное поступление или инвестиционная прибыль не создаются.',
+  'Dividend events are evidence only; cash is recorded when broker settlement is confirmed.': 'Дивиденды являются подтверждающими данными; денежное поступление учитывается после подтверждения расчёта брокером.',
+  'Effective date': 'Дата вступления в силу',
+  'Share ratio': 'Соотношение акций',
+  'Action status': 'Статус действия',
+  'Cash dividend': 'Денежный дивиденд',
+  'Record dividend evidence': 'Сохранить сведения о дивиденде',
+  'Dividend evidence saved': 'Сведения о дивиденде сохранены',
+  'No adjustment needed': 'Корректировка не требуется',
+  'Split data unavailable': 'Данные о дроблении недоступны',
+  'Split': 'Дробление',
+  'Reverse split': 'Обратное дробление',
+  'Correct close': 'Исправить закрытие',
+  'Save correction': 'Сохранить исправление',
+  'Cancel': 'Отмена',
+  'Corrected': 'Исправлено',
+  'Reason for correction': 'Причина исправления',
+  'New close price': 'Новая цена закрытия',
+  'Enter a corrected close and a reason.': 'Укажите исправленную цену закрытия и причину.',
+  'Correction saved to history.': 'Исправление сохранено в истории.',
+  'Could not save history correction.': 'Не удалось сохранить исправление истории.',
+  'History correction needs review; provider prices are shown unchanged.': 'Исправление истории требует проверки; показаны исходные цены провайдера.',
+  'Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.': 'Ручные исправления влияют только на этот список истории; сохранённые оценки портфеля и P&L не изменяются.',
+  'Manual correction': 'Ручное исправление'
 };
 
 function marketEventLabel(value: string): string {
@@ -183,6 +221,21 @@ function renderStocktwitsBody(body: string) {
 
 function MarketInsightsPanelView() {
   const ticker = usePortfolioSelector(selectMarketInsightsTicker);
+  const corporateActionHistory = usePortfolioSelector(state => state.corporateActionEvents || []);
+  const marketHistoryCorrections = usePortfolioSelector(state => state.marketHistoryCorrections || []);
+  const [historyCorrectionDraft, setHistoryCorrectionDraft] = useState<{
+    timestamp: number;
+    previous: MarketPricePoint;
+    correctedPrice: string;
+    reason: string;
+  } | null>(null);
+  const [historyCorrectionFeedback, setHistoryCorrectionFeedback] = useState<{
+    timestamp: number;
+    message: string;
+  } | null>(null);
+  const [corporateActionFeedback, setCorporateActionFeedback] = useState<{
+    sourceId: string; message: string;
+  } | null>(null);
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [deepDataRequest, setDeepDataRequest] = useState<{
     ticker: string;
@@ -683,7 +736,13 @@ function MarketInsightsPanelView() {
       const currentEvents = marketEventsState.ticker === ticker ? marketEventsState.data : null;
       const eventsLoading = marketEventsState.ticker === ticker && marketEventsState.loading;
       const currentEventsError = marketEventsState.ticker === ticker ? marketEventsState.error : null;
-      const currentHistory = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const currentHistorySource = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const historySymbol = currentHistorySource?.instrument?.symbol ??
+        ticker.trim().toUpperCase().replace(/\.US$/i, '');
+      const historyCorrectionApplication = currentHistorySource
+        ? applyMarketHistoryCorrectionsToResult(currentHistorySource, historySymbol, '1D', marketHistoryCorrections)
+        : null;
+      const currentHistory = historyCorrectionApplication?.result ?? null;
       const historyLoading = marketHistoryState.ticker === ticker && marketHistoryState.loading;
       const historyError = marketHistoryState.ticker === ticker ? marketHistoryState.error : null;
       const upcomingEarnings = getClosestDatedMarketEvents(
@@ -692,6 +751,8 @@ function MarketInsightsPanelView() {
       const upcomingDividends = getClosestDatedMarketEvents(
         currentEvents?.dividends ?? [], event => event.exDate
       );
+      const corporateActions = currentEvents?.corporateActions ?? [];
+      const recordedCorporateActionIds = new Set(corporateActionHistory.map(event => event.sourceId));
       const nextEarningsDate = getNextUpcomingEarningsDate(
         currentEvents?.earnings ?? [], Date.now()
       ) ?? getNextUpcomingEarningsDate(
@@ -772,6 +833,86 @@ function MarketInsightsPanelView() {
             </div>
           </section>
 
+          <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Corporate actions')}>
+            <div class="mb-2">
+              <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Corporate actions')}</h4>
+              <p class="text-[9px] text-slate-500">{marketEventLabel('Stock splits and reverse splits')} · {marketEventLabel('Dividends')}</p>
+            </div>
+            {currentEvents?.corporateActionsAvailable === false && (
+              <p class="text-[10px] text-slate-500">{marketEventLabel('Split data unavailable')}</p>
+            )}
+            {currentEvents?.corporateActionsAvailable === true &&
+              !corporateActions.some(event => event.kind === 'stock_split' || event.kind === 'reverse_split') &&
+              !eventsLoading && (
+              <p class="text-[10px] text-slate-500">{marketEventLabel('No verified split events in this period.')}</p>
+            )}
+            <div class="space-y-2">
+              {corporateActions.map(event => {
+                const alreadyRecorded = recordedCorporateActionIds.has(event.sourceId);
+                const priorAction = corporateActionHistory.find(item => item.sourceId === event.sourceId);
+                const isFeedback = corporateActionFeedback?.sourceId === event.sourceId;
+                const isDividend = event.kind === 'cash_dividend';
+                const alreadyApplied = priorAction?.status === 'applied';
+                const notApplicable = priorAction?.status === 'not_applicable';
+                return (
+                  <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-2 last:border-0">
+                    <div class="min-w-0">
+                      <div class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.effectiveDate)}</div>
+                      <div class="text-[10px] text-slate-500">
+                        {isDividend ? marketEventLabel('Cash dividend') : marketEventLabel(event.kind === 'stock_split' ? 'Split' : 'Reverse split')}
+                        {' · '}
+                        {isDividend
+                          ? (event.amountPerShare ?? '—') + (event.currency ? ' ' + event.currency : '')
+                          : marketEventLabel('Share ratio') + ': ' + event.fromFactor + ':' + event.toFactor}
+                      </div>
+                      {priorAction && (
+                        <p class="mt-1 text-[9px] text-amber-300">{marketEventLabel('Review required')}: {priorAction.note}</p>
+                      )}
+                      {isFeedback && (
+                        <p class="mt-1 text-[9px] text-cyan-300" role="status">{corporateActionFeedback.message}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={eventsLoading || (isDividend && alreadyRecorded) ||
+                        (!isDividend && (alreadyApplied || notApplicable))}
+                      onClick={() => {
+                        if (isDividend) {
+                          const saved = portfolioStore.recordCorporateActionEvidence(event);
+                          setCorporateActionFeedback({
+                            sourceId: event.sourceId,
+                            message: saved
+                              ? marketEventLabel('Dividend evidence saved')
+                              : marketEventLabel('Could not save this corporate action.')
+                          });
+                          return;
+                        }
+                        const confirmed = window.confirm(marketEventLabel('Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.'));
+                        if (!confirmed) return;
+                        const saved = portfolioStore.applyCorporateActionSplit(event);
+                        const message = !saved
+                          ? marketEventLabel('Could not save this corporate action.')
+                          : saved.status === 'applied'
+                            ? marketEventLabel('Split applied; cost basis preserved.')
+                            : marketEventLabel('Split evidence saved for review. No position or cash was changed.');
+                        setCorporateActionFeedback({ sourceId: event.sourceId, message });
+                      }}
+                      class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+                      {alreadyApplied ? marketEventLabel('Split already applied')
+                        : notApplicable ? marketEventLabel('No adjustment needed')
+                          : isDividend && alreadyRecorded ? marketEventLabel('Dividend evidence saved')
+                            : isDividend ? marketEventLabel('Record dividend evidence')
+                              : marketEventLabel('Apply split to open position')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
+              {marketEventLabel('Dividend events are evidence only; cash is recorded when broker settlement is confirmed.')}
+            </p>
+          </section>
+
           <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Daily price history')}>
             <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Daily price history')}</h4>
@@ -786,13 +927,127 @@ function MarketInsightsPanelView() {
             {historyLoading && !currentHistory && <p class="text-[10px] text-slate-500" role="status">{marketEventLabel('Loading history…')}</p>}
             {latestHistory.length > 0 && (
               <div class="space-y-1">
-                {latestHistory.map(point => (
-                  <div key={point.timestamp} class="flex justify-between gap-2 text-[10px]">
-                    <span class="text-slate-400">{new Date(point.timestamp).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
-                    <span class="font-mono text-slate-200">{point.price.toFixed(2)}</span>
-                  </div>
-                ))}
+                {latestHistory.map(point => {
+                  const pointCorrections = marketHistoryCorrections.filter(event =>
+                    event.symbol === historySymbol &&
+                    (event.interval === '1D' || event.interval === 'D') &&
+                    event.timestamp === point.timestamp
+                  ).sort((a, b) => a.recordedAt - b.recordedAt);
+                  const correction = pointCorrections[pointCorrections.length - 1];
+                  const isCorrected = currentHistory?.correctionStatus === 'applied' && !!correction;
+                  const isEditing = historyCorrectionDraft?.timestamp === point.timestamp;
+                  return (
+                    <div key={point.timestamp} class="border-b border-slate-800/50 py-1.5 last:border-0">
+                      <div class="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                        <span class="text-slate-400">{new Date(point.timestamp).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
+                        <span class="flex items-center gap-2">
+                          {isCorrected && <span class="text-[9px] text-amber-300">{marketEventLabel('Corrected')}</span>}
+                          <span class="font-mono text-slate-200">{point.price.toFixed(2)}</span>
+                          <button type="button" disabled={!!historyCorrectionDraft}
+                            onClick={() => {
+                              setHistoryCorrectionFeedback(null);
+                              setHistoryCorrectionDraft({
+                                timestamp: point.timestamp,
+                                previous: point,
+                                correctedPrice: String(point.price),
+                                reason: ''
+                              });
+                            }}
+                            class="min-h-8 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40">
+                            {marketEventLabel('Correct close')}
+                          </button>
+                        </span>
+                      </div>
+                      {isCorrected && correction && (
+                        <p class="mt-1 text-[9px] text-slate-500">
+                          {marketEventLabel('Manual correction')} · {correction.previous?.price?.toFixed(2) ?? '—'} → {correction.corrected?.price?.toFixed(2) ?? '—'} · {correction.reason}
+                        </p>
+                      )}
+                      {isEditing && historyCorrectionDraft && (
+                        <div class="mt-2 space-y-2 rounded border border-slate-700/70 bg-slate-950/40 p-2">
+                          <label class="block text-[9px] text-slate-400">
+                            {marketEventLabel('New close price')}
+                            <input type="number" inputMode="decimal" min="0.00000001" step="any"
+                              value={historyCorrectionDraft.correctedPrice}
+                              onInput={event => setHistoryCorrectionDraft(current => current
+                                ? { ...current, correctedPrice: event.currentTarget.value }
+                                : current)}
+                              class="mt-1 min-h-9 w-full rounded border border-slate-700 bg-slate-900 px-2 text-[11px] text-slate-100" />
+                          </label>
+                          <label class="block text-[9px] text-slate-400">
+                            {marketEventLabel('Reason for correction')}
+                            <textarea rows={2} maxLength={1000} value={historyCorrectionDraft.reason}
+                              onInput={event => setHistoryCorrectionDraft(current => current
+                                ? { ...current, reason: event.currentTarget.value }
+                                : current)}
+                              placeholder={marketEventLabel('Enter a corrected close and a reason.')}
+                              class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-[10px] text-slate-100" />
+                          </label>
+                          <div class="flex flex-wrap gap-2">
+                            <button type="button"
+                              disabled={!Number.isFinite(Number(historyCorrectionDraft.correctedPrice)) ||
+                                Number(historyCorrectionDraft.correctedPrice) <= 0 ||
+                                Number(historyCorrectionDraft.correctedPrice) === historyCorrectionDraft.previous.price ||
+                                (historyCorrectionDraft.previous.high !== undefined &&
+                                  Number(historyCorrectionDraft.correctedPrice) > historyCorrectionDraft.previous.high) ||
+                                (historyCorrectionDraft.previous.low !== undefined &&
+                                  Number(historyCorrectionDraft.correctedPrice) < historyCorrectionDraft.previous.low) ||
+                                !historyCorrectionDraft.reason.trim()}
+                              onClick={() => {
+                                const recordedAt = Date.now();
+                                try {
+                                  const event = createMarketHistoryCorrectionEvent({
+                                    symbol: historySymbol,
+                                    interval: '1D',
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    provider: 'USER',
+                                    receivedAt: recordedAt,
+                                    recordedAt,
+                                    previous: historyCorrectionDraft.previous,
+                                    corrected: {
+                                      ...historyCorrectionDraft.previous,
+                                      price: Number(historyCorrectionDraft.correctedPrice)
+                                    },
+                                    reason: historyCorrectionDraft.reason
+                                  });
+                                  const saved = portfolioStore.recordMarketHistoryCorrection(event);
+                                  setHistoryCorrectionFeedback({
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    message: saved
+                                      ? marketEventLabel('Correction saved to history.')
+                                      : marketEventLabel('Could not save history correction.')
+                                  });
+                                  if (saved) setHistoryCorrectionDraft(null);
+                                } catch {
+                                  setHistoryCorrectionFeedback({
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    message: marketEventLabel('Could not save history correction.')
+                                  });
+                                }
+                              }}
+                              class="min-h-9 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40">
+                              {marketEventLabel('Save correction')}
+                            </button>
+                            <button type="button" onClick={() => setHistoryCorrectionDraft(null)}
+                              class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300">
+                              {marketEventLabel('Cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {historyCorrectionFeedback?.timestamp === point.timestamp && (
+                        <p class="mt-1 text-[9px] text-cyan-300" role="status">{historyCorrectionFeedback.message}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            )}
+            {historyCorrectionApplication?.status === 'review_required' && (
+              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('History correction needs review; provider prices are shown unchanged.')}</p>
+            )}
+            {historyCorrectionApplication?.status === 'applied' && (
+              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')}</p>
             )}
             {currentHistory?.quality === 'partial' && (
               <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map(marketEventLabel).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
