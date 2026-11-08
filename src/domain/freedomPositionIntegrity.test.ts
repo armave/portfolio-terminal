@@ -1,0 +1,210 @@
+import { describe, expect, it } from 'vitest';
+import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
+
+describe('collectFreedomPositionIntegrityIssues', () => {
+  it('marks negative broker quantities unknown without converting them into shorts', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{
+        ticker: 'AAPL.US',
+        quantity: -5,
+        direction: 'unknown',
+        rawQuantity: -5,
+        rawSide: null,
+        instrumentId: 'instrument-1'
+      }]
+    });
+
+    expect(issues).toEqual([expect.objectContaining({
+      ticker: 'AAPL',
+      code: 'negative_quantity_sign_unverified',
+      source: 'account_snapshot',
+      rawQuantity: -5,
+      instrumentId: 'instrument-1'
+    })]);
+  });
+
+  it('keeps an explicit short position unsupported even when the broker quantity is positive', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'TSLA', quantity: 3, direction: 'short', rawSide: 'short' }]
+    });
+
+    expect(issues).toEqual([expect.objectContaining({
+      ticker: 'TSLA',
+      code: 'short_position_side_unverified',
+      rawSide: 'short'
+    })]);
+  });
+
+  it('does not interpret unrecognized position-side codes as long or short', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'NVDA', quantity: 2, direction: 'unknown', rawSide: 'S' }]
+    });
+
+    expect(issues[0]).toMatchObject({
+      ticker: 'NVDA',
+      code: 'unrecognized_position_side',
+      rawSide: 'S'
+    });
+  });
+
+  it('flags outstanding short-sale exposure and an unmatched cover separately', () => {
+    const openShort = collectFreedomPositionIntegrityIssues({ positions: [{ ticker: 'GOOGL', quantity: 2 }] }, [
+      { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 }
+    ]);
+    const unmatchedCover = collectFreedomPositionIntegrityIssues({ positions: [{ ticker: 'GOOGL', quantity: 2 }] }, [
+      { ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 2 }
+    ]);
+
+    expect(openShort).toContainEqual(expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }));
+    expect(unmatchedCover).toContainEqual(expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' }));
+  });
+
+  it('flags excess sells where the supplied history cannot explain the current long position', () => {
+    const issues = collectFreedomPositionIntegrityIssues({ positions: [{ ticker: 'META', quantity: 1 }] }, [
+      { ticker: 'META', side: 'BUY', quantity: 2, executedAt: '2026-01-01T10:00:00Z' },
+      { ticker: 'META', side: 'SELL', quantity: 3, executedAt: '2026-01-02T10:00:00Z' }
+    ]);
+
+    expect(issues).toEqual([expect.objectContaining({
+      ticker: 'META',
+      code: 'unmatched_sell_quantity',
+      rawQuantity: 3
+    })]);
+  });
+
+  it('keeps a completed short lifecycle reviewable because realized short accounting is unsupported', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'GOOGL', quantity: 3, direction: 'long' }]
+    }, [
+      { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 },
+      { ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 2 }
+    ]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }),
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' })
+    ]));
+  });
+
+  it('retains short and cover evidence for tickers that are no longer open', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 3, direction: 'long' }]
+    }, [
+      { ticker: 'OLD', side: 'SELL_SHORT', quantity: 2 },
+      { ticker: 'OLD', side: 'BUY_TO_COVER', quantity: 2 }
+    ]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'OLD', code: 'short_execution_unsupported' }),
+      expect.objectContaining({ ticker: 'OLD', code: 'short_cover_unsupported' })
+    ]));
+  });
+
+  it('uses field-specific numeric TradeNet codes and detects short order actions', () => {
+    const marginBuy = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 2, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { oper: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
+    const historySell = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { type: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
+    const shortAction = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { oper: '4', instr_nm: 'AAPL', q: 2 }
+    }]);
+    const undocumentedOperation = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { operation: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
+
+    expect(marginBuy).toEqual([]);
+    expect(historySell).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'unmatched_sell_quantity'
+    }));
+    expect(shortAction).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'short_execution_unsupported'
+    }));
+    expect(undocumentedOperation).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'unknown_execution_side'
+    }));
+  });
+
+  it('does not infer execution direction from an undocumented numeric action_id alias', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 2, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      quantity: 1,
+      raw: { action_id: '4', instr_nm: 'AAPL', q: 1 }
+    }]);
+    expect(issues).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL',
+      code: 'unknown_execution_side'
+    }));
+  });
+
+  it('retains a negative signed execution quantity as unresolved evidence', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 2, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 2,
+      raw: { oper: '1', instr_nm: 'AAPL', q: '-2' }
+    }]);
+    expect(issues).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL',
+      code: 'negative_quantity_sign_unverified',
+      rawQuantity: -2,
+      source: 'execution_history'
+    }));
+  });
+
+  it('flags executions without an instrument identifier and retains their raw evidence', () => {
+    const raw = { operation: 'SELL_SHORT', q: 2, p: 100 };
+    expect(collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{ side: 'SELL_SHORT', quantity: 2, raw }])).toContainEqual(expect.objectContaining({
+      ticker: 'ROW 1',
+      code: 'invalid_execution',
+      raw
+    }));
+  });
+
+  it('flags unknown execution sides and malformed broker positions instead of dropping them', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
+      positions: [
+        { ticker: 'AAPL', quantity: 2 },
+        { ticker: '', quantity: 4 }
+      ]
+    }, [{ ticker: 'AAPL', side: 'Unknown', quantity: 1 }]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'ROW 2', code: 'invalid_broker_position' }),
+      expect.objectContaining({ ticker: 'AAPL', code: 'unknown_execution_side' })
+    ]));
+  });
+
+  it('leaves ordinary positive long positions and balanced buy/sell history unchanged', () => {
+    expect(collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL.US', quantity: 3, direction: 'long' }]
+    }, [
+      { ticker: 'AAPL.US', side: 'BUY', quantity: 5 },
+      { ticker: 'AAPL.US', side: 'SELL', quantity: 2 }
+    ])).toEqual([]);
+  });
+});

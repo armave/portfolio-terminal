@@ -520,6 +520,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         balance.amount !== null && balance.amount !== undefined && Number.isFinite(Number(balance.amount))
       );
     const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
+    state.brokerAccountInfo?.quality === 'partial' ||
       (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
     const valuationStatus = getPortfolioValuationReliability({
       accountBalanceAvailable: valuation.accountBalanceAvailable,

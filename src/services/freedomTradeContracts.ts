@@ -37,13 +37,35 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     }
     return null;
   };
-  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
-    for (const value of values) {
-      const side = String(value ?? '').trim().toLowerCase();
-      if (side === '1' || ['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
-      if (side === '2' || side === '3' || ['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
-      if (side === '4' || ['ss', 'sell_short', 'sell short', 'short'].includes(side)) return 'SELL_SHORT';
+  const normalizedTextSide = (value: unknown): 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' | null => {
+    const side = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
+    if (['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
+    if (['ss', 'sell_short', 'short_sell', 'short'].includes(side)) return 'SELL_SHORT';
+    if (['buy_to_cover', 'cover', 'cover_short'].includes(side)) return 'BUY_TO_COVER';
+    return null;
+  };
+
+  const normalizedSide = (row: Record<string, unknown>): 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' | null => {
+    // Textual actions are unambiguous regardless of which provider alias carries them.
+    const textual = [row.side, row.operation, row.oper, row.buy_sell, row.type, row.action_id]
+      .map(normalizedTextSide)
+      .find((side): side is 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' => side !== null);
+    if (textual) return textual;
+
+    // Order/action fields use 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
+    // Do not apply this mapping to the separate trade-history type field.
+    for (const value of [row.oper, row.action_id]) {
+      const code = String(value ?? '').trim();
+      if (code === '1' || code === '2') return 'BUY';
+      if (code === '3') return 'SELL';
+      if (code === '4') return 'SELL_SHORT';
     }
+
+    // Trade-history type uses 1=Buy and 2=Sell.
+    const historyType = String(row.type ?? '').trim();
+    if (historyType === '1') return 'BUY';
+    if (historyType === '2') return 'SELL';
     return null;
   };
   const numericRecordOrUndefined = (value: unknown): Record<string, number> | undefined => {
@@ -89,7 +111,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
       // the raw operation code (1=buy, 2=buy on margin, 3=sell, 4=short).
       // Prefer that explicit side so operation 2 cannot be reinterpreted as SELL
       // by the legacy trade-history alias mapping below.
-      side: normalizedSide(row.side, row.operation, row.buy_sell, row.type) || 'Unknown',
+      side: normalizedSide(row) || 'Unknown',
       quantity: positiveMagnitudeOrNull(row.q, row.quantity, row.qty),
       price: positiveMagnitudeOrNull(row.p, row.price, row.exec_price),
       currency: String(row.curr_c ?? row.curr ?? row.currency ?? row.base_currency ?? ''),

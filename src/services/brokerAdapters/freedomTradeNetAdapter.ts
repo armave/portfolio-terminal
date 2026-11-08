@@ -7,6 +7,7 @@ import {
   normalizeFreedomTrades as normalizeFreedomExecutionsPayload
 } from '../freedomTradeContracts';
 import { normalizeFreedomCashflowRows } from '../../domain/freedomCashflows';
+import { collectFreedomPositionIntegrityIssues } from '../../domain/freedomPositionIntegrity';
 import {
   fetchFreedomCashflows,
   fetchFreedomTradeNetActiveOrders,
@@ -21,6 +22,7 @@ import type {
   BrokerAuthenticationState,
   BrokerCashflow,
   BrokerDataSnapshot,
+  BrokerPositionIntegrityIssue,
   BrokerSnapshotQuality,
   BrokerAdapterTransport
 } from '../../types/broker';
@@ -75,6 +77,7 @@ function currencyCode(row: Record<string, unknown>): string {
 interface PreparedPortfolioResponse {
   response: unknown;
   warnings: string[];
+  positionIntegrityIssues: BrokerPositionIntegrityIssue[];
 }
 
 /**
@@ -92,22 +95,44 @@ function preparePortfolioResponse(response: unknown): PreparedPortfolioResponse 
   if (ps.loaded !== true) throw new Error('TradeNet USD account data is not loaded yet.');
 
   const warnings: string[] = [];
+  const positionIntegrityIssues: BrokerPositionIntegrityIssue[] = [];
   const filterRows = (value: unknown, label: 'balance' | 'position'): unknown[] => {
     if (!Array.isArray(value)) {
       warnings.push(`TradeNet USD ${label} collection is unavailable.`);
       return [];
     }
 
-    return value.filter((candidate) => {
+    return value.filter((candidate, index) => {
       const row = asRecord(candidate);
+      const retainInvalidPosition = (code: BrokerPositionIntegrityIssue['code']) => {
+        if (label !== 'position') return;
+        const rawSideValue = row?.position_side ?? row?.positionSide ?? row?.pos_side ??
+          row?.posSide ?? row?.position_direction ?? row?.positionDirection ?? row?.side ?? row?.direction;
+        const rawInstrumentId = row?.instrument_id ?? row?.instrumentId ?? row?.instr_id ??
+          row?.security_id ?? row?.isin ?? row?.figi;
+        const rawTicker = row?.i ?? row?.base_contract_code ?? row?.ticker;
+        positionIntegrityIssues.push({
+          ticker: typeof rawTicker === 'string'
+            ? rawTicker.trim().toUpperCase().replace(/\.US$/i, '')
+            : `ROW ${index + 1}`,
+          code,
+          source: 'account_snapshot',
+          rawQuantity: numberOrNull(row?.q),
+          rawSide: typeof rawSideValue === 'string' || typeof rawSideValue === 'number' ? rawSideValue : null,
+          instrumentId: rawInstrumentId === undefined || rawInstrumentId === null ? null : String(rawInstrumentId),
+          ...(row ? { raw: row } : {})
+        });
+      };
       if (!row) {
         warnings.push(`Malformed TradeNet ${label} row was excluded.`);
+        retainInvalidPosition('invalid_broker_position');
         return false;
       }
 
       const currency = currencyCode(row);
       if (!currency) {
         warnings.push(`TradeNet ${label} row without a currency was excluded.`);
+        retainInvalidPosition('invalid_broker_position');
         return false;
       }
       if (currency !== 'USD') return true;
@@ -119,6 +144,7 @@ function preparePortfolioResponse(response: unknown): PreparedPortfolioResponse 
         warnings.push(label === 'balance'
           ? 'TradeNet USD balance row without a valid amount was excluded.'
           : 'TradeNet USD position row without a valid quantity was excluded.');
+        retainInvalidPosition('invalid_broker_position');
         return false;
       }
       return true;
@@ -139,7 +165,7 @@ function preparePortfolioResponse(response: unknown): PreparedPortfolioResponse 
       }
     }
   };
-  return { response: sanitized, warnings };
+  return { response: sanitized, warnings, positionIntegrityIssues };
 }
 
 function readExecutionRows(response: unknown): unknown[] | null {
@@ -283,11 +309,26 @@ export function createFreedomTradeNetBrokerAdapter(
       try {
         const prepared = preparePortfolioResponse(response);
         const data = normalizeFreedomPortfolioPayload(prepared.response);
+        const normalizedIssues = collectFreedomPositionIntegrityIssues(data);
+        const issueMap = new Map<string, BrokerPositionIntegrityIssue>();
+        for (const finding of [...prepared.positionIntegrityIssues, ...normalizedIssues]) {
+          issueMap.set(`${finding.ticker}|${finding.code}|${finding.source}`, finding);
+        }
+        const positionIntegrityIssues = [...issueMap.values()];
         const visibleRows = data.balances.length + data.positions.length;
-        const quality: BrokerSnapshotQuality = prepared.warnings.length > 0
+        const warnings = [
+          ...prepared.warnings,
+          ...(positionIntegrityIssues.length
+            ? ['One or more TradeNet positions have unverified direction or incomplete long-position history; the previous tracked values were retained.']
+            : [])
+        ];
+        const quality: BrokerSnapshotQuality = warnings.length > 0 || positionIntegrityIssues.length > 0
           ? 'partial'
           : visibleRows === 0 ? 'empty' : 'complete';
-        return createSnapshot(data, quality, context, prepared.warnings);
+        const snapshot = createSnapshot(data, quality, context, warnings);
+        return positionIntegrityIssues.length
+          ? { ...snapshot, positionIntegrityIssues }
+          : snapshot;
       } catch (error) {
         return fail(error);
       }

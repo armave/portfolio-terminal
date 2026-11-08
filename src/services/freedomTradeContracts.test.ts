@@ -9,7 +9,7 @@ describe('Freedom execution contract normalization', () => {
           trade: [{
             trade_id: 701,
             instr_nm: 'AAPL.US',
-            operation: '1',
+            type: '1',
             q: 0,
             quantity: '5',
             p: '12.50',
@@ -77,6 +77,16 @@ describe('Freedom execution contract normalization', () => {
     expect(trades).toHaveLength(2);
     expect(trades[0].id).not.toBe(trades[1].id);
     expect(trades[0].id).toMatch(/^fallback-/);
+  });
+
+  it('does not interpret an undocumented numeric action_id as an order-side code', () => {
+    const [trade] = normalizeFreedomTrades({ items: [{
+      instr_nm: 'AAPL.US',
+      action_id: '4',
+      q: 1,
+      p: 100
+    }] });
+    expect(trade.side).toBe('Unknown');
   });
 
   it('accepts a successful empty trade collection', () => {
@@ -184,6 +194,26 @@ describe('Freedom execution contract normalization', () => {
       orders: { order: [{ order_id: 'open-1', instr: 'GOOGL.US' }] },
       trades: { trade: [] }
     })).toEqual([]);
+  });
+
+
+  it('uses field-specific numeric TradeNet codes and does not guess undocumented operation aliases', () => {
+    const [historySell] = normalizeFreedomTrades({ items: [{ instr_nm: 'AAPL.US', type: '2', q: 1, p: 100 }] });
+    const [marginBuy] = normalizeFreedomTrades({ items: [{ instr_nm: 'MSFT.US', oper: '2', q: 1, p: 100 }] });
+    const [shortSell] = normalizeFreedomTrades({ items: [{ instr_nm: 'NVDA.US', oper: '4', q: 1, p: 100 }] });
+    const [unknownOperation] = normalizeFreedomTrades({ items: [{ instr_nm: 'META.US', operation: '2', q: 1, p: 100 }] });
+    expect(historySell.side).toBe('SELL');
+    expect(marginBuy.side).toBe('BUY');
+    expect(shortSell.side).toBe('SELL_SHORT');
+    expect(unknownOperation.side).toBe('Unknown');
+  });
+
+  it('preserves a buy-to-cover execution as a distinct action', () => {
+    const [trade] = normalizeFreedomTrades({ data: { trades: { trade: [{
+      id: 'cover-1', instr_nm: 'GOOGL.US', operation: 'BUY_TO_COVER', q: 2, p: 290,
+      date: '2026-11-03T10:00:00Z'
+    }] } } });
+    expect(trade).toMatchObject({ id: 'cover-1', ticker: 'GOOGL.US', side: 'BUY_TO_COVER', quantity: 2, price: 290 });
   });
 
 });
