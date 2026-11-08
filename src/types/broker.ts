@@ -30,6 +30,8 @@ export interface BrokerPositionIntegrityIssue {
   rawQuantity?: number | null;
   rawSide?: string | number | null;
   instrumentId?: string | null;
+  /** Original provider row for review when normalization rejects the position. */
+  raw?: Record<string, unknown>;
 }
 
 export interface BrokerAdapterContext {

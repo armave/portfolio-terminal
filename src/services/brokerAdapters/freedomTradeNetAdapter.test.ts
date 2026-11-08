@@ -88,6 +88,11 @@ describe('Freedom TradeNet broker adapter', () => {
       'TradeNet USD balance row without a valid amount was excluded.',
       'TradeNet USD position row without a valid quantity was excluded.'
     ]));
+    expect(snapshot.positionIntegrityIssues).toContainEqual(expect.objectContaining({
+      ticker: 'MSFT',
+      code: 'invalid_broker_position',
+      raw: { curr: 'USD', i: 'MSFT.US', q: true, mkt_price: 400 }
+    }));
   });
 
   it('treats rows with unknown currency as partial rather than silently excluding them as non-USD', () => {

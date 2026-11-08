@@ -255,7 +255,7 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
     }
     const rawSideValue = readFirst(row, [
       'position_side', 'positionSide', 'pos_side', 'posSide',
-      'position_direction', 'positionDirection'
+      'position_direction', 'positionDirection', 'side', 'direction'
     ]);
     const rawSide = typeof rawSideValue === 'string' || typeof rawSideValue === 'number'
       ? rawSideValue

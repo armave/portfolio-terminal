@@ -59,7 +59,7 @@ function issue(
   ticker: string,
   code: BrokerPositionIntegrityIssueCode,
   source: BrokerPositionIntegrityIssue['source'],
-  details: { rawQuantity?: number | null; rawSide?: string | number | null; instrumentId?: string | null } = {}
+  details: { rawQuantity?: number | null; rawSide?: string | number | null; instrumentId?: string | null; raw?: Record<string, unknown> } = {}
 ): BrokerPositionIntegrityIssue {
   return { ticker, code, source, ...details };
 }
@@ -86,7 +86,9 @@ export function collectFreedomPositionIntegrityIssues(
       position?.raw?.pos_side ??
       position?.raw?.posSide ??
       position?.raw?.position_direction ??
-      position?.raw?.positionDirection;
+      position?.raw?.positionDirection ??
+      position?.raw?.side ??
+      position?.raw?.direction;
     const rawSide = typeof rawSideValue === 'string' || typeof rawSideValue === 'number'
       ? rawSideValue
       : null;
@@ -105,7 +107,8 @@ export function collectFreedomPositionIntegrityIssues(
       findings.push(issue(ticker || `ROW ${index + 1}`, 'invalid_broker_position', 'account_snapshot', {
         rawQuantity,
         rawSide,
-        instrumentId
+        instrumentId,
+        ...(position?.raw ? { raw: position.raw } : {})
       }));
       return;
     }
