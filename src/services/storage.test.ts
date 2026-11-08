@@ -189,7 +189,13 @@ describe('storage service', () => {
         balance: 0
       });
       expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
-      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      if (typeof indexedDB !== 'undefined') {
+        expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      } else {
+        expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
+          brokerExecutedTrades: [], cashflows: []
+        });
+      }
       expect(storageMap.get('portfolio_active_view')).toBe('COMBINED');
       expect(state.lastUpdated).toBeGreaterThanOrEqual(123);
     });
@@ -565,10 +571,11 @@ describe('storage service', () => {
       };
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
 
-      const indexedDbAvailable = typeof indexedDB !== 'undefined';
       await initializeSavedHistoryStorage();
       expect(loadSavedHistory()).toEqual(expected);
-      expect(storageMap.has('portfolio_closed_history_v1')).toBe(!indexedDbAvailable);
+      // The rows came from the compact legacy state itself, not a local sidecar.
+      // The migration must not create a duplicate localStorage history record.
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
     it('recovers embedded history without overwriting an unreadable sidecar', () => {
