@@ -134,12 +134,60 @@ describe('reconcileBrokerActivity', () => {
 
   it('aggregates multiple broker partial fills against one app transaction', () => {
     const report = reconcile([
-      execution({ id: 'fill-1', quantity: 0.75, price: 100, commission: 0.4 }),
-      execution({ id: 'fill-2', quantity: 1.25, price: 100, commission: 0.6 })
+      execution({ id: 'fill-1', orderId: 'order-1', quantity: 0.75, price: 100, commission: 0.4 }),
+      execution({ id: 'fill-2', orderId: 'order-1', quantity: 1.25, price: 100, commission: 0.6 })
     ], [appEvent('trade.buy')]);
     expect(report.matchedExecutionCount).toBe(2);
     expect(report.findings).toEqual([]);
     expect(report.status).toBe('matched');
+  });
+
+  it('does not aggregate same-symbol fills from different broker orders', () => {
+    const report = reconcile([
+      execution({ id: 'fill-order-a', orderId: 'order-A', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-order-b', orderId: 'order-B', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-a'] }),
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-b'] }),
+      expect.objectContaining({ type: 'execution_missing_in_broker', appEventIds: ['app-trade.buy'] }),
+      expect.objectContaining({ type: 'execution_match_ambiguous', confidence: 'provisional' })
+    ]));
+  });
+
+  it('leaves partial-fill matching unresolved when parent order identity is missing', () => {
+    const report = reconcile([
+      execution({ id: 'fill-unlinked-1', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-unlinked-2', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app' }),
+      expect.objectContaining({ type: 'execution_missing_in_broker' }),
+      expect.objectContaining({ type: 'execution_match_ambiguous' })
+    ]));
+  });
+
+  it('reports multiple matching broker order groups as ambiguous instead of selecting one', () => {
+    const report = reconcile([
+      execution({ id: 'order-a-fill-1', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-a-fill-2', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-1', orderId: 'order-B', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-2', orderId: 'order-B', quantity: 1, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_match_ambiguous',
+      appEventIds: ['app-trade.buy'],
+      brokerReferences: expect.arrayContaining(['order-a-fill-1', 'order-a-fill-2', 'order-b-fill-1', 'order-b-fill-2']),
+      confidence: 'provisional'
+    }));
   });
 
   it('detects duplicate broker execution identifiers', () => {
@@ -182,6 +230,27 @@ describe('reconcileBrokerActivity', () => {
       type: 'dividend', effectiveAt: at, currency: 'USD', externalCashFlowAmount: 15
     }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-div-1', recordedAt: at });
     const report = reconcile([], [importedAudit, appDividend], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('normalizes positive broker withdrawal magnitudes to negative account movement', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'withdraw-positive-magnitude',
+      date: new Date(at).toISOString(),
+      type: 'Withdrawal',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appWithdrawal = createPortfolioTransactionEvent({
+      type: 'cash.withdrawal',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-withdrawal-signed', recordedAt: at });
+
+    const report = reconcile([], [appWithdrawal], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(1);
     expect(report.findings).toEqual([]);
   });
@@ -231,6 +300,115 @@ describe('reconcileBrokerActivity', () => {
       type: 'cashflow_currency_mismatch',
       brokerValue: -5,
       appEventIds: ['app-fee']
+    }));
+  });
+
+  it('surfaces broker execution rows that cannot be normalized instead of silently dropping them', () => {
+    const report = reconcile(
+      [execution({ side: 'Unknown' })],
+      [appEvent('trade.buy')]
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_unclassified',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain(
+      'One or more broker execution rows could not be classified; affected rows were excluded from matching.'
+    );
+  });
+
+  it('distinguishes exact duplicate executions from conflicting revisions with the same broker ID', () => {
+    const duplicate = reconcile(
+      [execution(), execution()],
+      [appEvent('trade.buy')]
+    );
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_execution',
+      brokerReferences: ['exec-1']
+    }));
+
+    const conflict = reconcile(
+      [execution(), execution({ commission: 2 })],
+      [appEvent('trade.buy')]
+    );
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_revision_conflict',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('surfaces broker cashflow rows with unusable amounts instead of silently dropping them', () => {
+    const report = reconcile([], [], {
+      brokerCashflows: [{
+        id: 'cashflow-invalid',
+        date: new Date(at).toISOString(),
+        type: 'Deposit',
+        amount: Number.NaN,
+        currency: 'USD',
+        raw: {}
+      }]
+    });
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      brokerReferences: ['cashflow-invalid'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('distinguishes duplicate cashflows from conflicting revisions with the same broker ID', () => {
+    const row: BrokerCashflow = {
+      id: 'cashflow-duplicate',
+      date: new Date(at).toISOString(),
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD',
+      raw: {}
+    };
+    const duplicate = reconcile([], [], { brokerCashflows: [row, { ...row }] });
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_cashflow',
+      brokerReferences: ['cashflow-duplicate']
+    }));
+
+    const conflict = reconcile([], [], { brokerCashflows: [row, { ...row, amount: 25 }] });
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_revision_conflict',
+      brokerReferences: ['cashflow-duplicate'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('reports opposite signed cash movements instead of matching equal magnitudes', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'deposit-direction-1',
+      date: new Date(at).toISOString(),
+      type: 'Deposit',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appDeposit = createPortfolioTransactionEvent({
+      type: 'cash.deposit',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-deposit-direction', recordedAt: at });
+
+    const report = reconcile([], [appDeposit], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_direction_mismatch',
+      brokerValue: 100,
+      appValue: -100,
+      brokerReferences: ['deposit-direction-1'],
+      appEventIds: ['app-deposit-direction']
     }));
   });
 
