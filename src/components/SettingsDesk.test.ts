@@ -139,3 +139,15 @@ describe('readBrokerRulesFormValues', () => {
     expect(readBrokerRulesFormValues(form, fallback)).toEqual(fallback);
   });
 });
+
+describe('Margin Intelligence encryption migration controls', () => {
+  it('exposes the inventory and migration tool only to administrators', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const panel = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === 'admin' && <MarginDigestSecurityPanel");
+    expect(panel).toContain('fetchMarginDigestMigrationInventory');
+    expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: 25 })');
+    expect(panel).toContain('inventory.plaintextRecords === 0');
+    expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
+  });
+});

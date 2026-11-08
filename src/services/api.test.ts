@@ -33,7 +33,9 @@ import {
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
-  clearYahooDeepStockDataCache
+  clearYahooDeepStockDataCache,
+  fetchMarginDigestMigrationInventory,
+  migrateMarginDigestBatch
 } from './api';
 import * as storage from './storage';
 import { setMarketRequestSessionForTests } from './marketRequestGate';
@@ -2279,6 +2281,58 @@ describe('closed-session market request cache integration', () => {
   });
 });
 
+
+describe('Margin Intelligence encryption migration API', () => {
+  const inventory = {
+    totalRecords: 3, plaintextRecords: 1, encryptedV2Records: 1,
+    legacyEncryptedRecords: 0, unreadableRecords: 1,
+    scannedAt: '2026-11-08T00:00:00.000Z', migrationReady: false
+  };
+
+  it('loads aggregate inventory using a no-store authenticated request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(inventory), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchMarginDigestMigrationInventory()).resolves.toEqual(inventory);
+    const [url, init] = fetchMock.mock.calls[0] as [string | URL, RequestInit];
+    expect(new URL(String(url)).pathname).toBe('/api/margin-digest-migration');
+    expect(init.method).toBe('GET');
+    expect(init.cache).toBe('no-store');
+    const headers = new Headers(init.headers);
+    expect(headers.get('Authorization')).toBe('Bearer test-gateway-secret');
+    expect(headers.get('X-App-Auth')).toBe('test-gateway-secret');
+  });
+
+  it('submits bounded resumable batches and validates the returned cursor', async () => {
+    const batch = {
+      scanned: 25, migrated: 25, alreadyEncrypted: 0, unreadable: 0, conflicts: 0,
+      nextCursor: 'marginDigestRecord:position:GOOGL', done: false
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(batch), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(migrateMarginDigestBatch({ limit: 25 })).resolves.toEqual(batch);
+    const [url, init] = fetchMock.mock.calls[0] as [string | URL, RequestInit];
+    expect(new URL(String(url)).pathname).toBe('/api/margin-digest-migration');
+    expect(init.method).toBe('POST');
+    expect(init.cache).toBe('no-store');
+    expect(JSON.parse(String(init.body))).toEqual({ limit: 25 });
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
+    await expect(migrateMarginDigestBatch({ cursor: 'not-a-digest-cursor' })).rejects.toThrow('batch settings are invalid');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects malformed aggregate inventory responses before displaying them', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...inventory, plaintextRecords: -1
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchMarginDigestMigrationInventory()).rejects.toThrow('inventory response was invalid');
+  });
+});
+
 describe('encrypted synced margin intelligence digests', () => {
   const digest = {
     key: 'position:GOOGL',
@@ -2322,7 +2376,7 @@ describe('encrypted synced margin intelligence digests', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4 });
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4, migrationStatus: 'not-required' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -2338,7 +2392,7 @@ describe('encrypted synced margin intelligence digests', () => {
       }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4 });
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 4, migrationStatus: 'migrated' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [writeUrl, writeInit] = fetchMock.mock.calls[1] as [string | URL, RequestInit];
     expect(new URL(String(writeUrl)).pathname).toBe('/api/margin-digest');
@@ -2362,7 +2416,7 @@ describe('encrypted synced margin intelligence digests', () => {
       }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 3 });
+    await expect(loadSyncedMarginDigest(digest.key)).resolves.toEqual({ digest, revision: 3, migrationStatus: 'pending' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
