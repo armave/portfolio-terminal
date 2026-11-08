@@ -9,7 +9,7 @@ describe('Freedom execution contract normalization', () => {
           trade: [{
             trade_id: 701,
             instr_nm: 'AAPL.US',
-            operation: '1',
+            type: '1',
             q: 0,
             quantity: '5',
             p: '12.50',

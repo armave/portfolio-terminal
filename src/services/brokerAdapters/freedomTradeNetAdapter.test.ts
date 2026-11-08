@@ -270,7 +270,7 @@ describe('Freedom TradeNet broker adapter', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizeExecutions({
       data: { trades: { trade: [{
-        trade_id: 701, instr_nm: 'AAPL.US', operation: '1',
+        trade_id: 701, instr_nm: 'AAPL.US', type: '1',
         q: 0, quantity: '5', p: '12.50', date: '2026-10-31T10:20:00Z',
         v: '62.50', curr_c: 'USD', commiss: '0.25'
       }] } }
