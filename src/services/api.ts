@@ -264,9 +264,10 @@ export async function migrateMarginDigestBatch(input: { cursor?: string | null; 
     throw new Error('The Margin Intelligence encryption batch response was invalid.');
   }
   const classifiedRecords = countKeys.slice(1).reduce((total, key) => total + (value[key] as number), 0);
-  if (value.scanned > limit || classifiedRecords !== value.scanned ||
+  const scanned = value.scanned as number;
+  if (scanned > limit || classifiedRecords !== scanned ||
       value.done !== (value.nextCursor === null) ||
-      (!value.done && value.scanned === 0)) {
+      (!value.done && scanned === 0)) {
     throw new Error('The Margin Intelligence encryption batch response was invalid.');
   }
   return {
