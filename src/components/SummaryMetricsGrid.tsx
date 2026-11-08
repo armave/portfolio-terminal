@@ -1,10 +1,10 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { memo } from 'preact/compat';
 import { useState } from 'preact/hooks';
-import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
+import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
@@ -17,7 +17,12 @@ import {
   calculatePortfolioValuation,
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
-import { ACCOUNT_EQUITY_HEALTH_REFERENCE, calculateMarginRiskMetrics, getMarginRiskLevel } from '../domain/marginRisk';
+import {
+  ACCOUNT_EQUITY_HEALTH_REFERENCE,
+  calculateMarginRiskSnapshot,
+  hasUnresolvedBrokerPositionIntegrity,
+  type MarginRiskInput
+} from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
@@ -33,9 +38,18 @@ export function getUsableMarketPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
+function getCashCushionValueFromState(state: BoardState): number {
+  const freeCash = Number(state.cashCushion?.freeCash) || 0;
+  return freeCash + (state.cashCushion?.holdings || []).reduce((sum, holding) => {
+    const shares = Number(holding.shares);
+    const price = getUsableMarketPrice(holding.currentPrice) ?? getUsableMarketPrice(holding.price);
+    return sum + (Number.isFinite(shares) && shares > 0 && price !== null ? shares * price : 0);
+  }, 0);
+}
+
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
   equityPct: number;
-  risk: ReturnType<typeof computeMarginRiskDisplay>;
+  risk: MarginRiskDisplay;
   equityText: string;
   collateralText: string;
   rules: BrokerAssumptions;
@@ -44,15 +58,19 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   unpricedHoldings?: number;
 }) {
   const language = getAppLanguage();
-  if (valuationStatus === 'incomplete') {
+  if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
       <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', language)}>
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
-          <span class="margin-risk-status elevated">{translateText('Market valuation incomplete', language)}</span>
+          <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
         </div>
         <p class="mt-2 text-xs leading-relaxed text-amber-200">
-          {translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
+          {risk.reason?.includes('position integrity')
+            ? translateText('Margin risk is unavailable because broker position direction or execution history needs review.', language)
+            : risk.status === 'unavailable' && valuationStatus !== 'incomplete'
+              ? translateText('Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)
+              : translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
         </p>
         {!accountBalanceAvailable && (
           <p class="mt-1 text-[10px] text-slate-300">{translateText('Account balance unavailable', language)}</p>
@@ -70,15 +88,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   }
 
   const stopOutTitle = translateText(
-    'Estimate assumes the configured {threshold}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.',
+    'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language
   ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
   const marginRiskTitle = translateText(
-    'Estimated from portfolio equity and configured thresholds: {maintenance}% maintenance equity and {stopOut}% stop-out equity. Not a live broker risk indicator.',
+    'Risk estimate uses available account inputs and configured thresholds. Broker margin requirements are shown only when supplied; this is not a live broker risk indicator.',
     language
-  )
-    .replace('{maintenance}', (rules.maintenanceEquityRatio * 100).toFixed(2))
-    .replace('{stopOut}', (rules.stopOutRatio * 100).toFixed(2));
+  );
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
@@ -105,6 +121,26 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.stopOutText}</span>}
         </div>
       </div>
+      {risk.status === 'provisional' && (
+        <p class="mt-2 text-[10px] leading-relaxed text-amber-200">
+          {translateText('Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.', language)}
+        </p>
+      )}
+      {risk.maintenanceState === 'unknown' && (
+        <p class="mt-1 text-[10px] text-amber-200">
+          {translateText('Maintenance buffer unavailable because the concentration add-on was not reported.', language)}
+        </p>
+      )}
+      {risk.stopOutState === 'unknown' && (
+        <p class="mt-1 text-[10px] text-amber-200">
+          {translateText('Short-position stop-out buffer unavailable until broker-specific requirements are verified.', language)}
+        </p>
+      )}
+      {risk.hasShortExposure && (
+        <p class="mt-1 text-[10px] text-amber-200">
+          {translateText('Short borrow fees and availability costs are not included because broker data is unavailable.', language)}
+        </p>
+      )}
       <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', language)}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', language)}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', language)}</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}</div></details>
     </section>
   );
@@ -144,58 +180,77 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   };
 }
 
-function computeMarginRiskDisplay(
-  debt: number,
-  positionValue: number,
-  collateral: number,
-  rules: BrokerAssumptions
-) {
+interface MarginRiskDisplay {
+  status: 'available' | 'provisional' | 'unavailable';
+  reason?: string;
+  warnings: string[];
+  riskLevel: string;
+  summaryText: string;
+  summaryClass: string;
+  showMarginCall: boolean;
+  marginCallText: string;
+  showStopOut: boolean;
+  stopOutText: string;
+  marginCallBufferPct: number;
+  stopOutBufferPct: number;
+  maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
+  stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
+  hasShortExposure: boolean;
+}
+
+function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   const language = getAppLanguage();
-  if (debt <= 0) {
+  const result = calculateMarginRiskSnapshot(input);
+  if (result.status === 'unavailable') {
     return {
-      riskLevel: 'No margin debt' as const,
-      summaryText: translateText('No margin debt', language),
-      summaryClass: 'text-emerald-400 font-bold font-mono',
+      status: 'unavailable',
+      reason: result.reason,
+      warnings: result.warnings,
+      riskLevel: 'Unavailable',
+      summaryText: translateText('Margin risk estimate unavailable', language),
+      summaryClass: 'text-amber-300 font-bold font-mono',
       showMarginCall: false,
       marginCallText: '',
       showStopOut: false,
       stopOutText: '',
-      marginCallBufferPct: 100,
-      stopOutBufferPct: 100
+      marginCallBufferPct: Number.NaN,
+      stopOutBufferPct: Number.NaN,
+      maintenanceState: 'unknown',
+      stopOutState: 'unknown',
+      hasShortExposure: false
     };
   }
 
-  const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
-  const equityRatio = metrics.equityRatio * 100;
-  const maintenanceRatio = rules.maintenanceEquityRatio * 100;
-  const riskLevel = getMarginRiskLevel(metrics.equityRatio, rules);
-  const riskClass = riskLevel === 'Healthy'
+  const metrics = result.value;
+  const riskLevel = input.marginDebt <= 0 && input.shortExposure <= 0 ? 'No margin debt' : metrics.riskLevel;
+  const riskClass = riskLevel === 'Healthy' || riskLevel === 'No margin debt'
     ? 'text-emerald-400'
     : riskLevel === 'Elevated'
       ? 'text-amber-400'
       : 'text-rose-400';
-  const equitySummary = Number.isFinite(equityRatio)
-    ? `${equityRatio.toFixed(1)}% ${translateText('equity', language)}`
-    : translateText('negative equity', language);
-  const summaryText = `${translateText(riskLevel, language)} · ${equitySummary} (${maintenanceRatio.toFixed(1)}% ${translateText('maintenance', language)})`;
-
-  const showMarginCall = metrics.showMarginCall;
-  const showStopOut = metrics.showStopOut;
-  const marginCallValue = metrics.marginCallValue;
-  const stopOutValue = metrics.stopOutValue;
-  const marginCallBufferPct = metrics.marginCallBufferPct;
-  const stopOutBufferPct = metrics.stopOutBufferPct;
-
+  const equitySummary = metrics.equityRatio !== null && Number.isFinite(metrics.equityRatio)
+    ? `${(metrics.equityRatio * 100).toFixed(1)}% ${translateText('equity', language)}`
+    : translateText('Equity ratio unavailable', language);
+  const summaryText = `${translateText(riskLevel, language)} · ${equitySummary}`;
   return {
+    status: result.status,
+    warnings: result.warnings,
     riskLevel,
     summaryText,
     summaryClass: `${riskClass} font-bold font-mono`,
-    showMarginCall,
-    marginCallText: marginCallValue > 0 ? formatRiskTrigger(marginCallValue, positionValue) : '',
-    showStopOut,
-    stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
-    marginCallBufferPct,
-    stopOutBufferPct
+    showMarginCall: metrics.showMarginCall,
+    marginCallText: metrics.marginCallValue !== null && metrics.marginCallValue > 0
+      ? formatRiskTrigger(metrics.marginCallValue, input.longExposure)
+      : '',
+    showStopOut: metrics.showStopOut,
+    stopOutText: metrics.stopOutValue !== null && metrics.stopOutValue > 0
+      ? formatRiskTrigger(metrics.stopOutValue, input.longExposure)
+      : '',
+    marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
+    stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
+    maintenanceState: metrics.maintenanceState,
+    stopOutState: metrics.stopOutState,
+    hasShortExposure: input.shortExposure > 0
   };
 }
 
@@ -409,7 +464,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     )} ${translateText('sell', getAppLanguage())})`;
     const marginChargedText = `${formatUSD(totalMarginCharged)}`;
 
-    const cushionTotal = getCashCushionTotal(state);
     const quoteSummary = summarizeQuoteFreshness(
       tickers.map((ticker) => {
         const position = state.positions![ticker];
@@ -485,7 +539,39 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       ? formatUSD(totalAccountEquity) + ' (' + (Number.isFinite(equityPct) ? equityPct.toFixed(2) + '%' : 'N/A') + ')'
       : translateText('Account balance unavailable', getAppLanguage());
 
-    const risk = computeMarginRiskDisplay(totalDebt, totalMarketValue, cushionTotal, rules);
+    const riskObservationValues: unknown[] = [
+      state.brokerAccountInfo?.observedAt,
+      ...valuationQuoteHoldings.map(holding => holding.quoteDetails?.sourceTimestamp)
+    ];
+    const riskObservedAt = riskObservationValues.length > 0 &&
+      riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+      ? Math.min(...riskObservationValues as number[])
+      : null;
+    const riskFreshness = valuationQuoteSummary.stale > 0
+      ? 'stale'
+      : valuationQuoteSummary.delayed > 0
+        ? 'delayed'
+        : valuationQuoteSummary.unknown > 0 || valuationQuoteSummary.unavailable > 0 || valuationQuoteSummary.total === 0
+          ? 'unknown'
+          : 'fresh';
+    const risk = computeMarginRiskDisplay({
+      currency: 'USD',
+      positionIntegrityComplete: !hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo),
+      longExposure: valuation.totalHoldingsValue,
+      shortExposure: 0,
+      cashBalance: valuation.cashBalance,
+      marginDebt: valuation.marginDebt,
+      // Current client data does not expose broker-confirmed eligible collateral.
+      // Use account cash only as an explicitly provisional assumption; securities
+      // in the cash cushion remain long exposure, not assumed collateral.
+      eligibleCollateral: valuation.cashBalance,
+      eligibleCollateralSource: 'configured-assumption',
+      assumptions: rules,
+      quality: valuationStatus,
+      freshness: riskFreshness,
+      observedAt: riskObservedAt,
+      calculatedAt: Date.now()
+    });
 
     return (
       <>
@@ -575,7 +661,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
-        collateralText={formatUSD(cushionTotal)}
+        collateralText={formatUSD(valuation.cashBalance)}
         rules={rules}
         valuationStatus={valuationStatus}
         accountBalanceAvailable={valuation.accountBalanceAvailable}
@@ -602,8 +688,11 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
   const totalAccountDebt = Math.max(0, -(Number(state.balance) || 0));
   const allocatedDebt = totalAccountDebt * weight;
-  const totalCushion = getCashCushionTotal(state);
-  const allocatedCushion = totalCushion * weight;
+  const freeCashBalance = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+  const brokerCashBalance = Math.max(0, Number(state.balance) || 0);
+  const cashHoldingsMarketValue = Math.max(0, getCashCushionValueFromState(state) - freeCashBalance);
+  const allocatedCashBalance = (freeCashBalance + brokerCashBalance) * weight;
+  const allocatedCashHoldingsValue = cashHoldingsMarketValue * weight;
   const allocatedDailyAccrual = allocatedDebt * dailyRate;
   const tranches =
     pos.tranches && pos.tranches.length > 0
@@ -702,7 +791,8 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     unknownQuotes: positionQuoteSummary.unknown,
     unavailableQuotes: positionQuoteSummary.unavailable
   });
-  const positionAssets = currentMktVal + allocatedCushion;
+  const allocatedLongExposure = currentMktVal + allocatedCashHoldingsValue;
+  const positionAssets = allocatedLongExposure + allocatedCashBalance;
   const positionEquity = positionAssets - allocatedDebt;
   const equityPct = accountBalanceAvailable && positionAssets > 0
     ? (positionEquity / positionAssets) * 100
@@ -711,7 +801,37 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     ? `${formatUSD(positionEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`
     : translateText('Account balance unavailable', getAppLanguage());
 
-  const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
+  const riskObservationValues: unknown[] = [
+    state.brokerAccountInfo?.observedAt,
+    pos.quoteDetails?.sourceTimestamp,
+    ...(cashHoldingsForQuotes.map(holding => holding.quoteDetails?.sourceTimestamp))
+  ];
+  const riskObservedAt = riskObservationValues.length > 0 &&
+    riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+    ? Math.min(...riskObservationValues as number[])
+    : null;
+  const riskFreshness = positionQuoteSummary.stale > 0
+    ? 'stale'
+    : positionQuoteSummary.delayed > 0
+      ? 'delayed'
+      : positionQuoteSummary.unknown > 0 || positionQuoteSummary.unavailable > 0
+        ? 'unknown'
+        : 'fresh';
+  const risk = computeMarginRiskDisplay({
+    currency: 'USD',
+    positionIntegrityComplete: !hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo),
+    longExposure: allocatedLongExposure,
+    shortExposure: 0,
+    cashBalance: allocatedCashBalance,
+    marginDebt: allocatedDebt,
+    eligibleCollateral: allocatedCashBalance,
+    eligibleCollateralSource: 'configured-assumption',
+    assumptions: rules,
+    quality: positionValuationStatus,
+    freshness: riskFreshness,
+    observedAt: riskObservedAt,
+    calculatedAt: Date.now()
+  });
 
   const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
@@ -808,7 +928,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
-        collateralText={formatUSD(allocatedCushion)}
+        collateralText={formatUSD(allocatedCashBalance)}
         rules={rules}
         valuationStatus={positionValuationStatus}
         accountBalanceAvailable={accountBalanceAvailable}

@@ -81,9 +81,15 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     const executedAt = row.executedAt ?? row.date ?? row.time ?? row.datetime ?? row.exec_time ?? null;
     return {
       id: String(row.id ?? row.trade_id ?? row.tradeId ?? stableFallbackId(row)),
+      ...(row.order_id ?? row.orderId ?? row.parentOrderId
+        ? { orderId: String(row.order_id ?? row.orderId ?? row.parentOrderId).trim() }
+        : {}),
       ticker: String(row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? ''),
-      // Ignore unrecognized operation placeholders and continue to side/type aliases.
-      side: normalizedSide(row.operation, row.side, row.buy_sell, row.type) || 'Unknown',
+      // The authenticated order stream supplies a normalized side alongside
+      // the raw operation code (1=buy, 2=buy on margin, 3=sell, 4=short).
+      // Prefer that explicit side so operation 2 cannot be reinterpreted as SELL
+      // by the legacy trade-history alias mapping below.
+      side: normalizedSide(row.side, row.operation, row.buy_sell, row.type) || 'Unknown',
       quantity: positiveMagnitudeOrNull(row.q, row.quantity, row.qty),
       price: positiveMagnitudeOrNull(row.p, row.price, row.exec_price),
       currency: String(row.curr_c ?? row.curr ?? row.currency ?? row.base_currency ?? ''),
@@ -120,14 +126,17 @@ export function normalizeFreedomOrderFills(response: unknown): FreedomExecutedTr
   const rows = Array.isArray(trades?.trade) ? trades.trade : [];
   if (!rows.length) return [];
 
+  const sideForOrderOperation = (value: unknown): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
+    const operation = String(value ?? '').trim().toUpperCase();
+    if (operation === '1' || operation === '2' || operation === 'BUY') return 'BUY';
+    if (operation === '3' || operation === 'SELL') return 'SELL';
+    if (operation === '4' || operation === 'SELL_SHORT' || operation === 'SELL SHORT') return 'SELL_SHORT';
+    return null;
+  };
   const normalizedRows = rows.flatMap((value) => {
     const row = asRecord(value);
     if (!row) return [];
-    const operation = String(row.side ?? row.operation ?? '').trim().toUpperCase();
-    const side = operation === '1' || operation === '2' ? 'BUY'
-      : operation === '3' ? 'SELL'
-        : operation === '4' ? 'SELL_SHORT'
-          : operation;
+    const side = sideForOrderOperation(row.side) ?? sideForOrderOperation(row.operation) ?? 'Unknown';
     return [{
       ...row,
       side: side || 'Unknown',

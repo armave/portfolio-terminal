@@ -9,6 +9,7 @@ import {
   mergePortfolioTransactionEvents,
   normalizePortfolioTransactionIdempotencyKey,
   replayPortfolioTransactionJournal,
+  resolveLatestBrokerHistoryAuditEvents,
   verifyPortfolioTransactionParity
 } from './portfolioTransactionJournal';
 
@@ -84,6 +85,40 @@ describe('portfolio transaction journal', () => {
 
     expect(hasPortfolioTransactionIdempotencyKey(journal, 'request-123')).toBe(true);
     expect(result).toEqual({ events: journal, appended: false, duplicate: true });
+  });
+
+  it('rejects conflicting reuse of an idempotency key when no request fingerprint is supplied', () => {
+    const first = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-idempotency-first',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+    const retry = createPortfolioTransactionEvent(draft, {
+      eventId: 'event-idempotency-retry',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal',
+      recordedAt: first.recordedAt + 5_000
+    });
+    const conflict = createPortfolioTransactionEvent({
+      ...draft,
+      quantity: 3,
+      grossAmount: 300,
+      cashDelta: -301.25
+    }, {
+      eventId: 'event-idempotency-conflict',
+      idempotencyKey: 'same-key',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+
+    expect(appendPortfolioTransactionEvent([first], retry)).toMatchObject({
+      appended: false,
+      duplicate: true
+    });
+    expect(() => appendPortfolioTransactionEvent([first], conflict))
+      .toThrow(/conflicts with a different command/i);
   });
 
   it('rejects invalid idempotency keys rather than silently disabling deduplication', () => {
@@ -185,6 +220,7 @@ describe('broker history audit events', () => {
   it('imports read-only broker executions exactly once and links source revisions', () => {
     const firstRows = [{
       id: 'exec-100',
+      orderId: 'order-100',
       ticker: 'aapl',
       side: 'BUY',
       quantity: 2,
@@ -201,6 +237,7 @@ describe('broker history audit events', () => {
       actor: { type: 'broker' },
       source: 'freedom-tradenet',
       externalReferenceId: 'exec-100',
+      externalOrderReferenceId: 'order-100',
       ticker: 'AAPL',
       quantity: 2,
       unitPrice: 100,
@@ -226,23 +263,242 @@ describe('broker history audit events', () => {
     });
   });
 
+  it('deduplicates overlapping broker history pages by stable execution and cashflow IDs', () => {
+    const firstPage = appendBrokerHistoryAuditEvents([], [
+      {
+        id: 'exec-page-1',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 100,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:00:00.000Z'
+      },
+      {
+        id: 'exec-page-2',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 101,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:01:00.000Z'
+      }
+    ], [{
+      id: 'cash-page-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 5,
+      currency: 'USD'
+    }], 1_000);
+
+    const overlappingPage = appendBrokerHistoryAuditEvents(firstPage, [
+      {
+        id: 'exec-page-2',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 101,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:01:00.000Z'
+      },
+      {
+        id: 'exec-page-3',
+        orderId: 'order-page-b',
+        ticker: 'MSFT',
+        side: 'BUY',
+        quantity: 2,
+        price: 50,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:02:00.000Z'
+      }
+    ], [{
+      id: 'cash-page-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 5,
+      currency: 'USD'
+    }, {
+      id: 'cash-page-2',
+      date: '2026-11-01',
+      type: 'Fee',
+      amount: -1,
+      currency: 'USD'
+    }], 2_000);
+
+    expect(overlappingPage).toHaveLength(5);
+    expect(overlappingPage.filter(event => event.type === 'broker.execution')).toHaveLength(3);
+    expect(overlappingPage.filter(event => event.idempotencyKey?.startsWith('broker-cashflow:'))).toHaveLength(2);
+  });
+
+  it('records a broker correction that reverts to older facts as a new revision', () => {
+    const original = [{
+      id: 'exec-revert-1',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 2,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1.25,
+      commissionCurrency: 'USD'
+    }];
+    const first = appendBrokerHistoryAuditEvents([], original, [], 1_000);
+    const revised = appendBrokerHistoryAuditEvents(first, [{
+      ...original[0],
+      commission: 1.5
+    }], [], 2_000);
+    const reverted = appendBrokerHistoryAuditEvents(revised, original, [], 3_000);
+
+    expect(reverted).toHaveLength(3);
+    expect(reverted[2]).toMatchObject({
+      externalReferenceId: 'exec-revert-1',
+      fees: 1.25,
+      relatedEventId: revised[1].id
+    });
+    expect(reverted[2].id).not.toBe(first[0].id);
+    expect(appendBrokerHistoryAuditEvents(reverted, original, [], 4_000)).toHaveLength(3);
+    expect(resolveLatestBrokerHistoryAuditEvents(reverted)).toHaveLength(1);
+    expect(resolveLatestBrokerHistoryAuditEvents(reverted)[0].id).toBe(reverted[2].id);
+  });
+
+  it('resolves a corrected execution after backup ordering changes its recorded-time order', () => {
+    const original = {
+      id: 'exec-clock-skew',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1
+    };
+    const first = appendBrokerHistoryAuditEvents([], [original], [], 2_000);
+    const corrected = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.5
+    }], [], 1_000);
+    const restored = mergePortfolioTransactionEvents([], corrected);
+
+    // The backup merge sorts the corrected event before its parent by timestamp.
+    expect(restored[0].id).toBe(corrected[1].id);
+    expect(resolveLatestBrokerHistoryAuditEvents(restored)[0].id).toBe(corrected[1].id);
+    // Re-importing the corrected provider observation after restore is still a no-op.
+    expect(appendBrokerHistoryAuditEvents(restored, [{
+      ...original,
+      commission: 1.5
+    }], [], 3_000)).toHaveLength(2);
+  });
+
+  it('resolves only the latest broker cashflow revision without deleting audit history', () => {
+    const first = appendBrokerHistoryAuditEvents([], [], [{
+      id: 'div-revision-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 12,
+      currency: 'USD'
+    }], 1_000);
+    const revised = appendBrokerHistoryAuditEvents(first, [], [{
+      id: 'div-revision-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD'
+    }], 2_000);
+
+    expect(revised).toHaveLength(2);
+    expect(revised[1]).toMatchObject({ externalReferenceId: 'div-revision-1', externalCashFlowAmount: 15 });
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)).toHaveLength(1);
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].id).toBe(revised[1].id);
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].relatedEventId).toBe(revised[0].id);
+  });
+
+  it('preserves competing device correction branches without selecting or crashing', () => {
+    const original = {
+      id: 'exec-fork-1',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1
+    };
+    const first = appendBrokerHistoryAuditEvents([], [original], [], 1_000);
+    const branchA = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.25
+    }], [], 2_000);
+    const branchB = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.5
+    }], [], 2_100);
+    const forked = mergePortfolioTransactionEvents(branchA, branchB);
+
+    const heads = resolveLatestBrokerHistoryAuditEvents(forked);
+    expect(heads).toHaveLength(2);
+    expect(heads.map(event => event.fees).sort()).toEqual([1.25, 1.5]);
+
+    // A later sync cannot silently create a third branch or choose one head.
+    const afterReplay = appendBrokerHistoryAuditEvents(forked, [{
+      ...original,
+      commission: 1.75
+    }], [], 3_000);
+    expect(afterReplay).toHaveLength(forked.length);
+    expect(resolveLatestBrokerHistoryAuditEvents(afterReplay)).toHaveLength(2);
+  });
+
+  it('keeps identical provider execution references isolated by source', () => {
+    const execution = {
+      id: 'same-provider-id',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1,
+      commissionCurrency: 'USD'
+    };
+    const firstSource = appendBrokerHistoryAuditEvents([], [execution], [], 1_000, 'provider-one');
+    const secondSource = appendBrokerHistoryAuditEvents(firstSource, [execution], [], 2_000, 'provider-two');
+
+    expect(secondSource).toHaveLength(2);
+    expect(secondSource.map(event => event.source)).toEqual(['provider-one', 'provider-two']);
+    expect(secondSource.map(event => event.relatedEventId)).toEqual([undefined, undefined]);
+    expect(resolveLatestBrokerHistoryAuditEvents(secondSource)).toHaveLength(2);
+  });
+
   it('classifies external cashflows without posting their amounts to local cash or debt', () => {
     const cashflows = [
       { id: 'div-1', date: '2026-11-01', type: 'Dividend', amount: 12, currency: 'USD' },
       { id: 'fee-1', date: '2026-11-02', type: 'Commission fee', amount: -2, currency: 'USD' },
+      { id: 'fee-positive-magnitude', date: '2026-11-02', type: 'Commission fee', amount: 2, currency: 'USD' },
       { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
+      { id: 'margin-positive-magnitude', date: '2026-11-03', type: 'Margin Fee', amount: 3, currency: 'USD' },
       { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
+      { id: 'deposit-negative-magnitude', date: '2026-11-04', type: 'Deposit', amount: -500, currency: 'USD' },
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
+      { id: 'withdraw-positive-magnitude', date: '2026-11-05', type: 'Withdrawal', amount: 20, currency: 'USD' },
       { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' },
       { id: 'split-1', date: '2026-11-05', type: 'Stock Split', amount: 0, currency: 'USD' }
     ];
     const events = appendBrokerHistoryAuditEvents([], [], cashflows, Date.parse('2026-11-06T09:00:00Z'));
     expect(events.map((event) => event.type)).toEqual([
-      'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'corporate-action'
+      'dividend', 'fee', 'fee', 'margin.interest', 'margin.interest',
+      'cash.deposit', 'cash.deposit', 'cash.withdrawal', 'cash.withdrawal',
+      'cash.transfer', 'corporate-action'
     ]);
-    expect(events[3].externalCashFlowAmount).toBe(500);
-    expect(events[2].financingCost).toBe(3);
-    expect(events[6].externalReferenceId).toBe('split-1');
+    expect(events.find(event => event.externalReferenceId === 'fee-positive-magnitude')?.externalCashFlowAmount).toBe(-2);
+    expect(events.find(event => event.externalReferenceId === 'margin-positive-magnitude')?.externalCashFlowAmount).toBe(-3);
+    expect(events.find(event => event.externalReferenceId === 'deposit-negative-magnitude')?.externalCashFlowAmount).toBe(500);
+    expect(events.find(event => event.externalReferenceId === 'withdraw-positive-magnitude')?.externalCashFlowAmount).toBe(-20);
+    expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
+    expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
+    expect(events.find(event => event.externalReferenceId === 'margin-1')?.financingCost).toBe(3);
+    expect(events.find(event => event.externalReferenceId === 'split-1')?.type).toBe('corporate-action');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
     const replay = replayPortfolioTransactionJournal(events);

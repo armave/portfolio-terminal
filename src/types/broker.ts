@@ -80,7 +80,10 @@ export interface BrokerActiveOrder {
 }
 
 export interface BrokerExecution {
+  /** Stable provider fill/execution identifier; distinct from the parent order ID. */
   id: string;
+  /** Parent order identity when the provider supplies it. */
+  orderId?: string;
   ticker: string;
   side: string;
   quantity: number | null;
