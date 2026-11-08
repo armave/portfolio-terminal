@@ -6,6 +6,9 @@ import {
   loadSavedState,
   loadSavedHistory,
   saveSavedHistory,
+  initializeSavedHistoryStorage,
+  flushSavedHistoryPersistence,
+  clearSavedHistoryPersistence,
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
@@ -48,10 +51,11 @@ describe('storage service', () => {
     }
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     storageMap.clear();
     vi.clearAllMocks();
     vi.stubGlobal('localStorage', localStorageMock);
+    await clearSavedHistoryPersistence();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -128,7 +132,8 @@ describe('storage service', () => {
       errorSpy.mockRestore();
     });
 
-    it('rolls back the portfolio state when its changed history sidecar cannot be saved', () => {
+    it('commits compact portfolio state even when the legacy localStorage history fallback is full', async () => {
+      vi.stubGlobal('indexedDB', undefined);
       const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
       const previousHistory = JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
@@ -145,18 +150,26 @@ describe('storage service', () => {
       };
       const onPushToGist = vi.fn();
       localStorageMock.setItem.mockImplementation((key: string, value: string) => {
-        if (key === 'portfolio_closed_history_v1') throw new Error('quota exceeded');
+        if (key === 'portfolio_closed_history_v1') {
+          const error = new Error('quota exceeded') as Error & { name: string };
+          error.name = 'QuotaExceededError';
+          throw error;
+        }
         storageMap.set(key, String(value));
       });
 
-      expect(saveState(state, onPushToGist)).toBe(false);
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      expect(saveState(state, onPushToGist)).toBe(true);
+      await flushSavedHistoryPersistence();
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!)).toMatchObject({
+        activeView: 'MSFT',
+        balance: 250
+      });
       expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
-      expect(state.lastUpdated).toBe(123);
-      expect(onPushToGist).not.toHaveBeenCalled();
+      expect(state.lastUpdated).not.toBe(123);
+      expect(onPushToGist).toHaveBeenCalledWith(false);
     });
 
-    it('commits blank portfolio, explicit empty history, and device view together', () => {
+    it('commits blank portfolio, explicit empty IndexedDB history, and device view together', async () => {
       const state = { activeView: 'COMBINED', balance: 0, lastUpdated: 123 };
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({ activeView: 'AAPL', balance: 100 }));
       storageMap.set('portfolio_closed_history_v1', JSON.stringify({
@@ -165,7 +178,7 @@ describe('storage service', () => {
       }));
       storageMap.set('portfolio_active_view', 'AAPL');
 
-      expect(savePortfolioSnapshot(
+      expect(await savePortfolioSnapshot(
         state,
         { brokerExecutedTrades: [], cashflows: [] },
         { deviceActiveView: 'COMBINED' }
@@ -175,15 +188,13 @@ describe('storage service', () => {
         activeView: 'COMBINED',
         balance: 0
       });
-      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
-        brokerExecutedTrades: [],
-        cashflows: []
-      });
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
       expect(storageMap.get('portfolio_active_view')).toBe('COMBINED');
       expect(state.lastUpdated).toBeGreaterThanOrEqual(123);
     });
 
-    it('rolls back portfolio and history when a later device-preference write fails', () => {
+    it('rolls back IndexedDB history when a later device-preference write fails', async () => {
       const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
       const previousHistory = JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
@@ -198,14 +209,14 @@ describe('storage service', () => {
         storageMap.set(key, String(value));
       });
 
-      expect(savePortfolioSnapshot(
+      expect(await savePortfolioSnapshot(
         state,
         { brokerExecutedTrades: [], cashflows: [] },
         { deviceActiveView: 'COMBINED' }
       )).toBe(false);
 
       expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
-      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
+      expect(loadSavedHistory()).toEqual(JSON.parse(previousHistory));
       expect(storageMap.get('portfolio_active_view')).toBe('AAPL');
       expect(state.lastUpdated).toBe(123);
     });
@@ -547,15 +558,16 @@ describe('storage service', () => {
   });
 
   describe('separate closed history persistence', () => {
-    it('migrates history embedded in a legacy portfolio snapshot when the sidecar is absent', () => {
+    it('migrates history embedded in a legacy portfolio snapshot without rewriting localStorage', async () => {
       const expected = {
         brokerExecutedTrades: [{ id: 'legacy-trade', ticker: 'AAPL' }],
         cashflows: [{ id: 'legacy-fee', amount: -2 }]
       };
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
 
+      await initializeSavedHistoryStorage();
       expect(loadSavedHistory()).toEqual(expected);
-      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual(expected);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
     it('recovers embedded history without overwriting an unreadable sidecar', () => {
@@ -573,26 +585,32 @@ describe('storage service', () => {
       expect(warning).toHaveBeenCalledWith('Failed to parse saved closed history:', expect.any(SyntaxError));
     });
 
-    it('persists an explicit empty history snapshot so a full reset cannot restore old rows', () => {
+    it('persists an explicit empty IndexedDB history snapshot so a full reset cannot restore old rows', async () => {
       storageMap.set('portfolio_closed_history_v1', JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
         cashflows: [{ id: 'old-fee' }]
       }));
+      await initializeSavedHistoryStorage();
 
-      expect(saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(true);
+      expect(await saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(true);
       expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
-      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
-        brokerExecutedTrades: [],
-        cashflows: []
-      });
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
     });
 
-    it('reports when the separate history record cannot be persisted', () => {
-      localStorageMock.setItem.mockImplementationOnce(() => {
-        throw new Error('quota exceeded');
+    it('reports when IndexedDB and the bounded legacy history fallback are unavailable', async () => {
+      vi.stubGlobal('indexedDB', undefined);
+      await initializeSavedHistoryStorage();
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_closed_history_v1') throw new Error('quota exceeded');
+        storageMap.set(key, String(value));
       });
 
-      expect(saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(false);
+      expect(await saveSavedHistory({
+        brokerExecutedTrades: Array.from({ length: 5000 }, (_, index) => ({
+          id: String(index), raw: 'large-history-row'.repeat(20)
+        })),
+        cashflows: []
+      })).toBe(false);
     });
   });
 
@@ -631,3 +649,30 @@ describe('storage service', () => {
     });
   });
 });
+
+
+  describe('large history localStorage isolation', () => {
+    it('stores large closed history in IndexedDB and keeps the localStorage sidecar absent', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const history = {
+        brokerExecutedTrades: Array.from({ length: 250 }, (_, index) => ({
+          id: `trade-${index}`,
+          ticker: 'AAPL',
+          raw: 'execution-metadata-'.repeat(120)
+        })),
+        cashflows: Array.from({ length: 80 }, (_, index) => ({
+          id: `cashflow-${index}`,
+          raw: 'cashflow-metadata-'.repeat(60)
+        }))
+      };
+      expect(saveState({
+        activeView: 'COMBINED',
+        brokerExecutedTrades: history.brokerExecutedTrades,
+        cashflows: history.cashflows
+      })).toBe(true);
+      await flushSavedHistoryPersistence();
+
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(loadSavedHistory()).toEqual(history);
+    });
+  });
