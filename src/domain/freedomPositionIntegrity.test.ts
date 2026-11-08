@@ -95,6 +95,38 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     ])).toEqual([]);
   });
 
+  it('uses field-specific numeric TradeNet codes and detects short order actions', () => {
+    const marginBuy = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 2, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { operation: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
+    const historySell = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { type: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
+    const shortAction = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { oper: '4', instr_nm: 'AAPL', q: 2 }
+    }]);
+
+    expect(marginBuy).toEqual([]);
+    expect(historySell).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'unmatched_sell_quantity'
+    }));
+    expect(shortAction).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'short_execution_unsupported'
+    }));
+  });
+
   it('flags executions without an instrument identifier and retains their raw evidence', () => {
     const raw = { operation: 'SELL_SHORT', q: 2, p: 100 };
     expect(collectFreedomPositionIntegrityIssues({
