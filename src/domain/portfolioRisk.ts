@@ -461,7 +461,7 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
   const marginByAccount = buildMarginRisk(
     positions, capital, input.brokerAssumptions ?? [], input.brokerRequirements ?? [], calculatedAt
   );
-  const portfolioQuality = marginByAccount.status === 'provisional' ? 'provisional' : quality;
+  const portfolioQuality = marginByAccount.status === 'available' ? quality : 'provisional';
   if (marginByAccount.status === 'unavailable') warnings.push('Margin risk unavailable: ' + marginByAccount.reason);
   else warnings.push(...marginByAccount.warnings);
 

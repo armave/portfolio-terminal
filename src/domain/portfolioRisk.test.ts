@@ -121,7 +121,7 @@ describe('calculatePortfolioRiskSnapshot', () => {
     });
     expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
-    expect(result.value.portfolio.status).toBe('available');
+    expect(result.value.portfolio.status).toBe('provisional');
     expect(result.value.marginByAccount.status).toBe('unavailable');
     if (result.value.marginByAccount.status !== 'unavailable') return;
     expect(result.value.marginByAccount.reason).toContain('no matching broker/account/currency capital snapshot');
@@ -135,12 +135,12 @@ describe('calculatePortfolioRiskSnapshot', () => {
       positions: [{ ...base.positions[0], accountId: null }],
       capital: [{ ...base.capital[0], accountId: 'margin', debt: 300 }]
     });
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     expect(result.value.marginByAccount.status).toBe('unavailable');
     if (result.value.marginByAccount.status !== 'unavailable') return;
     expect(result.value.marginByAccount.reason).toContain('cannot be assigned safely');
-    expect(result.value.portfolio.status).toBe('available');
+    expect(result.value.portfolio.status).toBe('provisional');
     if (result.value.portfolio.status === 'unavailable') return;
     expect(result.value.portfolio.value.margin.status).toBe('unavailable');
 
