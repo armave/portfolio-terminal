@@ -86,7 +86,7 @@ export interface FreedomReconciliationResult {
   positions: Record<string, FreedomReconciliationPosition>;
   cashStocks: CashStockHolding[];
   mismatches: FreedomQuantityMismatch[];
-  positionIntegrityIssues: BrokerPositionIntegrityIssue[];
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
 export interface FreedomPortfolioClassificationResult {
@@ -643,7 +643,7 @@ export function classifyFreedomPortfolio(
       averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
     };
   });
-  return { positions, cashStocks, positionIntegrityIssues };
+  return { positions, cashStocks, ...(positionIntegrityIssues.length ? { positionIntegrityIssues } : {}) };
 }
 
 
@@ -758,6 +758,6 @@ export function reconcileFreedomPortfolio(
     positions,
     cashStocks,
     mismatches,
-    positionIntegrityIssues
+    ...(positionIntegrityIssues.length ? { positionIntegrityIssues } : {})
   };
 }
