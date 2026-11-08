@@ -17,7 +17,7 @@ describe('MarginDigestSecurityPanel', () => {
     expect(source).toContain('currentUserId');
     expect(source).toContain('result.conflicts');
     expect(source).toContain('if (totalConflicts > 0) cursor = null;');
-    expect(source).toContain('encrypted records are skipped idempotently.');
+    expect(source).toContain('// records are skipped idempotently.');
     expect(source).toContain('Older encrypted records are not processed by the batch tool.');
     expect(source).toContain('Unreadable records are preserved.');
   });
