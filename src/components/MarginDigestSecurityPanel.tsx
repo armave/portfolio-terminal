@@ -88,6 +88,10 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         }
       }
 
+      // A CAS conflict can refer to a key before the current cursor. Restart
+      // from the first page so the next run retries that record; encrypted
+      // records are skipped idempotently.
+      if (totalConflicts > 0) cursor = null;
       setMigrationCursor(cursor);
       const next = await fetchMarginDigestMigrationInventory();
       setInventory(next);
