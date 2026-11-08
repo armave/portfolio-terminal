@@ -36,6 +36,11 @@ import {
   type PortfolioCorporateActionEvent
 } from '../services/corporateActions';
 import {
+  isMarketHistoryCorrectionEventList,
+  mergeMarketHistoryCorrectionEvents,
+  type MarketHistoryCorrectionEvent
+} from '../services/marketHistoryCorrections';
+import {
   loadSavedState,
   saveState,
   loadBrokerRules,
@@ -100,6 +105,7 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'guestTrancheLedger',
     'transactionEvents',
     'corporateActionEvents',
+    'marketHistoryCorrections',
     'performanceValuations'
   ] as const;
   for (const field of arrayFields) {
@@ -138,6 +144,10 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
   }
   if (Object.prototype.hasOwnProperty.call(value, 'corporateActionEvents') &&
       value.corporateActionEvents !== undefined && !isPortfolioCorporateActionEventList(value.corporateActionEvents)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'marketHistoryCorrections') &&
+      value.marketHistoryCorrections !== undefined && !isMarketHistoryCorrectionEventList(value.marketHistoryCorrections)) {
     return false;
   }
 
@@ -414,6 +424,10 @@ export class PortfolioStore {
         isPortfolioCorporateActionEventList(raw.corporateActionEvents)
         ? raw.corporateActionEvents
         : [],
+      marketHistoryCorrections: Array.isArray(raw.marketHistoryCorrections) &&
+        isMarketHistoryCorrectionEventList(raw.marketHistoryCorrections)
+        ? raw.marketHistoryCorrections
+        : [],
       performanceValuations: Array.isArray(raw.performanceValuations)
         ? raw.performanceValuations.filter(isPerformanceValuationSnapshot).slice(-1095)
         : [],
@@ -648,7 +662,8 @@ export class PortfolioStore {
     // The append-only journal can only be changed by audited financial
     // commands or by the validated import/merge path below.
     if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
-        Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents')) return false;
+        Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents') ||
+        Object.prototype.hasOwnProperty.call(partial, 'marketHistoryCorrections')) return false;
     return this.update((state) => ({
       ...state,
       ...partial
@@ -685,6 +700,17 @@ export class PortfolioStore {
         return false;
       }
     }
+    let mergedHistoryCorrections = this.state.marketHistoryCorrections || [];
+    if (Array.isArray(newState.marketHistoryCorrections)) {
+      try {
+        mergedHistoryCorrections = mergeMarketHistoryCorrectionEvents(
+          mergedHistoryCorrections,
+          newState.marketHistoryCorrections
+        );
+      } catch {
+        return false;
+      }
+    }
 
     return this.update((state) => ({
       ...state,
@@ -692,7 +718,8 @@ export class PortfolioStore {
       // Imports append/merge history; an older backup may never erase events
       // already committed on this device.
       transactionEvents: mergedEvents,
-      corporateActionEvents: mergedCorporateActions
+      corporateActionEvents: mergedCorporateActions,
+      marketHistoryCorrections: mergedHistoryCorrections
     }));
   }
 
@@ -1987,6 +2014,27 @@ export class PortfolioStore {
         }
       };
     });
+  }
+
+  /** Append a reproducible historical candle correction without rewriting provider history. */
+  public recordMarketHistoryCorrection(
+    event: MarketHistoryCorrectionEvent
+  ): MarketHistoryCorrectionEvent | null {
+    if (!isMarketHistoryCorrectionEventList(this.state.marketHistoryCorrections || [])) return null;
+    let committed: MarketHistoryCorrectionEvent | null = null;
+    const saved = this.update(state => {
+      try {
+        const merged = mergeMarketHistoryCorrectionEvents(
+          state.marketHistoryCorrections || [],
+          [event]
+        );
+        committed = merged.find(item => item.sourceId === event.sourceId) ?? event;
+        return { ...state, marketHistoryCorrections: merged };
+      } catch {
+        return state;
+      }
+    });
+    return saved ? committed : null;
   }
 
   /**
