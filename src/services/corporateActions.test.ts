@@ -121,6 +121,42 @@ describe('corporate-action history', () => {
 });
 
 describe('split position adjustment', () => {
+  it('adjusts a reverse split while conserving total acquisition cost', () => {
+    const reverse = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2000-06-21', fromFactor: 2, toFactor: 1 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt }).events[0];
+    const position: PositionRecord = {
+      ...preSplitPosition,
+      shares: 10,
+      currentPrice: 500,
+      pt: 600,
+      tranches: [{ qty: 10, price: 100, date: '1999-01-02' }],
+      quoteDetails: {
+        ...preSplitPosition.quoteDetails,
+        sourceTimestamp: Date.parse('2000-06-20T20:00:00.000Z')
+      }
+    };
+    const result = adjustPositionForSplit(position, reverse);
+    expect(result.status).toBe('applied');
+    if (result.status !== 'applied') return;
+    expect(result.position).toMatchObject({
+      shares: 5,
+      currentPrice: 1000,
+      pt: 1200,
+      tranches: [{ qty: 5, price: 200 }]
+    });
+    expect(result.costBasisBefore).toBe(1000);
+    expect(result.costBasisAfter).toBe(1000);
+  });
+
+  it('rejects a split multiplier that disagrees with the provider factors', () => {
+    const inconsistent = { ...splitEvent(), sharesAfterPerShareBefore: 2 };
+    expect(adjustPositionForSplit(preSplitPosition, inconsistent)).toMatchObject({
+      status: 'review_required',
+      reason: 'The corporate-action split ratio does not reconcile to its source factors.'
+    });
+  });
+
   it('adjusts all pre-action lots, conserves acquisition cost and marks an old quote stale', () => {
     const result = adjustPositionForSplit(preSplitPosition, splitEvent());
     expect(result.status).toBe('applied');

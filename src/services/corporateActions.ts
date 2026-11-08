@@ -321,7 +321,12 @@ function isCorporateActionFeedEvent(value: unknown): value is CorporateActionEve
        (value.declarationDate == null || dateOnly(value.declarationDate) !== null))) &&
     (value.kind === 'cash_dividend' ||
       (positiveFinite(value.fromFactor) !== null && positiveFinite(value.toFactor) !== null &&
-       positiveFinite(value.sharesAfterPerShareBefore) !== null));
+       positiveFinite(value.sharesAfterPerShareBefore) !== null &&
+       Math.abs(Number(value.sharesAfterPerShareBefore) -
+         Number(value.toFactor) / Number(value.fromFactor)) <=
+         Math.max(1e-10, Math.abs(Number(value.toFactor) / Number(value.fromFactor)) * 1e-8) &&
+       ((value.kind === 'stock_split' && Number(value.toFactor) > Number(value.fromFactor)) ||
+        (value.kind === 'reverse_split' && Number(value.toFactor) < Number(value.fromFactor)))));
 }
 
 function isPortfolioCorporateActionEvent(value: unknown): value is PortfolioCorporateActionEvent {
@@ -441,9 +446,15 @@ export function adjustPositionForSplit(
     };
   }
   const multiplier = positiveFinite(event.sharesAfterPerShareBefore);
-  if (multiplier === null || (event.kind === 'stock_split' && multiplier <= 1) ||
+  const fromFactor = positiveFinite(event.fromFactor);
+  const toFactor = positiveFinite(event.toFactor);
+  const factorRatio = fromFactor !== null && toFactor !== null ? toFactor / fromFactor : null;
+  const ratioTolerance = factorRatio === null ? 0 : Math.max(1e-10, Math.abs(factorRatio) * 1e-8);
+  if (multiplier === null || factorRatio === null || !Number.isFinite(factorRatio) ||
+      Math.abs(multiplier - factorRatio) > ratioTolerance ||
+      (event.kind === 'stock_split' && multiplier <= 1) ||
       (event.kind === 'reverse_split' && multiplier >= 1)) {
-    return { status: 'review_required', reason: 'The corporate-action split ratio is invalid.' };
+    return { status: 'review_required', reason: 'The corporate-action split ratio does not reconcile to its source factors.' };
   }
   const effectiveAt = Date.parse(event.effectiveDate + 'T00:00:00.000Z');
   if (!Number.isFinite(effectiveAt) || effectiveAt > Date.now()) {
