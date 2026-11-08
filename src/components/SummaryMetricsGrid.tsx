@@ -171,7 +171,7 @@ function MarginRiskGaugeCard({
               aria-label={translateText(bufferLabel, language)}
               aria-valuemin={0}
               aria-valuemax={ACCOUNT_EQUITY_HEALTH_REFERENCE * 100}
-              aria-valuenow={buffer ? Math.max(0, Math.min(40, buffer.percentage)) : 0}
+              aria-valuenow={buffer ? Math.max(0, Math.min(ACCOUNT_EQUITY_HEALTH_REFERENCE * 100, buffer.percentage)) : 0}
               aria-valuetext={buffer ? buffer.percentage.toFixed(1) + '%' : translateText('Buffer unavailable', language)}
             >
               <span class="margin-risk-mini-fill margin-risk-buffer-fill" style={{ width: bufferWidth + '%' }} />

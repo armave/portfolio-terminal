@@ -131,7 +131,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('valuationStatus={positionValuationStatus}');
     expect(source).toContain('cashHoldingsForQuotes');
     expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
-    expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)");
+    expect(source).toContain("valuationStatus === 'incomplete'");
+    expect(source).toContain('Margin risk estimate unavailable until the account balance and every holding can be valued.');
     expect(source).not.toContain('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times.');
   });
 
