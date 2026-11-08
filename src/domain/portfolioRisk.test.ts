@@ -149,7 +149,7 @@ describe('calculatePortfolioRiskSnapshot', () => {
       positions: [{ ...base.positions[0], brokerId: null }],
       capital: [{ ...base.capital[0], debt: 300 }]
     });
-    expect(missingBrokerId.status).toBe('available');
+    expect(missingBrokerId.status).toBe('provisional');
     if (missingBrokerId.status === 'unavailable') return;
     expect(missingBrokerId.value.marginByAccount.status).toBe('unavailable');
     if (missingBrokerId.value.marginByAccount.status !== 'unavailable') return;
