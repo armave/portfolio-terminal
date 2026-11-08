@@ -2668,14 +2668,19 @@ export class PortfolioStateDO {
       return respond({ error: "Digest migration limit or cursor is invalid." }, 400);
     }
 
+    // Read one extra key so an exactly-full final page can report completion
+    // without requiring an empty follow-up request from the client.
     const page = await this.ctx.storage.list({
       prefix,
-      limit,
+      limit: limit + 1,
       ...(cursor ? { startAfter: cursor } : {})
     });
     if (!page || typeof page.entries !== "function" || typeof page.size !== "number") {
       return respond({ error: "Digest migration batch could not be read." }, 503);
     }
+    const listedEntries = [...page.entries()];
+    const batchEntries = listedEntries.slice(0, limit);
+    const hasMore = listedEntries.length > limit;
 
     const keyMaterial = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
     if (typeof keyMaterial !== "string" || !keyMaterial) {
@@ -2693,7 +2698,7 @@ export class PortfolioStateDO {
 
     const result = { scanned: 0, migrated: 0, alreadyEncrypted: 0, unreadable: 0, conflicts: 0 };
     let lastKey = null;
-    for (const [storageKey, listedRecord] of page.entries()) {
+    for (const [storageKey, listedRecord] of batchEntries) {
       lastKey = storageKey;
       result.scanned += 1;
       const category = inspect(listedRecord, storageKey);
@@ -2736,8 +2741,8 @@ export class PortfolioStateDO {
 
     return respond({
       ...result,
-      nextCursor: page.size === limit ? lastKey : null,
-      done: page.size < limit
+      nextCursor: hasMore ? lastKey : null,
+      done: !hasMore
     });
   }
 
