@@ -160,7 +160,7 @@ describe('Margin Intelligence encryption migration controls', () => {
 describe('guest Settings layout', () => {
   it('uses a single full-width action column for guests instead of leaving an empty second column', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    const styles = readFileSync(new URL('../../../style.css', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     expect(source).toContain("account?.role === 'guest' ? 'settings-account-actions--guest' : ''");
     expect(styles).toContain('#settingsDesk .settings-account-actions--guest');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr);');

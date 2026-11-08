@@ -3707,7 +3707,7 @@ table tbody tr:hover {
   width: 100%;
 }
 
-#settingsDesk .settings-account-actions>* ,
+#settingsDesk .settings-account-actions>*,
 #settingsDesk .settings-backup-actions>* {
   width: 100%;
   min-width: 0;
