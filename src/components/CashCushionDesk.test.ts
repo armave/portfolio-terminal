@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  buildCashHoldingTableRows,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
   getAssignedGuestIds,
-  getCashHoldingMarketPrice
+  getCashHoldingMarketPrice,
+  shouldShowCashHoldingMarketDepth
 } from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 
@@ -148,15 +150,50 @@ describe('cash holdings quote context', () => {
     expect(deskSource).toContain('Provider-reported volume; reporting period may vary by source.');
   });
 
-  it('adds Market Depth only to administrator holdings table rows, not guest holding cards', () => {
+  it('shows administrator Market Depth controls only during an open US equity session', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
     const marketDepthAction = deskSource.indexOf("emitUiEvent('terminal:market-depth-request'");
     const guestCards = deskSource.indexOf('guestHoldings.map((holding)');
 
     expect(marketDepthAction).toBeGreaterThan(-1);
-    expect(deskSource).toMatch(/\{isAdmin && <button[\s\S]{0,500}emitUiEvent\('terminal:market-depth-request'/);
+    expect(deskSource).toMatch(/\{isAdmin && marketDepthAvailable && <button[\s\S]{0,500}emitUiEvent\('terminal:market-depth-request'/);
+    expect(deskSource).toContain("window.setInterval(refreshMarketSession, 30_000)");
+    expect(deskSource).toContain("window.addEventListener('focus', refreshMarketSession)");
     expect(guestCards).toBeGreaterThan(-1);
     expect(deskSource.slice(guestCards, marketDepthAction)).not.toContain("emitUiEvent('terminal:market-depth-request'");
+  });
+
+  it('keeps the row-level depth control hidden during closed sessions, weekends and holidays', () => {
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-02T12:00:00.000Z'))).toBe(true);
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-02T15:00:00.000Z'))).toBe(true);
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-02T22:00:00.000Z'))).toBe(true);
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-03T02:00:00.000Z'))).toBe(false);
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-07T15:00:00.000Z'))).toBe(false);
+    expect(shouldShowCashHoldingMarketDepth(new Date('2026-11-26T15:00:00.000Z'))).toBe(false);
+  });
+
+  it('renders group heading rows as stable siblings, independent of the first holding row', () => {
+    const groups = [
+      { key: 'guest-a', label: 'AM', holdings: [{ ticker: 'GOOGL' }, { ticker: 'MSFT' }] },
+      { key: 'guest-b', label: 'SU', holdings: [{ ticker: 'AAPL' }] }
+    ];
+    expect(buildCashHoldingTableRows(groups, true)).toEqual([
+      { type: 'group', key: 'group-guest-a', label: 'AM' },
+      { type: 'holding', key: 'holding-guest-a-GOOGL', holding: { ticker: 'GOOGL' } },
+      { type: 'holding', key: 'holding-guest-a-MSFT', holding: { ticker: 'MSFT' } },
+      { type: 'group', key: 'group-guest-b', label: 'SU' },
+      { type: 'holding', key: 'holding-guest-b-AAPL', holding: { ticker: 'AAPL' } }
+    ]);
+    expect(buildCashHoldingTableRows(groups, false).map((row) => row.type))
+      .toEqual(['holding', 'holding', 'holding']);
+  });
+
+  it('does not nest the group heading inside a conditional holding fragment', () => {
+    const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    expect(deskSource).toContain("buildCashHoldingTableRows(displayHoldingGroups, isAdmin)");
+    expect(deskSource).toContain("if (row.type === 'group')");
+    expect(deskSource).not.toContain('<Fragment key={`${h.groupKey}-${h.ticker}`}>');
+    expect(deskSource).not.toContain('h.isGroupStart');
   });
 });
 
