@@ -100,44 +100,24 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     ]));
   });
 
-  it('uses field-specific numeric TradeNet codes and detects short order actions', () => {
-    const marginBuy = collectFreedomPositionIntegrityIssues({
-      positions: [{ ticker: 'AAPL', quantity: 2, direction: 'long' }]
-    }, [{
-      ticker: 'AAPL',
-      side: 'Unknown',
-      raw: { oper: '2', instr_nm: 'AAPL', q: 2 }
-    }]);
+  it('uses documented trade-history type codes and leaves undocumented numeric order aliases unresolved', () => {
     const historySell = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
-    }, [{
-      ticker: 'AAPL',
-      side: 'Unknown',
-      raw: { type: '2', instr_nm: 'AAPL', q: 2 }
-    }]);
-    const shortAction = collectFreedomPositionIntegrityIssues({
+    }, [{ ticker: 'AAPL', side: 'Unknown', raw: { type: '2', instr_nm: 'AAPL', q: 2 } }]);
+    const numericOperBuy = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
-    }, [{
-      ticker: 'AAPL',
-      side: 'Unknown',
-      raw: { oper: '4', instr_nm: 'AAPL', q: 2 }
-    }]);
-    const undocumentedOperation = collectFreedomPositionIntegrityIssues({
+    }, [{ ticker: 'AAPL', side: 'Unknown', raw: { oper: '2', instr_nm: 'AAPL', q: 1 } }]);
+    const numericOperShort = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
-    }, [{
-      ticker: 'AAPL',
-      side: 'Unknown',
-      raw: { operation: '2', instr_nm: 'AAPL', q: 2 }
-    }]);
+    }, [{ ticker: 'AAPL', side: 'Unknown', raw: { oper: '4', instr_nm: 'AAPL', q: 1 } }]);
 
-    expect(marginBuy).toEqual([]);
     expect(historySell).toContainEqual(expect.objectContaining({
       ticker: 'AAPL', code: 'unmatched_sell_quantity'
     }));
-    expect(shortAction).toContainEqual(expect.objectContaining({
-      ticker: 'AAPL', code: 'short_execution_unsupported'
+    expect(numericOperBuy).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'unknown_execution_side'
     }));
-    expect(undocumentedOperation).toContainEqual(expect.objectContaining({
+    expect(numericOperShort).toContainEqual(expect.objectContaining({
       ticker: 'AAPL', code: 'unknown_execution_side'
     }));
   });

@@ -376,7 +376,7 @@ export function getActiveTranchesFromTrades(
       [trade?.type, 'history'],
       [raw.side, 'text'],
       [raw.operation, 'text'],
-      [raw.oper, 'order'],
+      [raw.oper, 'text'],
       [raw.buy_sell, 'text'],
       [raw.type, 'history'],
     ].map(([value, numericKind]) => tradeSide(value, numericKind as 'text' | 'order' | 'history'))

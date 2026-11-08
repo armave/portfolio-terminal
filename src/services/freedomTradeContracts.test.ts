@@ -197,15 +197,30 @@ describe('Freedom execution contract normalization', () => {
   });
 
 
-  it('uses field-specific numeric TradeNet codes and does not guess undocumented operation aliases', () => {
+  it('uses only the documented trade-history type codes and leaves numeric execution aliases unknown', () => {
     const [historySell] = normalizeFreedomTrades({ items: [{ instr_nm: 'AAPL.US', type: '2', q: 1, p: 100 }] });
-    const [marginBuy] = normalizeFreedomTrades({ items: [{ instr_nm: 'MSFT.US', oper: '2', q: 1, p: 100 }] });
-    const [shortSell] = normalizeFreedomTrades({ items: [{ instr_nm: 'NVDA.US', oper: '4', q: 1, p: 100 }] });
+    const [numericOperBuy] = normalizeFreedomTrades({ items: [{ instr_nm: 'MSFT.US', oper: '2', q: 1, p: 100 }] });
+    const [numericOperShort] = normalizeFreedomTrades({ items: [{ instr_nm: 'NVDA.US', oper: '4', q: 1, p: 100 }] });
     const [unknownOperation] = normalizeFreedomTrades({ items: [{ instr_nm: 'META.US', operation: '2', q: 1, p: 100 }] });
     expect(historySell.side).toBe('SELL');
-    expect(marginBuy.side).toBe('BUY');
-    expect(shortSell.side).toBe('SELL_SHORT');
+    expect(numericOperBuy.side).toBe('Unknown');
+    expect(numericOperShort.side).toBe('Unknown');
     expect(unknownOperation.side).toBe('Unknown');
+  });
+
+  it('preserves an undocumented numeric order-fill side instead of guessing its meaning', () => {
+    const [fill] = normalizeFreedomOrderFills({
+      trades: { trade: [{
+        id: 8001,
+        order_id: 800,
+        instr: 'AAPL.US',
+        side: 4,
+        q: 1,
+        p: 100
+      }] }
+    });
+    expect(fill.side).toBe('Unknown');
+    expect(fill.raw.side).toBe(4);
   });
 
   it('preserves a buy-to-cover execution as a distinct action', () => {

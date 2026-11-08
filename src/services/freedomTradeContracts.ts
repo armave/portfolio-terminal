@@ -53,15 +53,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
       .find((side): side is 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' => side !== null);
     if (textual) return textual;
 
-    // Order/action fields use 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
-    // Do not apply this mapping to the separate trade-history type field.
-    for (const value of [row.oper, row.action_id]) {
-      const code = String(value ?? '').trim();
-      if (code === '1' || code === '2') return 'BUY';
-      if (code === '3') return 'SELL';
-      if (code === '4') return 'SELL_SHORT';
-    }
-
+    // Numeric aliases outside the documented trade-history `type` field remain unknown.
     // Trade-history type uses 1=Buy and 2=Sell.
     const historyType = String(row.type ?? '').trim();
     if (historyType === '1') return 'BUY';
@@ -150,18 +142,18 @@ export function normalizeFreedomOrderFills(response: unknown): FreedomExecutedTr
 
   const sideForOrderOperation = (value: unknown): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
     const operation = String(value ?? '').trim().toUpperCase();
-    if (operation === '1' || operation === '2' || operation === 'BUY') return 'BUY';
-    if (operation === '3' || operation === 'SELL') return 'SELL';
-    if (operation === '4' || operation === 'SELL_SHORT' || operation === 'SELL SHORT') return 'SELL_SHORT';
+    if (operation === 'BUY') return 'BUY';
+    if (operation === 'SELL') return 'SELL';
+    if (operation === 'SELL_SHORT' || operation === 'SELL SHORT') return 'SELL_SHORT';
     return null;
   };
   const normalizedRows = rows.flatMap((value) => {
     const row = asRecord(value);
     if (!row) return [];
-    const side = sideForOrderOperation(row.side) ?? sideForOrderOperation(row.operation) ?? 'Unknown';
+    const side = sideForOrderOperation(row.side) ?? sideForOrderOperation(row.operation);
     return [{
       ...row,
-      side: side || 'Unknown',
+      ...(side ? { side } : {}),
       curr: row.curr ?? row.currency ?? '',
       instr: row.instr ?? row.ticker ?? row.symbol ?? ''
     }];

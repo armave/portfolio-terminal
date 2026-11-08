@@ -62,13 +62,7 @@ function resolveTradeSide(
     if (side) return side;
   }
 
-  // TradeNet order/action codes: 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
-  for (const value of [raw.oper]) {
-    const code = String(value ?? '').trim();
-    if (code === '1' || code === '2') return 'buy';
-    if (code === '3') return 'sell';
-    if (code === '4') return 'short';
-  }
+  // Numeric order aliases are not treated as execution direction without a documented fill contract.
 
   // The distinct trade-history type field documents 1=Buy and 2=Sell.
   const historyType = String(raw.type ?? trade.type ?? '').trim();
