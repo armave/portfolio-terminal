@@ -3174,6 +3174,50 @@ describe('portfolio transaction journal integration', () => {
     expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
   });
 
+  it('withholds split adjustment when the latest broker snapshot is stale', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 0,
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02' }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      },
+      brokerAccountInfo: {
+        loaded: true,
+        balances: [],
+        positions: [],
+        status: 'stale',
+        quality: 'complete',
+        snapshotQuality: 'complete',
+        receivedAt: Date.now()
+      }
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({
+      status: 'review_required',
+      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+    });
+    expect(store.getState().positions.AAPL).toEqual(before);
+  });
+
   it('does not partially apply a split when matching cash holdings lack dated lots', () => {
     const store = new PortfolioStore();
     store.importState({
