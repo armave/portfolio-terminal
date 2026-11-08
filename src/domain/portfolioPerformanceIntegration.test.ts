@@ -322,6 +322,58 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(buyReport.reason).toContain('cannot yet be classified');
   });
 
+  it('withholds performance for cash-holding tracking changes without modeled settlements', () => {
+    const removal = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true, [
+          { key: 'cash-holding:VTI', value: 200 },
+          { key: 'cash', value: 800 },
+          { key: 'margin-debt', value: 0 }
+        ]),
+        snapshot(BASE + DAY, 800, true, [
+          { key: 'cash', value: 800 },
+          { key: 'margin-debt', value: 0 }
+        ])
+      ],
+      transactionEvents: [{
+        id: 'cash-holding-remove-1', schemaVersion: 1, type: 'cash-holding.adjustment',
+        actor: { type: 'user' }, source: 'manual-cash-holding-correction',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'VTI', quantity: 2, cashHoldingQuantityDelta: -2
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(removal.status).toBe('unavailable');
+    expect(removal.reason).toContain('cannot yet be classified');
+
+    // An addition without a price has no grossAmount. It must still be rejected
+    // because its later quote would otherwise look like investment profit.
+    const unpricedAddition = buildPortfolioPerformanceReport({
+      performanceValuations: [
+        snapshot(BASE, 1000, true, [
+          { key: 'cash', value: 1000 },
+          { key: 'margin-debt', value: 0 }
+        ]),
+        snapshot(BASE + DAY, 1200, true, [
+          { key: 'cash-holding:VTI', value: 200 },
+          { key: 'cash', value: 1000 },
+          { key: 'margin-debt', value: 0 }
+        ])
+      ],
+      transactionEvents: [{
+        id: 'cash-holding-unpriced-add-1', schemaVersion: 1, type: 'cash-holding.buy',
+        actor: { type: 'user' }, source: 'manual-cash-holding',
+        effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+        ticker: 'VTI', quantity: 2, cashHoldingQuantityDelta: 2, cashDelta: 0
+      }],
+      cashflows: []
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(unpricedAddition.status).toBe('unavailable');
+    expect(unpricedAddition.reason).toContain('cannot yet be classified');
+  });
+
   it('rejects corrected or conflicting broker cashflow revisions instead of counting both versions', () => {
     const report = buildPortfolioPerformanceReport({
       performanceValuations: [
