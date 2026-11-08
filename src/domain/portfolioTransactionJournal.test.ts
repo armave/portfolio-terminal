@@ -9,6 +9,7 @@ import {
   mergePortfolioTransactionEvents,
   normalizePortfolioTransactionIdempotencyKey,
   replayPortfolioTransactionJournal,
+  resolveLatestBrokerHistoryAuditEvents,
   verifyPortfolioTransactionParity
 } from './portfolioTransactionJournal';
 
@@ -258,6 +259,60 @@ describe('broker history audit events', () => {
       fees: 1.5,
       relatedEventId: first[0].id
     });
+  });
+
+  it('records a broker correction that reverts to older facts as a new revision', () => {
+    const original = [{
+      id: 'exec-revert-1',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 2,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1.25,
+      commissionCurrency: 'USD'
+    }];
+    const first = appendBrokerHistoryAuditEvents([], original, [], 1_000);
+    const revised = appendBrokerHistoryAuditEvents(first, [{
+      ...original[0],
+      commission: 1.5
+    }], [], 2_000);
+    const reverted = appendBrokerHistoryAuditEvents(revised, original, [], 3_000);
+
+    expect(reverted).toHaveLength(3);
+    expect(reverted[2]).toMatchObject({
+      externalReferenceId: 'exec-revert-1',
+      fees: 1.25,
+      relatedEventId: revised[1].id
+    });
+    expect(reverted[2].id).not.toBe(first[0].id);
+    expect(appendBrokerHistoryAuditEvents(reverted, original, [], 4_000)).toHaveLength(3);
+    expect(resolveLatestBrokerHistoryAuditEvents(reverted)).toHaveLength(1);
+    expect(resolveLatestBrokerHistoryAuditEvents(reverted)[0].id).toBe(reverted[2].id);
+  });
+
+  it('resolves only the latest broker cashflow revision without deleting audit history', () => {
+    const first = appendBrokerHistoryAuditEvents([], [], [{
+      id: 'div-revision-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 12,
+      currency: 'USD'
+    }], 1_000);
+    const revised = appendBrokerHistoryAuditEvents(first, [], [{
+      id: 'div-revision-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD'
+    }], 2_000);
+
+    expect(revised).toHaveLength(2);
+    expect(revised[1]).toMatchObject({ externalReferenceId: 'div-revision-1', externalCashFlowAmount: 15 });
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)).toHaveLength(1);
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].id).toBe(revised[1].id);
+    expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].relatedEventId).toBe(revised[0].id);
   });
 
   it('classifies external cashflows without posting their amounts to local cash or debt', () => {

@@ -476,6 +476,12 @@ export function appendBrokerHistoryAuditEvents(
     const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross]);
     const fingerprint = hash(facts);
     const previous = executionRefs.get(ref);
+    const requestFingerprint = `broker-execution-v1:${fingerprint}`;
+    // A replay of the latest known facts is a no-op. If the broker reverts to
+    // an earlier value after a later correction, link a new revision to the
+    // current head rather than reusing the historical revision's old key.
+    if (previous?.requestFingerprint === requestFingerprint) continue;
+    const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
       type: 'broker.execution', effectiveAt: timestamp(at, recordedAt), ticker, side, currency, feeCurrency,
       quantity, ...(price ? { unitPrice: price } : {}), ...(gross !== undefined ? { grossAmount: gross } : {}),
@@ -483,9 +489,9 @@ export function appendBrokerHistoryAuditEvents(
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source,
-      idempotencyKey: `broker-execution:${hash(ref)}:${fingerprint}`,
-      requestFingerprint: `broker-execution-v1:${fingerprint}`,
-      eventId: `broker-execution-${hash(ref)}-${fingerprint}`, recordedAt
+      idempotencyKey: `broker-execution:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      requestFingerprint,
+      eventId: `broker-execution-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
     executionRefs.set(ref, event);
@@ -519,6 +525,9 @@ export function appendBrokerHistoryAuditEvents(
     const facts = JSON.stringify([type, date, amount, currency, raw.description]);
     const fingerprint = hash(facts);
     const previous = cashflowRefs.get(ref);
+    const requestFingerprint = `broker-cashflow-v1:${fingerprint}`;
+    if (previous?.requestFingerprint === requestFingerprint) continue;
+    const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
       type, effectiveAt: timestamp(date, recordedAt), currency, externalReferenceId: ref,
       externalCashFlowAmount: amount, grossAmount: Math.abs(amount),
@@ -527,12 +536,46 @@ export function appendBrokerHistoryAuditEvents(
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source: `${source}-cashflow`,
-      idempotencyKey: `broker-cashflow:${hash(ref)}:${fingerprint}`,
-      requestFingerprint: `broker-cashflow-v1:${fingerprint}`,
-      eventId: `broker-cashflow-${hash(ref)}-${fingerprint}`, recordedAt
+      idempotencyKey: `broker-cashflow:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      requestFingerprint,
+      eventId: `broker-cashflow-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
     cashflowRefs.set(ref, event);
   }
   return freezePortfolioTransactionEventList(events);
+}
+
+/**
+ * Resolve the current broker-audit observation for each provider reference.
+ * Older revisions remain in the append-only journal and are linked through
+ * relatedEventId, but callers that need current facts must not treat every
+ * revision as a separate execution or cashflow.
+ */
+export function resolveLatestBrokerHistoryAuditEvents(
+  events: readonly PortfolioTransactionEvent[]
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(events)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+  const latest = new Map<string, PortfolioTransactionEvent>();
+  for (const event of events) {
+    if (event.actor.type !== 'broker' || !event.externalReferenceId) continue;
+    const family = event.type === 'broker.execution'
+      ? 'execution'
+      : event.idempotencyKey?.startsWith('broker-cashflow:')
+        ? 'cashflow'
+        : null;
+    if (!family) continue;
+    const key = `${family}:${event.source}:${event.externalReferenceId}`;
+    const previous = latest.get(key);
+    // Journal order is authoritative for equal recordedAt values, allowing a
+    // correction recorded in the same millisecond to supersede the prior row.
+    if (!previous || event.recordedAt >= previous.recordedAt) latest.set(key, event);
+  }
+  return freezePortfolioTransactionEventList(
+    [...latest.values()].sort((left, right) =>
+      left.effectiveAt - right.effectiveAt || left.recordedAt - right.recordedAt
+    )
+  );
 }
