@@ -3759,6 +3759,10 @@ table tbody tr:hover {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  #settingsDesk .settings-account-actions--guest {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   #settingsDesk .settings-sync-button {
     grid-column: auto;
   }
