@@ -25,6 +25,8 @@ interface PositionIntegrityTrade {
   executedAt?: unknown;
   date?: unknown;
   time?: unknown;
+  operation?: unknown;
+  type?: unknown;
   raw?: Record<string, unknown>;
 }
 
@@ -47,6 +49,33 @@ function normalizedTradeSide(value: unknown): 'buy' | 'sell' | 'short' | 'cover'
   return null;
 }
 
+function resolveTradeSide(
+  trade: PositionIntegrityTrade,
+  raw: Record<string, unknown>
+): 'buy' | 'sell' | 'short' | 'cover' | null {
+  const textualValues = [
+    trade.side, trade.operation, trade.type,
+    raw.side, raw.operation, raw.oper, raw.buy_sell, raw.type, raw.action_id
+  ];
+  for (const value of textualValues) {
+    const side = normalizedTradeSide(value);
+    if (side) return side;
+  }
+
+  // TradeNet order/action codes: 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
+  for (const value of [raw.oper, raw.action_id, trade.operation, raw.operation]) {
+    const code = String(value ?? '').trim();
+    if (code === '1' || code === '2') return 'buy';
+    if (code === '3') return 'sell';
+    if (code === '4') return 'short';
+  }
+
+  // The distinct trade-history type field documents 1=Buy and 2=Sell.
+  const historyType = String(raw.type ?? trade.type ?? '').trim();
+  if (historyType === '1') return 'buy';
+  if (historyType === '2') return 'sell';
+  return null;
+}
 function timestamp(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const numeric = finiteQuantity(value);
@@ -149,21 +178,22 @@ export function collectFreedomPositionIntegrityIssues(
   );
   const ordered = trades.map((trade, index) => {
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
-    const sideValue = trade?.side ?? raw.side ?? raw.operation ?? raw.oper ?? raw.buy_sell ?? raw.type;
+    const sideValue = [trade?.side, raw.side, trade?.operation, raw.operation, raw.oper, raw.buy_sell, raw.type, raw.action_id]
+      .find(value => value !== null && value !== undefined && value !== '');
     const quantity = finiteQuantity(trade?.quantity ?? trade?.qty ?? raw.q ?? raw.quantity ?? raw.qty);
     const rawTicker = trade?.ticker ?? raw.instr_nm ?? raw.i ?? raw.symbol ?? raw.ticker;
     const ticker = tickerKey(rawTicker);
     const at = timestamp(trade?.executedAt ?? trade?.date ?? trade?.time ?? raw.date ?? raw.time ?? raw.datetime ?? raw.exec_time);
     return {
       index,
-      ticker: ticker || `ROW ${index + 1}`,
+      ticker: ticker || \`ROW \${index + 1}\`,
       hasTicker: Boolean(ticker),
-      side: normalizedTradeSide(sideValue),
+      side: resolveTradeSide(trade, raw),
       rawSide: typeof sideValue === 'string' || typeof sideValue === 'number' ? sideValue : null,
       quantity,
       at,
       raw
-    };
+    }
   }).filter(item => !item.hasTicker || currentTickers.has(item.ticker)).sort((a, b) =>
     (a.at ?? 0) - (b.at ?? 0) || a.index - b.index
   );
@@ -181,6 +211,10 @@ export function collectFreedomPositionIntegrityIssues(
       continue;
     }
     if (item.side === 'short') {
+      // Covers do not make short accounting complete: proceeds and realized short P&L remain unsupported.
+      findings.push(issue(item.ticker, 'short_execution_unsupported', 'execution_history', {
+        rawQuantity: item.quantity, rawSide: item.rawSide, raw: item.raw
+      }));
       openShortQuantity.set(item.ticker, (openShortQuantity.get(item.ticker) || 0) + (item.quantity || 0));
       if (!firstShortEvidence.has(item.ticker)) firstShortEvidence.set(item.ticker, {
         quantity: item.quantity, side: item.rawSide, raw: item.raw
@@ -188,6 +222,9 @@ export function collectFreedomPositionIntegrityIssues(
       continue;
     }
     if (item.side === 'cover') {
+      findings.push(issue(item.ticker, 'short_cover_unsupported', 'execution_history', {
+        rawQuantity: item.quantity, rawSide: item.rawSide, raw: item.raw
+      }));
       const availableShort = openShortQuantity.get(item.ticker) || 0;
       const consumed = Math.min(availableShort, item.quantity || 0);
       openShortQuantity.set(item.ticker, Math.max(0, availableShort - consumed));
