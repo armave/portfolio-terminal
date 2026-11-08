@@ -346,6 +346,8 @@ export interface MarketHistoryResult {
   provider?: string;
   receivedAt?: number;
   interval?: string;
+  /** Explicit caller-supplied expected observations; omitted when no verified calendar is available. */
+  missingTimestamps?: number[];
 }
 
 export interface MarketQuoteRequest {
@@ -623,6 +625,19 @@ export interface MarketHistoryResponseInput {
   currency?: unknown;
   session?: unknown;
   delayClass?: unknown;
+  /** Millisecond timestamps supplied by an independently verified exchange calendar. */
+  expectedTimestamps?: readonly number[];
+}
+
+/** Return gaps only against explicit, caller-supplied expected observation times. */
+export function findMissingMarketHistoryTimestamps(
+  expectedTimestamps: readonly number[],
+  points: readonly MarketPricePoint[]
+): number[] {
+  const observed = new Set(points.map(point => point.timestamp));
+  return [...new Set(expectedTimestamps.filter(value =>
+    Number.isFinite(value) && value > 0
+  ))].sort((a, b) => a - b).filter(timestamp => !observed.has(timestamp));
 }
 
 /**
@@ -647,6 +662,20 @@ export function normalizeMarketHistoryResponse(
   const now = Date.now();
   const issues = [...history.issues, ...identity.issues];
   const futureReceipt = receivedAt !== null && receivedAt > now + 60 * 1000;
+  const hasExpectedTimestamps = input.expectedTimestamps !== undefined;
+  const expectedTimestamps = Array.isArray(input.expectedTimestamps)
+    ? input.expectedTimestamps.filter(value => Number.isFinite(value) && value > 0)
+    : [];
+  if (hasExpectedTimestamps && (!Array.isArray(input.expectedTimestamps) ||
+      expectedTimestamps.length !== input.expectedTimestamps.length)) {
+    issues.push('Verified expected history timestamps contain invalid values.');
+  }
+  const missingTimestamps = hasExpectedTimestamps
+    ? findMissingMarketHistoryTimestamps(expectedTimestamps, history.points)
+    : [];
+  if (missingTimestamps.length > 0) {
+    issues.push('Historical series is missing ' + missingTimestamps.length + ' expected observations from the verified calendar.');
+  }
 
   if (!provider) issues.push('Historical data provider is missing.');
   if (receivedAt === null) issues.push('Historical data receipt timestamp is missing or invalid.');
@@ -659,7 +688,8 @@ export function normalizeMarketHistoryResponse(
   const quality = history.quality === 'unavailable' || history.points.length === 0
     ? 'unavailable'
     : history.quality === 'partial' || !identity.instrument || !identity.instrument.quoteCurrency ||
-        !provider || receivedAt === null || futureReceipt || !interval
+        !provider || receivedAt === null || futureReceipt || !interval || missingTimestamps.length > 0 ||
+        (hasExpectedTimestamps && expectedTimestamps.length !== (input.expectedTimestamps as readonly number[]).length)
       ? 'partial'
       : 'complete';
 
@@ -674,7 +704,8 @@ export function normalizeMarketHistoryResponse(
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
     ...(provider ? { provider } : {}),
     ...(receivedAt !== null && !futureReceipt ? { receivedAt } : {}),
-    ...(interval ? { interval } : {})
+    ...(interval ? { interval } : {}),
+    ...(hasExpectedTimestamps ? { missingTimestamps } : {})
   };
 }
 
