@@ -7,9 +7,19 @@ import {
 
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
+const HISTORY_DATABASE_NAME = 'portfolio-terminal-history-cache';
+const HISTORY_DATABASE_VERSION = 1;
+const HISTORY_OBJECT_STORE = 'history';
+const HISTORY_RECORD_KEY = 'closed-history-v1';
+const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 let lastPersistedHistory: ClosedHistorySnapshot | null = null;
+let cachedHistory: ClosedHistorySnapshot | null = null;
+let queuedHistorySnapshot: ClosedHistorySnapshot | null = null;
+let historyWriteQueue: Promise<boolean> = Promise.resolve(true);
+let historyStorageInitialized = false;
+let historyStorageInitialization: Promise<void> | null = null;
 
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
@@ -40,6 +50,205 @@ export interface PortfolioSnapshotOptions {
 function getBrowserStorage(): Storage | null {
   return typeof localStorage !== 'undefined' && localStorage ? localStorage : null;
 }
+
+
+function normalizeHistorySnapshot(value: unknown): ClosedHistorySnapshot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.brokerExecutedTrades) && !Array.isArray(candidate.cashflows)) return null;
+  return {
+    brokerExecutedTrades: Array.isArray(candidate.brokerExecutedTrades) ? candidate.brokerExecutedTrades : [],
+    cashflows: Array.isArray(candidate.cashflows) ? candidate.cashflows : []
+  };
+}
+
+function readLegacySavedHistorySnapshot(): ClosedHistorySnapshot | null {
+  const storage = getBrowserStorage();
+  if (!storage) return null;
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
+  } catch (error) {
+    console.warn('Failed to read legacy closed history from localStorage:', error);
+  }
+  if (raw) {
+    try {
+      const history = normalizeHistorySnapshot(JSON.parse(raw));
+      if (history) return history;
+      throw new Error('Saved closed history must contain history arrays.');
+    } catch (error) {
+      // Keep a damaged sidecar intact. The embedded legacy snapshot may still
+      // recover its rows, and the migration must not destroy the damaged copy.
+      console.warn('Failed to parse saved closed history:', error);
+    }
+  }
+
+  for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
+    try {
+      const legacyRaw = storage.getItem(key);
+      if (!legacyRaw) continue;
+      const legacy = JSON.parse(legacyRaw);
+      const history = normalizeHistorySnapshot(legacy);
+      if (history) return history;
+    } catch {
+      // Continue to the next legacy snapshot if one is malformed.
+    }
+  }
+  return null;
+}
+
+function openHistoryDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is unavailable'));
+      return;
+    }
+    const request = indexedDB.open(HISTORY_DATABASE_NAME, HISTORY_DATABASE_VERSION);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(HISTORY_OBJECT_STORE)) {
+        request.result.createObjectStore(HISTORY_OBJECT_STORE);
+      }
+    };
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onerror = () => reject(request.error || new Error('Could not open closed-history storage'));
+    request.onblocked = () => reject(new Error('Closed-history storage upgrade is blocked by another tab'));
+  });
+}
+
+async function readHistoryRecordFromIndexedDB(): Promise<ClosedHistorySnapshot | null> {
+  const db = await openHistoryDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
+      const request = transaction.objectStore(HISTORY_OBJECT_STORE).get(HISTORY_RECORD_KEY);
+      let snapshot: ClosedHistorySnapshot | null = null;
+      request.onsuccess = () => {
+        snapshot = normalizeHistorySnapshot(request.result);
+      };
+      request.onerror = () => reject(request.error || new Error('Could not read closed-history storage'));
+      transaction.oncomplete = () => resolve(snapshot);
+      transaction.onerror = () => reject(transaction.error || new Error('Closed-history read transaction failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('Closed-history read transaction was aborted'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot): Promise<void> {
+  const db = await openHistoryDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
+      transaction.objectStore(HISTORY_OBJECT_STORE).put(history, HISTORY_RECORD_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Closed-history write transaction failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('Closed-history write transaction was aborted'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot): Promise<boolean> {
+  const storage = getBrowserStorage();
+  if (!storage) return false;
+  try {
+    const serialized = JSON.stringify(history);
+    if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) {
+      throw new Error('Closed history is too large for the legacy localStorage fallback; IndexedDB is required.');
+    }
+    storage.setItem(STORAGE_KEY_CLOSED_HISTORY, serialized);
+    return true;
+  } catch (error) {
+    console.warn('Closed history could not be written to the legacy localStorage fallback:', error);
+    return false;
+  }
+}
+
+function removeLegacyHistorySidecar(): void {
+  try {
+    getBrowserStorage()?.removeItem(STORAGE_KEY_CLOSED_HISTORY);
+  } catch (error) {
+    console.warn('Could not remove the migrated localStorage history copy:', error);
+  }
+}
+
+/**
+ * Hydrate the synchronous history cache before mounting history consumers.
+ * Existing localStorage history is migrated to IndexedDB and removed only
+ * after the IndexedDB transaction has completed successfully.
+ */
+export function initializeSavedHistoryStorage(): Promise<void> {
+  if (historyStorageInitialized) return Promise.resolve();
+  if (historyStorageInitialization) return historyStorageInitialization;
+
+  historyStorageInitialization = (async () => {
+    const legacyHistory = readLegacySavedHistorySnapshot();
+    try {
+      const indexedHistory = await readHistoryRecordFromIndexedDB();
+      const history = indexedHistory ?? legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
+      if (!indexedHistory) await writeHistoryRecordToIndexedDB(history);
+      cachedHistory = history;
+      lastPersistedHistory = history;
+      if (legacyHistory) removeLegacyHistorySidecar();
+    } catch (error) {
+      // Keep the legacy copy readable when IndexedDB is unavailable or blocked.
+      // Small histories can still use the bounded fallback; large ones remain
+      // available from cloud history and in-memory portfolio state.
+      cachedHistory = legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
+      lastPersistedHistory = null;
+      console.warn('IndexedDB closed-history storage is unavailable; using the legacy cache when possible:', error);
+    }
+    historyStorageInitialized = true;
+  })().finally(() => {
+    historyStorageInitialization = null;
+  });
+
+  return historyStorageInitialization;
+}
+
+async function persistSavedHistorySnapshot(history: ClosedHistorySnapshot): Promise<boolean> {
+  await initializeSavedHistoryStorage();
+  const snapshot: ClosedHistorySnapshot = {
+    brokerExecutedTrades: Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [],
+    cashflows: Array.isArray(history.cashflows) ? history.cashflows : []
+  };
+  cachedHistory = snapshot;
+  if (
+    lastPersistedHistory &&
+    lastPersistedHistory.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
+    lastPersistedHistory.cashflows === snapshot.cashflows
+  ) return true;
+  if (
+    queuedHistorySnapshot &&
+    queuedHistorySnapshot.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
+    queuedHistorySnapshot.cashflows === snapshot.cashflows
+  ) return await historyWriteQueue;
+
+  queuedHistorySnapshot = snapshot;
+  const nextWrite = historyWriteQueue.catch(() => false).then(async () => {
+    try {
+      await writeHistoryRecordToIndexedDB(snapshot);
+      removeLegacyHistorySidecar();
+      return true;
+    } catch (indexedDbError) {
+      console.warn('Could not persist closed history in IndexedDB; trying the bounded legacy fallback:', indexedDbError);
+      return await writeLegacyHistoryFallback(snapshot);
+    }
+  });
+  historyWriteQueue = nextWrite;
+  const saved = await nextWrite;
+  if (saved) {
+    lastPersistedHistory = snapshot;
+  }
+  if (queuedHistorySnapshot === snapshot) queuedHistorySnapshot = null;
+  return saved;
+}
+
 
 /** A warm cache is eligible for date-bounded requests only after a full baseline has been persisted. */
 function historyBaselineKey(key: string, accountId: string): string {
@@ -357,7 +566,6 @@ interface PortfolioSnapshotPersistResult {
  */
 function persistPortfolioSnapshot(
   state: Record<string, any>,
-  history: ClosedHistorySnapshot | null,
   options: PortfolioSnapshotOptions = {}
 ): PortfolioSnapshotPersistResult {
   const storage = getBrowserStorage();
@@ -365,7 +573,6 @@ function persistPortfolioSnapshot(
 
   const savedAt = Date.now();
   let persistedStateJson: string;
-  let historyJson: string | null = null;
   let brokerRulesJson: string | null = null;
   let nextComparable: string;
   try {
@@ -377,12 +584,6 @@ function persistPortfolioSnapshot(
     nextComparable = JSON.stringify(persistedState, (key, value) =>
       key === 'lastUpdated' ? undefined : value
     );
-    if (history) {
-      historyJson = JSON.stringify({
-        brokerExecutedTrades: history.brokerExecutedTrades,
-        cashflows: history.cashflows
-      });
-    }
     if (options.brokerRules) {
       brokerRulesJson = JSON.stringify(options.brokerRules);
     }
@@ -394,9 +595,6 @@ function persistPortfolioSnapshot(
   const writes: Array<{ key: string; value: string }> = [
     { key: STORAGE_KEY_STATE, value: persistedStateJson }
   ];
-  if (historyJson !== null) {
-    writes.push({ key: STORAGE_KEY_CLOSED_HISTORY, value: historyJson });
-  }
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
   }
@@ -438,9 +636,8 @@ function persistPortfolioSnapshot(
       storage.setItem(key, value);
     }
   } catch (err) {
-    // localStorage has no multi-key transaction. Restore all attempted keys in
-    // reverse order so a failed history/preference write cannot leave the new
-    // portfolio state looking like a fully committed snapshot.
+    // localStorage has no multi-key transaction. Restore all attempted compact
+    // snapshot and preference keys if a later write fails.
     for (const key of attemptedKeys.reverse()) {
       try {
         const previous = previousValues.get(key) ?? null;
@@ -455,26 +652,34 @@ function persistPortfolioSnapshot(
   }
 
   state.lastUpdated = savedAt;
-  if (history) lastPersistedHistory = history;
   return { success: true, stateChanged, savedAt };
 }
 
 /**
- * Persists the portfolio and its closed-history snapshot together. This is
- * used for destructive operations such as a full reset where empty history is
- * meaningful and must not be treated as an ordinary no-op.
+ * Persists large history in IndexedDB before committing the compact localStorage
+ * snapshot. If the snapshot write fails, restore the prior history record.
  */
-export function savePortfolioSnapshot<TState extends object>(
+export async function savePortfolioSnapshot<TState extends object>(
   state: TState,
   history: ClosedHistorySnapshot,
   options: PortfolioSnapshotOptions = {}
-): boolean {
+): Promise<boolean> {
   if (!state || typeof state !== 'object' || Array.isArray(state) ||
       !history || !Array.isArray(history.brokerExecutedTrades) ||
       !Array.isArray(history.cashflows)) {
     return false;
   }
-  return persistPortfolioSnapshot(state as Record<string, any>, history, options).success;
+  await initializeSavedHistoryStorage();
+  const previousHistory = loadSavedHistory();
+  if (!(await persistSavedHistorySnapshot(history))) return false;
+
+  const result = persistPortfolioSnapshot(state as Record<string, any>, options);
+  if (!result.success) {
+    const restored = await persistSavedHistorySnapshot(previousHistory);
+    if (!restored) console.error('Failed to restore closed history after the portfolio snapshot could not be saved.');
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -488,13 +693,13 @@ export function savePortfolioStateSnapshot<TState extends object>(
   options: PortfolioSnapshotOptions = {}
 ): boolean {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
-  return persistPortfolioSnapshot(state as Record<string, any>, null, options).success;
+  return persistPortfolioSnapshot(state as Record<string, any>, options).success;
 }
 
 /**
- * Persists application state to localStorage and updates `state.lastUpdated`.
- * Changed non-empty history is committed before the method reports success;
- * a failed sidecar write rolls back the accompanying portfolio-state write.
+ * Persists the compact portfolio snapshot synchronously to localStorage. Changed
+ * history is queued separately in IndexedDB, so a large history write cannot
+ * exhaust localStorage or roll back a valid portfolio-state commit.
  */
 export function saveState<TState extends object>(
   state?: TState | null,
@@ -511,14 +716,22 @@ export function saveState<TState extends object>(
     !lastPersistedHistory ||
     lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
     lastPersistedHistory.cashflows !== cashflows
+  ) && !(
+    queuedHistorySnapshot &&
+    queuedHistorySnapshot.brokerExecutedTrades === brokerExecutedTrades &&
+    queuedHistorySnapshot.cashflows === cashflows
   );
 
-  const result = persistPortfolioSnapshot(
-    mutableState,
-    historyChanged ? { brokerExecutedTrades, cashflows } : null,
-    options
-  );
+  const result = persistPortfolioSnapshot(mutableState, options);
   if (!result.success) return false;
+
+  if (historyChanged) {
+    void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }).then((saved) => {
+      if (!saved) console.warn('Portfolio state was saved, but its local closed-history cache could not be updated. Cloud history remains separate.');
+    }).catch((error) => {
+      console.warn('Portfolio state was saved, but the local closed-history cache update failed:', error);
+    });
+  }
 
   if (result.stateChanged && typeof onPushToGist === 'function') {
     try {
@@ -576,85 +789,60 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   }
 }
 
-/** Load large closed-history collections only when the history section needs them. */
-/** Persist closed-history source rows and calculated fee metadata independently of portfolio state. */
-export function saveSavedHistory(history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }): boolean {
-  const storage = getBrowserStorage();
-  if (!storage) return false;
-  const snapshot = {
+/** Persist closed-history rows in IndexedDB; use localStorage only for small legacy fallback data. */
+export async function saveSavedHistory(history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }): Promise<boolean> {
+  return await persistSavedHistorySnapshot({
     brokerExecutedTrades: Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [],
     cashflows: Array.isArray(history.cashflows) ? history.cashflows : []
-  };
-  try {
-    storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(snapshot));
-    lastPersistedHistory = snapshot;
-    return true;
-  } catch (err) {
-    console.error('Failed to save closed history:', err);
-    return false;
-  }
+  });
 }
 
+/** Synchronous cache accessor. The app hydrates this cache before mounting. */
 export function loadSavedHistory(): ClosedHistorySnapshot {
-  const storage = getBrowserStorage();
-  if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
+  if (cachedHistory) return cachedHistory;
+  const legacy = readLegacySavedHistorySnapshot();
+  cachedHistory = legacy ?? { brokerExecutedTrades: [], cashflows: [] };
+  lastPersistedHistory = legacy;
+  return cachedHistory;
+}
 
-  let raw: string | null;
+/** Wait until all queued local-history writes have settled. */
+export async function flushSavedHistoryPersistence(): Promise<boolean> {
+  return await historyWriteQueue;
+}
+
+/** Clear the IndexedDB history record and all legacy copies. */
+export async function clearSavedHistoryPersistence(): Promise<void> {
+  await historyWriteQueue.catch(() => false);
+  if (typeof indexedDB !== 'undefined') {
+    try {
+      const db = await openHistoryDatabase();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
+          transaction.objectStore(HISTORY_OBJECT_STORE).delete(HISTORY_RECORD_KEY);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error || new Error('Could not clear closed history'));
+          transaction.onabort = () => reject(transaction.error || new Error('Closed-history clear was aborted'));
+        });
+      } finally {
+        db.close();
+      }
+    } catch (error) {
+      console.warn('Could not clear IndexedDB closed history:', error);
+    }
+  }
   try {
-    raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
-  } catch (err) {
-    console.warn('Failed to read saved closed history:', err);
-    return { brokerExecutedTrades: [], cashflows: [] };
+    getBrowserStorage()?.removeItem(STORAGE_KEY_CLOSED_HISTORY);
+  } catch (error) {
+    console.warn('Could not clear legacy closed history:', error);
   }
-
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('Saved closed history must be an object.');
-      }
-      const history = {
-        brokerExecutedTrades: Array.isArray(parsed.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
-        cashflows: Array.isArray(parsed.cashflows) ? parsed.cashflows : []
-      };
-      lastPersistedHistory = history;
-      return history;
-    } catch (err) {
-      // Keep the damaged record intact. A legacy snapshot may still provide a
-      // recoverable copy, and overwriting this entry would destroy evidence.
-      console.warn('Failed to parse saved closed history:', err);
-    }
-  }
-
-  // Recover older snapshots that stored history inline. Persist the migration
-  // only when the separate record is absent; never overwrite a damaged record.
-  for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
-    try {
-      const legacyRaw = storage.getItem(key);
-      if (!legacyRaw) continue;
-      const legacy = JSON.parse(legacyRaw);
-      if (legacy && typeof legacy === 'object' && !Array.isArray(legacy) &&
-          (Array.isArray(legacy.brokerExecutedTrades) || Array.isArray(legacy.cashflows))) {
-        const migrated = {
-          brokerExecutedTrades: Array.isArray(legacy.brokerExecutedTrades) ? legacy.brokerExecutedTrades : [],
-          cashflows: Array.isArray(legacy.cashflows) ? legacy.cashflows : []
-        };
-        if (!raw) {
-          try {
-            storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(migrated));
-          } catch (err) {
-            console.warn('Could not persist recovered closed history:', err);
-          }
-        }
-        lastPersistedHistory = migrated;
-        return migrated;
-      }
-    } catch {
-      // Continue to the next legacy snapshot if one is malformed.
-    }
-  }
-
-  return { brokerExecutedTrades: [], cashflows: [] };
+  cachedHistory = null;
+  lastPersistedHistory = null;
+  queuedHistorySnapshot = null;
+  historyStorageInitialized = false;
+  historyStorageInitialization = null;
+  historyWriteQueue = Promise.resolve(true);
 }
 
 /**
