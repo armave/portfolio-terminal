@@ -138,10 +138,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language
   ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
-  const marginRiskTitle = translateText(
-    'Risk estimate uses available account inputs and configured thresholds. Broker margin requirements are shown only when supplied; this is not a live broker risk indicator.',
-    language
-  );
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
