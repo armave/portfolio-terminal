@@ -372,10 +372,10 @@ export function getActiveTranchesFromTrades(
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const side = [
       [trade?.side, 'text'],
-      [trade?.operation, 'order'],
+      [trade?.operation, 'text'],
       [trade?.type, 'history'],
       [raw.side, 'text'],
-      [raw.operation, 'order'],
+      [raw.operation, 'text'],
       [raw.oper, 'order'],
       [raw.buy_sell, 'text'],
       [raw.type, 'history'],
