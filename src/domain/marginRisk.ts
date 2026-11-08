@@ -5,7 +5,94 @@ export const ACCOUNT_EQUITY_HEALTH_REFERENCE = 0.4;
 
 export type MarginRiskLevel = 'Healthy' | 'Elevated' | 'Margin-call level' | 'Stop-out level';
 
-/** Classify equity against the same 40% reference shown on the account-health meter. */
+export type MarginRiskDataQuality = 'current' | 'provisional' | 'incomplete';
+export type MarginRiskQuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
+export type EligibleCollateralSource = 'broker' | 'configured-assumption' | 'unknown';
+
+export interface BrokerReportedMarginRequirements {
+  currency: string;
+  /** null means the broker did not report this requirement; it is not zero. */
+  initialMarginRequired: number | null;
+  /** Base maintenance amount, separate from concentration add-ons. */
+  maintenanceMarginRequired: number | null;
+  /** null means the broker did not report an add-on; it is not zero. */
+  concentrationAddOn: number | null;
+  observedAt: number | null;
+}
+
+export interface MarginRiskInput {
+  currency: string;
+  /** Positive market value of long positions. */
+  longExposure: number;
+  /** Positive market value of short liabilities, not an asset. */
+  shortExposure: number;
+  /** Positive available account cash; negative balances belong in marginDebt. */
+  cashBalance: number;
+  /** Positive magnitude of margin debit. */
+  marginDebt: number;
+  /** Broker-confirmed or explicitly assumed eligible collateral. Never inferred from total assets. */
+  eligibleCollateral: number | null;
+  eligibleCollateralSource: EligibleCollateralSource;
+  assumptions: BrokerAssumptions;
+  quality: MarginRiskDataQuality;
+  freshness: MarginRiskQuoteFreshness;
+  /** Provider observation time. Do not substitute client receipt time. */
+  observedAt: number | null;
+  calculatedAt: number;
+  brokerRequirements?: BrokerReportedMarginRequirements | null;
+}
+
+export interface MarginRequirementValue {
+  amount: number | null;
+  source: 'broker' | 'configured-assumption' | 'unavailable';
+}
+
+export interface MarginRiskSnapshot {
+  currency: string;
+  calculatedAt: number;
+  longExposure: number;
+  shortExposure: number;
+  grossExposure: number;
+  netExposure: number;
+  cashBalance: number;
+  marginDebt: number;
+  /** Positive assets are cash plus long holdings; short liabilities are not counted as assets. */
+  assets: number;
+  equity: number;
+  equityRatio: number | null;
+  eligibleCollateral: number | null;
+  eligibleCollateralSource: EligibleCollateralSource;
+  collateralCoverageRatio: number | null;
+  initialMarginRequirement: MarginRequirementValue;
+  maintenanceMarginRequirement: MarginRequirementValue;
+  concentrationAddOn: MarginRequirementValue;
+  totalMaintenanceRequirement: number | null;
+  /** Estimate before any broker concentration add-on that was not supplied. */
+  baseMaintenanceBuffer: number;
+  /** null when an unreported concentration add-on prevents a complete buffer calculation. */
+  maintenanceBuffer: number | null;
+  maintenanceBufferPct: number | null;
+  stopOutBuffer: number;
+  stopOutBufferPct: number | null;
+  marginCallValue: number | null;
+  stopOutValue: number | null;
+  marginCallBufferPct: number | null;
+  stopOutBufferPctOfLongExposure: number | null;
+  showMarginCall: boolean;
+  showStopOut: boolean;
+  annualInterestCost: number;
+  dailyInterestCost: number;
+  riskLevel: MarginRiskLevel;
+  quality: 'current' | 'provisional';
+  warnings: string[];
+  disclaimer: string;
+}
+
+export type MarginRiskCalculation =
+  | { status: 'available' | 'provisional'; quality: 'current' | 'provisional'; value: MarginRiskSnapshot; warnings: string[] }
+  | { status: 'unavailable'; reason: string; warnings: string[] };
+
+/** Classify equity against the same 40% visual reference shown on the account-health meter. */
 export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions): MarginRiskLevel {
   if (equityRatio <= rules.stopOutRatio) return 'Stop-out level';
   if (equityRatio <= rules.maintenanceEquityRatio) return 'Margin-call level';
@@ -13,6 +100,183 @@ export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions
   return 'Healthy';
 }
 
+function unavailable(reason: string, warnings: string[] = []): MarginRiskCalculation {
+  return { status: 'unavailable', reason, warnings };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function validTimestamp(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function validAssumptions(value: BrokerAssumptions): boolean {
+  return !!value &&
+    isFiniteNumber(value.annualBorrowRate) && value.annualBorrowRate >= 0 && value.annualBorrowRate <= 1 &&
+    (value.dayCountBasis === 360 || value.dayCountBasis === 365) &&
+    isFiniteNumber(value.maintenanceEquityRatio) && value.maintenanceEquityRatio > 0 && value.maintenanceEquityRatio < 1 &&
+    isFiniteNumber(value.stopOutRatio) && value.stopOutRatio >= 0 && value.stopOutRatio <= value.maintenanceEquityRatio &&
+    typeof value.broker === 'string' && value.broker.trim().length > 0;
+}
+
+/**
+ * Canonical margin-risk calculation used by portfolio summaries, AI context,
+ * account-level risk analytics and stress tooling. All monetary inputs are in
+ * the same currency. Missing broker requirements remain unknown.
+ */
+export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskCalculation {
+  if (!input || typeof input.currency !== 'string' || !/^[A-Z]{3}$/.test(input.currency.trim().toUpperCase())) {
+    return unavailable('A valid three-letter account currency is required.');
+  }
+  if (![
+    input.longExposure, input.shortExposure, input.cashBalance, input.marginDebt
+  ].every(isFiniteNumber) || input.longExposure < 0 || input.shortExposure < 0 ||
+      input.cashBalance < 0 || input.marginDebt < 0) {
+    return unavailable('Long exposure, short exposure, cash and margin debt must be finite non-negative amounts.');
+  }
+  if (input.eligibleCollateral !== null &&
+      (!isFiniteNumber(input.eligibleCollateral) || input.eligibleCollateral < 0)) {
+    return unavailable('Eligible collateral must be a finite non-negative amount or explicitly unknown.');
+  }
+  if (!['broker', 'configured-assumption', 'unknown'].includes(input.eligibleCollateralSource)) {
+    return unavailable('Eligible-collateral provenance is missing or invalid.');
+  }
+  if (input.marginDebt > 0 && input.eligibleCollateral === null) {
+    return unavailable('Margin risk is unavailable because eligible collateral is unknown.');
+  }
+  if (!validAssumptions(input.assumptions)) return unavailable('Broker margin assumptions are invalid.');
+  if (!['current', 'provisional', 'incomplete'].includes(input.quality) ||
+      !['fresh', 'stale', 'delayed', 'indicative', 'unknown'].includes(input.freshness)) {
+    return unavailable('Margin-risk data quality or quote freshness is invalid.');
+  }
+  if (input.quality === 'incomplete') return unavailable('Margin-risk inputs are incomplete.');
+  if (!validTimestamp(input.calculatedAt)) return unavailable('A valid calculation timestamp is required.');
+  if (input.observedAt !== null &&
+      (!validTimestamp(input.observedAt) || input.observedAt > input.calculatedAt)) {
+    return unavailable('The market/account observation timestamp is invalid or later than the calculation.');
+  }
+
+  const currency = input.currency.trim().toUpperCase();
+  const requirements = input.brokerRequirements ?? null;
+  if (requirements) {
+    if (requirements.currency.trim().toUpperCase() !== currency) {
+      return unavailable('Broker margin requirements use a different currency from the account inputs.');
+    }
+    for (const amount of [
+      requirements.initialMarginRequired,
+      requirements.maintenanceMarginRequired,
+      requirements.concentrationAddOn
+    ]) {
+      if (amount !== null && (!isFiniteNumber(amount) || amount < 0)) {
+        return unavailable('Broker-reported margin requirements must be finite non-negative amounts or explicitly unknown.');
+      }
+    }
+    if (requirements.observedAt !== null &&
+        (!validTimestamp(requirements.observedAt) || requirements.observedAt > input.calculatedAt)) {
+      return unavailable('The broker margin-requirement timestamp is invalid or later than the calculation.');
+    }
+  }
+
+  const assets = input.cashBalance + input.longExposure;
+  const equity = assets - input.shortExposure - input.marginDebt;
+  const grossExposure = input.longExposure + input.shortExposure;
+  const netExposure = input.longExposure - input.shortExposure;
+  const equityRatio = assets > 0 ? equity / assets : null;
+  const baseMaintenanceAmount = requirements?.maintenanceMarginRequired ?? assets * input.assumptions.maintenanceEquityRatio;
+  const maintenanceSource = requirements?.maintenanceMarginRequired !== null &&
+    requirements?.maintenanceMarginRequired !== undefined ? 'broker' : 'configured-assumption';
+  const concentrationAmount = requirements?.concentrationAddOn ?? null;
+  const totalMaintenanceRequirement = concentrationAmount === null ? null : baseMaintenanceAmount + concentrationAmount;
+  const baseMaintenanceBuffer = equity - baseMaintenanceAmount;
+  const maintenanceBuffer = totalMaintenanceRequirement === null ? null : equity - totalMaintenanceRequirement;
+  const stopOutRequirement = assets * input.assumptions.stopOutRatio;
+  const stopOutBuffer = equity - stopOutRequirement;
+  const annualInterestCost = input.marginDebt * input.assumptions.annualBorrowRate;
+  const dailyInterestCost = annualInterestCost / input.assumptions.dayCountBasis;
+
+  const isLongOnly = input.shortExposure === 0;
+  const canEstimatePriceTriggers = isLongOnly && maintenanceSource === 'configured-assumption';
+  const marginCallValue = canEstimatePriceTriggers
+    ? Math.max(0, (input.marginDebt - (1 - input.assumptions.maintenanceEquityRatio) * input.cashBalance +
+      (concentrationAmount ?? 0)) / (1 - input.assumptions.maintenanceEquityRatio))
+    : null;
+  const stopOutValue = isLongOnly
+    ? Math.max(0, (input.marginDebt - (1 - input.assumptions.stopOutRatio) * input.cashBalance) /
+      (1 - input.assumptions.stopOutRatio))
+    : null;
+  const marginCallBufferPct = isLongOnly && input.longExposure > 0 && marginCallValue !== null
+    ? ((input.longExposure - marginCallValue) / input.longExposure) * 100
+    : null;
+  const stopOutBufferPctOfLongExposure = isLongOnly && input.longExposure > 0 && stopOutValue !== null
+    ? ((input.longExposure - stopOutValue) / input.longExposure) * 100
+    : null;
+  const maintenanceBufferPct = maintenanceBuffer !== null && grossExposure > 0
+    ? maintenanceBuffer / grossExposure * 100
+    : null;
+  const stopOutBufferPct = grossExposure > 0 ? stopOutBuffer / grossExposure * 100 : null;
+
+  const warnings: string[] = [];
+  let quality: 'current' | 'provisional' = input.quality;
+  if (input.freshness !== 'fresh' || input.observedAt === null) {
+    quality = 'provisional';
+    warnings.push('Quote or account observation freshness cannot be confirmed.');
+  }
+  if (input.eligibleCollateralSource !== 'broker') {
+    quality = 'provisional';
+    warnings.push('Eligible collateral is a configured assumption, not a broker-confirmed amount.');
+  }
+  if (!requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
+    quality = 'provisional';
+    warnings.push('Initial margin requirement is unavailable; buying power is not estimated.');
+  }
+  if (maintenanceSource === 'configured-assumption') {
+    quality = 'provisional';
+    warnings.push('Maintenance requirement uses the configured equity ratio, not a broker-reported requirement.');
+  }
+  if (concentrationAmount === null) {
+    quality = 'provisional';
+    warnings.push('Concentration add-on is unavailable; the complete maintenance buffer cannot be calculated.');
+  }
+  if (requirements?.observedAt === null && requirements !== null) {
+    quality = 'provisional';
+    warnings.push('Broker margin-requirement observation time is unavailable.');
+  }
+
+  const ratioForClassification = equityRatio ?? Number.NEGATIVE_INFINITY;
+  let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
+  if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) riskLevel = 'Elevated';
+
+  const value: MarginRiskSnapshot = {
+    currency, calculatedAt: input.calculatedAt,
+    longExposure: input.longExposure, shortExposure: input.shortExposure, grossExposure, netExposure,
+    cashBalance: input.cashBalance, marginDebt: input.marginDebt, assets, equity, equityRatio,
+    eligibleCollateral: input.eligibleCollateral, eligibleCollateralSource: input.eligibleCollateralSource,
+    collateralCoverageRatio: input.marginDebt > 0 && input.eligibleCollateral !== null
+      ? input.eligibleCollateral / input.marginDebt : null,
+    initialMarginRequirement: {
+      amount: requirements?.initialMarginRequired ?? null,
+      source: requirements?.initialMarginRequired === null || requirements?.initialMarginRequired === undefined ? 'unavailable' : 'broker'
+    },
+    maintenanceMarginRequirement: { amount: baseMaintenanceAmount, source: maintenanceSource },
+    concentrationAddOn: { amount: concentrationAmount, source: concentrationAmount === null ? 'unavailable' : 'broker' },
+    totalMaintenanceRequirement, baseMaintenanceBuffer, maintenanceBuffer, maintenanceBufferPct,
+    stopOutBuffer, stopOutBufferPct, marginCallValue, stopOutValue,
+    marginCallBufferPct, stopOutBufferPctOfLongExposure,
+    showMarginCall: maintenanceBuffer !== null ? maintenanceBuffer <= 0 : baseMaintenanceBuffer <= 0,
+    showStopOut: stopOutBuffer <= 0,
+    annualInterestCost, dailyInterestCost, riskLevel, quality, warnings,
+    disclaimer: 'This is an estimate from the supplied snapshot and configured assumptions, not a broker maintenance calculation, buying-power result, liquidation quote, or forecast.'
+  };
+  if (![assets, equity, grossExposure, netExposure, baseMaintenanceAmount, baseMaintenanceBuffer,
+    stopOutRequirement, stopOutBuffer, annualInterestCost, dailyInterestCost].every(isFiniteNumber)) {
+    return unavailable('Margin-risk totals exceed the finite calculation range.');
+  }
+  return { status: quality === 'current' ? 'available' : 'provisional', quality, value, warnings };
+}
+
+/** Compatibility result for older summary callers; new code should use calculateMarginRiskSnapshot. */
 export interface MarginRiskMetrics {
   assets: number;
   equity: number;
@@ -27,44 +291,43 @@ export interface MarginRiskMetrics {
   showStopOut: boolean;
 }
 
-/** Calculate estimates using configured broker thresholds, not live broker rules. */
+/** Legacy long-only adapter retained for compatibility with existing callers/tests. */
 export function calculateMarginRiskMetrics(
   debt: number,
   positionValue: number,
   collateral: number,
   rules: BrokerAssumptions
 ): MarginRiskMetrics {
-  const assets = positionValue + collateral;
-  const equity = assets - debt;
-  const equityRatio = assets > 0 ? equity / assets : Number.NEGATIVE_INFINITY;
+  const result = calculateMarginRiskSnapshot({
+    currency: 'USD', longExposure: positionValue, shortExposure: 0,
+    cashBalance: collateral, marginDebt: debt,
+    eligibleCollateral: collateral, eligibleCollateralSource: 'configured-assumption',
+    assumptions: rules, quality: 'provisional', freshness: 'unknown', observedAt: null,
+    calculatedAt: Date.now()
+  });
+  if (result.status === 'unavailable') {
+    return {
+      assets: Number.NaN, equity: Number.NaN, equityRatio: Number.NaN,
+      marginCallAssetsRequired: Number.NaN, stopOutAssetsRequired: Number.NaN,
+      marginCallValue: Number.NaN, stopOutValue: Number.NaN,
+      marginCallBufferPct: Number.NaN, stopOutBufferPct: Number.NaN,
+      showMarginCall: false, showStopOut: false
+    };
+  }
+  const metrics = result.value;
   const marginCallAssetsRequired = debt > 0 ? debt / (1 - rules.maintenanceEquityRatio) : 0;
   const stopOutAssetsRequired = debt > 0 ? debt / (1 - rules.stopOutRatio) : 0;
-  const marginCallValue = Math.max(0, marginCallAssetsRequired - collateral);
-  const stopOutValue = Math.max(0, stopOutAssetsRequired - collateral);
-  const marginCallBufferPct = positionValue > 0
-    ? ((positionValue - marginCallValue) / positionValue) * 100
-    : Number.NEGATIVE_INFINITY;
-  const stopOutBufferPct = positionValue > 0
-    ? ((positionValue - stopOutValue) / positionValue) * 100
-    : Number.NEGATIVE_INFINITY;
-
-  // The threshold is defined against total assets (position value + eligible
-  // collateral), not collateral in isolation. Equality is already at the
-  // configured threshold and must remain visible as a risk trigger.
-  const showMarginCall = debt > 0 && assets <= marginCallAssetsRequired;
-  const showStopOut = debt > 0 && assets <= stopOutAssetsRequired;
-
   return {
-    assets,
-    equity,
-    equityRatio,
+    assets: metrics.assets,
+    equity: metrics.equity,
+    equityRatio: metrics.equityRatio ?? Number.NEGATIVE_INFINITY,
     marginCallAssetsRequired,
     stopOutAssetsRequired,
-    marginCallValue,
-    stopOutValue,
-    marginCallBufferPct,
-    stopOutBufferPct,
-    showMarginCall,
-    showStopOut
+    marginCallValue: metrics.marginCallValue ?? Number.NaN,
+    stopOutValue: metrics.stopOutValue ?? Number.NaN,
+    marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
+    stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
+    showMarginCall: metrics.showMarginCall,
+    showStopOut: metrics.showStopOut
   };
 }
