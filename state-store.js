@@ -2614,6 +2614,7 @@ export class PortfolioStateDO {
       }
       return "unreadable";
     };
+    // Inventory only treats a v2 envelope as migrated after authenticating its GCM tag and digest identity.
     const isAuthenticatedEncryptedRecord = async (record, storageKey, encryptionKey) => {
       if (!encryptionKey || inspect(record, storageKey) !== "encryptedV2Candidate") return false;
       try {
