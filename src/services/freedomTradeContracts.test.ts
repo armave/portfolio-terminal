@@ -153,6 +153,27 @@ describe('Freedom execution contract normalization', () => {
     expect(fill.side).toBe('SELL_SHORT');
   });
 
+  it('preserves a buy-to-cover execution as a distinct action', () => {
+    const [trade] = normalizeFreedomTrades({
+      data: { trades: { trade: [{
+        id: 'cover-1',
+        instr_nm: 'GOOGL.US',
+        operation: 'BUY_TO_COVER',
+        q: 2,
+        p: 290,
+        date: '2026-11-03T10:00:00Z'
+      }] } }
+    });
+
+    expect(trade).toMatchObject({
+      id: 'cover-1',
+      ticker: 'GOOGL.US',
+      side: 'BUY_TO_COVER',
+      quantity: 2,
+      price: 290
+    });
+  });
+
   it('returns no executions for a valid order snapshot without fill rows', () => {
     expect(normalizeFreedomOrderFills({
       orders: { order: [{ order_id: 'open-1', instr: 'GOOGL.US' }] },

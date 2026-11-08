@@ -2,6 +2,8 @@ import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, CashStoc
 import { calculateCommission, type CommissionConfig } from './portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { getPositiveMarketPrice } from './portfolioValuation';
+import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
+import type { BrokerPositionIntegrityIssue } from '../types/broker';
 
 /**
  * Parse one edited side of a cash/margin split. Empty or invalid input keeps the
@@ -57,7 +59,16 @@ export function normalizeActiveTrancheMix(
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
   balances: Array<{ currency: string; amount: number }>;
-  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null }>;
+  positions: Array<{
+    ticker: string;
+    quantity: number;
+    marketPrice: number | null;
+    direction?: 'long' | 'short' | 'unknown';
+    rawQuantity?: number;
+    rawSide?: string | number | null;
+    instrumentId?: string | null;
+    raw?: Record<string, unknown>;
+  }>;
 }
 
 interface FreedomQuantityMismatch {
@@ -75,11 +86,13 @@ export interface FreedomReconciliationResult {
   positions: Record<string, FreedomReconciliationPosition>;
   cashStocks: CashStockHolding[];
   mismatches: FreedomQuantityMismatch[];
+  positionIntegrityIssues: BrokerPositionIntegrityIssue[];
 }
 
 export interface FreedomPortfolioClassificationResult {
   positions: Record<string, PositionRecord>;
   cashStocks: CashStockHolding[];
+  positionIntegrityIssues: BrokerPositionIntegrityIssue[];
 }
 
 function tickerKey(value: unknown): string {
@@ -470,6 +483,10 @@ export function classifyFreedomPortfolio(
   commissionRules?: CommissionConfig,
   mixedAllocations: Record<string, ActiveTrancheMix> = {}
 ): FreedomPortfolioClassificationResult {
+  const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(snapshot, executedTrades);
+  const unsupportedTickers = new Set(positionIntegrityIssues
+    .map(issue => tickerKey(issue.ticker))
+    .filter(Boolean));
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, CashStockHolding>();
   const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
@@ -485,12 +502,18 @@ export function classifyFreedomPortfolio(
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !previousCash.has(ticker)) previousCash.set(ticker, holding);
+    if (ticker && unsupportedTickers.has(ticker)) cashByTicker.set(ticker, holding);
+  }
+  for (const [key, position] of Object.entries(sourcePositions || {})) {
+    const ticker = tickerKey(position?.ticker || key);
+    if (ticker && unsupportedTickers.has(ticker)) positions[key] = position;
   }
 
   const activeTranches = Array.isArray(executedTrades)
     ? getActiveTranchesFromTrades(executedTrades, snapshot, commissionRules)
     : getActiveBrokerTranches(snapshot);
   for (const tranche of activeTranches) {
+    if (unsupportedTickers.has(tickerKey(tranche.ticker))) continue;
     const type = classifications[tranche.id] || classifications[tranche.ticker] || 'cash';
     const allocation = type === 'mix'
       ? normalizeActiveTrancheMix(tranche.quantity, mixedAllocations[tranche.id] || mixedAllocations[tranche.ticker])
@@ -608,6 +631,7 @@ export function classifyFreedomPortfolio(
     positions[ticker] = preserveLocalQuoteMetadata(classifiedPosition, preservedQuote?.record);
   }
   const cashStocks = [...cashByTicker.values()].map((holding) => {
+    if (unsupportedTickers.has(tickerKey(holding.ticker))) return holding;
     const cost = cashCostByTicker.get(tickerKey(holding.ticker));
     const quantity = Number(holding.shares) || 0;
     const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
@@ -619,7 +643,7 @@ export function classifyFreedomPortfolio(
       averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
     };
   });
-  return { positions, cashStocks };
+  return { positions, cashStocks, positionIntegrityIssues };
 }
 
 
@@ -635,6 +659,10 @@ export function reconcileFreedomPortfolio(
   sourceCashHoldings: CashStockHolding[],
   receivedAt = Date.now()
 ): FreedomReconciliationResult {
+  const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(snapshot);
+  const unsupportedTickers = new Set(positionIntegrityIssues
+    .map(issue => tickerKey(issue.ticker))
+    .filter(Boolean));
   const usdBalance = snapshot.balances.find(
     item => String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
@@ -655,7 +683,7 @@ export function reconcileFreedomPortfolio(
   for (const item of snapshot.positions) {
     const ticker = tickerKey(item?.ticker);
     const quantity = Number(item?.quantity);
-    if (!ticker || !Number.isFinite(quantity) || quantity < 0) continue;
+    if (!ticker || unsupportedTickers.has(ticker) || !Number.isFinite(quantity) || quantity < 0) continue;
     const previous = brokerByTicker.get(ticker);
     const price = positiveFinite(item?.marketPrice);
     brokerByTicker.set(ticker, {
@@ -691,6 +719,7 @@ export function reconcileFreedomPortfolio(
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !priorCashByTicker.has(ticker)) priorCashByTicker.set(ticker, holding);
+    if (ticker && unsupportedTickers.has(ticker)) cashStocks.push(holding);
   }
 
   for (const [ticker, brokerPosition] of brokerByTicker) {
@@ -715,7 +744,7 @@ export function reconcileFreedomPortfolio(
   }
 
   for (const [ticker, marginQuantity] of marginQuantities) {
-    if (!brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
+    if (!unsupportedTickers.has(ticker) && !brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
       mismatches.push({ ticker, marginQuantity, freedomQuantity: 0 });
       const priorCash = priorCashByTicker.get(ticker);
       if (priorCash && !cashStocks.some(holding => tickerKey(holding.ticker) === ticker)) {
@@ -728,6 +757,7 @@ export function reconcileFreedomPortfolio(
     ...(usdBalance ? { brokerUsdBalance: { amount: Number(usdBalance.amount) } } : {}),
     positions,
     cashStocks,
-    mismatches
+    mismatches,
+    positionIntegrityIssues
   };
 }

@@ -105,6 +105,53 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.warnings).toContain('TradeNet balance row without a currency was excluded.');
   });
 
+  it('marks negative quantities as partial and preserves raw position evidence without guessing short direction', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: '-500' }],
+        pos: [{ curr: 'USD', i: 'GOOGL.US', q: '-2', mkt_price: 300, position_side: 'S', instrument_id: 'security-42' }]
+      } } }
+    }, { receivedAt: 900 });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.data.positions[0]).toMatchObject({
+      ticker: 'GOOGL.US',
+      quantity: -2,
+      direction: 'unknown',
+      rawQuantity: -2,
+      rawSide: 'S',
+      instrumentId: 'security-42',
+      raw: { position_side: 'S', instrument_id: 'security-42' }
+    });
+    expect(snapshot.positionIntegrityIssues).toEqual([
+      expect.objectContaining({
+        ticker: 'GOOGL',
+        code: 'negative_quantity_sign_unverified',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42'
+      })
+    ]);
+  });
+
+  it('marks explicit short-side rows partial even when the provider quantity is positive', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 100 }],
+        pos: [{ curr: 'USD', i: 'TSLA.US', q: 3, mkt_price: 250, position_side: 'short' }]
+      } } }
+    });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.positionIntegrityIssues).toEqual([
+      expect.objectContaining({ ticker: 'TSLA', code: 'short_position_side_unverified' })
+    ]);
+  });
+
   it('keeps genuine zero USD balances and quantities complete', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizePortfolio({

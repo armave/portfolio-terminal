@@ -37,12 +37,13 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     }
     return null;
   };
-  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
+  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' | null => {
     for (const value of values) {
       const side = String(value ?? '').trim().toLowerCase();
       if (side === '1' || ['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
       if (side === '2' || side === '3' || ['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
       if (side === '4' || ['ss', 'sell_short', 'sell short', 'short'].includes(side)) return 'SELL_SHORT';
+      if (['buy_to_cover', 'buy to cover', 'cover', 'cover_short'].includes(side)) return 'BUY_TO_COVER';
     }
     return null;
   };

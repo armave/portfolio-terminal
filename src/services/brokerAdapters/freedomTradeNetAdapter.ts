@@ -7,6 +7,7 @@ import {
   normalizeFreedomTrades as normalizeFreedomExecutionsPayload
 } from '../freedomTradeContracts';
 import { normalizeFreedomCashflowRows } from '../../domain/freedomCashflows';
+import { collectFreedomPositionIntegrityIssues } from '../../domain/freedomPositionIntegrity';
 import {
   fetchFreedomCashflows,
   fetchFreedomTradeNetActiveOrders,
@@ -283,11 +284,21 @@ export function createFreedomTradeNetBrokerAdapter(
       try {
         const prepared = preparePortfolioResponse(response);
         const data = normalizeFreedomPortfolioPayload(prepared.response);
+        const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(data);
         const visibleRows = data.balances.length + data.positions.length;
-        const quality: BrokerSnapshotQuality = prepared.warnings.length > 0
+        const warnings = [
+          ...prepared.warnings,
+          ...(positionIntegrityIssues.length
+            ? ['One or more TradeNet positions have unverified direction or incomplete long-position history; the previous tracked values were retained.']
+            : [])
+        ];
+        const quality: BrokerSnapshotQuality = warnings.length > 0 || positionIntegrityIssues.length > 0
           ? 'partial'
           : visibleRows === 0 ? 'empty' : 'complete';
-        return createSnapshot(data, quality, context, prepared.warnings);
+        const snapshot = createSnapshot(data, quality, context, warnings);
+        return positionIntegrityIssues.length
+          ? { ...snapshot, positionIntegrityIssues }
+          : snapshot;
       } catch (error) {
         return fail(error);
       }
