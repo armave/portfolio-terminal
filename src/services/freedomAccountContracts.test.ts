@@ -45,7 +45,12 @@ describe('normalizeFreedomPortfolio', () => {
           marketValue: 475,
           averagePrice: 180,
           profitClose: 25,
-          accountPositionId: 77
+          accountPositionId: 77,
+          direction: 'long',
+          rawQuantity: 2.5,
+          rawSide: null,
+          instrumentId: null,
+          raw: { i: 'AAPL.US', name: 'Apple', q: '2.5', mkt_price: '190', market_value: '475', bal_price_a: 180, profit_close: '25', acc_pos_id: '77', curr: 'USD' }
         },
         {
           ticker: 'MSFT.US',
@@ -56,7 +61,12 @@ describe('normalizeFreedomPortfolio', () => {
           marketValue: null,
           averagePrice: null,
           profitClose: null,
-          accountPositionId: null
+          accountPositionId: null,
+          direction: 'long',
+          rawQuantity: 3,
+          rawSide: null,
+          instrumentId: null,
+          raw: { base_contract_code: 'MSFT.US', name2: 'Microsoft', q: 3, mkt_price: true, curr: 'USD' }
         }
       ]
     });

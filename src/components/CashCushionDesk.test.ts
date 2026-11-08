@@ -24,6 +24,18 @@ describe('cash/margin mix inputs', () => {
 describe('broker history adapter boundary', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
+  it('shows an explicit localized warning for position-integrity issues', () => {
+    expect(deskSource).toContain("state.brokerAccountInfo?.positionIntegrityIssues");
+    expect(deskSource).toContain("state.brokerAccountInfo?.lastRefreshIssue?.positionIntegrityIssues");
+    expect(deskSource).toContain("translateText('Some broker positions need review'");
+    expect(deskSource).toContain('positionIntegrityMessage(issue.code)');
+    expect(deskSource).toContain('The app retained the last accepted tracked values');
+  });
+});
+
+describe('broker history adapter boundary', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
   it('normalizes cached executions through the provider adapter', () => {
     expect(deskSource).toContain("import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';");
     expect(deskSource).toContain("freedomBrokerAdapter.normalizeExecutions(loadSavedHistory().brokerExecutedTrades, { source: 'cache' }).data");

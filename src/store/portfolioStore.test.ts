@@ -10,6 +10,9 @@ import {
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { normalizeFinnhubStockSplits } from '../services/corporateActions';
+import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
+import type { PortfolioState } from '../types/portfolio';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -3066,5 +3069,332 @@ describe('portfolio transaction journal integration', () => {
       transactionEvents: [{ id: 'bad-event', schemaVersion: 9 }]
     } as any)).toBe(false);
     expect(store.getState()).toBe(before);
+  });
+  it('applies a verified split once, preserves basis, and restores the action journal', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 12,
+          startDate: '2019-01-02',
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02', buyCommission: 12 }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      }
+    });
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const cashBefore = store.getState().cashCushion.freeCash;
+    const balanceBefore = store.getState().balance;
+    const recordedAt = Date.parse('2026-11-08T10:00:00Z');
+
+    const applied = store.applyCorporateActionSplit(action, recordedAt);
+    expect(applied).toMatchObject({ status: 'applied', sourceId: action.sourceId });
+    const state = store.getState();
+    expect(state.positions.AAPL).toMatchObject({
+      shares: 40,
+      currentPrice: 125,
+      pt: 150,
+      tranches: [{ qty: 40, price: 25, buyCommission: 12 }],
+      quoteDetails: { freshness: 'stale', dataQuality: 'partial' }
+    });
+    expect(state.cashCushion.freeCash).toBe(cashBefore);
+    expect(state.balance).toBe(balanceBefore);
+    expect(state.transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
+    expect(state.corporateActionEvents).toHaveLength(1);
+    expect(verifyPortfolioTransactionParity(state.transactionEvents || [], state).matches).toBe(true);
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+    const duplicate = reloaded.applyCorporateActionSplit(action, recordedAt + 1);
+    expect(duplicate?.status).toBe('applied');
+    expect(reloaded.getState().positions.AAPL.shares).toBe(40);
+    expect(reloaded.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
+
+    const conflictingRevision = {
+      ...action,
+      toFactor: 7,
+      sharesAfterPerShareBefore: 7
+    };
+    expect(reloaded.applyCorporateActionSplit(conflictingRevision, recordedAt + 2)).toBeNull();
+    expect(reloaded.getState().positions.AAPL.shares).toBe(40);
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+  });
+
+  it('rejects changed evidence when a corporate-action source ID is reused', () => {
+    const store = new PortfolioStore();
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    const recorded = store.recordCorporateActionEvidence(action);
+    expect(recorded).toMatchObject({ status: 'review_required', sourceId: action.sourceId });
+    const before = store.getState().corporateActionEvents;
+
+    const conflictingRevision = {
+      ...action,
+      toFactor: 7,
+      sharesAfterPerShareBefore: 7
+    };
+    expect(store.recordCorporateActionEvidence(conflictingRevision)).toBeNull();
+    expect(store.getState().corporateActionEvents).toEqual(before);
+  });
+
+  it('withholds split adjustment while broker position integrity is unresolved', () => {
+    const store = new PortfolioStore();
+    const brokerSnapshot = {
+      loaded: true,
+      balances: [],
+      positions: [],
+      status: 'current',
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      positionIntegrityIssues: [{
+        ticker: 'AAPL',
+        code: 'short_position_side_unverified',
+        source: 'account_snapshot'
+      }],
+      receivedAt: Date.now()
+    } as unknown as NonNullable<PortfolioState['brokerAccountInfo']>;
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 0,
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02' }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      },
+      brokerAccountInfo: brokerSnapshot
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({
+      status: 'review_required',
+      note: 'Broker position integrity is unresolved for this ticker. Resolve the position-side or execution discrepancy before applying a corporate action.'
+    });
+    expect(store.getState().positions.AAPL).toEqual(before);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('withholds split adjustment when the latest broker snapshot is stale', () => {
+    const store = new PortfolioStore();
+    const brokerSnapshot = {
+      loaded: true,
+      balances: [],
+      positions: [],
+      status: 'stale',
+      quality: 'complete',
+      snapshotQuality: 'complete',
+      receivedAt: Date.now()
+    } as unknown as NonNullable<PortfolioState['brokerAccountInfo']>;
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 0,
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02' }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      },
+      brokerAccountInfo: brokerSnapshot
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({
+      status: 'review_required',
+      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+    });
+    expect(store.getState().positions.AAPL).toEqual(before);
+  });
+
+  it('does not partially apply a split when matching cash holdings lack dated lots', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 0,
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02' }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      },
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{ ticker: 'AAPL', shares: 2, averagePrice: 90 }]
+      }
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({
+      status: 'review_required',
+      note: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+    });
+    expect(store.getState().positions.AAPL).toEqual(before);
+    expect(store.getState().cashCushion.holdings).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('persists a review-required action without changing a mixed pre/post-action position', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 100,
+          pt: 120,
+          commBuy: 0,
+          tranches: [
+            { qty: 5, price: 100, date: '2019-01-02' },
+            { qty: 5, price: 100, date: '2021-01-02' }
+          ]
+        }
+      }
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const recorded = store.applyCorporateActionSplit(action);
+    expect(recorded).toMatchObject({ status: 'review_required' });
+    expect(store.getState().positions.AAPL).toEqual(before);
+    expect(store.getState().corporateActionEvents).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('persists history correction before/after evidence and merges an older backup idempotently', () => {
+    const timestamp = 1_793_966_400_000;
+    const event = createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp,
+      provider: 'FINNHUB',
+      receivedAt: timestamp + 10,
+      recordedAt: timestamp + 20,
+      previous: { timestamp, price: 100 },
+      corrected: { timestamp, price: 101 },
+      reason: 'Verified closing-price correction.'
+    });
+    const store = new PortfolioStore();
+    expect(store.recordMarketHistoryCorrection(event)).toEqual(event);
+    const state = store.getState();
+    expect(state.marketHistoryCorrections).toEqual([event]);
+
+    const restored = new PortfolioStore();
+    expect(restored.getState().marketHistoryCorrections).toEqual([event]);
+    expect(restored.importState({ marketHistoryCorrections: [event] })).toBe(true);
+    expect(restored.getState().marketHistoryCorrections).toHaveLength(1);
+  });
+
+});
+
+describe('broker position integrity persistence', () => {
+  it('retains signed broker evidence and integrity issues across local reload', () => {
+    const store = new PortfolioStore();
+    const brokerAccountInfo = {
+      loaded: true,
+      receivedAt: 1_800_000_000_000,
+      status: 'stale',
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      balances: [],
+      positions: [{
+        ticker: 'GOOGL.US',
+        name: 'Alphabet',
+        quantity: -2,
+        currency: 'USD',
+        marketPrice: 290,
+        marketValue: -580,
+        averagePrice: 300,
+        profitClose: null,
+        accountPositionId: 42,
+        direction: 'unknown',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42',
+        raw: { i: 'GOOGL.US', q: -2, position_side: 'S' }
+      }],
+      positionIntegrityIssues: [{
+        ticker: 'GOOGL',
+        code: 'negative_quantity_sign_unverified',
+        source: 'account_snapshot',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42',
+        raw: { i: 'GOOGL.US', q: -2, position_side: 'S' }
+      }]
+    };
+
+    expect(store.importState({ brokerAccountInfo } as any)).toBe(true);
+
+    const reloaded = new PortfolioStore().getState().brokerAccountInfo;
+    expect(reloaded).toMatchObject({
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      positions: [{ quantity: -2, direction: 'unknown', rawQuantity: -2, rawSide: 'S', instrumentId: 'security-42' }],
+      positionIntegrityIssues: [{
+        ticker: 'GOOGL',
+        code: 'negative_quantity_sign_unverified',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42'
+      }]
+    });
   });
 });

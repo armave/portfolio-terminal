@@ -28,6 +28,19 @@ import {
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import {
+  adjustPositionForSplit,
+  mergePortfolioCorporateActionEvents,
+  toPortfolioCorporateActionEvent,
+  type CorporateActionEvent,
+  isPortfolioCorporateActionEventList,
+  type PortfolioCorporateActionEvent
+} from '../services/corporateActions';
+import {
+  isMarketHistoryCorrectionEventList,
+  mergeMarketHistoryCorrectionEvents,
+  type MarketHistoryCorrectionEvent
+} from '../services/marketHistoryCorrections';
+import {
   loadSavedState,
   saveState,
   loadBrokerRules,
@@ -91,6 +104,8 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'cashStocks',
     'guestTrancheLedger',
     'transactionEvents',
+    'corporateActionEvents',
+    'marketHistoryCorrections',
     'performanceValuations'
   ] as const;
   for (const field of arrayFields) {
@@ -125,6 +140,14 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
 
   if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
       value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'corporateActionEvents') &&
+      value.corporateActionEvents !== undefined && !isPortfolioCorporateActionEventList(value.corporateActionEvents)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'marketHistoryCorrections') &&
+      value.marketHistoryCorrections !== undefined && !isMarketHistoryCorrectionEventList(value.marketHistoryCorrections)) {
     return false;
   }
 
@@ -397,6 +420,14 @@ export class PortfolioStore {
           ? freezePortfolioTransactionEventList(raw.transactionEvents)
           : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
         : freezePortfolioTransactionEventList([]),
+      corporateActionEvents: Array.isArray(raw.corporateActionEvents) &&
+        isPortfolioCorporateActionEventList(raw.corporateActionEvents)
+        ? raw.corporateActionEvents
+        : [],
+      marketHistoryCorrections: Array.isArray(raw.marketHistoryCorrections) &&
+        isMarketHistoryCorrectionEventList(raw.marketHistoryCorrections)
+        ? raw.marketHistoryCorrections
+        : [],
       performanceValuations: Array.isArray(raw.performanceValuations)
         ? raw.performanceValuations.filter(isPerformanceValuationSnapshot).slice(-1095)
         : [],
@@ -630,7 +661,9 @@ export class PortfolioStore {
   ): boolean {
     // The append-only journal can only be changed by audited financial
     // commands or by the validated import/merge path below.
-    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents')) return false;
+    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
+        Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents') ||
+        Object.prototype.hasOwnProperty.call(partial, 'marketHistoryCorrections')) return false;
     return this.update((state) => ({
       ...state,
       ...partial
@@ -656,13 +689,37 @@ export class PortfolioStore {
         return false;
       }
     }
+    let mergedCorporateActions = this.state.corporateActionEvents || [];
+    if (Array.isArray(newState.corporateActionEvents)) {
+      try {
+        mergedCorporateActions = mergePortfolioCorporateActionEvents(
+          mergedCorporateActions,
+          newState.corporateActionEvents
+        );
+      } catch {
+        return false;
+      }
+    }
+    let mergedHistoryCorrections = this.state.marketHistoryCorrections || [];
+    if (Array.isArray(newState.marketHistoryCorrections)) {
+      try {
+        mergedHistoryCorrections = mergeMarketHistoryCorrectionEvents(
+          mergedHistoryCorrections,
+          newState.marketHistoryCorrections
+        );
+      } catch {
+        return false;
+      }
+    }
 
     return this.update((state) => ({
       ...state,
       ...newState,
       // Imports append/merge history; an older backup may never erase events
       // already committed on this device.
-      transactionEvents: mergedEvents
+      transactionEvents: mergedEvents,
+      corporateActionEvents: mergedCorporateActions,
+      marketHistoryCorrections: mergedHistoryCorrections
     }));
   }
 
@@ -1957,6 +2014,190 @@ export class PortfolioStore {
         }
       };
     });
+  }
+
+  /** Append a reproducible historical candle correction without rewriting provider history. */
+  public recordMarketHistoryCorrection(
+    event: MarketHistoryCorrectionEvent
+  ): MarketHistoryCorrectionEvent | null {
+    if (!isMarketHistoryCorrectionEventList(this.state.marketHistoryCorrections || [])) return null;
+    let committed: MarketHistoryCorrectionEvent | null = null;
+    const saved = this.update(state => {
+      try {
+        const merged = mergeMarketHistoryCorrectionEvents(
+          state.marketHistoryCorrections || [],
+          [event]
+        );
+        committed = merged.find(item => item.sourceId === event.sourceId) ?? event;
+        return { ...state, marketHistoryCorrections: merged };
+      } catch {
+        return state;
+      }
+    });
+    return saved ? committed : null;
+  }
+
+  /**
+   * Retain sourced dividend, merger, spin-off or other action evidence without
+   * changing positions, cash, debt, or realized P&L. Broker settlement and
+   * cost-basis allocation are separate reviewed workflows.
+   */
+  public recordCorporateActionEvidence(
+    event: CorporateActionEvent,
+    recordedAt = Date.now()
+  ): PortfolioCorporateActionEvent | null {
+    if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
+    const previous = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
+    if (previous) {
+      // A duplicate source ID is idempotent only when the provider evidence is
+      // unchanged. Do not bypass the journal's immutable-evidence conflict check.
+      try {
+        mergePortfolioCorporateActionEvents([previous], [
+          toPortfolioCorporateActionEvent(event, previous.status, recordedAt, previous.note)
+        ]);
+      } catch {
+        return null;
+      }
+      return previous;
+    }
+    let committed: PortfolioCorporateActionEvent | null = null;
+    const saved = this.update(state => {
+      let merged: PortfolioCorporateActionEvent[];
+      try {
+        const portfolioEvent = toPortfolioCorporateActionEvent(
+          event,
+          'review_required',
+          recordedAt,
+          event.kind === 'cash_dividend'
+            ? 'Dividend announcement retained as evidence only. No cash or realized P&L was posted; broker settlement must be confirmed separately.'
+            : 'Corporate-action evidence retained for manual review; no portfolio position or cash was changed.'
+        );
+        merged = mergePortfolioCorporateActionEvents(state.corporateActionEvents || [], [portfolioEvent]);
+        committed = merged.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
+      } catch {
+        return state;
+      }
+      return { ...state, corporateActionEvents: merged };
+    });
+    return saved ? committed : null;
+  }
+
+  /**
+   * Apply a sourced split only after an explicit user action. Position quantity
+   * and lot prices are adjusted together; total acquisition cost is conserved.
+   * Dividends and mergers remain evidence-only until settlement/basis allocation
+   * is modeled. Every attempt is persisted, including review-required outcomes.
+   */
+  public applyCorporateActionSplit(
+    event: CorporateActionEvent,
+    recordedAt = Date.now()
+  ): PortfolioCorporateActionEvent | null {
+    if (event.kind !== 'stock_split' && event.kind !== 'reverse_split') return null;
+    if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
+    const existing = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
+    if (existing) {
+      // Preserve idempotency for an already-applied action, but first verify
+      // that a reused source ID still describes exactly the same source event.
+      try {
+        mergePortfolioCorporateActionEvents([existing], [
+          toPortfolioCorporateActionEvent(event, existing.status, recordedAt, existing.note)
+        ]);
+      } catch {
+        return null;
+      }
+      if (existing.status === 'applied' || existing.status === 'not_applicable') return existing;
+    }
+
+    let committed: PortfolioCorporateActionEvent | null = null;
+    const saved = this.update(state => {
+      const currentActions = state.corporateActionEvents || [];
+      const normalizeActionTicker = (value: string): string => {
+        const token = value.trim().toUpperCase();
+        return token.endsWith('.US') ? token.slice(0, -3) : token;
+      };
+      const actionTicker = normalizeActionTicker(event.symbol);
+      const positionEntry = Object.entries(state.positions || {}).find(([key, position]) =>
+        normalizeActionTicker(key) === actionTicker || normalizeActionTicker(position.ticker) === actionTicker
+      );
+      const positionKey = positionEntry?.[0];
+      const position = positionEntry?.[1];
+      const hasCashHolding = [
+        ...(state.cashCushion?.holdings || []),
+        ...(state.cashStocks || [])
+      ].some(holding => typeof holding?.ticker === 'string' &&
+        normalizeActionTicker(holding.ticker) === actionTicker);
+      type BrokerSnapshotWithIntegrity = NonNullable<PortfolioState['brokerAccountInfo']> & {
+        positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
+        snapshotQuality?: string;
+      };
+      const brokerSnapshot = state.brokerAccountInfo as BrokerSnapshotWithIntegrity | undefined;
+      const brokerIntegrityIssue = brokerSnapshot?.positionIntegrityIssues?.some(issue =>
+        normalizeActionTicker(issue.ticker) === actionTicker
+      ) === true;
+      const brokerSnapshotNotVerified = brokerSnapshot?.loaded === true &&
+        (brokerSnapshot.status !== 'current' ||
+          brokerSnapshot.quality !== 'complete' ||
+          brokerSnapshot.snapshotQuality !== 'complete');
+      const adjusted = brokerIntegrityIssue || brokerSnapshotNotVerified ? {
+        status: 'review_required' as const,
+        reason: brokerIntegrityIssue
+          ? 'Broker position integrity is unresolved for this ticker. Resolve the position-side or execution discrepancy before applying a corporate action.'
+          : 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+      } : hasCashHolding ? {
+        status: 'review_required' as const,
+        reason: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+      } : position ? adjustPositionForSplit(position, event) : {
+        status: 'review_required' as const,
+        reason: 'No matching open portfolio position was found for this corporate action.'
+      };
+      const status = adjusted.status;
+      const portfolioEvent = toPortfolioCorporateActionEvent(
+        event,
+        status,
+        recordedAt,
+        adjusted.status === 'applied'
+          ? 'Verified split applied to all eligible open lots; aggregate acquisition cost was preserved.'
+          : adjusted.reason
+      );
+      let mergedActions: PortfolioCorporateActionEvent[];
+      try {
+        mergedActions = mergePortfolioCorporateActionEvents(currentActions, [portfolioEvent]);
+      } catch {
+        return state;
+      }
+      committed = mergedActions.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
+      if (adjusted.status !== 'applied' || !positionKey) {
+        return { ...state, corporateActionEvents: mergedActions };
+      }
+
+      const transactionDraft: PortfolioTransactionDraft = {
+        type: 'corporate-action',
+        effectiveAt: Date.parse(event.effectiveDate + 'T00:00:00Z'),
+        ticker: event.symbol,
+        quantity: adjusted.sharesBefore,
+        positionQuantityDelta: adjusted.sharesAfter - adjusted.sharesBefore,
+        externalReferenceId: event.sourceId,
+        note: 'Applied verified ' + event.kind + ' (' + event.fromFactor + ':' + event.toFactor +
+          '). Open-lot total acquisition cost remained ' + adjusted.costBasisAfter.toFixed(8) +
+          '; no cash or realized P&L was posted.'
+      };
+      const transaction = createPortfolioTransactionEvent(transactionDraft, {
+        actor: { type: 'user' },
+        source: 'corporate-action',
+        idempotencyKey: 'corporate-action:' + event.sourceId,
+        requestFingerprint: JSON.stringify([event.sourceId, event.fromFactor, event.toFactor]),
+        recordedAt
+      }, recordedAt);
+      const appended = appendPortfolioTransactionEvent(state.transactionEvents || [], transaction);
+      if (!appended.appended && !appended.duplicate) return state;
+      return {
+        ...state,
+        positions: { ...state.positions, [positionKey]: adjusted.position },
+        transactionEvents: appended.events,
+        corporateActionEvents: mergedActions
+      };
+    });
+    return saved ? committed : null;
   }
 
   /** Pending confirmation UI state is transient and is never restored from a portfolio snapshot. */

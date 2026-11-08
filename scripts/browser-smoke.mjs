@@ -76,7 +76,7 @@ async function mockWorkerApi(page) {
     data: { trades: { trade: [{
       trade_id: 'smoke-buy-aapl-1',
       instr_nm: 'AAPL.US',
-      operation: '1',
+      type: '1',
       quantity: '5',
       p: '10',
       date: '2026-11-02T09:00:00.000Z',
@@ -87,7 +87,7 @@ async function mockWorkerApi(page) {
     }, {
       trade_id: 'smoke-buy-msft-1',
       instr_nm: 'MSFT.US',
-      operation: '1',
+      type: '1',
       quantity: '2',
       p: '20',
       date: '2026-11-02T10:00:00.000Z',

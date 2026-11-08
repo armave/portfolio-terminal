@@ -24,7 +24,9 @@ export {
   normalizeMarketQuoteObservation,
   normalizeMarketHistoryPoints,
   normalizeMarketHistoryResponse,
+  findMissingMarketHistoryTimestamps,
   normalizeFxRate,
+  createFxRateProviderRegistry,
   isFxRateUsableForConversion,
   getFxConversionRate,
   shouldAcceptMarketObservation
@@ -49,7 +51,9 @@ export type {
   MarketHistoryResponseInput,
   FxRateInput,
   FxRate,
-  FxRateProviderAdapter
+  FxRateProviderAdapter,
+  FxRateProviderRegistry,
+  FxRateProviderRegistryResult
 } from './marketDataContracts';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
 
@@ -69,7 +73,15 @@ export interface SyncedMarginDigest {
 
 const MARGIN_DIGEST_PATH = '/api/margin-digest';
 
-export async function loadSyncedMarginDigest(key: string): Promise<{ digest: SyncedMarginDigest; revision: number } | null> {
+export type MarginDigestEncryptionMigrationStatus = 'not-required' | 'migrated' | 'pending';
+
+export interface LoadedSyncedMarginDigest {
+  digest: SyncedMarginDigest;
+  revision: number;
+  migrationStatus: MarginDigestEncryptionMigrationStatus;
+}
+
+export async function loadSyncedMarginDigest(key: string): Promise<LoadedSyncedMarginDigest | null> {
   const secret = getActiveGatewaySecret().trim();
   if (!secret) throw new Error('Gateway Secret is not available.');
   const digestUrl = new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL);
@@ -107,15 +119,18 @@ export async function loadSyncedMarginDigest(key: string): Promise<{ digest: Syn
 
   let revision = readCloudRevision(response.headers) ?? 0;
   const digest = candidate as unknown as SyncedMarginDigest;
+  let migrationStatus: MarginDigestEncryptionMigrationStatus = 'not-required';
   if (requiresEncryptionMigration) {
     try {
       revision = await saveSyncedMarginDigest(digest, revision);
+      migrationStatus = 'migrated';
     } catch {
-      // Preserve read availability if another device won the revision race or
-      // the encryption upgrade is temporarily unavailable. A later read retries.
+      // Keep the saved review readable, but explicitly report that the encrypted
+      // rewrite did not complete. Settings offers a retryable admin migration.
+      migrationStatus = 'pending';
     }
   }
-  return { digest, revision };
+  return { digest, revision, migrationStatus };
 }
 
 export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revision: number): Promise<number> {
@@ -147,6 +162,127 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
   const nextRevision = readCloudRevision(response.headers) ?? Number(data?.revision);
   if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) throw new Error('Server saved the digest but returned an invalid revision.');
   return nextRevision;
+}
+
+
+export interface MarginDigestMigrationInventory {
+  totalRecords: number;
+  plaintextRecords: number;
+  encryptedV2Records: number;
+  legacyEncryptedRecords: number;
+  unreadableRecords: number;
+  scannedAt: string;
+  migrationReady: boolean;
+}
+
+export interface MarginDigestMigrationBatchResult {
+  scanned: number;
+  migrated: number;
+  alreadyEncrypted: number;
+  unreadable: number;
+  conflicts: number;
+  nextCursor: string | null;
+  done: boolean;
+}
+
+const MARGIN_DIGEST_MIGRATION_PATH = '/api/margin-digest-migration';
+
+async function marginDigestMigrationRequest<T>(method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<T> {
+  const secret = getActiveGatewaySecret().trim();
+  if (!secret) throw new Error('Gateway Secret is not available.');
+  const response = await fetch(new URL(MARGIN_DIGEST_MIGRATION_PATH, WORKER_PROXY_URL), {
+    method,
+    headers: {
+      'X-App-Auth': secret,
+      Authorization: `Bearer ${secret}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {})
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    cache: 'no-store'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Margin digest migration request failed (HTTP ${response.status}).`);
+  }
+  return payload as T;
+}
+
+/** Fetch aggregate digest-format counts only; the Worker never returns digest contents. */
+export async function fetchMarginDigestMigrationInventory(): Promise<MarginDigestMigrationInventory> {
+  const payload = await marginDigestMigrationRequest<unknown>('GET');
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('The Margin Intelligence encryption inventory response was invalid.');
+  }
+  const value = payload as Record<string, unknown>;
+  const countKeys = ['totalRecords', 'plaintextRecords', 'encryptedV2Records', 'legacyEncryptedRecords', 'unreadableRecords'];
+  const isCount = (candidate: unknown): candidate is number =>
+    typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
+  if (countKeys.some((key) => !isCount(value[key])) ||
+      typeof value.scannedAt !== 'string' || !Number.isFinite(Date.parse(value.scannedAt)) ||
+      typeof value.migrationReady !== 'boolean') {
+    throw new Error('The Margin Intelligence encryption inventory response was invalid.');
+  }
+  const classifiedRecords = countKeys.slice(1).reduce((total, key) => total + (value[key] as number), 0);
+  const expectedReady = value.plaintextRecords === 0 &&
+    value.legacyEncryptedRecords === 0 && value.unreadableRecords === 0;
+  if (classifiedRecords !== value.totalRecords || value.migrationReady !== expectedReady) {
+    throw new Error('The Margin Intelligence encryption inventory response was invalid.');
+  }
+  return {
+    totalRecords: value.totalRecords as number,
+    plaintextRecords: value.plaintextRecords as number,
+    encryptedV2Records: value.encryptedV2Records as number,
+    legacyEncryptedRecords: value.legacyEncryptedRecords as number,
+    unreadableRecords: value.unreadableRecords as number,
+    scannedAt: value.scannedAt as string,
+    migrationReady: value.migrationReady as boolean
+  };
+}
+
+/** Run one bounded, resumable server-side encryption batch. */
+export async function migrateMarginDigestBatch(input: { cursor?: string | null; limit?: number } = {}): Promise<MarginDigestMigrationBatchResult> {
+  const limit = input.limit ?? 25;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 ||
+      (input.cursor !== undefined && input.cursor !== null &&
+        (typeof input.cursor !== 'string' || !input.cursor.startsWith('marginDigestRecord:') || input.cursor.length > 100))) {
+    throw new Error('Margin digest migration batch settings are invalid.');
+  }
+  const payload = await marginDigestMigrationRequest<unknown>('POST', {
+    limit,
+    ...(input.cursor ? { cursor: input.cursor } : {})
+  });
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('The Margin Intelligence encryption batch response was invalid.');
+  }
+  const value = payload as Record<string, unknown>;
+  const countKeys = ['scanned', 'migrated', 'alreadyEncrypted', 'unreadable', 'conflicts'];
+  const isCount = (candidate: unknown): candidate is number =>
+    typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
+  if (countKeys.some((key) => !isCount(value[key])) ||
+      (value.nextCursor !== null && (
+        typeof value.nextCursor !== 'string' ||
+        !value.nextCursor.startsWith('marginDigestRecord:') ||
+        value.nextCursor.length > 100
+      )) ||
+      typeof value.done !== 'boolean') {
+    throw new Error('The Margin Intelligence encryption batch response was invalid.');
+  }
+  const classifiedRecords = countKeys.slice(1).reduce((total, key) => total + (value[key] as number), 0);
+  const scanned = value.scanned as number;
+  if (scanned > limit || classifiedRecords !== scanned ||
+      value.done !== (value.nextCursor === null) ||
+      (!value.done && scanned === 0)) {
+    throw new Error('The Margin Intelligence encryption batch response was invalid.');
+  }
+  return {
+    scanned: value.scanned as number,
+    migrated: value.migrated as number,
+    alreadyEncrypted: value.alreadyEncrypted as number,
+    unreadable: value.unreadable as number,
+    conflicts: value.conflicts as number,
+    nextCursor: value.nextCursor as string | null,
+    done: value.done as boolean
+  };
 }
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';

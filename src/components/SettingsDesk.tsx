@@ -15,6 +15,7 @@ import { TableScrollRegion } from './TableScrollRegion';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
 import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
+import { MarginDigestSecurityPanel } from './MarginDigestSecurityPanel';
 
 
 export interface BrokerRulesFormValues {
@@ -416,6 +417,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </section>}
 
       <DeviceCheckSummary />
+      {account?.role === 'admin' && <MarginDigestSecurityPanel currentUserId={account.id} />}
       {LoadedTenantDirectoryPanel ? (
         <LoadedTenantDirectoryPanel currentUser={account} />
       ) : (
