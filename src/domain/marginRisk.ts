@@ -80,6 +80,8 @@ export interface MarginRiskSnapshot {
   stopOutBufferPctOfLongExposure: number | null;
   showMarginCall: boolean;
   showStopOut: boolean;
+  maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
+  stopOutState: 'above-stop-out' | 'stop-out-breach';
   annualInterestCost: number;
   dailyInterestCost: number;
   riskLevel: MarginRiskLevel;
@@ -161,7 +163,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const currency = input.currency.trim().toUpperCase();
   const requirements = input.brokerRequirements ?? null;
   if (requirements) {
-    if (requirements.currency.trim().toUpperCase() !== currency) {
+    if (typeof requirements.currency !== 'string' || requirements.currency.trim().toUpperCase() !== currency) {
       return unavailable('Broker margin requirements use a different currency from the account inputs.');
     }
     for (const amount of [
@@ -198,9 +200,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
 
   const isLongOnly = input.shortExposure === 0;
   const canEstimatePriceTriggers = isLongOnly && maintenanceSource === 'configured-assumption';
-  const marginCallValue = canEstimatePriceTriggers
+  const marginCallValue = canEstimatePriceTriggers && concentrationAmount !== null
     ? Math.max(0, (input.marginDebt - (1 - input.assumptions.maintenanceEquityRatio) * input.cashBalance +
-      (concentrationAmount ?? 0)) / (1 - input.assumptions.maintenanceEquityRatio))
+      concentrationAmount) / (1 - input.assumptions.maintenanceEquityRatio))
     : null;
   const stopOutValue = isLongOnly
     ? Math.max(0, (input.marginDebt - (1 - input.assumptions.stopOutRatio) * input.cashBalance) /
@@ -248,6 +250,11 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
   if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) riskLevel = 'Elevated';
 
+  const maintenanceState: MarginRiskSnapshot['maintenanceState'] = maintenanceBuffer === null
+    ? 'unknown'
+    : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
+  const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer <= 0
+    ? 'stop-out-breach' : 'above-stop-out';
   const value: MarginRiskSnapshot = {
     currency, calculatedAt: input.calculatedAt,
     longExposure: input.longExposure, shortExposure: input.shortExposure, grossExposure, netExposure,
@@ -264,8 +271,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     totalMaintenanceRequirement, baseMaintenanceBuffer, maintenanceBuffer, maintenanceBufferPct,
     stopOutBuffer, stopOutBufferPct, marginCallValue, stopOutValue,
     marginCallBufferPct, stopOutBufferPctOfLongExposure,
-    showMarginCall: maintenanceBuffer !== null ? maintenanceBuffer <= 0 : baseMaintenanceBuffer <= 0,
+    showMarginCall: maintenanceState === 'maintenance-breach',
     showStopOut: stopOutBuffer <= 0,
+    maintenanceState, stopOutState,
     annualInterestCost, dailyInterestCost, riskLevel, quality, warnings,
     disclaimer: 'This is an estimate from the supplied snapshot and configured assumptions, not a broker maintenance calculation, buying-power result, liquidation quote, or forecast.'
   };

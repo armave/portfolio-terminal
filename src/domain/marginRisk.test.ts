@@ -84,6 +84,9 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.value.concentrationAddOn).toEqual({ amount: null, source: 'unavailable' });
     expect(result.value.totalMaintenanceRequirement).toBeNull();
     expect(result.value.maintenanceBuffer).toBeNull();
+    expect(result.value.maintenanceState).toBe('unknown');
+    expect(result.value.showMarginCall).toBe(false);
+    expect(result.value.marginCallValue).toBeNull();
     expect(Number.isFinite(result.value.baseMaintenanceBuffer)).toBe(true);
     expect(result.warnings.some(item => item.includes('Initial margin requirement is unavailable'))).toBe(true);
     expect(result.warnings.some(item => item.includes('Concentration add-on is unavailable'))).toBe(true);
