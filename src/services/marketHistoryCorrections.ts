@@ -27,7 +27,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validPoint(value: unknown, timestamp: number): value is MarketPricePoint {
-  if (!isRecord(value) || value.timestamp !== timestamp ||
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0 ||
+      !isRecord(value) || value.timestamp !== timestamp ||
       typeof value.price !== 'number' || !Number.isFinite(value.price) || value.price <= 0) return false;
   for (const field of ['open', 'high', 'low'] as const) {
     const optional = value[field];

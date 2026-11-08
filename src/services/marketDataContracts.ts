@@ -639,7 +639,7 @@ export function findMissingMarketHistoryTimestamps(
 ): number[] {
   const observed = new Set(points.map(point => point.timestamp));
   return [...new Set(expectedTimestamps.filter(value =>
-    Number.isFinite(value) && value > 0
+    Number.isSafeInteger(value) && value > 0
   ))].sort((a, b) => a - b).filter(timestamp => !observed.has(timestamp));
 }
 

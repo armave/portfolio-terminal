@@ -502,6 +502,12 @@ export function adjustPositionForSplit(
   let currentPrice = position.currentPrice;
   let quoteDetails = position.quoteDetails;
   const quoteObservedAt = finiteNumber(quoteDetails?.sourceTimestamp);
+  if (!Number.isFinite(position.currentPrice) || position.currentPrice <= 0) {
+    return { status: 'review_required', reason: 'A valid positive current quote is required before applying a split.' };
+  }
+  if (quoteObservedAt !== null && quoteObservedAt > Date.now() + 60_000) {
+    return { status: 'review_required', reason: 'The current quote observation timestamp is in the future; refresh and verify the market quote before applying the split.' };
+  }
   if (position.currentPrice > 0 && quoteObservedAt === null) {
     return {
       status: 'review_required',

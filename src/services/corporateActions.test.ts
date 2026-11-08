@@ -137,6 +137,23 @@ describe('split position adjustment', () => {
     expect(result.position.commBuy).toBe(12);
   });
 
+  it('rejects a non-positive or future-dated market quote before split accounting', () => {
+    expect(adjustPositionForSplit({
+      ...preSplitPosition,
+      currentPrice: 0
+    }, splitEvent())).toMatchObject({ status: 'review_required' });
+    expect(adjustPositionForSplit({
+      ...preSplitPosition,
+      quoteDetails: {
+        ...preSplitPosition.quoteDetails,
+        sourceTimestamp: Date.now() + 5 * 60_000
+      }
+    }, splitEvent())).toMatchObject({
+      status: 'review_required',
+      reason: 'The current quote observation timestamp is in the future; refresh and verify the market quote before applying the split.'
+    });
+  });
+
   it('requires review when the current quote cannot be ordered around the action date', () => {
     const unverifiedQuote = {
       ...preSplitPosition,

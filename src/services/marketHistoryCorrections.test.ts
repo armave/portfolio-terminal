@@ -141,6 +141,18 @@ describe('market history correction journal', () => {
     });
   });
 
+  it('rejects unsafe or unbounded candle timestamps in correction evidence', () => {
+    expect(() => createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL', interval: '1D', timestamp: Number.MAX_SAFE_INTEGER + 1,
+      provider: 'USER', receivedAt: timestamp + 1, recordedAt: timestamp + 2,
+      previous: null,
+      corrected: { timestamp: Number.MAX_SAFE_INTEGER + 1, price: 100 },
+      reason: 'Invalid timestamp.'
+    })).toThrow('invalid before/after candle');
+    expect(replayMarketHistoryCorrections([{ timestamp: Number.POSITIVE_INFINITY, price: 100 }], []))
+      .toMatchObject({ status: 'review_required', appliedCount: 0 });
+  });
+
   it('supports an explicit candle removal and rejects reused source IDs with different evidence', () => {
     const removal = correction(original, null);
     expect(replayMarketHistoryCorrections([original], [removal])).toMatchObject({
