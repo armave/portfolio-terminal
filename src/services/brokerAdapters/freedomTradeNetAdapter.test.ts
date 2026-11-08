@@ -42,6 +42,62 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.warnings).toContain('The provider did not supply a verifiable observation timestamp.');
   });
 
+  it('preserves the documented TradeNet numeric type fields without interpreting them as position direction', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 5000 }],
+        pos: [{
+          i: 'SAMPLE.US',
+          t: 1,
+          k: 1,
+          s: 1000,
+          q: 4,
+          fv: 100,
+          curr: 'USD',
+          currval: 1,
+          name: 'Sample issuer',
+          open_bal: 1000,
+          mkt_price: 250,
+          vm: 0,
+          go: 100,
+          profit_close: 0,
+          acc_pos_id: 123456,
+          bal_price_a: 250,
+          price_a: 250,
+          base_currency: 'USD',
+          scheme_calc: 'T2',
+          instr_id: 10000012345
+        }]
+      } } }
+    }, { receivedAt: 1000, source: 'rest' });
+
+    expect(snapshot.quality).toBe('complete');
+    expect(snapshot.positionIntegrityIssues ?? []).toEqual([]);
+    expect(snapshot.data.positions[0]).toMatchObject({
+      ticker: 'SAMPLE.US',
+      quantity: 4,
+      direction: 'long',
+      rawQuantity: 4,
+      rawSide: null,
+      instrumentId: '10000012345',
+      averagePrice: 250,
+      raw: {
+        t: 1,
+        k: 1,
+        q: 4,
+        bal_price_a: 250,
+        open_bal: 1000,
+        scheme_calc: 'T2',
+        instr_id: 10000012345
+      }
+    });
+    // TradeNet's published reference lists t/k but does not define their values.
+    // They remain raw evidence and are not used to decide long/short direction.
+    expect(snapshot.data.positions[0].direction).not.toBe('short');
+  });
+
   it('marks a confirmed empty USD portfolio as empty without inventing a balance', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizePortfolio({
