@@ -934,4 +934,16 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Depth": "Стакан",
   "View live market depth for {ticker}": "Открыть стакан заявок для {ticker}",
   "Market Depth for {ticker}": "Стакан заявок для {ticker}",
+
+  'TradeNet position probe': 'Диагностика позиций TradeNet',
+  "Fetch one fresh, read-only getPositionJson response to inspect the broker's actual position fields. This does not change holdings or place orders.": 'Получить свежий ответ getPositionJson только для чтения, чтобы проверить фактические поля позиций брокера. Позиции не изменяются, заявки не отправляются.',
+  'Admin only · temporary': 'Только администратор · временно',
+  'Capturing…': 'Получение данных…',
+  'Capture position response': 'Получить ответ о позициях',
+  'Copy response': 'Копировать ответ',
+  'The response is sanitized: account and balance rows plus account, login, session and credential fields are removed; position fields are retained.': 'Ответ очищен: строки счетов и балансов, а также поля счёта, логина, сеанса и учётных данных удалены; поля позиций сохранены.',
+  'Could not retrieve the TradeNet position response.': 'Не удалось получить ответ TradeNet о позициях.',
+  'Select the JSON below and copy it manually.': 'Выделите JSON ниже и скопируйте его вручную.',
+  'Response copied. Paste it into the chat.': 'Ответ скопирован. Вставьте его в чат.',
+  'Sanitized TradeNet network response': 'Очищенный сетевой ответ TradeNet',
 };
