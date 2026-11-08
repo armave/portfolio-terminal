@@ -2840,6 +2840,7 @@ export default {
                 const dividendsAvailable=dividendsResult.status==="fulfilled";
                 const corporateActionsAvailable=splitsResult.status==="fulfilled";
                 if(!earningsAvailable&&!dividendsAvailable&&!corporateActionsAvailable) return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
+                // Preserve provider instrument identity exactly; never fill a missing or mismatched symbol from the request.
                 const earnings=(earningsAvailable?earningsResult.value:[]).slice(0,200).flatMap(row=>{
                     if(!row||typeof row!=="object"||Array.isArray(row))return[];
                     const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date);
