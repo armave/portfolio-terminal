@@ -77,8 +77,8 @@ describe('Freedom execution contract normalization', () => {
     expect(trades).toHaveLength(2);
     expect(trades[0].id).not.toBe(trades[1].id);
     expect(trades[0].id).toMatch(/^fallback-/);
-    // Numeric order action 2 means Buy on Margin, not a closing sell.
-    expect(trades[0].side).toBe('BUY');
+    // An undocumented numeric operation alias is not guessed.
+    expect(trades[0].side).toBe('Unknown');
   });
 
   it('uses the trade-history type code separately from order action codes', () => {
@@ -90,7 +90,7 @@ describe('Freedom execution contract normalization', () => {
     }] });
     const [marginBuy] = normalizeFreedomTrades({ items: [{
       instr_nm: 'MSFT.US',
-      operation: '2',
+      oper: '2',
       q: 1,
       p: 100
     }] });
