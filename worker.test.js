@@ -2410,6 +2410,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
 
   it("counts all digest records when the inventory spans multiple storage pages", async () => {
     const store = makeDurableObject();
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
     store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
     for (let index = 0; index < 105; index += 1) {
       const key = "position:T" + String(index).padStart(3, "0");
