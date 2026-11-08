@@ -95,6 +95,13 @@ export interface FreedomPortfolioClassificationResult {
   positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
+/** A balance from a snapshot is not safe to apply while any position or execution is unsupported. */
+export function canApplyFreedomBrokerBalance(
+  positionIntegrityIssues?: readonly BrokerPositionIntegrityIssue[]
+): boolean {
+  return !positionIntegrityIssues || positionIntegrityIssues.length === 0;
+}
+
 function tickerKey(value: unknown): string {
   return String(value ?? '').trim().toUpperCase().replace(/\.US$/i, '');
 }
@@ -277,13 +284,20 @@ function operationTimestamp(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function tradeSide(value: unknown): 'buy' | 'sell' | null {
+function tradeSide(value: unknown, numericKind: 'text' | 'order' | 'history' = 'text'): 'buy' | 'sell' | null {
   const side = String(value ?? '').trim().toLowerCase();
-  if (side === '1' || /\b(buy|bought|purchase)\b/.test(side)) return 'buy';
-  if (side === '2' || /\b(sell|sold|sale)\b/.test(side)) return 'sell';
+  if (/\b(buy|bought|purchase)\b/.test(side)) return 'buy';
+  if (/\b(sell|sold|sale)\b/.test(side)) return 'sell';
+  if (numericKind === 'order') {
+    if (side === '1' || side === '2') return 'buy';
+    if (side === '3') return 'sell';
+  }
+  if (numericKind === 'history') {
+    if (side === '1') return 'buy';
+    if (side === '2') return 'sell';
+  }
   return null;
 }
-
 export type FreedomExecutedTradeLike = Omit<Partial<FreedomExecutedTrade>, 'commission'> & {
   /** Legacy broker aliases remain accepted for older saved/imported rows. */
   operation?: string | number | null;
@@ -357,9 +371,17 @@ export function getActiveTranchesFromTrades(
   const ordered = trades.map((trade, rowIndex) => {
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const side = [
-      trade?.side, trade?.operation, trade?.type,
-      raw.side, raw.operation, raw.oper, raw.buy_sell, raw.type
-    ].map(tradeSide).find((value): value is 'buy' | 'sell' => value !== null) || null;
+      [trade?.side, 'text'],
+      [trade?.operation, 'order'],
+      [trade?.type, 'history'],
+      [raw.side, 'text'],
+      [raw.operation, 'order'],
+      [raw.oper, 'order'],
+      [raw.buy_sell, 'text'],
+      [raw.type, 'history'],
+      [raw.action_id, 'order']
+    ].map(([value, numericKind]) => tradeSide(value, numericKind as 'text' | 'order' | 'history'))
+      .find((value): value is 'buy' | 'sell' => value !== null) || null;
     return {
       trade,
       rowIndex,
