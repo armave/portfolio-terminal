@@ -324,7 +324,15 @@ function buildMarginRisk(
     capitalGroups.set(key, group);
   }
   for (const [key, group] of capitalGroups) {
-    if (group.rows.reduce((sum, item) => sum + item.debt, 0) <= 0) capitalGroups.delete(key);
+    const hasShortExposure = positions.some(position =>
+      (position.brokerId ?? 'Unclassified') === group.brokerId &&
+      (position.accountId ?? 'Unclassified') === group.accountId &&
+      position.currency === group.currency &&
+      position.quantity < 0
+    );
+    if (group.rows.reduce((sum, item) => sum + item.debt, 0) <= 0 && !hasShortExposure) {
+      capitalGroups.delete(key);
+    }
   }
   if (capitalGroups.size === 0) return available([], 'current');
 

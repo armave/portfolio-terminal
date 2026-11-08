@@ -73,11 +73,16 @@ describe('calculatePortfolioRiskSnapshot', () => {
       positions: [{ id: 'short', ticker: 'SHORT', quantity: -4, price: 25, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
       capital: [{ currency: 'USD', cash: 200, debt: 0, eligibleCollateral: 200, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }]
     }));
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     const portfolio = result.value.portfolio;
-    expect(portfolio.status).toBe('available');
+    expect(portfolio.status).toBe('provisional');
     if (portfolio.status === 'unavailable') return;
+    expect(portfolio.value.margin.status).toBe('provisional');
+    if (portfolio.value.margin.status === 'unavailable') return;
+    expect(portfolio.value.margin.value[0].shortExposure).toBe(100);
+    expect(portfolio.value.margin.value[0].maintenanceState).toBe('maintenance-breach');
+    expect(portfolio.value.margin.value[0].stopOutState).toBe('unknown');
     expect(portfolio.value.netExposure).toBe(-100);
     expect(portfolio.value.grossExposure).toBe(100);
     expect(portfolio.value.equity).toBe(100);

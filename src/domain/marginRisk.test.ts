@@ -107,6 +107,18 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.warnings.some(item => item.includes('Concentration add-on is unavailable'))).toBe(true);
   });
 
+  it('requires eligible collateral for short exposure even when there is no margin debit', () => {
+    const result = calculateMarginRiskSnapshot(riskInput({
+      marginDebt: 0,
+      shortExposure: 100,
+      eligibleCollateral: null,
+      brokerRequirements: null
+    }));
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
+    expect(result.reason).toContain('eligible collateral is unknown');
+  });
+
   it('deducts margin debt exactly once from equity', () => {
     const lowerDebt = calculateMarginRiskSnapshot(riskInput({ marginDebt: 200 }));
     const higherDebt = calculateMarginRiskSnapshot(riskInput({ marginDebt: 300 }));

@@ -147,7 +147,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   if (!['broker', 'configured-assumption', 'unknown'].includes(input.eligibleCollateralSource)) {
     return unavailable('Eligible-collateral provenance is missing or invalid.');
   }
-  if (input.marginDebt > 0 && input.eligibleCollateral === null) {
+  if ((input.marginDebt > 0 || input.shortExposure > 0) && input.eligibleCollateral === null) {
     return unavailable('Margin risk is unavailable because eligible collateral is unknown.');
   }
   if (!validAssumptions(input.assumptions)) return unavailable('Broker margin assumptions are invalid.');
@@ -246,25 +246,26 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     quality = 'provisional';
     warnings.push('A broker-specific short-position stop-out rule is unavailable; short stop-out buffers are not estimated.');
   }
-  if (input.marginDebt > 0 && input.eligibleCollateralSource !== 'broker') {
+  const hasMarginActivity = input.marginDebt > 0 || input.shortExposure > 0;
+  if (hasMarginActivity && input.eligibleCollateralSource !== 'broker') {
     quality = 'provisional';
     warnings.push('Eligible collateral is a configured assumption, not a broker-confirmed amount.');
   }
-  if (input.marginDebt > 0 && !requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
+  if (hasMarginActivity && !requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
     quality = 'provisional';
     warnings.push('Initial margin requirement is unavailable; buying power is not estimated.');
   }
-  if (input.marginDebt > 0 && maintenanceSource === 'configured-assumption') {
+  if (hasMarginActivity && maintenanceSource === 'configured-assumption') {
     quality = 'provisional';
     warnings.push('Maintenance requirement uses the configured equity ratio, not a broker-reported requirement.');
-  } else if (input.marginDebt > 0 && maintenanceSource === 'unavailable') {
+  } else if (hasMarginActivity && maintenanceSource === 'unavailable') {
     quality = 'provisional';
     warnings.push('A short-position maintenance requirement was not reported; long-only maintenance assumptions are not applied to short exposure.');
   }
-  if (input.marginDebt > 0 && concentrationAmount === null) {
+  if (hasMarginActivity && concentrationAmount === null) {
     quality = 'provisional';
     warnings.push('Concentration add-on is unavailable; the complete maintenance buffer cannot be calculated.');
-  } else if (input.marginDebt > 0 && requirements?.concentrationAddOnSource === 'configured-assumption') {
+  } else if (hasMarginActivity && requirements?.concentrationAddOnSource === 'configured-assumption') {
     quality = 'provisional';
     warnings.push('Concentration add-on uses a configured assumption, not a broker-reported amount.');
   }
@@ -283,7 +284,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     riskLevel = 'Elevated';
   }
 
-  const maintenanceState: MarginRiskSnapshot['maintenanceState'] = input.marginDebt <= 0
+  const maintenanceState: MarginRiskSnapshot['maintenanceState'] = input.marginDebt <= 0 && input.shortExposure === 0
     ? 'above-maintenance'
     : maintenanceBuffer === null
       ? (baseMaintenanceBuffer !== null && baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
