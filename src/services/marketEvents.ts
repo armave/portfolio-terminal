@@ -65,7 +65,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function dateOnly(value: unknown): string | null {
-  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(value + 'T00:00:00.000Z');
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
     ? value
@@ -353,7 +353,7 @@ export function getNextUpcomingEarningsDate(
   return events
     .map((event) => event.eventDate)
     .filter((value) => {
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
       const parsed = Date.parse(value + 'T00:00:00.000Z');
       return Number.isFinite(parsed) && parsed >= today &&
         new Date(parsed).toISOString().slice(0, 10) === value;
