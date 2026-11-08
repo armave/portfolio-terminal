@@ -3697,7 +3697,17 @@ table tbody tr:hover {
   width: 100%;
 }
 
-#settingsDesk .settings-account-actions>*,
+/* Guest accounts have no Pull Cloud action, so use the full card width. */
+#settingsDesk .settings-account-actions--guest {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#settingsDesk .settings-account-actions--guest>* {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+#settingsDesk .settings-account-actions>* ,
 #settingsDesk .settings-backup-actions>* {
   width: 100%;
   min-width: 0;

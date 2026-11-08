@@ -78,13 +78,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [tenantDirectoryLoadFailed, setTenantDirectoryLoadFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    if (currentUser?.role !== 'admin') {
+      setTenantDirectoryModule(null);
+      setTenantDirectoryLoadFailed(false);
+      return () => { cancelled = true; };
+    }
     void import('./TenantDirectoryPanel').then((module) => {
       if (!cancelled) setTenantDirectoryModule(() => module);
     }).catch(() => {
       if (!cancelled) setTenantDirectoryLoadFailed(true);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [currentUser?.id, currentUser?.role]);
   const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
@@ -311,7 +316,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </label>}
           </div>
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-          <div class="settings-account-actions grid grid-cols-2 gap-2">
+          <div class={'settings-account-actions grid grid-cols-2 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
             <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
             {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-9 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">{translateText('Pull cloud')}</button>}
             {(account?.role === "admin" || account?.role === "guest") && <button
@@ -418,7 +423,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
 
       <DeviceCheckSummary />
       {account?.role === 'admin' && <MarginDigestSecurityPanel currentUserId={account.id} />}
-      {LoadedTenantDirectoryPanel ? (
+      {account?.role === 'admin' && (LoadedTenantDirectoryPanel ? (
         <LoadedTenantDirectoryPanel currentUser={account} />
       ) : (
         <div class="settings-panel text-xs text-slate-500" role="status">
@@ -426,7 +431,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             ? translateText('Portfolio ownership could not be loaded.')
             : translateText('Loading portfolio ownership…')}
         </div>
-      )}
+      ))}
 
       {permissions.canEditBrokerRules && <details
         class="settings-panel settings-broker-rules space-y-3"

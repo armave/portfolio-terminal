@@ -68,7 +68,10 @@ describe('multi-portfolio ownership Settings surface', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const componentSource = readFileSync(new URL('./TenantDirectoryPanel.tsx', import.meta.url), 'utf8');
 
-    expect(settingsSource).toContain("import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("void import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("if (currentUser?.role !== 'admin')");
+    expect(settingsSource).toContain('}, [currentUser?.id, currentUser?.role]);');
+    expect(settingsSource).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
     expect(settingsSource).toContain("useState<typeof import('./TenantDirectoryPanel') | null>(null)");
     expect(settingsSource).toContain('const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;');
     expect(settingsSource).toContain('<LoadedTenantDirectoryPanel currentUser={account} />');
@@ -150,5 +153,22 @@ describe('Margin Intelligence encryption migration controls', () => {
     expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
     expect(panel).toContain('inventory.plaintextRecords === 0');
     expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
+  });
+});
+
+
+describe('guest Settings layout', () => {
+  it('uses a single full-width action column for guests instead of leaving an empty second column', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../../../style.css', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === 'guest' ? 'settings-account-actions--guest' : ''");
+    expect(styles).toContain('#settingsDesk .settings-account-actions--guest');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr);');
+  });
+
+  it('does not mount or load portfolio ownership for guests', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("if (currentUser?.role !== 'admin')");
+    expect(source).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
   });
 });
