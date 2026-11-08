@@ -233,16 +233,19 @@ describe('normalizeMarketHistoryPoints', () => {
     });
   });
   it('reports gaps only when a verified calendar supplies expected timestamps', () => {
+    const first = Date.parse('2026-11-05T00:00:00.000Z');
+    const missing = Date.parse('2026-11-06T00:00:00.000Z');
+    const last = Date.parse('2026-11-07T00:00:00.000Z');
     const observed = [
-      { timestamp: 1_000, price: 10 },
-      { timestamp: 3_000, price: 12 }
+      { timestamp: first, price: 10 },
+      { timestamp: last, price: 12 }
     ];
-    expect(findMissingMarketHistoryTimestamps([1_000, 2_000, 3_000], observed)).toEqual([2_000]);
+    expect(findMissingMarketHistoryTimestamps([first, missing, last], observed)).toEqual([missing]);
     expect(normalizeMarketHistoryResponse({
       symbol: 'AAPL.US', provider: 'test', receivedAt: Date.now(),
-      interval: '1D', currency: 'USD', expectedTimestamps: [1_000, 2_000, 3_000],
+      interval: '1D', currency: 'USD', expectedTimestamps: [first, missing, last],
       points: observed
-    })).toMatchObject({ quality: 'partial', missingTimestamps: [2_000] });
+    })).toMatchObject({ quality: 'partial', missingTimestamps: [missing] });
   });
 
   it('downgrades historical responses with a future receipt timestamp', () => {

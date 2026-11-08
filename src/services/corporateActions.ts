@@ -407,8 +407,7 @@ export function mergePortfolioCorporateActionEvents(
 }
 
 function acquiredAtForTranche(
-  tranche: TrancheItem,
-  positionStartDate?: string
+  tranche: TrancheItem
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
   if (timestamp !== null && timestamp > 0) {
@@ -417,7 +416,7 @@ function acquiredAtForTranche(
   }
   const date = typeof tranche.date === 'string' && tranche.date.trim()
     ? tranche.date.trim()
-    : positionStartDate;
+    : null;
   if (!dateOnly(date)) return null;
   return Date.parse(date + 'T00:00:00.000Z');
 }
@@ -464,7 +463,7 @@ export function adjustPositionForSplit(
   if (Math.abs(sharesBefore - position.shares) > Math.max(1e-6, position.shares * 1e-8)) {
     return { status: 'review_required', reason: 'Position quantity does not reconcile to its open lots.' };
   }
-  const acquisitionDates = tranches.map(item => acquiredAtForTranche(item, position.startDate));
+  const acquisitionDates = tranches.map(item => acquiredAtForTranche(item));
   if (acquisitionDates.some(value => value === null)) {
     return { status: 'review_required', reason: 'An open lot has no verifiable acquisition date.' };
   }
