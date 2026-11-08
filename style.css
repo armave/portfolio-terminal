@@ -3844,3 +3844,162 @@ table tbody tr:hover {
     flex-direction: column;
   }
 }
+
+/* Keep the original Margin Health layout; clicking it opens the overview modal. */
+.margin-risk-gauge-clickable {
+  cursor: pointer;
+}
+
+.margin-risk-gauge-clickable:hover {
+  border-color: rgba(45, 212, 191, .45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28), 0 0 0 1px rgba(45, 212, 191, .08);
+}
+
+.margin-risk-gauge-clickable:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+.margin-risk-overview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(2, 6, 14, .78);
+  backdrop-filter: blur(4px);
+}
+
+.margin-risk-overview-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: min(86dvh, 720px);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .25);
+  border-radius: 14px;
+  background: #0b1220;
+  color: #e2e8f0;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+
+.margin-risk-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 17px 19px;
+  border-bottom: 1px solid rgba(148, 163, 184, .16);
+}
+
+.margin-risk-overview-header h2 {
+  margin-top: 4px;
+  color: #f8fafc;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.margin-risk-overview-close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(148, 163, 184, .25);
+  border-radius: 8px;
+  background: rgba(30, 41, 59, .7);
+  color: #cbd5e1;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.margin-risk-overview-content {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 17px 19px;
+}
+
+.margin-risk-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.margin-risk-overview-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(148, 163, 184, .16);
+  border-radius: 9px;
+  background: rgba(30, 41, 59, .45);
+}
+
+.margin-risk-overview-item span {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.margin-risk-overview-item strong {
+  color: #f8fafc;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.margin-risk-overview-item strong.warning {
+  color: #fbbf24;
+}
+
+.margin-risk-overview-item strong.positive {
+  color: #4ade80;
+}
+
+.margin-risk-overview-note,
+.margin-risk-overview-warning {
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.margin-risk-overview-warning {
+  padding: 10px 11px;
+  border-left: 3px solid #eab308;
+  border-radius: 4px;
+  background: rgba(234, 179, 8, .07);
+  color: #fde68a;
+}
+
+.margin-risk-overview-dialog button:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+@media(max-width:640px) {
+  .margin-risk-overview-backdrop {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .margin-risk-overview-dialog {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .margin-risk-overview-header {
+    padding: max(14px, env(safe-area-inset-top)) 15px 12px;
+  }
+
+  .margin-risk-overview-content {
+    padding: 13px 15px;
+  }
+}

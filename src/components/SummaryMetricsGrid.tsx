@@ -30,6 +30,7 @@ import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
+import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -64,9 +65,47 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   unpricedHoldings?: number;
 }) {
   const language = getAppLanguage();
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const openOverview = () => setOverviewOpen(true);
+  const closeOverview = () => setOverviewOpen(false);
+  const cardKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openOverview();
+    }
+  };
+  const overviewModal = overviewOpen ? (
+    <MarginRiskOverviewModal
+      onClose={closeOverview}
+      equityText={equityText}
+      equityPct={equityPct}
+      collateralText={collateralText}
+      riskLabel={risk.summaryText.split(' · ')[0]}
+      riskStatus={risk.status}
+      valuationStatus={valuationStatus}
+      maintenanceThresholdPct={rules.maintenanceEquityRatio * 100}
+      marginCallBufferPct={Number.isFinite(risk.marginCallBufferPct)
+        ? risk.marginCallBufferPct
+        : risk.baseMaintenanceBufferPct}
+      stopOutBufferPct={risk.stopOutBufferPct}
+      warnings={risk.warnings}
+      riskReason={risk.reason}
+    />
+  ) : null;
+
   if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
-      <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', language)}>
+      <>
+      <section
+        class="margin-risk-gauge-card margin-risk-gauge-clickable"
+        role="button"
+        tabIndex={0}
+        aria-haspopup="dialog"
+        aria-label={translateText('Open margin risk overview', language)}
+        title={translateText('Click to view margin risk overview', language)}
+        onClick={openOverview}
+        onKeyDown={cardKeyDown}
+      >
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
           <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
@@ -90,6 +129,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', language)}
         </p>
       </section>
+      {overviewModal}
+      </>
     );
   }
 
@@ -105,7 +146,17 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const equityWidth = Math.max(0, Math.min(100, equity));
   const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
   return (
-    <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk and account equity', language)} title={marginRiskTitle}>
+    <>
+    <section
+      class="margin-risk-gauge-card margin-risk-gauge-clickable"
+      role="button"
+      tabIndex={0}
+      aria-haspopup="dialog"
+      aria-label={translateText('Open margin risk overview', language)}
+      title={translateText('Click to view margin risk overview', language)}
+      onClick={openOverview}
+      onKeyDown={cardKeyDown}
+    >
       <div class="margin-risk-gauge-heading">
         <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
@@ -140,8 +191,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {translateText('Short borrow fees and availability costs are not included because broker data is unavailable.', language)}
         </p>
       )}
-      <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', language)}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', language)}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', language)}</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}</div></details>
+
     </section>
+    {overviewModal}
+    </>
   );
 }
 
