@@ -682,6 +682,17 @@ describe('app localization', () => {
   });
 
 
+  it('localizes the compact cloud sync indicator', () => {
+    expect(translateText('Synced', 'ru')).toBe('Синхронизировано');
+    expect(translateText('Syncing…', 'ru')).toBe('Синхронизация…');
+    expect(translateText('Pending', 'ru')).toBe('Ожидает');
+    expect(translateText('Failed', 'ru')).toBe('Ошибка');
+    expect(translateText('Offline', 'ru')).toBe('Не в сети');
+    expect(translateText('Just now', 'ru')).toBe('Только что');
+    expect(translateText('m ago', 'ru')).toBe(' мин. назад');
+    expect(translateText('Last synced', 'ru')).toBe('Последняя синхронизация');
+  });
+
   it('localizes quote cache provenance labels', () => {
     expect(translateText('Cached', 'ru')).toBe('Из кэша');
     expect(translateText('Stale cached fallback', 'ru')).toBe('Устаревшая резервная котировка из кэша');
