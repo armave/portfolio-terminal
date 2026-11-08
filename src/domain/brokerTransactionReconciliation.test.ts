@@ -247,7 +247,7 @@ describe('reconcileBrokerActivity', () => {
       confidence: 'provisional'
     }));
     expect(report.warnings).toContain(
-      'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.'
+      'One or more broker execution rows could not be classified; affected rows were excluded from matching.'
     );
   });
 

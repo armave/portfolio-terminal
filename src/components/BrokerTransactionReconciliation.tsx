@@ -54,6 +54,8 @@ const RU_COPY: Record<string, string> = {
   'The broker and app record opposite signed cash movements for the same cashflow. No balance adjustment was made.': 'Брокер и приложение указывают противоположные знаки одного денежного потока. Баланс не корректировался.',
   'The broker history contains the same execution identifier and facts more than once.': 'В истории брокера несколько раз встречается один идентификатор исполнения с одинаковыми данными.',
   'The broker history contains the same cashflow identifier and facts more than once.': 'В истории брокера несколько раз встречается один идентификатор денежного потока с одинаковыми данными.',
+  'One or more broker execution rows could not be classified; affected rows were excluded from matching.': 'Некоторые исполнения брокера не удалось распознать; такие записи исключены из сверки.',
+  'One or more broker cashflow rows could not be classified; affected rows were excluded from matching.': 'Некоторые денежные потоки брокера не удалось распознать; такие записи исключены из сверки.',
   'One or more broker executions lack a provider-stable execution ID; matching is provisional.': 'У некоторых исполнений отсутствует стабильный идентификатор брокера; сверка предварительная.',
   'One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.': 'Некоторые идентификаторы исполнений содержат конфликтующие версии; такие записи исключены из сверки.',
   'One or more broker cashflows lack a provider-stable cashflow ID; matching is provisional.': 'У некоторых денежных потоков отсутствует стабильный идентификатор брокера; сверка предварительная.',

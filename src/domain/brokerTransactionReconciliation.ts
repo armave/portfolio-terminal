@@ -253,6 +253,7 @@ export function reconcileBrokerActivity(
       return;
     }
     sourceDataIncomplete = true;
+    warnings.push('One or more broker execution rows could not be classified; affected rows were excluded from matching.');
     const tickerValue = ticker((raw as BrokerExecution | null)?.ticker);
     const ref = text((raw as BrokerExecution | null)?.id);
     findings.push(makeFinding({
@@ -563,6 +564,7 @@ export function reconcileBrokerActivity(
       return;
     }
     sourceDataIncomplete = true;
+    warnings.push('One or more broker cashflow rows could not be classified; affected rows were excluded from matching.');
     const ref = text((raw as BrokerCashflow | null)?.id);
     findings.push(makeFinding({
       id: `cashflow-unclassified:${ref || index}`,
