@@ -2098,8 +2098,22 @@ export class PortfolioStore {
         ...(state.cashCushion?.holdings || []),
         ...(state.cashStocks || [])
       ].some(holding => typeof holding?.ticker === 'string' &&
-        holding.ticker.trim().toUpperCase() === event.symbol);
-      const adjusted = hasCashHolding ? {
+        holding.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === event.symbol.replace(/\\.US$/i, ''));
+      const brokerSnapshot = state.brokerAccountInfo;
+      const actionTicker = event.symbol.replace(/\\.US$/i, '');
+      const brokerIntegrityIssue = brokerSnapshot?.positionIntegrityIssues?.some(issue =>
+        issue.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === actionTicker
+      ) === true;
+      const brokerSnapshotNotVerified = brokerSnapshot?.loaded === true &&
+        (brokerSnapshot.status !== 'current' ||
+          brokerSnapshot.quality !== 'complete' ||
+          brokerSnapshot.snapshotQuality !== 'complete');
+      const adjusted = brokerIntegrityIssue || brokerSnapshotNotVerified ? {
+        status: 'review_required' as const,
+        reason: brokerIntegrityIssue
+          ? 'Broker position integrity is unresolved for this ticker. Resolve the position-side or execution discrepancy before applying a corporate action.'
+          : 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+      } : hasCashHolding ? {
         status: 'review_required' as const,
         reason: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
       } : position ? adjustPositionForSplit(position, event) : {
