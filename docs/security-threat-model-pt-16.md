@@ -76,6 +76,7 @@ Before this change, `/api/margin-digest` accepted a digest object containing fie
 - The Durable Object validates the encrypted envelope shape and rejects additional plaintext fields beside the ciphertext.
 - The client decrypts the envelope on read.
 - Existing plaintext digest records remain readable during the rollout. The upgraded client attempts a compare-and-swap rewrite using the record's ETag/revision the first time it reads a legacy record. If the migration write fails or another device wins the revision race, the read remains available and a later read can retry.
+- An administrator-only `/api/margin-digest-migration` Worker route inventories record-format counts only (it never returns digest contents) and migrates valid legacy plaintext records in bounded batches. The Durable Object encrypts with the existing shared workspace key and commits each update only if the stored payload and revision still match the scanned version. Conflicts are reported for a later retry. Legacy ciphertext and malformed/unreadable records remain separately counted.
 
 ### Rollout state and limitation
 
@@ -86,6 +87,8 @@ Before this change, `/api/margin-digest` accepted a digest object containing fie
 3. Confirm no legacy clients are still writing plaintext.
 4. Set `MARGIN_DIGEST_ENCRYPTION_REQUIRED=true` through a Worker deployment.
 5. Verify the Worker rejects plaintext writes while encrypted writes, reads, and revision conflicts continue to work.
+
+The administrator inventory endpoint can enumerate stored digest records without exposing their contents; the batch operation migrates valid plaintext records and is safe to repeat after an interruption. It does not migrate legacy ciphertext or malformed records, which remain visible in the inventory as separate categories. An inventory showing zero plaintext is necessary but not sufficient: confirm upgraded clients are deployed and no old client can still write plaintext before enabling enforcement.
 
 Do not mark the plaintext-at-rest migration complete until the enforcement flag is enabled and residual legacy records are handled. Existing records that are never opened by an upgraded client remain plaintext until an explicit migration or retention/deletion action is performed.
 

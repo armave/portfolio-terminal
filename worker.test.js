@@ -1781,6 +1781,51 @@ describe('provider-quote proxy validation', () => {
 });
 
 
+
+describe("Margin Intelligence encryption migration Worker boundary", () => {
+  it("routes inventory requests to the identity Durable Object for administrators only", async () => {
+    let role = "admin";
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === "/api/auth/verify") {
+          return new Response(JSON.stringify({ user: { id: "user-1", role } }), {
+            status: 200, headers: { "Content-Type": "application/json" }
+          });
+        }
+        if (pathname === "/api/margin-digest-migration") {
+          return new Response(JSON.stringify({ totalRecords: 0, plaintextRecords: 0, migrationReady: true }), {
+            status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+          });
+        }
+        throw new Error("Unexpected Durable Object path: " + pathname);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    const adminResponse = await worker.fetch(new Request("https://worker.test/api/margin-digest-migration", {
+      headers: { "X-App-Auth": "admin-session", Authorization: "Bearer admin-session" }
+    }), { PORTFOLIO_STATE_DO: namespace });
+    expect(adminResponse.status).toBe(200);
+    expect(namespace.idFromName).toHaveBeenCalledWith("portfolio_state");
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/verify", "/api/margin-digest-migration"
+    ]);
+
+    role = "guest";
+    stateStub.fetch.mockClear();
+    const guestResponse = await worker.fetch(new Request("https://worker.test/api/margin-digest-migration", {
+      headers: { "X-App-Auth": "guest-session", Authorization: "Bearer guest-session" }
+    }), { PORTFOLIO_STATE_DO: namespace });
+    expect(guestResponse.status).toBe(403);
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/verify"
+    ]);
+  });
+});
+
 describe('PortfolioStateDO optimistic concurrency', () => {
   function makeDurableObject(legacyPayload = null, envOverrides = {}) {
     const values = new Map();
@@ -1788,6 +1833,10 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
       delete: async (key) => values.delete(key),
+      list: async ({ prefix = "", startAfter, limit = 1000 } = {}) => {
+        const entries = [...values.entries()].filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter)).sort(([a], [b]) => a.localeCompare(b)).slice(0, limit);
+        return new Map(entries);
+      },
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
         put: async (key, value) => values.set(key, value),
@@ -2113,6 +2162,95 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       body: JSON.stringify(envelope)
     }));
     expect(stale.status).toBe(409);
+  });
+
+
+  it("inventories Margin Intelligence digest formats without returning digest contents", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    const plaintext = {
+      key: "position:GOOGL", analysis: "private analysis text", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    await store.ctx.storage.put("marginDigestRecord:position:GOOGL", {
+      payload: JSON.stringify(plaintext), revision: 3
+    });
+    await store.ctx.storage.put("marginDigestRecord:portfolio", {
+      payload: JSON.stringify({ key: "portfolio", encryptedPayload: "aesgcm:v2:abcdefghijklmnop:abcdefghijklmnopqrstuvwxyz012345" }),
+      revision: 4
+    });
+    await store.ctx.storage.put("marginDigestRecord:position:MSFT", {
+      payload: "{malformed", revision: 1
+    });
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    expect(response.status).toBe(200);
+    const inventory = await response.json();
+    expect(inventory).toMatchObject({
+      totalRecords: 3, plaintextRecords: 1, encryptedV2Records: 1,
+      legacyEncryptedRecords: 0, unreadableRecords: 1, migrationReady: false
+    });
+    expect(JSON.stringify(inventory)).not.toContain("private analysis text");
+    expect(JSON.stringify(inventory)).not.toContain("GOOGL");
+  });
+
+  it("migrates plaintext digest records to AES-GCM v2 with a revision-guarded update", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    const digest = {
+      key: "position:GOOGL", analysis: "private analysis text",
+      articles: [{ headline: "private headline" }],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    await store.ctx.storage.put("marginDigestRecord:position:GOOGL", {
+      payload: JSON.stringify(digest), revision: 7
+    });
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 1, alreadyEncrypted: 0, unreadable: 0, conflicts: 0, done: true
+    });
+
+    const stored = await store.ctx.storage.get("marginDigestRecord:position:GOOGL");
+    expect(stored.revision).toBe(8);
+    const envelope = JSON.parse(stored.payload);
+    expect(Object.keys(envelope).sort()).toEqual(["encryptedPayload", "key"]);
+    expect(envelope.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    expect(stored.payload).not.toContain("private analysis text");
+    expect(stored.payload).not.toContain("private headline");
+
+    const repeated = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    await expect(repeated.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 0, alreadyEncrypted: 1, unreadable: 0, conflicts: 0, done: true
+    });
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(inventory.json()).resolves.toMatchObject({
+      totalRecords: 1, plaintextRecords: 0, encryptedV2Records: 1, migrationReady: true
+    });
+  });
+
+  it("rejects guests from digest migration inventory and write operations", async () => {
+    const store = makeDurableObject();
+    store.resolveSession = async () => ({ user: { id: "guest-1", role: "guest" } });
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    const migration = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    expect(inventory.status).toBe(403);
+    expect(migration.status).toBe(403);
   });
 
   it('migrates an existing KV portfolio without changing its payload', async () => {
