@@ -148,7 +148,7 @@ describe('market history correction journal', () => {
       previous: null,
       corrected: { timestamp: Number.MAX_SAFE_INTEGER + 1, price: 100 },
       reason: 'Invalid timestamp.'
-    })).toThrow('invalid before/after candle');
+    })).toThrow('valid instrument, interval, timestamps');
     expect(replayMarketHistoryCorrections([{ timestamp: Number.POSITIVE_INFINITY, price: 100 }], []))
       .toMatchObject({ status: 'review_required', appliedCount: 0 });
   });
