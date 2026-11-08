@@ -18,13 +18,16 @@ async function encryptMarginDigestFixture(digest, keyMaterial) {
 }
 
 function tamperAesGcmV2Tag(payload) {
-  const [prefix, nonce, encodedCiphertext] = payload.split(":");
-  const binary = atob(encodedCiphertext);
+  const parts = payload.split(":");
+  if (parts.length !== 4 || parts[0] !== "aesgcm" || parts[1] !== "v2") {
+    throw new Error("Invalid AES-GCM v2 test fixture.");
+  }
+  const binary = atob(parts[3]);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   bytes[bytes.length - 1] ^= 1;
   let output = "";
   for (const byte of bytes) output += String.fromCharCode(byte);
-  return prefix + ":" + nonce + ":" + btoa(output);
+  return parts[0] + ":" + parts[1] + ":" + parts[2] + ":" + btoa(output);
 }
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomPositionProbe, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
