@@ -608,7 +608,7 @@ export function resolveLatestBrokerHistoryAuditEvents(
   }
 
   const latest: PortfolioTransactionEvent[] = [];
-  for (const [key, group] of groups) {
+  for (const group of groups.values()) {
     const ids = new Set(group.map(event => event.id));
     const supersededIds = new Set(
       group
