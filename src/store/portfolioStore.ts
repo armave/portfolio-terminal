@@ -2094,7 +2094,15 @@ export class PortfolioStore {
       );
       const positionKey = positionEntry?.[0];
       const position = positionEntry?.[1];
-      const adjusted = position ? adjustPositionForSplit(position, event) : {
+      const hasCashHolding = [
+        ...(state.cashCushion?.holdings || []),
+        ...(state.cashStocks || [])
+      ].some(holding => typeof holding?.ticker === 'string' &&
+        holding.ticker.trim().toUpperCase() === event.symbol);
+      const adjusted = hasCashHolding ? {
+        status: 'review_required' as const,
+        reason: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+      } : position ? adjustPositionForSplit(position, event) : {
         status: 'review_required' as const,
         reason: 'No matching open portfolio position was found for this corporate action.'
       };

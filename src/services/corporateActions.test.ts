@@ -137,6 +137,20 @@ describe('split position adjustment', () => {
     expect(result.position.commBuy).toBe(12);
   });
 
+  it('requires review for short or unknown-direction positions', () => {
+    expect(adjustPositionForSplit({
+      ...preSplitPosition,
+      direction: 'short'
+    } as PositionRecord, splitEvent())).toMatchObject({
+      status: 'review_required',
+      reason: 'Automatic split adjustment is limited to verified long positions; short or unknown direction requires reconciliation.'
+    });
+    expect(adjustPositionForSplit({
+      ...preSplitPosition,
+      direction: 'unknown'
+    } as PositionRecord, splitEvent())).toMatchObject({ status: 'review_required' });
+  });
+
   it('rejects a non-positive or future-dated market quote before split accounting', () => {
     expect(adjustPositionForSplit({
       ...preSplitPosition,

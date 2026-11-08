@@ -433,6 +433,13 @@ export function adjustPositionForSplit(
   if (event.kind !== 'stock_split' && event.kind !== 'reverse_split') {
     return { status: 'review_required', reason: 'This corporate action is evidence-only and needs an explicit settlement/basis policy.' };
   }
+  const direction = (position as PositionRecord & { direction?: unknown }).direction;
+  if (direction !== undefined && direction !== 'long') {
+    return {
+      status: 'review_required',
+      reason: 'Automatic split adjustment is limited to verified long positions; short or unknown direction requires reconciliation.'
+    };
+  }
   const multiplier = positiveFinite(event.sharesAfterPerShareBefore);
   if (multiplier === null || (event.kind === 'stock_split' && multiplier <= 1) ||
       (event.kind === 'reverse_split' && multiplier >= 1)) {

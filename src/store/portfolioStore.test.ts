@@ -3124,6 +3124,47 @@ describe('portfolio transaction journal integration', () => {
     expect(reloaded.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
   });
 
+  it('does not partially apply a split when matching cash holdings lack dated lots', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 0,
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02' }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      },
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{ ticker: 'AAPL', shares: 2, averagePrice: 90 }]
+      }
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({
+      status: 'review_required',
+      note: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+    });
+    expect(store.getState().positions.AAPL).toEqual(before);
+    expect(store.getState().cashCushion.holdings).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
   it('persists a review-required action without changing a mixed pre/post-action position', () => {
     const store = new PortfolioStore();
     store.importState({
