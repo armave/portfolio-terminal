@@ -234,6 +234,115 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('surfaces broker execution rows that cannot be normalized instead of silently dropping them', () => {
+    const report = reconcile(
+      [execution({ side: 'Unknown' })],
+      [appEvent('trade.buy')]
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_unclassified',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain(
+      'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.'
+    );
+  });
+
+  it('distinguishes exact duplicate executions from conflicting revisions with the same broker ID', () => {
+    const duplicate = reconcile(
+      [execution(), execution()],
+      [appEvent('trade.buy')]
+    );
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_execution',
+      brokerReferences: ['exec-1']
+    }));
+
+    const conflict = reconcile(
+      [execution(), execution({ commission: 2 })],
+      [appEvent('trade.buy')]
+    );
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_revision_conflict',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('surfaces broker cashflow rows with unusable amounts instead of silently dropping them', () => {
+    const report = reconcile([], [], {
+      brokerCashflows: [{
+        id: 'cashflow-invalid',
+        date: new Date(at).toISOString(),
+        type: 'Deposit',
+        amount: Number.NaN,
+        currency: 'USD',
+        raw: {}
+      }]
+    });
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      brokerReferences: ['cashflow-invalid'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('distinguishes duplicate cashflows from conflicting revisions with the same broker ID', () => {
+    const row: BrokerCashflow = {
+      id: 'cashflow-duplicate',
+      date: new Date(at).toISOString(),
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD',
+      raw: {}
+    };
+    const duplicate = reconcile([], [], { brokerCashflows: [row, { ...row }] });
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_cashflow',
+      brokerReferences: ['cashflow-duplicate']
+    }));
+
+    const conflict = reconcile([], [], { brokerCashflows: [row, { ...row, amount: 25 }] });
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_revision_conflict',
+      brokerReferences: ['cashflow-duplicate'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('reports opposite signed cash movements instead of matching equal magnitudes', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'deposit-direction-1',
+      date: new Date(at).toISOString(),
+      type: 'Deposit',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appDeposit = createPortfolioTransactionEvent({
+      type: 'cash.deposit',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-deposit-direction', recordedAt: at });
+
+    const report = reconcile([], [appDeposit], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_direction_mismatch',
+      brokerValue: 100,
+      appValue: -100,
+      brokerReferences: ['deposit-direction-1'],
+      appEventIds: ['app-deposit-direction']
+    }));
+  });
+
   it('does not treat incomplete broker feeds as authoritative absence evidence', () => {
     const report = reconcile([], [appEvent('trade.buy')], {
       executionStatus: 'partial',

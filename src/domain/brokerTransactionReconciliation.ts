@@ -231,7 +231,7 @@ export function reconcileBrokerActivity(
   const amountTolerance = input.amountTolerance ?? 0.01;
   const priceTolerance = input.priceTolerance ?? 0.01;
   const appStatus = input.appHistoryStatus ?? 'partial';
-  const confidence: BrokerActivityFinding['confidence'] =
+  let confidence: BrokerActivityFinding['confidence'] =
     input.executionStatus === 'complete' && input.cashflowStatus === 'complete' && appStatus === 'complete'
       ? 'confirmed' : 'provisional';
   const warnings: string[] = [];
