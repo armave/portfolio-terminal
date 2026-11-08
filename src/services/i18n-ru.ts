@@ -68,7 +68,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
     '100% required': 'Требуется 100%',
   'threshold': 'порог',
   'Configured assumption': 'Настроенное допущение',
-  'Unknown': 'Неизвестно',
   'Broker requirements are shown only when the connected broker snapshot supplies them. Configured assumptions are kept separate.': 'Требования брокера отображаются только при наличии их в снимке подключённого счёта. Настроенные допущения показываются отдельно.',
   'Initial margin required': 'Требуемая начальная маржа',
   'Maintenance requirement': 'Требование поддерживающей маржи',
