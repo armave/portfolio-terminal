@@ -517,6 +517,101 @@ export interface FxRateProviderAdapter {
   ): Promise<{ rate: FxRate | null; issues: string[] }>;
 }
 
+export interface FxRateProviderRegistryResult {
+  rate: FxRate | null;
+  provider: string | null;
+  issues: string[];
+}
+
+export interface FxRateProviderRegistry {
+  list(): readonly string[];
+  fetchExactPair(
+    baseCurrency: unknown,
+    quoteCurrency: unknown,
+    signal?: AbortSignal
+  ): Promise<FxRateProviderRegistryResult>;
+}
+
+/**
+ * Tries providers in declared priority order for one exact BASE_TO_QUOTE pair.
+ * It does not reverse/infer a pair, and does not retain stale or partial rates.
+ */
+export function createFxRateProviderRegistry(
+  adapters: readonly FxRateProviderAdapter[],
+  options: { now?: () => number; maxAgeMs?: number; maxFutureSkewMs?: number } = {}
+): FxRateProviderRegistry {
+  const providers = new Map<string, FxRateProviderAdapter>();
+  for (const adapter of adapters) {
+    const id = normalizeToken(adapter.providerId);
+    if (!id || providers.has(id)) {
+      throw new Error('FX provider IDs must be non-empty and unique.');
+    }
+    providers.set(id, adapter);
+  }
+  const now = options.now ?? Date.now;
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) && options.maxAgeMs! >= 0
+    ? options.maxAgeMs!
+    : 24 * 60 * 60 * 1000;
+  const maxFutureSkewMs = Number.isFinite(options.maxFutureSkewMs) && options.maxFutureSkewMs! >= 0
+    ? options.maxFutureSkewMs!
+    : 60 * 1000;
+  const createAbortError = () => {
+    const error = new Error('FX rate request was aborted.');
+    error.name = 'AbortError';
+    return error;
+  };
+  return {
+    list: () => [...providers.keys()],
+    async fetchExactPair(baseValue, quoteValue, signal) {
+      const baseCurrency = normalizeCurrencyCode(baseValue);
+      const quoteCurrency = normalizeCurrencyCode(quoteValue);
+      const issues: string[] = [];
+      if (!baseCurrency || !quoteCurrency || baseCurrency === quoteCurrency) {
+        return { rate: null, provider: null, issues: ['A valid, distinct FX currency pair is required.'] };
+      }
+      for (const [providerId, adapter] of providers) {
+        if (signal?.aborted) throw createAbortError();
+        try {
+          const result = await adapter.fetchRate(baseCurrency, quoteCurrency, signal);
+          if (Array.isArray(result?.issues)) issues.push(...result.issues);
+          if (!result?.rate) continue;
+          const candidate = result.rate;
+          if (candidate.baseCurrency !== baseCurrency || candidate.quoteCurrency !== quoteCurrency ||
+              candidate.direction !== 'BASE_TO_QUOTE') {
+            issues.push(providerId + ' returned a different or reversed FX pair; the rate was ignored.');
+            continue;
+          }
+          if (normalizeToken(candidate.provider) !== providerId) {
+            issues.push(providerId + ' returned mismatched FX provider provenance; the rate was ignored.');
+            continue;
+          }
+          const normalized = normalizeFxRate({
+            baseCurrency: candidate.baseCurrency,
+            quoteCurrency: candidate.quoteCurrency,
+            rate: candidate.rate,
+            provider: candidate.provider,
+            observedAt: candidate.observedAt,
+            receivedAt: candidate.receivedAt,
+            session: candidate.session
+          }, { now: now(), maxFutureSkewMs });
+          issues.push(...normalized.issues);
+          if (!normalized.rate || !isFxRateUsableForConversion(normalized.rate, now(), maxAgeMs)) {
+            issues.push(providerId + ' returned an incomplete, stale or unverifiable FX rate.');
+            continue;
+          }
+          return { rate: normalized.rate, provider: providerId, issues };
+        } catch (error) {
+          if (signal?.aborted || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')) {
+            throw createAbortError();
+          }
+          issues.push(providerId + ' FX lookup failed: ' + (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      return { rate: null, provider: null, issues };
+    }
+  };
+}
+
 export interface MarketHistoryResponseInput {
   symbol: unknown;
   provider: unknown;
