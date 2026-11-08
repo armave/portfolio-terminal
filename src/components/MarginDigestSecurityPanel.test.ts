@@ -6,7 +6,8 @@ describe('MarginDigestSecurityPanel', () => {
   it('uses aggregate inventory and bounded resumable migration calls', () => {
     const source = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
     expect(source).toContain('fetchMarginDigestMigrationInventory');
-    expect(source).toContain('migrateMarginDigestBatch({ cursor, limit: 25 })');
+    expect(source).toContain('const MIGRATION_BATCH_SIZE = 25;');
+    expect(source).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
     expect(source).toContain('No source records were deleted');
     expect(source).toContain('MAX_MIGRATION_BATCHES_PER_RUN = 20');
     expect(source).toContain('const [migrationCursor, setMigrationCursor] = useState<string | null>(null)');

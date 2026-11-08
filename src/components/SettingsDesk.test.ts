@@ -146,7 +146,8 @@ describe('Margin Intelligence encryption migration controls', () => {
     const panel = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
     expect(source).toContain("account?.role === 'admin' && <MarginDigestSecurityPanel");
     expect(panel).toContain('fetchMarginDigestMigrationInventory');
-    expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: 25 })');
+    expect(panel).toContain('const MIGRATION_BATCH_SIZE = 25;');
+    expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
     expect(panel).toContain('inventory.plaintextRecords === 0');
     expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
   });
