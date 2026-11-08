@@ -17,9 +17,7 @@ describe('Margin hardcode centralization', () => {
   it('localizes visible Margin risk labels and accessible text', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('margin-risk-mini-meter');
-    expect(source).toContain('<MarginRiskDetailsModal');
-    expect(source).toContain("translateText('CAPITAL ADEQUACY', language)");
+    expect(source).toContain("translateText('STOP-OUT BUFFER', language)");
     expect(source).toContain("translateText('Account equity percentage', language)");
     expect(source).toContain("translateText('Across {count} assets', getAppLanguage())");
     expect(source).toContain("translateText('Show {count} tranches', getAppLanguage())");
@@ -262,11 +260,10 @@ describe('market depth action session visibility', () => {
 describe('margin-call buffer presentation', () => {
   it('always labels the buffer as margin-call buffer and displays a percentage without bottom captions', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("translateText(buffer?.complete ? 'MINIMUM MARGIN BUFFER' : 'ESTIMATED MARGIN-CALL BUFFER', language)");
+    expect(source).toContain("translateText('MARGIN-CALL BUFFER', language)");
     expect(source).not.toContain("'BASE MAINTENANCE BUFFER'");
-    expect(source).toContain("buffer ? buffer.percentage.toFixed(1) + '%' : '—'");
-    expect(source).toContain('getMinimumMarginBufferMetrics(snapshot)');
-    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
+    expect(source).toContain("Number.isFinite(risk.marginCallBufferPct)");
+    expect(source).toContain("Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'");
     expect(source).not.toContain('formatUSD(risk.baseMaintenanceBuffer)');
     expect(source).not.toContain("translateText('Before concentration add-on', language)");
     expect(source).not.toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');
@@ -276,25 +273,17 @@ describe('margin-call buffer presentation', () => {
 });
 
 
-describe('interactive margin health presentation', () => {
-  it('uses the compact clickable risk summary and opens a tabbed details dialog', () => {
+describe('clickable Margin Health overview', () => {
+  it('opens one overview modal from the original risk section', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    const modal = readFileSync(new URL('./MarginRiskDetailsModal.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('margin-risk-interactive-grid');
-    expect(source).toContain("openDetails('requirements')");
-    expect(source).toContain("openDetails('calculations')");
-    expect(source).toContain('<MarginRiskDetailsModal');
-    expect(source).not.toContain("translateText('STOP-OUT BUFFER', language)");
-    expect(modal).toContain("onEscape: onClose");
-    expect(modal).toContain('event.target === event.currentTarget');
+    const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('margin-risk-gauge-clickable');
+    expect(source).toContain('onClick={openOverview}');
+    expect(source).toContain('<MarginRiskOverviewModal');
+    expect(modal).toContain('role="dialog"');
     expect(modal).toContain('aria-modal="true"');
-    expect(modal).toContain("label: 'Broker data'");
-  });
-
-  it('keeps the modal nearly full-screen on mobile', () => {
-    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(styles).toContain('.margin-risk-modal-backdrop');
-    expect(styles).toContain('max-height: 100dvh;');
-    expect(styles).toContain('min-height: 100dvh;');
+    expect(modal).toContain('onEscape: onClose');
+    expect(modal).not.toContain('role="tablist"');
+    expect(modal).not.toContain('MarginRiskModalTab');
   });
 });
