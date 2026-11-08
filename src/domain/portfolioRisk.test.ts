@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import {
   calculateBrokerMarginRisk, calculateHistoricalCorrelation, calculateHistoricalRisk,
-  calculatePortfolioRiskSnapshot, calculateRiskStressScenario, type PortfolioRiskSnapshot,
+  calculatePortfolioRiskSnapshot, calculateRiskStressScenario, calculateRiskFxStressScenario,
+  type PortfolioRiskSnapshot,
   type RiskHistoricalSeriesInput
 } from './portfolioRisk';
 

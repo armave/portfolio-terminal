@@ -116,6 +116,10 @@ export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions
 
 
 
+function unavailable(reason: string, warnings: string[] = []): MarginRiskCalculation {
+  return { status: 'unavailable', reason, warnings };
+}
+
 /** Detect broker-position states that cannot safely be represented as long-only exposure. */
 export function hasUnresolvedBrokerPositionIntegrity(snapshot: unknown): boolean {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
