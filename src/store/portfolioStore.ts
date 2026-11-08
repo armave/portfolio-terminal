@@ -2089,6 +2089,11 @@ export class PortfolioStore {
     let committed: PortfolioCorporateActionEvent | null = null;
     const saved = this.update(state => {
       const currentActions = state.corporateActionEvents || [];
+      const normalizeActionTicker = (value: string): string => {
+        const token = value.trim().toUpperCase();
+        return token.endsWith('.US') ? token.slice(0, -3) : token;
+      };
+      const actionTicker = normalizeActionTicker(event.symbol);
       const positionEntry = Object.entries(state.positions || {}).find(([key, position]) =>
         normalizeActionTicker(key) === actionTicker || normalizeActionTicker(position.ticker) === actionTicker
       );
@@ -2098,19 +2103,14 @@ export class PortfolioStore {
         ...(state.cashCushion?.holdings || []),
         ...(state.cashStocks || [])
       ].some(holding => typeof holding?.ticker === 'string' &&
-        holding.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === event.symbol.replace(/\\.US$/i, ''));
+        normalizeActionTicker(holding.ticker) === actionTicker);
       type BrokerSnapshotWithIntegrity = NonNullable<PortfolioState['brokerAccountInfo']> & {
         positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
         snapshotQuality?: string;
       };
       const brokerSnapshot = state.brokerAccountInfo as BrokerSnapshotWithIntegrity | undefined;
-      const normalizeActionTicker = (value: string): string => {
-        const token = value.trim().toUpperCase();
-        return token.endsWith('.US') ? token.slice(0, -3) : token;
-      };
-      const actionTicker = normalizeActionTicker(event.symbol);
       const brokerIntegrityIssue = brokerSnapshot?.positionIntegrityIssues?.some(issue =>
-        issue.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === actionTicker
+        normalizeActionTicker(issue.ticker) === actionTicker
       ) === true;
       const brokerSnapshotNotVerified = brokerSnapshot?.loaded === true &&
         (brokerSnapshot.status !== 'current' ||
