@@ -13,7 +13,7 @@ describe('Margin Market Tools placement', () => {
     expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />');
     expect(summarySource).toContain("emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})");
     expect(summarySource).toContain("emitUiEvent('terminal:market-depth-request', { ticker })");
-    expect(summarySource).toContain('ticker && isAdmin && <button');
+    expect(summarySource).toContain('ticker && isAdmin && marketDepthAvailable && <button');
     expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
   });
 
