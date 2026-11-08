@@ -53,7 +53,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', language)}>
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
-          <span class="margin-risk-status elevated">{translateText('Market valuation incomplete', language)}</span>
+          <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
         </div>
         <p class="mt-2 text-xs leading-relaxed text-amber-200">
           {risk.status === 'unavailable' && valuationStatus !== 'incomplete'
@@ -68,7 +68,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             {translateText('Unpriced holdings', language)}: {unpricedHoldings}
           </p>
         )}
-        {risk.reason && <p class="mt-1 text-[10px] text-slate-400">{risk.reason}</p>}
         <p class="mt-1 text-[10px] text-slate-400">
           {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', language)}
         </p>
@@ -77,15 +76,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   }
 
   const stopOutTitle = translateText(
-    'Estimate assumes the configured {threshold}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.',
+    'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language
   ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
   const marginRiskTitle = translateText(
-    'Estimated from portfolio equity and configured thresholds: {maintenance}% maintenance equity and {stopOut}% stop-out equity. Not a live broker risk indicator.',
+    'Risk estimate uses available account inputs and configured thresholds. Broker margin requirements are shown only when supplied; this is not a live broker risk indicator.',
     language
-  )
-    .replace('{maintenance}', (rules.maintenanceEquityRatio * 100).toFixed(2))
-    .replace('{stopOut}', (rules.stopOutRatio * 100).toFixed(2));
+  );
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
@@ -439,7 +436,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     )} ${translateText('sell', getAppLanguage())})`;
     const marginChargedText = `${formatUSD(totalMarginCharged)}`;
 
-    const cushionTotal = getCashCushionTotal(state);
     const quoteSummary = summarizeQuoteFreshness(
       tickers.map((ticker) => {
         const position = state.positions![ticker];
