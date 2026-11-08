@@ -108,7 +108,10 @@ export function createPortfolioBrokerDataRuntime(
     source: snapshot.source,
     receivedAt: snapshot.receivedAt,
     ...(snapshot.observedAt === undefined ? {} : { observedAt: snapshot.observedAt }),
-    warnings: [...snapshot.warnings]
+    warnings: [...snapshot.warnings],
+    ...(snapshot.positionIntegrityIssues?.length
+      ? { positionIntegrityIssues: [...snapshot.positionIntegrityIssues] }
+      : {})
   });
   const fetchExecutedTrades = dependencies.fetchExecutedTrades || brokerAdapter.fetchExecutions;
   const normalizeExecutedTrades = dependencies.normalizeExecutedTrades ||
