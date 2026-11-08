@@ -4,7 +4,7 @@ import { createPortal, memo } from 'preact/compat';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
-import { usePortfolioSelector } from '../store/portfolioStore';
+import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
@@ -71,7 +71,22 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'During market': 'Во время торгов',
   'Timing unavailable': 'Время неизвестно',
   'Currency unknown; no conversion applied.': 'Валюта неизвестна; пересчёт не выполнялся.',
-  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.'
+  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.',
+  'Corporate actions': 'Корпоративные действия',
+  'Stock splits and reverse splits': 'Дробления и обратные дробления акций',
+  'Corporate-action data unavailable': 'Данные о корпоративных действиях недоступны',
+  'No verified split events in this period.': 'В этом периоде нет подтверждённых событий дробления.',
+  'Apply split to open position': 'Применить дробление к открытой позиции',
+  'Split already applied': 'Дробление уже применено',
+  'Review required': 'Требуется проверка',
+  'Split applied; cost basis preserved.': 'Дробление применено; себестоимость сохранена.',
+  'Split evidence saved for review. No position or cash was changed.': 'Данные о дроблении сохранены для проверки. Позиция и денежные средства не изменены.',
+  'Could not save this corporate action.': 'Не удалось сохранить это корпоративное действие.',
+  'Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.': 'Применить подтверждённое соотношение ко всем подходящим лотам до даты действия? Общая себестоимость останется неизменной. Денежное поступление или инвестиционная прибыль не создаются.',
+  'Dividend events are evidence only; cash is recorded when broker settlement is confirmed.': 'Дивиденды являются подтверждающими данными; денежное поступление учитывается после подтверждения расчёта брокером.',
+  'Effective date': 'Дата вступления в силу',
+  'Share ratio': 'Соотношение акций',
+  'Action status': 'Статус действия'
 };
 
 function marketEventLabel(value: string): string {
@@ -183,6 +198,10 @@ function renderStocktwitsBody(body: string) {
 
 function MarketInsightsPanelView() {
   const ticker = usePortfolioSelector(selectMarketInsightsTicker);
+  const corporateActionHistory = usePortfolioSelector(state => state.corporateActionEvents || []);
+  const [corporateActionFeedback, setCorporateActionFeedback] = useState<{
+    sourceId: string; message: string;
+  } | null>(null);
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [deepDataRequest, setDeepDataRequest] = useState<{
     ticker: string;
@@ -692,6 +711,10 @@ function MarketInsightsPanelView() {
       const upcomingDividends = getClosestDatedMarketEvents(
         currentEvents?.dividends ?? [], event => event.exDate
       );
+      const splitActions = currentEvents?.corporateActions ?? [];
+      const appliedCorporateActionIds = new Set(
+        corporateActionHistory.filter(event => event.status === 'applied').map(event => event.sourceId)
+      );
       const nextEarningsDate = getNextUpcomingEarningsDate(
         currentEvents?.earnings ?? [], Date.now()
       ) ?? getNextUpcomingEarningsDate(
@@ -770,6 +793,62 @@ function MarketInsightsPanelView() {
                 {eventsLoading ? marketEventLabel('Loading events…') : marketEventLabel('Refresh')}
               </button>
             </div>
+          </section>
+
+          <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Corporate actions')}>
+            <div class="mb-2">
+              <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Corporate actions')}</h4>
+              <p class="text-[9px] text-slate-500">{marketEventLabel('Stock splits and reverse splits')}</p>
+            </div>
+            {currentEvents?.corporateActionsAvailable === false && (
+              <p class="text-[10px] text-slate-500">{marketEventLabel('Corporate-action data unavailable')}</p>
+            )}
+            {currentEvents?.corporateActionsAvailable === true && splitActions.length === 0 && !eventsLoading && (
+              <p class="text-[10px] text-slate-500">{marketEventLabel('No verified split events in this period.')}</p>
+            )}
+            <div class="space-y-2">
+              {splitActions.map(event => {
+                const alreadyApplied = appliedCorporateActionIds.has(event.sourceId);
+                const priorAction = corporateActionHistory.find(item => item.sourceId === event.sourceId);
+                const isFeedback = corporateActionFeedback?.sourceId === event.sourceId;
+                return (
+                  <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-2 last:border-0">
+                    <div class="min-w-0">
+                      <div class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.effectiveDate)}</div>
+                      <div class="text-[10px] text-slate-500">
+                        {event.kind === 'stock_split' ? 'Split' : 'Reverse split'} · {marketEventLabel('Share ratio')}: {event.fromFactor}:{event.toFactor}
+                      </div>
+                      {priorAction?.status === 'review_required' && (
+                        <p class="mt-1 text-[9px] text-amber-300">{marketEventLabel('Review required')}: {priorAction.note}</p>
+                      )}
+                      {isFeedback && (
+                        <p class="mt-1 text-[9px] text-cyan-300" role="status">{corporateActionFeedback.message}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={alreadyApplied || eventsLoading}
+                      onClick={() => {
+                        const confirmed = window.confirm(marketEventLabel('Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.'));
+                        if (!confirmed) return;
+                        const saved = portfolioStore.applyCorporateActionSplit(event);
+                        const message = !saved
+                          ? marketEventLabel('Could not save this corporate action.')
+                          : saved.status === 'applied'
+                            ? marketEventLabel('Split applied; cost basis preserved.')
+                            : marketEventLabel('Split evidence saved for review. No position or cash was changed.');
+                        setCorporateActionFeedback({ sourceId: event.sourceId, message });
+                      }}
+                      class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+                      {alreadyApplied ? marketEventLabel('Split already applied') : marketEventLabel('Apply split to open position')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
+              {marketEventLabel('Dividend events are evidence only; cash is recorded when broker settlement is confirmed.')}
+            </p>
           </section>
 
           <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Daily price history')}>
