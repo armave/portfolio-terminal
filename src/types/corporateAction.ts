@@ -41,7 +41,7 @@ export interface PortfolioCorporateActionEvent {
   fromFactor?: number;
   toFactor?: number;
   sharesAfterPerShareBefore?: number;
-  amountPerShare?: number;
+  amountPerShare?: number | null;
   currency?: string | null;
   payDate?: string;
   recordDate?: string;

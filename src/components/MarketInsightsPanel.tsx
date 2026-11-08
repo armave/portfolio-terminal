@@ -91,8 +91,7 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Record dividend evidence': 'Сохранить сведения о дивиденде',
   'Dividend evidence saved': 'Сведения о дивиденде сохранены',
   'No adjustment needed': 'Корректировка не требуется',
-  'Split data unavailable': 'Данные о дроблении недоступны',
-  'Dividend evidence saved': 'Сведения о дивиденде сохранены'
+  'Split data unavailable': 'Данные о дроблении недоступны'
 };
 
 function marketEventLabel(value: string): string {

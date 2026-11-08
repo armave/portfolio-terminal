@@ -407,7 +407,7 @@ export function mergePortfolioCorporateActionEvents(
 }
 
 function acquiredAtForTranche(
-  tranche: Record<string, unknown>,
+  tranche: PositionRecord['tranches'][number],
   positionStartDate?: string
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
@@ -448,14 +448,19 @@ export function adjustPositionForSplit(
     return { status: 'review_required', reason: 'Position lots and a positive open quantity are required to preserve cost basis.' };
   }
 
-  const tranches = position.tranches as Array<Record<string, unknown>>;
-  const trancheQuantities = tranches.map(item => finiteNumber(item.qty));
-  const tranchePrices = tranches.map(item => finiteNumber(item.price));
-  if (trancheQuantities.some(value => value === null || value <= 0) ||
-      tranchePrices.some(value => value === null || value <= 0)) {
-    return { status: 'review_required', reason: 'One or more position lots have an invalid quantity or entry price.' };
+  const tranches = position.tranches;
+  const trancheQuantities: number[] = [];
+  const tranchePrices: number[] = [];
+  for (const tranche of tranches) {
+    const quantity = finiteNumber(tranche.qty);
+    const price = finiteNumber(tranche.price);
+    if (quantity === null || quantity <= 0 || price === null || price <= 0) {
+      return { status: 'review_required', reason: 'One or more position lots have an invalid quantity or entry price.' };
+    }
+    trancheQuantities.push(quantity);
+    tranchePrices.push(price);
   }
-  const sharesBefore = trancheQuantities.reduce((total, value) => total + Number(value), 0);
+  const sharesBefore = trancheQuantities.reduce((total, value) => total + value, 0);
   if (Math.abs(sharesBefore - position.shares) > Math.max(1e-6, position.shares * 1e-8)) {
     return { status: 'review_required', reason: 'Position quantity does not reconcile to its open lots.' };
   }
@@ -473,11 +478,11 @@ export function adjustPositionForSplit(
     return { status: 'review_required', reason: 'The position contains both pre-action and post-action lots; its aggregate price/target basis needs manual review.' };
   }
 
-  const costBasisBefore = tranches.reduce((total, item, index) =>
-    total + Number(trancheQuantities[index]) * Number(tranchePrices[index]), 0);
+  const costBasisBefore = trancheQuantities.reduce((total, quantity, index) =>
+    total + quantity * tranchePrices[index], 0);
   const updatedTranches = tranches.map((item, index) => {
-    const quantity = Number(trancheQuantities[index]) * multiplier;
-    const entryPrice = Number(tranchePrices[index]) / multiplier;
+    const quantity = trancheQuantities[index] * multiplier;
+    const entryPrice = tranchePrices[index] / multiplier;
     return {
       ...item,
       qty: quantity,
@@ -498,7 +503,7 @@ export function adjustPositionForSplit(
   let currentPrice = position.currentPrice;
   let quoteDetails = position.quoteDetails;
   const quoteObservedAt = finiteNumber(quoteDetails?.sourceTimestamp);
-  if (quoteObservedAt !== null && quoteObservedAt < effectiveAt) {
+  if (quoteObservedAt !== null && quoteObservedAt < effectiveAt && quoteDetails) {
     currentPrice = position.currentPrice > 0 ? position.currentPrice / multiplier : position.currentPrice;
     quoteDetails = {
       ...quoteDetails,
@@ -521,7 +526,7 @@ export function adjustPositionForSplit(
     shares: sharesAfter,
     currentPrice,
     pt: Number.isFinite(position.pt) && position.pt > 0 ? position.pt / multiplier : position.pt,
-    tranches: updatedTranches as PositionRecord['tranches'],
+    tranches: updatedTranches,
     ...(quoteDetails ? { quoteDetails } : {})
   };
   return {
