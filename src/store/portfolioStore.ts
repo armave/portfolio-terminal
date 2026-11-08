@@ -2021,7 +2021,9 @@ export class PortfolioStore {
         event,
         status,
         recordedAt,
-        status === 'applied' ? 'Verified split applied to all eligible open lots; aggregate acquisition cost was preserved.' : adjusted.reason
+        adjusted.status === 'applied'
+          ? 'Verified split applied to all eligible open lots; aggregate acquisition cost was preserved.'
+          : adjusted.reason
       );
       let mergedActions: PortfolioCorporateActionEvent[];
       try {
@@ -2036,9 +2038,7 @@ export class PortfolioStore {
 
       const transactionDraft: PortfolioTransactionDraft = {
         type: 'corporate-action',
-        effectiveAt: adjusted.position.lastTradeAt && adjusted.position.lastTradeAt < Date.parse(event.effectiveDate + 'T00:00:00Z')
-          ? Date.parse(event.effectiveDate + 'T00:00:00Z')
-          : Date.parse(event.effectiveDate + 'T00:00:00Z'),
+        effectiveAt: Date.parse(event.effectiveDate + 'T00:00:00Z'),
         ticker: event.symbol,
         quantity: adjusted.sharesBefore,
         positionQuantityDelta: adjusted.sharesAfter - adjusted.sharesBefore,

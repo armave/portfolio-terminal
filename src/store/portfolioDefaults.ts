@@ -30,6 +30,7 @@ export function createBlankPortfolioState(now = Date.now()): PortfolioState {
     closedTrades: [],
     brokerExecutedTrades: [],
     transactionEvents: [],
+    corporateActionEvents: [],
     closedHistory: [],
     cashflows: [],
     brokerAssumptions: DEFAULT_BROKER_ASSUMPTIONS,

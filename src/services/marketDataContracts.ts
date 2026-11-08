@@ -549,10 +549,13 @@ export function normalizeMarketHistoryResponse(
   const provider = normalizeToken(input.provider);
   const receivedAt = normalizeTimestamp(input.receivedAt);
   const interval = normalizeToken(input.interval);
+  const now = Date.now();
   const issues = [...history.issues, ...identity.issues];
+  const futureReceipt = receivedAt !== null && receivedAt > now + 60 * 1000;
 
   if (!provider) issues.push('Historical data provider is missing.');
   if (receivedAt === null) issues.push('Historical data receipt timestamp is missing or invalid.');
+  else if (futureReceipt) issues.push('Historical data receipt timestamp is in the future; provenance is incomplete.');
   if (!interval) issues.push('Historical data interval is missing.');
   if (identity.instrument && !identity.instrument.quoteCurrency) {
     issues.push('Historical quote currency is unknown; currency conversion is unavailable.');
@@ -561,7 +564,7 @@ export function normalizeMarketHistoryResponse(
   const quality = history.quality === 'unavailable' || history.points.length === 0
     ? 'unavailable'
     : history.quality === 'partial' || !identity.instrument || !identity.instrument.quoteCurrency ||
-        !provider || receivedAt === null || !interval
+        !provider || receivedAt === null || futureReceipt || !interval
       ? 'partial'
       : 'complete';
 
@@ -575,7 +578,7 @@ export function normalizeMarketHistoryResponse(
     issues,
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
     ...(provider ? { provider } : {}),
-    ...(receivedAt !== null ? { receivedAt } : {}),
+    ...(receivedAt !== null && !futureReceipt ? { receivedAt } : {}),
     ...(interval ? { interval } : {})
   };
 }
@@ -610,7 +613,7 @@ export function normalizeFxRate(
   if (input.observedAt !== undefined && input.observedAt !== null && observedAt === null) {
     issues.push('FX observation timestamp is invalid.');
   }
-  if (observedAt !== null && receivedAt !== null && observedAt > receivedAt + (options.maxFutureSkewMs ?? 60 * 1000)) {
+  if (observedAt !== null && receivedAt !== null && observedAt > receivedAt + maxFutureSkewMs) {
     observedAt = null;
     issues.push('FX observation timestamp is later than receipt time.');
   }
