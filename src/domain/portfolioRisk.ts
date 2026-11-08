@@ -120,7 +120,7 @@ export interface HistoricalCorrelation {
 }
 export interface StressShockInput { ticker: string; /** Decimal return: -0.25 = -25%. */ priceShock: number; }
 interface StressShockDriver { ticker: string; currentExposure: number; grossExposure: number; priceShock: number; pnlImpact: number; }
-export interface RiskFxStressRateInput {
+interface RiskFxStressRateInput {
   currency: string;
   /** Reporting-currency units for one unit of the foreign currency. */
   rateToReportingCurrency: number;
@@ -128,7 +128,7 @@ export interface RiskFxStressRateInput {
   freshness: RiskQuoteFreshness;
   observedAt: number | null;
 }
-export interface RiskFxStressShockInput { currency: string; /** Decimal FX move, e.g. -0.1 = 10% depreciation. */ fxShock: number; }
+interface RiskFxStressShockInput { currency: string; /** Decimal FX move, e.g. -0.1 = 10% depreciation. */ fxShock: number; }
 export interface RiskFxStressInput {
   reportingCurrency: string;
   rates: readonly RiskFxStressRateInput[];
