@@ -10,6 +10,7 @@ import {
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -3067,4 +3068,87 @@ describe('portfolio transaction journal integration', () => {
     } as any)).toBe(false);
     expect(store.getState()).toBe(before);
   });
+  it('applies a verified split once, preserves basis, and restores the action journal', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 500,
+          pt: 600,
+          commBuy: 12,
+          startDate: '2019-01-02',
+          tranches: [{ qty: 10, price: 100, date: '2019-01-02', buyCommission: 12 }],
+          quoteDetails: {
+            price: 500,
+            provider: 'FINNHUB',
+            sourceTimestamp: Date.parse('2020-08-28T20:00:00Z'),
+            receivedAt: Date.now(),
+            freshness: 'fresh',
+            dataQuality: 'complete',
+            currency: 'USD'
+          }
+        }
+      }
+    });
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const cashBefore = store.getState().cashCushion.freeCash;
+    const balanceBefore = store.getState().balance;
+    const recordedAt = Date.parse('2026-11-08T10:00:00Z');
+
+    const applied = store.applyCorporateActionSplit(action, recordedAt);
+    expect(applied).toMatchObject({ status: 'applied', sourceId: action.sourceId });
+    const state = store.getState();
+    expect(state.positions.AAPL).toMatchObject({
+      shares: 40,
+      currentPrice: 125,
+      pt: 150,
+      tranches: [{ qty: 40, price: 25, buyCommission: 12 }],
+      quoteDetails: { freshness: 'stale', dataQuality: 'partial' }
+    });
+    expect(state.cashCushion.freeCash).toBe(cashBefore);
+    expect(state.balance).toBe(balanceBefore);
+    expect(state.transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
+    expect(state.corporateActionEvents).toHaveLength(1);
+    expect(verifyPortfolioTransactionParity(state.transactionEvents || [], state).matches).toBe(true);
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+    const duplicate = reloaded.applyCorporateActionSplit(action, recordedAt + 1);
+    expect(duplicate?.status).toBe('applied');
+    expect(reloaded.getState().positions.AAPL.shares).toBe(40);
+    expect(reloaded.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
+  });
+
+  it('persists a review-required action without changing a mixed pre/post-action position', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 100,
+          pt: 120,
+          commBuy: 0,
+          tranches: [
+            { qty: 5, price: 100, date: '2019-01-02' },
+            { qty: 5, price: 100, date: '2021-01-02' }
+          ]
+        }
+      }
+    });
+    const before = store.getState().positions.AAPL;
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const recorded = store.applyCorporateActionSplit(action);
+    expect(recorded).toMatchObject({ status: 'review_required' });
+    expect(store.getState().positions.AAPL).toEqual(before);
+    expect(store.getState().corporateActionEvents).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
 });

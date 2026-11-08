@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
+import { normalizeFinnhubStockSplits, toPortfolioCorporateActionEvent } from '../services/corporateActions';
 import {
   calculateMarginInterest,
   collectOpenPositionTranches,
@@ -981,4 +982,19 @@ describe('Stage 2 financial domain guarantees', () => {
       minCommOrder: 1.2
     });
   });
+  it('preserves sourced corporate-action history through backup export and restore', () => {
+    const feedEvent = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+    const event = toPortfolioCorporateActionEvent(
+      feedEvent, 'applied', Date.parse('2026-11-08T10:00:00Z'), 'Applied in the portfolio.'
+    );
+    const exported = createPortfolioBackupSnapshot({ positions: {}, corporateActionEvents: [event] });
+    expect(exported).toMatchObject({ corporateActionEvents: [event] });
+    expect(normalizePortfolioBackup(exported, Date.now()).corporateActionEvents).toEqual([event]);
+    expect(() => normalizePortfolioBackup({
+      positions: {}, corporateActionEvents: [{ ...event, receivedAt: 'invalid' }]
+    }, Date.now())).toThrow('Invalid corporateActionEvents');
+  });
+
 });

@@ -17,31 +17,6 @@ export type {
 } from '../types/corporateAction';
 
 
-export type PortfolioCorporateActionStatus = 'applied' | 'review_required' | 'not_applicable';
-
-export interface PortfolioCorporateActionEvent {
-  schemaVersion: 1;
-  id: string;
-  sourceId: string;
-  ticker: string;
-  kind: CorporateActionKind;
-  effectiveAt: number;
-  recordedAt: number;
-  provider: string;
-  receivedAt: number;
-  status: PortfolioCorporateActionStatus;
-  fromFactor?: number;
-  toFactor?: number;
-  sharesAfterPerShareBefore?: number;
-  amountPerShare?: number;
-  currency?: string;
-  payDate?: string;
-  recordDate?: string;
-  declarationDate?: string;
-  newSymbol?: string;
-  note?: string;
-}
-
 export interface CorporateActionAdjustmentInput {
   kind: CorporateActionKind;
   quantity: number;
