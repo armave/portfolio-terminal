@@ -263,6 +263,76 @@ describe('broker history audit events', () => {
     });
   });
 
+  it('deduplicates overlapping broker history pages by stable execution and cashflow IDs', () => {
+    const firstPage = appendBrokerHistoryAuditEvents([], [
+      {
+        id: 'exec-page-1',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 100,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:00:00.000Z'
+      },
+      {
+        id: 'exec-page-2',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 101,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:01:00.000Z'
+      }
+    ], [{
+      id: 'cash-page-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 5,
+      currency: 'USD'
+    }], 1_000);
+
+    const overlappingPage = appendBrokerHistoryAuditEvents(firstPage, [
+      {
+        id: 'exec-page-2',
+        orderId: 'order-page-a',
+        ticker: 'AAPL',
+        side: 'BUY',
+        quantity: 1,
+        price: 101,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:01:00.000Z'
+      },
+      {
+        id: 'exec-page-3',
+        orderId: 'order-page-b',
+        ticker: 'MSFT',
+        side: 'BUY',
+        quantity: 2,
+        price: 50,
+        currency: 'USD',
+        executedAt: '2026-11-01T10:02:00.000Z'
+      }
+    ], [{
+      id: 'cash-page-1',
+      date: '2026-11-01',
+      type: 'Dividend',
+      amount: 5,
+      currency: 'USD'
+    }, {
+      id: 'cash-page-2',
+      date: '2026-11-01',
+      type: 'Fee',
+      amount: -1,
+      currency: 'USD'
+    }], 2_000);
+
+    expect(overlappingPage).toHaveLength(5);
+    expect(overlappingPage.filter(event => event.type === 'broker.execution')).toHaveLength(3);
+    expect(overlappingPage.filter(event => event.idempotencyKey?.startsWith('broker-cashflow:'))).toHaveLength(2);
+  });
+
   it('records a broker correction that reverts to older facts as a new revision', () => {
     const original = [{
       id: 'exec-revert-1',

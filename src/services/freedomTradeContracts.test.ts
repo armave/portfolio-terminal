@@ -138,6 +138,30 @@ describe('Freedom execution contract normalization', () => {
     expect(fills[1]).toMatchObject({ id: '13446625', orderId: '8757876', side: 'BUY', quantity: 1, price: 350 });
   });
 
+  it('preserves the TradeNet buy-on-margin order operation when normalizing a fill', () => {
+    const [buyOnMargin] = normalizeFreedomOrderFills({
+      trades: { trade: [{
+        id: 9002,
+        order_id: 901,
+        instr: 'GOOGL.US',
+        operation: '2',
+        curr: 'USD',
+        date: '2026-11-03T09:43:00',
+        p: 350,
+        q: 1,
+        v: 350
+      }] }
+    });
+
+    expect(buyOnMargin).toMatchObject({
+      id: '9002',
+      orderId: '901',
+      side: 'BUY',
+      quantity: 1,
+      price: 350
+    });
+  });
+
   it('keeps sell-short fills distinct from closing sells', () => {
     const [fill] = normalizeFreedomOrderFills({
       trades: { trade: [{

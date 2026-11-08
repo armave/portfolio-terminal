@@ -85,8 +85,11 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
         ? { orderId: String(row.order_id ?? row.orderId ?? row.parentOrderId).trim() }
         : {}),
       ticker: String(row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? ''),
-      // Ignore unrecognized operation placeholders and continue to side/type aliases.
-      side: normalizedSide(row.operation, row.side, row.buy_sell, row.type) || 'Unknown',
+      // The authenticated order stream supplies a normalized side alongside
+      // the raw operation code (1=buy, 2=buy on margin, 3=sell, 4=short).
+      // Prefer that explicit side so operation 2 cannot be reinterpreted as SELL
+      // by the legacy trade-history alias mapping below.
+      side: normalizedSide(row.side, row.operation, row.buy_sell, row.type) || 'Unknown',
       quantity: positiveMagnitudeOrNull(row.q, row.quantity, row.qty),
       price: positiveMagnitudeOrNull(row.p, row.price, row.exec_price),
       currency: String(row.curr_c ?? row.curr ?? row.currency ?? row.base_currency ?? ''),

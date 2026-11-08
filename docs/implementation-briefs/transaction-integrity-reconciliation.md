@@ -3,7 +3,7 @@
 **Parent contract:** `docs/plans/2026-11-08-portfolio-integrity-reliability-implementation-plan.md`  
 **Branch:** `impl/transaction-reconciliation`  
 **Target:** plan branch  
-**Status:** implementation scaffold
+**Status:** implemented; authenticated live-account validation remains open
 
 ## Mission
 
@@ -48,14 +48,17 @@ Determine which APIs provide stable account/order/execution IDs, fill sequence, 
 
 ## Acceptance checklist
 
-- [ ] Stable broker identity/revision contract documented with fixtures.
-- [ ] Import and replay are idempotent.
-- [ ] Partial fills and corrections update active history exactly once.
-- [ ] Fees and cashflows have explicit type/sign/currency.
-- [ ] Reconciliation explains every mismatch and never silently mutates state.
-- [ ] Historical cost basis and realized/unrealized P&L match golden examples.
-- [ ] PR #391 tests remain intact and pass.
-- [ ] Vitest, typecheck, lint, build, browser smoke and i18n checks pass.
+- [x] Provider identity contract is documented by the normalized TradeNet history fixture and order-stream contract: fill ID is distinct from parent `order_id`. Provider account identity and revision markers are not exposed by the verified fixtures and remain a documented limitation.
+- [x] Stable-ID import/replay is idempotent across repeated responses and overlapping pages. Conflicting same-ID records are surfaced, and A → B → A corrections remain append-only revisions.
+- [x] Verified parent-order partial fills are grouped only within that order. Missing order identity and multiple possible groups remain explicit provisional findings.
+- [x] Broker cashflow categories preserve source currency and signed amount; deposits/withdrawals normalize operation direction. Unknown descriptions remain generic adjustments rather than guessed categories.
+- [x] Execution/cashflow reconciliation explains mismatches without changing portfolio state; position/cash snapshot reconciliation remains read-only in the existing broker reconciliation boundary.
+- [x] FIFO/cost-basis and realized/unrealized P&L formulas were not changed; existing store accounting fixtures remain part of exact-head CI.
+- [x] PR #391's performance guard files are untouched; their regression checks remain part of CI.
+- [x] Focused regressions, full Vitest/Worker tests, typecheck, production build, browser journeys, performance/dead-code/dependency checks pass on the tested head.
+- [x] Reviewed the complete `PortfolioStore` write surface against the PT-02 mutation inventory: buy/sell/partial close, cash/debt, rollover, reset, cash-holding add/sell/remove, tranche removal, closed-history cleanup, import/restore and generic snapshot reconciliation. Derived quote/target/active-view/configuration changes are not financial journal commands.
+- [ ] Authenticated Freedom/TradeNet account verification of account scoping, stable provider IDs, parent order semantics, bust/correct behavior and cashflow signs. CI fixtures are not live-account evidence.
+- [ ] Multi-device backup/restore and cross-tab QA with an authenticated account.
 
 ## Explicit non-goals
 

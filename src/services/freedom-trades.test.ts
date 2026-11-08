@@ -73,6 +73,7 @@ describe('normalizeFreedomTrades', () => {
     expect(trades).toHaveLength(2);
     expect(trades[0]).toMatchObject({
       id: '442648855',
+      orderId: '392308907',
       ticker: 'GOOGL.US',
       side: 'BUY',
       quantity: 30,
