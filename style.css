@@ -4243,13 +4243,3 @@ table tbody tr:hover {
   }
 }
 
-@media(prefers-reduced-motion:reduce) {
-  .margin-risk-modal-backdrop,
-  .margin-risk-modal-dialog {
-    animation: none;
-  }
-
-  .margin-risk-metric-button {
-    transition: none;
-  }
-}

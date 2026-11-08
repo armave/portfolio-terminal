@@ -119,7 +119,7 @@ function MarginRiskGaugeCard({
         <div class="margin-risk-gauge-heading">
           <div>
             <span class="margin-risk-label">{translateText('MARGIN HEALTH', language)}</span>
-            <strong class="margin-risk-equity">{equityText}</strong>
+            <strong class="margin-risk-equity" aria-label={translateText('Account equity percentage', language)}>{equityText}</strong>
           </div>
           <span class={`margin-risk-status ${riskTone}`}>{riskLabel}</span>
         </div>
@@ -197,7 +197,12 @@ function MarginRiskGaugeCard({
         )}
         {(valuationStatus === 'incomplete' || risk.status === 'unavailable') && (
           <p class="margin-risk-interactive-note">
-            {translateText(risk.reason || 'Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)}
+            {translateText(
+              valuationStatus === 'incomplete'
+                ? 'Margin risk estimate unavailable until the account balance and every holding can be valued.'
+                : risk.reason || 'Margin risk estimate unavailable because required collateral or broker inputs are missing.',
+              language
+            )}
             {unpricedHoldings > 0 ? ` · ${translateText('Unpriced holdings', language)}: ${unpricedHoldings}` : ''}
           </p>
         )}
