@@ -124,6 +124,7 @@ describe('Freedom execution contract normalization', () => {
     expect(fills).toHaveLength(2);
     expect(fills[0]).toMatchObject({
       id: '13446624',
+      orderId: '8757875',
       ticker: 'GOOGL.US',
       side: 'SELL',
       quantity: 2,
@@ -134,7 +135,32 @@ describe('Freedom execution contract normalization', () => {
       profit: 12.5
     });
     expect(fills[0].raw).toMatchObject({ order_id: 8757875, id: 13446624 });
-    expect(fills[1]).toMatchObject({ id: '13446625', side: 'BUY', quantity: 1, price: 350 });
+    expect(fills[1]).toMatchObject({ id: '13446625', orderId: '8757876', side: 'BUY', quantity: 1, price: 350 });
+  });
+
+  it('preserves the TradeNet buy-on-margin order operation when normalizing a fill', () => {
+    const [buyOnMargin] = normalizeFreedomOrderFills({
+      trades: { trade: [{
+        id: 9002,
+        order_id: 901,
+        instr: 'GOOGL.US',
+        side: 'Unknown',
+        operation: '2',
+        curr: 'USD',
+        date: '2026-11-03T09:43:00',
+        p: 350,
+        q: 1,
+        v: 350
+      }] }
+    });
+
+    expect(buyOnMargin).toMatchObject({
+      id: '9002',
+      orderId: '901',
+      side: 'BUY',
+      quantity: 1,
+      price: 350
+    });
   });
 
   it('keeps sell-short fills distinct from closing sells', () => {
