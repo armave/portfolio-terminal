@@ -152,7 +152,9 @@ export function BrokerTransactionReconciliation({
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched cashflows')}</div><strong>{report.matchedCashflowCount}</strong></div>
       </div>
       {report.legacyClosedSaleCount > 0 && (
-        <p class="text-slate-500">{translateBrokerReconciliationCopy('Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.')}</p>
+        <p class="text-slate-500">
+          {translateBrokerReconciliationCopy('Legacy closed sales are app summaries, not transaction-journal events.')} {translateBrokerReconciliationCopy('Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.')}
+        </p>
       )}
       {report.warnings.length > 0 && (
         <ul class="list-disc space-y-1 pl-4 text-amber-200">

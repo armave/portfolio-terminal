@@ -99,6 +99,7 @@ interface NormalizedLegacyClosedSale {
   quantity: number;
   price: number;
   at: number;
+  dateOnly: boolean;
 }
 
 interface NormalizedCashflow {
@@ -175,17 +176,21 @@ function normalizeExecution(row: BrokerExecution): NormalizedExecution | null {
 function normalizeLegacyClosedSale(row: ClosedTrade, index: number): NormalizedLegacyClosedSale | null {
   const cleanTicker = ticker(row.ticker);
   const quantity = number(row.shares);
-  const price = number(row.sellPrice) ?? number(row.exitPrice);
+  const rawPrice = number(row.sellPrice);
+  const price = rawPrice !== null && rawPrice > 0 ? rawPrice : number(row.exitPrice);
   // Closed-trade rows describe the sale, not the underlying buy executions.
   // Require a sale price and date so this fallback cannot infer an opening lot.
-  const at = timestamp(row.sellDate ?? row.exitDate ?? row.closedAt ?? row.date);
+  const rawSaleDate = row.sellDate ?? row.exitDate ?? row.closedAt ?? row.date;
+  const at = timestamp(row.sellDate) ?? timestamp(row.exitDate) ?? timestamp(row.closedAt) ?? timestamp(row.date);
+  const dateOnly = typeof rawSaleDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawSaleDate.trim());
   if (!cleanTicker || quantity === null || quantity <= 0 || price === null || price <= 0 || at === null) return null;
   return {
     id: text(row.id) || `legacy-closed-sale:${cleanTicker}:${at}:${quantity}:${price}:${index}`,
     ticker: cleanTicker,
     quantity,
     price,
-    at
+    at,
+    dateOnly
   };
 }
 
@@ -489,8 +494,9 @@ export function reconcileBrokerActivity(
       a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
   };
   const legacySaleTimeMatches = (broker: NormalizedExecution, sale: NormalizedLegacyClosedSale) =>
-    broker.at !== null && (sameUtcDay(broker.at, sale.at) ||
-      Math.abs(broker.at - sale.at) <= timeTolerance);
+    broker.at !== null && (sale.dateOnly
+      ? sameUtcDay(broker.at, sale.at)
+      : Math.abs(broker.at - sale.at) <= maxTimingDifference);
 
   // Match unambiguous one-fill/one-sale pairs first. Require both quantity and
   // price: ticker/date alone is not enough to identify a historical execution.
