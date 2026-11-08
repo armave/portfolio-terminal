@@ -424,15 +424,17 @@ describe('broker history audit events', () => {
     ];
     const events = appendBrokerHistoryAuditEvents([], [], cashflows, Date.parse('2026-11-06T09:00:00Z'));
     expect(events.map((event) => event.type)).toEqual([
-      'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'corporate-action'
+      'dividend', 'fee', 'fee', 'margin.interest', 'margin.interest',
+      'cash.deposit', 'cash.deposit', 'cash.withdrawal', 'cash.withdrawal',
+      'cash.transfer', 'corporate-action'
     ]);
     expect(events.find(event => event.externalReferenceId === 'fee-positive-magnitude')?.externalCashFlowAmount).toBe(-2);
     expect(events.find(event => event.externalReferenceId === 'margin-positive-magnitude')?.externalCashFlowAmount).toBe(-3);
     expect(events.find(event => event.externalReferenceId === 'deposit-negative-magnitude')?.externalCashFlowAmount).toBe(500);
     expect(events.find(event => event.externalReferenceId === 'withdraw-positive-magnitude')?.externalCashFlowAmount).toBe(-20);
     expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
-    expect(events[3].externalCashFlowAmount).toBe(500);
-    expect(events[2].financingCost).toBe(3);
+    expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
+    expect(events.find(event => event.externalReferenceId === 'margin-1')?.financingCost).toBe(3);
     expect(events.find(event => event.externalReferenceId === 'split-1')?.type).toBe('corporate-action');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
