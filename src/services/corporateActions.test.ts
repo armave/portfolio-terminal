@@ -246,6 +246,21 @@ describe('split position adjustment', () => {
     }, splitEvent())).toMatchObject({ status: 'review_required' });
   });
 
+  it('requires review when the split creates a fractional share entitlement', () => {
+    const oneShare: PositionRecord = {
+      ...preSplitPosition,
+      shares: 1,
+      tranches: [{ qty: 1, price: 100, date: '2019-01-02' }]
+    };
+    expect(adjustPositionForSplit(oneShare, splitEvent({
+      fromFactor: 2,
+      toFactor: 3
+    }))).toMatchObject({
+      status: 'review_required',
+      reason: 'The split would leave a fractional aggregate share entitlement; confirm broker fractional-share or cash-in-lieu settlement before applying it.'
+    });
+  });
+
   it('does not re-adjust positions acquired after the effective date', () => {
     const postAction = {
       ...preSplitPosition,

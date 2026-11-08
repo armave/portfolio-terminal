@@ -511,6 +511,12 @@ export function adjustPositionForSplit(
     };
   });
   const sharesAfter = sharesBefore * multiplier;
+  if (Math.abs(sharesAfter - Math.round(sharesAfter)) > Math.max(1e-8, sharesAfter * 1e-8)) {
+    return {
+      status: 'review_required',
+      reason: 'The split would leave a fractional aggregate share entitlement; confirm broker fractional-share or cash-in-lieu settlement before applying it.'
+    };
+  }
   const costBasisAfter = updatedTranches.reduce((total, item) =>
     total + Number(item.qty) * Number(item.price), 0);
   const tolerance = Math.max(1e-6, Math.abs(costBasisBefore) * 1e-8);
