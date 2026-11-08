@@ -78,13 +78,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [tenantDirectoryLoadFailed, setTenantDirectoryLoadFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    if (currentUser?.role !== 'admin') {
+      setTenantDirectoryModule(null);
+      setTenantDirectoryLoadFailed(false);
+      return () => { cancelled = true; };
+    }
     void import('./TenantDirectoryPanel').then((module) => {
       if (!cancelled) setTenantDirectoryModule(() => module);
     }).catch(() => {
       if (!cancelled) setTenantDirectoryLoadFailed(true);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [currentUser?.id, currentUser?.role]);
   const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
@@ -311,8 +316,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </label>}
           </div>
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-          <div class="settings-account-actions grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
+          <div class={'settings-account-actions grid grid-cols-2 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
             {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-9 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">{translateText('Pull cloud')}</button>}
             {(account?.role === "admin" || account?.role === "guest") && <button
               type="button"
@@ -323,6 +327,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               title={translateText('Sync portfolio')}
               class="settings-sync-button h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
             >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio')}</button>}
+            <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
           </div>
         </div>
 
@@ -404,13 +409,13 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <tbody>
               {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
               {users.map((user) => <tr key={user.id} class="border-t border-slate-800">
-              <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-              <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
-              <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>
-              <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-              <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
-                {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
-            </tr>)}</tbody>
+                <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+                <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
+                <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>
+                <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+                <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
+                  {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
+              </tr>)}</tbody>
           </table></TableScrollRegion>
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
@@ -418,7 +423,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
 
       <DeviceCheckSummary />
       {account?.role === 'admin' && <MarginDigestSecurityPanel currentUserId={account.id} />}
-      {LoadedTenantDirectoryPanel ? (
+      {account?.role === 'admin' && (LoadedTenantDirectoryPanel ? (
         <LoadedTenantDirectoryPanel currentUser={account} />
       ) : (
         <div class="settings-panel text-xs text-slate-500" role="status">
@@ -426,7 +431,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             ? translateText('Portfolio ownership could not be loaded.')
             : translateText('Loading portfolio ownership…')}
         </div>
-      )}
+      ))}
 
       {permissions.canEditBrokerRules && <details
         class="settings-panel settings-broker-rules space-y-3"

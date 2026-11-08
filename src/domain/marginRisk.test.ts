@@ -264,6 +264,29 @@ describe('calculateMarginRiskSnapshot', () => {
   });
 });
 
+describe('base maintenance buffer percentage', () => {
+  it('reports the base cushion as a percentage of assets when concentration add-on is unknown', () => {
+    const input = riskInput({
+      shortExposure: 0,
+      brokerRequirements: {
+        currency: 'USD',
+        initialMarginRequired: 450,
+        maintenanceMarginRequired: 100,
+        concentrationAddOn: null,
+        observedAt: Date.UTC(2026, 10, 8, 7, 0)
+      }
+    });
+    const result = calculateMarginRiskSnapshot(input);
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.baseMaintenanceBuffer).toBeCloseTo(result.value.equity - 100);
+    expect(result.value.baseMaintenanceBufferPct).toBeCloseTo(
+      (result.value.baseMaintenanceBuffer! / result.value.assets) * 100
+    );
+    expect(result.value.maintenanceBufferPct).toBeNull();
+  });
+});
+
 describe('legacy margin metrics adapter', () => {
   it('preserves the long-only calculation contract for existing consumers', () => {
     const metrics = calculateMarginRiskMetrics(500, 1_000, 100, DEFAULT_BROKER_ASSUMPTIONS);

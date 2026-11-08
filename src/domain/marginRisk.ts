@@ -80,6 +80,8 @@ export interface MarginRiskSnapshot {
   totalMaintenanceRequirement: number | null;
   /** Estimate before any broker concentration add-on that was not supplied. */
   baseMaintenanceBuffer: number | null;
+  /** Base maintenance cushion as a percentage of total assets, before concentration add-on. */
+  baseMaintenanceBufferPct: number | null;
   /** null when an unreported concentration add-on prevents a complete buffer calculation. */
   maintenanceBuffer: number | null;
   maintenanceBufferPct: number | null;
@@ -282,6 +284,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const totalMaintenanceRequirement = concentrationAmount === null || baseMaintenanceAmount === null
     ? null : baseMaintenanceAmount + concentrationAmount;
   const baseMaintenanceBuffer = baseMaintenanceAmount === null ? null : equity - baseMaintenanceAmount;
+  const baseMaintenanceBufferPct = baseMaintenanceBuffer !== null && assets > 0
+    ? (baseMaintenanceBuffer / assets) * 100
+    : null;
   const maintenanceBuffer = totalMaintenanceRequirement === null ? null : equity - totalMaintenanceRequirement;
   // The configured stop-out ratio belongs to the existing long-only model.
   // Without an explicit broker short-account rule, do not invent a short stop-out buffer.
@@ -391,7 +396,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
       amount: concentrationAmount,
       source: concentrationAmount === null ? 'unavailable' : (requirements?.concentrationAddOnSource ?? 'broker')
     },
-    totalMaintenanceRequirement, baseMaintenanceBuffer, maintenanceBuffer, maintenanceBufferPct,
+    totalMaintenanceRequirement, baseMaintenanceBuffer, baseMaintenanceBufferPct, maintenanceBuffer, maintenanceBufferPct,
     stopOutBuffer, stopOutBufferPct, marginCallValue, stopOutValue,
     marginCallBufferPct, stopOutBufferPctOfLongExposure,
     showMarginCall: maintenanceState === 'maintenance-breach',
