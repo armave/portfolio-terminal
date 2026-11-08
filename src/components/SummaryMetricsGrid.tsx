@@ -70,7 +70,7 @@ function MarginRiskGaugeCard({
   valuationStatus = 'current',
   accountBalanceAvailable = true,
   unpricedHoldings = 0,
-  brokerContext
+  brokerContext = {}
 }: {
   equityPct: number;
   risk: MarginRiskDisplay;
@@ -80,7 +80,7 @@ function MarginRiskGaugeCard({
   valuationStatus?: 'current' | 'provisional' | 'incomplete';
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
-  brokerContext: MarginRiskBrokerContext;
+  brokerContext?: MarginRiskBrokerContext;
 }) {
   const language = getAppLanguage();
   const [modalOpen, setModalOpen] = useState(false);
