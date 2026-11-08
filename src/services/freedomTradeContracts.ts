@@ -38,7 +38,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     return null;
   };
   const normalizedTextSide = (value: unknown): 'BUY' | 'SELL' | 'SELL_SHORT' | 'BUY_TO_COVER' | null => {
-    const side = String(value ?? '').trim().toLowerCase().replace(/[\\s-]+/g, '_');
+    const side = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     if (['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
     if (['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
     if (['ss', 'sell_short', 'short_sell', 'short'].includes(side)) return 'SELL_SHORT';
