@@ -415,6 +415,41 @@ describe('broker history audit events', () => {
     expect(resolveLatestBrokerHistoryAuditEvents(revised)[0].relatedEventId).toBe(revised[0].id);
   });
 
+  it('preserves competing device correction branches without selecting or crashing', () => {
+    const original = {
+      id: 'exec-fork-1',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 1,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-11-01T10:00:00.000Z',
+      commission: 1
+    };
+    const first = appendBrokerHistoryAuditEvents([], [original], [], 1_000);
+    const branchA = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.25
+    }], [], 2_000);
+    const branchB = appendBrokerHistoryAuditEvents(first, [{
+      ...original,
+      commission: 1.5
+    }], [], 2_100);
+    const forked = mergePortfolioTransactionEvents(branchA, branchB);
+
+    const heads = resolveLatestBrokerHistoryAuditEvents(forked);
+    expect(heads).toHaveLength(2);
+    expect(heads.map(event => event.fees).sort()).toEqual([1.25, 1.5]);
+
+    // A later sync cannot silently create a third branch or choose one head.
+    const afterReplay = appendBrokerHistoryAuditEvents(forked, [{
+      ...original,
+      commission: 1.75
+    }], [], 3_000);
+    expect(afterReplay).toHaveLength(forked.length);
+    expect(resolveLatestBrokerHistoryAuditEvents(afterReplay)).toHaveLength(2);
+  });
+
   it('keeps identical provider execution references isolated by source', () => {
     const execution = {
       id: 'same-provider-id',

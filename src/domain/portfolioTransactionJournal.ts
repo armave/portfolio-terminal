@@ -438,8 +438,8 @@ export function appendBrokerHistoryAuditEvents(
   if (!isPortfolioTransactionEventList(current)) throw new TypeError('Portfolio transaction event history is malformed.');
   const events = [...current];
   const keys = new Map<string, PortfolioTransactionEvent>();
-  const executionRefs = new Map<string, PortfolioTransactionEvent>();
-  const cashflowRefs = new Map<string, PortfolioTransactionEvent>();
+  const executionRefs = new Map<string, PortfolioTransactionEvent | null>();
+  const cashflowRefs = new Map<string, PortfolioTransactionEvent | null>();
   for (const e of current) {
     if (e.idempotencyKey) keys.set(e.idempotencyKey, e);
   }
@@ -447,10 +447,12 @@ export function appendBrokerHistoryAuditEvents(
   // broker revision heads from their explicit parent links, not wall-clock order.
   for (const e of resolveLatestBrokerHistoryAuditEvents(current)) {
     if (e.type === 'broker.execution' && e.externalReferenceId) {
-      executionRefs.set(`${e.source}:${e.externalReferenceId}`, e);
+      const key = `${e.source}:${e.externalReferenceId}`;
+      executionRefs.set(key, executionRefs.has(key) ? null : e);
     }
     if (e.idempotencyKey?.startsWith('broker-cashflow:') && e.externalReferenceId) {
-      cashflowRefs.set(`${e.source}:${e.externalReferenceId}`, e);
+      const key = `${e.source}:${e.externalReferenceId}`;
+      cashflowRefs.set(key, cashflowRefs.has(key) ? null : e);
     }
   }
   const append = (event: PortfolioTransactionEvent) => {
@@ -494,6 +496,9 @@ export function appendBrokerHistoryAuditEvents(
     const sourceKey = `${source}:${ref}`;
     const sourceFingerprint = hash(source);
     const previous = executionRefs.get(sourceKey);
+    // More than one chain head means concurrent devices corrected the same
+    // source record differently. Preserve both branches and do not guess.
+    if (previous === null) continue;
     const requestFingerprint = `broker-execution-v1:${sourceFingerprint}:${fingerprint}`;
     // A replay of the latest known facts is a no-op. If the broker reverts to
     // an earlier value after a later correction, link a new revision to the
@@ -553,6 +558,7 @@ export function appendBrokerHistoryAuditEvents(
     const sourceKey = `${cashflowSource}:${ref}`;
     const sourceFingerprint = hash(cashflowSource);
     const previous = cashflowRefs.get(sourceKey);
+    if (previous === null) continue;
     const requestFingerprint = `broker-cashflow-v1:${sourceFingerprint}:${fingerprint}`;
     if (previous?.requestFingerprint === requestFingerprint) continue;
     const revisionParent = previous ? hash(previous.id) : 'initial';
@@ -577,8 +583,8 @@ export function appendBrokerHistoryAuditEvents(
 /**
  * Resolve the current broker-audit observation for each provider reference.
  * Older revisions remain in the append-only journal and are linked through
- * relatedEventId, but callers that need current facts must not treat every
- * revision as a separate execution or cashflow.
+ * relatedEventId. Competing correction branches are all returned so a caller
+ * can surface ambiguity; they must not be counted as separate active trades.
  */
 export function resolveLatestBrokerHistoryAuditEvents(
   events: readonly PortfolioTransactionEvent[]
@@ -610,10 +616,11 @@ export function resolveLatestBrokerHistoryAuditEvents(
         .filter((id): id is string => Boolean(id) && ids.has(id as string))
     );
     const heads = group.filter(event => !supersededIds.has(event.id));
-    if (heads.length !== 1) {
-      throw new Error(`Broker history revision chain "${key}" does not have one unambiguous head.`);
-    }
-    latest.push(heads[0]);
+    // A single leaf is the latest revision. Multiple leaves represent a
+    // concurrent correction fork; zero leaves indicate a malformed cycle.
+    // Return all competing records so callers can detect ambiguity, never pick
+    // an arbitrary branch based on the local device clock or array order.
+    latest.push(...(heads.length ? heads : group));
   }
 
   return freezePortfolioTransactionEventList(
