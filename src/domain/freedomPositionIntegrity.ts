@@ -171,11 +171,6 @@ export function collectFreedomPositionIntegrityIssues(
 
   if (!Array.isArray(trades)) return deduplicate(findings);
 
-  const currentTickers = new Set(
-    (Array.isArray(snapshot?.positions) ? snapshot.positions : [])
-      .map(position => tickerKey(position?.ticker))
-      .filter(Boolean)
-  );
   const ordered = trades.map((trade, index) => {
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const sideValue = [trade?.side, raw.side, trade?.operation, raw.operation, raw.oper, raw.buy_sell, raw.type, raw.action_id]
@@ -194,7 +189,7 @@ export function collectFreedomPositionIntegrityIssues(
       at,
       raw
     }
-  }).filter(item => !item.hasTicker || currentTickers.has(item.ticker)).sort((a, b) =>
+  }).sort((a, b) =>
     (a.at ?? 0) - (b.at ?? 0) || a.index - b.index
   );
 
