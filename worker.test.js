@@ -5042,11 +5042,11 @@ describe('Finnhub market-data routes',()=>{
   expect(bad.status).toBe(400);expect(noKey.status).toBe(503);expect(fetchMock).not.toHaveBeenCalled();
  });
  it('returns typed earnings/dividend events and allows partial feed failure',async()=>{
-  const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07',hour:'amc',epsEstimate:2.1,rawSecret:'hidden'}]}),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD',rawSecret:'hidden'}]),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-12-20',fromFactor:1,toFactor:4,rawSecret:'hidden'}]),{status:200}));
+   const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07',hour:'amc',epsEstimate:2.1,rawSecret:'hidden'}]}),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD',rawSecret:'hidden'}]),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-20',fromFactor:1,toFactor:4,rawSecret:'hidden'}]),{status:200}));
   vi.stubGlobal('fetch',fetchMock);
-  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=PT02SYMBOLCHECK&from=2026-12-01&to=2026-12-31',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+   const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
   expect(response.status).toBe(200);const data=await response.json();
-  expect(data).toMatchObject({earnings:[{date:'2026-12-07',epsEstimate:2.1}],dividends:[{date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD'}],corporateActions:[{date:'2026-12-20',fromFactor:1,toFactor:4}],corporateActionsAvailable:true});
+   expect(data).toMatchObject({earnings:[{date:'2026-11-07',epsEstimate:2.1}],dividends:[{date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD'}],corporateActions:[{date:'2026-11-20',fromFactor:1,toFactor:4}],corporateActionsAvailable:true});
   expect(JSON.stringify(data)).not.toContain('rawSecret');expect(JSON.stringify(data)).not.toContain('private-key');
  });
  it('withholds provider event rows that omit or mismatch their instrument symbol',async()=>{
