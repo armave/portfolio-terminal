@@ -128,7 +128,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {translateText('Maintenance buffer unavailable because the concentration add-on was not reported.', language)}
         </p>
       )}
-      {risk.stopOutState === 'unknown' && risk.status !== 'unavailable' && (
+      {risk.stopOutState === 'unknown' && (
         <p class="mt-1 text-[10px] text-amber-200">
           {translateText('Short-position stop-out buffer unavailable until broker-specific requirements are verified.', language)}
         </p>
