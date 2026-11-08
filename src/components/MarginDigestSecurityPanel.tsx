@@ -122,7 +122,7 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
   const canMigrate = Boolean(inventory && inventory.plaintextRecords > 0);
 
   return (
-    <section class="settings-panel space-y-3" aria-labelledby="marginDigestSecurityTitle">
+    <section class="settings-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="marginDigestSecurityTitle">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h3 id="marginDigestSecurityTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">
           {translateText('Margin Intelligence encryption migration')}
@@ -136,13 +136,13 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         {translateText('Inventory reports counts only; it never returns saved analysis or article content.')}
       </p>
       {inventory ? (
-        <dl class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-          <div><dt class="text-slate-500">{translateText('Saved digest records')}</dt><dd class="font-semibold text-slate-100 tabular-nums">{inventory.totalRecords}</dd></div>
-          <div><dt class="text-slate-500">{translateText('Plaintext records')}</dt><dd class={inventory.plaintextRecords ? 'font-semibold text-amber-300 tabular-nums' : 'font-semibold text-slate-100 tabular-nums'}>{inventory.plaintextRecords}</dd></div>
-          <div><dt class="text-slate-500">{translateText('AES-GCM v2 records')}</dt><dd class="font-semibold text-slate-100 tabular-nums">{inventory.encryptedV2Records}</dd></div>
-          <div><dt class="text-slate-500">{translateText('Older encrypted records')}</dt><dd class="font-semibold text-slate-100 tabular-nums">{inventory.legacyEncryptedRecords}</dd></div>
-          <div><dt class="text-slate-500">{translateText('Unreadable records')}</dt><dd class="font-semibold text-slate-100 tabular-nums">{inventory.unreadableRecords}</dd></div>
-          <div><dt class="text-slate-500">{translateText('Status')}</dt><dd class={inventory.migrationReady ? 'font-semibold text-emerald-300' : 'font-semibold text-amber-300'}>{inventory.migrationReady ? translateText('Ready') : translateText('Review required')}</dd></div>
+        <dl class="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('Saved digest records')}</dt><dd class="mt-1 font-semibold text-slate-100 tabular-nums">{inventory.totalRecords}</dd></div>
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('Plaintext records')}</dt><dd class={inventory.plaintextRecords ? 'mt-1 font-semibold text-amber-300 tabular-nums' : 'mt-1 font-semibold text-slate-100 tabular-nums'}>{inventory.plaintextRecords}</dd></div>
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('AES-GCM v2 records')}</dt><dd class="mt-1 font-semibold text-slate-100 tabular-nums">{inventory.encryptedV2Records}</dd></div>
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('Older encrypted records')}</dt><dd class="mt-1 font-semibold text-slate-100 tabular-nums">{inventory.legacyEncryptedRecords}</dd></div>
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('Unreadable records')}</dt><dd class="mt-1 font-semibold text-slate-100 tabular-nums">{inventory.unreadableRecords}</dd></div>
+          <div class="min-w-0 rounded-lg bg-slate-900/70 px-3 py-2"><dt class="text-[10px] text-slate-500">{translateText('Status')}</dt><dd class={inventory.migrationReady ? 'mt-1 font-semibold text-emerald-300' : 'mt-1 font-semibold text-amber-300'}>{inventory.migrationReady ? translateText('Ready') : translateText('Review required')}</dd></div>
         </dl>
       ) : !loading ? (
         <p class="text-xs text-slate-500">{translateText('No inventory scan has been run on this device.')}</p>

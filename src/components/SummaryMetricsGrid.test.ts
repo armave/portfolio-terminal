@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
+import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
@@ -239,5 +239,31 @@ describe('Margin Intelligence risk context integration', () => {
     expect(source).toContain('eligibleCollateralSource: \'configured-assumption\'');
     expect(source).toContain('initialMarginRequirement: marginRisk.value.initialMarginRequirement');
     expect(source).not.toContain('calculateMarginRiskMetrics(');
+  });
+});
+
+
+describe('market depth action session visibility', () => {
+  it('keeps depth controls available during premarket, regular, and postmarket sessions', () => {
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T12:00:00.000Z'))).toBe(true);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T15:00:00.000Z'))).toBe(true);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T22:00:00.000Z'))).toBe(true);
+  });
+
+  it('hides depth controls after postmarket, on weekends, and on market holidays', () => {
+    expect(shouldShowMarketDepthControls(new Date('2026-11-03T02:00:00.000Z'))).toBe(false);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-07T15:00:00.000Z'))).toBe(false);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-26T15:00:00.000Z'))).toBe(false);
+  });
+});
+
+describe('maintenance buffer presentation', () => {
+  it('shows the base maintenance cushion with a concentration qualifier when the full requirement is unknown', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("risk.maintenanceState === 'unknown' ? 'BASE MAINTENANCE BUFFER' : 'MARGIN-CALL BUFFER'");
+    expect(source).toContain('formatUSD(risk.baseMaintenanceBuffer)');
+    expect(source).toContain("translateText('Before concentration add-on', language)");
+    expect(source).toContain('baseMaintenanceBuffer: metrics.baseMaintenanceBuffer ?? Number.NaN');
+    expect(source).toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');
   });
 });

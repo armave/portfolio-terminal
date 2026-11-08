@@ -1,12 +1,13 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { memo } from 'preact/compat';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
+import { getUsEquityMarketSession } from '../services/marketSession';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
@@ -36,6 +37,11 @@ export function getUsableMarketPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const price = Number(value);
   return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+/** Market Depth is actionable during US premarket, regular, and postmarket sessions. */
+export function shouldShowMarketDepthControls(date = new Date()): boolean {
+  return getUsEquityMarketSession(date) !== 'CLOSED';
 }
 
 function getCashCushionValueFromState(state: BoardState): number {
@@ -111,8 +117,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% {translateText('maintenance', language)}</span><span>{translateText('{value}% reference', language).replace('{value}', referencePercent)}</span><span>{translateText('100% assets', language)}</span></div>
       <div class="margin-risk-buffer-summary">
         <div class="margin-risk-buffer-stat">
-          <span class="margin-risk-label">{translateText('MARGIN-CALL BUFFER', language)}</span>
-          <strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong>
+          <span class="margin-risk-label">{translateText(risk.maintenanceState === 'unknown' ? 'BASE MAINTENANCE BUFFER' : 'MARGIN-CALL BUFFER', language)}</span>
+          <strong>{Number.isFinite(risk.marginCallBufferPct)
+            ? risk.marginCallBufferPct.toFixed(1) + '%'
+            : Number.isFinite(risk.baseMaintenanceBuffer) ? formatUSD(risk.baseMaintenanceBuffer) : '—'}</strong>
+          {risk.maintenanceState === 'unknown' && Number.isFinite(risk.baseMaintenanceBuffer) && (
+            <span class="text-[10px] text-amber-200">{translateText('Before concentration add-on', language)}</span>
+          )}
           {risk.showMarginCall && <span class="margin-risk-buffer-trigger">{risk.marginCallText}</span>}
         </div>
         <div class="margin-risk-buffer-stat" title={stopOutTitle}>
@@ -128,7 +139,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       )}
       {risk.maintenanceState === 'unknown' && (
         <p class="mt-1 text-[10px] text-amber-200">
-          {translateText('Maintenance buffer unavailable because the concentration add-on was not reported.', language)}
+          {translateText('Complete maintenance buffer unavailable because the concentration add-on was not reported. Base amount is shown before this add-on.', language)}
         </p>
       )}
       {risk.stopOutState === 'unknown' && (
@@ -193,6 +204,7 @@ interface MarginRiskDisplay {
   stopOutText: string;
   marginCallBufferPct: number;
   stopOutBufferPct: number;
+  baseMaintenanceBuffer: number;
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
   stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
   hasShortExposure: boolean;
@@ -215,6 +227,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
       stopOutText: '',
       marginCallBufferPct: Number.NaN,
       stopOutBufferPct: Number.NaN,
+      baseMaintenanceBuffer: Number.NaN,
       maintenanceState: 'unknown',
       stopOutState: 'unknown',
       hasShortExposure: false
@@ -248,6 +261,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
       : '',
     marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
     stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
+    baseMaintenanceBuffer: metrics.baseMaintenanceBuffer ?? Number.NaN,
     maintenanceState: metrics.maintenanceState,
     stopOutState: metrics.stopOutState,
     hasShortExposure: input.shortExposure > 0
@@ -356,6 +370,13 @@ export function getMarginTrancheQuantity(
 
 function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: boolean }) {
   const language = getAppLanguage();
+  const [marketDepthAvailable, setMarketDepthAvailable] = useState(() => shouldShowMarketDepthControls());
+  useEffect(() => {
+    const refreshMarketSession = () => setMarketDepthAvailable(shouldShowMarketDepthControls());
+    refreshMarketSession();
+    const intervalId = window.setInterval(refreshMarketSession, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
   const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review';
   const reviewTitle = ticker
     ? 'Review recent news and margin-position risks with Gemini'
@@ -374,7 +395,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
         >
           ✦ {translateText(reviewLabel, language)}
         </button>
-        {ticker && isAdmin && <button
+        {ticker && isAdmin && marketDepthAvailable && <button
           type="button"
           title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
           aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
