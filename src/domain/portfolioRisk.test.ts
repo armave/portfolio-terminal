@@ -220,6 +220,25 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(result.value.portfolio.status === 'unavailable' && result.value.portfolio.reason).toContain('FX conversion');
   });
 
+  it('derives eligible collateral from broker gross collateral and an explicit haircut', () => {
+    const snapshot = makeSnapshot({
+      capital: [{
+        ...makeSnapshot().capital[0],
+        eligibleCollateral: null,
+        eligibleCollateralSource: 'broker',
+        collateralBeforeHaircut: 1_000,
+        collateralHaircutPct: 0.2
+      }]
+    });
+    const result = calculatePortfolioRiskSnapshot(snapshot);
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.marginByAccount.status).toBe('available');
+    if (result.value.marginByAccount.status === 'unavailable') return;
+    expect(result.value.marginByAccount.value[0].eligibleCollateral).toBe(800);
+    expect(result.value.marginByAccount.value[0].collateralHaircutAmount).toBe(200);
+  });
+
   it('marks stale and unknown observations provisional, never current', () => {
     const result = calculatePortfolioRiskSnapshot(makeSnapshot({
       positions: [{ ...makeSnapshot().positions[0], freshness: 'unknown', observedAt: null }]
@@ -343,6 +362,49 @@ describe('deterministic stress scenarios', () => {
       expect(result.value.totalPnlImpact).toBeCloseTo(1_000 * shock);
       expect(result.value.stressedEquity).toBeCloseTo(1_150 + 1_000 * shock);
     }
+  });
+
+  it('applies simultaneous equity-price and timestamped FX shocks into a reporting currency', () => {
+    const snapshot = makeSnapshot({
+      positions: [
+        { ...makeSnapshot().positions[0], ticker: 'USDSTK', quantity: 1, price: 1_000, currency: 'USD' },
+        { ...makeSnapshot().positions[0], id: 'eur-equity', ticker: 'EUSTK', quantity: 2, price: 100, currency: 'EUR' }
+      ],
+      capital: [
+        { ...makeSnapshot().capital[0], currency: 'USD', cash: 100, debt: 0 },
+        { ...makeSnapshot().capital[0], currency: 'EUR', cash: 100, debt: 0 }
+      ]
+    });
+    const result = calculateRiskFxStressScenario(snapshot, {
+      reportingCurrency: 'USD',
+      rates: [{ currency: 'EUR', rateToReportingCurrency: 1.1, quality: 'current', freshness: 'fresh', observedAt: currentAt }],
+      shocks: [{ currency: 'EUR', fxShock: -0.1 }],
+      priceShocks: [{ ticker: 'EUSTK', priceShock: -0.2 }]
+    });
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.currency).toBe('USD');
+    expect(result.value.currentEquity).toBeCloseTo(1_430);
+    expect(result.value.stressedEquity).toBeCloseTo(1_357.4);
+    expect(result.value.totalPnlImpact).toBeCloseTo(-72.6);
+    expect(result.value.fxDrivers[0]).toMatchObject({ currency: 'EUR', fxShock: -0.1, pnlImpact: -33 });
+    expect(result.value.disclaimer).toContain('FX stress scenario');
+  });
+
+  it('rejects missing, stale-timestamp, duplicate and out-of-range FX rates or shocks', () => {
+    const snapshot = makeSnapshot({
+      positions: [{ ...makeSnapshot().positions[0], currency: 'EUR' }],
+      capital: [{ ...makeSnapshot().capital[0], currency: 'EUR' }]
+    });
+    const base = {
+      reportingCurrency: 'USD',
+      rates: [{ currency: 'EUR', rateToReportingCurrency: 1.1, quality: 'current' as const, freshness: 'fresh' as const, observedAt: currentAt }],
+      shocks: [{ currency: 'EUR', fxShock: -0.1 }]
+    };
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [{ ...base.rates[0], observedAt: null }] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, shocks: [{ currency: 'EUR', fxShock: -1.1 }] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [base.rates[0], base.rates[0]] }).status).toBe('unavailable');
   });
 
   it('aggregates duplicate ticker holdings across accounts into one shock driver', () => {

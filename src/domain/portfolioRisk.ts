@@ -35,9 +35,11 @@ export interface RiskCapitalInput {
   /** Positive cash and debt magnitudes; signed balance normalization occurs before this boundary. */
   cash: number;
   debt: number;
-  /** Explicit eligible-collateral amount; null/omitted is unknown, not zero. */
+  /** Eligible collateral after haircut; null/omitted is unknown, not zero. */
   eligibleCollateral?: number | null;
   eligibleCollateralSource?: EligibleCollateralSource;
+  collateralBeforeHaircut?: number | null;
+  collateralHaircutPct?: number | null;
   quality: RiskDataQuality;
   freshness: RiskQuoteFreshness;
   observedAt: number | null;
@@ -118,9 +120,29 @@ export interface HistoricalCorrelation {
 }
 export interface StressShockInput { ticker: string; /** Decimal return: -0.25 = -25%. */ priceShock: number; }
 interface StressShockDriver { ticker: string; currentExposure: number; grossExposure: number; priceShock: number; pnlImpact: number; }
+export interface RiskFxStressRateInput {
+  currency: string;
+  /** Reporting-currency units for one unit of the foreign currency. */
+  rateToReportingCurrency: number;
+  quality: RiskDataQuality;
+  freshness: RiskQuoteFreshness;
+  observedAt: number | null;
+}
+export interface RiskFxStressShockInput { currency: string; /** Decimal FX move, e.g. -0.1 = 10% depreciation. */ fxShock: number; }
+export interface RiskFxStressInput {
+  reportingCurrency: string;
+  rates: readonly RiskFxStressRateInput[];
+  shocks: readonly RiskFxStressShockInput[];
+  priceShocks?: readonly StressShockInput[];
+}
+interface StressFxShockDriver {
+  currency: string; rateToReportingCurrency: number; fxShock: number;
+  currentEquityExposure: number; pnlImpact: number;
+}
 export interface StressScenarioResult {
   currency: string; calculatedAt: number; totalPnlImpact: number; currentEquity: number; stressedEquity: number;
-  drivers: StressShockDriver[]; assumptions: string[]; disclaimer: string;
+  drivers: StressShockDriver[]; fxDrivers?: StressFxShockDriver[];
+  assumptions: string[]; disclaimer: string;
 }
 
 const MIN_RETURN_OBSERVATIONS = 20;
@@ -162,6 +184,14 @@ function mergeQuality(...values: Array<'current' | 'provisional'>): 'current' | 
 interface NormalizedSnapshot {
   positions: RiskPositionInput[]; capital: RiskCapitalInput[]; quality: 'current' | 'provisional';
   warnings: string[]; calculatedAt: number;
+}
+function eligibleCollateralFor(item: RiskCapitalInput): number | null {
+  if (item.eligibleCollateral !== null && item.eligibleCollateral !== undefined) return item.eligibleCollateral;
+  if (item.collateralBeforeHaircut !== null && item.collateralBeforeHaircut !== undefined &&
+      item.collateralHaircutPct !== null && item.collateralHaircutPct !== undefined) {
+    return item.collateralBeforeHaircut * (1 - item.collateralHaircutPct);
+  }
+  return null;
 }
 function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<NormalizedSnapshot> {
   if (!input || !validTimestamp(input.calculatedAt)) return unavailable('A valid calculation timestamp is required.');
@@ -210,10 +240,25 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
     if (!finite(item.cash) || !finite(item.debt) || item.cash < 0 || item.debt < 0) {
       return unavailable('Capital cash and debt must be finite non-negative magnitudes.');
     }
-    const eligibleCollateral = item.eligibleCollateral === undefined ? null : item.eligibleCollateral;
-    if (eligibleCollateral !== null && (!finite(eligibleCollateral) || eligibleCollateral < 0)) {
+    const collateralBeforeHaircut = item.collateralBeforeHaircut === undefined ? null : item.collateralBeforeHaircut;
+    const collateralHaircutPct = item.collateralHaircutPct === undefined ? null : item.collateralHaircutPct;
+    if ((collateralBeforeHaircut === null) !== (collateralHaircutPct === null) ||
+        (collateralBeforeHaircut !== null && (!finite(collateralBeforeHaircut) || collateralBeforeHaircut < 0)) ||
+        (collateralHaircutPct !== null && (!finite(collateralHaircutPct) || collateralHaircutPct < 0 || collateralHaircutPct > 1))) {
+      return unavailable('Capital gross collateral and haircut must be supplied together as finite non-negative values.');
+    }
+    const suppliedEligibleCollateral = item.eligibleCollateral === undefined ? null : item.eligibleCollateral;
+    if (suppliedEligibleCollateral !== null && (!finite(suppliedEligibleCollateral) || suppliedEligibleCollateral < 0)) {
       return unavailable('Eligible collateral must be a finite non-negative amount or explicitly unknown.');
     }
+    const derivedEligibleCollateral = collateralBeforeHaircut !== null && collateralHaircutPct !== null
+      ? collateralBeforeHaircut * (1 - collateralHaircutPct) : null;
+    if (suppliedEligibleCollateral !== null && derivedEligibleCollateral !== null &&
+        Math.abs(suppliedEligibleCollateral - derivedEligibleCollateral) >
+        Math.max(0.01, Math.abs(derivedEligibleCollateral) * 1e-6)) {
+      return unavailable('Capital eligible collateral does not reconcile to gross collateral after the supplied haircut.');
+    }
+    const eligibleCollateral = suppliedEligibleCollateral ?? derivedEligibleCollateral;
     if (item.eligibleCollateralSource !== undefined &&
         !['broker', 'configured-assumption', 'unknown'].includes(item.eligibleCollateralSource)) {
       return unavailable('Capital eligible-collateral provenance is invalid.');
@@ -230,9 +275,9 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
       ? 'provisional' : 'current';
     if (quality === 'provisional') warnings.push('Capital observation is stale, delayed, or has unknown source time.');
     qualities.push(quality);
-    if (eligibleCollateral === null && item.debt > 0) warnings.push('Eligible collateral is unknown for a margin debit.');
+    if (eligibleCollateral === null && (item.debt > 0 || collateralBeforeHaircut !== null)) warnings.push('Eligible collateral is unknown for a margin debit.');
     capital.push({
-      ...item, currency, eligibleCollateral,
+      ...item, currency, eligibleCollateral, collateralBeforeHaircut, collateralHaircutPct,
       eligibleCollateralSource: item.eligibleCollateralSource ?? (eligibleCollateral === null ? 'unknown' : 'configured-assumption'),
       brokerId: normalizedLabel(item.brokerId), accountId: normalizedLabel(item.accountId)
     });
@@ -248,8 +293,9 @@ function buildCurrencyExposure(currency: string, positions: readonly RiskPositio
   const netExposure = longExposure - shortExposure;
   const cash = capital.reduce((sum, item) => sum + item.cash, 0);
   const debt = capital.reduce((sum, item) => sum + item.debt, 0);
-  const eligibleCollateral = capital.length > 0 && capital.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined)
-    ? capital.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+  const eligibleValues = capital.map(eligibleCollateralFor);
+  const eligibleCollateral = capital.length > 0 && eligibleValues.every(value => value !== null)
+    ? eligibleValues.reduce<number>((sum, value) => sum + Number(value), 0)
     : null;
   return {
     currency, longExposure, shortExposure, grossExposure, netExposure, cash, debt, eligibleCollateral,
@@ -395,10 +441,21 @@ function buildMarginRisk(
     );
     const cash = group.rows.reduce((sum, item) => sum + item.cash, 0);
     const debt = group.rows.reduce((sum, item) => sum + item.debt, 0);
-    const collateralKnown = group.rows.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined);
+    const eligibleRows = group.rows.map(eligibleCollateralFor);
+    const collateralKnown = eligibleRows.every(value => value !== null);
     const eligibleCollateral = collateralKnown
-      ? group.rows.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+      ? eligibleRows.reduce<number>((sum, value) => sum + Number(value), 0)
       : null;
+    const completeHaircutRows = group.rows.every(item =>
+      item.collateralBeforeHaircut !== null && item.collateralBeforeHaircut !== undefined &&
+      item.collateralHaircutPct !== null && item.collateralHaircutPct !== undefined
+    );
+    const collateralBeforeHaircut = completeHaircutRows
+      ? group.rows.reduce((sum, item) => sum + Number(item.collateralBeforeHaircut), 0)
+      : null;
+    const collateralHaircutPct = completeHaircutRows && collateralBeforeHaircut !== null && collateralBeforeHaircut > 0 && eligibleCollateral !== null
+      ? (collateralBeforeHaircut - eligibleCollateral) / collateralBeforeHaircut
+      : completeHaircutRows ? 0 : null;
     const collateralSources = group.rows.map(item => item.eligibleCollateralSource ?? (item.eligibleCollateral === null ? 'unknown' : 'configured-assumption'));
     const eligibleCollateralSource: EligibleCollateralSource = collateralSources.every(value => value === 'broker')
       ? 'broker'
@@ -411,7 +468,10 @@ function buildMarginRisk(
     const brokerRequirements = requirementMap.get(key);
     const calculation = calculateMarginRiskSnapshot({
       currency: group.currency, longExposure, shortExposure, cashBalance: cash, marginDebt: debt,
-      eligibleCollateral, eligibleCollateralSource, assumptions: rules, quality, freshness, observedAt, calculatedAt,
+      eligibleCollateral, eligibleCollateralSource,
+      ...(collateralBeforeHaircut !== null && collateralHaircutPct !== null
+        ? { collateralBeforeHaircut, collateralHaircutPct } : {}),
+      assumptions: rules, quality, freshness, observedAt, calculatedAt,
       brokerRequirements: brokerRequirements ? {
         currency: brokerRequirements.currency,
         initialMarginRequired: brokerRequirements.initialMarginRequired,
@@ -539,10 +599,21 @@ export function calculateBrokerMarginRisk(input: {
     return unavailable('The supplied debt does not match the selected account capital snapshot.');
   }
   if (capital.length === 0) return unavailable('A capital observation is required for broker margin risk.');
-  const collateralKnown = capital.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined);
+  const standaloneEligibleRows = capital.map(eligibleCollateralFor);
+  const collateralKnown = standaloneEligibleRows.every(value => value !== null);
   const eligibleCollateral = collateralKnown
-    ? capital.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+    ? standaloneEligibleRows.reduce<number>((sum, value) => sum + Number(value), 0)
     : null;
+  const completeStandaloneHaircut = capital.every(item =>
+    item.collateralBeforeHaircut !== null && item.collateralBeforeHaircut !== undefined &&
+    item.collateralHaircutPct !== null && item.collateralHaircutPct !== undefined
+  );
+  const standaloneGrossCollateral = completeStandaloneHaircut
+    ? capital.reduce((sum, item) => sum + Number(item.collateralBeforeHaircut), 0)
+    : null;
+  const standaloneHaircut = completeStandaloneHaircut && standaloneGrossCollateral !== null && standaloneGrossCollateral > 0 && eligibleCollateral !== null
+    ? (standaloneGrossCollateral - eligibleCollateral) / standaloneGrossCollateral
+    : completeStandaloneHaircut ? 0 : null;
   const eligibleCollateralSource: EligibleCollateralSource = capital.every(item => item.eligibleCollateralSource === 'broker')
     ? 'broker'
     : capital.some(item => item.eligibleCollateralSource === 'unknown') ? 'unknown' : 'configured-assumption';
@@ -563,6 +634,8 @@ export function calculateBrokerMarginRisk(input: {
     cashBalance: capital.reduce((sum, item) => sum + item.cash, 0),
     marginDebt: capitalDebt, eligibleCollateral, eligibleCollateralSource,
     assumptions: input.assumptions, quality, freshness, observedAt,
+    ...(standaloneGrossCollateral !== null && standaloneHaircut !== null
+      ? { collateralBeforeHaircut: standaloneGrossCollateral, collateralHaircutPct: standaloneHaircut } : {}),
     calculatedAt: input.calculatedAt ?? Date.now(),
     brokerRequirements: input.requirements ? {
       currency: input.requirements.currency,
@@ -585,6 +658,124 @@ export function calculateBrokerMarginRisk(input: {
     stopOutRatio: input.assumptions.stopOutRatio
   };
   return available(value, calculation.quality, calculation.warnings);
+}
+
+/** Applies explicit price shocks and timestamped FX shocks into one reporting currency. */
+export function calculateRiskFxStressScenario(
+  snapshot: PortfolioRiskSnapshot, input: RiskFxStressInput
+): RiskCalculation<StressScenarioResult> {
+  const normalized = normalizeSnapshot(snapshot);
+  if (normalized.status === 'unavailable') return normalized;
+  const reportingCurrency = normalizeCurrency(input?.reportingCurrency);
+  if (!reportingCurrency) return unavailable('FX stress needs a valid reporting currency.');
+  if (!Array.isArray(input.rates) || !Array.isArray(input.shocks) || !Array.isArray(input.priceShocks ?? [])) {
+    return unavailable('FX rates, FX shocks and price shocks must be arrays.');
+  }
+  const currencies = [...new Set([
+    ...normalized.value.positions.map(item => item.currency),
+    ...normalized.value.capital.map(item => item.currency)
+  ])].sort();
+  const foreignCurrencies = currencies.filter(currency => currency !== reportingCurrency);
+  if (foreignCurrencies.length === 0) return unavailable('FX stress requires at least one exposure outside the reporting currency.');
+  const rateMap = new Map<string, RiskFxStressRateInput>();
+  for (const rate of input.rates) {
+    const currency = normalizeCurrency(rate?.currency);
+    if (!currency || currency === reportingCurrency || rateMap.has(currency) ||
+        !finite(rate.rateToReportingCurrency) || rate.rateToReportingCurrency <= 0 ||
+        !['current', 'provisional', 'incomplete'].includes(rate.quality) ||
+        !['fresh', 'stale', 'delayed', 'indicative', 'unknown'].includes(rate.freshness) ||
+        !validTimestamp(rate.observedAt) || rate.observedAt > normalized.value.calculatedAt ||
+        rate.quality === 'incomplete') {
+      return unavailable('FX rates must be unique, positive, timestamped and have complete quality metadata.');
+    }
+    rateMap.set(currency, { ...rate, currency });
+  }
+  if (rateMap.size !== foreignCurrencies.length || foreignCurrencies.some(currency => !rateMap.has(currency))) {
+    return unavailable('Every foreign exposure currency needs an explicit rate into the reporting currency.');
+  }
+  const fxShockMap = new Map<string, number>();
+  for (const shock of input.shocks) {
+    const currency = normalizeCurrency(shock?.currency);
+    if (!currency || currency === reportingCurrency || !foreignCurrencies.includes(currency) ||
+        fxShockMap.has(currency) || !finite(shock.fxShock) || shock.fxShock < -1 || shock.fxShock > 10) {
+      return unavailable('Each FX shock must identify one foreign exposure currency and a decimal move between -100% and +1,000%.');
+    }
+    fxShockMap.set(currency, shock.fxShock);
+  }
+  if (fxShockMap.size !== foreignCurrencies.length) {
+    return unavailable('Every foreign exposure currency needs one explicit FX shock.');
+  }
+  const priceShockMap = new Map<string, number>();
+  for (const shock of input.priceShocks ?? []) {
+    const ticker = normalizeTicker(shock?.ticker);
+    if (!ticker || !finite(shock.priceShock) || shock.priceShock < -1 || shock.priceShock > 10 ||
+        priceShockMap.has(ticker) || !normalized.value.positions.some(position => position.ticker === ticker)) {
+      return unavailable('Each price shock must identify a unique held ticker and a decimal move between -100% and +1,000%.');
+    }
+    priceShockMap.set(ticker, shock.priceShock);
+  }
+
+  const allCurrencies = [...new Set([...currencies, reportingCurrency])].sort();
+  const drivers: StressShockDriver[] = [];
+  const fxDrivers: StressFxShockDriver[] = [];
+  let currentEquity = 0;
+  let stressedEquity = 0;
+  let provisional = normalized.value.quality === 'provisional';
+  const warnings = [...normalized.value.warnings];
+  for (const currency of allCurrencies) {
+    const positions = normalized.value.positions.filter(item => item.currency === currency);
+    const capital = normalized.value.capital.filter(item => item.currency === currency);
+    const cash = capital.reduce((sum, item) => sum + item.cash, 0);
+    const debt = capital.reduce((sum, item) => sum + item.debt, 0);
+    const positionValue = positions.reduce((sum, item) => sum + item.quantity * item.price, 0);
+    const priceImpactLocal = positions.reduce((sum, item) =>
+      sum + item.quantity * item.price * (priceShockMap.get(item.ticker) ?? 0), 0);
+    const localEquity = cash - debt + positionValue;
+    const localEquityAfterPrice = localEquity + priceImpactLocal;
+    const rate = currency === reportingCurrency ? 1 : rateMap.get(currency)!.rateToReportingCurrency;
+    const fxShock = currency === reportingCurrency ? 0 : fxShockMap.get(currency)!;
+    currentEquity += localEquity * rate;
+    stressedEquity += localEquityAfterPrice * rate * (1 + fxShock);
+    for (const position of positions) {
+      const priceShock = priceShockMap.get(position.ticker) ?? 0;
+      if (priceShock === 0) continue;
+      const pnlImpact = position.quantity * position.price * priceShock * rate * (1 + fxShock);
+      drivers.push({
+        ticker: position.ticker, currentExposure: position.quantity * position.price * rate,
+        grossExposure: Math.abs(position.quantity * position.price * rate),
+        priceShock, pnlImpact
+      });
+    }
+    if (currency !== reportingCurrency) {
+      const rateInput = rateMap.get(currency)!;
+      if (rateInput.quality === 'provisional' || rateInput.freshness !== 'fresh') {
+        provisional = true;
+        warnings.push('FX rate for ' + currency + ' is stale, delayed or provisional.');
+      }
+      fxDrivers.push({
+        currency, rateToReportingCurrency: rate, fxShock,
+        currentEquityExposure: localEquity * rate,
+        pnlImpact: localEquity * rate * fxShock
+      });
+    }
+  }
+  const totalPnlImpact = stressedEquity - currentEquity;
+  if (![currentEquity, stressedEquity, totalPnlImpact].every(finite)) {
+    return unavailable('FX stress totals exceed the finite calculation range.');
+  }
+  return available({
+    currency: reportingCurrency, calculatedAt: normalized.value.calculatedAt,
+    totalPnlImpact, currentEquity, stressedEquity,
+    drivers: drivers.sort((a, b) => Math.abs(b.pnlImpact) - Math.abs(a.pnlImpact) || a.ticker.localeCompare(b.ticker)),
+    fxDrivers,
+    assumptions: [
+      'FX rates are reporting-currency units per one unit of foreign currency and must be timestamped.',
+      'FX shocks revalue cash, debt and signed positions; price shocks affect positions only.',
+      'The combined scenario includes the interaction between price and FX moves; unshocked exposures remain unchanged.',
+      'Trading costs, taxes, liquidity slippage, collateral changes and forced liquidation are not modeled.'
+    ],
+    disclaimer: 'Arithmetic price and FX stress scenario only. It is not a probability estimate, forecast, broker liquidation price, or portfolio-state mutation.'
+  }, provisional ? 'provisional' : 'current', [...new Set(warnings)]);
 }
 
 /** Historical single-instrument risk; requires 20 valid returns and never invents missing prices. */
@@ -716,7 +907,7 @@ export function calculateRiskStressScenario(
   }
   return available({
     currency: [...currencies][0], calculatedAt: normalized.value.calculatedAt, totalPnlImpact, currentEquity,
-    stressedEquity, drivers,
+    stressedEquity, drivers, fxDrivers: [],
     assumptions: [
       'Only explicitly supplied ticker shocks are applied; unshocked positions are held constant.',
       'Cash and debt are held constant; trading costs, taxes, liquidity slippage and forced liquidation are not modeled.'
