@@ -120,56 +120,87 @@ export function collectFreedomPositionIntegrityIssues(
       findings.push(issue(ticker, 'negative_quantity_sign_unverified', 'account_snapshot', {
         rawQuantity,
         rawSide,
-        instrumentId
+        instrumentId,
+        ...(position?.raw ? { raw: position.raw } : {})
       }));
     } else if (direction === 'short' || rawSideText === 'short') {
       findings.push(issue(ticker, 'short_position_side_unverified', 'account_snapshot', {
         rawQuantity,
         rawSide,
-        instrumentId
+        instrumentId,
+        ...(position?.raw ? { raw: position.raw } : {})
       }));
     } else if (direction === 'unknown' || (rawSide !== null && rawSideText !== 'long')) {
       findings.push(issue(ticker, 'unrecognized_position_side', 'account_snapshot', {
         rawQuantity,
         rawSide,
-        instrumentId
+        instrumentId,
+        ...(position?.raw ? { raw: position.raw } : {})
       }));
     }
   });
 
   if (!Array.isArray(trades)) return deduplicate(findings);
 
+  const currentTickers = new Set(
+    (Array.isArray(snapshot?.positions) ? snapshot.positions : [])
+      .map(position => tickerKey(position?.ticker))
+      .filter(Boolean)
+  );
   const ordered = trades.map((trade, index) => {
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const sideValue = trade?.side ?? raw.side ?? raw.operation ?? raw.oper ?? raw.buy_sell ?? raw.type;
     const quantity = finiteQuantity(trade?.quantity ?? trade?.qty ?? raw.q ?? raw.quantity ?? raw.qty);
-    const ticker = tickerKey(trade?.ticker ?? raw.instr_nm ?? raw.i ?? raw.symbol ?? raw.ticker);
+    const rawTicker = trade?.ticker ?? raw.instr_nm ?? raw.i ?? raw.symbol ?? raw.ticker;
+    const ticker = tickerKey(rawTicker);
     const at = timestamp(trade?.executedAt ?? trade?.date ?? trade?.time ?? raw.date ?? raw.time ?? raw.datetime ?? raw.exec_time);
-    return { index, ticker, side: normalizedTradeSide(sideValue), rawSide: typeof sideValue === 'string' || typeof sideValue === 'number' ? sideValue : null, quantity, at };
-  }).filter(item => item.ticker).sort((a, b) =>
+    return {
+      index,
+      ticker: ticker || `ROW ${index + 1}`,
+      hasTicker: Boolean(ticker),
+      side: normalizedTradeSide(sideValue),
+      rawSide: typeof sideValue === 'string' || typeof sideValue === 'number' ? sideValue : null,
+      quantity,
+      at,
+      raw
+    };
+  }).filter(item => !item.hasTicker || currentTickers.has(item.ticker)).sort((a, b) =>
     (a.at ?? 0) - (b.at ?? 0) || a.index - b.index
   );
 
   const openLongQuantity = new Map<string, number>();
+  const openShortQuantity = new Map<string, number>();
+  const firstShortEvidence = new Map<string, { quantity: number | null; side: string | number | null; raw: Record<string, unknown> }>();
   for (const item of ordered) {
-    if (item.side === 'short') {
-      findings.push(issue(item.ticker, 'short_execution_unsupported', 'execution_history', {
+    if (!item.hasTicker) {
+      findings.push(issue(item.ticker, 'invalid_execution', 'execution_history', {
         rawQuantity: item.quantity,
-        rawSide: item.rawSide
+        rawSide: item.rawSide,
+        raw: item.raw
       }));
       continue;
     }
+    if (item.side === 'short') {
+      openShortQuantity.set(item.ticker, (openShortQuantity.get(item.ticker) || 0) + (item.quantity || 0));
+      if (!firstShortEvidence.has(item.ticker)) firstShortEvidence.set(item.ticker, {
+        quantity: item.quantity, side: item.rawSide, raw: item.raw
+      });
+      continue;
+    }
     if (item.side === 'cover') {
-      findings.push(issue(item.ticker, 'short_cover_unsupported', 'execution_history', {
-        rawQuantity: item.quantity,
-        rawSide: item.rawSide
-      }));
+      const availableShort = openShortQuantity.get(item.ticker) || 0;
+      const consumed = Math.min(availableShort, item.quantity || 0);
+      openShortQuantity.set(item.ticker, Math.max(0, availableShort - consumed));
+      if (consumed + 1e-8 < (item.quantity || 0)) {
+        findings.push(issue(item.ticker, 'short_cover_unsupported', 'execution_history', {
+          rawQuantity: item.quantity, rawSide: item.rawSide, raw: item.raw
+        }));
+      }
       continue;
     }
     if (item.side === null || item.quantity === null || item.quantity <= 0) {
       findings.push(issue(item.ticker, 'unknown_execution_side', 'execution_history', {
-        rawQuantity: item.quantity,
-        rawSide: item.rawSide
+        rawQuantity: item.quantity, rawSide: item.rawSide, raw: item.raw
       }));
       continue;
     }
@@ -183,10 +214,19 @@ export function collectFreedomPositionIntegrityIssues(
     openLongQuantity.set(item.ticker, Math.max(0, available - consumed));
     if (item.quantity - consumed > 1e-8) {
       findings.push(issue(item.ticker, 'unmatched_sell_quantity', 'execution_history', {
-        rawQuantity: item.quantity,
-        rawSide: item.rawSide
+        rawQuantity: item.quantity, rawSide: item.rawSide, raw: item.raw
       }));
     }
+  }
+
+  for (const [ticker, quantity] of openShortQuantity) {
+    if (quantity <= 1e-8) continue;
+    const evidence = firstShortEvidence.get(ticker);
+    findings.push(issue(ticker, 'short_execution_unsupported', 'execution_history', {
+      rawQuantity: quantity,
+      rawSide: evidence?.side ?? 'SELL_SHORT',
+      ...(evidence?.raw ? { raw: evidence.raw } : {})
+    }));
   }
 
   return deduplicate(findings);

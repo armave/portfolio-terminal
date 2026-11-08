@@ -47,16 +47,16 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     });
   });
 
-  it('flags short-sale and buy-to-cover executions rather than treating them as long trades', () => {
-    const issues = collectFreedomPositionIntegrityIssues({ positions: [] }, [
-      { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 },
+  it('flags outstanding short-sale exposure and an unmatched cover separately', () => {
+    const openShort = collectFreedomPositionIntegrityIssues({ positions: [{ ticker: 'GOOGL', quantity: 2 }] }, [
+      { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 }
+    ]);
+    const unmatchedCover = collectFreedomPositionIntegrityIssues({ positions: [{ ticker: 'GOOGL', quantity: 2 }] }, [
       { ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 2 }
     ]);
 
-    expect(issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }),
-      expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' })
-    ]));
+    expect(openShort).toContainEqual(expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }));
+    expect(unmatchedCover).toContainEqual(expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' }));
   });
 
   it('flags excess sells where the supplied history cannot explain the current long position', () => {
@@ -70,6 +70,35 @@ describe('collectFreedomPositionIntegrityIssues', () => {
       code: 'unmatched_sell_quantity',
       rawQuantity: 3
     })]);
+  });
+
+  it('does not retain a completed short lifecycle as an open unsupported position', () => {
+    expect(collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'GOOGL', quantity: 3, direction: 'long' }]
+    }, [
+      { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 },
+      { ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 2 }
+    ])).toEqual([]);
+  });
+
+  it('ignores closed-ticker executions when evaluating the current open position set', () => {
+    expect(collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 3, direction: 'long' }]
+    }, [
+      { ticker: 'OLD', side: 'SELL_SHORT', quantity: 2 },
+      { ticker: 'OLD', side: 'BUY_TO_COVER', quantity: 2 }
+    ])).toEqual([]);
+  });
+
+  it('flags executions without an instrument identifier and retains their raw evidence', () => {
+    const raw = { operation: 'SELL_SHORT', q: 2, p: 100 };
+    expect(collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{ side: 'SELL_SHORT', quantity: 2, raw }])).toContainEqual(expect.objectContaining({
+      ticker: 'ROW 1',
+      code: 'invalid_execution',
+      raw
+    }));
   });
 
   it('flags unknown execution sides and malformed broker positions instead of dropping them', () => {

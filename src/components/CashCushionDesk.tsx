@@ -390,6 +390,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       short_cover_unsupported: 'A buy-to-cover execution was detected; short positions are not yet supported.',
       unmatched_sell_quantity: 'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.',
       unknown_execution_side: 'An execution has an unknown side; its position effect cannot be safely classified.',
+      invalid_execution: 'A broker execution has no verifiable instrument identifier.',
       invalid_broker_position: 'A broker position has invalid quantity or instrument details.'
     };
     return translateText(messages[code] || 'Some broker position data could not be classified safely.', getAppLanguage());

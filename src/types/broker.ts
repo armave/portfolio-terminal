@@ -21,6 +21,7 @@ export type BrokerPositionIntegrityIssueCode =
   | 'short_cover_unsupported'
   | 'unmatched_sell_quantity'
   | 'unknown_execution_side'
+  | 'invalid_execution'
   | 'invalid_broker_position';
 
 export interface BrokerPositionIntegrityIssue {

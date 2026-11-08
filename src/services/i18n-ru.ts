@@ -69,6 +69,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'A buy-to-cover execution was detected; short positions are not yet supported.': 'Обнаружено исполнение покупки для закрытия короткой позиции; короткие позиции пока не поддерживаются.',
   'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.': 'Объём продажи превышает известную историю длинных покупок; невозможно отличить короткую позицию от неполной истории.',
   'An execution has an unknown side; its position effect cannot be safely classified.': 'У исполнения неизвестна сторона; его влияние на позицию нельзя безопасно определить.',
+  'A broker execution has no verifiable instrument identifier.': 'У исполнения брокера отсутствует подтверждённый идентификатор инструмента.'
   'A broker position has invalid quantity or instrument details.': 'У позиции брокера некорректное количество или данные инструмента.',
   'Some broker position data could not be classified safely.': 'Некоторые данные о позициях брокера не удалось безопасно классифицировать.',
   'Unknown instrument': 'Неизвестный инструмент',
