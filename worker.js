@@ -2692,17 +2692,21 @@ export default {
                 const safeText=v=>typeof v==="string"&&v.length<=64?v:null;
                 const safeNumber=v=>{if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null;};
                 const fetchFeed=feed=>withProviderCache("finnhub_events",[feed,ticker,fromDate,toDate].join(":"),async()=>{
-                    const endpoint=new URL(feed==="earnings"?"https://finnhub.io/api/v1/calendar/earnings":"https://finnhub.io/api/v1/stock/dividend");
+                    const endpoint=new URL(feed==="earnings"?"https://finnhub.io/api/v1/calendar/earnings":feed==="dividends"?"https://finnhub.io/api/v1/stock/dividend":"https://finnhub.io/api/v1/stock/split");
                     endpoint.searchParams.set("symbol",ticker);endpoint.searchParams.set("from",fromDate);endpoint.searchParams.set("to",toDate);endpoint.searchParams.set("token",key);
                     const response=await fetchWithTimeout(endpoint.toString(),{headers:{"Accept":"application/json","User-Agent":USER_AGENT}});
                     if(!response.ok)throw new Error("Finnhub event feed unavailable");
                     const raw=await response.json().catch(()=>null);
                     if(feed==="earnings"){if(!Array.isArray(raw?.earningsCalendar))throw new Error("Invalid earnings response");return raw.earningsCalendar;}
-                    if(!Array.isArray(raw))throw new Error("Invalid dividend response");return raw;
+                    if(!Array.isArray(raw))throw new Error("Invalid "+feed+" response");return raw;
                 });
-                const [earningsResult,dividendsResult]=await Promise.allSettled([fetchFeed("earnings"),fetchFeed("dividends")]);
-                const earningsAvailable=earningsResult.status==="fulfilled",dividendsAvailable=dividendsResult.status==="fulfilled";
-                if(!earningsAvailable&&!dividendsAvailable)return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
+                const [earningsResult,dividendsResult,splitsResult]=await Promise.allSettled([
+                    fetchFeed("earnings"),fetchFeed("dividends"),fetchFeed("splits")
+                ]);
+                const earningsAvailable=earningsResult.status==="fulfilled";
+                const dividendsAvailable=dividendsResult.status==="fulfilled";
+                const corporateActionsAvailable=splitsResult.status==="fulfilled";
+                if(!earningsAvailable&&!dividendsAvailable&&!corporateActionsAvailable) return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
                 const earnings=(earningsAvailable?earningsResult.value:[]).slice(0,200).flatMap(row=>{
                     if(!row||typeof row!=="object"||Array.isArray(row))return[];
                     const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
@@ -2713,7 +2717,13 @@ export default {
                     const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
                     return[{symbol:safeText(row.symbol)||ticker,date,amount:safeNumber(row.amount),adjustedAmount:safeNumber(row.adjustedAmount),payDate:safeText(row.payDate),recordDate:safeText(row.recordDate),declarationDate:safeText(row.declarationDate),currency:safeText(row.currency),frequency:safeNumber(row.freq)}];
                 });
-                return new Response(JSON.stringify({ok:true,provider:"Finnhub",symbol:ticker,from:fromDate,to:toDate,receivedAt:Date.now(),earnings,dividends,earningsAvailable,dividendsAvailable}),{headers:corsHeaders});
+                const corporateActions=(corporateActionsAvailable?splitsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const date=safeText(row.date),fromFactor=safeNumber(row.fromFactor),toFactor=safeNumber(row.toFactor);
+                    if(!date||!isValidDateOnly(date)||!Number.isFinite(fromFactor)||fromFactor<=0||!Number.isFinite(toFactor)||toFactor<=0||fromFactor===toFactor)return[];
+                    return[{symbol:safeText(row.symbol)||ticker,date,fromFactor,toFactor}];
+                });
+                return new Response(JSON.stringify({ok:true,provider:"Finnhub",symbol:ticker,from:fromDate,to:toDate,receivedAt:Date.now(),earnings,dividends,corporateActions,earningsAvailable,dividendsAvailable,corporateActionsAvailable}),{headers:corsHeaders});
             }
 
             // Lightweight Yahoo quote path: chart metadata avoids quoteSummary's
