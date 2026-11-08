@@ -19,7 +19,7 @@ The goal is not to add more dashboard features. It is to ensure that holdings, c
 
 ## 2. Guardrails and current repository context
 
-- Keep PR #391 ("Prevent false performance from cash-holding tracking changes") separate. It is currently an independent open PR against `dev`; do not duplicate or overwrite its changes to `portfolioPerformanceIntegration.ts` or its tests. Re-run its tests after integration.
+- PR #391 ("Prevent false performance from cash-holding tracking changes") was merged into `dev` on 2026-11-08. Preserve its behavior and regression coverage; do not duplicate or overwrite its changes to `portfolioPerformanceIntegration.ts` or its tests.
 - Do not infer TradeNet short-position sign conventions from a field name or from a negative sample alone. Obtain anonymized fixtures from the actual Freedom/TradeNet endpoints and record the observed semantics before mapping them.
 - The existing application contains long-oriented position and valuation assumptions that require a full-path audit. A holding that cannot be classified must be marked unsupported/reconciliation-required; it must never disappear silently or be valued as zero.
 - The existing margin model contains application-level assumptions. Keep broker-reported requirements, user-configured assumptions and estimates clearly separated. Do not present a default as a confirmed broker maintenance requirement.
@@ -234,7 +234,7 @@ Recommended integration order into the plan branch:
 
 All branches may be developed in parallel. The order above is an integration order, not a requirement to wait before beginning work.
 
-PR #391 remains independent. Merge it into `dev` before the complete plan branch is promoted, then rebase/update the plan integration branch against the latest `dev` and rerun exact-head checks.
+PR #391 is already merged into `dev`. This plan branch was opened from the pre-merge `dev` head; GitHub's PR base tracks the updated `dev`. Before final promotion, verify the merge base and exact-head CI, and resolve any new `dev` changes without force-overwriting them.
 
 ## 7. Global verification and release gates
 
