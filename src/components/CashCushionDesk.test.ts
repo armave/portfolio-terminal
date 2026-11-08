@@ -193,7 +193,7 @@ describe('cash holdings quote context', () => {
 
   it('does not nest the group heading inside a conditional holding fragment', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
-    expect(deskSource).toContain('buildCashHoldingTableRows(');
+    expect(deskSource).toContain('buildCashHoldingTableRows<');
     expect(deskSource).toContain("if (row.type === 'group')");
     expect(deskSource).not.toContain('<Fragment key={`${h.groupKey}-${h.ticker}`}>');
     expect(deskSource).not.toContain('h.isGroupStart');
