@@ -41,7 +41,7 @@ import {
   reconcileMarginReviewShares,
   sumMarginReviewCashShares
 } from './features/ai/marginIntelligence';
-import { calculateMarginRiskSnapshot } from './domain/marginRisk';
+import { calculateMarginRiskSnapshot, hasUnresolvedBrokerPositionIntegrity } from './domain/marginRisk';
 import type { BoardState, PositionRecord } from './types/portfolio';
 
 
@@ -199,6 +199,7 @@ function buildMarginReviewContext(
     ? valuation.equity / grossAssets * 100
     : null;
   const assumptions = snapshot.brokerAssumptions;
+  const positionIntegrityComplete = !hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo);
   const brokerSnapshotStatus = snapshot.brokerAccountInfo?.status ||
     (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded');
   const riskHoldings = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)];
@@ -221,6 +222,7 @@ function buildMarginReviewContext(
   const marginRisk = assumptions
     ? calculateMarginRiskSnapshot({
       currency: 'USD',
+      positionIntegrityComplete,
       longExposure: valuation.totalHoldingsValue,
       shortExposure: 0,
       cashBalance: valuation.cashBalance,
@@ -240,6 +242,7 @@ function buildMarginReviewContext(
     reportingCurrency: 'USD',
     brokerSnapshotStatus,
     brokerSnapshotReceivedAt: snapshot.brokerAccountInfo?.receivedAt || null,
+    positionIntegrityComplete,
     balance: finiteReviewNumber(snapshot.balance),
     cashBalance: finiteReviewNumber(snapshot.cashBalance),
     freeCash: finiteReviewNumber(snapshot.cashCushion?.freeCash),

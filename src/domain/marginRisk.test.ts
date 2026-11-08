@@ -130,8 +130,9 @@ describe('calculateMarginRiskSnapshot', () => {
 
   it('detects broker issue arrays, last-refresh issues, and signed/unknown positions', () => {
     expect(hasUnresolvedBrokerPositionIntegrity({
-      positions: [{ ticker: 'AAA', quantity: 10, direction: 'long', rawSide: null }],
-      quality: 'complete'
+      positions: [{ ticker: 'AAA', quantity: 10, direction: 'long', rawSide: 'L' }],
+      quality: 'complete',
+      snapshotQuality: 'complete'
     })).toBe(false);
     expect(hasUnresolvedBrokerPositionIntegrity({
       positionIntegrityIssues: [{ ticker: 'AAA', code: 'unmatched_sell_quantity' }]
@@ -149,6 +150,7 @@ describe('calculateMarginRiskSnapshot', () => {
       positions: [{ ticker: 'AAA', quantity: 10, direction: 'short', rawSide: 'short' }]
     })).toBe(true);
     expect(hasUnresolvedBrokerPositionIntegrity({ quality: 'partial', positions: [] })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({ snapshotQuality: 'partial', positions: [] })).toBe(true);
   });
 
   it('applies an explicit collateral haircut before calculating collateral coverage', () => {

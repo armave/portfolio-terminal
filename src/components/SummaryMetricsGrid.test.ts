@@ -203,6 +203,8 @@ describe('canonical margin risk integration', () => {
   it('routes combined and single-ticker dashboard risk through the same risk snapshot', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain('calculateMarginRiskSnapshot');
+    expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo)');
+    expect(source).toContain('positionIntegrityComplete');
     expect(source).toContain('longExposure: valuation.totalHoldingsValue');
     expect(source).toContain('cashBalance: valuation.cashBalance');
     expect(source).toContain('longExposure: allocatedLongExposure');
@@ -222,6 +224,7 @@ describe('canonical margin risk integration', () => {
     expect(source).toContain("risk.status === 'unavailable'");
     expect(source).toContain("risk.maintenanceState === 'unknown'");
     expect(source).toContain("risk.stopOutState === 'unknown'");
+    expect(source).toContain("input.marginDebt <= 0 && input.shortExposure <= 0");
     expect(source).toContain("risk.hasShortExposure");
     expect(source).toContain("risk.status === 'provisional'");
   });
@@ -231,6 +234,8 @@ describe('Margin Intelligence risk context integration', () => {
   it('uses the canonical risk calculation and carries its provenance into the AI snapshot', () => {
     const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
     expect(source).toContain('calculateMarginRiskSnapshot');
+    expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo)');
+    expect(source).toContain('positionIntegrityComplete');
     expect(source).toContain('eligibleCollateralSource: \'configured-assumption\'');
     expect(source).toContain('initialMarginRequirement: marginRisk.value.initialMarginRequirement');
     expect(source).not.toContain('calculateMarginRiskMetrics(');

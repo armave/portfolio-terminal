@@ -127,6 +127,7 @@ export function hasUnresolvedBrokerPositionIntegrity(snapshot: unknown): boolean
   if (hasIssues(account.positionIntegrityIssues) ||
       hasIssues(lastRefreshIssue?.positionIntegrityIssues) ||
       account.quality === 'partial' || account.quality === 'empty' ||
+      account.snapshotQuality === 'partial' || account.snapshotQuality === 'empty' ||
       lastRefreshIssue?.quality === 'partial' || lastRefreshIssue?.quality === 'empty') return true;
   if (!Array.isArray(account.positions)) return false;
   return account.positions.some(value => {
@@ -139,12 +140,12 @@ export function hasUnresolvedBrokerPositionIntegrity(snapshot: unknown): boolean
     const rawSide = position.rawSide ?? raw?.position_side ?? raw?.positionSide ??
       raw?.pos_side ?? raw?.posSide ?? raw?.position_direction ?? raw?.positionDirection ??
       raw?.side ?? raw?.direction;
-    const hasUnrecognizedSide = rawSide !== null && rawSide !== undefined &&
-      String(rawSide).trim() !== '' && String(rawSide).trim().toLowerCase() !== 'long';
+    const hasUnverifiedSide = direction !== 'long' && rawSide !== null && rawSide !== undefined &&
+      String(rawSide).trim() !== '';
     // Current position reconciliation supports long holdings only. Explicit short
     // positions stay blocked until signed exposure valuation is integrated.
     return direction === 'short' || direction === 'unknown' ||
-      (Number.isFinite(quantity) && quantity < 0) || hasUnrecognizedSide;
+      (Number.isFinite(quantity) && quantity < 0) || hasUnverifiedSide;
   });
 }
 

@@ -20,6 +20,7 @@ import {
 import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
+  hasUnresolvedBrokerPositionIntegrity,
   type MarginRiskInput
 } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
@@ -65,9 +66,11 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
         </div>
         <p class="mt-2 text-xs leading-relaxed text-amber-200">
-          {risk.status === 'unavailable' && valuationStatus !== 'incomplete'
-            ? translateText('Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)
-            : translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
+          {risk.reason?.includes('position integrity')
+            ? translateText('Margin risk is unavailable because broker position direction or execution history needs review.', language)
+            : risk.status === 'unavailable' && valuationStatus !== 'incomplete'
+              ? translateText('Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)
+              : translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
         </p>
         {!accountBalanceAvailable && (
           <p class="mt-1 text-[10px] text-slate-300">{translateText('Account balance unavailable', language)}</p>
@@ -219,7 +222,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   }
 
   const metrics = result.value;
-  const riskLevel = input.marginDebt <= 0 ? 'No margin debt' : metrics.riskLevel;
+  const riskLevel = input.marginDebt <= 0 && input.shortExposure <= 0 ? 'No margin debt' : metrics.riskLevel;
   const riskClass = riskLevel === 'Healthy' || riskLevel === 'No margin debt'
     ? 'text-emerald-400'
     : riskLevel === 'Elevated'
@@ -553,6 +556,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           : 'fresh';
     const risk = computeMarginRiskDisplay({
       currency: 'USD',
+      positionIntegrityComplete: !hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo),
       longExposure: valuation.totalHoldingsValue,
       shortExposure: 0,
       cashBalance: valuation.cashBalance,
@@ -815,6 +819,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         : 'fresh';
   const risk = computeMarginRiskDisplay({
     currency: 'USD',
+    positionIntegrityComplete: !hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo),
     longExposure: allocatedLongExposure,
     shortExposure: 0,
     cashBalance: allocatedCashBalance,
