@@ -1597,7 +1597,7 @@ export default {
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
         if (accountRole === "guest") {
-            const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
+            const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
                 "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
@@ -2289,7 +2289,7 @@ export default {
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
             const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
-            if (tenantDirectoryPath || pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
+            if (tenantDirectoryPath || pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/margin-digest-migration" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,

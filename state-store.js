@@ -2552,6 +2552,176 @@ export class PortfolioStateDO {
     };
   }
 
+
+  /**
+   * Inventory and migrate legacy Margin Intelligence digests without returning
+   * their contents to the browser. Each record is rewritten with a revision
+   * compare-and-swap so a concurrent client update always wins.
+   */
+  async handleMarginDigestMigration(request) {
+    const session = await this.resolveSession(request);
+    if (!session) return jsonResponse({ error: "Authentication required." }, 401);
+    if (session.user.role !== "admin") return jsonResponse({ error: "Administrator access is required." }, 403);
+    if (typeof this.ctx.storage.list !== "function") {
+      return jsonResponse({ error: "Digest inventory is unavailable in this storage runtime." }, 503);
+    }
+
+    const respond = (body, status = 200) => {
+      const response = jsonResponse(body, status);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    };
+    const prefix = "marginDigestRecord:";
+    const validDigestKey = (value) => typeof value === "string" &&
+      /^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(value);
+    const inspect = (record, storageKey) => {
+      if (!record || typeof record.payload !== "string") return "unreadable";
+      let value;
+      try { value = JSON.parse(record.payload); } catch { return "unreadable"; }
+      if (!value || typeof value !== "object" || Array.isArray(value) ||
+          !validDigestKey(value.key) || storageKey !== prefix + value.key) return "unreadable";
+      if (typeof value.encryptedPayload === "string") {
+        const keys = Object.keys(value).sort();
+        const exactEnvelope = keys.length === 2 && keys[0] === "encryptedPayload" && keys[1] === "key";
+        if (exactEnvelope && /^aesgcm:v2:/.test(value.encryptedPayload)) return "encrypted";
+        if (exactEnvelope) return "legacyEncrypted";
+        return "unreadable";
+      }
+      if (typeof value.analysis === "string" && value.analysis.trim() &&
+          Array.isArray(value.articles) && value.articles.length <= 20 &&
+          typeof value.syncedAt === "string" && Number.isFinite(Date.parse(value.syncedAt))) {
+        return "plaintext";
+      }
+      return "unreadable";
+    };
+
+    if (request.method === "GET") {
+      const counts = { totalRecords: 0, plaintextRecords: 0, encryptedV2Records: 0,
+        legacyEncryptedRecords: 0, unreadableRecords: 0 };
+      let cursor = null;
+      do {
+        const page = await this.ctx.storage.list({
+          prefix,
+          limit: 100,
+          ...(cursor ? { startAfter: cursor } : {})
+        });
+        if (!page || typeof page.entries !== "function" || typeof page.size !== "number") {
+          return respond({ error: "Digest inventory could not be read." }, 503);
+        }
+        for (const [storageKey, record] of page.entries()) {
+          counts.totalRecords += 1;
+          const category = inspect(record, storageKey);
+          if (category === "plaintext") counts.plaintextRecords += 1;
+          else if (category === "encrypted") counts.encryptedV2Records += 1;
+          else if (category === "legacyEncrypted") counts.legacyEncryptedRecords += 1;
+          else counts.unreadableRecords += 1;
+        }
+        cursor = page.size === 100 ? [...page.keys()].at(-1) || null : null;
+      } while (cursor);
+
+      return respond({
+        ...counts,
+        scannedAt: new Date().toISOString(),
+        migrationReady: counts.plaintextRecords === 0 &&
+          counts.legacyEncryptedRecords === 0 && counts.unreadableRecords === 0
+      });
+    }
+
+    if (request.method !== "POST") return respond({ error: "Method not allowed." }, 405);
+    if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+      return respond({ error: "Digest migration requests must use application/json." }, 415);
+    }
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 4096) {
+      return respond({ error: "Digest migration request exceeds the 4 KB limit." }, 413);
+    }
+    let body;
+    try { body = rawBody ? JSON.parse(rawBody) : {}; }
+    catch { return respond({ error: "Invalid digest migration request." }, 400); }
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        Object.keys(body).some((key) => key !== "limit" && key !== "cursor")) {
+      return respond({ error: "Invalid digest migration request." }, 400);
+    }
+    const limit = body.limit === undefined ? 25 : Number(body.limit);
+    const cursor = body.cursor === undefined || body.cursor === null ? null : body.cursor;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 ||
+        (cursor !== null && (typeof cursor !== "string" || !cursor.startsWith(prefix) || cursor.length > 100))) {
+      return respond({ error: "Digest migration limit or cursor is invalid." }, 400);
+    }
+
+    const page = await this.ctx.storage.list({
+      prefix,
+      limit,
+      ...(cursor ? { startAfter: cursor } : {})
+    });
+    if (!page || typeof page.entries !== "function" || typeof page.size !== "number") {
+      return respond({ error: "Digest migration batch could not be read." }, 503);
+    }
+
+    const keyMaterial = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+    if (typeof keyMaterial !== "string" || !keyMaterial) {
+      return respond({ error: "The workspace encryption key is unavailable; no digest records were changed." }, 503);
+    }
+    const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+    const encryptionKey = await crypto.subtle.importKey(
+      "raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt"]
+    );
+    const toBase64 = (bytes) => {
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    };
+
+    const result = { scanned: 0, migrated: 0, alreadyEncrypted: 0, unreadable: 0, conflicts: 0 };
+    let lastKey = null;
+    for (const [storageKey, listedRecord] of page.entries()) {
+      lastKey = storageKey;
+      result.scanned += 1;
+      const category = inspect(listedRecord, storageKey);
+      if (category === "encrypted") {
+        result.alreadyEncrypted += 1;
+        continue;
+      }
+      if (category !== "plaintext") {
+        result.unreadable += 1;
+        continue;
+      }
+
+      const digest = JSON.parse(listedRecord.payload);
+      const nonce = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce, tagLength: 128 },
+        encryptionKey,
+        new TextEncoder().encode(listedRecord.payload)
+      );
+      const envelope = {
+        key: digest.key,
+        encryptedPayload: "aesgcm:v2:" + toBase64(nonce) + ":" +
+          toBase64(new Uint8Array(ciphertext))
+      };
+      const migrated = await this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get(storageKey);
+        if (!current || current.revision !== listedRecord.revision ||
+            current.payload !== listedRecord.payload) return "conflict";
+        if (inspect(current, storageKey) !== "plaintext") return "encrypted";
+        await transaction.put(storageKey, {
+          payload: JSON.stringify(envelope),
+          revision: current.revision + 1
+        });
+        return "migrated";
+      });
+      if (migrated === "migrated") result.migrated += 1;
+      else if (migrated === "encrypted") result.alreadyEncrypted += 1;
+      else result.conflicts += 1;
+    }
+
+    return respond({
+      ...result,
+      nextCursor: page.size === limit ? lastKey : null,
+      done: page.size < limit
+    });
+  }
+
   async handleTenantDirectory(request) {
     const session = await this.resolveSession(request);
     if (!session) return jsonResponse({ error: "Authentication required." }, 401);
@@ -3015,6 +3185,7 @@ export class PortfolioStateDO {
     await this.clearRetiredTradeNetSession();
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
     if (requestUrl.pathname === "/api/tenants" || requestUrl.pathname.startsWith("/api/tenants/")) return this.handleTenantDirectory(request);
+    if (requestUrl.pathname === "/api/margin-digest-migration") return this.handleMarginDigestMigration(request);
     if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
 
     await this.ensureInitialized();
