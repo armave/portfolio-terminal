@@ -334,6 +334,17 @@ function buildMarginRisk(
       capitalGroups.delete(key);
     }
   }
+  for (const position of positions) {
+    if (position.quantity >= 0) continue;
+    const key = accountRiskKey(
+      position.brokerId ?? 'Unclassified',
+      position.accountId ?? 'Unclassified',
+      position.currency
+    );
+    if (!capitalGroups.has(key)) {
+      return unavailable('Short position ' + position.ticker + ' has no matching broker/account/currency capital snapshot; eligible collateral cannot be verified.');
+    }
+  }
   if (capitalGroups.size === 0) return available([], 'current');
 
   const assumptionMap = new Map<string, BrokerAssumptions>();

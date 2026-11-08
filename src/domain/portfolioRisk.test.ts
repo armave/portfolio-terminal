@@ -112,6 +112,22 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(portfolio.value.equityRatio).toBe(0.4);
   });
 
+  it('marks short-position margin unavailable without a matching capital snapshot', () => {
+    const base = makeSnapshot();
+    const result = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], quantity: -2 }],
+      capital: []
+    });
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.portfolio.status).toBe('available');
+    expect(result.value.marginByAccount.status).toBe('unavailable');
+    if (result.value.marginByAccount.status !== 'unavailable') return;
+    expect(result.value.marginByAccount.reason).toContain('no matching broker/account/currency capital snapshot');
+    expect(result.value.warnings.some(item => item.includes('Margin risk unavailable'))).toBe(true);
+  });
+
   it('fails closed when a position cannot be assigned to the broker account carrying the margin debt', () => {
     const base = makeSnapshot();
     const result = calculatePortfolioRiskSnapshot({
