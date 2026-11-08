@@ -2182,14 +2182,22 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     await store.ctx.storage.put("marginDigestRecord:position:MSFT", {
       payload: "{malformed", revision: 1
     });
+    await store.ctx.storage.put("marginDigestRecord:position:TSLA", {
+      payload: JSON.stringify({ key: "position:TSLA", encryptedPayload: "aesgcm:v2:bad-envelope" }),
+      revision: 1
+    });
+    await store.ctx.storage.put("marginDigestRecord:position:NVDA", {
+      payload: JSON.stringify({ key: "position:NVDA", encryptedPayload: "aesgcm:v2:AAAAAAAAAAAAAAAA:!!!!!!!!!!!!!!!!!!!!!!!!" }),
+      revision: 1
+    });
     store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
 
     const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
     expect(response.status).toBe(200);
     const inventory = await response.json();
     expect(inventory).toMatchObject({
-      totalRecords: 3, plaintextRecords: 1, encryptedV2Records: 1,
-      legacyEncryptedRecords: 0, unreadableRecords: 1, migrationReady: false
+      totalRecords: 5, plaintextRecords: 1, encryptedV2Records: 1,
+      legacyEncryptedRecords: 0, unreadableRecords: 3, migrationReady: false
     });
     expect(JSON.stringify(inventory)).not.toContain("private analysis text");
     expect(JSON.stringify(inventory)).not.toContain("GOOGL");

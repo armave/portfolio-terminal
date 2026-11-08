@@ -2574,6 +2574,25 @@ export class PortfolioStateDO {
     const prefix = "marginDigestRecord:";
     const validDigestKey = (value) => typeof value === "string" &&
       /^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(value);
+    const validAesGcmV2Envelope = (payload) => {
+      if (typeof payload !== "string" || payload.length > 128 * 1024 ||
+          !payload.startsWith("aesgcm:v2:")) return false;
+      const parts = payload.slice("aesgcm:v2:".length).split(":");
+      if (parts.length !== 2) return false;
+      const decodeBase64 = (encoded) => {
+        if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
+        try {
+          const decoded = atob(encoded);
+          return btoa(decoded) === encoded ? decoded : null;
+        } catch {
+          return null;
+        }
+      };
+      const nonce = decodeBase64(parts[0]);
+      const ciphertext = decodeBase64(parts[1]);
+      return nonce !== null && nonce.length === 12 &&
+        ciphertext !== null && ciphertext.length >= 16;
+    };
     const inspect = (record, storageKey) => {
       if (!record || typeof record.payload !== "string") return "unreadable";
       let value;
@@ -2583,8 +2602,8 @@ export class PortfolioStateDO {
       if (typeof value.encryptedPayload === "string") {
         const keys = Object.keys(value).sort();
         const exactEnvelope = keys.length === 2 && keys[0] === "encryptedPayload" && keys[1] === "key";
-        if (exactEnvelope && /^aesgcm:v2:/.test(value.encryptedPayload)) return "encrypted";
-        if (exactEnvelope) return "legacyEncrypted";
+        if (exactEnvelope && validAesGcmV2Envelope(value.encryptedPayload)) return "encrypted";
+        if (exactEnvelope && !value.encryptedPayload.startsWith("aesgcm:v2:")) return "legacyEncrypted";
         return "unreadable";
       }
       if (typeof value.analysis === "string" && value.analysis.trim() &&
