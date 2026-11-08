@@ -148,7 +148,7 @@ describe('Freedom execution contract normalization', () => {
     expect(fills[1]).toMatchObject({ id: '13446625', orderId: '8757876', side: 'BUY', quantity: 1, price: 350 });
   });
 
-  it('preserves the TradeNet buy-on-margin order operation when normalizing a fill', () => {
+  it('does not infer a trade-fill side from an undocumented numeric order-operation alias', () => {
     const [buyOnMargin] = normalizeFreedomOrderFills({
       trades: { trade: [{
         id: 9002,
@@ -167,7 +167,7 @@ describe('Freedom execution contract normalization', () => {
     expect(buyOnMargin).toMatchObject({
       id: '9002',
       orderId: '901',
-      side: 'BUY',
+      side: 'Unknown',
       quantity: 1,
       price: 350
     });
