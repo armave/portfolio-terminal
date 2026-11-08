@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomPositionProbe, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
 
@@ -929,6 +929,78 @@ describe('sanitizeFreedomPositions', () => {
   it('rejects unloaded or malformed positions data', () => {
     expect(() => sanitizeFreedomPositions({ data: { result: { ps: { loaded: false } } } })).toThrow();
     expect(() => sanitizeFreedomPositions({})).toThrow();
+  });
+});
+
+describe('sanitizeFreedomPositionProbe', () => {
+  it('preserves raw position semantics and unknown fields while removing identity and session data', () => {
+    const result = sanitizeFreedomPositionProbe({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: -1200, accountNumber: 'private-account-number' }],
+        pos: [{
+          i: 'GOOGL.US',
+          name: 'Alphabet',
+          q: 50,
+          curr: 'USD',
+          acc_pos_id: 159573060,
+          instr_id: 123,
+          side: 'S',
+          direction: 'short',
+          positionType: 'short',
+          unknownBrokerField: { marker: 'preserve', user: 'private-user', authToken: 'private-token' },
+          accountId: 'private-account',
+          owner_login: 'private-login',
+          session_token: 'private-session'
+        }]
+      } } }
+    });
+
+    expect(result.data.result.ps).toEqual({
+      loaded: true,
+      pos: [{
+        i: 'GOOGL.US',
+        name: 'Alphabet',
+        q: 50,
+        curr: 'USD',
+        acc_pos_id: 159573060,
+        instr_id: 123,
+        side: 'S',
+        direction: 'short',
+        positionType: 'short',
+        unknownBrokerField: { marker: 'preserve' }
+      }]
+    });
+    expect(result.diagnostics).toMatchObject({
+      sourceEnvelope: 'data.result.ps',
+      loadedFlagPresent: true,
+      positionCollectionPresent: true,
+      positionsCount: 1,
+      returnedPositionsCount: 1
+    });
+    expect(result.diagnostics.positionFieldNames).toContain('direction');
+    expect(result.diagnostics.positionFieldNames).toContain('instr_id');
+    expect(JSON.stringify(result)).not.toContain('private-account');
+    expect(JSON.stringify(result)).not.toContain('private-login');
+    expect(JSON.stringify(result)).not.toContain('private-session');
+    expect(JSON.stringify(result)).not.toContain('private-token');
+    expect(JSON.stringify(result)).not.toContain('private-user');
+    expect(JSON.stringify(result)).not.toContain('private-account-number');
+  });
+
+  it('reports an absent position collection without inventing rows', () => {
+    const result = sanitizeFreedomPositionProbe({ result: { ps: { loaded: true, acc: [] } } });
+    expect(result.data.result.ps).toEqual({ loaded: true, pos: [] });
+    expect(result.diagnostics).toMatchObject({
+      positionCollectionPresent: false,
+      positionsCount: 0,
+      returnedPositionsCount: 0
+    });
+  });
+
+  it('rejects an unloaded or unrecognized response', () => {
+    expect(() => sanitizeFreedomPositionProbe({ result: { ps: { loaded: false, pos: [] } } })).toThrow();
+    expect(() => sanitizeFreedomPositionProbe({ unexpected: true })).toThrow();
   });
 });
 
@@ -3065,6 +3137,7 @@ describe('guest data isolation at the Worker boundary', () => {
     const historyResponse = await worker.fetch(new Request('https://worker.test/api/history', { headers }), env);
     const tradesResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', { headers }), env);
     const positionsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-positions', { headers }), env);
+    const positionProbeResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-position-probe', { headers }), env);
     const ordersStreamResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-orders-stream', { headers }), env);
     const portfolioSnapshotResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-portfolio-snapshot', { headers }), env);
     const cashflowsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', { headers }), env);
@@ -3075,12 +3148,13 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(historyResponse.status).toBe(403);
     expect(tradesResponse.status).toBe(403);
     expect(positionsResponse.status).toBe(403);
+    expect(positionProbeResponse.status).toBe(403);
     expect(ordersStreamResponse.status).toBe(403);
     expect(portfolioSnapshotResponse.status).toBe(403);
     expect(cashflowsResponse.status).toBe(403);
     expect(portfolioEventResponse.status).toBe(403);
     expect(marketDepthResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(9);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(10);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
