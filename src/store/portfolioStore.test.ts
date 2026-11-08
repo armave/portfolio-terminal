@@ -3123,6 +3123,34 @@ describe('portfolio transaction journal integration', () => {
     expect(duplicate?.status).toBe('applied');
     expect(reloaded.getState().positions.AAPL.shares).toBe(40);
     expect(reloaded.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(1);
+
+    const conflictingRevision = {
+      ...action,
+      toFactor: 7,
+      sharesAfterPerShareBefore: 7
+    };
+    expect(reloaded.applyCorporateActionSplit(conflictingRevision, recordedAt + 2)).toBeNull();
+    expect(reloaded.getState().positions.AAPL.shares).toBe(40);
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+  });
+
+  it('rejects changed evidence when a corporate-action source ID is reused', () => {
+    const store = new PortfolioStore();
+    const action = normalizeFinnhubStockSplits([
+      { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+    ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+
+    const recorded = store.recordCorporateActionEvidence(action);
+    expect(recorded).toMatchObject({ status: 'review_required', sourceId: action.sourceId });
+    const before = store.getState().corporateActionEvents;
+
+    const conflictingRevision = {
+      ...action,
+      toFactor: 7,
+      sharesAfterPerShareBefore: 7
+    };
+    expect(store.recordCorporateActionEvidence(conflictingRevision)).toBeNull();
+    expect(store.getState().corporateActionEvents).toEqual(before);
   });
 
   it('withholds split adjustment while broker position integrity is unresolved', () => {

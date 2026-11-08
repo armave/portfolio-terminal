@@ -2048,7 +2048,18 @@ export class PortfolioStore {
   ): PortfolioCorporateActionEvent | null {
     if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
     const previous = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
-    if (previous) return previous;
+    if (previous) {
+      // A duplicate source ID is idempotent only when the provider evidence is
+      // unchanged. Do not bypass the journal's immutable-evidence conflict check.
+      try {
+        mergePortfolioCorporateActionEvents([previous], [
+          toPortfolioCorporateActionEvent(event, previous.status, recordedAt, previous.note)
+        ]);
+      } catch {
+        return null;
+      }
+      return previous;
+    }
     let committed: PortfolioCorporateActionEvent | null = null;
     const saved = this.update(state => {
       let merged: PortfolioCorporateActionEvent[];
@@ -2084,7 +2095,18 @@ export class PortfolioStore {
     if (event.kind !== 'stock_split' && event.kind !== 'reverse_split') return null;
     if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
     const existing = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
-    if (existing?.status === 'applied' || existing?.status === 'not_applicable') return existing;
+    if (existing) {
+      // Preserve idempotency for an already-applied action, but first verify
+      // that a reused source ID still describes exactly the same source event.
+      try {
+        mergePortfolioCorporateActionEvents([existing], [
+          toPortfolioCorporateActionEvent(event, existing.status, recordedAt, existing.note)
+        ]);
+      } catch {
+        return null;
+      }
+      if (existing.status === 'applied' || existing.status === 'not_applicable') return existing;
+    }
 
     let committed: PortfolioCorporateActionEvent | null = null;
     const saved = this.update(state => {
