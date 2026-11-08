@@ -4,6 +4,7 @@ import { App } from './App';
 import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
+import { initializeSavedHistoryStorage } from './services/storage';
 
 registerSW({ immediate: true });
 
@@ -101,14 +102,21 @@ function mountPreactApplication() {
   render(h(App, { onSaveGatewaySecret: handleSaveGatewaySecret }), root);
 }
 
-function bootstrapApplication() {
+async function bootstrapApplication() {
+  // Hydrate the IndexedDB history cache before any mounted desk reads it.
+  // localStorage remains the compact portfolio snapshot store only.
+  try {
+    await initializeSavedHistoryStorage();
+  } catch (error) {
+    console.warn('Closed-history cache initialization did not complete; legacy and cloud recovery remain available:', error);
+  }
   mountPreactApplication();
   // Let App effects register their runtime event subscriptions before startup emits events.
   window.requestAnimationFrame(() => { void initApp(); });
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', bootstrapApplication, { once: true });
+  document.addEventListener('DOMContentLoaded', () => { void bootstrapApplication(); }, { once: true });
 } else {
-  bootstrapApplication();
+  void bootstrapApplication();
 }

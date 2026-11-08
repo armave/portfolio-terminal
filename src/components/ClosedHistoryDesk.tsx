@@ -297,7 +297,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       // Keep canonical portfolio fields and the independently stored history
       // sidecar aligned. A failed write restores the prior in-memory snapshot
       // and must never be followed by a cloud history write.
-      const historyPersisted = savePortfolioSnapshot(portfolioStore.getState(), {
+      const historyPersisted = await savePortfolioSnapshot(portfolioStore.getState(), {
         brokerExecutedTrades: brokerExecutions.length
           ? updatedExecutions
           : (portfolioStore.getState().brokerExecutedTrades || []),
