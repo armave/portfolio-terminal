@@ -16,6 +16,21 @@ Make every broker-reported position either correctly represented and valued or v
 3. Identify all filters that drop non-positive quantities, unsupported sides or unknown instrument types. For each, decide whether it is valid filtering or silent data loss.
 4. Document current assumptions before changing them. Do not infer `SELL_SHORT` or `BUY_TO_COVER` semantics from an enum name alone.
 
+## Authenticated TradeNet position fixture — 2026-11-08
+
+An administrator supplied one fresh REST `getPositionJson` snapshot from the real account. The shared copy contained one open USD equity row. For privacy, account-specific ticker, position quantity, prices, balances, identifiers and issuer details are not reproduced in this public repository.
+
+Observed schema facts:
+
+- The row supplied a positive numeric `q` and no `side`, `direction`, `position_side` or equivalent explicit direction field.
+- It included `t` and `k` numeric values, plus `fv`, `go`, `scheme_calc`, `bal_price_a`, `open_bal`, `mkt_price`, `market_value`, `profit_close`, `profit_price`, `acc_pos_id` and `instr_id`.
+- The account owner confirmed they have never opened a short position; therefore this specific observed row is a long position with positive quantity.
+- In this sample, quantity multiplied by `bal_price_a` matched `open_bal` to the reported precision. This is an observed arithmetic relationship, not a universal contract guarantee.
+- The published [TradeNet getPositionJson reference](https://tradernet.com/tradernet-api/portfolio-get-changes?site_lang=en) describes `q` as the number of securities, `acc_pos_id` as a unique open-position identifier, `bal_price_a` as open-position book value and `open_bal` as position book value. It lists `t` and `k` but gives no definitions for either field's values.
+- Consequently, this fixture validates retention of the raw `t`/`k` values and the existing positive-quantity long-only compatibility path. It does **not** establish short-side encoding, signed-quantity behavior for shorts, or the meaning of `t`/`k`. No numeric code is mapped.
+
+An anonymized synthetic adapter regression test mirrors the field shape and checks that `t` and `k` survive in `raw` without being interpreted as direction. The user's actual account values remain outside the repository.
+
 ## Implementation requirements
 
 - Define one canonical position direction (`long` or `short`) and quantity contract. Prefer explicit direction plus a non-negative absolute quantity; derive signed quantity at calculation boundaries only if that best fits the existing domain model. Explain the selected invariant and convert only at broker boundaries.
