@@ -1,4 +1,5 @@
 import { normalizeCurrencyCode } from './marketDataContracts';
+import { normalizeFinnhubStockSplits, type CorporateActionEvent } from './corporateActions';
 
 export type MarketEventQuality = 'complete' | 'partial' | 'unavailable';
 type EarningsTiming = 'before_market' | 'after_market' | 'during_market' | 'unknown';
@@ -45,8 +46,10 @@ export interface MarketEventsResult {
   symbol: string;
   earnings: EarningsEvent[];
   dividends: DividendEvent[];
+  corporateActions: CorporateActionEvent[];
   earningsAvailable: boolean;
   dividendsAvailable: boolean;
+  corporateActionsAvailable: boolean;
   quality: MarketEventQuality;
   provider: string | null;
   receivedAt: number | null;
@@ -123,13 +126,20 @@ export function normalizeEarningsEvents(
     const eventDate = dateOnly(raw.date);
     if (!eventDate) { issues.push('Earnings row ' + (index + 1) + ' has an invalid event date.'); continue; }
     const rowSymbol = safeText(raw.symbol, 32)?.toUpperCase() ?? symbol;
+    if (rowSymbol !== symbol) {
+      issues.push('Earnings row ' + (index + 1) + ' belongs to a different symbol and was ignored.');
+      continue;
+    }
     const quarter = finiteNumber(raw.quarter);
     const year = finiteNumber(raw.year);
+    const timing = normalizeTiming(raw.hour);
+    if (timing === 'unknown') issues.push('Earnings row ' + (index + 1) + ' has no verified session timing.');
+    const rowIssues = timing === 'unknown' ? ['Earnings session timing is unknown.'] : [];
     events.push({
       id: [rowSymbol, eventDate, year ?? '', quarter ?? ''].join(':'),
       symbol: rowSymbol,
       eventDate,
-      timing: normalizeTiming(raw.hour),
+      timing,
       epsActual: finiteNumber(raw.epsActual),
       epsEstimate: finiteNumber(raw.epsEstimate),
       revenueActual: finiteNumber(raw.revenueActual),
@@ -137,7 +147,7 @@ export function normalizeEarningsEvents(
       fiscalQuarter: quarter !== null && Number.isInteger(quarter) && quarter >= 1 && quarter <= 4 ? quarter : null,
       fiscalYear: year !== null && Number.isInteger(year) && year >= 1900 && year <= 2200 ? year : null,
       currency: normalizeCurrencyCode(raw.currency),
-      provenance: provenance(provider, receivedAt, 'complete', [])
+      provenance(provider, receivedAt, rowIssues.length ? 'partial' : 'complete', rowIssues)
     });
   }
   const quality: MarketEventQuality = events.length === 0 ? 'unavailable' : issues.length ? 'partial' : 'complete';
@@ -160,6 +170,10 @@ export function normalizeDividendEvents(
     const exDate = dateOnly(raw.date);
     if (!exDate) { issues.push('Dividend row ' + (index + 1) + ' has an invalid ex-date.'); continue; }
     const rowSymbol = safeText(raw.symbol, 32)?.toUpperCase() ?? symbol;
+    if (rowSymbol !== symbol) {
+      issues.push('Dividend row ' + (index + 1) + ' belongs to a different symbol and was ignored.');
+      continue;
+    }
     const amount = finiteNumber(raw.amount);
     const payDate = dateOnly(raw.payDate);
     const recordDate = dateOnly(raw.recordDate);
@@ -167,8 +181,17 @@ export function normalizeDividendEvents(
     if (raw.payDate !== null && raw.payDate !== undefined && !payDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid pay date.');
     if (raw.recordDate !== null && raw.recordDate !== undefined && !recordDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid record date.');
     if (raw.declarationDate !== null && raw.declarationDate !== undefined && !declarationDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid declaration date.');
+    const currency = normalizeCurrencyCode(raw.currency);
+    const rowIssues = [
+      ...(amount === null ? ['Dividend amount is unavailable.'] : []),
+      ...(!currency ? ['Dividend currency is unknown; no conversion was applied.'] : [])
+    ];
+    const stableSourceId = safeText(raw.id ?? raw.sourceId, 128);
+    const id = stableSourceId
+      ? provider + ':' + stableSourceId
+      : [rowSymbol, exDate, declarationDate ?? '', recordDate ?? '', payDate ?? '', finiteNumber(raw.freq) ?? ''].join(':');
     events.push({
-      id: [rowSymbol, exDate, amount ?? '', normalizeCurrencyCode(raw.currency) ?? ''].join(':'),
+      id,
       symbol: rowSymbol,
       exDate,
       amount,
@@ -176,9 +199,9 @@ export function normalizeDividendEvents(
       payDate,
       recordDate,
       declarationDate,
-      currency: normalizeCurrencyCode(raw.currency),
+      currency,
       frequency: finiteNumber(raw.freq),
-      provenance: provenance(provider, receivedAt, 'complete', [])
+      provenance: provenance(provider, receivedAt, rowIssues.length ? 'partial' : 'complete', rowIssues)
     });
   }
   const quality: MarketEventQuality = events.length === 0 ? 'unavailable' : issues.length ? 'partial' : 'complete';
@@ -191,8 +214,10 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
       symbol: '',
       earnings: [],
       dividends: [],
+      corporateActions: [],
       earningsAvailable: false,
       dividendsAvailable: false,
+      corporateActionsAvailable: false,
       quality: 'unavailable',
       provider: null,
       receivedAt: null,
@@ -209,17 +234,28 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
   const dividendsResult = normalizeDividendEvents(input.dividends, {
     symbol, provider, receivedAt, available: input.dividendsAvailable === true
   });
-  const issues = [...earningsResult.issues, ...dividendsResult.issues];
+  const corporateActionsResult = normalizeFinnhubStockSplits(input.corporateActions, {
+    symbol, provider, receivedAt
+  });
+  const corporateActionsAvailable = input.corporateActionsAvailable === true;
+  if (!corporateActionsAvailable) {
+    corporateActionsResult.quality = 'unavailable';
+    corporateActionsResult.issues.push('Corporate-action split feed is unavailable.');
+  }
+  const issues = [...earningsResult.issues, ...dividendsResult.issues, ...corporateActionsResult.issues];
   const hasAvailableFeed = earningsResult.quality !== 'unavailable' || dividendsResult.quality !== 'unavailable';
   const quality: MarketEventQuality = !hasAvailableFeed ? 'unavailable'
     : earningsResult.quality === 'partial' || dividendsResult.quality === 'partial' ||
-      earningsResult.quality === 'unavailable' || dividendsResult.quality === 'unavailable' ? 'partial' : 'complete';
+      earningsResult.quality === 'unavailable' || dividendsResult.quality === 'unavailable' ||
+      corporateActionsResult.quality === 'partial' || corporateActionsResult.quality === 'unavailable' ? 'partial' : 'complete';
   return {
     symbol,
     earnings: earningsResult.events,
     dividends: dividendsResult.events,
+    corporateActions: corporateActionsResult.events,
     earningsAvailable: input.earningsAvailable === true,
     dividendsAvailable: input.dividendsAvailable === true,
+    corporateActionsAvailable,
     quality,
     provider,
     receivedAt,
