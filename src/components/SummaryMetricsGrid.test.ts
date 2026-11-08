@@ -17,7 +17,9 @@ describe('Margin hardcode centralization', () => {
   it('localizes visible Margin risk labels and accessible text', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain("translateText('STOP-OUT BUFFER', language)");
+    expect(source).toContain('margin-risk-mini-meter');
+    expect(source).toContain('<MarginRiskDetailsModal');
+    expect(source).toContain("translateText('CAPITAL ADEQUACY', language)");
     expect(source).toContain("translateText('Account equity percentage', language)");
     expect(source).toContain("translateText('Across {count} assets', getAppLanguage())");
     expect(source).toContain("translateText('Show {count} tranches', getAppLanguage())");
@@ -260,7 +262,7 @@ describe('market depth action session visibility', () => {
 describe('margin-call buffer presentation', () => {
   it('always labels the buffer as margin-call buffer and displays a percentage without bottom captions', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("translateText('MARGIN-CALL BUFFER', language)");
+    expect(source).toContain("translateText(buffer?.complete ? 'MINIMUM MARGIN BUFFER' : 'ESTIMATED MARGIN-CALL BUFFER', language)");
     expect(source).not.toContain("'BASE MAINTENANCE BUFFER'");
     expect(source).toContain("Number.isFinite(risk.marginCallBufferPct)");
     expect(source).toContain("Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'");
@@ -289,7 +291,7 @@ describe('interactive margin health presentation', () => {
   });
 
   it('keeps the modal nearly full-screen on mobile', () => {
-    const styles = readFileSync(new URL('../../../style.css', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     expect(styles).toContain('.margin-risk-modal-backdrop');
     expect(styles).toContain('max-height: 100dvh;');
     expect(styles).toContain('min-height: 100dvh;');

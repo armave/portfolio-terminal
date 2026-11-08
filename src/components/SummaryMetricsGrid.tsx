@@ -19,7 +19,6 @@ import {
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
 import {
-  ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
   hasUnresolvedBrokerPositionIntegrity,
   type MarginRiskInput,
@@ -97,9 +96,7 @@ function MarginRiskGaugeCard({
     : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
       ? 'healthy'
       : risk.riskLevel === 'Elevated' ? 'elevated' : 'danger';
-  const bufferLabel = buffer?.complete
-    ? 'MINIMUM MARGIN BUFFER'
-    : 'ESTIMATED MARGIN-CALL BUFFER';
+  const bufferLabel = translateText(buffer?.complete ? 'MINIMUM MARGIN BUFFER' : 'ESTIMATED MARGIN-CALL BUFFER', language);
   const bufferWidth = buffer
     ? Math.max(0, Math.min(100, (buffer.percentage / 40) * 100))
     : 0;
@@ -164,7 +161,7 @@ function MarginRiskGaugeCard({
             aria-label={translateText('Open minimum margin buffer details', language)}
           >
             <span class="margin-risk-metric-heading">
-              <span class="margin-risk-label">{translateText(bufferLabel, language)}</span>
+              <span class="margin-risk-label">{bufferLabel}</span>
               <strong>{buffer ? buffer.percentage.toFixed(1) + '%' : '—'}</strong>
             </span>
             <span
