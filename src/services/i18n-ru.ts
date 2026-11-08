@@ -36,6 +36,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.': 'Оценка маржинального риска предварительная: часть данных о залоге или маржинальных требованиях брокера основана на допущениях либо недоступна.',
   'Maintenance buffer unavailable because the concentration add-on was not reported.': 'Буфер поддерживающей маржи недоступен: брокер не предоставил надбавку за концентрацию.',
   'Short-position stop-out buffer unavailable until broker-specific requirements are verified.': 'Буфер стоп-аута для коротких позиций недоступен до проверки специальных требований брокера.',
+  'Short borrow fees and availability costs are not included because broker data is unavailable.': 'Комиссии за заём акций для коротких позиций и стоимость доступности не включены: данные брокера недоступны.',
   'Equity ratio unavailable': 'Доля собственного капитала недоступна',
   'Margin inputs unavailable': 'Данные для расчёта маржи недоступны',
   'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.': 'В этой оценке используются настроенный порог стоп-аута и денежные средства счёта; фактические требования брокера могут отличаться.',

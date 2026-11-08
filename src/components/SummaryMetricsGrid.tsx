@@ -133,6 +133,11 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {translateText('Short-position stop-out buffer unavailable until broker-specific requirements are verified.', language)}
         </p>
       )}
+      {risk.hasShortExposure && (
+        <p class="mt-1 text-[10px] text-amber-200">
+          {translateText('Short borrow fees and availability costs are not included because broker data is unavailable.', language)}
+        </p>
+      )}
       <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', language)}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', language)}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', language)}</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}</div></details>
     </section>
   );
@@ -187,6 +192,7 @@ interface MarginRiskDisplay {
   stopOutBufferPct: number;
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
   stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
+  hasShortExposure: boolean;
 }
 
 function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
@@ -207,7 +213,8 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
       marginCallBufferPct: Number.NaN,
       stopOutBufferPct: Number.NaN,
       maintenanceState: 'unknown',
-      stopOutState: 'unknown'
+      stopOutState: 'unknown',
+      hasShortExposure: false
     };
   }
 
@@ -239,7 +246,8 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
     marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
     stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
     maintenanceState: metrics.maintenanceState,
-    stopOutState: metrics.stopOutState
+    stopOutState: metrics.stopOutState,
+    hasShortExposure: input.shortExposure > 0
   };
 }
 

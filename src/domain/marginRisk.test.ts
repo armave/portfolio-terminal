@@ -50,6 +50,7 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.value.equity).toBe(900);
     expect(result.value.eligibleCollateral).toBe(250);
     expect(result.value.collateralCoverageRatio).toBe(1.25);
+    expect(result.warnings.some(item => item.includes('Short borrow fees and availability costs are unavailable'))).toBe(true);
   });
 
   it('does not count short liabilities as positive assets in the equity-ratio denominator', () => {

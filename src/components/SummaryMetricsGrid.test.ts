@@ -222,6 +222,7 @@ describe('canonical margin risk integration', () => {
     expect(source).toContain("risk.status === 'unavailable'");
     expect(source).toContain("risk.maintenanceState === 'unknown'");
     expect(source).toContain("risk.stopOutState === 'unknown'");
+    expect(source).toContain("risk.hasShortExposure");
     expect(source).toContain("risk.status === 'provisional'");
   });
 });

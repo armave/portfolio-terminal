@@ -84,6 +84,7 @@ export interface MarginRiskSnapshot {
   showStopOut: boolean;
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
   stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
+  /** Financing cost on margin debit only; does not include unreported short-borrow fees. */
   annualInterestCost: number;
   dailyInterestCost: number;
   riskLevel: MarginRiskLevel;
@@ -245,6 +246,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   if (input.shortExposure > 0) {
     quality = 'provisional';
     warnings.push('A broker-specific short-position stop-out rule is unavailable; short stop-out buffers are not estimated.');
+    warnings.push('Short borrow fees and availability costs are unavailable; they are not included in margin-debit interest estimates.');
   }
   const hasMarginActivity = input.marginDebt > 0 || input.shortExposure > 0;
   if (hasMarginActivity && input.eligibleCollateralSource !== 'broker') {
