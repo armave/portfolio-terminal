@@ -90,7 +90,9 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Cash dividend': 'Денежный дивиденд',
   'Record dividend evidence': 'Сохранить сведения о дивиденде',
   'Dividend evidence saved': 'Сведения о дивиденде сохранены',
-  'No adjustment needed': 'Корректировка не требуется'
+  'No adjustment needed': 'Корректировка не требуется',
+  'Split data unavailable': 'Данные о дроблении недоступны',
+  'Dividend evidence saved': 'Сведения о дивиденде сохранены'
 };
 
 function marketEventLabel(value: string): string {
@@ -800,12 +802,14 @@ function MarketInsightsPanelView() {
           <section class="rounded border border-slate-800/80 bg-slate-900/40 p-2.5" aria-label={marketEventLabel('Corporate actions')}>
             <div class="mb-2">
               <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Corporate actions')}</h4>
-              <p class="text-[9px] text-slate-500">{marketEventLabel('Stock splits and reverse splits')}</p>
+              <p class="text-[9px] text-slate-500">{marketEventLabel('Stock splits and reverse splits')} · {marketEventLabel('Dividends')}</p>
             </div>
             {currentEvents?.corporateActionsAvailable === false && (
-              <p class="text-[10px] text-slate-500">{marketEventLabel('Corporate-action data unavailable')}</p>
+              <p class="text-[10px] text-slate-500">{marketEventLabel('Split data unavailable')}</p>
             )}
-            {currentEvents?.corporateActionsAvailable === true && splitActions.length === 0 && !eventsLoading && (
+            {currentEvents?.corporateActionsAvailable === true &&
+              !corporateActions.some(event => event.kind === 'stock_split' || event.kind === 'reverse_split') &&
+              !eventsLoading && (
               <p class="text-[10px] text-slate-500">{marketEventLabel('No verified split events in this period.')}</p>
             )}
             <div class="space-y-2">
@@ -836,7 +840,8 @@ function MarketInsightsPanelView() {
                     </div>
                     <button
                       type="button"
-                      disabled={alreadyRecorded || eventsLoading}
+                      disabled={eventsLoading || (isDividend && alreadyRecorded) ||
+                        (!isDividend && (alreadyApplied || notApplicable))}
                       onClick={() => {
                         if (isDividend) {
                           const saved = portfolioStore.recordCorporateActionEvidence(event);
@@ -861,8 +866,9 @@ function MarketInsightsPanelView() {
                       class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                       {alreadyApplied ? marketEventLabel('Split already applied')
                         : notApplicable ? marketEventLabel('No adjustment needed')
-                          : isDividend ? marketEventLabel('Record dividend evidence')
-                            : marketEventLabel('Apply split to open position')}
+                          : isDividend && alreadyRecorded ? marketEventLabel('Dividend evidence saved')
+                            : isDividend ? marketEventLabel('Record dividend evidence')
+                              : marketEventLabel('Apply split to open position')}
                     </button>
                   </div>
                 );

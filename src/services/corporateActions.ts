@@ -233,15 +233,19 @@ export function normalizeFinnhubDividendActions(
       issues.push('Dividend action row ' + (index + 1) + ' has an invalid symbol or ex-date and was ignored.');
       continue;
     }
-    if (amountPerShare === null || amountPerShare < 0 || !currency) {
-      issues.push('Dividend action row ' + (index + 1) + ' has an unknown amount or currency; it remains evidence only.');
+    if (amountPerShare !== null && amountPerShare < 0) {
+      issues.push('Dividend action row ' + (index + 1) + ' has a negative amount and was ignored.');
       continue;
     }
-    if ((raw.payDate != null && !payDate) || (raw.recordDate != null && !recordDate) ||
-        (raw.declarationDate != null && !declarationDate)) {
-      issues.push('Dividend action row ' + (index + 1) + ' has an invalid date field.');
-    }
-    const sourceId = [provider.toLowerCase(), symbol, effectiveDate, amountPerShare, currency,
+    const rowIssues = [
+      ...(amountPerShare === null ? ['Dividend amount is unavailable.'] : []),
+      ...(!currency ? ['Dividend currency is unknown; no conversion was applied.'] : []),
+      ...((raw.payDate != null && !payDate) ? ['Dividend pay date is invalid.'] : []),
+      ...((raw.recordDate != null && !recordDate) ? ['Dividend record date is invalid.'] : []),
+      ...((raw.declarationDate != null && !declarationDate) ? ['Dividend declaration date is invalid.'] : [])
+    ];
+    issues.push(...rowIssues.map(issue => 'Dividend action row ' + (index + 1) + ': ' + issue));
+    const sourceId = [provider.toLowerCase(), symbol, effectiveDate, amountPerShare ?? 'unknown', currency ?? 'unknown',
       declarationDate ?? '', recordDate ?? '', payDate ?? ''].join(':');
     const event: CorporateActionEvent = {
       id: sourceId,
@@ -294,7 +298,7 @@ export function toPortfolioCorporateActionEvent(
     ...(event.toFactor !== undefined ? { toFactor: event.toFactor } : {}),
     ...(event.sharesAfterPerShareBefore !== undefined ? { sharesAfterPerShareBefore: event.sharesAfterPerShareBefore } : {}),
     ...(event.amountPerShare !== undefined ? { amountPerShare: event.amountPerShare } : {}),
-    ...(event.currency ? { currency: event.currency } : {}),
+    ...(event.currency !== undefined ? { currency: event.currency } : {}),
     ...(event.payDate ? { payDate: event.payDate } : {}),
     ...(event.recordDate ? { recordDate: event.recordDate } : {}),
     ...(event.declarationDate ? { declarationDate: event.declarationDate } : {}),
@@ -312,8 +316,8 @@ function isCorporateActionFeedEvent(value: unknown): value is CorporateActionEve
     typeof value.provider === 'string' && !!value.provider &&
     Number.isFinite(value.receivedAt) && Number(value.receivedAt) > 0 &&
     (value.kind !== 'cash_dividend' ||
-      (finiteNumber(value.amountPerShare) !== null && Number(value.amountPerShare) >= 0 &&
-       currencyCode(value.currency) !== null &&
+      ((value.amountPerShare == null || (finiteNumber(value.amountPerShare) !== null && Number(value.amountPerShare) >= 0)) &&
+       (value.currency == null || currencyCode(value.currency) !== null) &&
        (value.payDate == null || dateOnly(value.payDate) !== null) &&
        (value.recordDate == null || dateOnly(value.recordDate) !== null) &&
        (value.declarationDate == null || dateOnly(value.declarationDate) !== null))) &&
@@ -336,8 +340,9 @@ export function isPortfolioCorporateActionEvent(value: unknown): value is Portfo
   if (value.fromFactor !== undefined && positiveFinite(value.fromFactor) === null) return false;
   if (value.toFactor !== undefined && positiveFinite(value.toFactor) === null) return false;
   if (value.sharesAfterPerShareBefore !== undefined && positiveFinite(value.sharesAfterPerShareBefore) === null) return false;
-  if (value.amountPerShare !== undefined && (finiteNumber(value.amountPerShare) === null || Number(value.amountPerShare) < 0)) return false;
-  if (value.currency !== undefined && currencyCode(value.currency) === null) return false;
+  if (value.amountPerShare !== undefined && value.amountPerShare !== null &&
+      (finiteNumber(value.amountPerShare) === null || Number(value.amountPerShare) < 0)) return false;
+  if (value.currency !== undefined && value.currency !== null && currencyCode(value.currency) === null) return false;
   if (value.payDate !== undefined && !isDateField(value.payDate)) return false;
   if (value.recordDate !== undefined && !isDateField(value.recordDate)) return false;
   if (value.declarationDate !== undefined && !isDateField(value.declarationDate)) return false;

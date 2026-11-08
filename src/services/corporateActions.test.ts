@@ -94,11 +94,15 @@ describe('corporate-action history', () => {
       { symbol: 'AAPL', date: '2026-02-06', amount: 0.26, currency: 'USD', payDate: '2026-02-12' },
       { symbol: 'AAPL', date: '2026-05-08', amount: 0.27, currency: null }
     ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt });
+    expect(result.events).toHaveLength(2);
     expect(result.events[0]).toMatchObject({
       kind: 'cash_dividend', amountPerShare: 0.26, currency: 'USD', payDate: '2026-02-12'
     });
+    expect(result.events[1]).toMatchObject({
+      kind: 'cash_dividend', amountPerShare: 0.27, currency: null, effectiveDate: '2026-05-08'
+    });
     expect(result.quality).toBe('partial');
-    expect(result.issues[0]).toContain('unknown amount or currency');
+    expect(result.issues.some(issue => issue.includes('currency is unknown'))).toBe(true);
   });
 
   it('merges repeated event imports idempotently and rejects conflicting source reuse', () => {

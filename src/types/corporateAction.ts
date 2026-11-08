@@ -16,7 +16,7 @@ export interface CorporateActionEvent {
   toFactor?: number;
   /** New shares received per old share. A 2-for-1 split is represented as 1 -> 2. */
   sharesAfterPerShareBefore?: number;
-  amountPerShare?: number;
+  amountPerShare?: number | null;
   currency?: string | null;
   payDate?: string | null;
   recordDate?: string | null;
@@ -42,7 +42,7 @@ export interface PortfolioCorporateActionEvent {
   toFactor?: number;
   sharesAfterPerShareBefore?: number;
   amountPerShare?: number;
-  currency?: string;
+  currency?: string | null;
   payDate?: string;
   recordDate?: string;
   declarationDate?: string;

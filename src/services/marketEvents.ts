@@ -327,7 +327,7 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
     corporateActions,
     earningsAvailable,
     dividendsAvailable,
-    corporateActionsAvailable: corporateActionsAvailable || dividendsAvailable,
+    corporateActionsAvailable,
     quality,
     provider,
     receivedAt,

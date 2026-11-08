@@ -106,6 +106,9 @@ describe('Finnhub market-data client adapters',()=>{
  it('normalizes earnings and dividends from the typed event action',async()=>{
   vi.mocked(proxyFetch).mockResolvedValue({ok:true,provider:'Finnhub',symbol:'GOOGL',receivedAt:1794000000000,earningsAvailable:true,dividendsAvailable:true,corporateActionsAvailable:true,earnings:[{symbol:'GOOGL',date:'2026-11-07',hour:'amc',epsEstimate:2.1}],dividends:[{symbol:'GOOGL',date:'2026-11-10',amount:0.2,currency:'USD'}],corporateActions:[{symbol:'GOOGL',date:'2026-11-20',fromFactor:1,toFactor:2}]});
   const result=await fetchFinnhubMarketEvents('GOOGL','2026-11-01','2026-11-30');
-  expect(result).toMatchObject({quality:'complete',earnings:[{eventDate:'2026-11-07',timing:'after_market'}],dividends:[{exDate:'2026-11-10',amount:0.2,currency:'USD'}],corporateActions:[{kind:'stock_split',effectiveDate:'2026-11-20',sharesAfterPerShareBefore:2}]});
+  expect(result).toMatchObject({quality:'complete',earnings:[{eventDate:'2026-11-07',timing:'after_market'}],dividends:[{exDate:'2026-11-10',amount:0.2,currency:'USD'}],corporateActions:[
+{kind:'cash_dividend',effectiveDate:'2026-11-10',amountPerShare:0.2,currency:'USD'},
+{kind:'stock_split',effectiveDate:'2026-11-20',sharesAfterPerShareBefore:2}
+]});
  });
 });
