@@ -41,6 +41,18 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
   });
 
+  it('mounts Margin Risk Overview at the document root for stable cross-device positioning', () => {
+    const modal = readSource('../components/MarginRiskOverviewModal.tsx');
+    const styles = readSource('../../style.css');
+
+    expect(modal).toContain("import { createPortal } from 'preact/compat';");
+    expect(modal).toContain('document.body');
+    expect(styles).toContain('height: 100dvh;');
+    expect(styles).toContain('env(safe-area-inset-top)');
+    expect(styles).toContain('env(safe-area-inset-bottom)');
+    expect(styles).toContain('.margin-risk-overview-dialog');
+  });
+
   it('keeps the terminal log keyboard-scrollable and avoids forcing readers back to the latest line', () => {
     const source = readSource('../components/TerminalLog.tsx');
 
