@@ -17,7 +17,11 @@ import {
   calculatePortfolioValuation,
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
-import { ACCOUNT_EQUITY_HEALTH_REFERENCE, calculateMarginRiskMetrics, getMarginRiskLevel } from '../domain/marginRisk';
+import {
+  ACCOUNT_EQUITY_HEALTH_REFERENCE,
+  calculateMarginRiskSnapshot,
+  type MarginRiskInput
+} from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
@@ -35,7 +39,7 @@ export function getUsableMarketPrice(value: unknown): number | null {
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
   equityPct: number;
-  risk: ReturnType<typeof computeMarginRiskDisplay>;
+  risk: MarginRiskDisplay;
   equityText: string;
   collateralText: string;
   rules: BrokerAssumptions;
@@ -44,7 +48,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   unpricedHoldings?: number;
 }) {
   const language = getAppLanguage();
-  if (valuationStatus === 'incomplete') {
+  if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
       <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', language)}>
         <div class="margin-risk-gauge-heading">
@@ -52,7 +56,9 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           <span class="margin-risk-status elevated">{translateText('Market valuation incomplete', language)}</span>
         </div>
         <p class="mt-2 text-xs leading-relaxed text-amber-200">
-          {translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
+          {risk.status === 'unavailable' && valuationStatus !== 'incomplete'
+            ? translateText('Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)
+            : translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
         </p>
         {!accountBalanceAvailable && (
           <p class="mt-1 text-[10px] text-slate-300">{translateText('Account balance unavailable', language)}</p>
@@ -62,6 +68,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             {translateText('Unpriced holdings', language)}: {unpricedHoldings}
           </p>
         )}
+        {risk.reason && <p class="mt-1 text-[10px] text-slate-400">{risk.reason}</p>}
         <p class="mt-1 text-[10px] text-slate-400">
           {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', language)}
         </p>
@@ -105,6 +112,16 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.stopOutText}</span>}
         </div>
       </div>
+      {risk.status === 'provisional' && (
+        <p class="mt-2 text-[10px] leading-relaxed text-amber-200">
+          {translateText('Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.', language)}
+        </p>
+      )}
+      {risk.maintenanceState === 'unknown' && (
+        <p class="mt-1 text-[10px] text-amber-200">
+          {translateText('Maintenance buffer unavailable because the concentration add-on was not reported.', language)}
+        </p>
+      )}
       <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', language)}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', language)}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', language)}</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}</div></details>
     </section>
   );
@@ -144,58 +161,71 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   };
 }
 
-function computeMarginRiskDisplay(
-  debt: number,
-  positionValue: number,
-  collateral: number,
-  rules: BrokerAssumptions
-) {
+interface MarginRiskDisplay {
+  status: 'available' | 'provisional' | 'unavailable';
+  reason?: string;
+  warnings: string[];
+  riskLevel: string;
+  summaryText: string;
+  summaryClass: string;
+  showMarginCall: boolean;
+  marginCallText: string;
+  showStopOut: boolean;
+  stopOutText: string;
+  marginCallBufferPct: number;
+  stopOutBufferPct: number;
+  maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
+}
+
+function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   const language = getAppLanguage();
-  if (debt <= 0) {
+  const result = calculateMarginRiskSnapshot(input);
+  if (result.status === 'unavailable') {
     return {
-      riskLevel: 'No margin debt' as const,
-      summaryText: translateText('No margin debt', language),
-      summaryClass: 'text-emerald-400 font-bold font-mono',
+      status: 'unavailable',
+      reason: result.reason,
+      warnings: result.warnings,
+      riskLevel: 'Unavailable',
+      summaryText: translateText('Margin risk estimate unavailable', language),
+      summaryClass: 'text-amber-300 font-bold font-mono',
       showMarginCall: false,
       marginCallText: '',
       showStopOut: false,
       stopOutText: '',
-      marginCallBufferPct: 100,
-      stopOutBufferPct: 100
+      marginCallBufferPct: Number.NaN,
+      stopOutBufferPct: Number.NaN,
+      maintenanceState: 'unknown'
     };
   }
 
-  const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
-  const equityRatio = metrics.equityRatio * 100;
-  const maintenanceRatio = rules.maintenanceEquityRatio * 100;
-  const riskLevel = getMarginRiskLevel(metrics.equityRatio, rules);
-  const riskClass = riskLevel === 'Healthy'
+  const metrics = result.value;
+  const riskLevel = input.marginDebt <= 0 ? 'No margin debt' : metrics.riskLevel;
+  const riskClass = riskLevel === 'Healthy' || riskLevel === 'No margin debt'
     ? 'text-emerald-400'
     : riskLevel === 'Elevated'
       ? 'text-amber-400'
       : 'text-rose-400';
-  const equitySummary = Number.isFinite(equityRatio)
-    ? `${equityRatio.toFixed(1)}% ${translateText('equity', language)}`
-    : translateText('negative equity', language);
-  const summaryText = `${translateText(riskLevel, language)} · ${equitySummary} (${maintenanceRatio.toFixed(1)}% ${translateText('maintenance', language)})`;
-
-  const showMarginCall = metrics.showMarginCall;
-  const showStopOut = metrics.showStopOut;
-  const marginCallValue = metrics.marginCallValue;
-  const stopOutValue = metrics.stopOutValue;
-  const marginCallBufferPct = metrics.marginCallBufferPct;
-  const stopOutBufferPct = metrics.stopOutBufferPct;
-
+  const equitySummary = metrics.equityRatio !== null && Number.isFinite(metrics.equityRatio)
+    ? `${(metrics.equityRatio * 100).toFixed(1)}% ${translateText('equity', language)}`
+    : translateText('Equity ratio unavailable', language);
+  const summaryText = `${translateText(riskLevel, language)} · ${equitySummary}`;
   return {
+    status: result.status,
+    warnings: result.warnings,
     riskLevel,
     summaryText,
     summaryClass: `${riskClass} font-bold font-mono`,
-    showMarginCall,
-    marginCallText: marginCallValue > 0 ? formatRiskTrigger(marginCallValue, positionValue) : '',
-    showStopOut,
-    stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
-    marginCallBufferPct,
-    stopOutBufferPct
+    showMarginCall: metrics.showMarginCall,
+    marginCallText: metrics.marginCallValue !== null && metrics.marginCallValue > 0
+      ? formatRiskTrigger(metrics.marginCallValue, input.longExposure)
+      : '',
+    showStopOut: metrics.showStopOut,
+    stopOutText: metrics.stopOutValue !== null && metrics.stopOutValue > 0
+      ? formatRiskTrigger(metrics.stopOutValue, input.longExposure)
+      : '',
+    marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN,
+    stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN,
+    maintenanceState: metrics.maintenanceState
   };
 }
 
