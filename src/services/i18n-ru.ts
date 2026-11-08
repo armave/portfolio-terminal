@@ -959,4 +959,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.': 'Старые зашифрованные записи не обрабатываются пакетным инструментом. Откройте каждый сохранённый анализ в Margin Intelligence, чтобы расшифровать и обновить его.',
   'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.': 'Нечитаемые записи сохранены. Проверьте их или восстановите, прежде чем принимать решение об их хранении или удалении.'
 
+  'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.': 'Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.',
+
 };

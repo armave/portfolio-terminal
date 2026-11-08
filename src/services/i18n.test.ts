@@ -143,6 +143,13 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes the cached digest encryption-upgrade warning', () => {
+    expect(translateText(
+      'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.',
+      'ru'
+    )).toBe('Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.');
+  });
+
   it('localizes the resumable Margin Intelligence encryption migration controls', () => {
     const migrationCopy = [
       'Continue migration',
