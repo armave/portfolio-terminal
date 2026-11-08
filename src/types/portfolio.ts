@@ -1,5 +1,5 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
-import type { BrokerDataQualityIssue, BrokerPosition, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
+import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 import type { PortfolioTransactionEvent } from './portfolioTransaction';
 import type { PortfolioCorporateActionEvent } from './corporateAction';
 import type { MarketHistoryCorrectionEvent } from './marketHistory';
@@ -315,16 +315,16 @@ export interface PortfolioState {
   brokerAccountInfo?: {
     loaded: boolean;
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
-    positions: BrokerPosition[];
-    /** Position rows retained as broker evidence but not applied to long-only ledgers. */
-    positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
+    positions: Array<{
+      ticker: string; name: string; quantity: number; currency: string;
+      marketPrice: number | null; marketValue: number | null; averagePrice: number | null;
+      profitClose: number | null; accountPositionId: number | null;
+    }>;
     /** Current when the latest API refresh succeeded; stale after a failed refresh. */
     status?: 'current' | 'stale' | 'unavailable';
     /** Provenance retained from the normalized broker adapter snapshot. */
     provider?: string;
     quality?: BrokerSnapshotQuality | 'unknown';
-    /** Provider quality before app-side position/execution integrity checks. */
-    snapshotQuality?: BrokerSnapshotQuality | 'unknown';
     source?: BrokerSnapshotSource;
     /** Provider market/account observation time; distinct from client receipt time. */
     observedAt?: number;

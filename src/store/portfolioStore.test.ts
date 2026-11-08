@@ -12,6 +12,7 @@ import type { Holding, PositionRecord } from '../types/portfolio';
 import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
+import type { PortfolioState } from '../types/portfolio';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -3126,6 +3127,20 @@ describe('portfolio transaction journal integration', () => {
 
   it('withholds split adjustment while broker position integrity is unresolved', () => {
     const store = new PortfolioStore();
+    const brokerSnapshot = {
+      loaded: true,
+      balances: [],
+      positions: [],
+      status: 'current',
+      quality: 'partial',
+      snapshotQuality: 'partial',
+      positionIntegrityIssues: [{
+        ticker: 'AAPL',
+        code: 'short_position_side_unverified',
+        source: 'account_snapshot'
+      }],
+      receivedAt: Date.now()
+    } as unknown as NonNullable<PortfolioState['brokerAccountInfo']>;
     store.importState({
       positions: {
         AAPL: {
@@ -3146,20 +3161,7 @@ describe('portfolio transaction journal integration', () => {
           }
         }
       },
-      brokerAccountInfo: {
-        loaded: true,
-        balances: [],
-        positions: [],
-        status: 'current',
-        quality: 'partial',
-        snapshotQuality: 'partial',
-        positionIntegrityIssues: [{
-          ticker: 'AAPL',
-          code: 'short_position_side_unverified',
-          source: 'account_snapshot'
-        }],
-        receivedAt: Date.now()
-      }
+      brokerAccountInfo: brokerSnapshot
     });
     const before = store.getState().positions.AAPL;
     const action = normalizeFinnhubStockSplits([
@@ -3176,6 +3178,15 @@ describe('portfolio transaction journal integration', () => {
 
   it('withholds split adjustment when the latest broker snapshot is stale', () => {
     const store = new PortfolioStore();
+    const brokerSnapshot = {
+      loaded: true,
+      balances: [],
+      positions: [],
+      status: 'stale',
+      quality: 'complete',
+      snapshotQuality: 'complete',
+      receivedAt: Date.now()
+    } as unknown as NonNullable<PortfolioState['brokerAccountInfo']>;
     store.importState({
       positions: {
         AAPL: {
@@ -3196,15 +3207,7 @@ describe('portfolio transaction journal integration', () => {
           }
         }
       },
-      brokerAccountInfo: {
-        loaded: true,
-        balances: [],
-        positions: [],
-        status: 'stale',
-        quality: 'complete',
-        snapshotQuality: 'complete',
-        receivedAt: Date.now()
-      }
+      brokerAccountInfo: brokerSnapshot
     });
     const before = store.getState().positions.AAPL;
     const action = normalizeFinnhubStockSplits([

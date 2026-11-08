@@ -2090,7 +2090,7 @@ export class PortfolioStore {
     const saved = this.update(state => {
       const currentActions = state.corporateActionEvents || [];
       const positionEntry = Object.entries(state.positions || {}).find(([key, position]) =>
-        key.trim().toUpperCase() === event.symbol || position.ticker.trim().toUpperCase() === event.symbol
+        normalizeActionTicker(key) === actionTicker || normalizeActionTicker(position.ticker) === actionTicker
       );
       const positionKey = positionEntry?.[0];
       const position = positionEntry?.[1];
@@ -2099,8 +2099,16 @@ export class PortfolioStore {
         ...(state.cashStocks || [])
       ].some(holding => typeof holding?.ticker === 'string' &&
         holding.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === event.symbol.replace(/\\.US$/i, ''));
-      const brokerSnapshot = state.brokerAccountInfo;
-      const actionTicker = event.symbol.replace(/\\.US$/i, '');
+      type BrokerSnapshotWithIntegrity = NonNullable<PortfolioState['brokerAccountInfo']> & {
+        positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
+        snapshotQuality?: string;
+      };
+      const brokerSnapshot = state.brokerAccountInfo as BrokerSnapshotWithIntegrity | undefined;
+      const normalizeActionTicker = (value: string): string => {
+        const token = value.trim().toUpperCase();
+        return token.endsWith('.US') ? token.slice(0, -3) : token;
+      };
+      const actionTicker = normalizeActionTicker(event.symbol);
       const brokerIntegrityIssue = brokerSnapshot?.positionIntegrityIssues?.some(issue =>
         issue.ticker.trim().toUpperCase().replace(/\\.US$/i, '') === actionTicker
       ) === true;
