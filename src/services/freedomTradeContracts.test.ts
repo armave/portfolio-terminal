@@ -77,6 +77,33 @@ describe('Freedom execution contract normalization', () => {
     expect(trades).toHaveLength(2);
     expect(trades[0].id).not.toBe(trades[1].id);
     expect(trades[0].id).toMatch(/^fallback-/);
+    // Numeric order action 2 means Buy on Margin, not a closing sell.
+    expect(trades[0].side).toBe('BUY');
+  });
+
+  it('uses the trade-history type code separately from order action codes', () => {
+    const [historySell] = normalizeFreedomTrades({ items: [{
+      instr_nm: 'AAPL.US',
+      type: '2',
+      q: 1,
+      p: 100
+    }] });
+    const [marginBuy] = normalizeFreedomTrades({ items: [{
+      instr_nm: 'MSFT.US',
+      operation: '2',
+      q: 1,
+      p: 100
+    }] });
+    const [shortSell] = normalizeFreedomTrades({ items: [{
+      instr_nm: 'NVDA.US',
+      oper: '4',
+      q: 1,
+      p: 100
+    }] });
+
+    expect(historySell.side).toBe('SELL');
+    expect(marginBuy.side).toBe('BUY');
+    expect(shortSell.side).toBe('SELL_SHORT');
   });
 
   it('accepts a successful empty trade collection', () => {
