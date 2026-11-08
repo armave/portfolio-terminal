@@ -941,7 +941,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Encryption migration failed. No source records were deleted.': 'Не удалось выполнить миграцию шифрования. Исходные записи не удалены.',
   'Ready': 'Готово',
   'Review required': 'Требуется проверка',
-  'Status': 'Статус',
   'Loading…': 'Загрузка…',
 
 };
