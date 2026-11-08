@@ -4,6 +4,7 @@ import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskMetrics,
   calculateMarginRiskSnapshot,
+  hasUnresolvedBrokerPositionIntegrity,
   getMarginRiskLevel
 } from './marginRisk';
 import type { BrokerAssumptions } from '../types/portfolio';
@@ -118,6 +119,61 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(result.status).toBe('unavailable');
     if (result.status !== 'unavailable') return;
     expect(result.reason).toContain('eligible collateral is unknown');
+  });
+
+  it('fails closed when broker position direction or execution history is unresolved', () => {
+    const result = calculateMarginRiskSnapshot(riskInput({ positionIntegrityComplete: false }));
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
+    expect(result.reason).toContain('position integrity needs review');
+  });
+
+  it('detects broker issue arrays, last-refresh issues, and signed/unknown positions', () => {
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      positions: [{ ticker: 'AAA', quantity: 10, direction: 'long', rawSide: null }],
+      quality: 'complete'
+    })).toBe(false);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      positionIntegrityIssues: [{ ticker: 'AAA', code: 'unmatched_sell_quantity' }]
+    })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      lastRefreshIssue: { positionIntegrityIssues: [{ ticker: 'AAA', code: 'short_execution_unsupported' }] }
+    })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      positions: [{ ticker: 'AAA', quantity: 10, direction: 'unknown', rawSide: 'S' }]
+    })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      positions: [{ ticker: 'AAA', quantity: -10, direction: 'unknown' }]
+    })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({
+      positions: [{ ticker: 'AAA', quantity: 10, direction: 'short', rawSide: 'short' }]
+    })).toBe(true);
+    expect(hasUnresolvedBrokerPositionIntegrity({ quality: 'partial', positions: [] })).toBe(true);
+  });
+
+  it('applies an explicit collateral haircut before calculating collateral coverage', () => {
+    const result = calculateMarginRiskSnapshot(riskInput({
+      marginDebt: 400,
+      eligibleCollateral: null,
+      eligibleCollateralSource: 'broker',
+      collateralBeforeHaircut: 1_000,
+      collateralHaircutPct: 0.2
+    }));
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.collateralBeforeHaircut).toBe(1_000);
+    expect(result.value.collateralHaircutPct).toBe(0.2);
+    expect(result.value.collateralHaircutAmount).toBe(200);
+    expect(result.value.eligibleCollateral).toBe(800);
+    expect(result.value.collateralCoverageRatio).toBe(2);
+  });
+
+  it('rejects conflicting gross collateral and haircut-adjusted eligible collateral', () => {
+    expect(calculateMarginRiskSnapshot(riskInput({
+      eligibleCollateral: 750,
+      collateralBeforeHaircut: 1_000,
+      collateralHaircutPct: 0.2
+    })).status).toBe('unavailable');
   });
 
   it('deducts margin debt exactly once from equity', () => {

@@ -32,9 +32,15 @@ export interface MarginRiskInput {
   cashBalance: number;
   /** Positive magnitude of margin debit. */
   marginDebt: number;
-  /** Broker-confirmed or explicitly assumed eligible collateral. Never inferred from total assets. */
+  /** Broker-confirmed or explicitly assumed eligible collateral after any haircut. */
   eligibleCollateral: number | null;
   eligibleCollateralSource: EligibleCollateralSource;
+  /** Gross collateral before haircut; supply together with collateralHaircutPct. */
+  collateralBeforeHaircut?: number | null;
+  /** Decimal haircut from 0 to 1. */
+  collateralHaircutPct?: number | null;
+  /** False when broker position direction/execution history is unresolved. */
+  positionIntegrityComplete?: boolean;
   assumptions: BrokerAssumptions;
   quality: MarginRiskDataQuality;
   freshness: MarginRiskQuoteFreshness;
@@ -64,6 +70,9 @@ export interface MarginRiskSnapshot {
   equityRatio: number | null;
   eligibleCollateral: number | null;
   eligibleCollateralSource: EligibleCollateralSource;
+  collateralBeforeHaircut: number | null;
+  collateralHaircutPct: number | null;
+  collateralHaircutAmount: number | null;
   collateralCoverageRatio: number | null;
   initialMarginRequirement: MarginRequirementValue;
   maintenanceMarginRequirement: MarginRequirementValue;
@@ -105,8 +114,38 @@ export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions
   return 'Healthy';
 }
 
-function unavailable(reason: string, warnings: string[] = []): MarginRiskCalculation {
-  return { status: 'unavailable', reason, warnings };
+
+
+/** Detect broker-position states that cannot safely be represented as long-only exposure. */
+export function hasUnresolvedBrokerPositionIntegrity(snapshot: unknown): boolean {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
+  const account = snapshot as Record<string, unknown>;
+  const hasIssues = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
+  const lastRefreshIssue = account.lastRefreshIssue && typeof account.lastRefreshIssue === 'object'
+    ? account.lastRefreshIssue as Record<string, unknown>
+    : null;
+  if (hasIssues(account.positionIntegrityIssues) ||
+      hasIssues(lastRefreshIssue?.positionIntegrityIssues) ||
+      account.quality === 'partial' || account.quality === 'empty' ||
+      lastRefreshIssue?.quality === 'partial' || lastRefreshIssue?.quality === 'empty') return true;
+  if (!Array.isArray(account.positions)) return false;
+  return account.positions.some(value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return true;
+    const position = value as Record<string, unknown>;
+    const direction = typeof position.direction === 'string' ? position.direction.trim().toLowerCase() : '';
+    const quantity = typeof position.quantity === 'number' ? position.quantity : Number(position.quantity);
+    const raw = position.raw && typeof position.raw === 'object'
+      ? position.raw as Record<string, unknown> : null;
+    const rawSide = position.rawSide ?? raw?.position_side ?? raw?.positionSide ??
+      raw?.pos_side ?? raw?.posSide ?? raw?.position_direction ?? raw?.positionDirection ??
+      raw?.side ?? raw?.direction;
+    const hasUnrecognizedSide = rawSide !== null && rawSide !== undefined &&
+      String(rawSide).trim() !== '' && String(rawSide).trim().toLowerCase() !== 'long';
+    // Current position reconciliation supports long holdings only. Explicit short
+    // positions stay blocked until signed exposure valuation is integrated.
+    return direction === 'short' || direction === 'unknown' ||
+      (Number.isFinite(quantity) && quantity < 0) || hasUnrecognizedSide;
+  });
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -141,14 +180,46 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
       input.cashBalance < 0 || input.marginDebt < 0) {
     return unavailable('Long exposure, short exposure, cash and margin debt must be finite non-negative amounts.');
   }
-  if (input.eligibleCollateral !== null &&
-      (!isFiniteNumber(input.eligibleCollateral) || input.eligibleCollateral < 0)) {
-    return unavailable('Eligible collateral must be a finite non-negative amount or explicitly unknown.');
+  if (input.positionIntegrityComplete !== undefined && typeof input.positionIntegrityComplete !== 'boolean') {
+    return unavailable('Position-integrity completeness must be explicitly true or false when supplied.');
+  }
+  if (input.positionIntegrityComplete === false) {
+    return unavailable('Broker position integrity needs review; long/short exposure is incomplete.');
   }
   if (!['broker', 'configured-assumption', 'unknown'].includes(input.eligibleCollateralSource)) {
     return unavailable('Eligible-collateral provenance is missing or invalid.');
   }
-  if ((input.marginDebt > 0 || input.shortExposure > 0) && input.eligibleCollateral === null) {
+  const collateralBeforeHaircut = input.collateralBeforeHaircut ?? null;
+  const collateralHaircutPct = input.collateralHaircutPct ?? null;
+  if ((collateralBeforeHaircut === null) !== (collateralHaircutPct === null)) {
+    return unavailable('Gross collateral and collateral haircut must be supplied together.');
+  }
+  if (collateralBeforeHaircut !== null &&
+      (!isFiniteNumber(collateralBeforeHaircut) || collateralBeforeHaircut < 0)) {
+    return unavailable('Collateral before haircut must be a finite non-negative amount.');
+  }
+  if (collateralHaircutPct !== null &&
+      (!isFiniteNumber(collateralHaircutPct) || collateralHaircutPct < 0 || collateralHaircutPct > 1)) {
+    return unavailable('Collateral haircut must be a decimal between zero and one.');
+  }
+  let eligibleCollateral = input.eligibleCollateral ?? null;
+  if (collateralBeforeHaircut !== null && collateralHaircutPct !== null) {
+    const derivedEligibleCollateral = collateralBeforeHaircut * (1 - collateralHaircutPct);
+    if (!isFiniteNumber(derivedEligibleCollateral)) {
+      return unavailable('Haircut-adjusted collateral exceeds the finite calculation range.');
+    }
+    if (eligibleCollateral === null) {
+      eligibleCollateral = derivedEligibleCollateral;
+    } else if (Math.abs(eligibleCollateral - derivedEligibleCollateral) >
+      Math.max(0.01, Math.abs(derivedEligibleCollateral) * 1e-6)) {
+      return unavailable('Reported eligible collateral does not reconcile to gross collateral after the supplied haircut.');
+    }
+  }
+  if (eligibleCollateral !== null &&
+      (!isFiniteNumber(eligibleCollateral) || eligibleCollateral < 0)) {
+    return unavailable('Eligible collateral must be a finite non-negative amount or explicitly unknown.');
+  }
+  if ((input.marginDebt > 0 || input.shortExposure > 0) && eligibleCollateral === null) {
     return unavailable('Margin risk is unavailable because eligible collateral is unknown.');
   }
   if (!validAssumptions(input.assumptions)) return unavailable('Broker margin assumptions are invalid.');
@@ -251,7 +322,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const hasMarginActivity = input.marginDebt > 0 || input.shortExposure > 0;
   if (hasMarginActivity && input.eligibleCollateralSource !== 'broker') {
     quality = 'provisional';
-    warnings.push('Eligible collateral is a configured assumption, not a broker-confirmed amount.');
+    warnings.push(input.eligibleCollateralSource === 'unknown'
+      ? 'Eligible collateral provenance is unknown; broker eligibility is not confirmed.'
+      : 'Eligible collateral is a configured assumption, not a broker-confirmed amount.');
   }
   if (hasMarginActivity && !requirements?.initialMarginRequired && requirements?.initialMarginRequired !== 0) {
     quality = 'provisional';
@@ -298,9 +371,12 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     currency, calculatedAt: input.calculatedAt,
     longExposure: input.longExposure, shortExposure: input.shortExposure, grossExposure, netExposure,
     cashBalance: input.cashBalance, marginDebt: input.marginDebt, assets, equity, equityRatio,
-    eligibleCollateral: input.eligibleCollateral, eligibleCollateralSource: input.eligibleCollateralSource,
-    collateralCoverageRatio: input.marginDebt > 0 && input.eligibleCollateral !== null
-      ? input.eligibleCollateral / input.marginDebt : null,
+    eligibleCollateral, eligibleCollateralSource: input.eligibleCollateralSource,
+    collateralBeforeHaircut, collateralHaircutPct,
+    collateralHaircutAmount: collateralBeforeHaircut !== null && eligibleCollateral !== null
+      ? collateralBeforeHaircut - eligibleCollateral : null,
+    collateralCoverageRatio: input.marginDebt > 0 && eligibleCollateral !== null
+      ? eligibleCollateral / input.marginDebt : null,
     initialMarginRequirement: {
       amount: requirements?.initialMarginRequired ?? null,
       source: requirements?.initialMarginRequired === null || requirements?.initialMarginRequired === undefined ? 'unavailable' : 'broker'
@@ -321,7 +397,8 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   };
   if (![assets, equity, grossExposure, netExposure, baseMaintenanceAmount, baseMaintenanceBuffer,
     totalMaintenanceRequirement, maintenanceBuffer, stopOutRequirement, stopOutBuffer,
-    annualInterestCost, dailyInterestCost, input.eligibleCollateral].every(value => value === null || isFiniteNumber(value))) {
+    annualInterestCost, dailyInterestCost, eligibleCollateral, collateralBeforeHaircut,
+    collateralHaircutPct, input.eligibleCollateral].every(value => value === null || isFiniteNumber(value))) {
     return unavailable('Margin-risk totals exceed the finite calculation range.');
   }
   return { status: quality === 'current' ? 'available' : 'provisional', quality, value, warnings };
