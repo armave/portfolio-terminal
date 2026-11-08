@@ -414,7 +414,9 @@ function acquiredAtForTranche(
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
   if (timestamp !== null && Number.isSafeInteger(timestamp) && timestamp > 0) {
-    const acquiredDate = new Date(timestamp);
+    const timestampMs = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+    if (!Number.isSafeInteger(timestampMs)) return null;
+    const acquiredDate = new Date(timestampMs);
     if (!Number.isFinite(acquiredDate.getTime())) return null;
     const isoDate = acquiredDate.toISOString().slice(0, 10);
     return dateOnly(isoDate) ? Date.parse(isoDate + 'T00:00:00.000Z') : null;

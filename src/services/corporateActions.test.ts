@@ -173,6 +173,15 @@ describe('split position adjustment', () => {
     expect(result.position.commBuy).toBe(12);
   });
 
+  it('normalizes a per-lot acquisition timestamp expressed in Unix seconds', () => {
+    const acquiredAtSeconds = Date.parse('2019-01-02T15:30:00.000Z') / 1000;
+    const position = {
+      ...preSplitPosition,
+      tranches: [{ qty: 10, price: 100, acquiredAt: acquiredAtSeconds }]
+    };
+    expect(adjustPositionForSplit(position, splitEvent())).toMatchObject({ status: 'applied' });
+  });
+
   it('requires review for short or unknown-direction positions', () => {
     expect(adjustPositionForSplit({
       ...preSplitPosition,

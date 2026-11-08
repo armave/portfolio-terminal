@@ -96,6 +96,8 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Dividend evidence saved': 'Сведения о дивиденде сохранены',
   'No adjustment needed': 'Корректировка не требуется',
   'Split data unavailable': 'Данные о дроблении недоступны',
+  'Split': 'Дробление',
+  'Reverse split': 'Обратное дробление',
   'Correct close': 'Исправить закрытие',
   'Save correction': 'Сохранить исправление',
   'Cancel': 'Отмена',
@@ -855,7 +857,7 @@ function MarketInsightsPanelView() {
                     <div class="min-w-0">
                       <div class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.effectiveDate)}</div>
                       <div class="text-[10px] text-slate-500">
-                        {isDividend ? marketEventLabel('Cash dividend') : event.kind === 'stock_split' ? 'Split' : 'Reverse split'}
+                        {isDividend ? marketEventLabel('Cash dividend') : marketEventLabel(event.kind === 'stock_split' ? 'Split' : 'Reverse split')}
                         {' · '}
                         {isDividend
                           ? (event.amountPerShare ?? '—') + (event.currency ? ' ' + event.currency : '')
