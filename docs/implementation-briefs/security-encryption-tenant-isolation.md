@@ -67,3 +67,35 @@ This work is gated by the PT-02 transaction/audit ownership contract (issue [#33
 - [ ] Complete authenticated live production and multi-device QA.
 
 **Disposition:** keep PR #396 Draft. The safe encryption-migration slice is implemented and deployed; the broader security/portfolio-isolation acceptance criteria are not complete.
+
+## Final security review update — 2026-11-08
+
+### Authenticated AES-GCM inventory verification
+
+A final review found that format validation alone could count a structurally valid but tampered AES-GCM v2 envelope as encrypted. The Worker inventory now derives the current workspace key and performs AES-GCM decryption before counting a v2 record as encrypted. The decrypted JSON must parse, match the outer lookup key, and satisfy the digest's minimum shape. A bad authentication tag, invalid decrypted payload, wrong/missing key, or malformed envelope is counted as unreadable and cannot make the inventory migration-ready.
+
+Direct-to-main Worker commits:
+- `99cbcf48743546e7c8945ebcd5bc7f03107d6a8d` — authenticate AES-GCM v2 records during inventory and migration batch classification.
+- `e3d97a2c7d295cc9dc5e9ab25eabc2c99ea7fdfc` — fix the deliberately tampered GCM-tag fixture.
+- `96022d69e1e57fdaafca924e598d264f2c68524d` — supply the workspace key to the paginated encrypted-record fixture.
+- `0367ea6d736635c39d4be52efe2f1e685eb7cff8` — deployment-triggering comment update.
+
+[Cloudflare Worker deployment run](https://github.com/armave/portfolio-terminal/actions/runs/42475508207) — **success** on exact `main` head `0367ea6d736635c39d4be52efe2f1e685eb7cff8`; **221 Worker/auth tests passed**; deployed version `0d1a4f20-32eb-47a2-95f8-3a4b109097bd`.
+
+### Latest client validation
+
+Validated client head: `e7b1a64f6a0d6db9aed5e5d393455ff1974cc92b`.
+
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/42475464263) — **success**; typecheck; 157 test files / 1,904 tests; production build and browser smoke; bundle budget; dead-code validation; full dependency audit (four low-severity advisories); production dependency audit (zero vulnerabilities).
+- [x] [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/42475464281) — **success** on the same head.
+- [x] Missing Russian translation for the cached digest encryption-upgrade warning added with a localization regression test.
+
+### Final release disposition
+
+The client migration tooling and authenticated Worker inventory are tested and deployed. The following gates remain open, so PR #396 remains Draft and must not be merged as a completed security/portfolio-isolation workstream:
+
+- Authenticated production administrator inventory/migration and manual disposition of actual residual records.
+- Evidence that supported deployed clients have stopped plaintext writes. Keep `MARGIN_DIGEST_ENCRYPTION_REQUIRED=false` until a staged enforcement rollout can be proven safe.
+- PT-02 transaction/audit ownership and PT-05 tenant storage/key lifecycle, recovery, migration/rollback, and cross-tenant API/storage/export/backup/live-stream isolation tests.
+- Integration order dependencies PR #393 (position integrity) and PR #397 (market-data/history) remain Draft.
+- No independent tenant financial routes or per-tenant key lifecycle are enabled; the current directory remains metadata-only.
