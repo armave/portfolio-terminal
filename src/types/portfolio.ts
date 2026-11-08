@@ -1,5 +1,5 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
-import type { BrokerDataQualityIssue, BrokerPosition, BrokerPositionIntegrityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
+import type { BrokerDataQualityIssue, BrokerPosition, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 import type { PortfolioTransactionEvent } from './portfolioTransaction';
 import type { PortfolioCorporateActionEvent } from './corporateAction';
 import type { MarketHistoryCorrectionEvent } from './marketHistory';
@@ -317,7 +317,7 @@ export interface PortfolioState {
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
     positions: BrokerPosition[];
     /** Position rows retained as broker evidence but not applied to long-only ledgers. */
-    positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
+    positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
     /** Current when the latest API refresh succeeded; stale after a failed refresh. */
     status?: 'current' | 'stale' | 'unavailable';
     /** Provenance retained from the normalized broker adapter snapshot. */
