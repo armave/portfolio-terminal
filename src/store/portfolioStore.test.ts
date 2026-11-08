@@ -11,6 +11,7 @@ import {
 import type { Holding, PositionRecord } from '../types/portfolio';
 import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
+import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -3149,6 +3150,30 @@ describe('portfolio transaction journal integration', () => {
     expect(store.getState().positions.AAPL).toEqual(before);
     expect(store.getState().corporateActionEvents).toHaveLength(1);
     expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('persists history correction before/after evidence and merges an older backup idempotently', () => {
+    const timestamp = 1_793_966_400_000;
+    const event = createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp,
+      provider: 'FINNHUB',
+      receivedAt: timestamp + 10,
+      recordedAt: timestamp + 20,
+      previous: { timestamp, price: 100 },
+      corrected: { timestamp, price: 101 },
+      reason: 'Verified closing-price correction.'
+    });
+    const store = new PortfolioStore();
+    expect(store.recordMarketHistoryCorrection(event)).toEqual(event);
+    const state = store.getState();
+    expect(state.marketHistoryCorrections).toEqual([event]);
+
+    const restored = new PortfolioStore();
+    expect(restored.getState().marketHistoryCorrections).toEqual([event]);
+    expect(restored.importState({ marketHistoryCorrections: [event] })).toBe(true);
+    expect(restored.getState().marketHistoryCorrections).toHaveLength(1);
   });
 
 });
