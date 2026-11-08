@@ -378,6 +378,24 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
 
+  const positionIntegrityIssues = state.brokerAccountInfo?.positionIntegrityIssues?.length
+    ? state.brokerAccountInfo.positionIntegrityIssues
+    : state.brokerAccountInfo?.lastRefreshIssue?.positionIntegrityIssues || [];
+  const positionIntegrityMessage = (code: string): string => {
+    const messages: Record<string, string> = {
+      negative_quantity_sign_unverified: 'Broker reported a negative position quantity; its long/short sign convention is unverified.',
+      short_position_side_unverified: 'Broker position side indicates a short position; short valuation is not yet supported.',
+      unrecognized_position_side: 'Broker position side is not recognized; the position was not applied.',
+      short_execution_unsupported: 'A sell-short execution was detected; short positions are not yet supported.',
+      short_cover_unsupported: 'A buy-to-cover execution was detected; short positions are not yet supported.',
+      unmatched_sell_quantity: 'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.',
+      unknown_execution_side: 'An execution has an unknown side; its position effect cannot be safely classified.',
+      invalid_execution: 'A broker execution has no verifiable instrument identifier.',
+      invalid_broker_position: 'A broker position has invalid quantity or instrument details.'
+    };
+    return translateText(messages[code] || 'Some broker position data could not be classified safely.', getAppLanguage());
+  };
+
   const { unpricedHoldingCount, pricedHoldingCount, stocksTotal } = useMemo(() => {
     let unpriced = 0;
     let priced = 0;
@@ -491,6 +509,20 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
             : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
           <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
+        </div>
+      )}
+
+      {isAdmin && positionIntegrityIssues.length > 0 && (
+        <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          <div class="font-semibold">{translateText('Some broker positions need review', getAppLanguage())}</div>
+          <p>{translateText('The app retained the last accepted tracked values and did not guess long/short direction from unverified broker data.', getAppLanguage())}</p>
+          <ul class="list-disc space-y-1 pl-5">
+            {positionIntegrityIssues.map((issue, index) => (
+              <li key={`${issue.ticker}-${issue.code}-${issue.source}-${index}`}>
+                <span class="font-semibold">{issue.ticker || translateText('Unknown instrument', getAppLanguage())}:</span> {positionIntegrityMessage(issue.code)}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

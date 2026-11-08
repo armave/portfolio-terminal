@@ -42,6 +42,62 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.warnings).toContain('The provider did not supply a verifiable observation timestamp.');
   });
 
+  it('preserves the documented TradeNet numeric type fields without interpreting them as position direction', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 5000 }],
+        pos: [{
+          i: 'SAMPLE.US',
+          t: 1,
+          k: 1,
+          s: 1000,
+          q: 4,
+          fv: 100,
+          curr: 'USD',
+          currval: 1,
+          name: 'Sample issuer',
+          open_bal: 1000,
+          mkt_price: 250,
+          vm: 0,
+          go: 100,
+          profit_close: 0,
+          acc_pos_id: 123456,
+          bal_price_a: 250,
+          price_a: 250,
+          base_currency: 'USD',
+          scheme_calc: 'T2',
+          instr_id: 10000012345
+        }]
+      } } }
+    }, { receivedAt: 1000, source: 'rest' });
+
+    expect(snapshot.quality).toBe('complete');
+    expect(snapshot.positionIntegrityIssues ?? []).toEqual([]);
+    expect(snapshot.data.positions[0]).toMatchObject({
+      ticker: 'SAMPLE.US',
+      quantity: 4,
+      direction: 'long',
+      rawQuantity: 4,
+      rawSide: null,
+      instrumentId: '10000012345',
+      averagePrice: 250,
+      raw: {
+        t: 1,
+        k: 1,
+        q: 4,
+        bal_price_a: 250,
+        open_bal: 1000,
+        scheme_calc: 'T2',
+        instr_id: 10000012345
+      }
+    });
+    // TradeNet documents t/k as security type/kind, not as long/short direction.
+    // They remain raw evidence and are never used to decide position direction.
+    expect(snapshot.data.positions[0].direction).not.toBe('short');
+  });
+
   it('marks a confirmed empty USD portfolio as empty without inventing a balance', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizePortfolio({
@@ -88,6 +144,11 @@ describe('Freedom TradeNet broker adapter', () => {
       'TradeNet USD balance row without a valid amount was excluded.',
       'TradeNet USD position row without a valid quantity was excluded.'
     ]));
+    expect(snapshot.positionIntegrityIssues).toContainEqual(expect.objectContaining({
+      ticker: 'MSFT',
+      code: 'invalid_broker_position',
+      raw: { curr: 'USD', i: 'MSFT.US', q: true, mkt_price: 400 }
+    }));
   });
 
   it('treats rows with unknown currency as partial rather than silently excluding them as non-USD', () => {
@@ -103,6 +164,53 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.quality).toBe('partial');
     expect(snapshot.data.balances).toEqual([]);
     expect(snapshot.warnings).toContain('TradeNet balance row without a currency was excluded.');
+  });
+
+  it('marks negative quantities as partial and preserves raw position evidence without guessing short direction', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: '-500' }],
+        pos: [{ curr: 'USD', i: 'GOOGL.US', q: '-2', mkt_price: 300, position_side: 'S', instrument_id: 'security-42' }]
+      } } }
+    }, { receivedAt: 900 });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.data.positions[0]).toMatchObject({
+      ticker: 'GOOGL.US',
+      quantity: -2,
+      direction: 'unknown',
+      rawQuantity: -2,
+      rawSide: 'S',
+      instrumentId: 'security-42',
+      raw: { position_side: 'S', instrument_id: 'security-42' }
+    });
+    expect(snapshot.positionIntegrityIssues).toEqual([
+      expect.objectContaining({
+        ticker: 'GOOGL',
+        code: 'negative_quantity_sign_unverified',
+        rawQuantity: -2,
+        rawSide: 'S',
+        instrumentId: 'security-42'
+      })
+    ]);
+  });
+
+  it('marks explicit short-side rows partial even when the provider quantity is positive', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 100 }],
+        pos: [{ curr: 'USD', i: 'TSLA.US', q: 3, mkt_price: 250, position_side: 'short' }]
+      } } }
+    });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.positionIntegrityIssues).toEqual([
+      expect.objectContaining({ ticker: 'TSLA', code: 'short_position_side_unverified' })
+    ]);
   });
 
   it('keeps genuine zero USD balances and quantities complete', () => {
@@ -162,7 +270,7 @@ describe('Freedom TradeNet broker adapter', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizeExecutions({
       data: { trades: { trade: [{
-        trade_id: 701, instr_nm: 'AAPL.US', operation: '1',
+        trade_id: 701, instr_nm: 'AAPL.US', type: '1',
         q: 0, quantity: '5', p: '12.50', date: '2026-10-31T10:20:00Z',
         v: '62.50', curr_c: 'USD', commiss: '0.25'
       }] } }

@@ -2,6 +2,8 @@ import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, CashStoc
 import { calculateCommission, type CommissionConfig } from './portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { getPositiveMarketPrice } from './portfolioValuation';
+import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
+import type { BrokerPositionIntegrityIssue } from '../types/broker';
 
 /**
  * Parse one edited side of a cash/margin split. Empty or invalid input keeps the
@@ -57,7 +59,16 @@ export function normalizeActiveTrancheMix(
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
   balances: Array<{ currency: string; amount: number }>;
-  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null }>;
+  positions: Array<{
+    ticker: string;
+    quantity: number;
+    marketPrice: number | null;
+    direction?: 'long' | 'short' | 'unknown';
+    rawQuantity?: number;
+    rawSide?: string | number | null;
+    instrumentId?: string | null;
+    raw?: Record<string, unknown>;
+  }>;
 }
 
 interface FreedomQuantityMismatch {
@@ -75,11 +86,20 @@ export interface FreedomReconciliationResult {
   positions: Record<string, FreedomReconciliationPosition>;
   cashStocks: CashStockHolding[];
   mismatches: FreedomQuantityMismatch[];
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
 export interface FreedomPortfolioClassificationResult {
   positions: Record<string, PositionRecord>;
   cashStocks: CashStockHolding[];
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
+}
+
+/** A balance from a snapshot is not safe to apply while any position or execution is unsupported. */
+export function canApplyFreedomBrokerBalance(
+  positionIntegrityIssues?: readonly BrokerPositionIntegrityIssue[]
+): boolean {
+  return !positionIntegrityIssues || positionIntegrityIssues.length === 0;
 }
 
 function tickerKey(value: unknown): string {
@@ -264,13 +284,20 @@ function operationTimestamp(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function tradeSide(value: unknown): 'buy' | 'sell' | null {
+function tradeSide(value: unknown, numericKind: 'text' | 'order' | 'history' = 'text'): 'buy' | 'sell' | null {
   const side = String(value ?? '').trim().toLowerCase();
-  if (side === '1' || /\b(buy|bought|purchase)\b/.test(side)) return 'buy';
-  if (side === '2' || /\b(sell|sold|sale)\b/.test(side)) return 'sell';
+  if (/\b(buy|bought|purchase)\b/.test(side)) return 'buy';
+  if (/\b(sell|sold|sale)\b/.test(side)) return 'sell';
+  if (numericKind === 'order') {
+    if (side === '1' || side === '2') return 'buy';
+    if (side === '3') return 'sell';
+  }
+  if (numericKind === 'history') {
+    if (side === '1') return 'buy';
+    if (side === '2') return 'sell';
+  }
   return null;
 }
-
 export type FreedomExecutedTradeLike = Omit<Partial<FreedomExecutedTrade>, 'commission'> & {
   /** Legacy broker aliases remain accepted for older saved/imported rows. */
   operation?: string | number | null;
@@ -344,9 +371,16 @@ export function getActiveTranchesFromTrades(
   const ordered = trades.map((trade, rowIndex) => {
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const side = [
-      trade?.side, trade?.operation, trade?.type,
-      raw.side, raw.operation, raw.oper, raw.buy_sell, raw.type
-    ].map(tradeSide).find((value): value is 'buy' | 'sell' => value !== null) || null;
+      [trade?.side, 'text'],
+      [trade?.operation, 'text'],
+      [trade?.type, 'history'],
+      [raw.side, 'text'],
+      [raw.operation, 'text'],
+      [raw.oper, 'text'],
+      [raw.buy_sell, 'text'],
+      [raw.type, 'history'],
+    ].map(([value, numericKind]) => tradeSide(value, numericKind as 'text' | 'order' | 'history'))
+      .find((value): value is 'buy' | 'sell' => value !== null) || null;
     return {
       trade,
       rowIndex,
@@ -470,6 +504,10 @@ export function classifyFreedomPortfolio(
   commissionRules?: CommissionConfig,
   mixedAllocations: Record<string, ActiveTrancheMix> = {}
 ): FreedomPortfolioClassificationResult {
+  const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(snapshot, executedTrades);
+  const unsupportedTickers = new Set(positionIntegrityIssues
+    .map(issue => tickerKey(issue.ticker))
+    .filter(Boolean));
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, CashStockHolding>();
   const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
@@ -485,12 +523,18 @@ export function classifyFreedomPortfolio(
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !previousCash.has(ticker)) previousCash.set(ticker, holding);
+    if (ticker && unsupportedTickers.has(ticker)) cashByTicker.set(ticker, holding);
+  }
+  for (const [key, position] of Object.entries(sourcePositions || {})) {
+    const ticker = tickerKey(position?.ticker || key);
+    if (ticker && unsupportedTickers.has(ticker)) positions[key] = position;
   }
 
   const activeTranches = Array.isArray(executedTrades)
     ? getActiveTranchesFromTrades(executedTrades, snapshot, commissionRules)
     : getActiveBrokerTranches(snapshot);
   for (const tranche of activeTranches) {
+    if (unsupportedTickers.has(tickerKey(tranche.ticker))) continue;
     const type = classifications[tranche.id] || classifications[tranche.ticker] || 'cash';
     const allocation = type === 'mix'
       ? normalizeActiveTrancheMix(tranche.quantity, mixedAllocations[tranche.id] || mixedAllocations[tranche.ticker])
@@ -608,6 +652,7 @@ export function classifyFreedomPortfolio(
     positions[ticker] = preserveLocalQuoteMetadata(classifiedPosition, preservedQuote?.record);
   }
   const cashStocks = [...cashByTicker.values()].map((holding) => {
+    if (unsupportedTickers.has(tickerKey(holding.ticker))) return holding;
     const cost = cashCostByTicker.get(tickerKey(holding.ticker));
     const quantity = Number(holding.shares) || 0;
     const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
@@ -619,7 +664,7 @@ export function classifyFreedomPortfolio(
       averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
     };
   });
-  return { positions, cashStocks };
+  return { positions, cashStocks, ...(positionIntegrityIssues.length ? { positionIntegrityIssues } : {}) };
 }
 
 
@@ -635,6 +680,10 @@ export function reconcileFreedomPortfolio(
   sourceCashHoldings: CashStockHolding[],
   receivedAt = Date.now()
 ): FreedomReconciliationResult {
+  const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(snapshot);
+  const unsupportedTickers = new Set(positionIntegrityIssues
+    .map(issue => tickerKey(issue.ticker))
+    .filter(Boolean));
   const usdBalance = snapshot.balances.find(
     item => String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
@@ -655,7 +704,7 @@ export function reconcileFreedomPortfolio(
   for (const item of snapshot.positions) {
     const ticker = tickerKey(item?.ticker);
     const quantity = Number(item?.quantity);
-    if (!ticker || !Number.isFinite(quantity) || quantity < 0) continue;
+    if (!ticker || unsupportedTickers.has(ticker) || !Number.isFinite(quantity) || quantity < 0) continue;
     const previous = brokerByTicker.get(ticker);
     const price = positiveFinite(item?.marketPrice);
     brokerByTicker.set(ticker, {
@@ -691,6 +740,7 @@ export function reconcileFreedomPortfolio(
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !priorCashByTicker.has(ticker)) priorCashByTicker.set(ticker, holding);
+    if (ticker && unsupportedTickers.has(ticker)) cashStocks.push(holding);
   }
 
   for (const [ticker, brokerPosition] of brokerByTicker) {
@@ -715,7 +765,7 @@ export function reconcileFreedomPortfolio(
   }
 
   for (const [ticker, marginQuantity] of marginQuantities) {
-    if (!brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
+    if (!unsupportedTickers.has(ticker) && !brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
       mismatches.push({ ticker, marginQuantity, freedomQuantity: 0 });
       const priorCash = priorCashByTicker.get(ticker);
       if (priorCash && !cashStocks.some(holding => tickerKey(holding.ticker) === ticker)) {
@@ -728,6 +778,7 @@ export function reconcileFreedomPortfolio(
     ...(usdBalance ? { brokerUsdBalance: { amount: Number(usdBalance.amount) } } : {}),
     positions,
     cashStocks,
-    mismatches
+    mismatches,
+    ...(positionIntegrityIssues.length ? { positionIntegrityIssues } : {})
   };
 }
