@@ -3519,6 +3519,7 @@ table tbody tr:hover {
 
 .cloud-sync-indicator__trigger {
   display: inline-flex;
+  font: inherit;
   align-items: center;
   gap: 0.4rem;
   min-height: 1.9rem;
