@@ -253,6 +253,28 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
     if (quantity === null) {
       throw new Error('TradeNet USD position row is missing a valid quantity.');
     }
+    const rawSideValue = readFirst(row, [
+      'position_side', 'positionSide', 'pos_side', 'posSide',
+      'position_direction', 'positionDirection'
+    ]);
+    const rawSide = typeof rawSideValue === 'string' || typeof rawSideValue === 'number'
+      ? rawSideValue
+      : null;
+    const normalizedSide = typeof rawSide === 'string' ? rawSide.trim().toLowerCase() : '';
+    // Positive quantities retain the application's established long-only
+    // compatibility behavior. Negative quantities and any supplied but
+    // unrecognized side are explicitly unknown; numeric side codes are not guessed.
+    const direction: BrokerPosition['direction'] = normalizedSide === 'long'
+      ? 'long'
+      : normalizedSide === 'short'
+        ? 'short'
+        : rawSideValue === undefined
+          ? quantity >= 0 ? 'long' : 'unknown'
+          : 'unknown';
+    const instrumentIdValue = readFirst(row, [
+      'instrument_id', 'instrumentId', 'instr_id', 'security_id', 'isin', 'figi'
+    ]);
+    const instrumentId = textOr(instrumentIdValue, '') || null;
     return {
       ticker: textOr(readFirst(row, ['i', 'base_contract_code'])),
       name: textOr(readFirst(row, ['name', 'name2', 'i']), 'Unknown instrument'),
@@ -262,7 +284,12 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       marketValue: numberOrNull(row.market_value),
       averagePrice: numberOrNull(row.bal_price_a),
       profitClose: numberOrNull(row.profit_close),
-      accountPositionId: numberOrNull(row.acc_pos_id)
+      accountPositionId: numberOrNull(row.acc_pos_id),
+      direction,
+      rawQuantity: quantity,
+      rawSide,
+      instrumentId,
+      raw: row
     };
   });
 
