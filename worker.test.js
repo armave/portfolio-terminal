@@ -951,7 +951,10 @@ describe('sanitizeFreedomPositionProbe', () => {
           unknownBrokerField: { marker: 'preserve', user: 'private-user', authToken: 'private-token' },
           accountId: 'private-account',
           owner_login: 'private-login',
-          session_token: 'private-session'
+          session_token: 'private-session',
+          taxId: 'private-tax-id',
+          contactPhone: 'private-phone',
+          personalIdentifier: 'private-personal-id'
         }]
       } } }
     });
@@ -986,6 +989,9 @@ describe('sanitizeFreedomPositionProbe', () => {
     expect(JSON.stringify(result)).not.toContain('private-token');
     expect(JSON.stringify(result)).not.toContain('private-user');
     expect(JSON.stringify(result)).not.toContain('private-account-number');
+    expect(JSON.stringify(result)).not.toContain('private-tax-id');
+    expect(JSON.stringify(result)).not.toContain('private-phone');
+    expect(JSON.stringify(result)).not.toContain('private-personal-id');
   });
 
   it('reports an absent position collection without inventing rows', () => {
