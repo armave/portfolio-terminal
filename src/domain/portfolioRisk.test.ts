@@ -122,6 +122,17 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(result.value.portfolio.status).toBe('available');
     if (result.value.portfolio.status === 'unavailable') return;
     expect(result.value.portfolio.value.margin.status).toBe('unavailable');
+
+    const missingBrokerId = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], brokerId: null }],
+      capital: [{ ...base.capital[0], debt: 300 }]
+    });
+    expect(missingBrokerId.status).toBe('available');
+    if (missingBrokerId.status === 'unavailable') return;
+    expect(missingBrokerId.value.marginByAccount.status).toBe('unavailable');
+    if (missingBrokerId.value.marginByAccount.status !== 'unavailable') return;
+    expect(missingBrokerId.value.marginByAccount.reason).toContain('missing broker or account identity');
   });
 
   it('keeps margin risk separated by broker account and carries stale quality into the nested result', () => {
