@@ -86,13 +86,18 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     ]));
   });
 
-  it('ignores closed-ticker executions when evaluating the current open position set', () => {
-    expect(collectFreedomPositionIntegrityIssues({
+  it('retains short and cover evidence for tickers that are no longer open', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'AAPL', quantity: 3, direction: 'long' }]
     }, [
       { ticker: 'OLD', side: 'SELL_SHORT', quantity: 2 },
       { ticker: 'OLD', side: 'BUY_TO_COVER', quantity: 2 }
-    ])).toEqual([]);
+    ]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'OLD', code: 'short_execution_unsupported' }),
+      expect.objectContaining({ ticker: 'OLD', code: 'short_cover_unsupported' })
+    ]));
   });
 
   it('uses field-specific numeric TradeNet codes and detects short order actions', () => {
