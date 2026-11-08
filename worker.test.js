@@ -2320,6 +2320,106 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     });
   });
 
+  it("resumes digest migration across bounded storage pages", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    for (const ticker of ["AAPL", "MSFT"]) {
+      await store.ctx.storage.put("marginDigestRecord:position:" + ticker, {
+        payload: JSON.stringify({
+          key: "position:" + ticker,
+          analysis: "private analysis",
+          articles: [],
+          syncedAt: "2026-11-06T00:00:00.000Z"
+        }),
+        revision: 1
+      });
+    }
+
+    const first = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1 })
+    }));
+    const firstResult = await first.json();
+    expect(firstResult).toMatchObject({ scanned: 1, migrated: 1, done: false });
+    expect(firstResult.nextCursor).toMatch(/^marginDigestRecord:/);
+
+    const second = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1, cursor: firstResult.nextCursor })
+    }));
+    await expect(second.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 1, unreadable: 0, conflicts: 0, done: true, nextCursor: null
+    });
+
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(inventory.json()).resolves.toMatchObject({
+      totalRecords: 2, plaintextRecords: 0, encryptedV2Records: 2, migrationReady: true
+    });
+  });
+
+  it("counts all digest records when the inventory spans multiple storage pages", async () => {
+    const store = makeDurableObject();
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    const encryptedPayload = "aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA";
+    for (let index = 0; index < 105; index += 1) {
+      const key = "position:T" + String(index).padStart(3, "0");
+      await store.ctx.storage.put("marginDigestRecord:" + key, {
+        payload: JSON.stringify({ key, encryptedPayload }),
+        revision: 1
+      });
+    }
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(response.json()).resolves.toMatchObject({
+      totalRecords: 105,
+      plaintextRecords: 0,
+      encryptedV2Records: 105,
+      legacyEncryptedRecords: 0,
+      unreadableRecords: 0,
+      migrationReady: true
+    });
+  });
+
+  it("does not overwrite a digest changed while an encryption batch is running", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    const storageKey = "marginDigestRecord:position:GOOGL";
+    const original = {
+      key: "position:GOOGL",
+      analysis: "original private analysis",
+      articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    const concurrent = {
+      key: "position:GOOGL",
+      analysis: "newer analysis from another device",
+      articles: [],
+      syncedAt: "2026-11-07T00:00:00.000Z"
+    };
+    await store.ctx.storage.put(storageKey, { payload: JSON.stringify(original), revision: 7 });
+    const transaction = store.ctx.storage.transaction;
+    store.ctx.storage.transaction = async (callback) => transaction(async (tx) => {
+      await tx.put(storageKey, { payload: JSON.stringify(concurrent), revision: 8 });
+      return callback(tx);
+    });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1 })
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 0, conflicts: 1, done: true
+    });
+    await expect(store.ctx.storage.get(storageKey)).resolves.toEqual({
+      payload: JSON.stringify(concurrent), revision: 8
+    });
+  });
+
   it("rejects guests from digest migration inventory and write operations", async () => {
     const store = makeDurableObject();
     store.resolveSession = async () => ({ user: { id: "guest-1", role: "guest" } });
