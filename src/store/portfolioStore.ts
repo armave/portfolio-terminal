@@ -28,6 +28,14 @@ import {
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import {
+  adjustPositionForSplit,
+  mergePortfolioCorporateActionEvents,
+  toPortfolioCorporateActionEvent,
+  type CorporateActionEvent,
+  isPortfolioCorporateActionEventList,
+  type PortfolioCorporateActionEvent
+} from '../services/corporateActions';
+import {
   loadSavedState,
   saveState,
   loadBrokerRules,
@@ -91,6 +99,7 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     'cashStocks',
     'guestTrancheLedger',
     'transactionEvents',
+    'corporateActionEvents',
     'performanceValuations'
   ] as const;
   for (const field of arrayFields) {
@@ -125,6 +134,10 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
 
   if (Object.prototype.hasOwnProperty.call(value, 'transactionEvents') &&
       value.transactionEvents !== undefined && !isPortfolioTransactionEventList(value.transactionEvents)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'corporateActionEvents') &&
+      value.corporateActionEvents !== undefined && !isPortfolioCorporateActionEventList(value.corporateActionEvents)) {
     return false;
   }
 
@@ -397,6 +410,10 @@ export class PortfolioStore {
           ? freezePortfolioTransactionEventList(raw.transactionEvents)
           : Object.freeze([...raw.transactionEvents]) as unknown as PortfolioTransactionEvent[])
         : freezePortfolioTransactionEventList([]),
+      corporateActionEvents: Array.isArray(raw.corporateActionEvents) &&
+        isPortfolioCorporateActionEventList(raw.corporateActionEvents)
+        ? raw.corporateActionEvents
+        : [],
       performanceValuations: Array.isArray(raw.performanceValuations)
         ? raw.performanceValuations.filter(isPerformanceValuationSnapshot).slice(-1095)
         : [],
@@ -630,7 +647,8 @@ export class PortfolioStore {
   ): boolean {
     // The append-only journal can only be changed by audited financial
     // commands or by the validated import/merge path below.
-    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents')) return false;
+    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
+        Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents')) return false;
     return this.update((state) => ({
       ...state,
       ...partial
@@ -656,13 +674,25 @@ export class PortfolioStore {
         return false;
       }
     }
+    let mergedCorporateActions = this.state.corporateActionEvents || [];
+    if (Array.isArray(newState.corporateActionEvents)) {
+      try {
+        mergedCorporateActions = mergePortfolioCorporateActionEvents(
+          mergedCorporateActions,
+          newState.corporateActionEvents
+        );
+      } catch {
+        return false;
+      }
+    }
 
     return this.update((state) => ({
       ...state,
       ...newState,
       // Imports append/merge history; an older backup may never erase events
       // already committed on this device.
-      transactionEvents: mergedEvents
+      transactionEvents: mergedEvents,
+      corporateActionEvents: mergedCorporateActions
     }));
   }
 
@@ -1957,6 +1987,83 @@ export class PortfolioStore {
         }
       };
     });
+  }
+
+  /**
+   * Apply a sourced split only after an explicit user action. Position quantity
+   * and lot prices are adjusted together; total acquisition cost is conserved.
+   * Dividends and mergers remain evidence-only until settlement/basis allocation
+   * is modeled. Every attempt is persisted, including review-required outcomes.
+   */
+  public applyCorporateActionSplit(
+    event: CorporateActionEvent,
+    recordedAt = Date.now()
+  ): PortfolioCorporateActionEvent | null {
+    if (event.kind !== 'stock_split' && event.kind !== 'reverse_split') return null;
+    if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
+    const existing = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
+    if (existing?.status === 'applied' || existing?.status === 'not_applicable') return existing;
+
+    let committed: PortfolioCorporateActionEvent | null = null;
+    const saved = this.update(state => {
+      const currentActions = state.corporateActionEvents || [];
+      const positionEntry = Object.entries(state.positions || {}).find(([key, position]) =>
+        key.trim().toUpperCase() === event.symbol || position.ticker.trim().toUpperCase() === event.symbol
+      );
+      const positionKey = positionEntry?.[0];
+      const position = positionEntry?.[1];
+      const adjusted = position ? adjustPositionForSplit(position, event) : {
+        status: 'review_required' as const,
+        reason: 'No matching open portfolio position was found for this corporate action.'
+      };
+      const status = adjusted.status;
+      const portfolioEvent = toPortfolioCorporateActionEvent(
+        event,
+        status,
+        recordedAt,
+        status === 'applied' ? 'Verified split applied to all eligible open lots; aggregate acquisition cost was preserved.' : adjusted.reason
+      );
+      let mergedActions: PortfolioCorporateActionEvent[];
+      try {
+        mergedActions = mergePortfolioCorporateActionEvents(currentActions, [portfolioEvent]);
+      } catch {
+        return state;
+      }
+      committed = mergedActions.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
+      if (adjusted.status !== 'applied' || !positionKey) {
+        return { ...state, corporateActionEvents: mergedActions };
+      }
+
+      const transactionDraft: PortfolioTransactionDraft = {
+        type: 'corporate-action',
+        effectiveAt: adjusted.position.lastTradeAt && adjusted.position.lastTradeAt < Date.parse(event.effectiveDate + 'T00:00:00Z')
+          ? Date.parse(event.effectiveDate + 'T00:00:00Z')
+          : Date.parse(event.effectiveDate + 'T00:00:00Z'),
+        ticker: event.symbol,
+        quantity: adjusted.sharesBefore,
+        positionQuantityDelta: adjusted.sharesAfter - adjusted.sharesBefore,
+        externalReferenceId: event.sourceId,
+        note: 'Applied verified ' + event.kind + ' (' + event.fromFactor + ':' + event.toFactor +
+          '). Open-lot total acquisition cost remained ' + adjusted.costBasisAfter.toFixed(8) +
+          '; no cash or realized P&L was posted.'
+      };
+      const transaction = createPortfolioTransactionEvent(transactionDraft, {
+        actor: { type: 'user' },
+        source: 'corporate-action',
+        idempotencyKey: 'corporate-action:' + event.sourceId,
+        requestFingerprint: JSON.stringify([event.sourceId, event.fromFactor, event.toFactor]),
+        recordedAt
+      }, recordedAt);
+      const appended = appendPortfolioTransactionEvent(state.transactionEvents || [], transaction);
+      if (!appended.appended && !appended.duplicate) return state;
+      return {
+        ...state,
+        positions: { ...state.positions, [positionKey]: adjusted.position },
+        transactionEvents: appended.events,
+        corporateActionEvents: mergedActions
+      };
+    });
+    return saved ? committed : null;
   }
 
   /** Pending confirmation UI state is transient and is never restored from a portfolio snapshot. */

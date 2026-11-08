@@ -1,6 +1,7 @@
 import type { FreedomExecutedTrade } from './freedomTrade';
 import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 import type { PortfolioTransactionEvent } from './portfolioTransaction';
+import type { PortfolioCorporateActionEvent } from './corporateAction';
 
 export interface Tranche {
   id: string;
@@ -348,6 +349,8 @@ export interface PortfolioState {
   brokerExecutedTrades?: FreedomExecutedTrade[];
   /** Append-only app-owned mutation journal; positions remain canonical active state. */
   transactionEvents?: PortfolioTransactionEvent[];
+  /** Sourced corporate-action events are retained for restore and deterministic replay. */
+  corporateActionEvents?: PortfolioCorporateActionEvent[];
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
