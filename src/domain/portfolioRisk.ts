@@ -141,7 +141,7 @@ interface StressFxShockDriver {
 }
 export interface StressScenarioResult {
   currency: string; calculatedAt: number; totalPnlImpact: number; currentEquity: number; stressedEquity: number;
-  drivers: StressShockDriver[]; fxDrivers?: StressFxShockDriver[];
+  drivers: StressShockDriver[]; fxDrivers: StressFxShockDriver[];
   assumptions: string[]; disclaimer: string;
 }
 
