@@ -198,13 +198,15 @@ function buildMarginReviewContext(
   const equityPct = valuation.accountBalanceAvailable && grossAssets > 0
     ? valuation.equity / grossAssets * 100
     : null;
-  const debt = valuation.marginDebt;
   const assumptions = snapshot.brokerAssumptions;
   const brokerSnapshotStatus = snapshot.brokerAccountInfo?.status ||
     (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded');
   const riskHoldings = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)];
-  const quotesProvisional = riskHoldings
-    .some(position => getQuoteFreshness(position, now, refreshIntervalMs) !== 'fresh');
+  const riskQuoteStatuses = riskHoldings.map(position => getQuoteFreshness(position, now, refreshIntervalMs));
+  const quotesProvisional = riskQuoteStatuses.some(status => status !== 'fresh');
+  const riskFreshness = riskQuoteStatuses.includes('stale') ? 'stale'
+    : riskQuoteStatuses.includes('delayed') ? 'delayed'
+      : quotesProvisional ? 'unknown' : 'fresh';
   const valuationReliability = !valuation.accountBalanceAvailable || valuation.unpricedHoldings > 0
     ? 'incomplete'
     : brokerSnapshotStatus !== 'current' || quotesProvisional ? 'provisional' : 'current';
@@ -229,7 +231,7 @@ function buildMarginReviewContext(
       eligibleCollateralSource: 'configured-assumption',
       assumptions,
       quality: valuationReliability,
-      freshness: quotesProvisional ? 'unknown' : 'fresh',
+      freshness: riskFreshness,
       observedAt: riskObservedAt,
       calculatedAt: now
     })

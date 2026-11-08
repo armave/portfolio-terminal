@@ -216,10 +216,10 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   const stopOutBufferPctOfLongExposure = isLongOnly && input.longExposure > 0 && stopOutValue !== null
     ? ((input.longExposure - stopOutValue) / input.longExposure) * 100
     : null;
-  const maintenanceBufferPct = maintenanceBuffer !== null && grossExposure > 0
-    ? maintenanceBuffer / grossExposure * 100
+  const maintenanceBufferPct = maintenanceBuffer !== null && assets > 0
+    ? maintenanceBuffer / assets * 100
     : null;
-  const stopOutBufferPct = grossExposure > 0 ? stopOutBuffer / grossExposure * 100 : null;
+  const stopOutBufferPct = assets > 0 ? stopOutBuffer / assets * 100 : null;
 
   const warnings: string[] = [];
   let quality: 'current' | 'provisional' = input.quality;
@@ -242,6 +242,9 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   if (concentrationAmount === null) {
     quality = 'provisional';
     warnings.push('Concentration add-on is unavailable; the complete maintenance buffer cannot be calculated.');
+  } else if (requirements?.concentrationAddOnSource === 'configured-assumption') {
+    quality = 'provisional';
+    warnings.push('Concentration add-on uses a configured assumption, not a broker-reported amount.');
   }
   if (requirements?.observedAt === null && requirements !== null) {
     quality = 'provisional';
@@ -253,7 +256,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   if (quality === 'provisional' && riskLevel === 'Healthy' && input.marginDebt > 0) riskLevel = 'Elevated';
 
   const maintenanceState: MarginRiskSnapshot['maintenanceState'] = maintenanceBuffer === null
-    ? 'unknown'
+    ? (baseMaintenanceBuffer <= 0 ? 'maintenance-breach' : 'unknown')
     : maintenanceBuffer <= 0 ? 'maintenance-breach' : 'above-maintenance';
   const stopOutState: MarginRiskSnapshot['stopOutState'] = stopOutBuffer <= 0
     ? 'stop-out-breach' : 'above-stop-out';
@@ -283,7 +286,8 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     disclaimer: 'This is an estimate from the supplied snapshot and configured assumptions, not a broker maintenance calculation, buying-power result, liquidation quote, or forecast.'
   };
   if (![assets, equity, grossExposure, netExposure, baseMaintenanceAmount, baseMaintenanceBuffer,
-    stopOutRequirement, stopOutBuffer, annualInterestCost, dailyInterestCost].every(isFiniteNumber)) {
+    totalMaintenanceRequirement, maintenanceBuffer, stopOutRequirement, stopOutBuffer,
+    annualInterestCost, dailyInterestCost, input.eligibleCollateral].every(value => value === null || isFiniteNumber(value))) {
     return unavailable('Margin-risk totals exceed the finite calculation range.');
   }
   return { status: quality === 'current' ? 'available' : 'provisional', quality, value, warnings };

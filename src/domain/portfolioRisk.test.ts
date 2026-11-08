@@ -225,12 +225,15 @@ describe('broker margin estimates', () => {
     const snapshot = makeSnapshot();
     const result = calculateBrokerMarginRisk({
       brokerId: 'freedom', debt: 300, positions: snapshot.positions, capital: snapshot.capital,
-      assumptions: DEFAULT_BROKER_ASSUMPTIONS
+      assumptions: DEFAULT_BROKER_ASSUMPTIONS, requirements: snapshot.brokerRequirements![0]
     });
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     expect(result.value.annualInterestCost).toBeCloseTo(45);
     expect(result.value.maintenanceEquityRatio).toBe(0.1);
+    expect(result.value.estimatedAssets).toBe(1_450);
+    expect(result.value.estimatedEquity).toBe(1_150);
+    expect(result.value.maintenanceState).toBe('above-maintenance');
     expect(result.value.disclaimer).toContain('not a broker maintenance calculation');
   });
   it('rejects invalid assumptions, unknown collateral and mismatched account debt', () => {
@@ -294,6 +297,17 @@ describe('deterministic stress scenarios', () => {
     expect(JSON.stringify(snapshot)).toBe(before);
     expect(result.value.disclaimer).toContain('not a probability estimate');
   });
+  it('supports deterministic 10%, 20%, and 30% adverse market shocks', () => {
+    const snapshot = makeSnapshot();
+    for (const shock of [-0.1, -0.2, -0.3]) {
+      const result = calculateRiskStressScenario(snapshot, [{ ticker: 'AAA', priceShock: shock }]);
+      expect(result.status).toBe('available');
+      if (result.status === 'unavailable') continue;
+      expect(result.value.totalPnlImpact).toBeCloseTo(1_000 * shock);
+      expect(result.value.stressedEquity).toBeCloseTo(1_150 + 1_000 * shock);
+    }
+  });
+
   it('aggregates duplicate ticker holdings across accounts into one shock driver', () => {
     const snapshot = makeSnapshot({
       positions: [

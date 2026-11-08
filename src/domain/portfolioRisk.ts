@@ -83,6 +83,11 @@ export interface BrokerMarginRisk extends MarginRiskSnapshot {
   brokerId: string;
   accountId: string;
   broker: string;
+  /** Backward-compatible aliases for consumers of the earlier estimate contract. */
+  estimatedAssets: number;
+  estimatedEquity: number;
+  maintenanceEquityRatio: number;
+  stopOutRatio: number;
 }
 interface RiskPortfolioMetrics {
   currency: string; calculatedAt: number; longExposure: number; shortExposure: number;
@@ -396,7 +401,11 @@ function buildMarginRisk(
       ...calculation.value,
       brokerId: group.brokerId,
       accountId: group.accountId,
-      broker: rules.broker
+      broker: rules.broker,
+      estimatedAssets: calculation.value.assets,
+      estimatedEquity: calculation.value.equity,
+      maintenanceEquityRatio: rules.maintenanceEquityRatio,
+      stopOutRatio: rules.stopOutRatio
     });
   }
   return available(results, resultQuality, [...new Set(allWarnings)]);
@@ -514,8 +523,8 @@ export function calculateBrokerMarginRisk(input: {
   const observedAt = earliestObservedAt([...positions.map(item => item.observedAt), ...capital.map(item => item.observedAt)]);
   if (input.requirements && (
     input.requirements.brokerId !== input.brokerId ||
-    (input.requirements.accountId && input.requirements.accountId !== accountId) ||
-    input.requirements.currency.trim().toUpperCase() !== currency
+    (input.requirements.accountId?.trim() || 'Unclassified') !== accountId ||
+    normalizeCurrency(input.requirements.currency) !== currency
   )) {
     return unavailable('Broker margin requirements do not match the selected broker account and currency.');
   }
@@ -536,7 +545,14 @@ export function calculateBrokerMarginRisk(input: {
   });
   if (calculation.status === 'unavailable') return calculation;
   const value: BrokerMarginRisk = {
-    ...calculation.value, brokerId: input.brokerId, accountId, broker: input.assumptions.broker
+    ...calculation.value,
+    brokerId: input.brokerId,
+    accountId,
+    broker: input.assumptions.broker,
+    estimatedAssets: calculation.value.assets,
+    estimatedEquity: calculation.value.equity,
+    maintenanceEquityRatio: input.assumptions.maintenanceEquityRatio,
+    stopOutRatio: input.assumptions.stopOutRatio
   };
   return available(value, calculation.quality, calculation.warnings);
 }
