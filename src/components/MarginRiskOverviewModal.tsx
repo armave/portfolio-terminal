@@ -1,3 +1,4 @@
+import { createPortal } from 'preact/compat';
 import { useRef } from 'preact/hooks';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { getAppLanguage, translateText } from '../services/i18n';
@@ -57,7 +58,7 @@ export function MarginRiskOverviewModal({
       ? 'Provisional'
       : 'Current';
 
-  return (
+  return createPortal(
     <div
       class="margin-risk-overview-backdrop"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
@@ -107,6 +108,7 @@ export function MarginRiskOverviewModal({
           </p>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
