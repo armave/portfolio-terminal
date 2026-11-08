@@ -117,7 +117,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% {translateText('maintenance', language)}</span><span>{translateText('{value}% reference', language).replace('{value}', referencePercent)}</span><span>{translateText('100% assets', language)}</span></div>
       <div class="margin-risk-buffer-summary">
         <div class="margin-risk-buffer-stat">
-          <span class="margin-risk-label">{translateText(risk.maintenanceState === 'unknown' ? 'BASE MAINTENANCE BUFFER' : 'MARGIN-CALL BUFFER', language)}</span>
+          <span class="margin-risk-label">{translateText('MARGIN-CALL BUFFER', language)}</span>
           <strong>{Number.isFinite(risk.marginCallBufferPct)
             ? risk.marginCallBufferPct.toFixed(1) + '%'
             : Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'}</strong>
