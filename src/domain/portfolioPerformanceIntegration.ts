@@ -81,7 +81,17 @@ function mapExternalCashFlows(
 
     if (unsupported.has(event.type)) {
       const amount = Math.abs(Number(event.externalCashFlowAmount ?? event.grossAmount ?? event.cashDelta ?? 0));
-      if (amount > 0 || ['portfolio.reset', 'history.correction', 'portfolio.reconciliation', 'position.adjustment', 'margin.adjustment', 'correction'].includes(event.type)) {
+      // Tracking-only cash-holding changes alter the valuation buckets without
+      // recording a modeled cash settlement. This includes additions with no
+      // entry price, so amount-based checks alone would silently turn them into
+      // investment gains/losses when the holding later receives a quote.
+      const hasUnmodeledCashHoldingQuantityChange =
+        (event.type === 'cash-holding.buy' || event.type === 'cash-holding.adjustment') &&
+        typeof event.cashHoldingQuantityDelta === 'number' &&
+        Number.isFinite(event.cashHoldingQuantityDelta) &&
+        event.cashHoldingQuantityDelta !== 0;
+      if (amount > 0 || hasUnmodeledCashHoldingQuantityChange ||
+          ['portfolio.reset', 'history.correction', 'portfolio.reconciliation', 'position.adjustment', 'margin.adjustment', 'correction'].includes(event.type)) {
         return { reason: 'The transaction history contains an adjustment or correction that cannot yet be classified as an external investment flow.', warnings: [] };
       }
       continue;
