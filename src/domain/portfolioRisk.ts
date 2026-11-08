@@ -322,7 +322,10 @@ function buildMarginRisk(
   }
   const requirementMap = new Map<string, RiskBrokerMarginRequirements>();
   for (const item of requirements) {
-    const key = accountRiskKey(item.brokerId, item.accountId?.trim() || 'Unclassified', item.currency.trim().toUpperCase());
+    const currency = normalizeCurrency(item?.currency);
+    const brokerId = typeof item?.brokerId === 'string' ? item.brokerId.trim() : '';
+    if (!currency || !brokerId) return unavailable('Broker margin requirements need a valid broker id and currency.');
+    const key = accountRiskKey(brokerId, item.accountId?.trim() || 'Unclassified', currency);
     if (requirementMap.has(key)) return unavailable('Duplicate broker margin requirements were supplied for one account/currency.');
     requirementMap.set(key, item);
   }
@@ -362,6 +365,7 @@ function buildMarginRisk(
         initialMarginRequired: brokerRequirements.initialMarginRequired,
         maintenanceMarginRequired: brokerRequirements.maintenanceMarginRequired,
         concentrationAddOn: brokerRequirements.concentrationAddOn,
+        concentrationAddOnSource: brokerRequirements.concentrationAddOnSource,
         observedAt: brokerRequirements.observedAt
       } : null
     });
@@ -443,7 +447,7 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
   return available({
     calculatedAt, quality: portfolioQuality, currencyExposure, portfolio, concentrationByCurrency,
     marginByAccount, historyByTicker, warnings
-  }, quality, warnings);
+  }, portfolioQuality, warnings);
 }
 
 /** Calculates a broker-specific estimate from the supplied broker assumptions. */
