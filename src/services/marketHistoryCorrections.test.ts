@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyMarketHistoryCorrectionsToResult,
   createMarketHistoryCorrectionEvent,
   isMarketHistoryCorrectionEvent,
   mergeMarketHistoryCorrectionEvents,
@@ -66,6 +67,78 @@ describe('market history correction journal', () => {
     expect(result.status).toBe('review_required');
     expect(result.points).toEqual([{ timestamp, price: 95 }]);
     expect(result.issues[0]).toContain('before-value');
+  });
+
+  it('treats provider values at an intermediate or final revision as idempotently replayed', () => {
+    const first = correction(original, corrected, timestamp + 100);
+    const finalPoint = { ...corrected, price: 102 };
+    const second = correction(corrected, finalPoint, timestamp + 200);
+    const journal = mergeMarketHistoryCorrectionEvents([], [first, second]);
+
+    expect(replayMarketHistoryCorrections([corrected], journal)).toMatchObject({
+      status: 'complete', appliedCount: 1, points: [finalPoint]
+    });
+    expect(replayMarketHistoryCorrections([finalPoint], journal)).toMatchObject({
+      status: 'complete', appliedCount: 0, points: [finalPoint]
+    });
+  });
+
+  it('does not partially apply a multi-candle correction journal when one candle conflicts', () => {
+    const timestampTwo = timestamp + 86_400_000;
+    const secondOriginal = { timestamp: timestampTwo, price: 80 };
+    const firstCorrection = correction(original, corrected, timestamp + 100);
+    const conflictingCorrection = createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp: timestampTwo,
+      provider: 'USER',
+      receivedAt: timestamp + 10,
+      recordedAt: timestamp + 200,
+      previous: { timestamp: timestampTwo, price: 90 },
+      corrected: { timestamp: timestampTwo, price: 91 },
+      reason: 'Conflicting correction baseline.'
+    });
+    const source = [original, secondOriginal];
+    const result = replayMarketHistoryCorrections(source, [firstCorrection, conflictingCorrection]);
+    expect(result).toMatchObject({ status: 'review_required', appliedCount: 0, points: source });
+  });
+
+  it('applies matching correction chains to history results and withholds conflicting corrections', () => {
+    const first = correction(original, corrected, timestamp + 100);
+    const finalPoint = { ...corrected, price: 102 };
+    const second = correction(corrected, finalPoint, timestamp + 200);
+    const source = {
+      points: [original],
+      observedAt: timestamp,
+      freshness: 'fresh' as const,
+      session: 'REGULAR' as const,
+      delayClass: 'unknown' as const,
+      quality: 'complete' as const,
+      issues: [],
+      provider: 'FINNHUB',
+      receivedAt: timestamp + 20,
+      interval: 'D'
+    };
+    const applied = applyMarketHistoryCorrectionsToResult(source, 'AAPL', '1D', [first, second]);
+    expect(applied).toMatchObject({
+      status: 'applied',
+      correctionCount: 2,
+      appliedCount: 2,
+      result: {
+        points: [finalPoint],
+        quality: 'partial',
+        correctionStatus: 'applied'
+      }
+    });
+
+    const conflict = applyMarketHistoryCorrectionsToResult({
+      ...source, points: [{ timestamp, price: 95 }]
+    }, 'AAPL', '1D', [first]);
+    expect(conflict).toMatchObject({
+      status: 'review_required',
+      appliedCount: 0,
+      result: { points: [{ timestamp, price: 95 }], correctionStatus: 'review_required', quality: 'partial' }
+    });
   });
 
   it('supports an explicit candle removal and rejects reused source IDs with different evidence', () => {
