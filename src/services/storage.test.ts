@@ -656,8 +656,6 @@ describe('storage service', () => {
       expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
     });
   });
-});
-
 
   describe('large history localStorage isolation', () => {
     it('stores large closed history in IndexedDB and keeps the localStorage sidecar absent', async () => {
@@ -684,3 +682,4 @@ describe('storage service', () => {
       expect(loadSavedHistory()).toEqual(history);
     });
   });
+});
