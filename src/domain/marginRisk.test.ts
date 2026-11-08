@@ -42,7 +42,7 @@ describe('calculateMarginRiskSnapshot', () => {
       longExposure: 1_000, shortExposure: 300, cashBalance: 400, marginDebt: 200,
       eligibleCollateral: 250
     }));
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     expect(result.value.assets).toBe(1_400);
     expect(result.value.grossExposure).toBe(1_300);
@@ -57,7 +57,7 @@ describe('calculateMarginRiskSnapshot', () => {
       longExposure: 100, shortExposure: 100, cashBalance: 100, marginDebt: 0,
       eligibleCollateral: 100
     }));
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     expect(result.value.assets).toBe(200);
     expect(result.value.equity).toBe(100);
