@@ -9,7 +9,7 @@ describe('Freedom execution contract normalization', () => {
           trade: [{
             trade_id: 701,
             instr_nm: 'AAPL.US',
-            type: '1',
+            operation: '1',
             q: 0,
             quantity: '5',
             p: '12.50',
@@ -77,33 +77,6 @@ describe('Freedom execution contract normalization', () => {
     expect(trades).toHaveLength(2);
     expect(trades[0].id).not.toBe(trades[1].id);
     expect(trades[0].id).toMatch(/^fallback-/);
-    // An undocumented numeric operation alias is not guessed.
-    expect(trades[0].side).toBe('Unknown');
-  });
-
-  it('uses the trade-history type code separately from order action codes', () => {
-    const [historySell] = normalizeFreedomTrades({ items: [{
-      instr_nm: 'AAPL.US',
-      type: '2',
-      q: 1,
-      p: 100
-    }] });
-    const [marginBuy] = normalizeFreedomTrades({ items: [{
-      instr_nm: 'MSFT.US',
-      oper: '2',
-      q: 1,
-      p: 100
-    }] });
-    const [shortSell] = normalizeFreedomTrades({ items: [{
-      instr_nm: 'NVDA.US',
-      oper: '4',
-      q: 1,
-      p: 100
-    }] });
-
-    expect(historySell.side).toBe('SELL');
-    expect(marginBuy.side).toBe('BUY');
-    expect(shortSell.side).toBe('SELL_SHORT');
   });
 
   it('accepts a successful empty trade collection', () => {
@@ -151,6 +124,7 @@ describe('Freedom execution contract normalization', () => {
     expect(fills).toHaveLength(2);
     expect(fills[0]).toMatchObject({
       id: '13446624',
+      orderId: '8757875',
       ticker: 'GOOGL.US',
       side: 'SELL',
       quantity: 2,
@@ -161,7 +135,32 @@ describe('Freedom execution contract normalization', () => {
       profit: 12.5
     });
     expect(fills[0].raw).toMatchObject({ order_id: 8757875, id: 13446624 });
-    expect(fills[1]).toMatchObject({ id: '13446625', side: 'BUY', quantity: 1, price: 350 });
+    expect(fills[1]).toMatchObject({ id: '13446625', orderId: '8757876', side: 'BUY', quantity: 1, price: 350 });
+  });
+
+  it('preserves the TradeNet buy-on-margin order operation when normalizing a fill', () => {
+    const [buyOnMargin] = normalizeFreedomOrderFills({
+      trades: { trade: [{
+        id: 9002,
+        order_id: 901,
+        instr: 'GOOGL.US',
+        side: 'Unknown',
+        operation: '2',
+        curr: 'USD',
+        date: '2026-11-03T09:43:00',
+        p: 350,
+        q: 1,
+        v: 350
+      }] }
+    });
+
+    expect(buyOnMargin).toMatchObject({
+      id: '9002',
+      orderId: '901',
+      side: 'BUY',
+      quantity: 1,
+      price: 350
+    });
   });
 
   it('keeps sell-short fills distinct from closing sells', () => {
@@ -180,32 +179,31 @@ describe('Freedom execution contract normalization', () => {
     expect(fill.side).toBe('SELL_SHORT');
   });
 
-  it('preserves a buy-to-cover execution as a distinct action', () => {
-    const [trade] = normalizeFreedomTrades({
-      data: { trades: { trade: [{
-        id: 'cover-1',
-        instr_nm: 'GOOGL.US',
-        operation: 'BUY_TO_COVER',
-        q: 2,
-        p: 290,
-        date: '2026-11-03T10:00:00Z'
-      }] } }
-    });
-
-    expect(trade).toMatchObject({
-      id: 'cover-1',
-      ticker: 'GOOGL.US',
-      side: 'BUY_TO_COVER',
-      quantity: 2,
-      price: 290
-    });
-  });
-
   it('returns no executions for a valid order snapshot without fill rows', () => {
     expect(normalizeFreedomOrderFills({
       orders: { order: [{ order_id: 'open-1', instr: 'GOOGL.US' }] },
       trades: { trade: [] }
     })).toEqual([]);
+  });
+
+
+  it('uses field-specific numeric TradeNet codes and does not guess undocumented operation aliases', () => {
+    const [historySell] = normalizeFreedomTrades({ items: [{ instr_nm: 'AAPL.US', type: '2', q: 1, p: 100 }] });
+    const [marginBuy] = normalizeFreedomTrades({ items: [{ instr_nm: 'MSFT.US', oper: '2', q: 1, p: 100 }] });
+    const [shortSell] = normalizeFreedomTrades({ items: [{ instr_nm: 'NVDA.US', oper: '4', q: 1, p: 100 }] });
+    const [unknownOperation] = normalizeFreedomTrades({ items: [{ instr_nm: 'META.US', operation: '2', q: 1, p: 100 }] });
+    expect(historySell.side).toBe('SELL');
+    expect(marginBuy.side).toBe('BUY');
+    expect(shortSell.side).toBe('SELL_SHORT');
+    expect(unknownOperation.side).toBe('Unknown');
+  });
+
+  it('preserves a buy-to-cover execution as a distinct action', () => {
+    const [trade] = normalizeFreedomTrades({ data: { trades: { trade: [{
+      id: 'cover-1', instr_nm: 'GOOGL.US', operation: 'BUY_TO_COVER', q: 2, p: 290,
+      date: '2026-11-03T10:00:00Z'
+    }] } } });
+    expect(trade).toMatchObject({ id: 'cover-1', ticker: 'GOOGL.US', side: 'BUY_TO_COVER', quantity: 2, price: 290 });
   });
 
 });

@@ -63,8 +63,10 @@ export interface PortfolioTransactionEvent {
   fees?: number;
   /** Signed amount imported from an external broker cashflow; not a local cash posting. */
   externalCashFlowAmount?: number;
-  /** Stable provider-side identifier for imported executions/cashflows. */
+  /** Stable provider-side identifier for this imported execution/fill or cashflow. */
   externalReferenceId?: string;
+  /** Parent broker order identifier; kept distinct from the execution/fill reference. */
+  externalOrderReferenceId?: string;
   /** Signed change to the canonical active-position quantity. */
   positionQuantityDelta?: number;
   /** Signed change to cash-cushion holding quantity. */
@@ -96,6 +98,7 @@ export interface PortfolioTransactionDraft {
   fees?: number;
   externalCashFlowAmount?: number;
   externalReferenceId?: string;
+  externalOrderReferenceId?: string;
   positionQuantityDelta?: number;
   cashHoldingQuantityDelta?: number;
   financingCost?: number;

@@ -35,6 +35,7 @@ export interface BrokerPositionIntegrityIssue {
   raw?: Record<string, unknown>;
 }
 
+
 export interface BrokerAdapterContext {
   receivedAt?: number;
   /** Set only when the provider supplies a verifiable source observation timestamp. */
@@ -84,9 +85,7 @@ export interface BrokerPosition {
   averagePrice: number | null;
   profitClose: number | null;
   accountPositionId: number | null;
-  /** Explicit current-position direction only when the provider supplies a recognizable side. */
   direction?: 'long' | 'short' | 'unknown';
-  /** Original provider quantity and side are retained for audit; no sign is inferred from them. */
   rawQuantity?: number;
   rawSide?: string | number | null;
   instrumentId?: string | null;
@@ -112,7 +111,10 @@ export interface BrokerActiveOrder {
 }
 
 export interface BrokerExecution {
+  /** Stable provider fill/execution identifier; distinct from the parent order ID. */
   id: string;
+  /** Parent order identity when the provider supplies it. */
+  orderId?: string;
   ticker: string;
   side: string;
   quantity: number | null;
