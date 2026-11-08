@@ -81,6 +81,9 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     const executedAt = row.executedAt ?? row.date ?? row.time ?? row.datetime ?? row.exec_time ?? null;
     return {
       id: String(row.id ?? row.trade_id ?? row.tradeId ?? stableFallbackId(row)),
+      ...(row.order_id ?? row.orderId ?? row.parentOrderId
+        ? { orderId: String(row.order_id ?? row.orderId ?? row.parentOrderId).trim() }
+        : {}),
       ticker: String(row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? ''),
       // Ignore unrecognized operation placeholders and continue to side/type aliases.
       side: normalizedSide(row.operation, row.side, row.buy_sell, row.type) || 'Unknown',

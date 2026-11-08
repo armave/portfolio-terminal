@@ -134,12 +134,60 @@ describe('reconcileBrokerActivity', () => {
 
   it('aggregates multiple broker partial fills against one app transaction', () => {
     const report = reconcile([
-      execution({ id: 'fill-1', quantity: 0.75, price: 100, commission: 0.4 }),
-      execution({ id: 'fill-2', quantity: 1.25, price: 100, commission: 0.6 })
+      execution({ id: 'fill-1', orderId: 'order-1', quantity: 0.75, price: 100, commission: 0.4 }),
+      execution({ id: 'fill-2', orderId: 'order-1', quantity: 1.25, price: 100, commission: 0.6 })
     ], [appEvent('trade.buy')]);
     expect(report.matchedExecutionCount).toBe(2);
     expect(report.findings).toEqual([]);
     expect(report.status).toBe('matched');
+  });
+
+  it('does not aggregate same-symbol fills from different broker orders', () => {
+    const report = reconcile([
+      execution({ id: 'fill-order-a', orderId: 'order-A', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-order-b', orderId: 'order-B', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-a'] }),
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-b'] }),
+      expect.objectContaining({ type: 'execution_missing_in_broker', appEventIds: ['app-trade.buy'] }),
+      expect.objectContaining({ type: 'execution_match_ambiguous', confidence: 'provisional' })
+    ]));
+  });
+
+  it('leaves partial-fill matching unresolved when parent order identity is missing', () => {
+    const report = reconcile([
+      execution({ id: 'fill-unlinked-1', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-unlinked-2', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app' }),
+      expect.objectContaining({ type: 'execution_missing_in_broker' }),
+      expect.objectContaining({ type: 'execution_match_ambiguous' })
+    ]));
+  });
+
+  it('reports multiple matching broker order groups as ambiguous instead of selecting one', () => {
+    const report = reconcile([
+      execution({ id: 'order-a-fill-1', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-a-fill-2', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-1', orderId: 'order-B', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-2', orderId: 'order-B', quantity: 1, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_match_ambiguous',
+      appEventIds: ['app-trade.buy'],
+      brokerReferences: expect.arrayContaining(['order-a-fill-1', 'order-a-fill-2', 'order-b-fill-1', 'order-b-fill-2']),
+      confidence: 'provisional'
+    }));
   });
 
   it('detects duplicate broker execution identifiers', () => {
