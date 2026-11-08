@@ -1372,8 +1372,9 @@ export function sanitizeFreedomPositionProbe(response) {
 
     const privateTokens = new Set([
         "account", "acct", "login", "email", "user", "customer", "client",
-        "owner", "person", "phone", "address", "sid", "token", "secret",
-        "password", "auth", "session", "ip", "credential"
+        "owner", "person", "phone", "address", "contact", "passport", "tax",
+        "national", "identity", "personal", "birth", "dob", "sid", "token",
+        "secret", "password", "auth", "session", "ip", "credential"
     ]);
     const isPrivateField = (key) => {
         const normalized = String(key).replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
