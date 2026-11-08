@@ -46,6 +46,14 @@ Determine which APIs provide stable account/order/execution IDs, fill sequence, 
 - Dividend, financing interest, deposit/withdrawal and multi-currency movement.
 - App restart/backup/restore and known-balance reconciliation.
 
+## Implemented revision and source contract
+
+- The TradeNet history fixture retains `id`/trade ID as the execution reference and `order_id` as the parent order reference. The authenticated order stream maps order operations 1 and 2 to BUY, 3 to SELL, and 4 to SELL_SHORT before the generic history normalizer.
+- Audit revision chains are append-only and source-scoped. A new revision links to the previous revision head; replaying the same facts is a no-op, including a correction that later reverts to an earlier value.
+- Restore order is resolved from `relatedEventId`, not device timestamps. When concurrent devices create multiple correction heads from the same parent, the resolver returns every competing head and a later broker import does not select or extend either branch automatically.
+- Parent-order aggregation requires a verified common order ID. Missing or conflicting identity remains provisional rather than being inferred from ticker/time/quantity alone.
+- Imported broker evidence does not post cash, debt or position deltas to the canonical portfolio. The journal stores signed account movement separately from positive fee/financing-cost magnitudes.
+
 ## Acceptance checklist
 
 - [x] Provider identity contract is documented by the normalized TradeNet history fixture and order-stream contract: fill ID is distinct from parent `order_id`. Provider account identity and revision markers are not exposed by the verified fixtures and remain a documented limitation.
