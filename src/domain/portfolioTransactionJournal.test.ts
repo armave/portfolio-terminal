@@ -412,9 +412,13 @@ describe('broker history audit events', () => {
     const cashflows = [
       { id: 'div-1', date: '2026-11-01', type: 'Dividend', amount: 12, currency: 'USD' },
       { id: 'fee-1', date: '2026-11-02', type: 'Commission fee', amount: -2, currency: 'USD' },
+      { id: 'fee-positive-magnitude', date: '2026-11-02', type: 'Commission fee', amount: 2, currency: 'USD' },
       { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
+      { id: 'margin-positive-magnitude', date: '2026-11-03', type: 'Margin Fee', amount: 3, currency: 'USD' },
       { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
+      { id: 'deposit-negative-magnitude', date: '2026-11-04', type: 'Deposit', amount: -500, currency: 'USD' },
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
+      { id: 'withdraw-positive-magnitude', date: '2026-11-05', type: 'Withdrawal', amount: 20, currency: 'USD' },
       { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' },
       { id: 'split-1', date: '2026-11-05', type: 'Stock Split', amount: 0, currency: 'USD' }
     ];
@@ -422,9 +426,14 @@ describe('broker history audit events', () => {
     expect(events.map((event) => event.type)).toEqual([
       'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'corporate-action'
     ]);
+    expect(events.find(event => event.externalReferenceId === 'fee-positive-magnitude')?.externalCashFlowAmount).toBe(-2);
+    expect(events.find(event => event.externalReferenceId === 'margin-positive-magnitude')?.externalCashFlowAmount).toBe(-3);
+    expect(events.find(event => event.externalReferenceId === 'deposit-negative-magnitude')?.externalCashFlowAmount).toBe(500);
+    expect(events.find(event => event.externalReferenceId === 'withdraw-positive-magnitude')?.externalCashFlowAmount).toBe(-20);
+    expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
     expect(events[3].externalCashFlowAmount).toBe(500);
     expect(events[2].financingCost).toBe(3);
-    expect(events[6].externalReferenceId).toBe('split-1');
+    expect(events.find(event => event.externalReferenceId === 'split-1')?.type).toBe('corporate-action');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
     const replay = replayPortfolioTransactionJournal(events);

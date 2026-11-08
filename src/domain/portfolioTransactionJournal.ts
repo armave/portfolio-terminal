@@ -533,11 +533,17 @@ export function appendBrokerHistoryAuditEvents(
                 ? 'cash.withdrawal'
                 : text.includes('deposit') || text.includes('funding') || text.includes('credit')
                   ? 'cash.deposit' : 'cash.adjustment';
+    const isRefund = /refund|rebate|reversal|reversed/.test(text);
+    const signedAmount = type === 'cash.deposit'
+      ? Math.abs(amount)
+      : ['cash.withdrawal', 'fee', 'margin.interest'].includes(type)
+        ? isRefund ? Math.abs(amount) : -Math.abs(amount)
+        : amount;
     const date = raw.date;
     const currency = validCurrency(raw.currency);
-    const fallback = hash(JSON.stringify([date, type, amount, currency, raw.description]));
+    const fallback = hash(JSON.stringify([date, type, signedAmount, currency, raw.description]));
     const ref = sourceId(raw.id, fallback);
-    const facts = JSON.stringify([type, date, amount, currency, raw.description]);
+    const facts = JSON.stringify([type, date, signedAmount, currency, raw.description]);
     const fingerprint = hash(facts);
     const cashflowSource = `${source}-cashflow`;
     const sourceKey = `${cashflowSource}:${ref}`;
@@ -548,9 +554,9 @@ export function appendBrokerHistoryAuditEvents(
     const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
       type, effectiveAt: timestamp(date, recordedAt), currency, externalReferenceId: ref,
-      externalCashFlowAmount: amount, grossAmount: Math.abs(amount),
-      ...(type === 'fee' ? { fees: Math.abs(amount) } : {}),
-      ...(type === 'margin.interest' ? { financingCost: Math.abs(amount) } : {}),
+      externalCashFlowAmount: signedAmount, grossAmount: Math.abs(signedAmount),
+      ...(type === 'fee' ? { fees: Math.abs(signedAmount) } : {}),
+      ...(type === 'margin.interest' ? { financingCost: Math.abs(signedAmount) } : {}),
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source: `${source}-cashflow`,
