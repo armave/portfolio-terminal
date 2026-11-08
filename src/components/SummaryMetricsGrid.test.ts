@@ -221,6 +221,7 @@ describe('canonical margin risk integration', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("risk.status === 'unavailable'");
     expect(source).toContain("risk.maintenanceState === 'unknown'");
+    expect(source).toContain("risk.stopOutState === 'unknown'");
     expect(source).toContain("risk.status === 'provisional'");
   });
 });
