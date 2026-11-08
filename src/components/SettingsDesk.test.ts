@@ -151,7 +151,7 @@ describe('temporary TradeNet position probe in Settings', () => {
     expect(source).toContain('positionProbeTextAreaRef');
     expect(source).toContain('readOnly');
     expect(source).toContain('positionProbeJson');
-    expect(source).toContain('No changes are made');
+    expect(source).toContain('does not change holdings or place orders');
     expect(source).toContain('Admin only · temporary');
   });
 
