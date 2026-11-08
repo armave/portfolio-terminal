@@ -44,7 +44,7 @@ export interface MarginRiskInput {
   brokerRequirements?: BrokerReportedMarginRequirements | null;
 }
 
-export interface MarginRequirementValue {
+interface MarginRequirementValue {
   amount: number | null;
   source: 'broker' | 'configured-assumption' | 'unavailable';
 }
