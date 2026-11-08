@@ -230,7 +230,7 @@ Recommended integration order into the plan branch:
 2. PR #3 establishes transaction identity/reconciliation and can proceed independently; reconcile its event model with the position contract before final merge.
 3. PR #2 integrates the signed exposure adapter against PR #1 and verifies the shared risk model.
 4. PR #5 integrates corporate-action/history events against the position and transaction contracts.
-5. PR #4's client-side branch merges when ready. Its Worker/server companion commits deploy to `main) only after migration and isolation gates pass.
+5. PR #4's client-side branch merges when ready. Its Worker/server companion commits deploy to `main` only after migration and isolation gates pass.
 
 All branches may be developed in parallel. The order above is an integration order, not a requirement to wait before beginning work.
 
