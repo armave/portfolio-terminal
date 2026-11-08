@@ -12,7 +12,11 @@ import { fetchFinnhubMarketEvents } from '../services/finnhubMarketData';
 import { marketHistoryProviderRegistry } from '../services/marketHistoryProviders';
 import { normalizeInstrumentIdentity } from '../services/marketDataContracts';
 import { createMarketEventDateRange, getNextUpcomingEarningsDate, type MarketEventsResult } from '../services/marketEvents';
-import type { MarketHistoryResult } from '../services/marketDataContracts';
+import type { MarketHistoryResult, MarketPricePoint } from '../services/marketDataContracts';
+import {
+  applyMarketHistoryCorrectionsToResult,
+  createMarketHistoryCorrectionEvent
+} from '../services/marketHistoryCorrections';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 
@@ -91,7 +95,19 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Record dividend evidence': 'Сохранить сведения о дивиденде',
   'Dividend evidence saved': 'Сведения о дивиденде сохранены',
   'No adjustment needed': 'Корректировка не требуется',
-  'Split data unavailable': 'Данные о дроблении недоступны'
+  'Split data unavailable': 'Данные о дроблении недоступны',
+  'Correct close': 'Исправить закрытие',
+  'Save correction': 'Сохранить исправление',
+  'Cancel': 'Отмена',
+  'Corrected': 'Исправлено',
+  'Reason for correction': 'Причина исправления',
+  'New close price': 'Новая цена закрытия',
+  'Enter a corrected close and a reason.': 'Укажите исправленную цену закрытия и причину.',
+  'Correction saved to history.': 'Исправление сохранено в истории.',
+  'Could not save history correction.': 'Не удалось сохранить исправление истории.',
+  'History correction needs review; provider prices are shown unchanged.': 'Исправление истории требует проверки; показаны исходные цены провайдера.',
+  'Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.': 'Ручные исправления влияют только на этот список истории; сохранённые оценки портфеля и P&L не изменяются.',
+  'Manual correction': 'Ручное исправление'
 };
 
 function marketEventLabel(value: string): string {
@@ -204,6 +220,17 @@ function renderStocktwitsBody(body: string) {
 function MarketInsightsPanelView() {
   const ticker = usePortfolioSelector(selectMarketInsightsTicker);
   const corporateActionHistory = usePortfolioSelector(state => state.corporateActionEvents || []);
+  const marketHistoryCorrections = usePortfolioSelector(state => state.marketHistoryCorrections || []);
+  const [historyCorrectionDraft, setHistoryCorrectionDraft] = useState<{
+    timestamp: number;
+    previous: MarketPricePoint;
+    correctedPrice: string;
+    reason: string;
+  } | null>(null);
+  const [historyCorrectionFeedback, setHistoryCorrectionFeedback] = useState<{
+    timestamp: number;
+    message: string;
+  } | null>(null);
   const [corporateActionFeedback, setCorporateActionFeedback] = useState<{
     sourceId: string; message: string;
   } | null>(null);
@@ -707,7 +734,11 @@ function MarketInsightsPanelView() {
       const currentEvents = marketEventsState.ticker === ticker ? marketEventsState.data : null;
       const eventsLoading = marketEventsState.ticker === ticker && marketEventsState.loading;
       const currentEventsError = marketEventsState.ticker === ticker ? marketEventsState.error : null;
-      const currentHistory = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const currentHistorySource = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const historyCorrectionApplication = currentHistorySource
+        ? applyMarketHistoryCorrectionsToResult(currentHistorySource, ticker, '1D', marketHistoryCorrections)
+        : null;
+      const currentHistory = historyCorrectionApplication?.result ?? null;
       const historyLoading = marketHistoryState.ticker === ticker && marketHistoryState.loading;
       const historyError = marketHistoryState.ticker === ticker ? marketHistoryState.error : null;
       const upcomingEarnings = getClosestDatedMarketEvents(
@@ -892,13 +923,123 @@ function MarketInsightsPanelView() {
             {historyLoading && !currentHistory && <p class="text-[10px] text-slate-500" role="status">{marketEventLabel('Loading history…')}</p>}
             {latestHistory.length > 0 && (
               <div class="space-y-1">
-                {latestHistory.map(point => (
-                  <div key={point.timestamp} class="flex justify-between gap-2 text-[10px]">
-                    <span class="text-slate-400">{new Date(point.timestamp).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
-                    <span class="font-mono text-slate-200">{point.price.toFixed(2)}</span>
-                  </div>
-                ))}
+                {latestHistory.map(point => {
+                  const pointCorrections = marketHistoryCorrections.filter(event =>
+                    event.symbol === ticker.toUpperCase() &&
+                    (event.interval === '1D' || event.interval === 'D') &&
+                    event.timestamp === point.timestamp
+                  ).sort((a, b) => a.recordedAt - b.recordedAt);
+                  const correction = pointCorrections[pointCorrections.length - 1];
+                  const isCorrected = currentHistory?.correctionStatus === 'applied' && !!correction;
+                  const isEditing = historyCorrectionDraft?.timestamp === point.timestamp;
+                  return (
+                    <div key={point.timestamp} class="border-b border-slate-800/50 py-1.5 last:border-0">
+                      <div class="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                        <span class="text-slate-400">{new Date(point.timestamp).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
+                        <span class="flex items-center gap-2">
+                          {isCorrected && <span class="text-[9px] text-amber-300">{marketEventLabel('Corrected')}</span>}
+                          <span class="font-mono text-slate-200">{point.price.toFixed(2)}</span>
+                          <button type="button" disabled={!!historyCorrectionDraft}
+                            onClick={() => {
+                              setHistoryCorrectionFeedback(null);
+                              setHistoryCorrectionDraft({
+                                timestamp: point.timestamp,
+                                previous: point,
+                                correctedPrice: String(point.price),
+                                reason: ''
+                              });
+                            }}
+                            class="min-h-8 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40">
+                            {marketEventLabel('Correct close')}
+                          </button>
+                        </span>
+                      </div>
+                      {isCorrected && correction && (
+                        <p class="mt-1 text-[9px] text-slate-500">
+                          {marketEventLabel('Manual correction')} · {correction.previous?.price?.toFixed(2) ?? '—'} → {correction.corrected?.price?.toFixed(2) ?? '—'} · {correction.reason}
+                        </p>
+                      )}
+                      {isEditing && historyCorrectionDraft && (
+                        <div class="mt-2 space-y-2 rounded border border-slate-700/70 bg-slate-950/40 p-2">
+                          <label class="block text-[9px] text-slate-400">
+                            {marketEventLabel('New close price')}
+                            <input type="number" inputMode="decimal" min="0.00000001" step="any"
+                              value={historyCorrectionDraft.correctedPrice}
+                              onInput={event => setHistoryCorrectionDraft(current => current
+                                ? { ...current, correctedPrice: event.currentTarget.value }
+                                : current)}
+                              class="mt-1 min-h-9 w-full rounded border border-slate-700 bg-slate-900 px-2 text-[11px] text-slate-100" />
+                          </label>
+                          <label class="block text-[9px] text-slate-400">
+                            {marketEventLabel('Reason for correction')}
+                            <textarea rows={2} maxLength={1000} value={historyCorrectionDraft.reason}
+                              onInput={event => setHistoryCorrectionDraft(current => current
+                                ? { ...current, reason: event.currentTarget.value }
+                                : current)}
+                              placeholder={marketEventLabel('Enter a corrected close and a reason.')}
+                              class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-[10px] text-slate-100" />
+                          </label>
+                          <div class="flex flex-wrap gap-2">
+                            <button type="button"
+                              disabled={!Number.isFinite(Number(historyCorrectionDraft.correctedPrice)) ||
+                                Number(historyCorrectionDraft.correctedPrice) <= 0 ||
+                                Number(historyCorrectionDraft.correctedPrice) === historyCorrectionDraft.previous.price ||
+                                !historyCorrectionDraft.reason.trim()}
+                              onClick={() => {
+                                const recordedAt = Date.now();
+                                try {
+                                  const event = createMarketHistoryCorrectionEvent({
+                                    symbol: ticker,
+                                    interval: '1D',
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    provider: 'USER',
+                                    receivedAt: recordedAt,
+                                    recordedAt,
+                                    previous: historyCorrectionDraft.previous,
+                                    corrected: {
+                                      ...historyCorrectionDraft.previous,
+                                      price: Number(historyCorrectionDraft.correctedPrice)
+                                    },
+                                    reason: historyCorrectionDraft.reason
+                                  });
+                                  const saved = portfolioStore.recordMarketHistoryCorrection(event);
+                                  setHistoryCorrectionFeedback({
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    message: saved
+                                      ? marketEventLabel('Correction saved to history.')
+                                      : marketEventLabel('Could not save history correction.')
+                                  });
+                                  if (saved) setHistoryCorrectionDraft(null);
+                                } catch {
+                                  setHistoryCorrectionFeedback({
+                                    timestamp: historyCorrectionDraft.timestamp,
+                                    message: marketEventLabel('Could not save history correction.')
+                                  });
+                                }
+                              }}
+                              class="min-h-9 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40">
+                              {marketEventLabel('Save correction')}
+                            </button>
+                            <button type="button" onClick={() => setHistoryCorrectionDraft(null)}
+                              class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300">
+                              {marketEventLabel('Cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {historyCorrectionFeedback?.timestamp === point.timestamp && (
+                        <p class="mt-1 text-[9px] text-cyan-300" role="status">{historyCorrectionFeedback.message}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            )}
+            {historyCorrectionApplication?.status === 'review_required' && (
+              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('History correction needs review; provider prices are shown unchanged.')}</p>
+            )}
+            {historyCorrectionApplication?.status === 'applied' && (
+              <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')}</p>
             )}
             {currentHistory?.quality === 'partial' && (
               <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map(marketEventLabel).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
