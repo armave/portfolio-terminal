@@ -126,14 +126,17 @@ export function normalizeFreedomOrderFills(response: unknown): FreedomExecutedTr
   const rows = Array.isArray(trades?.trade) ? trades.trade : [];
   if (!rows.length) return [];
 
+  const sideForOrderOperation = (value: unknown): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
+    const operation = String(value ?? '').trim().toUpperCase();
+    if (operation === '1' || operation === '2' || operation === 'BUY') return 'BUY';
+    if (operation === '3' || operation === 'SELL') return 'SELL';
+    if (operation === '4' || operation === 'SELL_SHORT' || operation === 'SELL SHORT') return 'SELL_SHORT';
+    return null;
+  };
   const normalizedRows = rows.flatMap((value) => {
     const row = asRecord(value);
     if (!row) return [];
-    const operation = String(row.side ?? row.operation ?? '').trim().toUpperCase();
-    const side = operation === '1' || operation === '2' ? 'BUY'
-      : operation === '3' ? 'SELL'
-        : operation === '4' ? 'SELL_SHORT'
-          : operation;
+    const side = sideForOrderOperation(row.side) ?? sideForOrderOperation(row.operation) ?? 'Unknown';
     return [{
       ...row,
       side: side || 'Unknown',

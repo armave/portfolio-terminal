@@ -144,6 +144,7 @@ describe('Freedom execution contract normalization', () => {
         id: 9002,
         order_id: 901,
         instr: 'GOOGL.US',
+        side: 'Unknown',
         operation: '2',
         curr: 'USD',
         date: '2026-11-03T09:43:00',
