@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -726,5 +726,18 @@ describe('cash holdings average purchase price', () => {
 
     expect(result.cashStocks[0].shares).toBe(5);
     expect(result.cashStocks[0].averagePrice).toBeNull();
+  });
+});
+
+
+describe('canApplyFreedomBrokerBalance', () => {
+  it('allows complete snapshots and blocks any snapshot with unresolved position or execution evidence', () => {
+    expect(canApplyFreedomBrokerBalance()).toBe(true);
+    expect(canApplyFreedomBrokerBalance([])).toBe(true);
+    expect(canApplyFreedomBrokerBalance([{
+      ticker: 'GOOGL',
+      code: 'short_execution_unsupported',
+      source: 'execution_history'
+    }])).toBe(false);
   });
 });
