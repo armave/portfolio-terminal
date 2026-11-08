@@ -499,7 +499,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     : [{ key: 'guest', label: '', holdings }],
     [isAdmin, adminHoldingGroups, unassignedHoldings, holdings]);
   const displayTableRows = useMemo(
-    () => buildCashHoldingTableRows(displayHoldingGroups, isAdmin),
+    () => buildCashHoldingTableRows([...displayHoldingGroups], isAdmin),
     [displayHoldingGroups, isAdmin]
   );
 
