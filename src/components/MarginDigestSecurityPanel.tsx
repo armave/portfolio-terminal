@@ -108,6 +108,9 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         setError(translateText('The inventory still contains records that need review. Strict encryption enforcement remains disabled.'));
       }
     } catch {
+      // If any earlier batch conflicted, a failed later request must still
+      // restart from the beginning on the next attempt.
+      if (totalConflicts > 0) cursor = null;
       setMigrationCursor(cursor);
       setMigratedCount(totalMigrated);
       setError(translateText('Encryption migration failed. No source records were deleted.'));
