@@ -2842,19 +2842,21 @@ export default {
                 if(!earningsAvailable&&!dividendsAvailable&&!corporateActionsAvailable) return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
                 const earnings=(earningsAvailable?earningsResult.value:[]).slice(0,200).flatMap(row=>{
                     if(!row||typeof row!=="object"||Array.isArray(row))return[];
-                    const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
-                    return[{symbol:safeText(row.symbol)||ticker,date,hour:safeText(row.hour),epsActual:safeNumber(row.epsActual),epsEstimate:safeNumber(row.epsEstimate),revenueActual:safeNumber(row.revenueActual),revenueEstimate:safeNumber(row.revenueEstimate),quarter:safeNumber(row.quarter),year:safeNumber(row.year),currency:safeText(row.currency)}];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date))return[];
+                    return[{symbol:rowSymbol,date,hour:safeText(row.hour),epsActual:safeNumber(row.epsActual),epsEstimate:safeNumber(row.epsEstimate),revenueActual:safeNumber(row.revenueActual),revenueEstimate:safeNumber(row.revenueEstimate),quarter:safeNumber(row.quarter),year:safeNumber(row.year),currency:safeText(row.currency)}];
                 });
                 const dividends=(dividendsAvailable?dividendsResult.value:[]).slice(0,200).flatMap(row=>{
                     if(!row||typeof row!=="object"||Array.isArray(row))return[];
-                    const date=safeText(row.date);if(!date||!isValidDateOnly(date))return[];
-                    return[{symbol:safeText(row.symbol)||ticker,date,amount:safeNumber(row.amount),adjustedAmount:safeNumber(row.adjustedAmount),payDate:safeText(row.payDate),recordDate:safeText(row.recordDate),declarationDate:safeText(row.declarationDate),currency:safeText(row.currency),frequency:safeNumber(row.freq)}];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date))return[];
+                    return[{symbol:rowSymbol,date,amount:safeNumber(row.amount),adjustedAmount:safeNumber(row.adjustedAmount),payDate:safeText(row.payDate),recordDate:safeText(row.recordDate),declarationDate:safeText(row.declarationDate),currency:safeText(row.currency),frequency:safeNumber(row.freq)}];
                 });
                 const corporateActions=(corporateActionsAvailable?splitsResult.value:[]).slice(0,200).flatMap(row=>{
                     if(!row||typeof row!=="object"||Array.isArray(row))return[];
-                    const date=safeText(row.date),fromFactor=safeNumber(row.fromFactor),toFactor=safeNumber(row.toFactor);
-                    if(!date||!isValidDateOnly(date)||!Number.isFinite(fromFactor)||fromFactor<=0||!Number.isFinite(toFactor)||toFactor<=0||fromFactor===toFactor)return[];
-                    return[{symbol:safeText(row.symbol)||ticker,date,fromFactor,toFactor}];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date),fromFactor=safeNumber(row.fromFactor),toFactor=safeNumber(row.toFactor);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date)||!Number.isFinite(fromFactor)||fromFactor<=0||!Number.isFinite(toFactor)||toFactor<=0||fromFactor===toFactor)return[];
+                    return[{symbol:rowSymbol,date,fromFactor,toFactor}];
                 });
                 return new Response(JSON.stringify({ok:true,provider:"Finnhub",symbol:ticker,from:fromDate,to:toDate,receivedAt:Date.now(),earnings,dividends,corporateActions,earningsAvailable,dividendsAvailable,corporateActionsAvailable}),{headers:corsHeaders});
             }

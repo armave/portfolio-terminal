@@ -5049,6 +5049,28 @@ describe('Finnhub market-data routes',()=>{
   expect(data).toMatchObject({earnings:[{date:'2026-11-07',epsEstimate:2.1}],dividends:[{date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD'}],corporateActions:[{date:'2026-11-20',fromFactor:1,toFactor:4}],corporateActionsAvailable:true});
   expect(JSON.stringify(data)).not.toContain('rawSecret');expect(JSON.stringify(data)).not.toContain('private-key');
  });
+ it('withholds provider event rows that omit or mismatch their instrument symbol',async()=>{
+  const fetchMock=vi.fn()
+   .mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[
+    {date:'2026-11-07',epsEstimate:2.1},
+    {symbol:'MSFT',date:'2026-11-08',epsEstimate:2.2}
+   ]}),{status:200}))
+   .mockResolvedValueOnce(new Response(JSON.stringify([
+    {date:'2026-11-10',amount:0.2,currency:'USD'},
+    {symbol:'MSFT',date:'2026-11-11',amount:0.3,currency:'USD'}
+   ]),{status:200}))
+   .mockResolvedValueOnce(new Response(JSON.stringify([
+    {date:'2026-11-20',fromFactor:1,toFactor:4},
+    {symbol:'MSFT',date:'2026-11-21',fromFactor:1,toFactor:2}
+   ]),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toMatchObject({
+   earningsAvailable:true,dividendsAvailable:true,corporateActionsAvailable:true,
+   earnings:[],dividends:[],corporateActions:[]
+  });
+ });
  it('keeps the available feed when the other feed fails',async()=>{
   const fetchMock=vi.fn(async input=>String(input).includes('/calendar/earnings')
    ?new Response(JSON.stringify({earningsCalendar:[{symbol:'PT02EVENTS',date:'2026-12-07'}]}),{status:200})
