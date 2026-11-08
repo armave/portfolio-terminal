@@ -143,6 +143,17 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes the resumable Margin Intelligence encryption migration controls', () => {
+    const migrationCopy = [
+      'Continue migration',
+      'Each run processes up to 500 records. Continue to resume from the last completed batch.',
+      'Migration paused safely. Select Continue migration to resume from the last completed batch.'
+    ];
+    for (const value of migrationCopy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
+  });
+
   it('localizes transaction journal backup and cloud restore conflicts', () => {
     expect(translateText('Backup transaction history conflicts with this device or is not supported.', 'ru'))
       .toBe('История транзакций резервной копии конфликтует с данными этого устройства или имеет неподдерживаемый формат.');

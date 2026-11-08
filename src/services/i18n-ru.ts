@@ -942,5 +942,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Ready': 'Готово',
   'Review required': 'Требуется проверка',
   'Loading…': 'Загрузка…',
+  'Continue migration': 'Продолжить миграцию',
+  'Each run processes up to 500 records. Continue to resume from the last completed batch.': 'За один запуск обрабатывается до 500 записей. Нажмите «Продолжить миграцию», чтобы возобновить её с последнего завершённого пакета.',
+  'Migration paused safely. Select Continue migration to resume from the last completed batch.': 'Миграция безопасно приостановлена. Нажмите «Продолжить миграцию», чтобы продолжить с последнего завершённого пакета.',
 
 };

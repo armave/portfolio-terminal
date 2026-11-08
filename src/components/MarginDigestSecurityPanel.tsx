@@ -10,6 +10,9 @@ interface MarginDigestSecurityPanelProps {
   currentUserId: string;
 }
 
+const MIGRATION_BATCH_SIZE = 25;
+const MAX_MIGRATION_BATCHES_PER_RUN = 20;
+
 export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurityPanelProps) {
   const [inventory, setInventory] = useState<MarginDigestMigrationInventory | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,6 +20,7 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [migratedCount, setMigratedCount] = useState(0);
+  const [migrationCursor, setMigrationCursor] = useState<string | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -24,6 +28,7 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
     try {
       const next = await fetchMarginDigestMigrationInventory();
       setInventory(next);
+      if (next.plaintextRecords === 0) setMigrationCursor(null);
       setStatus(translateText('Inventory scan complete.'));
     } catch {
       setError(translateText('Encryption migration failed. No source records were deleted.'));
@@ -35,6 +40,8 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
   useEffect(() => {
     let cancelled = false;
     setInventory(null);
+    setMigrationCursor(null);
+    setMigratedCount(0);
     setLoading(true);
     setError('');
     void fetchMarginDigestMigrationInventory().then((next) => {
@@ -55,33 +62,50 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
     setMigrating(true);
     setError('');
     setStatus(translateText('Migrating saved digest records…'));
-    setMigratedCount(0);
-    let cursor: string | null = null;
-    let totalMigrated = 0;
+
+    let cursor = migrationCursor;
+    let totalMigrated = migratedCount;
     let batches = 0;
     try {
-      do {
-        const result = await migrateMarginDigestBatch({ cursor, limit: 25 });
+      while (batches < MAX_MIGRATION_BATCHES_PER_RUN) {
+        const result = await migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE });
         totalMigrated += result.migrated;
         batches += 1;
-        setMigratedCount(totalMigrated);
         cursor = result.nextCursor;
-        if (batches > 1000 || (cursor && result.scanned === 0)) {
+        setMigratedCount(totalMigrated);
+
+        if (result.done) {
+          cursor = null;
+          break;
+        }
+        if (!cursor || result.scanned === 0) {
           throw new Error('Migration cursor did not advance.');
         }
-      } while (cursor);
+      }
+
+      setMigrationCursor(cursor);
       const next = await fetchMarginDigestMigrationInventory();
       setInventory(next);
-      setStatus(translateText('Migration complete. Re-scan to verify the remaining records.'));
+      if (next.plaintextRecords === 0) setMigrationCursor(null);
+
+      if (cursor && next.plaintextRecords > 0) {
+        setStatus(translateText('Migration paused safely. Select Continue migration to resume from the last completed batch.'));
+      } else {
+        setStatus(translateText('Migration complete. Re-scan to verify the remaining records.'));
+      }
       if (!next.migrationReady) {
         setError(translateText('The inventory still contains records that need review. Strict encryption enforcement remains disabled.'));
       }
     } catch {
+      setMigrationCursor(cursor);
+      setMigratedCount(totalMigrated);
       setError(translateText('Encryption migration failed. No source records were deleted.'));
     } finally {
       setMigrating(false);
     }
   };
+
+  const canMigrate = Boolean(inventory && inventory.plaintextRecords > 0);
 
   return (
     <section class="settings-panel space-y-3" aria-labelledby="marginDigestSecurityTitle">
@@ -110,13 +134,22 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         <p class="text-xs text-slate-500">{translateText('No inventory scan has been run on this device.')}</p>
       ) : null}
       <div class="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={migrating || loading || !inventory || inventory.plaintextRecords === 0}
+        <button type="button" disabled={migrating || loading || !canMigrate}
           onClick={() => void migrate()}
           class="rounded bg-cyan-900 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 disabled:opacity-50">
-          {migrating ? translateText('Migrating saved digest records…') : translateText('Encrypt legacy plaintext digests')}
+          {migrating
+            ? translateText('Migrating saved digest records…')
+            : migrationCursor
+              ? translateText('Continue migration')
+              : translateText('Encrypt legacy plaintext digests')}
         </button>
-        {migrating && <span class="text-[11px] text-slate-400 tabular-nums">{translateText('Migrated plaintext records:')} {migratedCount}</span>}
+        {migratedCount > 0 && <span class="text-[11px] text-slate-400 tabular-nums">
+          {translateText('Migrated plaintext records:')} {migratedCount}
+        </span>}
       </div>
+      <p class="text-[10px] leading-4 text-slate-500">
+        {translateText('Each run processes up to 500 records. Continue to resume from the last completed batch.')}
+      </p>
       {status && <p class="text-[11px] text-cyan-200" role="status">{status}</p>}
       {error && <p class="text-[11px] text-amber-200" role="alert">{error}</p>}
       <p class="text-[10px] leading-4 text-slate-500">

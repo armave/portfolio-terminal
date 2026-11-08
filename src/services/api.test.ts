@@ -2331,6 +2331,23 @@ describe('Margin Intelligence encryption migration API', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect(fetchMarginDigestMigrationInventory()).rejects.toThrow('inventory response was invalid');
   });
+
+  it('rejects aggregate counts that do not reconcile to the total or readiness flag', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...inventory, totalRecords: 4
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchMarginDigestMigrationInventory()).rejects.toThrow('inventory response was invalid');
+  });
+
+  it('rejects impossible or inconsistent batch progress responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      scanned: 25, migrated: 24, alreadyEncrypted: 0, unreadable: 0, conflicts: 0,
+      nextCursor: null, done: true
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(migrateMarginDigestBatch({ limit: 25 })).rejects.toThrow('batch response was invalid');
+  });
 });
 
 describe('encrypted synced margin intelligence digests', () => {

@@ -218,6 +218,12 @@ export async function fetchMarginDigestMigrationInventory(): Promise<MarginDiges
       typeof value.migrationReady !== 'boolean') {
     throw new Error('The Margin Intelligence encryption inventory response was invalid.');
   }
+  const classifiedRecords = countKeys.slice(1).reduce((total, key) => total + (value[key] as number), 0);
+  const expectedReady = value.plaintextRecords === 0 &&
+    value.legacyEncryptedRecords === 0 && value.unreadableRecords === 0;
+  if (classifiedRecords !== value.totalRecords || value.migrationReady !== expectedReady) {
+    throw new Error('The Margin Intelligence encryption inventory response was invalid.');
+  }
   return {
     totalRecords: value.totalRecords as number,
     plaintextRecords: value.plaintextRecords as number,
@@ -249,8 +255,18 @@ export async function migrateMarginDigestBatch(input: { cursor?: string | null; 
   const isCount = (candidate: unknown): candidate is number =>
     typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
   if (countKeys.some((key) => !isCount(value[key])) ||
-      (value.nextCursor !== null && typeof value.nextCursor !== 'string') ||
+      (value.nextCursor !== null && (
+        typeof value.nextCursor !== 'string' ||
+        !value.nextCursor.startsWith('marginDigestRecord:') ||
+        value.nextCursor.length > 100
+      )) ||
       typeof value.done !== 'boolean') {
+    throw new Error('The Margin Intelligence encryption batch response was invalid.');
+  }
+  const classifiedRecords = countKeys.slice(1).reduce((total, key) => total + (value[key] as number), 0);
+  if (value.scanned > limit || classifiedRecords !== value.scanned ||
+      value.done !== (value.nextCursor === null) ||
+      (!value.done && value.scanned === 0)) {
     throw new Error('The Margin Intelligence encryption batch response was invalid.');
   }
   return {
