@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
@@ -515,7 +515,38 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       ? formatUSD(totalAccountEquity) + ' (' + (Number.isFinite(equityPct) ? equityPct.toFixed(2) + '%' : 'N/A') + ')'
       : translateText('Account balance unavailable', getAppLanguage());
 
-    const risk = computeMarginRiskDisplay(totalDebt, totalMarketValue, cushionTotal, rules);
+    const riskObservationValues: unknown[] = [
+      state.brokerAccountInfo?.observedAt,
+      ...valuationQuoteHoldings.map(holding => holding.quoteDetails?.sourceTimestamp)
+    ];
+    const riskObservedAt = riskObservationValues.length > 0 &&
+      riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+      ? Math.min(...riskObservationValues as number[])
+      : null;
+    const riskFreshness = valuationQuoteSummary.stale > 0
+      ? 'stale'
+      : valuationQuoteSummary.delayed > 0
+        ? 'delayed'
+        : valuationQuoteSummary.unknown > 0 || valuationQuoteSummary.unavailable > 0 || valuationQuoteSummary.total === 0
+          ? 'unknown'
+          : 'fresh';
+    const risk = computeMarginRiskDisplay({
+      currency: 'USD',
+      longExposure: valuation.totalHoldingsValue,
+      shortExposure: 0,
+      cashBalance: valuation.cashBalance,
+      marginDebt: valuation.marginDebt,
+      // Current client data does not expose broker-confirmed eligible collateral.
+      // Use account cash only as an explicitly provisional assumption; securities
+      // in the cash cushion remain long exposure, not assumed collateral.
+      eligibleCollateral: valuation.cashBalance,
+      eligibleCollateralSource: 'configured-assumption',
+      assumptions: rules,
+      quality: valuationStatus,
+      freshness: riskFreshness,
+      observedAt: riskObservedAt,
+      calculatedAt: Date.now()
+    });
 
     return (
       <>
@@ -605,7 +636,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
-        collateralText={formatUSD(cushionTotal)}
+        collateralText={formatUSD(valuation.cashBalance)}
         rules={rules}
         valuationStatus={valuationStatus}
         accountBalanceAvailable={valuation.accountBalanceAvailable}
@@ -632,8 +663,11 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
   const totalAccountDebt = Math.max(0, -(Number(state.balance) || 0));
   const allocatedDebt = totalAccountDebt * weight;
-  const totalCushion = getCashCushionTotal(state);
-  const allocatedCushion = totalCushion * weight;
+  const freeCashBalance = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+  const brokerCashBalance = Math.max(0, Number(state.balance) || 0);
+  const cashHoldingsMarketValue = Math.max(0, getCashCushionValueFromState(state) - freeCashBalance);
+  const allocatedCashBalance = (freeCashBalance + brokerCashBalance) * weight;
+  const allocatedCashHoldingsValue = cashHoldingsMarketValue * weight;
   const allocatedDailyAccrual = allocatedDebt * dailyRate;
   const tranches =
     pos.tranches && pos.tranches.length > 0
@@ -732,7 +766,8 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     unknownQuotes: positionQuoteSummary.unknown,
     unavailableQuotes: positionQuoteSummary.unavailable
   });
-  const positionAssets = currentMktVal + allocatedCushion;
+  const allocatedLongExposure = currentMktVal + allocatedCashHoldingsValue;
+  const positionAssets = allocatedLongExposure + allocatedCashBalance;
   const positionEquity = positionAssets - allocatedDebt;
   const equityPct = accountBalanceAvailable && positionAssets > 0
     ? (positionEquity / positionAssets) * 100
@@ -741,7 +776,36 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     ? `${formatUSD(positionEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`
     : translateText('Account balance unavailable', getAppLanguage());
 
-  const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
+  const riskObservationValues: unknown[] = [
+    state.brokerAccountInfo?.observedAt,
+    pos.quoteDetails?.sourceTimestamp,
+    ...(cashHoldingsForQuotes.map(holding => holding.quoteDetails?.sourceTimestamp))
+  ];
+  const riskObservedAt = riskObservationValues.length > 0 &&
+    riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+    ? Math.min(...riskObservationValues as number[])
+    : null;
+  const riskFreshness = positionQuoteSummary.stale > 0
+    ? 'stale'
+    : positionQuoteSummary.delayed > 0
+      ? 'delayed'
+      : positionQuoteSummary.unknown > 0 || positionQuoteSummary.unavailable > 0
+        ? 'unknown'
+        : 'fresh';
+  const risk = computeMarginRiskDisplay({
+    currency: 'USD',
+    longExposure: allocatedLongExposure,
+    shortExposure: 0,
+    cashBalance: allocatedCashBalance,
+    marginDebt: allocatedDebt,
+    eligibleCollateral: allocatedCashBalance,
+    eligibleCollateralSource: 'configured-assumption',
+    assumptions: rules,
+    quality: positionValuationStatus,
+    freshness: riskFreshness,
+    observedAt: riskObservedAt,
+    calculatedAt: Date.now()
+  });
 
   const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
@@ -838,7 +902,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
-        collateralText={formatUSD(allocatedCushion)}
+        collateralText={formatUSD(allocatedCashBalance)}
         rules={rules}
         valuationStatus={positionValuationStatus}
         accountBalanceAvailable={accountBalanceAvailable}
