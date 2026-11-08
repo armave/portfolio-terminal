@@ -609,6 +609,25 @@ describe('app localization', () => {
     )).toBe('Стоимость показывает текущую рыночную стоимость открытых лотов и выручку от закрытых сделок. Чистая прибыль или убыток отображается только при наличии итогового результата закрытой сделки.');
   });
 
+  it('localizes every broker position-integrity warning in Russian', () => {
+    const copy = [
+      'Some broker positions need review',
+      'The app retained the last accepted tracked values and did not guess long/short direction from unverified broker data.',
+      'Broker reported a negative position quantity; its long/short sign convention is unverified.',
+      'Broker position side indicates a short position; short valuation is not yet supported.',
+      'Broker position side is not recognized; the position was not applied.',
+      'A sell-short execution was detected; short positions are not yet supported.',
+      'A buy-to-cover execution was detected; short positions are not yet supported.',
+      'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.',
+      'An execution has an unknown side; its position effect cannot be safely classified.',
+      'A broker execution has no verifiable instrument identifier.',
+      'A broker position has invalid quantity or instrument details.',
+      'Some broker position data could not be classified safely.',
+      'Unknown instrument'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
   it('localizes workspace cloud status labels and sync feedback', () => {
     expect(translateText('Cloud storage', 'ru')).toBe('Облачное хранилище');
     expect(translateText('OFFLINE', 'ru')).toBe('НЕ В СЕТИ');
