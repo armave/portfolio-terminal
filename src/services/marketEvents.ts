@@ -1,5 +1,8 @@
 import { normalizeCurrencyCode } from './marketDataContracts';
-import { normalizeFinnhubStockSplits, type CorporateActionEvent } from './corporateActions';
+import {
+  normalizeFinnhubStockSplits,
+  type CorporateActionEvent
+} from './corporateActions';
 
 export type MarketEventQuality = 'complete' | 'partial' | 'unavailable';
 type EarningsTiming = 'before_market' | 'after_market' | 'during_market' | 'unknown';
@@ -62,7 +65,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function dateOnly(value: unknown): string | null {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
   const parsed = new Date(value + 'T00:00:00.000Z');
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
     ? value
@@ -110,17 +113,34 @@ function provenance(
   return { provider, receivedAt, observedAt: null, publishedAt: null, quality, issues };
 }
 
+function normalizeProviderProvenance(options: { provider?: unknown; receivedAt?: unknown }): {
+  provider: string | null;
+  receivedAt: number | null;
+  issues: string[];
+} {
+  const provider = safeText(options.provider)?.toUpperCase() ?? null;
+  const receivedAt = timestamp(options.receivedAt);
+  const issues: string[] = [];
+  if (!provider) issues.push('Market-event provider is missing.');
+  if (receivedAt === null) issues.push('Market-event receipt timestamp is missing or invalid.');
+  else if (receivedAt > Date.now() + 60_000) {
+    issues.push('Market-event receipt timestamp is in the future.');
+    return { provider, receivedAt: null, issues };
+  }
+  return { provider, receivedAt, issues };
+}
+
 export function normalizeEarningsEvents(
   input: unknown,
   options: { symbol: string; provider?: unknown; receivedAt?: unknown; available?: boolean }
 ): { events: EarningsEvent[]; quality: MarketEventQuality; issues: string[] } {
-  const issues: string[] = [];
-  const provider = safeText(options.provider)?.toUpperCase() ?? null;
-  const receivedAt = timestamp(options.receivedAt);
+  const provenanceContext = normalizeProviderProvenance(options);
+  const issues = [...provenanceContext.issues];
   if (options.available === false) return { events: [], quality: 'unavailable', issues: ['Earnings feed is unavailable.'] };
   if (!Array.isArray(input)) return { events: [], quality: 'unavailable', issues: ['Earnings feed is not an array.'] };
   const symbol = options.symbol.trim().toUpperCase();
-  const events: EarningsEvent[] = [];
+  const byEventKey = new Map<string, EarningsEvent>();
+  const conflictedEvents = new Set<string>();
   for (const [index, raw] of input.entries()) {
     if (!isRecord(raw)) { issues.push('Earnings row ' + (index + 1) + ' is malformed.'); continue; }
     const eventDate = dateOnly(raw.date);
@@ -130,13 +150,19 @@ export function normalizeEarningsEvents(
       issues.push('Earnings row ' + (index + 1) + ' belongs to a different symbol and was ignored.');
       continue;
     }
-    const quarter = finiteNumber(raw.quarter);
-    const year = finiteNumber(raw.year);
+    const quarterValue = finiteNumber(raw.quarter);
+    const yearValue = finiteNumber(raw.year);
+    const quarter = quarterValue !== null && Number.isInteger(quarterValue) && quarterValue >= 1 && quarterValue <= 4
+      ? quarterValue : null;
+    const year = yearValue !== null && Number.isInteger(yearValue) && yearValue >= 1900 && yearValue <= 2200
+      ? yearValue : null;
+    const key = [rowSymbol, eventDate, year ?? '', quarter ?? ''].join(':');
+    if (conflictedEvents.has(key)) continue;
     const timing = normalizeTiming(raw.hour);
-    if (timing === 'unknown') issues.push('Earnings row ' + (index + 1) + ' has no verified session timing.');
     const rowIssues = timing === 'unknown' ? ['Earnings session timing is unknown.'] : [];
-    events.push({
-      id: [rowSymbol, eventDate, year ?? '', quarter ?? ''].join(':'),
+    if (timing === 'unknown') issues.push('Earnings row ' + (index + 1) + ' has no verified session timing.');
+    const event: EarningsEvent = {
+      id: key,
       symbol: rowSymbol,
       eventDate,
       timing,
@@ -144,13 +170,29 @@ export function normalizeEarningsEvents(
       epsEstimate: finiteNumber(raw.epsEstimate),
       revenueActual: finiteNumber(raw.revenueActual),
       revenueEstimate: finiteNumber(raw.revenueEstimate),
-      fiscalQuarter: quarter !== null && Number.isInteger(quarter) && quarter >= 1 && quarter <= 4 ? quarter : null,
-      fiscalYear: year !== null && Number.isInteger(year) && year >= 1900 && year <= 2200 ? year : null,
+      fiscalQuarter: quarter,
+      fiscalYear: year,
       currency: normalizeCurrencyCode(raw.currency),
-      provenance(provider, receivedAt, rowIssues.length ? 'partial' : 'complete', rowIssues)
-    });
+      provenance(provenanceContext.provider, provenanceContext.receivedAt,
+        rowIssues.length || provenanceContext.issues.length ? 'partial' : 'complete',
+        [...provenanceContext.issues, ...rowIssues])
+    };
+    const previous = byEventKey.get(key);
+    if (previous) {
+      if (previous.epsActual === event.epsActual && previous.epsEstimate === event.epsEstimate &&
+          previous.revenueActual === event.revenueActual && previous.revenueEstimate === event.revenueEstimate &&
+          previous.timing === event.timing && previous.currency === event.currency) continue;
+      byEventKey.delete(key);
+      conflictedEvents.add(key);
+      issues.push('Conflicting earnings revisions exist for ' + rowSymbol + ' on ' + eventDate + '; the event was withheld.');
+      continue;
+    }
+    byEventKey.set(key, event);
   }
-  const quality: MarketEventQuality = events.length === 0 ? 'unavailable' : issues.length ? 'partial' : 'complete';
+  const events = [...byEventKey.values()].sort((a, b) => a.eventDate.localeCompare(b.eventDate) || a.id.localeCompare(b.id));
+  const quality: MarketEventQuality = events.length === 0
+    ? input.length === 0 && issues.length === 0 ? 'complete' : 'unavailable'
+    : issues.length ? 'partial' : 'complete';
   return { events, quality, issues };
 }
 
@@ -158,13 +200,13 @@ export function normalizeDividendEvents(
   input: unknown,
   options: { symbol: string; provider?: unknown; receivedAt?: unknown; available?: boolean }
 ): { events: DividendEvent[]; quality: MarketEventQuality; issues: string[] } {
-  const issues: string[] = [];
-  const provider = safeText(options.provider)?.toUpperCase() ?? null;
-  const receivedAt = timestamp(options.receivedAt);
+  const provenanceContext = normalizeProviderProvenance(options);
+  const issues = [...provenanceContext.issues];
   if (options.available === false) return { events: [], quality: 'unavailable', issues: ['Dividend feed is unavailable.'] };
   if (!Array.isArray(input)) return { events: [], quality: 'unavailable', issues: ['Dividend feed is not an array.'] };
   const symbol = options.symbol.trim().toUpperCase();
-  const events: DividendEvent[] = [];
+  const byEventKey = new Map<string, DividendEvent>();
+  const conflictedEvents = new Set<string>();
   for (const [index, raw] of input.entries()) {
     if (!isRecord(raw)) { issues.push('Dividend row ' + (index + 1) + ' is malformed.'); continue; }
     const exDate = dateOnly(raw.date);
@@ -175,12 +217,14 @@ export function normalizeDividendEvents(
       continue;
     }
     const amount = finiteNumber(raw.amount);
-    const payDate = dateOnly(raw.payDate);
-    const recordDate = dateOnly(raw.recordDate);
-    const declarationDate = dateOnly(raw.declarationDate);
-    if (raw.payDate !== null && raw.payDate !== undefined && !payDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid pay date.');
-    if (raw.recordDate !== null && raw.recordDate !== undefined && !recordDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid record date.');
-    if (raw.declarationDate !== null && raw.declarationDate !== undefined && !declarationDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid declaration date.');
+    const adjustedAmount = finiteNumber(raw.adjustedAmount);
+    const payDate = raw.payDate == null ? null : dateOnly(raw.payDate);
+    const recordDate = raw.recordDate == null ? null : dateOnly(raw.recordDate);
+    const declarationDate = raw.declarationDate == null ? null : dateOnly(raw.declarationDate);
+    const frequency = finiteNumber(raw.freq);
+    if (raw.payDate != null && !payDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid pay date.');
+    if (raw.recordDate != null && !recordDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid record date.');
+    if (raw.declarationDate != null && !declarationDate) issues.push('Dividend row ' + (index + 1) + ' has an invalid declaration date.');
     const currency = normalizeCurrencyCode(raw.currency);
     const rowIssues = [
       ...(amount === null ? ['Dividend amount is unavailable.'] : []),
@@ -188,24 +232,40 @@ export function normalizeDividendEvents(
     ];
     issues.push(...rowIssues.map(issue => 'Dividend row ' + (index + 1) + ': ' + issue));
     const stableSourceId = safeText(raw.id ?? raw.sourceId, 128);
-    const id = stableSourceId
-      ? provider + ':' + stableSourceId
-      : [rowSymbol, exDate, declarationDate ?? '', recordDate ?? '', payDate ?? '', finiteNumber(raw.freq) ?? ''].join(':');
-    events.push({
-      id,
+    const eventKey = stableSourceId
+      ? provenanceContext.provider + ':' + stableSourceId
+      : [rowSymbol, exDate, declarationDate ?? '', recordDate ?? '', payDate ?? '', frequency ?? ''].join(':');
+    if (conflictedEvents.has(eventKey)) continue;
+    const event: DividendEvent = {
+      id: eventKey,
       symbol: rowSymbol,
       exDate,
       amount,
-      adjustedAmount: finiteNumber(raw.adjustedAmount),
+      adjustedAmount,
       payDate,
       recordDate,
       declarationDate,
       currency,
-      frequency: finiteNumber(raw.freq),
-      provenance: provenance(provider, receivedAt, rowIssues.length ? 'partial' : 'complete', rowIssues)
-    });
+      frequency,
+      provenance(provenanceContext.provider, provenanceContext.receivedAt,
+        rowIssues.length || provenanceContext.issues.length ? 'partial' : 'complete',
+        [...provenanceContext.issues, ...rowIssues])
+    };
+    const previous = byEventKey.get(eventKey);
+    if (previous) {
+      if (previous.amount === event.amount && previous.adjustedAmount === event.adjustedAmount &&
+          previous.currency === event.currency) continue;
+      byEventKey.delete(eventKey);
+      conflictedEvents.add(eventKey);
+      issues.push('Conflicting dividend revisions exist for ' + rowSymbol + ' on ' + exDate + '; the event was withheld.');
+      continue;
+    }
+    byEventKey.set(eventKey, event);
   }
-  const quality: MarketEventQuality = events.length === 0 ? 'unavailable' : issues.length ? 'partial' : 'complete';
+  const events = [...byEventKey.values()].sort((a, b) => a.exDate.localeCompare(b.exDate) || a.id.localeCompare(b.id));
+  const quality: MarketEventQuality = events.length === 0
+    ? input.length === 0 && issues.length === 0 ? 'complete' : 'unavailable'
+    : issues.length ? 'partial' : 'complete';
   return { events, quality, issues };
 }
 
@@ -229,30 +289,36 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
   const symbol = safeText(input.symbol, 32)?.toUpperCase() ?? '';
   const provider = safeText(input.provider);
   const receivedAt = timestamp(input.receivedAt);
+  const earningsAvailable = input.earningsAvailable === true;
+  const dividendsAvailable = input.dividendsAvailable === true;
+  const corporateActionsAvailable = input.corporateActionsAvailable === true;
   const earningsResult = normalizeEarningsEvents(input.earnings, {
-    symbol, provider, receivedAt, available: input.earningsAvailable === true
+    symbol, provider, receivedAt, available: earningsAvailable
   });
   const dividendsResult = normalizeDividendEvents(input.dividends, {
-    symbol, provider, receivedAt, available: input.dividendsAvailable === true
+    symbol, provider, receivedAt, available: dividendsAvailable
   });
-  const corporateActionsAvailable = input.corporateActionsAvailable === true;
   const corporateActionsResult = normalizeFinnhubStockSplits(input.corporateActions, {
     symbol, provider, receivedAt, available: corporateActionsAvailable
   });
-  const issues = [...earningsResult.issues, ...dividendsResult.issues, ...corporateActionsResult.issues];
-  const hasAvailableFeed = earningsResult.quality !== 'unavailable' ||
-    dividendsResult.quality !== 'unavailable' || corporateActionsResult.quality !== 'unavailable';
-  const quality: MarketEventQuality = !hasAvailableFeed ? 'unavailable'
-    : earningsResult.quality === 'partial' || dividendsResult.quality === 'partial' ||
-      earningsResult.quality === 'unavailable' || dividendsResult.quality === 'unavailable' ||
-      corporateActionsResult.quality === 'partial' || corporateActionsResult.quality === 'unavailable' ? 'partial' : 'complete';
+  const issues = [
+    ...earningsResult.issues,
+    ...dividendsResult.issues,
+    ...corporateActionsResult.issues
+  ];
+  const availableFeedCount = [earningsResult.quality, dividendsResult.quality, corporateActionsResult.quality]
+    .filter(quality => quality !== 'unavailable').length;
+  const anyPartial = [earningsResult.quality, dividendsResult.quality, corporateActionsResult.quality]
+    .some(quality => quality === 'partial');
+  const quality: MarketEventQuality = availableFeedCount === 0 ? 'unavailable'
+    : anyPartial || availableFeedCount < 3 ? 'partial' : 'complete';
   return {
     symbol,
     earnings: earningsResult.events,
     dividends: dividendsResult.events,
     corporateActions: corporateActionsResult.events,
-    earningsAvailable: input.earningsAvailable === true,
-    dividendsAvailable: input.dividendsAvailable === true,
+    earningsAvailable,
+    dividendsAvailable,
     corporateActionsAvailable,
     quality,
     provider,
@@ -287,7 +353,7 @@ export function getNextUpcomingEarningsDate(
   return events
     .map((event) => event.eventDate)
     .filter((value) => {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
       const parsed = Date.parse(value + 'T00:00:00.000Z');
       return Number.isFinite(parsed) && parsed >= today &&
         new Date(parsed).toISOString().slice(0, 10) === value;
