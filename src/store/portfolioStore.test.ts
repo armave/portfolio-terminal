@@ -13,6 +13,7 @@ import { verifyPortfolioTransactionParity } from '../domain/portfolioTransaction
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
+import { flushSavedHistoryPersistence } from '../services/storage';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -2261,10 +2262,10 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
   });
 
-  it('does not publish a portfolio update when the closed-history sidecar write fails', () => {
+  it('publishes compact portfolio state even when the legacy local history fallback is full', async () => {
+    vi.stubGlobal('indexedDB', undefined);
     const store = new PortfolioStore();
     store.setState({ balance: -100 }, false);
-    const previous = store.getState();
     const listener = vi.fn();
     const persistenceErrorListener = vi.fn();
     store.subscribe(listener);
@@ -2278,13 +2279,13 @@ describe('atomic portfolio-store persistence', () => {
     expect(store.setState({
       balance: -300,
       brokerExecutedTrades: [{ id: 'new-execution', ticker: 'AAPL', side: 'BUY' }] as any
-    })).toBe(false);
+    })).toBe(true);
+    await flushSavedHistoryPersistence();
 
-    expect(store.getState()).toBe(previous);
-    expect(store.getState().balance).toBe(-100);
-    expect(listener).not.toHaveBeenCalled();
-    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
-    expect(values.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(store.getState().balance).toBe(-300);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(persistenceErrorListener).not.toHaveBeenCalled();
+    expect(JSON.parse(values.get('margin_portfolio_state_dynamic_v2')!).balance).toBe(-300);
     expect(values.has('portfolio_closed_history_v1')).toBe(false);
   });
 });
