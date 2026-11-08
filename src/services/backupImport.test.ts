@@ -94,8 +94,13 @@ describe('commitPortfolioBackupImport', () => {
       cashCushion: { freeCash: 0, holdings: [] },
       brokerAccountInfo
     }, 10_000);
-    let active: unknown = null;
-    commitPortfolioBackupImport(imported, {}, (next) => { active = next; }, () => true);
+    const previous = normalizePortfolioBackup({
+      balance: 0,
+      positions: {},
+      cashCushion: { freeCash: 0, holdings: [] }
+    }, 9_999);
+    let active: unknown = previous;
+    commitPortfolioBackupImport(imported, previous, (next) => { active = next; }, () => true);
 
     expect((active as any).brokerAccountInfo).toMatchObject({
       quality: 'partial',
