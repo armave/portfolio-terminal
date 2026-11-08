@@ -66,7 +66,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Broker reported': 'По данным брокера',
     'Broker base only': 'Только базовое требование брокера',
     '100% required': 'Требуется 100%',
-    'threshold': 'порог'
+  'threshold': 'порог',
   'Configured assumption': 'Настроенное допущение',
   'Unknown': 'Неизвестно',
   'Broker requirements are shown only when the connected broker snapshot supplies them. Configured assumptions are kept separate.': 'Требования брокера отображаются только при наличии их в снимке подключённого счёта. Настроенные допущения показываются отдельно.',
