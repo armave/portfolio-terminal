@@ -72,13 +72,18 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     })]);
   });
 
-  it('does not retain a completed short lifecycle as an open unsupported position', () => {
-    expect(collectFreedomPositionIntegrityIssues({
+  it('keeps a completed short lifecycle reviewable because realized short accounting is unsupported', () => {
+    const issues = collectFreedomPositionIntegrityIssues({
       positions: [{ ticker: 'GOOGL', quantity: 3, direction: 'long' }]
     }, [
       { ticker: 'GOOGL', side: 'SELL_SHORT', quantity: 2 },
       { ticker: 'GOOGL', side: 'BUY_TO_COVER', quantity: 2 }
-    ])).toEqual([]);
+    ]);
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_execution_unsupported' }),
+      expect.objectContaining({ ticker: 'GOOGL', code: 'short_cover_unsupported' })
+    ]));
   });
 
   it('ignores closed-ticker executions when evaluating the current open position set', () => {
