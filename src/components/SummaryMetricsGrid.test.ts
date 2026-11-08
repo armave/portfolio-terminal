@@ -271,3 +271,27 @@ describe('margin-call buffer presentation', () => {
     expect(source).toContain('baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN');
   });
 });
+
+
+describe('interactive margin health presentation', () => {
+  it('uses the compact clickable risk summary and opens a tabbed details dialog', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    const modal = readFileSync(new URL('./MarginRiskDetailsModal.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('margin-risk-interactive-grid');
+    expect(source).toContain("openDetails('requirements')");
+    expect(source).toContain("openDetails('calculations')");
+    expect(source).toContain('<MarginRiskDetailsModal');
+    expect(source).not.toContain("translateText('STOP-OUT BUFFER', language)");
+    expect(modal).toContain("onEscape: onClose");
+    expect(modal).toContain('event.target === event.currentTarget');
+    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain("label: 'Broker data'");
+  });
+
+  it('keeps the modal nearly full-screen on mobile', () => {
+    const styles = readFileSync(new URL('../../../style.css', import.meta.url), 'utf8');
+    expect(styles).toContain('.margin-risk-modal-backdrop');
+    expect(styles).toContain('max-height: 100dvh;');
+    expect(styles).toContain('min-height: 100dvh;');
+  });
+});
