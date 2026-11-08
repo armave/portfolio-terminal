@@ -1,4 +1,4 @@
-import type { PositionRecord } from '../types/portfolio';
+import type { PositionRecord, TrancheItem } from '../types/portfolio';
 import type {
   CorporateActionEvent,
   CorporateActionFeedQuality,
@@ -407,7 +407,7 @@ export function mergePortfolioCorporateActionEvents(
 }
 
 function acquiredAtForTranche(
-  tranche: PositionRecord['tranches'][number],
+  tranche: TrancheItem,
   positionStartDate?: string
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
