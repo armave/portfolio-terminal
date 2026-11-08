@@ -1346,6 +1346,103 @@ export function sanitizeFreedomPositions(response) {
     };
 }
 
+/**
+ * A temporary, administrator-only diagnostic view of the raw TradeNet position
+ * rows. It deliberately excludes account/cash rows and recursively removes
+ * identity, session and credential fields while preserving broker position
+ * attributes (including fields unknown to the app's normalizer).
+ */
+export function sanitizeFreedomPositionProbe(response) {
+    const candidates = [
+        ["data.result.ps", response?.data?.result?.ps],
+        ["result.ps", response?.result?.ps],
+        ["data.ps", response?.data?.ps],
+        ["ps", response?.ps],
+        ["data.result", response?.data?.result],
+        ["result", response?.result]
+    ];
+    const match = candidates.find(([, value]) => value && typeof value === "object" &&
+        !Array.isArray(value) && (Array.isArray(value.pos) || Array.isArray(value.acc)));
+    const ps = match?.[1];
+    const loadedFlagPresent = Boolean(ps && Object.prototype.hasOwnProperty.call(ps, "loaded"));
+    const loaded = ps?.loaded === true || ps?.loaded === 1 || ps?.loaded === "1" || ps?.loaded === "true";
+    if (!ps || (loadedFlagPresent && !loaded)) {
+        throw new Error("TradeNet returned an invalid or unloaded positions response.");
+    }
+
+    const privateTokens = new Set([
+        "account", "acct", "login", "email", "user", "customer", "client",
+        "owner", "person", "phone", "address", "sid", "token", "secret",
+        "password", "auth", "session", "ip", "credential"
+    ]);
+    const isPrivateField = (key) => {
+        const normalized = String(key).replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+        return normalized.split(/[^a-z0-9]+/).filter(Boolean).some(token => privateTokens.has(token));
+    };
+    let redactedFieldCount = 0;
+    let truncatedValueCount = 0;
+    const sanitizeValue = (value, depth = 0) => {
+        if (value === null || typeof value === "boolean" || typeof value === "number") return value;
+        if (typeof value === "string") {
+            if (value.length <= 512) return value;
+            truncatedValueCount += 1;
+            return value.slice(0, 512) + "…[truncated]";
+        }
+        if (depth >= 5) {
+            truncatedValueCount += 1;
+            return "[depth-limited]";
+        }
+        if (Array.isArray(value)) {
+            if (value.length > 50) truncatedValueCount += 1;
+            return value.slice(0, 50).map(item => sanitizeValue(item, depth + 1));
+        }
+        if (typeof value === "object") {
+            const output = {};
+            const entries = Object.entries(value);
+            if (entries.length > 80) truncatedValueCount += 1;
+            for (const [key, entry] of entries.slice(0, 80)) {
+                if (isPrivateField(key)) {
+                    redactedFieldCount += 1;
+                    continue;
+                }
+                output[key] = sanitizeValue(entry, depth + 1);
+            }
+            return output;
+        }
+        return null;
+    };
+
+    const sourceRows = Array.isArray(ps.pos) ? ps.pos : [];
+    const returnedRows = sourceRows.slice(0, 100).map(row => sanitizeValue(row));
+    if (sourceRows.length > returnedRows.length) truncatedValueCount += sourceRows.length - returnedRows.length;
+    const positionFieldNames = [...new Set(sourceRows.flatMap(row =>
+        row && typeof row === "object" && !Array.isArray(row)
+            ? Object.keys(row).filter(key => !isPrivateField(key))
+            : []
+    ))].sort().slice(0, 120);
+
+    return {
+        data: {
+            result: {
+                ps: {
+                    loaded: true,
+                    pos: returnedRows
+                }
+            }
+        },
+        diagnostics: {
+            sourceEnvelope: match[0],
+            loadedFlagPresent,
+            positionCollectionPresent: Array.isArray(ps.pos),
+            positionsCount: sourceRows.length,
+            returnedPositionsCount: returnedRows.length,
+            positionFieldNames,
+            redactedFieldCount,
+            truncatedValueCount
+        }
+    };
+}
+
 export default {
     async fetch(request, env) {
 
@@ -1599,7 +1696,7 @@ export default {
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
-                "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
+                "state", "history", "freedom-test", "freedom-positions", "freedom-position-probe", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
                 "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket"
             ].includes(action);
@@ -1616,10 +1713,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-position-probe", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-position-probe", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -2117,6 +2214,41 @@ export default {
                             ? Object.fromEntries(Object.entries(error.diagnostics).filter(([key]) => !["eventPayload"].includes(key)))
                             : quoteStreamDiagnostics
                     }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                }
+            }
+
+            // Temporary admin-only, read-only raw position probe for verifying
+            // TradeNet's undocumented position-side and quantity conventions.
+            if (action === "freedom-position-probe") {
+                if (accountRole !== "admin") {
+                    return jsonError("An administrator account is required for the TradeNet position probe.", 403, {
+                        ...corsHeaders, "Cache-Control": "no-store"
+                    });
+                }
+                try {
+                    const rawData = await requestTradeNet(env, "getPositionJson");
+                    const probe = sanitizeFreedomPositionProbe(rawData);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "rest_getPositionJson",
+                        retrievedAt: new Date().toISOString(),
+                        ...probe
+                    }), {
+                        headers: { ...corsHeaders, "Cache-Control": "no-store", "Pragma": "no-cache" }
+                    });
+                } catch (error) {
+                    const upstreamStatus = Number(error?.status);
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        provider: "Freedom TradeNet",
+                        source: "rest_getPositionJson",
+                        error: error instanceof Error ? error.message : "TradeNet position probe failed."
+                    }), {
+                        status,
+                        headers: { ...corsHeaders, "Cache-Control": "no-store", "Pragma": "no-cache" }
+                    });
                 }
             }
 
