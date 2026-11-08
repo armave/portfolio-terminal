@@ -2,6 +2,7 @@ import type { FreedomExecutedTrade } from './freedomTrade';
 import type { BrokerDataQualityIssue, BrokerSnapshotQuality, BrokerSnapshotSource } from './broker';
 import type { PortfolioTransactionEvent } from './portfolioTransaction';
 import type { PortfolioCorporateActionEvent } from './corporateAction';
+import type { MarketHistoryCorrectionEvent } from './marketHistory';
 
 export interface Tranche {
   id: string;
@@ -351,6 +352,8 @@ export interface PortfolioState {
   transactionEvents?: PortfolioTransactionEvent[];
   /** Sourced corporate-action events are retained for restore and deterministic replay. */
   corporateActionEvents?: PortfolioCorporateActionEvent[];
+  /** Append-only before/after evidence for manual historical-candle corrections. */
+  marketHistoryCorrections?: MarketHistoryCorrectionEvent[];
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
