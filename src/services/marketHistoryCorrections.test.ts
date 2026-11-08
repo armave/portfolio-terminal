@@ -153,13 +153,26 @@ describe('market history correction journal', () => {
       .toMatchObject({ status: 'review_required', appliedCount: 0 });
   });
 
+  it('rejects corrected close prices outside retained candle bounds', () => {
+    expect(() => createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp,
+      provider: 'USER',
+      receivedAt: timestamp + 10,
+      previous: original,
+      corrected: { ...corrected, price: 103 },
+      reason: 'Close is outside the verified high.'
+    })).toThrow('invalid before/after candle');
+  });
+
   it('supports an explicit candle removal and rejects reused source IDs with different evidence', () => {
     const removal = correction(original, null);
     expect(replayMarketHistoryCorrections([original], [removal])).toMatchObject({
       status: 'complete', points: []
     });
     const first = correction(original, corrected);
-    const reused = { ...first, corrected: { ...corrected, price: 103 } };
+    const reused = { ...first, corrected: { ...corrected, price: 103, high: 103 } };
     expect(() => mergeMarketHistoryCorrectionEvents([first], [reused])).toThrow('reused for different evidence');
   });
 });

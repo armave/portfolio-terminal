@@ -174,7 +174,7 @@ describe('earnings and daily history request wiring', () => {
     expect(source).toContain('window.confirm(marketEventLabel(');
     expect(source).toContain("marketEventLabel('Corporate actions')");
     expect(source).toContain("marketEventLabel('Dividend events are evidence only; cash is recorded when broker settlement is confirmed.')");
-    expect(source).toContain('applyMarketHistoryCorrectionsToResult(currentHistorySource, ticker, \'1D\', marketHistoryCorrections)');
+    expect(source).toContain('applyMarketHistoryCorrectionsToResult(currentHistorySource, historySymbol, \'1D\', marketHistoryCorrections)');
     expect(source).toContain('portfolioStore.recordMarketHistoryCorrection(event)');
     expect(source).toContain('createMarketHistoryCorrectionEvent({');
     expect(source).toContain("marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')");
