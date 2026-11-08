@@ -22,7 +22,8 @@ import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
   hasUnresolvedBrokerPositionIntegrity,
-  type MarginRiskInput
+  type MarginRiskInput,
+  type MarginRiskSnapshot
 } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
@@ -30,6 +31,13 @@ import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
+import {
+  MarginRiskDetailsModal,
+  getCapitalAdequacyMetrics,
+  getMinimumMarginBufferMetrics,
+  type MarginRiskModalTab,
+  type MarginRiskBrokerContext
+} from './MarginRiskDetailsModal';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -53,7 +61,17 @@ function getCashCushionValueFromState(state: BoardState): number {
   }, 0);
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
+function MarginRiskGaugeCard({
+  equityPct,
+  risk,
+  equityText,
+  collateralText,
+  rules,
+  valuationStatus = 'current',
+  accountBalanceAvailable = true,
+  unpricedHoldings = 0,
+  brokerContext
+}: {
   equityPct: number;
   risk: MarginRiskDisplay;
   equityText: string;
@@ -62,87 +80,157 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   valuationStatus?: 'current' | 'provisional' | 'incomplete';
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
+  brokerContext: MarginRiskBrokerContext;
 }) {
   const language = getAppLanguage();
-  if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
-    return (
-      <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk estimate unavailable', language)}>
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTab, setModalTab] = useState<MarginRiskModalTab>('overview');
+  const snapshot = risk.snapshot;
+  const capital = getCapitalAdequacyMetrics(snapshot);
+  const buffer = getMinimumMarginBufferMetrics(snapshot);
+  const equity = Number.isFinite(equityPct) ? equityPct : Number.NaN;
+  const riskLabel = risk.status === 'unavailable'
+    ? translateText('Unavailable', language)
+    : translateText(risk.riskLevel, language);
+  const riskTone = risk.status === 'unavailable' || risk.status === 'provisional'
+    ? 'elevated'
+    : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
+      ? 'healthy'
+      : risk.riskLevel === 'Elevated' ? 'elevated' : 'danger';
+  const bufferLabel = buffer?.complete
+    ? 'MINIMUM MARGIN BUFFER'
+    : 'ESTIMATED MARGIN-CALL BUFFER';
+  const bufferWidth = buffer
+    ? Math.max(0, Math.min(100, (buffer.percentage / 40) * 100))
+    : 0;
+  const bufferThresholdWidth = buffer?.thresholdPct !== null && buffer?.thresholdPct !== undefined
+    ? Math.max(0, Math.min(100, (buffer.thresholdPct / 40) * 100))
+    : null;
+  const capitalWidth = capital
+    ? Math.max(0, Math.min(100, (capital.percentage / 150) * 100))
+    : 0;
+
+  const openDetails = (tab: MarginRiskModalTab) => {
+    setModalTab(tab);
+    setModalOpen(true);
+  };
+
+  return (
+    <>
+      <section class="margin-risk-gauge-card margin-risk-interactive-card" aria-label={translateText('Margin risk and account equity', language)}>
         <div class="margin-risk-gauge-heading">
-          <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
-          <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
+          <div>
+            <span class="margin-risk-label">{translateText('MARGIN HEALTH', language)}</span>
+            <strong class="margin-risk-equity">{equityText}</strong>
+          </div>
+          <span class={`margin-risk-status ${riskTone}`}>{riskLabel}</span>
         </div>
-        <p class="mt-2 text-xs leading-relaxed text-amber-200">
-          {risk.reason?.includes('position integrity')
-            ? translateText('Margin risk is unavailable because broker position direction or execution history needs review.', language)
-            : risk.status === 'unavailable' && valuationStatus !== 'incomplete'
-              ? translateText('Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)
-              : translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', language)}
-        </p>
-        {!accountBalanceAvailable && (
-          <p class="mt-1 text-[10px] text-slate-300">{translateText('Account balance unavailable', language)}</p>
-        )}
-        {unpricedHoldings > 0 && (
-          <p class="mt-1 text-[10px] text-slate-400">
-            {translateText('Unpriced holdings', language)}: {unpricedHoldings}
+
+        <div class="margin-risk-interactive-grid">
+          <button
+            type="button"
+            class="margin-risk-metric-button"
+            onClick={() => openDetails('requirements')}
+            aria-label={translateText('Open capital adequacy details', language)}
+          >
+            <span class="margin-risk-metric-heading">
+              <span class="margin-risk-label">{translateText('CAPITAL ADEQUACY', language)}</span>
+              <strong>{capital ? capital.percentage.toFixed(2) + '%' : '—'}</strong>
+            </span>
+            <span
+              class={`margin-risk-mini-meter ${capital ? '' : 'is-unavailable'}`}
+              role="progressbar"
+              aria-label={translateText('Capital adequacy', language)}
+              aria-valuemin={0}
+              aria-valuemax={150}
+              aria-valuenow={capital ? Math.max(0, Math.min(150, capital.percentage)) : 0}
+              aria-valuetext={capital ? capital.percentage.toFixed(2) + '%' : translateText('Broker initial margin is not reported', language)}
+            >
+              <span class="margin-risk-mini-fill margin-risk-capital-fill" style={{ width: capitalWidth + '%' }} />
+              <span class="margin-risk-mini-marker" style={{ left: (100 / 150 * 100) + '%' }} />
+            </span>
+            <span class="margin-risk-metric-meta">
+              {capital
+                ? moneyForRiskCard(capital.surplus) + ' ' + translateText('surplus', language)
+                : translateText('Broker initial margin not reported', language)}
+              <span aria-hidden="true">↗</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            class="margin-risk-metric-button"
+            onClick={() => openDetails('calculations')}
+            aria-label={translateText('Open minimum margin buffer details', language)}
+          >
+            <span class="margin-risk-metric-heading">
+              <span class="margin-risk-label">{translateText(bufferLabel, language)}</span>
+              <strong>{buffer ? buffer.percentage.toFixed(1) + '%' : '—'}</strong>
+            </span>
+            <span
+              class={`margin-risk-mini-meter ${buffer ? '' : 'is-unavailable'}`}
+              role="progressbar"
+              aria-label={translateText(bufferLabel, language)}
+              aria-valuemin={0}
+              aria-valuemax={40}
+              aria-valuenow={buffer ? Math.max(0, Math.min(40, buffer.percentage)) : 0}
+              aria-valuetext={buffer ? buffer.percentage.toFixed(1) + '%' : translateText('Buffer unavailable', language)}
+            >
+              <span class="margin-risk-mini-fill margin-risk-buffer-fill" style={{ width: bufferWidth + '%' }} />
+              {bufferThresholdWidth !== null && <span class="margin-risk-mini-marker" style={{ left: bufferThresholdWidth + '%' }} />}
+            </span>
+            <span class="margin-risk-metric-meta">
+              {buffer
+                ? moneyForRiskCard(buffer.amount) + (buffer.complete
+                  ? ' · ' + translateText('Broker reported', language)
+                  : ' · ' + translateText('Estimate', language))
+                : translateText('Maintenance data unavailable', language)}
+              <span aria-hidden="true">↗</span>
+            </span>
+          </button>
+        </div>
+
+        {risk.status === 'provisional' && (
+          <p class="margin-risk-interactive-note">
+            {translateText('Some broker requirements are not supplied. Estimated values are not confirmed liquidation thresholds.', language)}
           </p>
         )}
-        <p class="mt-1 text-[10px] text-slate-400">
-          {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', language)}
-        </p>
+        {(valuationStatus === 'incomplete' || risk.status === 'unavailable') && (
+          <p class="margin-risk-interactive-note">
+            {translateText(risk.reason || 'Margin risk estimate unavailable because required collateral or broker inputs are missing.', language)}
+            {unpricedHoldings > 0 ? ` · ${translateText('Unpriced holdings', language)}: ${unpricedHoldings}` : ''}
+          </p>
+        )}
+        <button type="button" class="margin-risk-details-link" onClick={() => openDetails('overview')}>
+          {translateText('View full risk analysis', language)} <span aria-hidden="true">↗</span>
+        </button>
       </section>
-    );
-  }
 
-  const stopOutTitle = translateText(
-    'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
-    language
-  ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
-  const marginRiskTitle = translateText(
-    'Risk estimate uses available account inputs and configured thresholds. Broker margin requirements are shown only when supplied; this is not a live broker risk indicator.',
-    language
+      {modalOpen && (
+        <MarginRiskDetailsModal
+          onClose={() => setModalOpen(false)}
+          initialTab={modalTab}
+          snapshot={snapshot}
+          riskStatus={risk.status}
+          riskReason={risk.reason}
+          warnings={risk.warnings}
+          disclaimer={snapshot?.disclaimer}
+          equityText={equityText}
+          equityPct={equity}
+          valuationStatus={valuationStatus}
+          accountBalanceAvailable={accountBalanceAvailable}
+          unpricedHoldings={unpricedHoldings}
+          collateralText={collateralText}
+          rules={rules}
+          brokerContext={brokerContext}
+        />
+      )}
+    </>
   );
-  const equity = Number.isFinite(equityPct) ? equityPct : 0;
-  const equityWidth = Math.max(0, Math.min(100, equity));
-  const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
-  return (
-    <section class="margin-risk-gauge-card" aria-label={translateText('Margin risk and account equity', language)} title={marginRiskTitle}>
-      <div class="margin-risk-gauge-heading">
-        <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
-        <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
-      </div>
-      <div class="margin-risk-meter" role="progressbar" aria-label={translateText('Account equity percentage', language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', language)}>
-        <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, ACCOUNT_EQUITY_HEALTH_REFERENCE * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
-        <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
-      </div>
-      <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% {translateText('maintenance', language)}</span><span>{translateText('{value}% reference', language).replace('{value}', referencePercent)}</span><span>{translateText('100% assets', language)}</span></div>
-      <div class="margin-risk-buffer-summary">
-        <div class="margin-risk-buffer-stat">
-          <span class="margin-risk-label">{translateText('MARGIN-CALL BUFFER', language)}</span>
-          <strong>{Number.isFinite(risk.marginCallBufferPct)
-            ? risk.marginCallBufferPct.toFixed(1) + '%'
-            : Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'}</strong>
-          {risk.showMarginCall && <span class="margin-risk-buffer-trigger">{risk.marginCallText}</span>}
-        </div>
-        <div class="margin-risk-buffer-stat" title={stopOutTitle}>
-          <span class="margin-risk-label">{translateText('STOP-OUT BUFFER', language)}</span>
-          <strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '%' : '—'}</strong>
-          {risk.showStopOut && <span class="margin-risk-buffer-trigger">{risk.stopOutText}</span>}
-        </div>
-      </div>
+}
 
-      {risk.stopOutState === 'unknown' && (
-        <p class="mt-1 text-[10px] text-amber-200">
-          {translateText('Short-position stop-out buffer unavailable until broker-specific requirements are verified.', language)}
-        </p>
-      )}
-      {risk.hasShortExposure && (
-        <p class="mt-1 text-[10px] text-amber-200">
-          {translateText('Short borrow fees and availability costs are not included because broker data is unavailable.', language)}
-        </p>
-      )}
-      <details class="margin-risk-mobile-details"><summary>{translateText('Equity and collateral details', language)}</summary><div class="margin-risk-detail"><span>{translateText('Account equity', language)}</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>{translateText('Cash / collateral', language)}</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">{translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}</div></details>
-    </section>
-  );
+function moneyForRiskCard(value: number): string {
+  return formatUSD(value);
 }
 
 function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; className: string } | null {
@@ -197,6 +285,7 @@ interface MarginRiskDisplay {
   maintenanceState: 'above-maintenance' | 'maintenance-breach' | 'unknown';
   stopOutState: 'above-stop-out' | 'stop-out-breach' | 'unknown';
   hasShortExposure: boolean;
+  snapshot: MarginRiskSnapshot | null;
 }
 
 function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
@@ -220,7 +309,8 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
       baseMaintenanceBufferPct: Number.NaN,
       maintenanceState: 'unknown',
       stopOutState: 'unknown',
-      hasShortExposure: false
+      hasShortExposure: false,
+      snapshot: null
     };
   }
 
@@ -255,7 +345,8 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
     baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN,
     maintenanceState: metrics.maintenanceState,
     stopOutState: metrics.stopOutState,
-    hasShortExposure: input.shortExposure > 0
+    hasShortExposure: input.shortExposure > 0,
+    snapshot: metrics
   };
 }
 
@@ -679,6 +770,15 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         valuationStatus={valuationStatus}
         accountBalanceAvailable={valuation.accountBalanceAvailable}
         unpricedHoldings={valuation.unpricedHoldings}
+        brokerContext={{
+          provider: state.brokerAccountInfo?.provider,
+          status: state.brokerAccountInfo?.status,
+          quality: state.brokerAccountInfo?.quality,
+          source: state.brokerAccountInfo?.source,
+          observedAt: state.brokerAccountInfo?.observedAt,
+          receivedAt: state.brokerAccountInfo?.receivedAt,
+          riskObservedAt
+        }}
       />
       </>
     );
