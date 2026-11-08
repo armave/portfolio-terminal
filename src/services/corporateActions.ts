@@ -310,7 +310,16 @@ function isCorporateActionFeedEvent(value: unknown): value is CorporateActionEve
     ['stock_split', 'reverse_split', 'cash_dividend'].includes(String(value.kind)) &&
     dateOnly(value.effectiveDate) !== null &&
     typeof value.provider === 'string' && !!value.provider &&
-    Number.isFinite(value.receivedAt) && Number(value.receivedAt) > 0;
+    Number.isFinite(value.receivedAt) && Number(value.receivedAt) > 0 &&
+    (value.kind !== 'cash_dividend' ||
+      (finiteNumber(value.amountPerShare) !== null && Number(value.amountPerShare) >= 0 &&
+       currencyCode(value.currency) !== null &&
+       (value.payDate == null || dateOnly(value.payDate) !== null) &&
+       (value.recordDate == null || dateOnly(value.recordDate) !== null) &&
+       (value.declarationDate == null || dateOnly(value.declarationDate) !== null))) &&
+    (value.kind === 'cash_dividend' ||
+      (positiveFinite(value.fromFactor) !== null && positiveFinite(value.toFactor) !== null &&
+       positiveFinite(value.sharesAfterPerShareBefore) !== null));
 }
 
 export function isPortfolioCorporateActionEvent(value: unknown): value is PortfolioCorporateActionEvent {
@@ -359,7 +368,7 @@ export function mergePortfolioCorporateActionEvents(
     if (previous) {
       const sameEvidence = previous.ticker === event.ticker &&
         previous.kind === event.kind && previous.effectiveAt === event.effectiveAt &&
-        previous.provider === event.provider && previous.receivedAt === event.receivedAt &&
+        previous.provider === event.provider &&
         previous.fromFactor === event.fromFactor && previous.toFactor === event.toFactor &&
         previous.sharesAfterPerShareBefore === event.sharesAfterPerShareBefore &&
         previous.amountPerShare === event.amountPerShare &&
@@ -397,7 +406,10 @@ function acquiredAtForTranche(
   positionStartDate?: string
 ): number | null {
   const timestamp = finiteNumber(tranche.acquiredAt);
-  if (timestamp !== null && timestamp > 0) return timestamp;
+  if (timestamp !== null && timestamp > 0) {
+    const isoDate = new Date(timestamp).toISOString().slice(0, 10);
+    return dateOnly(isoDate) ? Date.parse(isoDate + 'T00:00:00.000Z') : null;
+  }
   const date = typeof tranche.date === 'string' && tranche.date.trim()
     ? tranche.date.trim()
     : positionStartDate;
@@ -446,10 +458,13 @@ export function adjustPositionForSplit(
   if (acquisitionDates.some(value => value === null)) {
     return { status: 'review_required', reason: 'An open lot has no verifiable acquisition date.' };
   }
-  if (acquisitionDates.some(value => Number(value) >= effectiveAt)) {
-    if (acquisitionDates.every(value => Number(value) >= effectiveAt)) {
-      return { status: 'not_applicable', reason: 'All open lots were acquired on or after the corporate-action effective date.' };
-    }
+  if (acquisitionDates.some(value => Number(value) === effectiveAt)) {
+    return { status: 'review_required', reason: 'One or more lots share the corporate-action effective date; the intraday acquisition sequence cannot be verified.' };
+  }
+  if (acquisitionDates.every(value => Number(value) > effectiveAt)) {
+    return { status: 'not_applicable', reason: 'All open lots were acquired after the corporate-action effective date.' };
+  }
+  if (acquisitionDates.some(value => Number(value) > effectiveAt)) {
     return { status: 'review_required', reason: 'The position contains both pre-action and post-action lots; its aggregate price/target basis needs manual review.' };
   }
 

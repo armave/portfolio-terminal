@@ -1,6 +1,7 @@
 import { normalizeCurrencyCode } from './marketDataContracts';
 import {
   normalizeFinnhubStockSplits,
+  normalizeFinnhubDividendActions,
   type CorporateActionEvent
 } from './corporateActions';
 
@@ -298,17 +299,24 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
   const dividendsResult = normalizeDividendEvents(input.dividends, {
     symbol, provider, receivedAt, available: dividendsAvailable
   });
-  const corporateActionsResult = normalizeFinnhubStockSplits(input.corporateActions, {
+  const corporateActionSplits = normalizeFinnhubStockSplits(input.corporateActions, {
     symbol, provider, receivedAt, available: corporateActionsAvailable
   });
+  const corporateActionDividends = normalizeFinnhubDividendActions(input.dividends, {
+    symbol, provider, receivedAt, available: dividendsAvailable
+  });
+  const corporateActions = [...corporateActionSplits.events, ...corporateActionDividends.events]
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate) || a.id.localeCompare(b.id));
   const issues = [
     ...earningsResult.issues,
     ...dividendsResult.issues,
-    ...corporateActionsResult.issues
+    ...corporateActionSplits.issues,
+    ...corporateActionDividends.issues
   ];
-  const availableFeedCount = [earningsResult.quality, dividendsResult.quality, corporateActionsResult.quality]
+  const availableFeedCount = [earningsResult.quality, dividendsResult.quality, corporateActionSplits.quality]
     .filter(quality => quality !== 'unavailable').length;
-  const anyPartial = [earningsResult.quality, dividendsResult.quality, corporateActionsResult.quality]
+  const anyPartial = [earningsResult.quality, dividendsResult.quality, corporateActionSplits.quality,
+    corporateActionDividends.quality === 'partial' ? 'partial' : 'complete']
     .some(quality => quality === 'partial');
   const quality: MarketEventQuality = availableFeedCount === 0 ? 'unavailable'
     : anyPartial || availableFeedCount < 3 ? 'partial' : 'complete';
@@ -316,10 +324,10 @@ export function normalizeMarketEventsResponse(input: unknown): MarketEventsResul
     symbol,
     earnings: earningsResult.events,
     dividends: dividendsResult.events,
-    corporateActions: corporateActionsResult.events,
+    corporateActions,
     earningsAvailable,
     dividendsAvailable,
-    corporateActionsAvailable,
+    corporateActionsAvailable: corporateActionsAvailable || dividendsAvailable,
     quality,
     provider,
     receivedAt,

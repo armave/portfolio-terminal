@@ -86,7 +86,11 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Dividend events are evidence only; cash is recorded when broker settlement is confirmed.': 'Дивиденды являются подтверждающими данными; денежное поступление учитывается после подтверждения расчёта брокером.',
   'Effective date': 'Дата вступления в силу',
   'Share ratio': 'Соотношение акций',
-  'Action status': 'Статус действия'
+  'Action status': 'Статус действия',
+  'Cash dividend': 'Денежный дивиденд',
+  'Record dividend evidence': 'Сохранить сведения о дивиденде',
+  'Dividend evidence saved': 'Сведения о дивиденде сохранены',
+  'No adjustment needed': 'Корректировка не требуется'
 };
 
 function marketEventLabel(value: string): string {
@@ -711,10 +715,8 @@ function MarketInsightsPanelView() {
       const upcomingDividends = getClosestDatedMarketEvents(
         currentEvents?.dividends ?? [], event => event.exDate
       );
-      const splitActions = currentEvents?.corporateActions ?? [];
-      const appliedCorporateActionIds = new Set(
-        corporateActionHistory.filter(event => event.status === 'applied').map(event => event.sourceId)
-      );
+      const corporateActions = currentEvents?.corporateActions ?? [];
+      const recordedCorporateActionIds = new Set(corporateActionHistory.map(event => event.sourceId));
       const nextEarningsDate = getNextUpcomingEarningsDate(
         currentEvents?.earnings ?? [], Date.now()
       ) ?? getNextUpcomingEarningsDate(
@@ -807,18 +809,25 @@ function MarketInsightsPanelView() {
               <p class="text-[10px] text-slate-500">{marketEventLabel('No verified split events in this period.')}</p>
             )}
             <div class="space-y-2">
-              {splitActions.map(event => {
-                const alreadyApplied = appliedCorporateActionIds.has(event.sourceId);
+              {corporateActions.map(event => {
+                const alreadyRecorded = recordedCorporateActionIds.has(event.sourceId);
                 const priorAction = corporateActionHistory.find(item => item.sourceId === event.sourceId);
                 const isFeedback = corporateActionFeedback?.sourceId === event.sourceId;
+                const isDividend = event.kind === 'cash_dividend';
+                const alreadyApplied = priorAction?.status === 'applied';
+                const notApplicable = priorAction?.status === 'not_applicable';
                 return (
                   <div key={event.id} class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 py-2 last:border-0">
                     <div class="min-w-0">
                       <div class="text-[11px] font-semibold text-slate-200">{formatMarketEventDate(event.effectiveDate)}</div>
                       <div class="text-[10px] text-slate-500">
-                        {event.kind === 'stock_split' ? 'Split' : 'Reverse split'} · {marketEventLabel('Share ratio')}: {event.fromFactor}:{event.toFactor}
+                        {isDividend ? marketEventLabel('Cash dividend') : event.kind === 'stock_split' ? 'Split' : 'Reverse split'}
+                        {' · '}
+                        {isDividend
+                          ? (event.amountPerShare ?? '—') + (event.currency ? ' ' + event.currency : '')
+                          : marketEventLabel('Share ratio') + ': ' + event.fromFactor + ':' + event.toFactor}
                       </div>
-                      {priorAction?.status === 'review_required' && (
+                      {priorAction && (
                         <p class="mt-1 text-[9px] text-amber-300">{marketEventLabel('Review required')}: {priorAction.note}</p>
                       )}
                       {isFeedback && (
@@ -827,8 +836,18 @@ function MarketInsightsPanelView() {
                     </div>
                     <button
                       type="button"
-                      disabled={alreadyApplied || eventsLoading}
+                      disabled={alreadyRecorded || eventsLoading}
                       onClick={() => {
+                        if (isDividend) {
+                          const saved = portfolioStore.recordCorporateActionEvidence(event);
+                          setCorporateActionFeedback({
+                            sourceId: event.sourceId,
+                            message: saved
+                              ? marketEventLabel('Dividend evidence saved')
+                              : marketEventLabel('Could not save this corporate action.')
+                          });
+                          return;
+                        }
                         const confirmed = window.confirm(marketEventLabel('Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.'));
                         if (!confirmed) return;
                         const saved = portfolioStore.applyCorporateActionSplit(event);
@@ -840,7 +859,10 @@ function MarketInsightsPanelView() {
                         setCorporateActionFeedback({ sourceId: event.sourceId, message });
                       }}
                       class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
-                      {alreadyApplied ? marketEventLabel('Split already applied') : marketEventLabel('Apply split to open position')}
+                      {alreadyApplied ? marketEventLabel('Split already applied')
+                        : notApplicable ? marketEventLabel('No adjustment needed')
+                          : isDividend ? marketEventLabel('Record dividend evidence')
+                            : marketEventLabel('Apply split to open position')}
                     </button>
                   </div>
                 );

@@ -1990,6 +1990,40 @@ export class PortfolioStore {
   }
 
   /**
+   * Retain sourced dividend, merger, spin-off or other action evidence without
+   * changing positions, cash, debt, or realized P&L. Broker settlement and
+   * cost-basis allocation are separate reviewed workflows.
+   */
+  public recordCorporateActionEvidence(
+    event: CorporateActionEvent,
+    recordedAt = Date.now()
+  ): PortfolioCorporateActionEvent | null {
+    if (!isPortfolioCorporateActionEventList(this.state.corporateActionEvents || [])) return null;
+    const previous = (this.state.corporateActionEvents || []).find(item => item.sourceId === event.sourceId);
+    if (previous) return previous;
+    let committed: PortfolioCorporateActionEvent | null = null;
+    const saved = this.update(state => {
+      let merged: PortfolioCorporateActionEvent[];
+      try {
+        const portfolioEvent = toPortfolioCorporateActionEvent(
+          event,
+          'review_required',
+          recordedAt,
+          event.kind === 'cash_dividend'
+            ? 'Dividend announcement retained as evidence only. No cash or realized P&L was posted; broker settlement must be confirmed separately.'
+            : 'Corporate-action evidence retained for manual review; no portfolio position or cash was changed.'
+        );
+        merged = mergePortfolioCorporateActionEvents(state.corporateActionEvents || [], [portfolioEvent]);
+        committed = merged.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
+      } catch {
+        return state;
+      }
+      return { ...state, corporateActionEvents: merged };
+    });
+    return saved ? committed : null;
+  }
+
+  /**
    * Apply a sourced split only after an explicit user action. Position quantity
    * and lot prices are adjusted together; total acquisition cost is conserved.
    * Dividends and mergers remain evidence-only until settlement/basis allocation
