@@ -41,8 +41,7 @@ import {
   reconcileMarginReviewShares,
   sumMarginReviewCashShares
 } from './features/ai/marginIntelligence';
-import { calculateMarginRiskMetrics } from './domain/marginRisk';
-import { getCashCushionTotal } from './domain/portfolioSelectors';
+import { calculateMarginRiskSnapshot } from './domain/marginRisk';
 import type { BoardState, PositionRecord } from './types/portfolio';
 
 
@@ -201,17 +200,40 @@ function buildMarginReviewContext(
     : null;
   const debt = valuation.marginDebt;
   const assumptions = snapshot.brokerAssumptions;
-  const cashCushion = getCashCushionTotal(snapshot);
-  const marginRisk = assumptions
-    ? calculateMarginRiskMetrics(debt, valuation.marginHoldingsValue, cashCushion, assumptions)
-    : null;
   const brokerSnapshotStatus = snapshot.brokerAccountInfo?.status ||
     (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded');
-  const quotesProvisional = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)]
+  const riskHoldings = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)];
+  const quotesProvisional = riskHoldings
     .some(position => getQuoteFreshness(position, now, refreshIntervalMs) !== 'fresh');
   const valuationReliability = !valuation.accountBalanceAvailable || valuation.unpricedHoldings > 0
     ? 'incomplete'
     : brokerSnapshotStatus !== 'current' || quotesProvisional ? 'provisional' : 'current';
+  const riskObservationValues: unknown[] = [
+    snapshot.brokerAccountInfo?.observedAt,
+    ...riskHoldings.map(position => position.quoteDetails?.sourceTimestamp)
+  ];
+  const riskObservedAt = riskObservationValues.length > 0 &&
+    riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+    ? Math.min(...riskObservationValues as number[])
+    : null;
+  const marginRisk = assumptions
+    ? calculateMarginRiskSnapshot({
+      currency: 'USD',
+      longExposure: valuation.totalHoldingsValue,
+      shortExposure: 0,
+      cashBalance: valuation.cashBalance,
+      marginDebt: valuation.marginDebt,
+      // The current client snapshot has no broker-confirmed eligible-collateral field.
+      // Account cash is used only as a configured assumption and remains provisional.
+      eligibleCollateral: valuation.cashBalance,
+      eligibleCollateralSource: 'configured-assumption',
+      assumptions,
+      quality: valuationReliability,
+      freshness: quotesProvisional ? 'unknown' : 'fresh',
+      observedAt: riskObservedAt,
+      calculatedAt: now
+    })
+    : null;
   const account = {
     reportingCurrency: 'USD',
     brokerSnapshotStatus,
@@ -232,16 +254,32 @@ function buildMarginReviewContext(
       unpricedHoldings: valuation.unpricedHoldings,
       reliability: valuationReliability
     },
-    marginRisk: marginRisk && assumptions ? {
-      equityRatioPct: Number.isFinite(marginRisk.equityRatio) ? marginRisk.equityRatio * 100 : null,
+    marginRisk: marginRisk && assumptions ? marginRisk.status === 'unavailable' ? {
+      status: 'unavailable',
+      reason: marginRisk.reason,
+      warnings: marginRisk.warnings
+    } : {
+      status: marginRisk.status,
+      quality: marginRisk.quality,
+      equityRatioPct: marginRisk.value.equityRatio === null ? null : marginRisk.value.equityRatio * 100,
       maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
       stopOutRatioPct: assumptions.stopOutRatio * 100,
-      marginCallBufferPct: Number.isFinite(marginRisk.marginCallBufferPct) ? marginRisk.marginCallBufferPct : null,
-      stopOutBufferPct: Number.isFinite(marginRisk.stopOutBufferPct) ? marginRisk.stopOutBufferPct : null,
-      dailyBorrowCostEstimate: debt * assumptions.annualBorrowRate / assumptions.dayCountBasis,
+      eligibleCollateral: marginRisk.value.eligibleCollateral,
+      eligibleCollateralSource: marginRisk.value.eligibleCollateralSource,
+      initialMarginRequirement: marginRisk.value.initialMarginRequirement,
+      maintenanceMarginRequirement: marginRisk.value.maintenanceMarginRequirement,
+      concentrationAddOn: marginRisk.value.concentrationAddOn,
+      maintenanceBuffer: marginRisk.value.maintenanceBuffer,
+      maintenanceState: marginRisk.value.maintenanceState,
+      stopOutBuffer: marginRisk.value.stopOutBuffer,
+      marginCallBufferPct: marginRisk.value.marginCallBufferPct,
+      stopOutBufferPct: marginRisk.value.stopOutBufferPctOfLongExposure,
+      dailyBorrowCostEstimate: marginRisk.value.dailyInterestCost,
+      annualBorrowCostEstimate: marginRisk.value.annualInterestCost,
       annualBorrowRatePct: assumptions.annualBorrowRate * 100,
       dayCountBasis: assumptions.dayCountBasis,
-      qualification: 'Application estimate using configured assumptions; not a live broker margin or liquidation indicator.'
+      warnings: marginRisk.warnings,
+      qualification: marginRisk.value.disclaimer
     } : null
   };
   const identity = {
