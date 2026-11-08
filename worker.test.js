@@ -1,4 +1,31 @@
 import { createHmac } from 'node:crypto';
+
+async function encryptMarginDigestFixture(digest, keyMaterial) {
+  const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+  const key = await crypto.subtle.importKey("raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt"]);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce, tagLength: 128 },
+    key,
+    new TextEncoder().encode(JSON.stringify(digest))
+  );
+  const toBase64 = (bytes) => {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  };
+  return "aesgcm:v2:" + toBase64(nonce) + ":" + toBase64(new Uint8Array(ciphertext));
+}
+
+function tamperAesGcmV2Tag(payload) {
+  const [prefix, nonce, encodedCiphertext] = payload.split(":");
+  const binary = atob(encodedCiphertext);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  bytes[bytes.length - 1] ^= 1;
+  let output = "";
+  for (const byte of bytes) output += String.fromCharCode(byte);
+  return prefix + ":" + nonce + ":" + btoa(output);
+}
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomPositionProbe, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
@@ -2253,9 +2280,21 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     await store.ctx.storage.put("marginDigestRecord:position:GOOGL", {
       payload: JSON.stringify(plaintext), revision: 3
     });
+    const validEncryptedPayload = await encryptMarginDigestFixture({
+      key: "portfolio", analysis: "private encrypted analysis", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    }, "test-workspace-key");
     await store.ctx.storage.put("marginDigestRecord:portfolio", {
-      payload: JSON.stringify({ key: "portfolio", encryptedPayload: "aesgcm:v2:abcdefghijklmnop:abcdefghijklmnopqrstuvwxyz012345" }),
+      payload: JSON.stringify({ key: "portfolio", encryptedPayload: validEncryptedPayload }),
       revision: 4
+    });
+    const tamperedPayload = tamperAesGcmV2Tag(await encryptMarginDigestFixture({
+      key: "position:AMD", analysis: "tampered encrypted analysis", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    }, "test-workspace-key"));
+    await store.ctx.storage.put("marginDigestRecord:position:AMD", {
+      payload: JSON.stringify({ key: "position:AMD", encryptedPayload: tamperedPayload }),
+      revision: 1
     });
     await store.ctx.storage.put("marginDigestRecord:position:MSFT", {
       payload: "{malformed", revision: 1
@@ -2274,8 +2313,8 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(response.status).toBe(200);
     const inventory = await response.json();
     expect(inventory).toMatchObject({
-      totalRecords: 5, plaintextRecords: 1, encryptedV2Records: 1,
-      legacyEncryptedRecords: 0, unreadableRecords: 3, migrationReady: false
+      totalRecords: 6, plaintextRecords: 1, encryptedV2Records: 1,
+      legacyEncryptedRecords: 0, unreadableRecords: 4, migrationReady: false
     });
     expect(JSON.stringify(inventory)).not.toContain("private analysis text");
     expect(JSON.stringify(inventory)).not.toContain("GOOGL");
@@ -2369,9 +2408,12 @@ describe('PortfolioStateDO optimistic concurrency', () => {
   it("counts all digest records when the inventory spans multiple storage pages", async () => {
     const store = makeDurableObject();
     store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
-    const encryptedPayload = "aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA";
     for (let index = 0; index < 105; index += 1) {
       const key = "position:T" + String(index).padStart(3, "0");
+      const encryptedPayload = await encryptMarginDigestFixture({
+        key, analysis: "private analysis", articles: [],
+        syncedAt: "2026-11-06T00:00:00.000Z"
+      }, "test-workspace-key");
       await store.ctx.storage.put("marginDigestRecord:" + key, {
         payload: JSON.stringify({ key, encryptedPayload }),
         revision: 1

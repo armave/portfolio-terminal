@@ -2574,24 +2574,25 @@ export class PortfolioStateDO {
     const prefix = "marginDigestRecord:";
     const validDigestKey = (value) => typeof value === "string" &&
       /^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(value);
-    const validAesGcmV2Envelope = (payload) => {
+    const readAesGcmV2Envelope = (payload) => {
       if (typeof payload !== "string" || payload.length > 128 * 1024 ||
-          !payload.startsWith("aesgcm:v2:")) return false;
+          !payload.startsWith("aesgcm:v2:")) return null;
       const parts = payload.slice("aesgcm:v2:".length).split(":");
-      if (parts.length !== 2) return false;
+      if (parts.length !== 2) return null;
       const decodeBase64 = (encoded) => {
         if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
         try {
           const decoded = atob(encoded);
-          return btoa(decoded) === encoded ? decoded : null;
+          if (btoa(decoded) !== encoded) return null;
+          return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
         } catch {
           return null;
         }
       };
       const nonce = decodeBase64(parts[0]);
       const ciphertext = decodeBase64(parts[1]);
-      return nonce !== null && nonce.length === 12 &&
-        ciphertext !== null && ciphertext.length >= 16;
+      if (!nonce || nonce.byteLength !== 12 || !ciphertext || ciphertext.byteLength < 16) return null;
+      return { nonce, ciphertext };
     };
     const inspect = (record, storageKey) => {
       if (!record || typeof record.payload !== "string") return "unreadable";
@@ -2602,7 +2603,7 @@ export class PortfolioStateDO {
       if (typeof value.encryptedPayload === "string") {
         const keys = Object.keys(value).sort();
         const exactEnvelope = keys.length === 2 && keys[0] === "encryptedPayload" && keys[1] === "key";
-        if (exactEnvelope && validAesGcmV2Envelope(value.encryptedPayload)) return "encrypted";
+        if (exactEnvelope && readAesGcmV2Envelope(value.encryptedPayload)) return "encryptedV2Candidate";
         if (exactEnvelope && !value.encryptedPayload.startsWith("aesgcm:v2:")) return "legacyEncrypted";
         return "unreadable";
       }
@@ -2613,10 +2614,42 @@ export class PortfolioStateDO {
       }
       return "unreadable";
     };
+    const isAuthenticatedEncryptedRecord = async (record, storageKey, encryptionKey) => {
+      if (!encryptionKey || inspect(record, storageKey) !== "encryptedV2Candidate") return false;
+      try {
+        const envelopeRecord = JSON.parse(record.payload);
+        const envelope = readAesGcmV2Envelope(envelopeRecord.encryptedPayload);
+        if (!envelope) return false;
+        const plaintext = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: envelope.nonce, tagLength: 128 },
+          encryptionKey,
+          envelope.ciphertext
+        );
+        const digest = JSON.parse(new TextDecoder().decode(plaintext));
+        return Boolean(
+          digest && typeof digest === "object" && !Array.isArray(digest) &&
+          digest.key === envelopeRecord.key && validDigestKey(digest.key) &&
+          typeof digest.analysis === "string" && digest.analysis.trim() &&
+          Array.isArray(digest.articles) && digest.articles.length <= 20 &&
+          typeof digest.syncedAt === "string" && Number.isFinite(Date.parse(digest.syncedAt))
+        );
+      } catch {
+        // A well-formed envelope with a bad GCM tag or invalid plaintext is unreadable.
+        return false;
+      }
+    };
 
     if (request.method === "GET") {
       const counts = { totalRecords: 0, plaintextRecords: 0, encryptedV2Records: 0,
         legacyEncryptedRecords: 0, unreadableRecords: 0 };
+      const keyMaterial = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+      let decryptionKey = null;
+      if (typeof keyMaterial === "string" && keyMaterial) {
+        const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+        decryptionKey = await crypto.subtle.importKey(
+          "raw", keyDigest, { name: "AES-GCM" }, false, ["decrypt"]
+        );
+      }
       let cursor = null;
       do {
         const page = await this.ctx.storage.list({
@@ -2631,8 +2664,10 @@ export class PortfolioStateDO {
           counts.totalRecords += 1;
           const category = inspect(record, storageKey);
           if (category === "plaintext") counts.plaintextRecords += 1;
-          else if (category === "encrypted") counts.encryptedV2Records += 1;
-          else if (category === "legacyEncrypted") counts.legacyEncryptedRecords += 1;
+          else if (category === "encryptedV2Candidate") {
+            if (await isAuthenticatedEncryptedRecord(record, storageKey, decryptionKey)) counts.encryptedV2Records += 1;
+            else counts.unreadableRecords += 1;
+          } else if (category === "legacyEncrypted") counts.legacyEncryptedRecords += 1;
           else counts.unreadableRecords += 1;
         }
         cursor = page.size === 100 ? [...page.keys()].at(-1) || null : null;
@@ -2688,7 +2723,7 @@ export class PortfolioStateDO {
     }
     const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
     const encryptionKey = await crypto.subtle.importKey(
-      "raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt"]
+      "raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]
     );
     const toBase64 = (bytes) => {
       let binary = "";
@@ -2702,8 +2737,12 @@ export class PortfolioStateDO {
       lastKey = storageKey;
       result.scanned += 1;
       const category = inspect(listedRecord, storageKey);
-      if (category === "encrypted") {
-        result.alreadyEncrypted += 1;
+      if (category === "encryptedV2Candidate") {
+        if (await isAuthenticatedEncryptedRecord(listedRecord, storageKey, encryptionKey)) {
+          result.alreadyEncrypted += 1;
+        } else {
+          result.unreadable += 1;
+        }
         continue;
       }
       if (category !== "plaintext") {
