@@ -737,8 +737,10 @@ function MarketInsightsPanelView() {
       const eventsLoading = marketEventsState.ticker === ticker && marketEventsState.loading;
       const currentEventsError = marketEventsState.ticker === ticker ? marketEventsState.error : null;
       const currentHistorySource = marketHistoryState.ticker === ticker ? marketHistoryState.data : null;
+      const historySymbol = currentHistorySource?.instrument?.symbol ??
+        ticker.trim().toUpperCase().replace(/\.US$/i, '');
       const historyCorrectionApplication = currentHistorySource
-        ? applyMarketHistoryCorrectionsToResult(currentHistorySource, ticker, '1D', marketHistoryCorrections)
+        ? applyMarketHistoryCorrectionsToResult(currentHistorySource, historySymbol, '1D', marketHistoryCorrections)
         : null;
       const currentHistory = historyCorrectionApplication?.result ?? null;
       const historyLoading = marketHistoryState.ticker === ticker && marketHistoryState.loading;
@@ -927,7 +929,7 @@ function MarketInsightsPanelView() {
               <div class="space-y-1">
                 {latestHistory.map(point => {
                   const pointCorrections = marketHistoryCorrections.filter(event =>
-                    event.symbol === ticker.toUpperCase() &&
+                    event.symbol === historySymbol &&
                     (event.interval === '1D' || event.interval === 'D') &&
                     event.timestamp === point.timestamp
                   ).sort((a, b) => a.recordedAt - b.recordedAt);
@@ -986,12 +988,16 @@ function MarketInsightsPanelView() {
                               disabled={!Number.isFinite(Number(historyCorrectionDraft.correctedPrice)) ||
                                 Number(historyCorrectionDraft.correctedPrice) <= 0 ||
                                 Number(historyCorrectionDraft.correctedPrice) === historyCorrectionDraft.previous.price ||
+                                (historyCorrectionDraft.previous.high !== undefined &&
+                                  Number(historyCorrectionDraft.correctedPrice) > historyCorrectionDraft.previous.high) ||
+                                (historyCorrectionDraft.previous.low !== undefined &&
+                                  Number(historyCorrectionDraft.correctedPrice) < historyCorrectionDraft.previous.low) ||
                                 !historyCorrectionDraft.reason.trim()}
                               onClick={() => {
                                 const recordedAt = Date.now();
                                 try {
                                   const event = createMarketHistoryCorrectionEvent({
-                                    symbol: ticker,
+                                    symbol: historySymbol,
                                     interval: '1D',
                                     timestamp: historyCorrectionDraft.timestamp,
                                     provider: 'USER',

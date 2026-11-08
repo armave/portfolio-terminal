@@ -36,6 +36,8 @@ function validPoint(value: unknown, timestamp: number): value is MarketPricePoin
   }
   if (value.volume !== undefined && (typeof value.volume !== 'number' || !Number.isFinite(value.volume) || value.volume < 0)) return false;
   if (typeof value.high === 'number' && typeof value.low === 'number' && value.high < value.low) return false;
+  if (typeof value.high === 'number' && value.high < value.price) return false;
+  if (typeof value.low === 'number' && value.low > value.price) return false;
   return true;
 }
 
