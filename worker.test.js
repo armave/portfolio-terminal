@@ -5064,7 +5064,7 @@ describe('Finnhub market-data routes',()=>{
     {symbol:'MSFT',date:'2026-12-21',fromFactor:1,toFactor:2}
    ]),{status:200}));
   vi.stubGlobal('fetch',fetchMock);
-  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=PT02SYMBOLCHECK&from=2026-12-01&to=2026-12-31',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toMatchObject({
    earningsAvailable:true,dividendsAvailable:true,corporateActionsAvailable:true,
