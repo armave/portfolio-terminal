@@ -219,14 +219,14 @@ describe('canonical margin risk integration', () => {
     expect(source).toContain('allocatedCashHoldingsValue');
   });
 
-  it('marks missing collateral and maintenance add-ons as unavailable or provisional', () => {
+  it('preserves unknown margin inputs and their explicit percentage mappings without implying a complete broker buffer', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("risk.status === 'unavailable'");
-    expect(source).toContain("risk.maintenanceState === 'unknown'");
-    expect(source).toContain("risk.stopOutState === 'unknown'");
-    expect(source).toContain("input.marginDebt <= 0 && input.shortExposure <= 0");
-    expect(source).toContain("risk.hasShortExposure");
-    expect(source).toContain("risk.status === 'provisional'");
+    expect(source).toContain('maintenanceState: metrics.maintenanceState');
+    expect(source).toContain('stopOutState: metrics.stopOutState');
+    expect(source).toContain('baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN');
+    expect(source).toContain('marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN');
+    expect(source).toContain('stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN');
   });
 });
 
