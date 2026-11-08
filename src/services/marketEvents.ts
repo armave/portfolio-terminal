@@ -173,7 +173,7 @@ export function normalizeEarningsEvents(
       fiscalQuarter: quarter,
       fiscalYear: year,
       currency: normalizeCurrencyCode(raw.currency),
-      provenance(provenanceContext.provider, provenanceContext.receivedAt,
+      provenance: provenance(provenanceContext.provider, provenanceContext.receivedAt,
         rowIssues.length || provenanceContext.issues.length ? 'partial' : 'complete',
         [...provenanceContext.issues, ...rowIssues])
     };
@@ -247,7 +247,7 @@ export function normalizeDividendEvents(
       declarationDate,
       currency,
       frequency,
-      provenance(provenanceContext.provider, provenanceContext.receivedAt,
+      provenance: provenance(provenanceContext.provider, provenanceContext.receivedAt,
         rowIssues.length || provenanceContext.issues.length ? 'partial' : 'complete',
         [...provenanceContext.issues, ...rowIssues])
     };
