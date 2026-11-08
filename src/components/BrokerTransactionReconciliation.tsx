@@ -1,4 +1,5 @@
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
+import type { ClosedTrade } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { reconcileBrokerActivity, type ReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import { getAppLanguage } from '../services/i18n';
@@ -15,6 +16,14 @@ const RU_COPY: Record<string, string> = {
   'Matched executions': 'Совпавшие исполнения',
   'Broker cashflows': 'Денежные потоки брокера',
   'Matched cashflows': 'Совпавшие денежные потоки',
+  'App journal executions': 'Исполнения в журнале приложения',
+  'App journal cashflows': 'Денежные потоки в журнале приложения',
+  'Legacy closed sales': 'Исторические закрытые продажи',
+  'Matched legacy sales': 'Совпавшие исторические продажи',
+  'Matched legacy sell fills': 'Совпавшие исполнения исторических продаж',
+  'provisional items': 'предварительных записей',
+  'No confirmed differences were found in the available records; incomplete coverage prevents a full match confirmation.': 'В доступных записях не обнаружено подтверждённых расхождений; неполнота истории не позволяет подтвердить полное совпадение.',
+  'Broker history is unavailable; no transaction-level comparison could be confirmed.': 'История брокера недоступна; сверку на уровне транзакций подтвердить невозможно.',
   'Duplicate broker execution': 'Дублирующееся исполнение брокера',
   'Broker execution revision conflict': 'Конфликт версий исполнения брокера',
   'Ambiguous broker order match': 'Неоднозначное совпадение ордера брокера',
@@ -44,6 +53,8 @@ const RU_COPY: Record<string, string> = {
   'Showing first 30 findings': 'Показаны первые 30 расхождений',
   'No transaction-level differences were found in the available records.': 'В доступных записях расхождений на уровне транзакций не обнаружено.',
   'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.': 'Несовпавшие записи остаются предварительными до полного охвата журнала транзакций. В этой проверке доступны только просмотр и сверка, без исправлений и записи данных.',
+  'Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.': 'Исторические сводки закрытых продаж сопоставляются только при совпадении тикера, даты, общего количества и средневзвешенной цены исполнений продажи. Они не подтверждают исторические покупки или денежные потоки.',
+  'Legacy closed sales are app summaries, not transaction-journal events.': 'Исторические закрытые продажи — это сводки приложения, а не события журнала транзакций.',
   'The broker execution history is incomplete; absence-based findings are suppressed.': 'История исполнений брокера неполная; выводы об отсутствии записей не делаются.',
   'Broker cashflow history is incomplete; absence-based findings are suppressed.': 'История денежных потоков брокера неполная; выводы об отсутствии записей не делаются.',
   'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.': 'Журнал транзакций приложения заполнен не полностью; несовпавшие записи предварительные и не считаются подтверждёнными пропусками.',
@@ -82,6 +93,30 @@ export function translateBrokerReconciliationCopy(value: string, language = getA
   return language === 'ru' ? RU_COPY[value] || value : value;
 }
 
+export function getBrokerReconciliationHeadline(
+  status: 'matched' | 'differences' | 'partial' | 'unavailable',
+  findingCount: number
+): string {
+  if (status === 'unavailable') return 'History unavailable';
+  if (status === 'partial') return 'Provisional review';
+  return findingCount > 0 ? 'Differences found' : 'Matched';
+}
+
+export function getBrokerReconciliationCountLabel(
+  status: 'matched' | 'differences' | 'partial' | 'unavailable'
+): string {
+  return status === 'partial' || status === 'unavailable' ? 'provisional items' : 'findings';
+}
+
+export function getBrokerReconciliationEmptyMessage(
+  status: 'matched' | 'differences' | 'partial' | 'unavailable'
+): string {
+  if (status === 'partial') return 'No confirmed differences were found in the available records; incomplete coverage prevents a full match confirmation.';
+  if (status === 'unavailable') return 'Broker history is unavailable; no transaction-level comparison could be confirmed.';
+  return 'No transaction-level differences were found in the available records.';
+}
+
+
 interface BrokerTransactionReconciliationProps {
   executions: readonly BrokerExecution[];
   cashflows: readonly BrokerCashflow[];
@@ -89,6 +124,7 @@ interface BrokerTransactionReconciliationProps {
   executionStatus: ReconciliationFeedStatus;
   cashflowStatus: ReconciliationFeedStatus;
   appHistoryStatus?: ReconciliationFeedStatus;
+  legacyClosedTrades?: readonly ClosedTrade[];
 }
 
 const FINDING_LABELS: Record<string, string> = {
@@ -127,31 +163,42 @@ function formatTimestamp(value?: number): string {
 
 export function BrokerTransactionReconciliation({
   executions, cashflows, appEvents, executionStatus, cashflowStatus,
-  appHistoryStatus = 'partial'
+  appHistoryStatus = 'partial', legacyClosedTrades = []
 }: BrokerTransactionReconciliationProps) {
   const report = reconcileBrokerActivity({
     brokerExecutions: executions, brokerCashflows: cashflows, appEvents,
-    executionStatus, cashflowStatus, appHistoryStatus
+    executionStatus, cashflowStatus, appHistoryStatus, legacyClosedTrades
   });
-  const label = report.findings.length ? 'Differences found' :
-    report.status === 'matched' ? 'Matched' :
-      report.status === 'unavailable' ? 'History unavailable' : 'Provisional review';
-  const labelClass = report.findings.length ? 'text-amber-300' :
-    report.status === 'matched' ? 'text-emerald-300' : 'text-slate-300';
+  const label = getBrokerReconciliationHeadline(report.status, report.findings.length);
+  const countLabel = getBrokerReconciliationCountLabel(report.status);
+  const emptyMessage = getBrokerReconciliationEmptyMessage(report.status);
+  const emptyMessageClass = report.status === 'matched' ? 'text-emerald-300' : 'text-slate-400';
+  const labelClass = report.status === 'matched' ? 'text-emerald-300' :
+    report.status === 'differences' ? 'text-amber-300' : 'text-slate-300';
 
   return (
     <div class="space-y-3 text-xs">
       <p class="text-slate-400">{translateBrokerReconciliationCopy('Read-only comparison of broker executions and cashflows with app-authored journal events. No portfolio data is changed.')}</p>
       <div class="flex flex-wrap items-center justify-between gap-2">
         <strong class={labelClass}>{translateBrokerReconciliationCopy(label)}</strong>
-        <span class="text-slate-500">{report.findings.length} {translateBrokerReconciliationCopy('findings')}</span>
+        <span class={report.status === 'partial' || report.status === 'unavailable' ? 'text-amber-300' : 'text-slate-500'}>{report.findings.length} {translateBrokerReconciliationCopy(countLabel)}</span>
       </div>
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Broker executions')}</div><strong>{report.brokerExecutionCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('App journal executions')}</div><strong>{report.appExecutionCount}</strong></div>
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched executions')}</div><strong>{report.matchedExecutionCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Legacy closed sales')}</div><strong>{report.legacyClosedSaleCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched legacy sales')}</div><strong>{report.matchedLegacyClosedSaleCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched legacy sell fills')}</div><strong>{report.matchedLegacyExecutionCount}</strong></div>
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Broker cashflows')}</div><strong>{report.brokerCashflowCount}</strong></div>
+        <div><div class="text-slate-500">{translateBrokerReconciliationCopy('App journal cashflows')}</div><strong>{report.appCashflowCount}</strong></div>
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched cashflows')}</div><strong>{report.matchedCashflowCount}</strong></div>
       </div>
+      {report.legacyClosedSaleCount > 0 && (
+        <p class="text-slate-500">
+          {translateBrokerReconciliationCopy('Legacy closed sales are app summaries, not transaction-journal events.')} {translateBrokerReconciliationCopy('Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.')}
+        </p>
+      )}
       {report.warnings.length > 0 && (
         <ul class="list-disc space-y-1 pl-4 text-amber-200">
           {report.warnings.map(warning => <li key={warning}>{translateBrokerReconciliationCopy(warning)}</li>)}
@@ -180,7 +227,7 @@ export function BrokerTransactionReconciliation({
           ))}
           {report.findings.length > 30 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 30 findings')}.</p>}
         </div>
-      ) : <p class="text-emerald-300">{translateBrokerReconciliationCopy('No transaction-level differences were found in the available records.')}</p>}
+      ) : <p class={emptyMessageClass}>{translateBrokerReconciliationCopy(emptyMessage)}</p>}
       <p class="border-t border-slate-800 pt-2 text-slate-500">{translateBrokerReconciliationCopy('Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.')}</p>
     </div>
   );

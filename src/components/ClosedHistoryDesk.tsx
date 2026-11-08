@@ -787,6 +787,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               executionStatus={getExecutionReconciliationFeedStatus(brokerExecutionHistory.status)}
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
+              legacyClosedTrades={state.closedTrades || []}
             />
           </div>
         )}

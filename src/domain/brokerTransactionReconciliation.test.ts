@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
+import type { ClosedTrade } from '../types/portfolio';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import type { PortfolioTransactionEvent, PortfolioTransactionEventType } from '../types/portfolioTransaction';
 import { getExecutionReconciliationFeedStatus, reconcileBrokerActivity } from './brokerTransactionReconciliation';
@@ -419,5 +420,104 @@ describe('reconcileBrokerActivity', () => {
     });
     expect(report.status).toBe('partial');
     expect(report.findings.every(finding => finding.confidence === 'provisional')).toBe(true);
+  });
+});
+
+
+describe('legacy closed-sale reconciliation fallback', () => {
+  const closedSale = (overrides: Partial<ClosedTrade> = {}): ClosedTrade => ({
+    id: 'closed-sale-1',
+    ticker: 'AAPL',
+    shares: 2,
+    avgBuyPrice: 90,
+    sellPrice: 110,
+    buyDate: '2026-11-05',
+    sellDate: '2026-11-06',
+    date: at,
+    grossProfit: 40,
+    commissions: 1,
+    marginInterest: 0,
+    netProfit: 39,
+    ...overrides
+  });
+
+  it('matches a legacy app closed-sale summary to an exact same-day broker sell', () => {
+    const report = reconcile(
+      [execution({
+        id: 'legacy-sell-fill',
+        side: 'SELL',
+        quantity: 2,
+        price: 110,
+        executedAt: '2026-11-06T15:30:00.000Z'
+      })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.appExecutionCount).toBe(0);
+    expect(report.legacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyExecutionCount).toBe(1);
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['legacy-sell-fill']
+    }));
+  });
+
+  it('aggregates partial broker sell fills only when their total quantity and weighted price match one legacy sale', () => {
+    const report = reconcile([
+      execution({ id: 'legacy-partial-1', side: 'SELL', quantity: 0.75, price: 100 }),
+      execution({ id: 'legacy-partial-2', side: 'SELL', quantity: 1.25, price: 100, executedAt: new Date(at + 60_000).toISOString() })
+    ], [], {
+      legacyClosedTrades: [closedSale({ sellPrice: 100 })],
+      appHistoryStatus: 'partial'
+    });
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyExecutionCount).toBe(2);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('does not infer a historical buy execution from a closed sale average entry price', () => {
+    const report = reconcile(
+      [execution({ id: 'historical-buy', side: 'BUY', quantity: 2, price: 90 })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['historical-buy'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('does not match a legacy sale when broker sale price differs', () => {
+    const report = reconcile(
+      [execution({ id: 'different-price', side: 'SELL', quantity: 2, price: 111 })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['different-price']
+    }));
+  });
+
+  it('leaves duplicate exact broker candidates unmatched when the legacy sale cannot identify one uniquely', () => {
+    const report = reconcile([
+      execution({ id: 'ambiguous-1', side: 'SELL', quantity: 2, price: 110 }),
+      execution({ id: 'ambiguous-2', side: 'SELL', quantity: 2, price: 110 })
+    ], [], {
+      legacyClosedTrades: [closedSale()],
+      appHistoryStatus: 'partial'
+    });
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.matchedLegacyExecutionCount).toBe(0);
   });
 });
