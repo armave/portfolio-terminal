@@ -55,7 +55,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
 
     // Order/action fields use 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
     // Do not apply this mapping to the separate trade-history type field.
-    for (const value of [row.oper, row.action_id, row.operation]) {
+    for (const value of [row.oper, row.action_id]) {
       const code = String(value ?? '').trim();
       if (code === '1' || code === '2') return 'BUY';
       if (code === '3') return 'SELL';
