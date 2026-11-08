@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  createFxRateProviderRegistry,
+  findMissingMarketHistoryTimestamps,
   getFxConversionRate,
   isFxRateUsableForConversion,
   normalizeFxRate,
@@ -136,27 +138,25 @@ describe('normalizeMarketQuoteObservation', () => {
     }, { now }).observation).toMatchObject({ observedAt: null, freshness: 'unknown' });
     expect(normalizeMarketQuoteObservation({ ...base, price: 0 }, { now }).observation).toBeNull();
     expect(normalizeMarketQuoteObservation({ ...base, receivedAt: null }, { now }).observation).toBeNull();
+    const futureReceipt = normalizeMarketQuoteObservation({
+      ...base, receivedAt: now + 5 * 60_000
+    }, { now });
+    expect(futureReceipt.observation).toBeNull();
+    expect(futureReceipt.issues).toContain('Quote receipt timestamp is in the future; observation was rejected.');
   });
 });
 
 describe('normalizeMarketHistoryPoints', () => {
-  it('normalizes timestamps, sorts points, and keeps the final observation for duplicate timestamps', () => {
-    expect(normalizeMarketHistoryPoints([
+  it('withholds conflicting duplicate candles instead of selecting a response-order winner', () => {
+    const result = normalizeMarketHistoryPoints([
       { timestamp: '2026-11-06T12:02:00.000Z', close: '102', volume: '4' },
       { timestamp: 1793966400, close: 101 },
       { timestamp: '2026-11-06T12:02:00.000Z', close: 103 }
-    ])).toEqual({
-      points: [
-        { timestamp: 1793966400000, price: 101 },
-        { timestamp: Date.parse('2026-11-06T12:02:00.000Z'), price: 103 }
-      ],
-      observedAt: Date.parse('2026-11-06T12:02:00.000Z'),
-      freshness: 'unknown',
-      session: 'UNKNOWN',
-      delayClass: 'unknown',
-      quality: 'complete',
-      issues: []
-    });
+    ]);
+    expect(result.points).toEqual([{ timestamp: 1793966400000, price: 101 }]);
+    expect(result.observedAt).toBe(1793966400000);
+    expect(result.quality).toBe('partial');
+    expect(result.issues[0]).toContain('Conflicting historical observations share timestamp');
   });
 
   it('returns partial quality for malformed rows and bounds the output', () => {
@@ -232,6 +232,30 @@ describe('normalizeMarketHistoryPoints', () => {
       points: [], quality: 'unavailable'
     });
   });
+  it('reports gaps only when a verified calendar supplies expected timestamps', () => {
+    const observed = [
+      { timestamp: 1_000, price: 10 },
+      { timestamp: 3_000, price: 12 }
+    ];
+    expect(findMissingMarketHistoryTimestamps([1_000, 2_000, 3_000], observed)).toEqual([2_000]);
+    expect(normalizeMarketHistoryResponse({
+      symbol: 'AAPL.US', provider: 'test', receivedAt: Date.now(),
+      interval: '1D', currency: 'USD', expectedTimestamps: [1_000, 2_000, 3_000],
+      points: observed
+    })).toMatchObject({ quality: 'partial', missingTimestamps: [2_000] });
+  });
+
+  it('downgrades historical responses with a future receipt timestamp', () => {
+    const result = normalizeMarketHistoryResponse({
+      symbol: 'AAPL.US', provider: 'test', receivedAt: Date.now() + 5 * 60_000,
+      interval: '1D', currency: 'USD',
+      points: [{ timestamp: Date.now() - 60_000, price: 100 }]
+    });
+    expect(result.quality).toBe('partial');
+    expect(result.receivedAt).toBeUndefined();
+    expect(result.issues).toContain('Historical data receipt timestamp is in the future; provenance is incomplete.');
+  });
+
 });
 
 describe('FX rate contract', () => {
@@ -317,6 +341,43 @@ describe('FX rate contract', () => {
       ...stale, rate: Number.NaN
     }, now)).toBe(false);
   });
+  it('rejects future FX receipts even when the observation timestamp is plausible', () => {
+    expect(normalizeFxRate({
+      baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
+      provider: 'test', observedAt: now - 30_000, receivedAt: now + 5 * 60_000
+    }, { now }).rate).toBeNull();
+  });
+
+  it('falls back only to providers that return the exact requested pair and valid provenance', async () => {
+    const inverse = normalizeFxRate({
+      baseCurrency: 'EUR', quoteCurrency: 'USD', rate: 1.08,
+      provider: 'INVERSE', observedAt: now - 10_000, receivedAt: now
+    }).rate!;
+    const exact = normalizeFxRate({
+      baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92,
+      provider: 'EXACT', observedAt: now - 10_000, receivedAt: now
+    }).rate!;
+    const registry = createFxRateProviderRegistry([
+      { providerId: 'INVERSE', fetchRate: vi.fn().mockResolvedValue({ rate: inverse, issues: [] }) },
+      { providerId: 'EXACT', fetchRate: vi.fn().mockResolvedValue({ rate: exact, issues: [] }) }
+    ], { now: () => now });
+    const result = await registry.fetchExactPair('USD', 'EUR');
+    expect(result).toMatchObject({
+      provider: 'EXACT',
+      rate: { baseCurrency: 'USD', quoteCurrency: 'EUR', rate: 0.92 }
+    });
+    expect(result.issues).toContain('INVERSE returned a different or reversed FX pair; the rate was ignored.');
+  });
+
+  it('rejects duplicate providers and aborts a provider chain on cancellation', async () => {
+    const adapter = { providerId: 'TEST', fetchRate: vi.fn().mockResolvedValue({ rate: null, issues: [] }) };
+    expect(() => createFxRateProviderRegistry([adapter, adapter])).toThrow('unique');
+    const controller = new AbortController();
+    controller.abort();
+    await expect(createFxRateProviderRegistry([adapter]).fetchExactPair('USD', 'EUR', controller.signal))
+      .rejects.toMatchObject({ name: 'AbortError' });
+  });
+
 });
 
 describe('out-of-order market observations', () => {

@@ -170,5 +170,9 @@ describe('earnings and daily history request wiring', () => {
     expect(source).toContain('getNextUpcomingEarningsDate(');
     expect(source).not.toContain('Load Finnhub history');
     expect(source).not.toContain('FINNHUB · {marketEventLabel(\'Received\')}');
+    expect(source).toContain('portfolioStore.applyCorporateActionSplit(event)');
+    expect(source).toContain('window.confirm(marketEventLabel(');
+    expect(source).toContain("marketEventLabel('Corporate actions')");
+    expect(source).toContain("marketEventLabel('Dividend events are evidence only; cash is recorded when broker settlement is confirmed.')");
   });
 });
