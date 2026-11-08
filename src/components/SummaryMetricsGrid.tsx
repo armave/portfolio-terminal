@@ -37,6 +37,15 @@ export function getUsableMarketPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
+function getCashCushionValueFromState(state: BoardState): number {
+  const freeCash = Number(state.cashCushion?.freeCash) || 0;
+  return freeCash + (state.cashCushion?.holdings || []).reduce((sum, holding) => {
+    const shares = Number(holding.shares);
+    const price = getUsableMarketPrice(holding.currentPrice) ?? getUsableMarketPrice(holding.price);
+    return sum + (Number.isFinite(shares) && shares > 0 && price !== null ? shares * price : 0);
+  }, 0);
+}
+
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
   equityPct: number;
   risk: MarginRiskDisplay;

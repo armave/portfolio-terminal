@@ -125,8 +125,6 @@ export interface StressScenarioResult {
 
 const MIN_RETURN_OBSERVATIONS = 20;
 const TRADING_DAYS_PER_YEAR = 252;
-const RISK_DISCLAIMER = 'This is a deterministic estimate from the supplied snapshot and configured assumptions, not a broker maintenance calculation, liquidation quote, or forecast.';
-
 function unavailable<T>(reason: string, warnings: string[] = []): RiskCalculation<T> {
   return { status: 'unavailable', reason, warnings };
 }
@@ -136,6 +134,14 @@ function available<T>(value: T, quality: 'current' | 'provisional', warnings: st
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 function validTimestamp(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+function validBrokerAssumptions(value: BrokerAssumptions): boolean {
+  return Boolean(value) &&
+    typeof value.broker === 'string' && value.broker.trim().length > 0 &&
+    finite(value.annualBorrowRate) && value.annualBorrowRate >= 0 && value.annualBorrowRate <= 1 &&
+    (value.dayCountBasis === 360 || value.dayCountBasis === 365) &&
+    finite(value.maintenanceEquityRatio) && value.maintenanceEquityRatio > 0 && value.maintenanceEquityRatio < 1 &&
+    finite(value.stopOutRatio) && value.stopOutRatio >= 0 && value.stopOutRatio <= value.maintenanceEquityRatio;
 }
 function normalizeTicker(value: unknown): string | null {
   if (typeof value !== 'string') return null;
