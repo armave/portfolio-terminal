@@ -510,7 +510,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             staleReasons: freshness.reasons,
             ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
             syncedAt: cached.digest.syncedAt,
-            digestRevision: cached.revision
+            digestRevision: cached.revision,
+            ...(cached.migrationStatus === 'pending' ? {
+              error: translateText('This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.', getAppLanguage())
+            } : {})
           });
           return;
         }

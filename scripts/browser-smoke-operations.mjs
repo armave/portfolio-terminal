@@ -664,7 +664,13 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
           }
         }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
         if (!positionSaved) {
-          throw new Error('Authenticated performance fixture failed to seed its local-only AAPL paper position.');
+          const terminalOutput = await page.locator('#terminalLog').innerText().catch(() => '');
+          const persistedSnapshot = await page.evaluate(() => localStorage.getItem('margin_portfolio_state_dynamic_v2'));
+          throw new Error('Authenticated performance fixture failed to seed its local-only AAPL paper position.' +
+            ' | Terminal: ' + terminalOutput.slice(-1200) +
+            ' | Confirmation: ' + tradeConfirmationMessage.slice(0, 500) +
+            ' | Snapshot: ' + String(persistedSnapshot).slice(0, 1200) +
+            ' | Page errors: ' + pageErrors.join('; '));
         }
         if (!/apply this change\?/i.test(tradeConfirmationMessage) ||
             !/no broker order is submitted/i.test(tradeConfirmationMessage)) {

@@ -694,4 +694,34 @@ describe('app localization', () => {
     expect(translateText('Portfolio ownership could not be loaded.', 'ru')).toBe('Не удалось загрузить раздел владения портфелями.');
   });
 
+
+  it('localizes the cached digest encryption-upgrade warning', () => {
+    expect(translateText(
+      'This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.',
+      'ru'
+    )).toBe('Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.');
+  });
+
+  it('localizes the resumable Margin Intelligence encryption migration controls', () => {
+    const migrationCopy = [
+      'Continue migration',
+      'Each run processes up to 500 records. Continue to resume from the last completed batch.',
+      'Migration paused safely. Select Continue migration to resume from the last completed batch.'
+    ];
+    for (const value of migrationCopy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
+  });
+
+  it('localizes Margin Intelligence migration conflict and legacy-record guidance', () => {
+    const copy = [
+      'Some records changed during migration. Run the migration again to retry remaining plaintext records.',
+      'Records changed during migration:',
+      'Older encrypted records are not processed by the batch tool. Open each saved review in Margin Intelligence to decrypt and upgrade it.',
+      'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
+
 });
