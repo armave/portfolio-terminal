@@ -9,9 +9,7 @@ import type {
 } from '../types/corporateAction';
 export type {
   CorporateActionEvent,
-  CorporateActionFeedQuality,
   CorporateActionFeedResult,
-  CorporateActionKind,
   PortfolioCorporateActionEvent,
   PortfolioCorporateActionStatus
 } from '../types/corporateAction';
@@ -326,7 +324,7 @@ function isCorporateActionFeedEvent(value: unknown): value is CorporateActionEve
        positiveFinite(value.sharesAfterPerShareBefore) !== null));
 }
 
-export function isPortfolioCorporateActionEvent(value: unknown): value is PortfolioCorporateActionEvent {
+function isPortfolioCorporateActionEvent(value: unknown): value is PortfolioCorporateActionEvent {
   if (!isRecord(value) || value.schemaVersion !== 1 ||
       typeof value.id !== 'string' || !value.id.trim() ||
       typeof value.sourceId !== 'string' || !value.sourceId.trim() ||
