@@ -19,6 +19,7 @@ import {
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
 import {
+  ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
   hasUnresolvedBrokerPositionIntegrity,
   type MarginRiskInput,
@@ -98,10 +99,10 @@ function MarginRiskGaugeCard({
       : risk.riskLevel === 'Elevated' ? 'elevated' : 'danger';
   const bufferLabel = translateText(buffer?.complete ? 'MINIMUM MARGIN BUFFER' : 'ESTIMATED MARGIN-CALL BUFFER', language);
   const bufferWidth = buffer
-    ? Math.max(0, Math.min(100, (buffer.percentage / 40) * 100))
+    ? Math.max(0, Math.min(100, (buffer.percentage / (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100)) * 100))
     : 0;
   const bufferThresholdWidth = buffer?.thresholdPct !== null && buffer?.thresholdPct !== undefined
-    ? Math.max(0, Math.min(100, (buffer.thresholdPct / 40) * 100))
+    ? Math.max(0, Math.min(100, (buffer.thresholdPct / (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100)) * 100))
     : null;
   const capitalWidth = capital
     ? Math.max(0, Math.min(100, (capital.percentage / 150) * 100))
@@ -148,7 +149,7 @@ function MarginRiskGaugeCard({
             </span>
             <span class="margin-risk-metric-meta">
               {capital
-                ? moneyForRiskCard(capital.surplus) + ' ' + translateText('surplus', language)
+                ? moneyForRiskCard(capital.surplus) + ' ' + translateText('surplus', language) + ' · ' + translateText('100% required', language)
                 : translateText('Broker initial margin not reported', language)}
               <span aria-hidden="true">↗</span>
             </span>
@@ -169,7 +170,7 @@ function MarginRiskGaugeCard({
               role="progressbar"
               aria-label={translateText(bufferLabel, language)}
               aria-valuemin={0}
-              aria-valuemax={40}
+              aria-valuemax={ACCOUNT_EQUITY_HEALTH_REFERENCE * 100}
               aria-valuenow={buffer ? Math.max(0, Math.min(40, buffer.percentage)) : 0}
               aria-valuetext={buffer ? buffer.percentage.toFixed(1) + '%' : translateText('Buffer unavailable', language)}
             >
@@ -178,9 +179,11 @@ function MarginRiskGaugeCard({
             </span>
             <span class="margin-risk-metric-meta">
               {buffer
-                ? moneyForRiskCard(buffer.amount) + (buffer.complete
-                  ? ' · ' + translateText('Broker reported', language)
-                  : ' · ' + translateText('Estimate', language))
+                ? [
+                    moneyForRiskCard(buffer.amount),
+                    translateText(buffer.complete ? 'Broker reported' : buffer.source === 'broker-base' ? 'Broker base only' : 'Estimate', language),
+                    buffer.thresholdPct !== null ? `${buffer.thresholdPct.toFixed(1)}% ${translateText('threshold', language)}` : ''
+                  ].filter(Boolean).join(' · ')
                 : translateText('Maintenance data unavailable', language)}
               <span aria-hidden="true">↗</span>
             </span>

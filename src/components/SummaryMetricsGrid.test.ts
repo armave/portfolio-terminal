@@ -264,8 +264,9 @@ describe('margin-call buffer presentation', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("translateText(buffer?.complete ? 'MINIMUM MARGIN BUFFER' : 'ESTIMATED MARGIN-CALL BUFFER', language)");
     expect(source).not.toContain("'BASE MAINTENANCE BUFFER'");
-    expect(source).toContain("Number.isFinite(risk.marginCallBufferPct)");
-    expect(source).toContain("Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'");
+    expect(source).toContain("buffer ? buffer.percentage.toFixed(1) + '%' : '—'");
+    expect(source).toContain('getMinimumMarginBufferMetrics(snapshot)');
+    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
     expect(source).not.toContain('formatUSD(risk.baseMaintenanceBuffer)');
     expect(source).not.toContain("translateText('Before concentration add-on', language)");
     expect(source).not.toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');

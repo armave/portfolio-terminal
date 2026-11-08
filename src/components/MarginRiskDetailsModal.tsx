@@ -248,6 +248,11 @@ export function MarginRiskDetailsModal({
                   tone={snapshot?.maintenanceMarginRequirement.source === 'broker' ? 'positive' : 'warning'}
                 />
                 <DetailRow
+                  label={translateText('Configured maintenance amount', language)}
+                  value={snapshot?.maintenanceMarginRequirement.source === 'configured-assumption' ? money(snapshot.maintenanceMarginRequirement.amount) : '—'}
+                  tone="warning"
+                />
+                <DetailRow
                   label={translateText('Concentration add-on', language)}
                   value={snapshot?.concentrationAddOn.source === 'broker' ? money(snapshot.concentrationAddOn.amount) : translateText('Not reported', language)}
                   tone={snapshot?.concentrationAddOn.source === 'broker' ? 'positive' : 'warning'}
