@@ -1,4 +1,12 @@
 import type { BrokerAssumptions } from '../types/portfolio';
+import {
+  calculateMarginRiskSnapshot,
+  type MarginRiskSnapshot,
+  type BrokerReportedMarginRequirements,
+  type MarginRiskDataQuality,
+  type MarginRiskQuoteFreshness,
+  type EligibleCollateralSource
+} from './marginRisk';
 
 type RiskDataQuality = 'current' | 'provisional' | 'incomplete';
 type RiskQuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'indicative' | 'unknown';
@@ -27,6 +35,9 @@ export interface RiskCapitalInput {
   /** Positive cash and debt magnitudes; signed balance normalization occurs before this boundary. */
   cash: number;
   debt: number;
+  /** Explicit eligible-collateral amount; null/omitted is unknown, not zero. */
+  eligibleCollateral?: number | null;
+  eligibleCollateralSource?: EligibleCollateralSource;
   quality: RiskDataQuality;
   freshness: RiskQuoteFreshness;
   observedAt: number | null;
@@ -43,15 +54,21 @@ export interface RiskHistoricalSeriesInput {
   observedAt: number | null;
 }
 interface RiskBrokerAssumptions { brokerId: string; assumptions: BrokerAssumptions; }
+export interface RiskBrokerMarginRequirements extends BrokerReportedMarginRequirements {
+  brokerId: string;
+  accountId?: string | null;
+}
 export interface PortfolioRiskSnapshot {
   calculatedAt: number;
   positions: readonly RiskPositionInput[];
   capital: readonly RiskCapitalInput[];
   histories?: readonly RiskHistoricalSeriesInput[];
   brokerAssumptions?: readonly RiskBrokerAssumptions[];
+  brokerRequirements?: readonly RiskBrokerMarginRequirements[];
 }
 interface CurrencyExposure {
-  currency: string; grossExposure: number; netExposure: number; cash: number; debt: number; equity: number;
+  currency: string; longExposure: number; shortExposure: number; grossExposure: number; netExposure: number;
+  cash: number; debt: number; eligibleCollateral: number | null; equity: number;
 }
 interface RiskConcentrationGroup { key: string; exposure: number; percentage: number; positions: number; positionIds: string[]; }
 interface RiskConcentrationBreakdown {
@@ -62,17 +79,14 @@ interface RiskConcentrationBreakdown {
   byAccount: RiskConcentrationGroup[];
   grossExposure: number;
 }
-export interface BrokerMarginRisk {
-  brokerId: string; broker: string; debt: number; annualBorrowRate: number; dayCountBasis: 360 | 365;
-  annualInterestCost: number; dailyInterestCost: number; maintenanceEquityRatio: number; stopOutRatio: number;
-  estimatedAssets: number; estimatedEquity: number; maintenanceBuffer: number; maintenanceBufferPct: number | null;
-  stopOutBuffer: number; stopOutBufferPct: number | null;
-  maintenanceState: 'above-maintenance' | 'maintenance-breach';
-  stopOutState: 'above-stop-out' | 'stop-out-breach';
-  disclaimer: string;
+export interface BrokerMarginRisk extends MarginRiskSnapshot {
+  brokerId: string;
+  accountId: string;
+  broker: string;
 }
 interface RiskPortfolioMetrics {
-  currency: string; calculatedAt: number; grossExposure: number; netExposure: number; cash: number; debt: number;
+  currency: string; calculatedAt: number; longExposure: number; shortExposure: number;
+  grossExposure: number; netExposure: number; cash: number; debt: number; eligibleCollateral: number | null;
   equity: number; grossLeverage: number | null; netLeverage: number | null; marginUtilization: number | null;
   cashCoverage: number | null; equityRatio: number | null; margin: RiskCalculation<BrokerMarginRisk[]>;
   inputPositionIds: string[]; sourceObservationTimes: number[];
@@ -82,6 +96,8 @@ export interface PortfolioRiskReport {
   /** A consolidated value is unavailable until a single-currency or explicit FX contract exists. */
   portfolio: RiskCalculation<RiskPortfolioMetrics>;
   concentrationByCurrency: Array<{ currency: string; value: RiskConcentrationBreakdown }>;
+  /** Margin estimates remain separated by broker account and currency. */
+  marginByAccount: RiskCalculation<BrokerMarginRisk[]>;
   historyByTicker: Record<string, RiskCalculation<HistoricalRiskMetrics>>;
   warnings: string[];
 }
@@ -183,6 +199,14 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
     if (!finite(item.cash) || !finite(item.debt) || item.cash < 0 || item.debt < 0) {
       return unavailable('Capital cash and debt must be finite non-negative magnitudes.');
     }
+    const eligibleCollateral = item.eligibleCollateral === undefined ? null : item.eligibleCollateral;
+    if (eligibleCollateral !== null && (!finite(eligibleCollateral) || eligibleCollateral < 0)) {
+      return unavailable('Eligible collateral must be a finite non-negative amount or explicitly unknown.');
+    }
+    if (item.eligibleCollateralSource !== undefined &&
+        !['broker', 'configured-assumption', 'unknown'].includes(item.eligibleCollateralSource)) {
+      return unavailable('Capital eligible-collateral provenance is invalid.');
+    }
     if (!['current', 'provisional', 'incomplete'].includes(item.quality) ||
         !['fresh', 'stale', 'delayed', 'indicative', 'unknown'].includes(item.freshness)) {
       return unavailable('A capital observation has an unknown data-quality or freshness state.');
@@ -195,18 +219,31 @@ function normalizeSnapshot(input: PortfolioRiskSnapshot): RiskCalculation<Normal
       ? 'provisional' : 'current';
     if (quality === 'provisional') warnings.push('Capital observation is stale, delayed, or has unknown source time.');
     qualities.push(quality);
-    capital.push({ ...item, currency, brokerId: normalizedLabel(item.brokerId), accountId: normalizedLabel(item.accountId) });
+    if (eligibleCollateral === null && item.debt > 0) warnings.push('Eligible collateral is unknown for a margin debit.');
+    capital.push({
+      ...item, currency, eligibleCollateral,
+      eligibleCollateralSource: item.eligibleCollateralSource ?? (eligibleCollateral === null ? 'unknown' : 'configured-assumption'),
+      brokerId: normalizedLabel(item.brokerId), accountId: normalizedLabel(item.accountId)
+    });
   }
   const quality = mergeQuality(...qualities);
   return available({ positions, capital, quality, warnings: [...new Set(warnings)], calculatedAt: input.calculatedAt },
     quality, [...new Set(warnings)]);
 }
 function buildCurrencyExposure(currency: string, positions: readonly RiskPositionInput[], capital: readonly RiskCapitalInput[]): CurrencyExposure {
-  const netExposure = positions.reduce((sum, position) => sum + position.quantity * position.price, 0);
-  const grossExposure = positions.reduce((sum, position) => sum + Math.abs(position.quantity * position.price), 0);
+  const longExposure = positions.reduce((sum, position) => sum + Math.max(0, position.quantity * position.price), 0);
+  const shortExposure = positions.reduce((sum, position) => sum + Math.max(0, -position.quantity * position.price), 0);
+  const grossExposure = longExposure + shortExposure;
+  const netExposure = longExposure - shortExposure;
   const cash = capital.reduce((sum, item) => sum + item.cash, 0);
   const debt = capital.reduce((sum, item) => sum + item.debt, 0);
-  return { currency, grossExposure, netExposure, cash, debt, equity: cash + netExposure - debt };
+  const eligibleCollateral = capital.length > 0 && capital.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined)
+    ? capital.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+    : null;
+  return {
+    currency, longExposure, shortExposure, grossExposure, netExposure, cash, debt, eligibleCollateral,
+    equity: cash + longExposure - shortExposure - debt
+  };
 }
 function groupConcentration(positions: readonly RiskPositionInput[], keyFor: (position: RiskPositionInput) => string): RiskConcentrationGroup[] {
   const values = new Map<string, { exposure: number; positions: number; positionIds: string[] }>();
@@ -240,58 +277,108 @@ function buildConcentration(positions: readonly RiskPositionInput[]): RiskConcen
     grossExposure
   };
 }
-function validBrokerAssumptions(value: BrokerAssumptions): boolean {
-  return !!value && finite(value.annualBorrowRate) && value.annualBorrowRate >= 0 && value.annualBorrowRate <= 1 &&
-    (value.dayCountBasis === 360 || value.dayCountBasis === 365) &&
-    finite(value.maintenanceEquityRatio) && value.maintenanceEquityRatio > 0 && value.maintenanceEquityRatio < 1 &&
-    finite(value.stopOutRatio) && value.stopOutRatio >= 0 && value.stopOutRatio <= value.maintenanceEquityRatio &&
-    typeof value.broker === 'string' && value.broker.trim().length > 0;
+function accountRiskKey(brokerId: string, accountId: string, currency: string): string {
+  return [brokerId, accountId, currency].join('|');
 }
-function buildBrokerMarginRisk(
-  brokerId: string, debt: number, grossExposure: number, netExposure: number, cash: number, rules: BrokerAssumptions
-): BrokerMarginRisk {
-  const assets = grossExposure + cash;
-  const equity = cash + netExposure - debt;
-  const maintenanceBuffer = equity - assets * rules.maintenanceEquityRatio;
-  const stopOutBuffer = equity - assets * rules.stopOutRatio;
-  return {
-    brokerId, broker: rules.broker, debt, annualBorrowRate: rules.annualBorrowRate, dayCountBasis: rules.dayCountBasis,
-    annualInterestCost: debt * rules.annualBorrowRate,
-    dailyInterestCost: debt * rules.annualBorrowRate / rules.dayCountBasis,
-    maintenanceEquityRatio: rules.maintenanceEquityRatio, stopOutRatio: rules.stopOutRatio,
-    estimatedAssets: assets, estimatedEquity: equity, maintenanceBuffer,
-    maintenanceBufferPct: assets > 0 ? maintenanceBuffer / assets * 100 : null,
-    stopOutBuffer, stopOutBufferPct: assets > 0 ? stopOutBuffer / assets * 100 : null,
-    maintenanceState: maintenanceBuffer >= 0 ? 'above-maintenance' : 'maintenance-breach',
-    stopOutState: stopOutBuffer >= 0 ? 'above-stop-out' : 'stop-out-breach',
-    disclaimer: RISK_DISCLAIMER
-  };
+function mergeRiskFreshness(values: readonly RiskQuoteFreshness[]): MarginRiskQuoteFreshness {
+  if (values.includes('stale')) return 'stale';
+  if (values.includes('delayed')) return 'delayed';
+  if (values.includes('indicative')) return 'indicative';
+  if (values.includes('unknown')) return 'unknown';
+  return 'fresh';
+}
+function mergeRiskQuality(values: readonly RiskDataQuality[]): MarginRiskDataQuality {
+  return values.includes('incomplete') ? 'incomplete' :
+    values.includes('provisional') ? 'provisional' : 'current';
+}
+function earliestObservedAt(values: readonly (number | null)[]): number | null {
+  return values.length > 0 && values.every(value => value !== null)
+    ? Math.min(...values as number[])
+    : null;
 }
 function buildMarginRisk(
-  positions: readonly RiskPositionInput[], capital: readonly RiskCapitalInput[], assumptions: readonly RiskBrokerAssumptions[]
+  positions: readonly RiskPositionInput[],
+  capital: readonly RiskCapitalInput[],
+  assumptions: readonly RiskBrokerAssumptions[],
+  requirements: readonly RiskBrokerMarginRequirements[],
+  calculatedAt: number
 ): RiskCalculation<BrokerMarginRisk[]> {
-  const debts = new Map<string, number>();
+  const capitalGroups = new Map<string, { brokerId: string; accountId: string; currency: string; rows: RiskCapitalInput[] }>();
   for (const item of capital) {
+    if (item.debt <= 0) continue;
     const brokerId = item.brokerId ?? 'Unclassified';
-    debts.set(brokerId, (debts.get(brokerId) ?? 0) + item.debt);
+    const accountId = item.accountId ?? 'Unclassified';
+    const key = accountRiskKey(brokerId, accountId, item.currency);
+    const group = capitalGroups.get(key) ?? { brokerId, accountId, currency: item.currency, rows: [] };
+    group.rows.push(item);
+    capitalGroups.set(key, group);
   }
-  const brokersWithDebt = [...debts.entries()].filter(([, debt]) => debt > 0);
-  if (brokersWithDebt.length === 0) return available([], 'current');
-  const assumptionMap = new Map<string, BrokerAssumptions>(assumptions.map(item => [item.brokerId, item.assumptions]));
-  const missing = brokersWithDebt.find(([brokerId]) => !assumptionMap.has(brokerId));
-  if (missing) return unavailable('Configured broker assumptions are missing for broker ' + missing[0] + '.');
+  if (capitalGroups.size === 0) return available([], 'current');
+
+  const assumptionMap = new Map<string, BrokerAssumptions>();
+  for (const item of assumptions) {
+    if (assumptionMap.has(item.brokerId)) return unavailable('Duplicate broker margin assumptions were supplied for ' + item.brokerId + '.');
+    assumptionMap.set(item.brokerId, item.assumptions);
+  }
+  const requirementMap = new Map<string, RiskBrokerMarginRequirements>();
+  for (const item of requirements) {
+    const key = accountRiskKey(item.brokerId, item.accountId?.trim() || 'Unclassified', item.currency.trim().toUpperCase());
+    if (requirementMap.has(key)) return unavailable('Duplicate broker margin requirements were supplied for one account/currency.');
+    requirementMap.set(key, item);
+  }
+
   const results: BrokerMarginRisk[] = [];
-  for (const [brokerId, debt] of brokersWithDebt) {
-    const brokerPositions = positions.filter(position => (position.brokerId ?? 'Unclassified') === brokerId);
-    const brokerCapital = capital.filter(item => (item.brokerId ?? 'Unclassified') === brokerId);
-    const gross = brokerPositions.reduce((sum, item) => sum + Math.abs(item.quantity * item.price), 0);
-    const net = brokerPositions.reduce((sum, item) => sum + item.quantity * item.price, 0);
-    const cash = brokerCapital.reduce((sum, item) => sum + item.cash, 0);
-    const rules = assumptionMap.get(brokerId)!;
-    if (!validBrokerAssumptions(rules)) return unavailable('Broker assumptions for ' + brokerId + ' are invalid.');
-    results.push(buildBrokerMarginRisk(brokerId, debt, gross, net, cash, rules));
+  const allWarnings: string[] = [];
+  let resultQuality: 'current' | 'provisional' = 'current';
+  for (const [key, group] of capitalGroups) {
+    const rules = assumptionMap.get(group.brokerId);
+    if (!rules) return unavailable('Configured broker assumptions are missing for broker ' + group.brokerId + '.');
+    const accountPositions = positions.filter(position =>
+      (position.brokerId ?? 'Unclassified') === group.brokerId &&
+      (position.accountId ?? 'Unclassified') === group.accountId &&
+      position.currency === group.currency
+    );
+    const cash = group.rows.reduce((sum, item) => sum + item.cash, 0);
+    const debt = group.rows.reduce((sum, item) => sum + item.debt, 0);
+    const collateralKnown = group.rows.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined);
+    const eligibleCollateral = collateralKnown
+      ? group.rows.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+      : null;
+    const collateralSources = group.rows.map(item => item.eligibleCollateralSource ?? (item.eligibleCollateral === null ? 'unknown' : 'configured-assumption'));
+    const eligibleCollateralSource: EligibleCollateralSource = collateralSources.every(value => value === 'broker')
+      ? 'broker'
+      : collateralSources.some(value => value === 'unknown') ? 'unknown' : 'configured-assumption';
+    const longExposure = accountPositions.reduce((sum, item) => sum + Math.max(0, item.quantity * item.price), 0);
+    const shortExposure = accountPositions.reduce((sum, item) => sum + Math.max(0, -item.quantity * item.price), 0);
+    const quality = mergeRiskQuality([...group.rows.map(item => item.quality), ...accountPositions.map(item => item.quality)]);
+    const freshness = mergeRiskFreshness([...group.rows.map(item => item.freshness), ...accountPositions.map(item => item.freshness)]);
+    const observedAt = earliestObservedAt([...group.rows.map(item => item.observedAt), ...accountPositions.map(item => item.observedAt)]);
+    const brokerRequirements = requirementMap.get(key);
+    const calculation = calculateMarginRiskSnapshot({
+      currency: group.currency, longExposure, shortExposure, cashBalance: cash, marginDebt: debt,
+      eligibleCollateral, eligibleCollateralSource, assumptions: rules, quality, freshness, observedAt, calculatedAt,
+      brokerRequirements: brokerRequirements ? {
+        currency: brokerRequirements.currency,
+        initialMarginRequired: brokerRequirements.initialMarginRequired,
+        maintenanceMarginRequired: brokerRequirements.maintenanceMarginRequired,
+        concentrationAddOn: brokerRequirements.concentrationAddOn,
+        observedAt: brokerRequirements.observedAt
+      } : null
+    });
+    if (calculation.status === 'unavailable') {
+      return unavailable('Margin risk for ' + group.brokerId + '/' + group.accountId + '/' + group.currency + ': ' + calculation.reason,
+        [...allWarnings, ...calculation.warnings]);
+    }
+    if (calculation.status === 'provisional') resultQuality = 'provisional';
+    allWarnings.push(...calculation.warnings);
+    results.push({
+      ...calculation.value,
+      brokerId: group.brokerId,
+      accountId: group.accountId,
+      broker: rules.broker
+    });
   }
-  return available(results, 'current');
+  return available(results, resultQuality, [...new Set(allWarnings)]);
 }
 
 /** Calculates exposure and concentrations without combining unlike currencies. */
@@ -304,35 +391,44 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
     currency, positions.filter(item => item.currency === currency), capital.filter(item => item.currency === currency)
   ));
   if (currencyExposure.some(item => ![
-    item.grossExposure, item.netExposure, item.cash, item.debt, item.equity
+    item.longExposure, item.shortExposure, item.grossExposure, item.netExposure, item.cash, item.debt, item.equity
   ].every(finite))) {
     return unavailable('Aggregated risk exposure exceeds the finite calculation range.');
   }
   const concentrationByCurrency = currencies.map(currency => ({
     currency, value: buildConcentration(positions.filter(item => item.currency === currency))
   }));
+  const marginByAccount = buildMarginRisk(
+    positions, capital, input.brokerAssumptions ?? [], input.brokerRequirements ?? [], calculatedAt
+  );
+  const portfolioQuality = marginByAccount.status === 'provisional' ? 'provisional' : quality;
+  if (marginByAccount.status === 'unavailable') warnings.push('Margin risk unavailable: ' + marginByAccount.reason);
+  else warnings.push(...marginByAccount.warnings);
+
   let portfolio: RiskCalculation<RiskPortfolioMetrics>;
   if (currencies.length !== 1) {
     portfolio = unavailable('A consolidated portfolio risk value requires one currency or an explicit, timestamped FX conversion contract.');
   } else {
     const exposure = currencyExposure[0];
-    const assets = exposure.grossExposure + exposure.cash;
-    const margin = buildMarginRisk(positions, capital, input.brokerAssumptions ?? []);
+    const assets = exposure.longExposure + exposure.cash;
     portfolio = available({
-      currency: currencies[0], calculatedAt, grossExposure: exposure.grossExposure, netExposure: exposure.netExposure,
-      cash: exposure.cash, debt: exposure.debt, equity: exposure.equity,
+      currency: currencies[0], calculatedAt,
+      longExposure: exposure.longExposure, shortExposure: exposure.shortExposure,
+      grossExposure: exposure.grossExposure, netExposure: exposure.netExposure,
+      cash: exposure.cash, debt: exposure.debt, eligibleCollateral: exposure.eligibleCollateral,
+      equity: exposure.equity,
       grossLeverage: exposure.equity > 0 ? exposure.grossExposure / exposure.equity : null,
       netLeverage: exposure.equity !== 0 ? exposure.netExposure / exposure.equity : null,
       marginUtilization: exposure.grossExposure > 0 ? exposure.debt / exposure.grossExposure : null,
       cashCoverage: exposure.grossExposure > 0 ? exposure.cash / exposure.grossExposure : null,
       equityRatio: assets > 0 ? exposure.equity / assets : null,
-      margin,
+      margin: marginByAccount,
       inputPositionIds: positions.filter(item => item.currency === currencies[0]).map(item => item.id).sort(),
       sourceObservationTimes: [...new Set([
         ...positions.filter(item => item.currency === currencies[0]).map(item => item.observedAt),
         ...capital.filter(item => item.currency === currencies[0]).map(item => item.observedAt)
       ].filter((value): value is number => value !== null))].sort((a, b) => a - b)
-    }, quality, warnings);
+    }, portfolioQuality, marginByAccount.status === 'unavailable' ? [...warnings] : [...warnings]);
   }
   const historyByTicker: Record<string, RiskCalculation<HistoricalRiskMetrics>> = {};
   for (const history of input.histories ?? []) {
@@ -345,29 +441,75 @@ export function calculatePortfolioRiskSnapshot(input: PortfolioRiskSnapshot): Ri
     historyByTicker[ticker] = calculateHistoricalRisk(history);
   }
   return available({
-    calculatedAt, quality, currencyExposure, portfolio, concentrationByCurrency, historyByTicker, warnings
+    calculatedAt, quality: portfolioQuality, currencyExposure, portfolio, concentrationByCurrency,
+    marginByAccount, historyByTicker, warnings
   }, quality, warnings);
 }
 
 /** Calculates a broker-specific estimate from the supplied broker assumptions. */
 export function calculateBrokerMarginRisk(input: {
   brokerId: string; debt: number; positions: readonly RiskPositionInput[]; capital: readonly RiskCapitalInput[];
-  assumptions: BrokerAssumptions;
+  assumptions: BrokerAssumptions; accountId?: string; requirements?: RiskBrokerMarginRequirements | null;
+  calculatedAt?: number;
 }): RiskCalculation<BrokerMarginRisk> {
   if (!input || typeof input.brokerId !== 'string' || !input.brokerId.trim()) return unavailable('A broker id is required.');
   if (!finite(input.debt) || input.debt < 0) return unavailable('Debt must be a finite non-negative amount.');
   if (!validBrokerAssumptions(input.assumptions)) return unavailable('Broker margin assumptions are invalid.');
-  const positions = input.positions.filter(item => item.brokerId === input.brokerId);
-  const capital = input.capital.filter(item => item.brokerId === input.brokerId);
+  const brokerPositions = input.positions.filter(item => (item.brokerId ?? 'Unclassified') === input.brokerId);
+  const brokerCapital = input.capital.filter(item => (item.brokerId ?? 'Unclassified') === input.brokerId);
+  const accountIds = new Set([
+    ...brokerPositions.map(item => item.accountId ?? 'Unclassified'),
+    ...brokerCapital.map(item => item.accountId ?? 'Unclassified')
+  ]);
+  const accountId = input.accountId ?? [...accountIds][0];
+  if (!accountId || (!input.accountId && accountIds.size > 1)) {
+    return unavailable('A single account id is required; broker accounts cannot be combined into one margin estimate.');
+  }
+  const positions = brokerPositions.filter(item => (item.accountId ?? 'Unclassified') === accountId);
+  const capital = brokerCapital.filter(item => (item.accountId ?? 'Unclassified') === accountId);
   const currencies = new Set<string | null>([
     ...positions.map(item => normalizeCurrency(item.currency)), ...capital.map(item => normalizeCurrency(item.currency))
   ]);
-  if (currencies.size > 1 || currencies.has(null)) return unavailable('Broker margin inputs must use one valid currency.');
-  const gross = positions.reduce((sum, item) => sum + Math.abs(item.quantity * item.price), 0);
-  const net = positions.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const cash = capital.reduce((sum, item) => sum + item.cash, 0);
-  if (input.debt > 0 && currencies.size === 0) return unavailable('A currency is required for non-zero broker debt.');
-  return available(buildBrokerMarginRisk(input.brokerId, input.debt, gross, net, cash, input.assumptions), 'current');
+  if (currencies.size !== 1 || currencies.has(null)) {
+    return unavailable('Broker margin inputs must use exactly one valid currency.');
+  }
+  const currency = [...currencies][0] as string;
+  const capitalDebt = capital.reduce((sum, item) => sum + item.debt, 0);
+  if (Math.abs(capitalDebt - input.debt) > 0.01) {
+    return unavailable('The supplied debt does not match the selected account capital snapshot.');
+  }
+  if (capital.length === 0) return unavailable('A capital observation is required for broker margin risk.');
+  const collateralKnown = capital.every(item => item.eligibleCollateral !== null && item.eligibleCollateral !== undefined);
+  const eligibleCollateral = collateralKnown
+    ? capital.reduce((sum, item) => sum + Number(item.eligibleCollateral), 0)
+    : null;
+  const eligibleCollateralSource: EligibleCollateralSource = capital.every(item => item.eligibleCollateralSource === 'broker')
+    ? 'broker'
+    : capital.some(item => item.eligibleCollateralSource === 'unknown') ? 'unknown' : 'configured-assumption';
+  const longExposure = positions.reduce((sum, item) => sum + Math.max(0, item.quantity * item.price), 0);
+  const shortExposure = positions.reduce((sum, item) => sum + Math.max(0, -item.quantity * item.price), 0);
+  const quality = mergeRiskQuality([...positions.map(item => item.quality), ...capital.map(item => item.quality)]);
+  const freshness = mergeRiskFreshness([...positions.map(item => item.freshness), ...capital.map(item => item.freshness)]);
+  const observedAt = earliestObservedAt([...positions.map(item => item.observedAt), ...capital.map(item => item.observedAt)]);
+  const calculation = calculateMarginRiskSnapshot({
+    currency, longExposure, shortExposure,
+    cashBalance: capital.reduce((sum, item) => sum + item.cash, 0),
+    marginDebt: capitalDebt, eligibleCollateral, eligibleCollateralSource,
+    assumptions: input.assumptions, quality, freshness, observedAt,
+    calculatedAt: input.calculatedAt ?? Date.now(),
+    brokerRequirements: input.requirements ? {
+      currency: input.requirements.currency,
+      initialMarginRequired: input.requirements.initialMarginRequired,
+      maintenanceMarginRequired: input.requirements.maintenanceMarginRequired,
+      concentrationAddOn: input.requirements.concentrationAddOn,
+      observedAt: input.requirements.observedAt
+    } : null
+  });
+  if (calculation.status === 'unavailable') return calculation;
+  const value: BrokerMarginRisk = {
+    ...calculation.value, brokerId: input.brokerId, accountId, broker: input.assumptions.broker
+  };
+  return available(value, calculation.quality, calculation.warnings);
 }
 
 /** Historical single-instrument risk; requires 20 valid returns and never invents missing prices. */
