@@ -113,7 +113,7 @@ function preparePortfolioResponse(response: unknown): PreparedPortfolioResponse 
         const rawTicker = row?.i ?? row?.base_contract_code ?? row?.ticker;
         positionIntegrityIssues.push({
           ticker: typeof rawTicker === 'string'
-            ? rawTicker.trim().toUpperCase().replace(/\\.US$/i, '')
+            ? rawTicker.trim().toUpperCase().replace(/\.US$/i, '')
             : `ROW ${index + 1}`,
           code,
           source: 'account_snapshot',
