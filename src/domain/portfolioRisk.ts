@@ -278,7 +278,7 @@ function buildConcentration(positions: readonly RiskPositionInput[]): RiskConcen
   };
 }
 function accountRiskKey(brokerId: string, accountId: string, currency: string): string {
-  return [brokerId, accountId, currency].join('|');
+  return JSON.stringify([brokerId, accountId, currency]);
 }
 function mergeRiskFreshness(values: readonly RiskQuoteFreshness[]): MarginRiskQuoteFreshness {
   if (values.includes('stale')) return 'stale';
@@ -305,13 +305,15 @@ function buildMarginRisk(
 ): RiskCalculation<BrokerMarginRisk[]> {
   const capitalGroups = new Map<string, { brokerId: string; accountId: string; currency: string; rows: RiskCapitalInput[] }>();
   for (const item of capital) {
-    if (item.debt <= 0) continue;
     const brokerId = item.brokerId ?? 'Unclassified';
     const accountId = item.accountId ?? 'Unclassified';
     const key = accountRiskKey(brokerId, accountId, item.currency);
     const group = capitalGroups.get(key) ?? { brokerId, accountId, currency: item.currency, rows: [] };
     group.rows.push(item);
     capitalGroups.set(key, group);
+  }
+  for (const [key, group] of capitalGroups) {
+    if (group.rows.reduce((sum, item) => sum + item.debt, 0) <= 0) capitalGroups.delete(key);
   }
   if (capitalGroups.size === 0) return available([], 'current');
 
@@ -328,6 +330,21 @@ function buildMarginRisk(
     const key = accountRiskKey(brokerId, item.accountId?.trim() || 'Unclassified', currency);
     if (requirementMap.has(key)) return unavailable('Duplicate broker margin requirements were supplied for one account/currency.');
     requirementMap.set(key, item);
+  }
+
+  const marginAccountsByBroker = new Map<string, Set<string>>();
+  for (const group of capitalGroups.values()) {
+    const accounts = marginAccountsByBroker.get(group.brokerId) ?? new Set<string>();
+    accounts.add(group.accountId);
+    marginAccountsByBroker.set(group.brokerId, accounts);
+  }
+  for (const position of positions) {
+    const brokerId = position.brokerId ?? 'Unclassified';
+    const accounts = marginAccountsByBroker.get(brokerId);
+    if (accounts && (position.accountId ?? 'Unclassified') === 'Unclassified' &&
+        !accounts.has('Unclassified') && accounts.size > 0) {
+      return unavailable('A position for broker ' + brokerId + ' has no account id and cannot be assigned safely to a margin account.');
+    }
   }
 
   const results: BrokerMarginRisk[] = [];
@@ -495,6 +512,13 @@ export function calculateBrokerMarginRisk(input: {
   const quality = mergeRiskQuality([...positions.map(item => item.quality), ...capital.map(item => item.quality)]);
   const freshness = mergeRiskFreshness([...positions.map(item => item.freshness), ...capital.map(item => item.freshness)]);
   const observedAt = earliestObservedAt([...positions.map(item => item.observedAt), ...capital.map(item => item.observedAt)]);
+  if (input.requirements && (
+    input.requirements.brokerId !== input.brokerId ||
+    (input.requirements.accountId && input.requirements.accountId !== accountId) ||
+    input.requirements.currency.trim().toUpperCase() !== currency
+  )) {
+    return unavailable('Broker margin requirements do not match the selected broker account and currency.');
+  }
   const calculation = calculateMarginRiskSnapshot({
     currency, longExposure, shortExposure,
     cashBalance: capital.reduce((sum, item) => sum + item.cash, 0),
@@ -506,6 +530,7 @@ export function calculateBrokerMarginRisk(input: {
       initialMarginRequired: input.requirements.initialMarginRequired,
       maintenanceMarginRequired: input.requirements.maintenanceMarginRequired,
       concentrationAddOn: input.requirements.concentrationAddOn,
+      concentrationAddOnSource: input.requirements.concentrationAddOnSource,
       observedAt: input.requirements.observedAt
     } : null
   });

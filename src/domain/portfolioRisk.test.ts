@@ -70,8 +70,8 @@ describe('calculatePortfolioRiskSnapshot', () => {
 
   it('keeps short exposure signed while using absolute exposure for concentration', () => {
     const result = calculatePortfolioRiskSnapshot(makeSnapshot({
-      positions: [{ id: 'short', ticker: 'SHORT', quantity: -4, price: 25, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt }],
-      capital: [{ currency: 'USD', cash: 200, debt: 0, eligibleCollateral: 200, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom' }]
+      positions: [{ id: 'short', ticker: 'SHORT', quantity: -4, price: 25, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
+      capital: [{ currency: 'USD', cash: 200, debt: 0, eligibleCollateral: 200, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }]
     }));
     expect(result.status).toBe('available');
     if (result.status === 'unavailable') return;
@@ -92,7 +92,7 @@ describe('calculatePortfolioRiskSnapshot', () => {
         { id: 'long', ticker: 'LONG', quantity: 1, price: 100, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' },
         { id: 'short', ticker: 'SHORT', quantity: -1, price: 100, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }
       ],
-      capital: [{ currency: 'USD', cash: 100, debt: 0, eligibleCollateral: 100, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
+      capital: [{ currency: 'USD', cash: 100, debt: 20, eligibleCollateral: 100, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
       brokerRequirements: []
     }));
     expect(result.status).toBe('provisional');
@@ -103,8 +103,20 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(portfolio.value.longExposure).toBe(100);
     expect(portfolio.value.shortExposure).toBe(100);
     expect(portfolio.value.grossExposure).toBe(200);
-    expect(portfolio.value.equity).toBe(100);
-    expect(portfolio.value.equityRatio).toBe(0.5);
+    expect(portfolio.value.equity).toBe(80);
+    expect(portfolio.value.equityRatio).toBe(0.4);
+  });
+
+  it('fails closed when a position cannot be assigned to the broker account carrying the margin debt', () => {
+    const base = makeSnapshot();
+    const result = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], accountId: null }],
+      capital: [{ ...base.capital[0], accountId: 'margin', debt: 300 }]
+    });
+    expect(result.status).toBe('unavailable');
+    if (result.status !== 'unavailable') return;
+    expect(result.reason).toContain('cannot be assigned safely');
   });
 
   it('keeps margin risk separated by broker account and carries stale quality into the nested result', () => {

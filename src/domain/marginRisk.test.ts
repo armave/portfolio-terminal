@@ -122,13 +122,26 @@ describe('calculateMarginRiskSnapshot', () => {
     expect(calculateMarginRiskSnapshot(riskInput({ observedAt: Date.UTC(2026, 10, 9) })).status).toBe('unavailable');
   });
 
-  it('keeps long-only price triggers but does not invent a single price trigger for mixed shorts', () => {
-    const longOnly = calculateMarginRiskSnapshot(riskInput({ shortExposure: 0 }));
-    const mixed = calculateMarginRiskSnapshot(riskInput({ shortExposure: 200 }));
-    expect(longOnly.status).toBe('available');
-    expect(mixed.status).toBe('available');
+  it('estimates a long-only price trigger only when configured maintenance assumptions and add-ons are explicit', () => {
+    const configuredRequirements = {
+      currency: 'USD',
+      initialMarginRequired: 450,
+      maintenanceMarginRequired: null,
+      concentrationAddOn: 0,
+      concentrationAddOnSource: 'configured-assumption' as const,
+      observedAt: Date.UTC(2026, 10, 8, 7, 0)
+    };
+    const longOnly = calculateMarginRiskSnapshot(riskInput({
+      shortExposure: 0, brokerRequirements: configuredRequirements
+    }));
+    const mixed = calculateMarginRiskSnapshot(riskInput({
+      shortExposure: 200, brokerRequirements: configuredRequirements
+    }));
+    expect(longOnly.status).toBe('provisional');
+    expect(mixed.status).toBe('provisional');
     if (longOnly.status === 'unavailable' || mixed.status === 'unavailable') return;
     expect(longOnly.value.marginCallValue).not.toBeNull();
+    expect(longOnly.value.concentrationAddOn.source).toBe('configured-assumption');
     expect(mixed.value.marginCallValue).toBeNull();
     expect(mixed.value.marginCallBufferPct).toBeNull();
   });

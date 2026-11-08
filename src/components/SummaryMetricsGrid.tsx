@@ -1,7 +1,7 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { memo } from 'preact/compat';
 import { useState } from 'preact/hooks';
-import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
+import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
