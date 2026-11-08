@@ -113,6 +113,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.fees !== undefined && Number(value.fees) < 0) return false;
   if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
   if (value.externalReferenceId !== undefined && (typeof value.externalReferenceId !== 'string' || !value.externalReferenceId.trim())) return false;
+  if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -178,6 +179,7 @@ export function createPortfolioTransactionEvent(
     ...(draft.fees !== undefined ? { fees: draft.fees } : {}),
     ...(draft.externalCashFlowAmount !== undefined ? { externalCashFlowAmount: draft.externalCashFlowAmount } : {}),
     ...(draft.externalReferenceId ? { externalReferenceId: draft.externalReferenceId } : {}),
+    ...(draft.externalOrderReferenceId ? { externalOrderReferenceId: draft.externalOrderReferenceId } : {}),
     ...(draft.positionQuantityDelta !== undefined ? { positionQuantityDelta: draft.positionQuantityDelta } : {}),
     ...(draft.cashHoldingQuantityDelta !== undefined ? { cashHoldingQuantityDelta: draft.cashHoldingQuantityDelta } : {}),
     ...(draft.financingCost !== undefined ? { financingCost: draft.financingCost } : {}),
@@ -199,6 +201,39 @@ export function createPortfolioTransactionEvent(
  * Append one immutable event to the journal. A matching idempotency key is a
  * successful no-op; existing events and the input array are never modified.
  */
+function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent): string {
+  // Do not include generated event IDs or recordedAt: a retry is a new
+  // envelope for the same command. Include every financial/business field so
+  // callers that omit an explicit requestFingerprint still cannot reuse a key
+  // for a different command and accidentally suppress a real mutation.
+  return JSON.stringify({
+    type: event.type,
+    actor: event.actor,
+    source: event.source,
+    effectiveAt: event.effectiveAt,
+    ticker: event.ticker,
+    currency: event.currency,
+    side: event.side,
+    feeCurrency: event.feeCurrency,
+    quantity: event.quantity,
+    unitPrice: event.unitPrice,
+    grossAmount: event.grossAmount,
+    fees: event.fees,
+    externalCashFlowAmount: event.externalCashFlowAmount,
+    externalReferenceId: event.externalReferenceId,
+    externalOrderReferenceId: event.externalOrderReferenceId,
+    positionQuantityDelta: event.positionQuantityDelta,
+    cashHoldingQuantityDelta: event.cashHoldingQuantityDelta,
+    financingCost: event.financingCost,
+    cashDelta: event.cashDelta,
+    marginDebtDelta: event.marginDebtDelta,
+    netAmount: event.netAmount,
+    realizedPnl: event.realizedPnl,
+    relatedEventId: event.relatedEventId,
+    note: event.note
+  });
+}
+
 export function appendPortfolioTransactionEvent(
   current: readonly PortfolioTransactionEvent[],
   event: PortfolioTransactionEvent
@@ -211,8 +246,11 @@ export function appendPortfolioTransactionEvent(
       isPortfolioTransactionEvent(existing) && existing.idempotencyKey === event.idempotencyKey
     );
     if (duplicate) {
-      if (duplicate.type !== event.type ||
-        duplicate.requestFingerprint !== event.requestFingerprint) {
+      const hasExplicitFingerprint = duplicate.requestFingerprint !== undefined || event.requestFingerprint !== undefined;
+      const sameCommand = hasExplicitFingerprint
+        ? duplicate.requestFingerprint === event.requestFingerprint
+        : portfolioTransactionCommandFingerprint(duplicate) === portfolioTransactionCommandFingerprint(event);
+      if (duplicate.type !== event.type || !sameCommand) {
         throw new Error(`Portfolio transaction idempotency key "${event.idempotencyKey}" conflicts with a different command.`);
       }
       return { events: freezePortfolioTransactionEventList(current), appended: false, duplicate: true };
@@ -400,12 +438,22 @@ export function appendBrokerHistoryAuditEvents(
   if (!isPortfolioTransactionEventList(current)) throw new TypeError('Portfolio transaction event history is malformed.');
   const events = [...current];
   const keys = new Map<string, PortfolioTransactionEvent>();
-  const executionRefs = new Map<string, PortfolioTransactionEvent>();
-  const cashflowRefs = new Map<string, PortfolioTransactionEvent>();
+  const executionRefs = new Map<string, PortfolioTransactionEvent | null>();
+  const cashflowRefs = new Map<string, PortfolioTransactionEvent | null>();
   for (const e of current) {
     if (e.idempotencyKey) keys.set(e.idempotencyKey, e);
-    if (e.type === 'broker.execution' && e.externalReferenceId) executionRefs.set(e.externalReferenceId, e);
-    if (e.idempotencyKey?.startsWith('broker-cashflow:') && e.externalReferenceId) cashflowRefs.set(e.externalReferenceId, e);
+  }
+  // Imported backups can be re-sorted by recordedAt across devices. Resolve
+  // broker revision heads from their explicit parent links, not wall-clock order.
+  for (const e of resolveLatestBrokerHistoryAuditEvents(current)) {
+    if (e.type === 'broker.execution' && e.externalReferenceId) {
+      const key = `${e.source}:${e.externalReferenceId}`;
+      executionRefs.set(key, executionRefs.has(key) ? null : e);
+    }
+    if (e.idempotencyKey?.startsWith('broker-cashflow:') && e.externalReferenceId) {
+      const key = `${e.source}:${e.externalReferenceId}`;
+      cashflowRefs.set(key, cashflowRefs.has(key) ? null : e);
+    }
   }
   const append = (event: PortfolioTransactionEvent) => {
     const prior = event.idempotencyKey ? keys.get(event.idempotencyKey) : undefined;
@@ -436,24 +484,41 @@ export function appendBrokerHistoryAuditEvents(
     const tradeValue = Number(raw.tradeValue);
     const gross = Number.isFinite(tradeValue) && tradeValue > 0 ? Math.abs(tradeValue) : price ? quantity * price : undefined;
     const at = raw.executedAt ?? raw.date;
-    const fallback = hash(JSON.stringify([ticker, side, quantity, price, currency, at]));
+    const orderValue = raw.orderId ?? raw.order_id ??
+      (isPlainRecord(raw.raw) ? raw.raw.order_id ?? raw.raw.orderId : undefined);
+    const orderRef = typeof orderValue === 'string' || typeof orderValue === 'number'
+      ? String(orderValue).trim() || undefined
+      : undefined;
+    const fallback = hash(JSON.stringify([ticker, side, quantity, price, currency, at, orderRef]));
     const ref = sourceId(raw.id ?? raw.executionId ?? raw.tradeId, fallback);
-    const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross]);
+    const facts = JSON.stringify([ticker, side, quantity, price, currency, fees, feeCurrency, at, gross, orderRef]);
     const fingerprint = hash(facts);
-    const previous = executionRefs.get(ref);
+    const sourceKey = `${source}:${ref}`;
+    const sourceFingerprint = hash(source);
+    const previous = executionRefs.get(sourceKey);
+    // More than one chain head means concurrent devices corrected the same
+    // source record differently. Preserve both branches and do not guess.
+    if (previous === null) continue;
+    const requestFingerprint = `broker-execution-v1:${sourceFingerprint}:${fingerprint}`;
+    // A replay of the latest known facts is a no-op. If the broker reverts to
+    // an earlier value after a later correction, link a new revision to the
+    // current head rather than reusing the historical revision's old key.
+    if (previous?.requestFingerprint === requestFingerprint) continue;
+    const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
       type: 'broker.execution', effectiveAt: timestamp(at, recordedAt), ticker, side, currency, feeCurrency,
       quantity, ...(price ? { unitPrice: price } : {}), ...(gross !== undefined ? { grossAmount: gross } : {}),
+      ...(orderRef ? { externalOrderReferenceId: orderRef } : {}),
       ...(fees !== undefined ? { fees } : {}), externalReferenceId: ref,
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source,
-      idempotencyKey: `broker-execution:${hash(ref)}:${fingerprint}`,
-      requestFingerprint: `broker-execution-v1:${fingerprint}`,
-      eventId: `broker-execution-${hash(ref)}-${fingerprint}`, recordedAt
+      idempotencyKey: `broker-execution:${sourceFingerprint}:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      requestFingerprint,
+      eventId: `broker-execution-${sourceFingerprint}-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
-    executionRefs.set(ref, event);
+    executionRefs.set(sourceKey, event);
   }
 
   for (const raw of cashflows) {
@@ -477,27 +542,90 @@ export function appendBrokerHistoryAuditEvents(
                 ? 'cash.withdrawal'
                 : text.includes('deposit') || text.includes('funding') || text.includes('credit')
                   ? 'cash.deposit' : 'cash.adjustment';
+    const isRefund = /refund|rebate|reversal|reversed/.test(text);
+    const signedAmount = type === 'cash.deposit'
+      ? Math.abs(amount)
+      : ['cash.withdrawal', 'fee', 'margin.interest'].includes(type)
+        ? isRefund ? Math.abs(amount) : -Math.abs(amount)
+        : amount;
     const date = raw.date;
     const currency = validCurrency(raw.currency);
-    const fallback = hash(JSON.stringify([date, type, amount, currency, raw.description]));
+    const fallback = hash(JSON.stringify([date, type, signedAmount, currency, raw.description]));
     const ref = sourceId(raw.id, fallback);
-    const facts = JSON.stringify([type, date, amount, currency, raw.description]);
+    const facts = JSON.stringify([type, date, signedAmount, currency, raw.description]);
     const fingerprint = hash(facts);
-    const previous = cashflowRefs.get(ref);
+    const cashflowSource = `${source}-cashflow`;
+    const sourceKey = `${cashflowSource}:${ref}`;
+    const sourceFingerprint = hash(cashflowSource);
+    const previous = cashflowRefs.get(sourceKey);
+    if (previous === null) continue;
+    const requestFingerprint = `broker-cashflow-v1:${sourceFingerprint}:${fingerprint}`;
+    if (previous?.requestFingerprint === requestFingerprint) continue;
+    const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
       type, effectiveAt: timestamp(date, recordedAt), currency, externalReferenceId: ref,
-      externalCashFlowAmount: amount, grossAmount: Math.abs(amount),
-      ...(type === 'fee' ? { fees: Math.abs(amount) } : {}),
-      ...(type === 'margin.interest' ? { financingCost: Math.abs(amount) } : {}),
+      externalCashFlowAmount: signedAmount, grossAmount: Math.abs(signedAmount),
+      ...(type === 'fee' ? { fees: Math.abs(signedAmount) } : {}),
+      ...(type === 'margin.interest' ? { financingCost: Math.abs(signedAmount) } : {}),
       ...(previous ? { relatedEventId: previous.id } : {})
     }, {
       actor: { type: 'broker' }, source: `${source}-cashflow`,
-      idempotencyKey: `broker-cashflow:${hash(ref)}:${fingerprint}`,
-      requestFingerprint: `broker-cashflow-v1:${fingerprint}`,
-      eventId: `broker-cashflow-${hash(ref)}-${fingerprint}`, recordedAt
+      idempotencyKey: `broker-cashflow:${sourceFingerprint}:${hash(ref)}:${revisionParent}:${fingerprint}`,
+      requestFingerprint,
+      eventId: `broker-cashflow-${sourceFingerprint}-${hash(ref)}-${revisionParent}-${fingerprint}`, recordedAt
     });
     append(event);
-    cashflowRefs.set(ref, event);
+    cashflowRefs.set(sourceKey, event);
   }
   return freezePortfolioTransactionEventList(events);
+}
+
+/**
+ * Resolve the current broker-audit observation for each provider reference.
+ * Older revisions remain in the append-only journal and are linked through
+ * relatedEventId. Competing correction branches are all returned so a caller
+ * can surface ambiguity; they must not be counted as separate active trades.
+ */
+export function resolveLatestBrokerHistoryAuditEvents(
+  events: readonly PortfolioTransactionEvent[]
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(events)) {
+    throw new TypeError('Portfolio transaction event history is malformed.');
+  }
+  const groups = new Map<string, PortfolioTransactionEvent[]>();
+  for (const event of events) {
+    if (event.actor.type !== 'broker' || !event.externalReferenceId) continue;
+    const family = event.type === 'broker.execution'
+      ? 'execution'
+      : event.idempotencyKey?.startsWith('broker-cashflow:')
+        ? 'cashflow'
+        : null;
+    if (!family) continue;
+    const key = `${family}:${event.source}:${event.externalReferenceId}`;
+    const group = groups.get(key) || [];
+    group.push(event);
+    groups.set(key, group);
+  }
+
+  const latest: PortfolioTransactionEvent[] = [];
+  for (const group of groups.values()) {
+    const ids = new Set(group.map(event => event.id));
+    const supersededIds = new Set(
+      group
+        .map(event => event.relatedEventId)
+        .filter((id): id is string => Boolean(id) && ids.has(id as string))
+    );
+    const heads = group.filter(event => !supersededIds.has(event.id));
+    // A single leaf is the latest revision. Multiple leaves represent a
+    // concurrent correction fork; zero leaves indicate a malformed cycle.
+    // Return all competing records so callers can detect ambiguity, never pick
+    // an arbitrary branch based on the local device clock or array order.
+    latest.push(...(heads.length ? heads : group));
+  }
+
+  return freezePortfolioTransactionEventList(
+    latest.sort((left, right) =>
+      left.effectiveAt - right.effectiveAt || left.recordedAt - right.recordedAt
+    )
+  );
 }

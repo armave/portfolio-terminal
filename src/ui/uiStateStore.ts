@@ -49,6 +49,8 @@ export function useBreakevenText(): string {
 export interface CloudStatus {
   status: string;
   text: string;
+  /** Timestamp of the most recent confirmed cloud sync, retained across later failures. */
+  lastSyncedAt?: number | null;
 }
 
 let cloudStatus: CloudStatus = { status: 'idle', text: 'OFFLINE' };
@@ -77,8 +79,17 @@ let cloudSyncStatus: CloudStatus = { status: 'idle', text: '' };
 const cloudSyncStatusListeners = new Set<(status: CloudStatus) => void>();
 
 export function setCloudSyncStatus(status: CloudStatus): void {
-  if (status.status === cloudSyncStatus.status && status.text === cloudSyncStatus.text) return;
-  cloudSyncStatus = status;
+  const nextStatus: CloudStatus = status.status === 'synced'
+    ? { ...status, lastSyncedAt: status.lastSyncedAt ?? Date.now() }
+    : status.lastSyncedAt === undefined && cloudSyncStatus.lastSyncedAt
+      ? { ...status, lastSyncedAt: cloudSyncStatus.lastSyncedAt }
+      : status;
+  if (
+    nextStatus.status === cloudSyncStatus.status &&
+    nextStatus.text === cloudSyncStatus.text &&
+    nextStatus.lastSyncedAt === cloudSyncStatus.lastSyncedAt
+  ) return;
+  cloudSyncStatus = nextStatus;
   cloudSyncStatusListeners.forEach((listener) => listener(cloudSyncStatus));
 }
 

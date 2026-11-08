@@ -32,7 +32,7 @@ describe('runtime presentation store subscriptions', () => {
     setAiStatus('READY');
     setBreakevenText('Breakeven: 0 days');
     setCloudStatusState({ status: 'idle', text: 'OFFLINE' });
-    setCloudSyncStatus({ status: 'idle', text: '' });
+    setCloudSyncStatus({ status: 'idle', text: '', lastSyncedAt: null });
     setBoardTitle({ title: 'COMBINED PORTFOLIO', showDailyMove: false });
   });
 
@@ -138,5 +138,35 @@ describe('analyst consensus store subscriptions', () => {
     setAnalystConsensus(secondUpdate);
 
     expect(received).toEqual([HIDDEN_STATE, firstUpdate]);
+  });
+});
+
+
+describe('cloud sync last-success timestamp', () => {
+  afterEach(() => {
+    setCloudSyncStatus({ status: 'idle', text: '', lastSyncedAt: null });
+  });
+
+  it('records the time of a confirmed sync and retains it after a later failure', () => {
+    const before = Date.now();
+    setCloudSyncStatus({ status: 'synced', text: 'Synced' });
+    const synced: CloudStatus[] = [];
+    const unsubscribe = subscribeCloudSyncStatus((value) => synced.push(value));
+    expect(synced[0].lastSyncedAt).toBeGreaterThanOrEqual(before);
+
+    const lastSyncedAt = synced[0].lastSyncedAt;
+    setCloudSyncStatus({ status: 'error', text: 'Sync failed' });
+    expect(synced[1]).toMatchObject({ status: 'error', lastSyncedAt });
+
+    unsubscribe();
+  });
+
+  it('allows an explicit reset of the previous successful timestamp', () => {
+    setCloudSyncStatus({ status: 'synced', text: 'Synced', lastSyncedAt: 123 });
+    setCloudSyncStatus({ status: 'idle', text: '', lastSyncedAt: null });
+    const received: CloudStatus[] = [];
+    const unsubscribe = subscribeCloudSyncStatus((value) => received.push(value));
+    expect(received[0].lastSyncedAt).toBeNull();
+    unsubscribe();
   });
 });

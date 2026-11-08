@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
+import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
@@ -196,5 +196,94 @@ describe('margin tranche quantity display', () => {
     ];
 
     expect(getMarginTrancheQuantities(tranches, brokerLots, 'GOOGL')).toEqual([5, 14, 10, 20, 20]);
+  });
+});
+
+describe('canonical margin risk integration', () => {
+  it('routes combined and single-ticker dashboard risk through the same risk snapshot', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('calculateMarginRiskSnapshot');
+    expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(state.brokerAccountInfo)');
+    expect(source).toContain('positionIntegrityComplete');
+    expect(source).toContain('longExposure: valuation.totalHoldingsValue');
+    expect(source).toContain('cashBalance: valuation.cashBalance');
+    expect(source).toContain('longExposure: allocatedLongExposure');
+    expect(source).not.toContain('calculateMarginRiskMetrics(');
+  });
+
+  it('keeps cash-cushion securities out of assumed cash collateral', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("eligibleCollateralSource: 'configured-assumption'");
+    expect(source).toContain('eligibleCollateral: allocatedCashBalance');
+    expect(source).toContain('eligibleCollateral: valuation.cashBalance');
+    expect(source).toContain('allocatedCashHoldingsValue');
+  });
+
+  it('preserves unknown margin inputs and their explicit percentage mappings without implying a complete broker buffer', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("risk.status === 'unavailable'");
+    expect(source).toContain('maintenanceState: metrics.maintenanceState');
+    expect(source).toContain('stopOutState: metrics.stopOutState');
+    expect(source).toContain('baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN');
+    expect(source).toContain('marginCallBufferPct: metrics.marginCallBufferPct ?? Number.NaN');
+    expect(source).toContain('stopOutBufferPct: metrics.stopOutBufferPctOfLongExposure ?? Number.NaN');
+  });
+});
+
+describe('Margin Intelligence risk context integration', () => {
+  it('uses the canonical risk calculation and carries its provenance into the AI snapshot', () => {
+    const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('calculateMarginRiskSnapshot');
+    expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo)');
+    expect(source).toContain('positionIntegrityComplete');
+    expect(source).toContain('eligibleCollateralSource: \'configured-assumption\'');
+    expect(source).toContain('initialMarginRequirement: marginRisk.value.initialMarginRequirement');
+    expect(source).not.toContain('calculateMarginRiskMetrics(');
+  });
+});
+
+
+describe('market depth action session visibility', () => {
+  it('keeps depth controls available during premarket, regular, and postmarket sessions', () => {
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T12:00:00.000Z'))).toBe(true);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T15:00:00.000Z'))).toBe(true);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-02T22:00:00.000Z'))).toBe(true);
+  });
+
+  it('hides depth controls after postmarket, on weekends, and on market holidays', () => {
+    expect(shouldShowMarketDepthControls(new Date('2026-11-03T02:00:00.000Z'))).toBe(false);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-07T15:00:00.000Z'))).toBe(false);
+    expect(shouldShowMarketDepthControls(new Date('2026-11-26T15:00:00.000Z'))).toBe(false);
+  });
+});
+
+describe('margin-call buffer presentation', () => {
+  it('always labels the buffer as margin-call buffer and displays a percentage without bottom captions', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateText('MARGIN-CALL BUFFER', language)");
+    expect(source).not.toContain("'BASE MAINTENANCE BUFFER'");
+    expect(source).toContain("Number.isFinite(risk.marginCallBufferPct)");
+    expect(source).toContain("Number.isFinite(risk.baseMaintenanceBufferPct) ? risk.baseMaintenanceBufferPct.toFixed(1) + '%' : '—'");
+    expect(source).not.toContain('formatUSD(risk.baseMaintenanceBuffer)');
+    expect(source).not.toContain("translateText('Before concentration add-on', language)");
+    expect(source).not.toContain('Complete maintenance buffer unavailable because the concentration add-on was not reported.');
+    expect(source).not.toContain('Margin risk is provisional because some collateral or broker margin requirements are assumed or unavailable.');
+    expect(source).toContain('baseMaintenanceBufferPct: metrics.baseMaintenanceBufferPct ?? Number.NaN');
+  });
+});
+
+
+describe('clickable Margin Health overview', () => {
+  it('opens one overview modal from the original risk section', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('margin-risk-gauge-clickable');
+    expect(source).toContain('onClick={openOverview}');
+    expect(source).toContain('<MarginRiskOverviewModal');
+    expect(modal).toContain('role="dialog"');
+    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain('onEscape: onClose');
+    expect(modal).not.toContain('role="tablist"');
+    expect(modal).not.toContain('MarginRiskModalTab');
   });
 });

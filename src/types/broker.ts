@@ -13,6 +13,29 @@ export interface BrokerAuthenticationState {
 export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
 export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual' | 'unknown';
 
+export type BrokerPositionIntegrityIssueCode =
+  | 'negative_quantity_sign_unverified'
+  | 'short_position_side_unverified'
+  | 'unrecognized_position_side'
+  | 'short_execution_unsupported'
+  | 'short_cover_unsupported'
+  | 'unmatched_sell_quantity'
+  | 'unknown_execution_side'
+  | 'invalid_execution'
+  | 'invalid_broker_position';
+
+export interface BrokerPositionIntegrityIssue {
+  ticker: string;
+  code: BrokerPositionIntegrityIssueCode;
+  source: 'account_snapshot' | 'execution_history';
+  rawQuantity?: number | null;
+  rawSide?: string | number | null;
+  instrumentId?: string | null;
+  /** Original provider row for review when normalization rejects the position. */
+  raw?: Record<string, unknown>;
+}
+
+
 export interface BrokerAdapterContext {
   receivedAt?: number;
   /** Set only when the provider supplies a verifiable source observation timestamp. */
@@ -28,6 +51,8 @@ export interface BrokerDataSnapshot<T> {
   receivedAt: number;
   observedAt?: number;
   warnings: string[];
+  /** Positions that cannot safely be interpreted as ordinary long holdings. */
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
 /** Safe quality-only context for rejecting an incomplete broker snapshot. */
@@ -38,6 +63,7 @@ export interface BrokerDataQualityIssue {
   receivedAt: number;
   observedAt?: number;
   warnings: string[];
+  positionIntegrityIssues?: BrokerPositionIntegrityIssue[];
 }
 
 export interface BrokerCashBalance {
@@ -59,6 +85,11 @@ export interface BrokerPosition {
   averagePrice: number | null;
   profitClose: number | null;
   accountPositionId: number | null;
+  direction?: 'long' | 'short' | 'unknown';
+  rawQuantity?: number;
+  rawSide?: string | number | null;
+  instrumentId?: string | null;
+  raw?: Record<string, unknown>;
 }
 
 export interface BrokerPortfolioSnapshot {
@@ -80,7 +111,10 @@ export interface BrokerActiveOrder {
 }
 
 export interface BrokerExecution {
+  /** Stable provider fill/execution identifier; distinct from the parent order ID. */
   id: string;
+  /** Parent order identity when the provider supplies it. */
+  orderId?: string;
   ticker: string;
   side: string;
   quantity: number | null;

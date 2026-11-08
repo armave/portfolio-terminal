@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { translateBrokerReconciliationCopy } from './BrokerTransactionReconciliation';
+import {
+  getBrokerReconciliationCountLabel,
+  getBrokerReconciliationEmptyMessage,
+  getBrokerReconciliationHeadline,
+  translateBrokerReconciliationCopy
+} from './BrokerTransactionReconciliation';
 
 describe('broker reconciliation localization', () => {
   it('provides Russian translations for review labels and safety explanations', () => {
@@ -14,5 +19,32 @@ describe('broker reconciliation localization', () => {
   it('preserves English and unknown copy', () => {
     expect(translateBrokerReconciliationCopy('Matched', 'en')).toBe('Matched');
     expect(translateBrokerReconciliationCopy('A future copy key', 'ru')).toBe('A future copy key');
+  });
+});
+
+describe('broker reconciliation status wording', () => {
+  it('does not label provisional findings as confirmed differences', () => {
+    expect(getBrokerReconciliationHeadline('partial', 2253)).toBe('Provisional review');
+    expect(getBrokerReconciliationCountLabel('partial')).toBe('provisional items');
+  });
+
+  it('uses discrepancy wording only for complete comparisons', () => {
+    expect(getBrokerReconciliationHeadline('differences', 3)).toBe('Differences found');
+    expect(getBrokerReconciliationCountLabel('differences')).toBe('findings');
+    expect(getBrokerReconciliationHeadline('matched', 0)).toBe('Matched');
+    expect(getBrokerReconciliationHeadline('unavailable', 0)).toBe('History unavailable');
+  });
+
+  it('localizes the additional journal and legacy-sale evidence labels', () => {
+    expect(translateBrokerReconciliationCopy('App journal executions', 'ru')).toBe('Исполнения в журнале приложения');
+    expect(translateBrokerReconciliationCopy('provisional items', 'ru')).toBe('предварительных записей');
+  });
+});
+
+describe('broker reconciliation empty-state wording', () => {
+  it('does not show a successful match for incomplete or unavailable feeds', () => {
+    expect(getBrokerReconciliationEmptyMessage('partial')).toContain('incomplete coverage');
+    expect(getBrokerReconciliationEmptyMessage('unavailable')).toContain('unavailable');
+    expect(getBrokerReconciliationEmptyMessage('matched')).toBe('No transaction-level differences were found in the available records.');
   });
 });

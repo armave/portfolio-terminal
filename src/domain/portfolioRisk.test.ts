@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from './brokerAssumptions';
 import {
   calculateBrokerMarginRisk, calculateHistoricalCorrelation, calculateHistoricalRisk,
-  calculatePortfolioRiskSnapshot, calculateRiskStressScenario, type PortfolioRiskSnapshot,
+  calculatePortfolioRiskSnapshot, calculateRiskStressScenario, calculateRiskFxStressScenario,
+  type PortfolioRiskSnapshot,
   type RiskHistoricalSeriesInput
 } from './portfolioRisk';
 
@@ -14,8 +15,9 @@ function makeSnapshot(overrides: Partial<PortfolioRiskSnapshot> = {}): Portfolio
       { id: 'a1', ticker: 'AAA', quantity: 10, price: 100, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt - 60_000, sector: 'Technology', assetType: 'EQUITY', brokerId: 'freedom', accountId: 'margin' },
       { id: 'b1', ticker: 'BBB', quantity: 5, price: 50, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt - 60_000, sector: 'Healthcare', assetType: 'ETF', brokerId: 'freedom', accountId: 'margin' }
     ],
-    capital: [{ currency: 'USD', cash: 200, debt: 300, quality: 'current', freshness: 'fresh', observedAt: currentAt - 60_000, brokerId: 'freedom', accountId: 'margin' }],
+    capital: [{ currency: 'USD', cash: 200, debt: 300, eligibleCollateral: 200, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt - 60_000, brokerId: 'freedom', accountId: 'margin' }],
     brokerAssumptions: [{ brokerId: 'freedom', assumptions: DEFAULT_BROKER_ASSUMPTIONS }],
+    brokerRequirements: [{ brokerId: 'freedom', accountId: 'margin', currency: 'USD', initialMarginRequired: 500, maintenanceMarginRequired: 100, concentrationAddOn: 0, observedAt: currentAt - 60_000 }],
     ...overrides
   };
 }
@@ -35,6 +37,9 @@ describe('calculatePortfolioRiskSnapshot', () => {
     const portfolio = result.value.portfolio;
     expect(portfolio.status).toBe('available');
     if (portfolio.status === 'unavailable') return;
+    expect(portfolio.value.longExposure).toBe(1_250);
+    expect(portfolio.value.shortExposure).toBe(0);
+    expect(portfolio.value.eligibleCollateral).toBe(200);
     expect(portfolio.value.grossExposure).toBe(1_250);
     expect(portfolio.value.netExposure).toBe(1_250);
     expect(portfolio.value.cash).toBe(200);
@@ -66,25 +71,146 @@ describe('calculatePortfolioRiskSnapshot', () => {
 
   it('keeps short exposure signed while using absolute exposure for concentration', () => {
     const result = calculatePortfolioRiskSnapshot(makeSnapshot({
-      positions: [{ id: 'short', ticker: 'SHORT', quantity: -4, price: 25, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt }],
-      capital: [{ currency: 'USD', cash: 200, debt: 0, quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom' }]
+      positions: [{ id: 'short', ticker: 'SHORT', quantity: -4, price: 25, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
+      capital: [{ currency: 'USD', cash: 200, debt: 0, eligibleCollateral: 200, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }]
     }));
-    expect(result.status).toBe('available');
+    expect(result.status).toBe('provisional');
     if (result.status === 'unavailable') return;
     const portfolio = result.value.portfolio;
-    expect(portfolio.status).toBe('available');
+    expect(portfolio.status).toBe('provisional');
     if (portfolio.status === 'unavailable') return;
+    expect(portfolio.value.margin.status).toBe('provisional');
+    if (portfolio.value.margin.status === 'unavailable') return;
+    expect(portfolio.value.margin.value[0].shortExposure).toBe(100);
+    expect(portfolio.value.margin.value[0].maintenanceState).toBe('maintenance-breach');
+    expect(portfolio.value.margin.value[0].stopOutState).toBe('unknown');
     expect(portfolio.value.netExposure).toBe(-100);
     expect(portfolio.value.grossExposure).toBe(100);
     expect(portfolio.value.equity).toBe(100);
     expect(result.value.concentrationByCurrency[0].value.byTicker[0].percentage).toBe(100);
+    expect(portfolio.value.equityRatio).toBeCloseTo(100 / 200);
+
+  });
+
+  it('does not count short liabilities as positive assets in risk ratios', () => {
+    const result = calculatePortfolioRiskSnapshot(makeSnapshot({
+      positions: [
+        { id: 'long', ticker: 'LONG', quantity: 1, price: 100, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' },
+        { id: 'short', ticker: 'SHORT', quantity: -1, price: 100, currency: 'USD', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }
+      ],
+      capital: [{ currency: 'USD', cash: 100, debt: 20, eligibleCollateral: 100, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'freedom', accountId: 'margin' }],
+      brokerRequirements: []
+    }));
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    const portfolio = result.value.portfolio;
+    expect(portfolio.status).toBe('provisional');
+    if (portfolio.status === 'unavailable') return;
+    expect(portfolio.value.longExposure).toBe(100);
+    expect(portfolio.value.shortExposure).toBe(100);
+    expect(portfolio.value.grossExposure).toBe(200);
+    expect(portfolio.value.equity).toBe(80);
+    expect(portfolio.value.equityRatio).toBe(0.4);
+  });
+
+  it('marks short-position margin unavailable without a matching capital snapshot', () => {
+    const base = makeSnapshot();
+    const result = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], quantity: -2 }],
+      capital: []
+    });
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.portfolio.status).toBe('provisional');
+    expect(result.value.marginByAccount.status).toBe('unavailable');
+    if (result.value.marginByAccount.status !== 'unavailable') return;
+    expect(result.value.marginByAccount.reason).toContain('no matching broker/account/currency capital snapshot');
+    expect(result.value.warnings.some(item => item.includes('Margin risk unavailable'))).toBe(true);
+  });
+
+  it('fails closed when a position cannot be assigned to the broker account carrying the margin debt', () => {
+    const base = makeSnapshot();
+    const result = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], accountId: null }],
+      capital: [{ ...base.capital[0], accountId: 'margin', debt: 300 }]
+    });
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.marginByAccount.status).toBe('unavailable');
+    if (result.value.marginByAccount.status !== 'unavailable') return;
+    expect(result.value.marginByAccount.reason).toContain('cannot be assigned safely');
+    expect(result.value.portfolio.status).toBe('provisional');
+    if (result.value.portfolio.status === 'unavailable') return;
+    expect(result.value.portfolio.value.margin.status).toBe('unavailable');
+
+    const missingBrokerId = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [{ ...base.positions[0], brokerId: null }],
+      capital: [{ ...base.capital[0], debt: 300 }]
+    });
+    expect(missingBrokerId.status).toBe('provisional');
+    if (missingBrokerId.status === 'unavailable') return;
+    expect(missingBrokerId.value.marginByAccount.status).toBe('unavailable');
+    if (missingBrokerId.value.marginByAccount.status !== 'unavailable') return;
+    expect(missingBrokerId.value.marginByAccount.reason).toContain('missing broker or account identity');
+  });
+
+  it('keeps margin risk separated by broker account and carries stale quality into the nested result', () => {
+    const base = makeSnapshot();
+    const result = calculatePortfolioRiskSnapshot({
+      ...base,
+      positions: [
+        { ...base.positions[0], id: 'a', accountId: 'margin-a', quantity: 4, price: 100, freshness: 'stale' },
+        { ...base.positions[0], id: 'b', accountId: 'margin-b', quantity: 2, price: 100 }
+      ],
+      capital: [
+        { ...base.capital[0], accountId: 'margin-a', cash: 100, debt: 100, eligibleCollateral: 100 },
+        { ...base.capital[0], accountId: 'margin-b', cash: 50, debt: 200, eligibleCollateral: 50 }
+      ],
+      brokerRequirements: [
+        { brokerId: 'freedom', accountId: 'margin-a', currency: 'USD', initialMarginRequired: 100, maintenanceMarginRequired: 50, concentrationAddOn: 0, observedAt: currentAt - 60_000 },
+        { brokerId: 'freedom', accountId: 'margin-b', currency: 'USD', initialMarginRequired: 200, maintenanceMarginRequired: 40, concentrationAddOn: 0, observedAt: currentAt - 60_000 }
+      ]
+    });
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.marginByAccount.status).toBe('provisional');
+    if (result.value.marginByAccount.status === 'unavailable') return;
+    expect(result.value.marginByAccount.value).toHaveLength(2);
+    expect(result.value.marginByAccount.value.map(item => item.accountId).sort()).toEqual(['margin-a', 'margin-b']);
+    expect(result.value.marginByAccount.value.find(item => item.accountId === 'margin-a')?.quality).toBe('provisional');
+  });
+
+  it('keeps account-level margin estimates available per currency when consolidated portfolio risk is unavailable', () => {
+    const result = calculatePortfolioRiskSnapshot(makeSnapshot({
+      capital: [
+        { ...makeSnapshot().capital[0] },
+        { currency: 'AMD', cash: 100_000, debt: 10_000, eligibleCollateral: 100_000, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'local', accountId: 'amd' }
+      ],
+      brokerAssumptions: [
+        { brokerId: 'freedom', assumptions: DEFAULT_BROKER_ASSUMPTIONS },
+        { brokerId: 'local', assumptions: DEFAULT_BROKER_ASSUMPTIONS }
+      ],
+      brokerRequirements: [
+        ...makeSnapshot().brokerRequirements!,
+        { brokerId: 'local', accountId: 'amd', currency: 'AMD', initialMarginRequired: 1, maintenanceMarginRequired: 1, concentrationAddOn: 0, observedAt: currentAt }
+      ]
+    }));
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.portfolio.status).toBe('unavailable');
+    expect(result.value.marginByAccount.status).toBe('available');
+    if (result.value.marginByAccount.status === 'unavailable') return;
+    expect(result.value.marginByAccount.value).toHaveLength(2);
   });
 
   it('never combines unlike currencies into a consolidated total', () => {
     const snapshot = makeSnapshot({
       capital: [
         ...makeSnapshot().capital,
-        { currency: 'AMD', cash: 100_000, debt: 0, quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'local' }
+        { currency: 'AMD', cash: 100_000, debt: 0, eligibleCollateral: 100_000, eligibleCollateralSource: 'broker', quality: 'current', freshness: 'fresh', observedAt: currentAt, brokerId: 'local' }
       ]
     });
     const result = calculatePortfolioRiskSnapshot(snapshot);
@@ -93,6 +219,25 @@ describe('calculatePortfolioRiskSnapshot', () => {
     expect(result.value.currencyExposure.map(item => item.currency)).toEqual(['AMD', 'USD']);
     expect(result.value.portfolio.status).toBe('unavailable');
     expect(result.value.portfolio.status === 'unavailable' && result.value.portfolio.reason).toContain('FX conversion');
+  });
+
+  it('derives eligible collateral from broker gross collateral and an explicit haircut', () => {
+    const snapshot = makeSnapshot({
+      capital: [{
+        ...makeSnapshot().capital[0],
+        eligibleCollateral: null,
+        eligibleCollateralSource: 'broker',
+        collateralBeforeHaircut: 1_000,
+        collateralHaircutPct: 0.2
+      }]
+    });
+    const result = calculatePortfolioRiskSnapshot(snapshot);
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.marginByAccount.status).toBe('available');
+    if (result.value.marginByAccount.status === 'unavailable') return;
+    expect(result.value.marginByAccount.value[0].eligibleCollateral).toBe(800);
+    expect(result.value.marginByAccount.value[0].collateralHaircutAmount).toBe(200);
   });
 
   it('marks stale and unknown observations provisional, never current', () => {
@@ -137,21 +282,34 @@ describe('broker margin estimates', () => {
     const snapshot = makeSnapshot();
     const result = calculateBrokerMarginRisk({
       brokerId: 'freedom', debt: 300, positions: snapshot.positions, capital: snapshot.capital,
-      assumptions: DEFAULT_BROKER_ASSUMPTIONS
+      assumptions: DEFAULT_BROKER_ASSUMPTIONS, requirements: snapshot.brokerRequirements![0]
     });
     expect(result.status).toBe('available');
     if (result.status === 'unavailable') return;
     expect(result.value.annualInterestCost).toBeCloseTo(45);
     expect(result.value.maintenanceEquityRatio).toBe(0.1);
+    expect(result.value.estimatedAssets).toBe(1_450);
+    expect(result.value.estimatedEquity).toBe(1_150);
+    expect(result.value.maintenanceState).toBe('above-maintenance');
     expect(result.value.disclaimer).toContain('not a broker maintenance calculation');
   });
-  it('rejects invalid assumptions and debt without a currency source', () => {
+  it('rejects invalid assumptions, unknown collateral and mismatched account debt', () => {
+    const snapshot = makeSnapshot();
     expect(calculateBrokerMarginRisk({
       brokerId: 'freedom', debt: 10, positions: [], capital: [],
       assumptions: { ...DEFAULT_BROKER_ASSUMPTIONS, maintenanceEquityRatio: 1 }
     }).status).toBe('unavailable');
     expect(calculateBrokerMarginRisk({
       brokerId: 'freedom', debt: 1, positions: [], capital: [], assumptions: DEFAULT_BROKER_ASSUMPTIONS
+    }).status).toBe('unavailable');
+    expect(calculateBrokerMarginRisk({
+      brokerId: 'freedom', debt: 400, positions: snapshot.positions, capital: snapshot.capital,
+      assumptions: DEFAULT_BROKER_ASSUMPTIONS
+    }).status).toBe('unavailable');
+    expect(calculateBrokerMarginRisk({
+      brokerId: 'freedom', debt: 300, positions: snapshot.positions,
+      capital: [{ ...snapshot.capital[0], eligibleCollateral: null }],
+      assumptions: DEFAULT_BROKER_ASSUMPTIONS
     }).status).toBe('unavailable');
   });
 });
@@ -196,6 +354,60 @@ describe('deterministic stress scenarios', () => {
     expect(JSON.stringify(snapshot)).toBe(before);
     expect(result.value.disclaimer).toContain('not a probability estimate');
   });
+  it('supports deterministic 10%, 20%, and 30% adverse market shocks', () => {
+    const snapshot = makeSnapshot();
+    for (const shock of [-0.1, -0.2, -0.3]) {
+      const result = calculateRiskStressScenario(snapshot, [{ ticker: 'AAA', priceShock: shock }]);
+      expect(result.status).toBe('available');
+      if (result.status === 'unavailable') continue;
+      expect(result.value.totalPnlImpact).toBeCloseTo(1_000 * shock);
+      expect(result.value.stressedEquity).toBeCloseTo(1_150 + 1_000 * shock);
+    }
+  });
+
+  it('applies simultaneous equity-price and timestamped FX shocks into a reporting currency', () => {
+    const snapshot = makeSnapshot({
+      positions: [
+        { ...makeSnapshot().positions[0], ticker: 'USDSTK', quantity: 1, price: 1_000, currency: 'USD' },
+        { ...makeSnapshot().positions[0], id: 'eur-equity', ticker: 'EUSTK', quantity: 2, price: 100, currency: 'EUR' }
+      ],
+      capital: [
+        { ...makeSnapshot().capital[0], currency: 'USD', cash: 100, debt: 0 },
+        { ...makeSnapshot().capital[0], currency: 'EUR', cash: 100, debt: 0 }
+      ]
+    });
+    const result = calculateRiskFxStressScenario(snapshot, {
+      reportingCurrency: 'USD',
+      rates: [{ currency: 'EUR', rateToReportingCurrency: 1.1, quality: 'current', freshness: 'fresh', observedAt: currentAt }],
+      shocks: [{ currency: 'EUR', fxShock: -0.1 }],
+      priceShocks: [{ ticker: 'EUSTK', priceShock: -0.2 }]
+    });
+    expect(result.status).toBe('available');
+    if (result.status === 'unavailable') return;
+    expect(result.value.currency).toBe('USD');
+    expect(result.value.currentEquity).toBeCloseTo(1_430);
+    expect(result.value.stressedEquity).toBeCloseTo(1_357.4);
+    expect(result.value.totalPnlImpact).toBeCloseTo(-72.6);
+    expect(result.value.fxDrivers[0]).toMatchObject({ currency: 'EUR', fxShock: -0.1, pnlImpact: -33 });
+    expect(result.value.disclaimer).toContain('FX stress scenario');
+  });
+
+  it('rejects missing, stale-timestamp, duplicate and out-of-range FX rates or shocks', () => {
+    const snapshot = makeSnapshot({
+      positions: [{ ...makeSnapshot().positions[0], currency: 'EUR' }],
+      capital: [{ ...makeSnapshot().capital[0], currency: 'EUR' }]
+    });
+    const base = {
+      reportingCurrency: 'USD',
+      rates: [{ currency: 'EUR', rateToReportingCurrency: 1.1, quality: 'current' as const, freshness: 'fresh' as const, observedAt: currentAt }],
+      shocks: [{ currency: 'EUR', fxShock: -0.1 }]
+    };
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [{ ...base.rates[0], observedAt: null }] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, shocks: [{ currency: 'EUR', fxShock: -1.1 }] }).status).toBe('unavailable');
+    expect(calculateRiskFxStressScenario(snapshot, { ...base, rates: [base.rates[0], base.rates[0]] }).status).toBe('unavailable');
+  });
+
   it('aggregates duplicate ticker holdings across accounts into one shock driver', () => {
     const snapshot = makeSnapshot({
       positions: [

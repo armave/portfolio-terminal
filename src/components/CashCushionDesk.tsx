@@ -1,4 +1,3 @@
-import { Fragment } from 'preact';
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
@@ -19,6 +18,7 @@ import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheG
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
+import { getUsEquityMarketSession } from '../services/marketSession';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 
@@ -33,6 +33,41 @@ const BADGE_STYLES: Record<string, string> = {
 const EMPTY_TRANCHE_MIXES: Record<string, ActiveTrancheMix> = {};
 const EMPTY_TRANCHE_TYPES: Record<string, ActiveTrancheType> = {};
 const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
+
+/** Market Depth is only actionable while a US equity session is open. */
+export function shouldShowCashHoldingMarketDepth(date = new Date()): boolean {
+  return getUsEquityMarketSession(date) !== 'CLOSED';
+}
+
+type CashHoldingGroup<T extends { ticker: string }> = {
+  key: string;
+  label: string;
+  holdings: T[];
+};
+
+type CashHoldingTableRow<T extends { ticker: string }> =
+  | { type: 'group'; key: string; label: string }
+  | { type: 'holding'; key: string; holding: T };
+
+/**
+ * Build table rows at group granularity. Group headings have their own stable
+ * keyed sibling rows, instead of being nested inside the first holding fragment.
+ */
+export function buildCashHoldingTableRows<T extends { ticker: string }>(
+  groups: CashHoldingGroup<T>[],
+  isAdmin: boolean
+): CashHoldingTableRow<T>[] {
+  return groups.flatMap((group) => [
+    ...(isAdmin && group.label
+      ? [{ type: 'group' as const, key: `group-${group.key}`, label: group.label }]
+      : []),
+    ...group.holdings.map((holding) => ({
+      type: 'holding' as const,
+      key: `holding-${group.key}-${holding.ticker}`,
+      holding
+    }))
+  ]);
+}
 
 function selectCashCushionPortfolioState(state: PortfolioState) {
   return {
@@ -162,6 +197,17 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS, guestUserId ? 'guest' : 'admin');
   const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
+  const [marketDepthAvailable, setMarketDepthAvailable] = useState(() => shouldShowCashHoldingMarketDepth());
+  useEffect(() => {
+    const refreshMarketSession = () => setMarketDepthAvailable(shouldShowCashHoldingMarketDepth());
+    refreshMarketSession();
+    const intervalId = window.setInterval(refreshMarketSession, 30_000);
+    window.addEventListener('focus', refreshMarketSession);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshMarketSession);
+    };
+  }, []);
   const [balanceSync, dispatchBalanceSync] = useReducer(
     balanceSyncReducer,
     undefined,
@@ -378,6 +424,24 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
 
+  const positionIntegrityIssues = state.brokerAccountInfo?.positionIntegrityIssues?.length
+    ? state.brokerAccountInfo.positionIntegrityIssues
+    : state.brokerAccountInfo?.lastRefreshIssue?.positionIntegrityIssues || [];
+  const positionIntegrityMessage = (code: string): string => {
+    const messages: Record<string, string> = {
+      negative_quantity_sign_unverified: 'Broker reported a negative position quantity; its long/short sign convention is unverified.',
+      short_position_side_unverified: 'Broker position side indicates a short position; short valuation is not yet supported.',
+      unrecognized_position_side: 'Broker position side is not recognized; the position was not applied.',
+      short_execution_unsupported: 'A sell-short execution was detected; short positions are not yet supported.',
+      short_cover_unsupported: 'A buy-to-cover execution was detected; short positions are not yet supported.',
+      unmatched_sell_quantity: 'A sell execution exceeds the known long purchase history; short or incomplete history cannot be distinguished.',
+      unknown_execution_side: 'An execution has an unknown side; its position effect cannot be safely classified.',
+      invalid_execution: 'A broker execution has no verifiable instrument identifier.',
+      invalid_broker_position: 'A broker position has invalid quantity or instrument details.'
+    };
+    return translateText(messages[code] || 'Some broker position data could not be classified safely.', getAppLanguage());
+  };
+
   const { unpricedHoldingCount, pricedHoldingCount, stocksTotal } = useMemo(() => {
     let unpriced = 0;
     let priced = 0;
@@ -434,14 +498,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     ]
     : [{ key: 'guest', label: '', holdings }],
     [isAdmin, adminHoldingGroups, unassignedHoldings, holdings]);
-  const displayHoldings = useMemo(() => displayHoldingGroups.flatMap((group) =>
-    group.holdings.map((holding, index) => ({
-      ...holding,
-      groupKey: group.key,
-      groupLabel: group.label,
-      isGroupStart: index === 0
-    }))
-  ), [displayHoldingGroups]);
+  const displayTableRows = useMemo(
+    () => buildCashHoldingTableRows<
+      (typeof cashHoldings)[number] | (typeof guestHoldings)[number]
+    >([...displayHoldingGroups], isAdmin),
+    [displayHoldingGroups, isAdmin]
+  );
 
 
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
@@ -491,6 +553,20 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
             : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
           <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
+        </div>
+      )}
+
+      {isAdmin && positionIntegrityIssues.length > 0 && (
+        <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          <div class="font-semibold">{translateText('Some broker positions need review', getAppLanguage())}</div>
+          <p>{translateText('The app retained the last accepted tracked values and did not guess long/short direction from unverified broker data.', getAppLanguage())}</p>
+          <ul class="list-disc space-y-1 pl-5">
+            {positionIntegrityIssues.map((issue, index) => (
+              <li key={`${issue.ticker}-${issue.code}-${issue.source}-${index}`}>
+                <span class="font-semibold">{issue.ticker || translateText('Unknown instrument', getAppLanguage())}:</span> {positionIntegrityMessage(issue.code)}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -629,14 +705,22 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 </tr>
               </thead>
               <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
-                {displayHoldings.length === 0 ? (
+                {displayTableRows.length === 0 ? (
                   <tr class="cash-holding-empty-row">
                     <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                       {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                     </td>
                   </tr>
                 ) : (
-                  displayHoldings.map((h) => {
+                  displayTableRows.map((row) => {
+                    if (row.type === 'group') {
+                      return (
+                        <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
+                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>{row.label}</td>
+                        </tr>
+                      );
+                    }
+                    const h = row.holding;
                     const shares = Number(h.shares) || 0;
                     const price = getCashHoldingMarketPrice(h);
                     const averagePrice = Number(h.averagePrice);
@@ -669,11 +753,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     const volume = '$' + formatQuoteVolume(h.quoteDetails?.volume)
 
                     return (
-                      <Fragment key={`${h.groupKey}-${h.ticker}`}>
-                        {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
-                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>{h.groupLabel}</td>
-                        </tr>}
-                        <tr key={`${h.groupKey}-${h.ticker}`} class="cash-holding-row hover:bg-slate-900/40">
+                        <tr key={row.key} class="cash-holding-row hover:bg-slate-900/40">
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
                             <div class="inline-flex flex-wrap items-center gap-1.5">
                               <span>{h.ticker}</span>
@@ -689,7 +769,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               >
                                 {badgeText}
                               </span>
-                              {isAdmin && <button
+                              {isAdmin && marketDepthAvailable && <button
                                 type="button"
                                 title={`View live market depth for ${h.ticker}`}
                                 aria-label={`Market Depth for ${h.ticker}`}
@@ -747,7 +827,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {allocation !== null ? allocation.toFixed(1) + '%' : '—'}
                           </td>
                         </tr>
-                      </Fragment>
                     );
                   })
                 )}

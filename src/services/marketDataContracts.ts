@@ -122,15 +122,26 @@ export function normalizeInstrumentIdentity(input: InstrumentIdentityInput): Ins
   const symbol = effectiveAlias?.historicalSymbol ?? sourceSymbol;
 
   const assetToken = normalizeToken(input.assetType);
-  const assetType = normalizeAssetType(input.assetType);
-  if (assetToken && assetType === 'UNKNOWN') issues.push('Asset type is unsupported; classification remains unknown.');
+  const suppliedAssetType = normalizeAssetType(input.assetType);
+  if (assetToken && suppliedAssetType === 'UNKNOWN') issues.push('Asset type is unsupported; classification remains unknown.');
+  if (effectiveAlias && assetToken && suppliedAssetType !== 'UNKNOWN' &&
+      suppliedAssetType !== normalizeAssetType(effectiveAlias.assetType)) {
+    issues.push('Supplied asset type conflicts with the verified instrument alias; registry metadata was used.');
+  }
+  const assetType = effectiveAlias
+    ? normalizeAssetType(effectiveAlias.assetType)
+    : suppliedAssetType;
 
-  const quoteCurrency = input.quoteCurrency === undefined || input.quoteCurrency === null || input.quoteCurrency === ''
+  const suppliedCurrency = input.quoteCurrency === undefined || input.quoteCurrency === null || input.quoteCurrency === ''
     ? null
     : normalizeCurrencyCode(input.quoteCurrency);
-  if (input.quoteCurrency !== undefined && input.quoteCurrency !== null && input.quoteCurrency !== '' && !quoteCurrency) {
+  if (input.quoteCurrency !== undefined && input.quoteCurrency !== null && input.quoteCurrency !== '' && !suppliedCurrency) {
     issues.push('Quote currency is invalid; currency remains unknown.');
   }
+  if (effectiveAlias && suppliedCurrency && suppliedCurrency !== effectiveAlias.quoteCurrency) {
+    issues.push('Supplied quote currency conflicts with the verified instrument alias; registry metadata was used.');
+  }
+  const quoteCurrency = effectiveAlias ? effectiveAlias.quoteCurrency : suppliedCurrency;
 
   if (input.aliases !== undefined && !Array.isArray(input.aliases)) {
     issues.push('Instrument aliases must be provided as an array.');
@@ -258,7 +269,11 @@ export function normalizeMarketQuoteObservation(
   });
   issues.push(...identity.issues);
 
-  if (!Number.isFinite(price) || price <= 0 || !provider || receivedAt === null || !identity.instrument) {
+  if (receivedAt !== null && receivedAt > now + maxFutureSkewMs) {
+    issues.push('Quote receipt timestamp is in the future; observation was rejected.');
+  }
+  if (!Number.isFinite(price) || price <= 0 || !provider || receivedAt === null ||
+      receivedAt > now + maxFutureSkewMs || !identity.instrument) {
     return { observation: null, issues };
   }
 
@@ -331,6 +346,11 @@ export interface MarketHistoryResult {
   provider?: string;
   receivedAt?: number;
   interval?: string;
+  /** Explicit caller-supplied expected observations; omitted when no verified calendar is available. */
+  missingTimestamps?: number[];
+  /** App-owned manual corrections applied on top of the unchanged provider snapshot. */
+  correctionStatus?: 'applied' | 'review_required';
+  correctionCount?: number;
 }
 
 export interface MarketQuoteRequest {
@@ -376,6 +396,7 @@ export function normalizeMarketHistoryPoints(
     : 20_000;
   const issues: string[] = [];
   const byTimestamp = new Map<number, MarketPricePoint>();
+  const conflictedTimestamps = new Set<number>();
   for (const [index, item] of input.entries()) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
       issues.push('Historical row ' + (index + 1) + ' is malformed.');
@@ -417,12 +438,38 @@ export function normalizeMarketHistoryPoints(
     if (volume !== undefined && (!Number.isFinite(volume) || volume < 0)) {
       issues.push('Historical row ' + (index + 1) + ' has invalid volume; volume was omitted.');
     }
-    byTimestamp.set(timestamp, {
+    if (conflictedTimestamps.has(timestamp)) continue;
+    const candidate: MarketPricePoint = {
       timestamp,
       price,
       ...(open !== undefined ? { open } : {}),
       ...(validHighLow ? { high, low } : {}),
       ...(volume !== undefined && Number.isFinite(volume) && volume >= 0 ? { volume } : {})
+    };
+    const previous = byTimestamp.get(timestamp);
+    if (!previous) {
+      byTimestamp.set(timestamp, candidate);
+      continue;
+    }
+    const hasConflictingValues =
+      previous.price !== candidate.price ||
+      (previous.open !== undefined && candidate.open !== undefined && previous.open !== candidate.open) ||
+      (previous.high !== undefined && candidate.high !== undefined && previous.high !== candidate.high) ||
+      (previous.low !== undefined && candidate.low !== undefined && previous.low !== candidate.low) ||
+      (previous.volume !== undefined && candidate.volume !== undefined && previous.volume !== candidate.volume);
+    if (hasConflictingValues) {
+      byTimestamp.delete(timestamp);
+      conflictedTimestamps.add(timestamp);
+      issues.push('Conflicting historical observations share timestamp ' + timestamp + '; all rows for that timestamp were withheld.');
+      continue;
+    }
+    byTimestamp.set(timestamp, {
+      timestamp,
+      price: previous.price,
+      ...(previous.open ?? candidate.open) !== undefined ? { open: previous.open ?? candidate.open } : {},
+      ...(previous.high ?? candidate.high) !== undefined ? { high: previous.high ?? candidate.high } : {},
+      ...(previous.low ?? candidate.low) !== undefined ? { low: previous.low ?? candidate.low } : {},
+      ...(previous.volume ?? candidate.volume) !== undefined ? { volume: previous.volume ?? candidate.volume } : {}
     });
   }
   const points = [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
@@ -475,6 +522,101 @@ export interface FxRateProviderAdapter {
   ): Promise<{ rate: FxRate | null; issues: string[] }>;
 }
 
+export interface FxRateProviderRegistryResult {
+  rate: FxRate | null;
+  provider: string | null;
+  issues: string[];
+}
+
+export interface FxRateProviderRegistry {
+  list(): readonly string[];
+  fetchExactPair(
+    baseCurrency: unknown,
+    quoteCurrency: unknown,
+    signal?: AbortSignal
+  ): Promise<FxRateProviderRegistryResult>;
+}
+
+/**
+ * Tries providers in declared priority order for one exact BASE_TO_QUOTE pair.
+ * It does not reverse/infer a pair, and does not retain stale or partial rates.
+ */
+export function createFxRateProviderRegistry(
+  adapters: readonly FxRateProviderAdapter[],
+  options: { now?: () => number; maxAgeMs?: number; maxFutureSkewMs?: number } = {}
+): FxRateProviderRegistry {
+  const providers = new Map<string, FxRateProviderAdapter>();
+  for (const adapter of adapters) {
+    const id = normalizeToken(adapter.providerId);
+    if (!id || providers.has(id)) {
+      throw new Error('FX provider IDs must be non-empty and unique.');
+    }
+    providers.set(id, adapter);
+  }
+  const now = options.now ?? Date.now;
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) && options.maxAgeMs! >= 0
+    ? options.maxAgeMs!
+    : 24 * 60 * 60 * 1000;
+  const maxFutureSkewMs = Number.isFinite(options.maxFutureSkewMs) && options.maxFutureSkewMs! >= 0
+    ? options.maxFutureSkewMs!
+    : 60 * 1000;
+  const createAbortError = () => {
+    const error = new Error('FX rate request was aborted.');
+    error.name = 'AbortError';
+    return error;
+  };
+  return {
+    list: () => [...providers.keys()],
+    async fetchExactPair(baseValue, quoteValue, signal) {
+      const baseCurrency = normalizeCurrencyCode(baseValue);
+      const quoteCurrency = normalizeCurrencyCode(quoteValue);
+      const issues: string[] = [];
+      if (!baseCurrency || !quoteCurrency || baseCurrency === quoteCurrency) {
+        return { rate: null, provider: null, issues: ['A valid, distinct FX currency pair is required.'] };
+      }
+      for (const [providerId, adapter] of providers) {
+        if (signal?.aborted) throw createAbortError();
+        try {
+          const result = await adapter.fetchRate(baseCurrency, quoteCurrency, signal);
+          if (Array.isArray(result?.issues)) issues.push(...result.issues);
+          if (!result?.rate) continue;
+          const candidate = result.rate;
+          if (candidate.baseCurrency !== baseCurrency || candidate.quoteCurrency !== quoteCurrency ||
+              candidate.direction !== 'BASE_TO_QUOTE') {
+            issues.push(providerId + ' returned a different or reversed FX pair; the rate was ignored.');
+            continue;
+          }
+          if (normalizeToken(candidate.provider) !== providerId) {
+            issues.push(providerId + ' returned mismatched FX provider provenance; the rate was ignored.');
+            continue;
+          }
+          const normalized = normalizeFxRate({
+            baseCurrency: candidate.baseCurrency,
+            quoteCurrency: candidate.quoteCurrency,
+            rate: candidate.rate,
+            provider: candidate.provider,
+            observedAt: candidate.observedAt,
+            receivedAt: candidate.receivedAt,
+            session: candidate.session
+          }, { now: now(), maxFutureSkewMs });
+          issues.push(...normalized.issues);
+          if (!normalized.rate || !isFxRateUsableForConversion(normalized.rate, now(), maxAgeMs)) {
+            issues.push(providerId + ' returned an incomplete, stale or unverifiable FX rate.');
+            continue;
+          }
+          return { rate: normalized.rate, provider: providerId, issues };
+        } catch (error) {
+          if (signal?.aborted || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')) {
+            throw createAbortError();
+          }
+          issues.push(providerId + ' FX lookup failed: ' + (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      return { rate: null, provider: null, issues };
+    }
+  };
+}
+
 export interface MarketHistoryResponseInput {
   symbol: unknown;
   provider: unknown;
@@ -486,6 +628,19 @@ export interface MarketHistoryResponseInput {
   currency?: unknown;
   session?: unknown;
   delayClass?: unknown;
+  /** Millisecond timestamps supplied by an independently verified exchange calendar. */
+  expectedTimestamps?: readonly number[];
+}
+
+/** Return gaps only against explicit, caller-supplied expected observation times. */
+export function findMissingMarketHistoryTimestamps(
+  expectedTimestamps: readonly number[],
+  points: readonly MarketPricePoint[]
+): number[] {
+  const observed = new Set(points.map(point => point.timestamp));
+  return [...new Set(expectedTimestamps.filter(value =>
+    Number.isSafeInteger(value) && value > 0
+  ))].sort((a, b) => a - b).filter(timestamp => !observed.has(timestamp));
 }
 
 /**
@@ -507,10 +662,27 @@ export function normalizeMarketHistoryResponse(
   const provider = normalizeToken(input.provider);
   const receivedAt = normalizeTimestamp(input.receivedAt);
   const interval = normalizeToken(input.interval);
+  const now = Date.now();
   const issues = [...history.issues, ...identity.issues];
+  const futureReceipt = receivedAt !== null && receivedAt > now + 60 * 1000;
+  const hasExpectedTimestamps = input.expectedTimestamps !== undefined;
+  const expectedTimestamps = Array.isArray(input.expectedTimestamps)
+    ? input.expectedTimestamps.filter(value => Number.isFinite(value) && value > 0)
+    : [];
+  if (hasExpectedTimestamps && (!Array.isArray(input.expectedTimestamps) ||
+      expectedTimestamps.length !== input.expectedTimestamps.length)) {
+    issues.push('Verified expected history timestamps contain invalid values.');
+  }
+  const missingTimestamps = hasExpectedTimestamps
+    ? findMissingMarketHistoryTimestamps(expectedTimestamps, history.points)
+    : [];
+  if (missingTimestamps.length > 0) {
+    issues.push('Historical series is missing ' + missingTimestamps.length + ' expected observations from the verified calendar.');
+  }
 
   if (!provider) issues.push('Historical data provider is missing.');
   if (receivedAt === null) issues.push('Historical data receipt timestamp is missing or invalid.');
+  else if (futureReceipt) issues.push('Historical data receipt timestamp is in the future; provenance is incomplete.');
   if (!interval) issues.push('Historical data interval is missing.');
   if (identity.instrument && !identity.instrument.quoteCurrency) {
     issues.push('Historical quote currency is unknown; currency conversion is unavailable.');
@@ -519,7 +691,8 @@ export function normalizeMarketHistoryResponse(
   const quality = history.quality === 'unavailable' || history.points.length === 0
     ? 'unavailable'
     : history.quality === 'partial' || !identity.instrument || !identity.instrument.quoteCurrency ||
-        !provider || receivedAt === null || !interval
+        !provider || receivedAt === null || futureReceipt || !interval || missingTimestamps.length > 0 ||
+        (hasExpectedTimestamps && expectedTimestamps.length !== (input.expectedTimestamps as readonly number[]).length)
       ? 'partial'
       : 'complete';
 
@@ -533,17 +706,22 @@ export function normalizeMarketHistoryResponse(
     issues,
     ...(identity.instrument ? { instrument: identity.instrument } : {}),
     ...(provider ? { provider } : {}),
-    ...(receivedAt !== null ? { receivedAt } : {}),
-    ...(interval ? { interval } : {})
+    ...(receivedAt !== null && !futureReceipt ? { receivedAt } : {}),
+    ...(interval ? { interval } : {}),
+    ...(hasExpectedTimestamps ? { missingTimestamps } : {})
   };
 }
 
 /** Normalizes an explicit BASE_TO_QUOTE FX observation; no pair inversion is attempted. */
 export function normalizeFxRate(
   input: FxRateInput,
-  options: { maxFutureSkewMs?: number } = {}
+  options: { now?: number; maxFutureSkewMs?: number } = {}
 ): { rate: FxRate | null; issues: string[] } {
   const issues: string[] = [];
+  const now = Number.isFinite(options.now) ? options.now! : Date.now();
+  const maxFutureSkewMs = Number.isFinite(options.maxFutureSkewMs) && options.maxFutureSkewMs! >= 0
+    ? options.maxFutureSkewMs!
+    : 60 * 1000;
   const baseCurrency = normalizeCurrencyCode(input.baseCurrency);
   const quoteCurrency = normalizeCurrencyCode(input.quoteCurrency);
   const provider = normalizeToken(input.provider);
@@ -558,15 +736,19 @@ export function normalizeFxRate(
   if (!Number.isFinite(rawRate) || rawRate <= 0) issues.push('FX rate must be a finite positive number.');
   if (!provider) issues.push('FX provider is missing.');
   if (receivedAt === null) issues.push('FX receipt timestamp is missing or invalid.');
+  if (receivedAt !== null && receivedAt > now + maxFutureSkewMs) {
+    issues.push('FX receipt timestamp is in the future; rate was rejected.');
+  }
   if (input.observedAt !== undefined && input.observedAt !== null && observedAt === null) {
     issues.push('FX observation timestamp is invalid.');
   }
-  if (observedAt !== null && receivedAt !== null && observedAt > receivedAt + (options.maxFutureSkewMs ?? 60 * 1000)) {
+  if (observedAt !== null && receivedAt !== null && observedAt > receivedAt + maxFutureSkewMs) {
     observedAt = null;
     issues.push('FX observation timestamp is later than receipt time.');
   }
   if (!baseCurrency || !quoteCurrency || baseCurrency === quoteCurrency ||
-      !Number.isFinite(rawRate) || rawRate <= 0 || !provider || receivedAt === null) {
+      !Number.isFinite(rawRate) || rawRate <= 0 || !provider || receivedAt === null ||
+      receivedAt > now + maxFutureSkewMs) {
     return { rate: null, issues };
   }
   const quality: MarketDataQuality = observedAt === null ? 'partial' : 'complete';
@@ -600,7 +782,8 @@ export function isFxRateUsableForConversion(
     !normalizeCurrencyCode(rate.quoteCurrency) ||
     rate.baseCurrency === rate.quoteCurrency ||
     !Number.isFinite(rate.rate) || rate.rate <= 0 ||
-    !Number.isFinite(rate.receivedAt) ||
+    !Number.isFinite(rate.receivedAt) || rate.receivedAt > now + 60 * 1000 ||
+    typeof rate.provider !== 'string' || !rate.provider.trim() ||
     rate.observedAt === null || !Number.isFinite(rate.observedAt) ||
     rate.receivedAt < rate.observedAt ||
     !Number.isFinite(now) || !Number.isFinite(maxAgeMs) || maxAgeMs < 0

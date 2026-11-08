@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
+import type { ClosedTrade } from '../types/portfolio';
 import { createPortfolioTransactionEvent } from './portfolioTransactionJournal';
 import type { PortfolioTransactionEvent, PortfolioTransactionEventType } from '../types/portfolioTransaction';
 import { getExecutionReconciliationFeedStatus, reconcileBrokerActivity } from './brokerTransactionReconciliation';
@@ -134,12 +135,60 @@ describe('reconcileBrokerActivity', () => {
 
   it('aggregates multiple broker partial fills against one app transaction', () => {
     const report = reconcile([
-      execution({ id: 'fill-1', quantity: 0.75, price: 100, commission: 0.4 }),
-      execution({ id: 'fill-2', quantity: 1.25, price: 100, commission: 0.6 })
+      execution({ id: 'fill-1', orderId: 'order-1', quantity: 0.75, price: 100, commission: 0.4 }),
+      execution({ id: 'fill-2', orderId: 'order-1', quantity: 1.25, price: 100, commission: 0.6 })
     ], [appEvent('trade.buy')]);
     expect(report.matchedExecutionCount).toBe(2);
     expect(report.findings).toEqual([]);
     expect(report.status).toBe('matched');
+  });
+
+  it('does not aggregate same-symbol fills from different broker orders', () => {
+    const report = reconcile([
+      execution({ id: 'fill-order-a', orderId: 'order-A', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-order-b', orderId: 'order-B', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-a'] }),
+      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-b'] }),
+      expect.objectContaining({ type: 'execution_missing_in_broker', appEventIds: ['app-trade.buy'] }),
+      expect.objectContaining({ type: 'execution_match_ambiguous', confidence: 'provisional' })
+    ]));
+  });
+
+  it('leaves partial-fill matching unresolved when parent order identity is missing', () => {
+    const report = reconcile([
+      execution({ id: 'fill-unlinked-1', quantity: 0.75, price: 100 }),
+      execution({ id: 'fill-unlinked-2', quantity: 1.25, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'execution_missing_in_app' }),
+      expect.objectContaining({ type: 'execution_missing_in_broker' }),
+      expect.objectContaining({ type: 'execution_match_ambiguous' })
+    ]));
+  });
+
+  it('reports multiple matching broker order groups as ambiguous instead of selecting one', () => {
+    const report = reconcile([
+      execution({ id: 'order-a-fill-1', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-a-fill-2', orderId: 'order-A', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-1', orderId: 'order-B', quantity: 1, price: 100 }),
+      execution({ id: 'order-b-fill-2', orderId: 'order-B', quantity: 1, price: 100 })
+    ], [appEvent('trade.buy')]);
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_match_ambiguous',
+      appEventIds: ['app-trade.buy'],
+      brokerReferences: expect.arrayContaining(['order-a-fill-1', 'order-a-fill-2', 'order-b-fill-1', 'order-b-fill-2']),
+      confidence: 'provisional'
+    }));
   });
 
   it('detects duplicate broker execution identifiers', () => {
@@ -182,6 +231,27 @@ describe('reconcileBrokerActivity', () => {
       type: 'dividend', effectiveAt: at, currency: 'USD', externalCashFlowAmount: 15
     }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-div-1', recordedAt: at });
     const report = reconcile([], [importedAudit, appDividend], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('normalizes positive broker withdrawal magnitudes to negative account movement', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'withdraw-positive-magnitude',
+      date: new Date(at).toISOString(),
+      type: 'Withdrawal',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appWithdrawal = createPortfolioTransactionEvent({
+      type: 'cash.withdrawal',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-withdrawal-signed', recordedAt: at });
+
+    const report = reconcile([], [appWithdrawal], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(1);
     expect(report.findings).toEqual([]);
   });
@@ -234,6 +304,115 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('surfaces broker execution rows that cannot be normalized instead of silently dropping them', () => {
+    const report = reconcile(
+      [execution({ side: 'Unknown' })],
+      [appEvent('trade.buy')]
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_unclassified',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain(
+      'One or more broker execution rows could not be classified; affected rows were excluded from matching.'
+    );
+  });
+
+  it('distinguishes exact duplicate executions from conflicting revisions with the same broker ID', () => {
+    const duplicate = reconcile(
+      [execution(), execution()],
+      [appEvent('trade.buy')]
+    );
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_execution',
+      brokerReferences: ['exec-1']
+    }));
+
+    const conflict = reconcile(
+      [execution(), execution({ commission: 2 })],
+      [appEvent('trade.buy')]
+    );
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_revision_conflict',
+      brokerReferences: ['exec-1'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('surfaces broker cashflow rows with unusable amounts instead of silently dropping them', () => {
+    const report = reconcile([], [], {
+      brokerCashflows: [{
+        id: 'cashflow-invalid',
+        date: new Date(at).toISOString(),
+        type: 'Deposit',
+        amount: Number.NaN,
+        currency: 'USD',
+        raw: {}
+      }]
+    });
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      brokerReferences: ['cashflow-invalid'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('distinguishes duplicate cashflows from conflicting revisions with the same broker ID', () => {
+    const row: BrokerCashflow = {
+      id: 'cashflow-duplicate',
+      date: new Date(at).toISOString(),
+      type: 'Dividend',
+      amount: 15,
+      currency: 'USD',
+      raw: {}
+    };
+    const duplicate = reconcile([], [], { brokerCashflows: [row, { ...row }] });
+    expect(duplicate.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_cashflow',
+      brokerReferences: ['cashflow-duplicate']
+    }));
+
+    const conflict = reconcile([], [], { brokerCashflows: [row, { ...row, amount: 25 }] });
+    expect(conflict.status).toBe('partial');
+    expect(conflict.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_revision_conflict',
+      brokerReferences: ['cashflow-duplicate'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('reports opposite signed cash movements instead of matching equal magnitudes', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'deposit-direction-1',
+      date: new Date(at).toISOString(),
+      type: 'Deposit',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appDeposit = createPortfolioTransactionEvent({
+      type: 'cash.deposit',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-deposit-direction', recordedAt: at });
+
+    const report = reconcile([], [appDeposit], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_direction_mismatch',
+      brokerValue: 100,
+      appValue: -100,
+      brokerReferences: ['deposit-direction-1'],
+      appEventIds: ['app-deposit-direction']
+    }));
+  });
+
   it('does not treat incomplete broker feeds as authoritative absence evidence', () => {
     const report = reconcile([], [appEvent('trade.buy')], {
       executionStatus: 'partial',
@@ -241,5 +420,104 @@ describe('reconcileBrokerActivity', () => {
     });
     expect(report.status).toBe('partial');
     expect(report.findings.every(finding => finding.confidence === 'provisional')).toBe(true);
+  });
+});
+
+
+describe('legacy closed-sale reconciliation fallback', () => {
+  const closedSale = (overrides: Partial<ClosedTrade> = {}): ClosedTrade => ({
+    id: 'closed-sale-1',
+    ticker: 'AAPL',
+    shares: 2,
+    avgBuyPrice: 90,
+    sellPrice: 110,
+    buyDate: '2026-11-05',
+    sellDate: '2026-11-06',
+    date: at,
+    grossProfit: 40,
+    commissions: 1,
+    marginInterest: 0,
+    netProfit: 39,
+    ...overrides
+  });
+
+  it('matches a legacy app closed-sale summary to an exact same-day broker sell', () => {
+    const report = reconcile(
+      [execution({
+        id: 'legacy-sell-fill',
+        side: 'SELL',
+        quantity: 2,
+        price: 110,
+        executedAt: '2026-11-06T15:30:00.000Z'
+      })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.appExecutionCount).toBe(0);
+    expect(report.legacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyExecutionCount).toBe(1);
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['legacy-sell-fill']
+    }));
+  });
+
+  it('aggregates partial broker sell fills only when their total quantity and weighted price match one legacy sale', () => {
+    const report = reconcile([
+      execution({ id: 'legacy-partial-1', side: 'SELL', quantity: 0.75, price: 100 }),
+      execution({ id: 'legacy-partial-2', side: 'SELL', quantity: 1.25, price: 100, executedAt: new Date(at + 60_000).toISOString() })
+    ], [], {
+      legacyClosedTrades: [closedSale({ sellPrice: 100 })],
+      appHistoryStatus: 'partial'
+    });
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(1);
+    expect(report.matchedLegacyExecutionCount).toBe(2);
+    expect(report.findings).toEqual([]);
+  });
+
+  it('does not infer a historical buy execution from a closed sale average entry price', () => {
+    const report = reconcile(
+      [execution({ id: 'historical-buy', side: 'BUY', quantity: 2, price: 90 })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['historical-buy'],
+      confidence: 'provisional'
+    }));
+  });
+
+  it('does not match a legacy sale when broker sale price differs', () => {
+    const report = reconcile(
+      [execution({ id: 'different-price', side: 'SELL', quantity: 2, price: 111 })],
+      [],
+      { legacyClosedTrades: [closedSale()], appHistoryStatus: 'partial' }
+    );
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['different-price']
+    }));
+  });
+
+  it('leaves duplicate exact broker candidates unmatched when the legacy sale cannot identify one uniquely', () => {
+    const report = reconcile([
+      execution({ id: 'ambiguous-1', side: 'SELL', quantity: 2, price: 110 }),
+      execution({ id: 'ambiguous-2', side: 'SELL', quantity: 2, price: 110 })
+    ], [], {
+      legacyClosedTrades: [closedSale()],
+      appHistoryStatus: 'partial'
+    });
+
+    expect(report.matchedLegacyClosedSaleCount).toBe(0);
+    expect(report.matchedLegacyExecutionCount).toBe(0);
   });
 });

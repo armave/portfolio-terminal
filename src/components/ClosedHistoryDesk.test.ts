@@ -131,6 +131,11 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('markHistoryBaseline(accountId)');
   });
 
+  it('passes app-owned legacy closed sales to the read-only broker matcher', () => {
+    const source = readSource();
+    expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
+  });
+
   it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');

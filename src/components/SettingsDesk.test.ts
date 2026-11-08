@@ -68,7 +68,10 @@ describe('multi-portfolio ownership Settings surface', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const componentSource = readFileSync(new URL('./TenantDirectoryPanel.tsx', import.meta.url), 'utf8');
 
-    expect(settingsSource).toContain("import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("void import('./TenantDirectoryPanel')");
+    expect(settingsSource).toContain("if (currentUser?.role !== 'admin')");
+    expect(settingsSource).toContain('}, [currentUser?.id, currentUser?.role]);');
+    expect(settingsSource).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
     expect(settingsSource).toContain("useState<typeof import('./TenantDirectoryPanel') | null>(null)");
     expect(settingsSource).toContain('const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;');
     expect(settingsSource).toContain('<LoadedTenantDirectoryPanel currentUser={account} />');
@@ -137,5 +140,35 @@ describe('readBrokerRulesFormValues', () => {
       rolloverTime: '03:00', commPerShare: '0.01', commVolumePct: '0.1', minCommOrder: '1'
     };
     expect(readBrokerRulesFormValues(form, fallback)).toEqual(fallback);
+  });
+});
+
+describe('Margin Intelligence encryption migration controls', () => {
+  it('exposes the inventory and migration tool only to administrators', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const panel = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === 'admin' && <MarginDigestSecurityPanel");
+    expect(panel).toContain('fetchMarginDigestMigrationInventory');
+    expect(panel).toContain('const MIGRATION_BATCH_SIZE = 25;');
+    expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
+    expect(panel).toContain('inventory.plaintextRecords === 0');
+    expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
+  });
+});
+
+
+describe('guest Settings layout', () => {
+  it('uses a single full-width action column for guests instead of leaving an empty second column', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === 'guest' ? 'settings-account-actions--guest' : ''");
+    expect(styles).toContain('#settingsDesk .settings-account-actions--guest');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr);');
+  });
+
+  it('does not mount or load portfolio ownership for guests', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("if (currentUser?.role !== 'admin')");
+    expect(source).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
   });
 });
