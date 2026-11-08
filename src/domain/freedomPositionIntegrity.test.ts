@@ -122,6 +122,13 @@ describe('collectFreedomPositionIntegrityIssues', () => {
       side: 'Unknown',
       raw: { oper: '4', instr_nm: 'AAPL', q: 2 }
     }]);
+    const undocumentedOperation = collectFreedomPositionIntegrityIssues({
+      positions: [{ ticker: 'AAPL', quantity: 1, direction: 'long' }]
+    }, [{
+      ticker: 'AAPL',
+      side: 'Unknown',
+      raw: { operation: '2', instr_nm: 'AAPL', q: 2 }
+    }]);
 
     expect(marginBuy).toEqual([]);
     expect(historySell).toContainEqual(expect.objectContaining({
@@ -129,6 +136,9 @@ describe('collectFreedomPositionIntegrityIssues', () => {
     }));
     expect(shortAction).toContainEqual(expect.objectContaining({
       ticker: 'AAPL', code: 'short_execution_unsupported'
+    }));
+    expect(undocumentedOperation).toContainEqual(expect.objectContaining({
+      ticker: 'AAPL', code: 'unknown_execution_side'
     }));
   });
 
