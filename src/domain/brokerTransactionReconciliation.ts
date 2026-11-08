@@ -1,4 +1,5 @@
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
+import type { ClosedTrade } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 
 export type ReconciliationFeedStatus = 'complete' | 'partial' | 'unavailable';
@@ -52,6 +53,10 @@ export interface BrokerActivityReconciliationReport {
   brokerCashflowCount: number;
   appCashflowCount: number;
   matchedExecutionCount: number;
+  /** Legacy app-authored closed-sale summaries matched without inventing buy events. */
+  legacyClosedSaleCount: number;
+  matchedLegacyClosedSaleCount: number;
+  matchedLegacyExecutionCount: number;
   matchedCashflowCount: number;
   findings: BrokerActivityFinding[];
   warnings: string[];
@@ -65,6 +70,8 @@ export interface ReconcileBrokerActivityInput {
   cashflowStatus: ReconciliationFeedStatus;
   /** PT-02 journal coverage is still being completed; default to partial. */
   appHistoryStatus?: ReconciliationFeedStatus;
+  /** App-owned legacy sell summaries pre-dating the transaction journal. */
+  legacyClosedTrades?: readonly ClosedTrade[];
   now?: number;
   timeToleranceMs?: number;
   maxTimingDifferenceMs?: number;
@@ -84,6 +91,14 @@ interface NormalizedExecution {
   feeCurrency: string;
   at: number | null;
   source: BrokerExecution;
+}
+
+interface NormalizedLegacyClosedSale {
+  id: string;
+  ticker: string;
+  quantity: number;
+  price: number;
+  at: number;
 }
 
 interface NormalizedCashflow {
@@ -157,6 +172,23 @@ function normalizeExecution(row: BrokerExecution): NormalizedExecution | null {
     source: row
   };
 }
+function normalizeLegacyClosedSale(row: ClosedTrade, index: number): NormalizedLegacyClosedSale | null {
+  const cleanTicker = ticker(row.ticker);
+  const quantity = number(row.shares);
+  const price = number(row.sellPrice) ?? number(row.exitPrice);
+  // Closed-trade rows describe the sale, not the underlying buy executions.
+  // Require a sale price and date so this fallback cannot infer an opening lot.
+  const at = timestamp(row.sellDate ?? row.exitDate ?? row.closedAt ?? row.date);
+  if (!cleanTicker || quantity === null || quantity <= 0 || price === null || price <= 0 || at === null) return null;
+  return {
+    id: text(row.id) || `legacy-closed-sale:${cleanTicker}:${at}:${quantity}:${price}:${index}`,
+    ticker: cleanTicker,
+    quantity,
+    price,
+    at
+  };
+}
+
 function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
   const amount = number(row.amount);
   if (amount === null) return null;
@@ -237,6 +269,9 @@ export function reconcileBrokerActivity(
   }
 
   const appExecutions = input.appEvents.filter(event => EXECUTION_EVENT_TYPES.has(event.type));
+  const legacyClosedSales = (input.legacyClosedTrades ?? [])
+    .map(normalizeLegacyClosedSale)
+    .filter((row): row is NormalizedLegacyClosedSale => row !== null);
   const unmatchedBroker = new Set(uniqueBrokerRows.map((_, index) => index));
   const unmatchedApp = new Set(appExecutions.map((_, index) => index));
   const matchedPairs: Array<{ broker: NormalizedExecution; app: PortfolioTransactionEvent }> = [];
@@ -440,6 +475,85 @@ export function reconcileBrokerActivity(
     }
   }
 
+  // Legacy closed-trade summaries pre-date PT-02 journal events. They are
+  // app-owned sale evidence, so use them only to match SELL executions with an
+  // exact ticker, quantity, price and sale date. Never derive BUY events from
+  // their average entry price: it can combine multiple FIFO acquisition lots.
+  const unmatchedLegacyClosedSales = new Set(legacyClosedSales.map((_, index) => index));
+  let matchedLegacyClosedSaleCount = 0;
+  let matchedLegacyExecutionCount = 0;
+  const sameUtcDay = (left: number, right: number): boolean => {
+    const a = new Date(left);
+    const b = new Date(right);
+    return a.getUTCFullYear() === b.getUTCFullYear() &&
+      a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
+  };
+  const legacySaleTimeMatches = (broker: NormalizedExecution, sale: NormalizedLegacyClosedSale) =>
+    broker.at !== null && (sameUtcDay(broker.at, sale.at) ||
+      Math.abs(broker.at - sale.at) <= timeTolerance);
+
+  // Match unambiguous one-fill/one-sale pairs first. Require both quantity and
+  // price: ticker/date alone is not enough to identify a historical execution.
+  let foundLegacyPair = true;
+  while (foundLegacyPair) {
+    foundLegacyPair = false;
+    for (const brokerIndex of [...unmatchedBroker]) {
+      const broker = uniqueBrokerRows[brokerIndex];
+      if (broker.side !== 'sell' || broker.at === null || broker.price === null) continue;
+      const candidates = [...unmatchedLegacyClosedSales].filter(saleIndex => {
+        const sale = legacyClosedSales[saleIndex];
+        return sale.ticker === broker.ticker && legacySaleTimeMatches(broker, sale) &&
+          Math.abs(sale.quantity - broker.quantity) <= quantityTolerance &&
+          Math.abs(sale.price - broker.price!) <= priceTolerance;
+      });
+      if (candidates.length !== 1) continue;
+      const saleIndex = candidates[0];
+      const sale = legacyClosedSales[saleIndex];
+      const reverseCandidates = [...unmatchedBroker].filter(candidateIndex => {
+        const candidate = uniqueBrokerRows[candidateIndex];
+        return candidate.side === 'sell' && candidate.at !== null && candidate.price !== null &&
+          candidate.ticker === sale.ticker && legacySaleTimeMatches(candidate, sale) &&
+          Math.abs(candidate.quantity - sale.quantity) <= quantityTolerance &&
+          Math.abs(candidate.price - sale.price) <= priceTolerance;
+      });
+      if (reverseCandidates.length !== 1) continue;
+      unmatchedBroker.delete(brokerIndex);
+      unmatchedLegacyClosedSales.delete(saleIndex);
+      matchedLegacyClosedSaleCount += 1;
+      matchedLegacyExecutionCount += 1;
+      foundLegacyPair = true;
+      break;
+    }
+  }
+
+  // A legacy sell command may be represented by several provider partial fills.
+  // Aggregate only when one legacy sale is the sole app summary for that ticker
+  // and UTC day and the complete set of same-day broker fills agrees exactly.
+  for (const saleIndex of [...unmatchedLegacyClosedSales]) {
+    const sale = legacyClosedSales[saleIndex];
+    const sameDaySales = legacyClosedSales.filter(other =>
+      other.ticker === sale.ticker && sameUtcDay(other.at, sale.at)
+    );
+    if (sameDaySales.length !== 1) continue;
+    const candidates = [...unmatchedBroker].filter(index => {
+      const broker = uniqueBrokerRows[index];
+      return broker.side === 'sell' && broker.ticker === sale.ticker &&
+        broker.at !== null && broker.price !== null && sameUtcDay(broker.at, sale.at);
+    });
+    if (candidates.length < 2) continue;
+    const quantityTotal = candidates.reduce((sum, index) => sum + uniqueBrokerRows[index].quantity, 0);
+    if (Math.abs(quantityTotal - sale.quantity) > quantityTolerance) continue;
+    const weightedPrice = candidates.reduce((sum, index) => {
+      const broker = uniqueBrokerRows[index];
+      return sum + broker.quantity * (broker.price ?? 0);
+    }, 0) / quantityTotal;
+    if (Math.abs(weightedPrice - sale.price) > priceTolerance) continue;
+    candidates.forEach(index => unmatchedBroker.delete(index));
+    unmatchedLegacyClosedSales.delete(saleIndex);
+    matchedLegacyClosedSaleCount += 1;
+    matchedLegacyExecutionCount += candidates.length;
+  }
+
   for (const index of unmatchedBroker) {
     const row = uniqueBrokerRows[index];
     findings.push(makeFinding({
@@ -611,6 +725,9 @@ export function reconcileBrokerActivity(
     brokerCashflowCount: brokerCashflows.length,
     appCashflowCount: appCashflows.length,
     matchedExecutionCount: matchedPairs.length,
+    legacyClosedSaleCount: legacyClosedSales.length,
+    matchedLegacyClosedSaleCount,
+    matchedLegacyExecutionCount,
     matchedCashflowCount,
     findings,
     warnings: [...new Set(warnings)]
