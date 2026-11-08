@@ -185,7 +185,13 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
             : /deposit|funding|credit/.test(description)
               ? 'cash.deposit'
               : 'cash.adjustment';
-  return { id: text(row.id) || `anonymous:${JSON.stringify([row.date, type, amount, row.currency])}`, type, amount, currency: currency(row.currency), at: timestamp(row.date) };
+  // Some broker cashflow feeds encode withdrawals as positive magnitudes and
+  // rely on the operation type for direction. Normalize deposits/withdrawals
+  // to signed account movement before comparing them with the app journal.
+  const signedAmount = type === 'cash.deposit'
+    ? Math.abs(amount)
+    : type === 'cash.withdrawal' ? -Math.abs(amount) : amount;
+  return { id: text(row.id) || `anonymous:${JSON.stringify([row.date, type, signedAmount, row.currency])}`, type, amount: signedAmount, currency: currency(row.currency), at: timestamp(row.date) };
 }
 function eventAmount(event: PortfolioTransactionEvent): number | null {
   return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
@@ -210,8 +216,13 @@ function sameCashflowObservation(left: NormalizedCashflow, right: NormalizedCash
     left.at === right.at;
 }
 
+const SIGNED_CASHFLOW_EVENT_TYPES = new Set<PortfolioTransactionEvent['type']>([
+  'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'cash.adjustment', 'dividend'
+]);
+
 function hasExplicitSignedCashflowAmount(event: PortfolioTransactionEvent): boolean {
-  return event.externalCashFlowAmount !== undefined || event.cashDelta !== undefined;
+  return SIGNED_CASHFLOW_EVENT_TYPES.has(event.type) &&
+    (event.externalCashFlowAmount !== undefined || event.cashDelta !== undefined);
 }
 
 function makeFinding(

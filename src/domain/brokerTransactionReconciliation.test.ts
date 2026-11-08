@@ -234,6 +234,27 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings).toEqual([]);
   });
 
+  it('normalizes positive broker withdrawal magnitudes to negative account movement', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'withdraw-positive-magnitude',
+      date: new Date(at).toISOString(),
+      type: 'Withdrawal',
+      amount: 100,
+      currency: 'USD',
+      raw: {}
+    };
+    const appWithdrawal = createPortfolioTransactionEvent({
+      type: 'cash.withdrawal',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -100
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-withdrawal-signed', recordedAt: at });
+
+    const report = reconcile([], [appWithdrawal], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
   it('reports cashflow amount mismatches against a same-currency app event', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'fee-amount-1', date: new Date(at).toISOString(), type: 'Fee',
