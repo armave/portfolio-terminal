@@ -145,13 +145,23 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
   });
 
-  it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
+  it('advances the cashflow cursor from the completed broker trade refresh', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
     expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
+    expect(source).toContain('cashflowSyncStartDate.current = getLatestClosedTradeDate(brokerTrades, state.closedTrades || [])');
     expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
     expect(source).toContain('brokerAdapter.fetchCashflows(fromDate)');
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
+  });
+
+  it('requests cashflows only after the broker execution refresh and only for a changed latest-trade checkpoint', () => {
+    const source = readSource();
+    expect(source).toContain('if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;');
+    expect(source).toContain('getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || \'no-trades\'');
+    expect(source).toContain('getFreedomCashflowTradeCheckpoint(accountId)');
+    expect(source).toContain('if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint)');
+    expect(source).toContain('markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)');
   });
 
   it('waits only when there is no cached broker or app-owned trade data', () => {
