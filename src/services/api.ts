@@ -346,6 +346,7 @@ export const loginAccount = authTransportRuntime.loginAccount;
 export const bootstrapAdmin = authTransportRuntime.bootstrapAdmin;
 export const getCurrentUser = authTransportRuntime.getCurrentUser;
 export const listUsers = authTransportRuntime.listUsers;
+export const getCachedUsers = authTransportRuntime.getCachedUsers;
 export const createUser = authTransportRuntime.createUser;
 export const updateUser = authTransportRuntime.updateUser;
 export const updateMyLanguage = authTransportRuntime.updateMyLanguage;
