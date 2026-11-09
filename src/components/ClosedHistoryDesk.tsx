@@ -34,6 +34,9 @@ const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
 function selectTradesPortfolioState(state: PortfolioState) {
   return {
     brokerExecutedTrades: state.brokerExecutedTrades,
+    positions: state.positions,
+    cashCushion: state.cashCushion,
+    brokerAccountInfo: state.brokerAccountInfo,
     cashflows: state.cashflows,
     transactionEvents: state.transactionEvents,
     closedTrades: state.closedTrades,
@@ -50,6 +53,9 @@ function areTradesPortfolioStatesEqual(
   next: ReturnType<typeof selectTradesPortfolioState>
 ): boolean {
   return previous.brokerExecutedTrades === next.brokerExecutedTrades &&
+    previous.positions === next.positions &&
+    previous.cashCushion === next.cashCushion &&
+    previous.brokerAccountInfo === next.brokerAccountInfo &&
     previous.cashflows === next.cashflows &&
     previous.transactionEvents === next.transactionEvents &&
     previous.closedTrades === next.closedTrades &&
@@ -788,6 +794,33 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
               legacyClosedTrades={state.closedTrades || []}
+              appQuotes={[
+                ...Object.values(state.positions || {}).map(position => ({
+                  ticker: position.ticker,
+                  price: position.currentPrice,
+                  quoteSource: position.quoteSource,
+                  quoteUpdatedAt: position.quoteUpdatedAt,
+                  quoteDetails: position.quoteDetails
+                })),
+                ...(state.cashCushion?.holdings || []).map(holding => ({
+                  ticker: holding.ticker,
+                  price: holding.currentPrice ?? holding.price,
+                  quoteSource: holding.quoteSource,
+                  quoteUpdatedAt: holding.quoteUpdatedAt,
+                  quoteDetails: holding.quoteDetails
+                }))
+              ]}
+              brokerQuoteSnapshot={state.brokerAccountInfo ? {
+                loaded: state.brokerAccountInfo.loaded,
+                positions: state.brokerAccountInfo.positions || [],
+                provider: state.brokerAccountInfo.provider,
+                source: state.brokerAccountInfo.source,
+                quality: state.brokerAccountInfo.snapshotQuality ?? state.brokerAccountInfo.quality ?? 'unknown',
+                status: state.brokerAccountInfo.status || 'unavailable',
+                observedAt: state.brokerAccountInfo.observedAt,
+                receivedAt: state.brokerAccountInfo.receivedAt,
+                warnings: state.brokerAccountInfo.warnings || []
+              } : null}
             />
           </div>
         )}
