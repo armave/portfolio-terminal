@@ -133,6 +133,29 @@ describe('reconcileBrokerQuotePrices', () => {
     }));
   });
 
+  it('does not confirm a mismatch when one of several equal-price app quotes is stale', () => {
+    const fresh = appQuote({ price: 101 });
+    const stale = appQuote({
+      price: 101,
+      quoteDetails: {
+        currency: 'USD',
+        provider: 'YAHOO',
+        sourceTimestamp: now - 10 * 60_000,
+        receivedAt: now - 9 * 60_000,
+        freshness: 'fresh',
+        delayClass: 'live',
+        dataQuality: 'complete',
+        cacheStatus: 'network'
+      }
+    });
+    const report = reconcile([fresh, stale]);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'price_mismatch',
+      confidence: 'provisional'
+    }));
+  });
+
   it('does not compare across currencies or invent an FX conversion', () => {
     const report = reconcile([appQuote({
       quoteDetails: { ...appQuote().quoteDetails, currency: 'EUR' }
