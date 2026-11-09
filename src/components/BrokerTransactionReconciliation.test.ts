@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { createPortfolioTransactionEvent } from '../domain/portfolioTransactionJournal';
 import {
   getBrokerReconciliationCountLabel,
   getBrokerReconciliationEmptyMessage,
   getBrokerReconciliationHeadline,
+  getBrokerQuoteReconciliationHeadline,
+  getBrokerReconciliationReviewIdempotencyKey,
+  findBrokerReconciliationReview,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
 
@@ -46,5 +50,86 @@ describe('broker reconciliation empty-state wording', () => {
     expect(getBrokerReconciliationEmptyMessage('partial')).toContain('incomplete coverage');
     expect(getBrokerReconciliationEmptyMessage('unavailable')).toContain('unavailable');
     expect(getBrokerReconciliationEmptyMessage('matched')).toBe('No transaction-level differences were found in the available records.');
+  });
+});
+
+
+describe('broker quote reconciliation localization and status', () => {
+  it('localizes quote provenance and safety explanations in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Broker market prices', 'ru')).toBe('Рыночные цены брокера');
+    expect(translateBrokerReconciliationCopy('Price mismatch', 'ru')).toBe('Расхождение цены');
+    expect(translateBrokerReconciliationCopy('App currency', 'ru')).toBe('Валюта приложения');
+    expect(translateBrokerReconciliationCopy('Broker received', 'ru')).toBe('Получено брокером');
+    expect(translateBrokerReconciliationCopy(
+      'The app and broker quotes use different or unverified currencies. No conversion was attempted.',
+      'ru'
+    )).toContain('Конвертация не выполнялась');
+  });
+
+  it('keeps quote-status wording conservative for stale or incomplete inputs', () => {
+    expect(getBrokerQuoteReconciliationHeadline('unavailable')).toBe('Broker quote data unavailable');
+    expect(getBrokerQuoteReconciliationHeadline('stale')).toBe('Stale broker quote snapshot');
+    expect(getBrokerQuoteReconciliationHeadline('partial')).toBe('Provisional price comparison');
+    expect(getBrokerQuoteReconciliationHeadline('differences')).toBe('Price differences found');
+    expect(getBrokerQuoteReconciliationHeadline('matched')).toBe('Prices matched');
+  });
+});
+
+
+describe('broker reconciliation audit-only review markers', () => {
+  it('derives distinct stable idempotency keys for activity and quote findings', () => {
+    expect(getBrokerReconciliationReviewIdempotencyKey('activity', 'finding-1'))
+      .toBe('reconciliation-review:activity:finding-1');
+    expect(getBrokerReconciliationReviewIdempotencyKey('quote', 'finding-1'))
+      .toBe('reconciliation-review:quote:finding-1');
+    expect(getBrokerReconciliationReviewIdempotencyKey('activity', '')).toBe('');
+  });
+
+  it('recognizes only a user-authored review event with no financial deltas', () => {
+    const review = createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: Date.parse('2026-11-09T08:00:00.000Z'),
+      note: 'Reviewed activity finding-1. Reason: checked source timestamp.'
+    }, {
+      eventId: 'review-event-1',
+      idempotencyKey: 'reconciliation-review:activity:finding-1',
+      requestFingerprint: 'review-fingerprint',
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review'
+    });
+    const forgedFinancialEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: Date.parse('2026-11-09T08:00:00.000Z'),
+      cashDelta: 100,
+      note: 'Not an audit-only review.'
+    }, {
+      eventId: 'review-event-2',
+      idempotencyKey: 'reconciliation-review:activity:finding-1',
+      requestFingerprint: 'review-fingerprint',
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review'
+    });
+
+    expect(findBrokerReconciliationReview([review], 'activity', 'finding-1')).toBe(review);
+    expect(findBrokerReconciliationReview([forgedFinancialEvent], 'activity', 'finding-1')).toBeUndefined();
+    expect(findBrokerReconciliationReview([review], 'quote', 'finding-1')).toBeUndefined();
+  });
+
+  it('localizes every visible review-only action and limitation', () => {
+    const copy = [
+      'Review item',
+      'Reason for review',
+      'Record review',
+      'Cancel',
+      'Reviewed · not resolved',
+      'This is an audit note only. It does not resolve the finding or change portfolio data.',
+      'Enter a reason to record this review.',
+      'Review could not be recorded. No financial data was changed.',
+      'Reviewed note',
+      'Record a review note only; corrections and writeback remain unavailable.'
+    ];
+    for (const value of copy) {
+      expect(translateBrokerReconciliationCopy(value, 'ru'), value).not.toBe(value);
+    }
   });
 });

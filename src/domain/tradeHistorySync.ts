@@ -60,3 +60,47 @@ export function getLatestClosedTradeDate(
 
   return Number.isFinite(latestTimestamp) ? localDateString(latestTimestamp) : undefined;
 }
+
+  
+/**
+ * Fingerprint the latest closed-trade date and every stable execution ID on
+ * that date. Including IDs detects additional fills even when they share the
+ * same calendar date as the last cashflow request.
+ */
+export function getLatestClosedTradeCheckpoint(
+  brokerExecutions: readonly unknown[] = [],
+  appClosedTrades: readonly unknown[] = []
+): string | undefined {
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
+  const candidates: Array<{ timestamp: number; identity: string }> = [];
+
+  for (const candidate of brokerExecutions) {
+    const row = asRecord(candidate);
+    if (!row || !SELL_SIDES.has(String(row.side ?? '').trim().toLowerCase())) continue;
+    const timestamp = parseTradeTimestamp(row.executedAt ?? row.date ?? row.time ?? row.datetime);
+    if (timestamp === null) continue;
+    const identity = String(row.id ?? '').trim() ||
+      [row.ticker, row.side, row.quantity, row.price, timestamp].map(value => String(value ?? '')).join(':');
+    candidates.push({ timestamp, identity });
+    latestTimestamp = Math.max(latestTimestamp, timestamp);
+  }
+
+  for (const candidate of appClosedTrades) {
+    const row = asRecord(candidate);
+    if (!row) continue;
+    const timestamp = parseTradeTimestamp(row.exitDate ?? row.sellDate ?? row.closedAt ?? row.date);
+    if (timestamp === null) continue;
+    const identity = String(row.id ?? '').trim() ||
+      [row.ticker, row.shares ?? row.quantity, timestamp].map(value => String(value ?? '')).join(':');
+    candidates.push({ timestamp, identity });
+    latestTimestamp = Math.max(latestTimestamp, timestamp);
+  }
+
+  if (!Number.isFinite(latestTimestamp)) return undefined;
+  const latestDate = localDateString(latestTimestamp);
+  const identities = candidates
+    .filter(candidate => localDateString(candidate.timestamp) === latestDate)
+    .map(candidate => candidate.identity)
+    .sort();
+  return latestDate + ':' + identities.join(',');
+}

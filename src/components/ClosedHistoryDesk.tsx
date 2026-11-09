@@ -7,8 +7,10 @@ import { listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '..
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import {
   hasFreedomCashflowHistoryBaseline,
+  getFreedomCashflowTradeCheckpoint,
   loadSavedHistory,
   markFreedomCashflowHistoryBaseline,
+  markFreedomCashflowTradeCheckpoint,
   savePortfolioSnapshot
 } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
@@ -23,7 +25,7 @@ import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
-import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
+import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
 
@@ -34,6 +36,9 @@ const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
 function selectTradesPortfolioState(state: PortfolioState) {
   return {
     brokerExecutedTrades: state.brokerExecutedTrades,
+    positions: state.positions,
+    cashCushion: state.cashCushion,
+    brokerAccountInfo: state.brokerAccountInfo,
     cashflows: state.cashflows,
     transactionEvents: state.transactionEvents,
     closedTrades: state.closedTrades,
@@ -50,6 +55,9 @@ function areTradesPortfolioStatesEqual(
   next: ReturnType<typeof selectTradesPortfolioState>
 ): boolean {
   return previous.brokerExecutedTrades === next.brokerExecutedTrades &&
+    previous.positions === next.positions &&
+    previous.cashCushion === next.cashCushion &&
+    previous.brokerAccountInfo === next.brokerAccountInfo &&
     previous.cashflows === next.cashflows &&
     previous.transactionEvents === next.transactionEvents &&
     previous.closedTrades === next.closedTrades &&
@@ -93,9 +101,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
       .catch(() => setBrokerReconciliationOpen(false));
   };
-  // Keep the first cached range for both API requests. The broker trade refresh
-  // may return newer sells before the cashflow request starts; that must not move
-  // the cashflow cursor forward and skip fees for those newly fetched trades.
+  // Seed the cursor from cached history for immediate rendering. Before a
+  // cashflow request, it is recalculated from the completed broker refresh so
+  // newly discovered sales are included in the incremental date range.
   const cashflowSyncStartDate = useRef(
     getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
   );
@@ -354,6 +362,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     let completed = false;
     try {
       const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
+      const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || 'no-trades';
+      const previousTradeCheckpoint = getFreedomCashflowTradeCheckpoint(accountId);
+
+      // A full initial cashflow baseline is still required once. After that,
+      // opening Trades is a read-only check unless a new latest-date execution
+      // (including another fill on the same date) has appeared.
+      if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint) {
+        setCashflowSyncReady(true);
+        return;
+      }
+
+      // The trade history refresh completes before this function is called, so
+      // the incremental cashflow cursor includes the newest visible closed sale.
+      cashflowSyncStartDate.current = getLatestClosedTradeDate(brokerTrades, state.closedTrades || []);
       const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
       const response = await brokerAdapter.fetchCashflows(fromDate);
       if (!isSessionCurrent()) return;
@@ -365,7 +387,12 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       // switching to date-bounded requests. Process empty snapshots as well.
       const saved = await processCashflowRows(mergedRows, true);
       if (!saved || !isSessionCurrent()) return;
-      if (!hasCompleteBaseline) markFreedomCashflowHistoryBaseline(accountId);
+      if (!hasCompleteBaseline && !markFreedomCashflowHistoryBaseline(accountId)) {
+        throw new Error('Cashflow history baseline could not be recorded; the next Trades visit will retry.');
+      }
+      if (!markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)) {
+        throw new Error('Latest trade checkpoint could not be saved; the next Trades visit will retry.');
+      }
       completed = true;
 
     } catch (error) {
@@ -416,9 +443,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   };
 
   useEffect(() => {
-    if (!cashflowHistoryReady) return;
+    if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;
     void syncCashflowsFromFreedom();
-  }, [cashflowHistoryReady]);
+  }, [cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
 
   useEffect(() => {
     const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {
@@ -788,6 +815,37 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
               legacyClosedTrades={state.closedTrades || []}
+              onRecordReview={(section, findingId, findingType, subject, reason) =>
+                isSessionCurrent() &&
+                portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)
+              }
+              appQuotes={[
+                ...Object.values(state.positions || {}).map(position => ({
+                  ticker: position.ticker,
+                  price: position.currentPrice,
+                  quoteSource: position.quoteSource,
+                  quoteUpdatedAt: position.quoteUpdatedAt,
+                  quoteDetails: position.quoteDetails
+                })),
+                ...(state.cashCushion?.holdings || []).map(holding => ({
+                  ticker: holding.ticker,
+                  price: holding.currentPrice,
+                  quoteSource: holding.quoteSource,
+                  quoteUpdatedAt: holding.quoteUpdatedAt,
+                  quoteDetails: holding.quoteDetails
+                }))
+              ]}
+              brokerQuoteSnapshot={state.brokerAccountInfo ? {
+                loaded: state.brokerAccountInfo.loaded,
+                positions: state.brokerAccountInfo.positions || [],
+                provider: state.brokerAccountInfo.provider,
+                source: state.brokerAccountInfo.source,
+                quality: state.brokerAccountInfo.quality ?? state.brokerAccountInfo.snapshotQuality ?? 'unknown',
+                status: state.brokerAccountInfo.status,
+                observedAt: state.brokerAccountInfo.observedAt,
+                receivedAt: state.brokerAccountInfo.receivedAt,
+                warnings: state.brokerAccountInfo.warnings || []
+              } : null}
             />
           </div>
         )}

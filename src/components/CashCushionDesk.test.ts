@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   buildCashHoldingTableRows,
+  getReversibleBalanceAdjustmentEvents,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
   getAssignedGuestIds,
@@ -9,6 +10,8 @@ import {
   shouldShowCashHoldingMarketDepth
 } from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
+import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import { translateText } from '../services/i18n';
 
 describe('cash/margin mix inputs', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
@@ -189,6 +192,12 @@ describe('cash holdings quote context', () => {
     ]);
     expect(buildCashHoldingTableRows(groups, false).map((row) => row.type))
       .toEqual(['holding', 'holding', 'holding']);
+    expect(buildCashHoldingTableRows([
+      { key: 'guest-pending', label: '', holdings: [{ ticker: 'TSLA' }] }
+    ], true)).toEqual([
+      { type: 'group', key: 'group-guest-pending', label: '' },
+      { type: 'holding', key: 'holding-guest-pending-TSLA', holding: { ticker: 'TSLA' } }
+    ]);
   });
 
   it('does not nest the group heading inside a conditional holding fragment', () => {
@@ -282,6 +291,15 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain('useMemo(() => activeTrancheSource.map');
   });
 
+  it('keeps guest group rows stable without exposing raw IDs while names resolve', () => {
+    expect(deskSource).toContain('getCachedUsers()');
+    expect(deskSource).toContain('guestDirectoryPending');
+    expect(deskSource).toContain("label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Guest unavailable'");
+    expect(deskSource).toContain("translateText('Loading guest name', getAppLanguage())");
+    expect(deskSource).not.toContain('guestNames.get(guestId) || guestId');
+    expect(deskSource).toContain("...(isAdmin\n      ? [{ type: 'group' as const");
+  });
+
   it('uses the shared role-specific quote refresh defaults', () => {
     const refreshHookSource = readFileSync(new URL('../ui/useQuoteRefreshInterval.ts', import.meta.url), 'utf8');
 
@@ -301,5 +319,92 @@ describe('Balance cache-first rendering wiring', () => {
     expect(accountLoader).not.toContain('fromDate');
     expect(accountLoader).not.toContain('beginDate');
     expect(accountLoader).not.toContain('endDate');
+  });
+});
+
+
+describe('balance adjustment reversal access', () => {
+  const event = (
+    id: string,
+    type: PortfolioTransactionEvent['type'],
+    recordedAt: number,
+    overrides: Partial<PortfolioTransactionEvent> = {}
+  ): PortfolioTransactionEvent => ({
+    id,
+    schemaVersion: 1,
+    type,
+    actor: { type: 'user' },
+    source: 'manual-balance',
+    effectiveAt: recordedAt,
+    recordedAt,
+    cashDelta: type === 'cash.adjustment' ? 100 : undefined,
+    marginDebtDelta: type === 'margin.adjustment' ? 50 : undefined,
+    ...overrides
+  });
+
+  it('lists only the five newest unreversed cash or margin balance adjustments', () => {
+    const events = [
+      event('cash-old', 'cash.adjustment', 1),
+      event('cash-reversed', 'cash.adjustment', 2),
+      event('cash-reversal-invalid', 'correction', 2.5, { relatedEventId: 'cash-reversed', cashDelta: -90 }),
+      event('cash-reversal', 'correction', 3, { relatedEventId: 'cash-reversed', cashDelta: -100 }),
+      event('trade', 'trade.buy', 4, { ticker: 'AAPL', quantity: 1, cashDelta: -100 }),
+      ...Array.from({ length: 6 }, (_, index) =>
+        event(`margin-${index}`, 'margin.adjustment', 10 + index)
+      ),
+      event('empty', 'margin.adjustment', 30, { cashDelta: undefined, marginDebtDelta: 0 })
+    ];
+
+    expect(getReversibleBalanceAdjustmentEvents(events).map((item) => item.id)).toEqual([
+      'margin-5', 'margin-4', 'margin-3', 'margin-2', 'margin-1'
+    ]);
+  });
+
+  it('keeps an adjustment visible when a linked correction is not its exact inverse', () => {
+    const original = event('cash-original', 'cash.adjustment', 1, { cashDelta: 125 });
+    const inconsistentCorrection = event('cash-correction', 'correction', 2, {
+      relatedEventId: original.id,
+      cashDelta: -120
+    });
+
+    expect(getReversibleBalanceAdjustmentEvents([original, inconsistentCorrection]).map((item) => item.id))
+      .toEqual(['cash-original']);
+  });
+
+  it('keeps reversal controls restricted to the admin Balance desk and calls the guarded store command', () => {
+    const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('isAdmin && !guestUserId');
+    expect(source).toContain('portfolioStore.reverseBalanceAdjustment(eventId, reason)');
+    expect(source).toContain('data-balance-adjustment-event-id={event.id}');
+    expect(source).toContain('immutable correction event');
+    expect(source).toContain('disabled={!(balanceAdjustmentReasons[event.id] || \'\').trim()}');
+    expect(source).toContain('onClick={() => setPendingBalanceAdjustmentId(event.id)}');
+    expect(source).toContain("translateText('Confirm reversal', getAppLanguage())");
+    expect(source).toContain("translateText('Cancel', getAppLanguage())");
+  });
+
+  it('localizes every new adjustment review label in Russian', () => {
+    const copy = [
+      'Recent balance adjustments',
+      'Review and reverse eligible manual cash or margin adjustments.',
+      'A reversal appends an immutable correction event. It is blocked when available cash or debt has already been used.',
+      'Cash adjustment',
+      'Margin adjustment',
+      'Cash change',
+      'Margin debt change',
+      'Reason for reversal',
+      'Enter why this adjustment should be reversed',
+      'Review reversal',
+      'Confirm reversal',
+      'Confirm balance reversal',
+      'Confirm this balance change. The original event remains in history.',
+      'Cancel',
+      'Enter a reason to reverse this adjustment.',
+      'Balance adjustment reversed.',
+      'Balance adjustment could not be reversed. The balance may have changed since the original adjustment.'
+    ];
+    for (const value of copy) {
+      expect(translateText(value, 'ru'), value).not.toBe(value);
+    }
   });
 });

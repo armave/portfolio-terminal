@@ -113,6 +113,75 @@ describe('tenant directory authenticated transport', () => {
       tenantId: 'tenant-123', userId: 'guest-1', role: 'guest', portfolioIds: ['portfolio-456']
     })).rejects.toThrow('Tenant not found or membership management is not permitted.');
   });
+  it('rejects malformed nested tenant permission and membership metadata before rendering', async () => {
+    const validPayload = {
+      version: 1,
+      revision: 2,
+      mode: 'directory-metadata-only',
+      financialDataEnabled: false,
+      tenants: [{
+        tenant: {
+          id: 'tenant-12345678',
+          name: 'Family',
+          status: 'active',
+          createdAt: '2026-11-09T00:00:00.000Z'
+        },
+        membership: {
+          role: 'owner',
+          status: 'active',
+          membershipVersion: 1,
+          capabilities: ['tenant.read', 'tenant.members.manage']
+        },
+        workspaces: [{ id: 'workspace-12345678', name: 'Family', status: 'active' }],
+        portfolios: [{
+          id: 'portfolio-12345678',
+          workspaceId: 'workspace-12345678',
+          name: 'Core',
+          status: 'active',
+          access: 'owner',
+          capabilities: ['portfolio.read']
+        }],
+        memberships: [{
+          userId: 'owner-1',
+          role: 'owner',
+          status: 'active',
+          membershipVersion: 1,
+          createdAt: '2026-11-09T00:00:00.000Z',
+          portfolioIds: ['portfolio-12345678']
+        }]
+      }]
+    };
+    const malformedPayloads: unknown[] = [];
+
+    const invalidVersion = structuredClone(validPayload);
+    (invalidVersion.tenants[0].membership as { membershipVersion: unknown }).membershipVersion = '1';
+    malformedPayloads.push(invalidVersion);
+
+    const invalidCapabilities = structuredClone(validPayload);
+    (invalidCapabilities.tenants[0].portfolios[0] as { capabilities: unknown }).capabilities = ['portfolio.read', 7];
+    malformedPayloads.push(invalidCapabilities);
+
+    const invalidRoster = structuredClone(validPayload);
+    (invalidRoster.tenants[0].memberships[0] as { portfolioIds: unknown }).portfolioIds = [42];
+    malformedPayloads.push(invalidRoster);
+
+    const invalidTimestamp = structuredClone(validPayload);
+    (invalidTimestamp.tenants[0].tenant as { createdAt: unknown }).createdAt = 'not-a-date';
+    malformedPayloads.push(invalidTimestamp);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    for (const payload of malformedPayloads) {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(payload), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+      }));
+      await expect(getTenantDirectory()).rejects.toThrow(
+        'The tenant directory response is malformed or incomplete.'
+      );
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(malformedPayloads.length);
+  });
+
   it('rejects malformed directory payloads before they reach the Settings view', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       version: 1,

@@ -49,7 +49,7 @@ import {
 import type { PortfolioSnapshotOptions } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { validateSaleCostBasisTranches } from '../domain/saleCostBasis';
-import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
+import { allocateFifoSaleTranches, buildSaleLotJournalAllocations, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -62,6 +62,19 @@ export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+let fallbackTransactionIdSequence = 0;
+
+function createPortfolioTransactionId(): string {
+  try {
+    const randomUUID = globalThis.crypto?.randomUUID;
+    if (typeof randomUUID === 'function') return randomUUID.call(globalThis.crypto);
+  } catch {
+    // The fallback is only an opaque local identifier, not a security token.
+  }
+  fallbackTransactionIdSequence += 1;
+  return `tx-${Date.now().toString(36)}-${fallbackTransactionIdSequence.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Validate persisted daily valuation rows before exposing them to calculations. */
@@ -1005,6 +1018,176 @@ export class PortfolioStore {
     });
   }
 
+  /**
+   * Reverse a balance-only manual adjustment without deleting its original
+   * event. Trade, lot, closed-history and corporate-action reversals are
+   * intentionally rejected until their cost-basis/P&L semantics are modeled.
+   */
+  /**
+   * Record that a broker reconciliation finding was reviewed. This appends an
+   * audit-only journal event and deliberately leaves every financial field
+   * unchanged; it is not a correction, resolution or writeback command.
+   */
+  public recordReconciliationReview(
+    section: 'activity' | 'quote',
+    findingId: string,
+    findingType: string,
+    subject: string,
+    reason: string
+  ): boolean {
+    const cleanFindingId = typeof findingId === 'string' ? findingId.trim() : '';
+    const cleanFindingType = typeof findingType === 'string' ? findingType.trim() : '';
+    const cleanSubject = typeof subject === 'string' ? subject.trim() : '';
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+    if ((section !== 'activity' && section !== 'quote') ||
+      !cleanFindingId || cleanFindingId.length > 160 ||
+      !cleanFindingType || cleanFindingType.length > 60 ||
+      !cleanSubject || cleanSubject.length > 80 ||
+      !cleanReason || cleanReason.length > 240) return false;
+
+    const idempotencyKey = `reconciliation-review:${section}:${cleanFindingId}`;
+    const requestFingerprint = createMutationFingerprint([
+      'review', section, cleanFindingType, cleanSubject, cleanReason
+    ]);
+    const context: PortfolioTransactionContext = {
+      idempotencyKey,
+      requestFingerprint,
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review',
+      effectiveAt: Date.now()
+    };
+
+    return this.updateFinancialMutation(context, (state) => ({
+      // A fresh top-level object commits the audit event through the same
+      // persistence-before-publication boundary as other store mutations.
+      state: { ...state },
+      event: {
+        type: 'portfolio.reconciliation',
+        effectiveAt: context.effectiveAt ?? Date.now(),
+        note: `Reviewed ${section} finding ${cleanFindingId} (${cleanFindingType}) for ${cleanSubject}. Reason: ${cleanReason}`
+      }
+    }));
+  }
+
+  public reverseBalanceAdjustment(
+    originalEventId: string,
+    reason: string,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const originalId = typeof originalEventId === 'string' ? originalEventId.trim() : '';
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+    if (!originalId || !cleanReason || cleanReason.length > 500) return false;
+
+    const original = (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) && event.id === originalId
+    );
+    if (!original ||
+      (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment')) return false;
+
+    const originalCashDelta = Number(original.cashDelta ?? 0);
+    const originalDebtDelta = Number(original.marginDebtDelta ?? 0);
+    if (![originalCashDelta, originalDebtDelta].every(Number.isFinite) ||
+      (Math.abs(originalCashDelta) < 1e-10 && Math.abs(originalDebtDelta) < 1e-10)) return false;
+
+    const requestFingerprint = createMutationFingerprint([
+      'transaction.reversal.balance-adjustment',
+      original.id,
+      cleanReason
+    ]);
+    const previousReversal = (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) &&
+      event.type === 'correction' &&
+      event.relatedEventId === original.id
+    );
+    if (previousReversal) {
+      return previousReversal.requestFingerprint === requestFingerprint;
+    }
+
+    // Reject unsafe inverse deltas before entering updateFinancialMutation:
+    // its generic no-op result is intentionally successful for idempotent
+    // commands, while this API must report an unsafe reversal as false.
+    const currentFreeCashValue = this.state.cashCushion?.freeCash;
+    const currentBalanceValue = this.state.balance;
+    if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+      currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+      !Number.isFinite(currentBalanceValue)) return false;
+    const currentFreeCash = currentFreeCashValue;
+    const currentDebt = Math.abs(currentBalanceValue);
+    const nextFreeCash = currentFreeCash - originalCashDelta;
+    const nextDebt = currentDebt - originalDebtDelta;
+    const tolerance = 1e-8;
+    if (!Number.isFinite(nextFreeCash) || !Number.isFinite(nextDebt) ||
+      nextFreeCash < -tolerance || nextDebt < -tolerance) return false;
+
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `transaction-reversal:${original.id}`,
+      requestFingerprint,
+      actor: context?.actor ?? { type: 'user' },
+      source: context?.source ?? 'transaction-reversal',
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+
+    return this.updateFinancialMutation(mutationContext, (state) => {
+      const journal = state.transactionEvents || [];
+      const currentOriginal = journal.find((event) =>
+        isPortfolioTransactionEvent(event) && event.id === original.id
+      );
+      if (!currentOriginal ||
+        (currentOriginal.type !== 'cash.adjustment' && currentOriginal.type !== 'margin.adjustment') ||
+        journal.some((event) =>
+          isPortfolioTransactionEvent(event) &&
+          event.type === 'correction' &&
+          event.relatedEventId === currentOriginal.id
+        )) return null;
+
+      const cashDelta = Number(currentOriginal.cashDelta ?? 0);
+      const debtDelta = Number(currentOriginal.marginDebtDelta ?? 0);
+      if (![cashDelta, debtDelta].every(Number.isFinite) ||
+        (Math.abs(cashDelta) < 1e-10 && Math.abs(debtDelta) < 1e-10)) return null;
+
+      const currentFreeCashValue = state.cashCushion?.freeCash;
+      const currentBalanceValue = state.balance;
+      if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+        currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+        !Number.isFinite(currentBalanceValue)) return null;
+      const currentFreeCash = currentFreeCashValue;
+      const currentDebt = Math.abs(currentBalanceValue);
+      const nextFreeCash = currentFreeCash - cashDelta;
+      const nextDebt = currentDebt - debtDelta;
+      const tolerance = 1e-8;
+
+      // A later transaction may already have spent the adjusted cash or repaid
+      // the adjusted debt. Never create a negative balance to force a reversal.
+      if (!Number.isFinite(nextFreeCash) || !Number.isFinite(nextDebt) ||
+        nextFreeCash < -tolerance || nextDebt < -tolerance) return null;
+
+      const freeCash = Math.max(0, Number(nextFreeCash.toFixed(8)));
+      const debt = Math.max(0, Number(nextDebt.toFixed(8)));
+      return {
+        state: {
+          ...state,
+          balance: debt > 0 ? -debt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'correction',
+          effectiveAt: mutationContext.effectiveAt ?? Date.now(),
+          ...(currentOriginal.ticker ? { ticker: currentOriginal.ticker } : {}),
+          ...(currentOriginal.currency ? { currency: currentOriginal.currency } : {}),
+          ...(currentOriginal.cashDelta !== undefined ? { cashDelta: -cashDelta } : {}),
+          ...(currentOriginal.marginDebtDelta !== undefined ? { marginDebtDelta: -debtDelta } : {}),
+          relatedEventId: currentOriginal.id,
+          note: `Reversal of balance adjustment ${currentOriginal.id}: ${cleanReason}`
+        }
+      };
+    });
+  }
+
   public buyStock(
     ticker: string,
     shares: number,
@@ -1021,9 +1204,14 @@ export class PortfolioStore {
     const parsedEffectiveAt = Date.parse(purchaseDate);
     const effectiveAt = context?.effectiveAt ??
       (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
+    // Generate the event and lot identity before the mutation callback so the
+    // committed snapshot and journal event always refer to the same acquisition.
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
+    const lotId = `lot-${eventId}`;
 
     return this.updateFinancialMutation({
       ...context,
+      eventId,
       effectiveAt,
       requestFingerprint: createMutationFingerprint(['trade.buy', clean, shares, price, purchaseDate]),
       source: context?.source ?? 'manual',
@@ -1046,7 +1234,7 @@ export class PortfolioStore {
       const existingPos = positions[clean];
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
-        { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
+        { qty: shares, price, date: purchaseDate, buyCommission: buyComm, lotId }
       ];
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
       const nextCommBuy = (Number(existingPos?.commBuy) || 0) + buyComm;
@@ -1118,6 +1306,8 @@ export class PortfolioStore {
           type: 'trade.buy',
           effectiveAt,
           ticker: clean,
+          lotId,
+          acquisitionDate: purchaseDate,
           quantity: shares,
           positionQuantityDelta: shares,
           unitPrice: price,
@@ -1232,8 +1422,12 @@ export class PortfolioStore {
       sellPrice,
       exitDate
     ]);
+    // Generate the journal event identity before the atomic sale mutation so
+    // the closed-history row can link back to its exact immutable trade.sell event.
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt,
       requestFingerprint,
       source: context?.source ?? 'manual',
@@ -1322,6 +1516,14 @@ export class PortfolioStore {
       if (![marginInterestAllocated, totalCommissions, grossProfit, netProfit, netCashProceeds]
         .every(Number.isFinite)) return null;
 
+      const lotAllocations = buildSaleLotJournalAllocations({
+        soldLots: allocation.soldLots,
+        sellPrice,
+        sellCommission: sellComm,
+        financingCost: marginInterestAllocated,
+        totalRealizedPnl: netProfit
+      });
+
       const totalDebt = Math.abs(Number(state.balance) || 0);
       const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const settlement = settleSaleProceeds(
@@ -1364,6 +1566,7 @@ export class PortfolioStore {
 
       const closedRecord = createClosedTradeRecord({
         id: `${clean}-${Date.now()}`,
+        transactionEventId: options.transactionContext?.eventId,
         ticker: clean,
         shares: actualSold,
         soldCostBasis,
@@ -1415,7 +1618,8 @@ export class PortfolioStore {
           cashDelta: freeCash - previousFreeCash,
           marginDebtDelta: currentDebt - totalDebt,
           netAmount: netCashProceeds,
-          realizedPnl: netProfit
+          realizedPnl: netProfit,
+          lotAllocations
         }
       };
     });
@@ -1930,8 +2134,10 @@ export class PortfolioStore {
     // The caller's idempotency key identifies the command; a retry may naturally
     // arrive at a different wall-clock instant, which must not change its fingerprint.
     const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice]);
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt: context?.effectiveAt ?? closedAt,
       requestFingerprint,
       source: context?.source ?? 'ai-confirmed',

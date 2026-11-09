@@ -606,6 +606,7 @@ async function performPushCloudState(
     if (Array.isArray(stateToEncrypt.closedTrades)) {
       stateToEncrypt.closedTrades = stateToEncrypt.closedTrades.map((trade: any) => ({
         id: trade?.id,
+        transactionEventId: trade?.transactionEventId,
         ticker: trade?.ticker,
         shares: trade?.shares,
         avgBuyPrice: trade?.avgBuyPrice,

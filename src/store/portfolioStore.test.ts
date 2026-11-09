@@ -9,7 +9,7 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
-import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
@@ -2538,6 +2538,15 @@ describe('portfolio transaction journal integration', () => {
     });
     expect(store.setCashBalance(5_000)).toBe(true);
     expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    const buyEvent = store.getState().transactionEvents?.find((item) => item.type === 'trade.buy');
+    expect(buyEvent).toMatchObject({
+      type: 'trade.buy',
+      lotId: expect.any(String),
+      acquisitionDate: '2026-11-01',
+      quantity: 2,
+      positionQuantityDelta: 2
+    });
+    expect(store.getState().positions.AAPL.tranches?.[0]?.lotId).toBe(buyEvent?.lotId);
 
     const saleContext = {
       idempotencyKey: 'terminal-sale-2026-11-06-001',
@@ -2561,7 +2570,24 @@ describe('portfolio transaction journal integration', () => {
       cashDelta: 120,
       marginDebtDelta: 0
     });
+    expect(event).toMatchObject({
+      lotAllocations: [{
+        lotId: buyEvent?.lotId,
+        identity: 'stable',
+        quantity: 1,
+        acquisitionPrice: 100,
+        acquisitionDate: '2026-11-01',
+        buyCommissionAllocated: 0,
+        sellPrice: 120,
+        sellCommissionAllocated: 0,
+        financingCostAllocated: 0,
+        realizedPnl: 20
+      }]
+    });
     expect(event?.realizedPnl).toBe(store.getState().closedTrades[0].netProfit);
+    expect(store.getState().closedTrades[0].transactionEventId).toBe(event?.id);
+    const restored = new PortfolioStore().getState();
+    expect(restored.closedTrades?.[0]?.transactionEventId).toBe(event?.id);
     expect(store.getState().positions.AAPL.shares).toBe(1);
   });
 
@@ -3033,6 +3059,9 @@ describe('portfolio transaction journal integration', () => {
       idempotencyKey: undefined,
       requestFingerprint: undefined,
       type: 'cash.adjustment' as const,
+      lotId: undefined,
+      acquisitionDate: undefined,
+      lotAllocations: undefined,
       ticker: undefined,
       quantity: undefined,
       unitPrice: undefined,
@@ -3397,5 +3426,201 @@ describe('broker position integrity persistence', () => {
         instrumentId: 'security-42'
       }]
     });
+  });
+});
+
+
+describe('audit-only broker reconciliation review records', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('appends an idempotent review event without changing financial state', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(250)).toBe(true);
+    expect(store.buyStock('AAPL', 1, 50, '2026-11-08')).toBe(true);
+    const before = store.getState();
+    const financialBefore = {
+      positions: before.positions,
+      cashBalance: before.cashBalance,
+      balance: before.balance,
+      cashCushion: before.cashCushion,
+      closedTrades: before.closedTrades
+    };
+
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'Compared the broker fee reference with the saved execution evidence.'
+    )).toBe(true);
+
+    const after = store.getState();
+    const review = after.transactionEvents?.at(-1);
+    expect(review).toMatchObject({
+      type: 'portfolio.reconciliation',
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review',
+      idempotencyKey: 'reconciliation-review:activity:finding-42',
+      note: 'Reviewed activity finding finding-42 (execution_fee_mismatch) for AAPL. Reason: Compared the broker fee reference with the saved execution evidence.'
+    });
+    expect(review?.positionQuantityDelta).toBeUndefined();
+    expect(review?.cashHoldingQuantityDelta).toBeUndefined();
+    expect(review?.cashDelta).toBeUndefined();
+    expect(review?.marginDebtDelta).toBeUndefined();
+    expect({
+      positions: after.positions,
+      cashBalance: after.cashBalance,
+      balance: after.balance,
+      cashCushion: after.cashCushion,
+      closedTrades: after.closedTrades
+    }).toEqual(financialBefore);
+    const coverage = inspectPortfolioTransactionJournalReplayCoverage(after.transactionEvents || []);
+    expect(coverage.status).toBe('complete');
+    expect(coverage.auditOnlyCount).toBe(1);
+
+    const eventCount = after.transactionEvents?.length ?? 0;
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'Compared the broker fee reference with the saved execution evidence.'
+    )).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(eventCount);
+
+    // A finding's stable review key cannot be silently reused for a different reason.
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'A different review reason.'
+    )).toBe(false);
+    expect(store.getState().transactionEvents).toHaveLength(eventCount);
+    expect(store.recordReconciliationReview('quote', 'finding-42', 'price_mismatch', 'AAPL', 'Checked the quote.')).toBe(true);
+  });
+
+  it('rejects malformed or oversized review input without changing the journal', () => {
+    const store = new PortfolioStore();
+    const before = store.getState();
+    expect(store.recordReconciliationReview('activity', '', 'mismatch', 'AAPL', 'Reason')).toBe(false);
+    expect(store.recordReconciliationReview('activity', 'id', 'mismatch', 'AAPL', '     ')).toBe(false);
+    expect(store.recordReconciliationReview('activity', 'id', 'mismatch', 'AAPL', 'x'.repeat(241))).toBe(false);
+    expect(store.getState()).toBe(before);
+  });
+});
+
+describe('auditable balance adjustment reversals', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('reverses a free-cash adjustment with one immutable linked correction event', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(500)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+    expect(original).toMatchObject({ type: 'cash.adjustment', cashDelta: 500 });
+    const originalCount = store.getState().transactionEvents?.length;
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Duplicate manual cash entry')).toBe(true);
+    const afterReversal = store.getState();
+    const reversal = afterReversal.transactionEvents?.at(-1);
+
+    expect(afterReversal.cashCushion.freeCash).toBe(0);
+    expect(afterReversal.cashBalance).toBe(0);
+    expect(reversal).toMatchObject({
+      type: 'correction',
+      relatedEventId: original!.id,
+      cashDelta: -500,
+      note: `Reversal of balance adjustment ${original!.id}: Duplicate manual cash entry`,
+      actor: { type: 'user' },
+      source: 'transaction-reversal'
+    });
+    expect(afterReversal.transactionEvents).toHaveLength((originalCount || 0) + 1);
+    expect(inspectPortfolioTransactionJournalReplayCoverage(afterReversal.transactionEvents || []).status).toBe('complete');
+    expect(verifyPortfolioTransactionParity(afterReversal.transactionEvents || [], afterReversal))
+      .toEqual({ matches: true, discrepancies: [] });
+
+    // A repeat is idempotent and does not append a second correction or notify
+    // listeners with a new snapshot.
+    expect(store.reverseBalanceAdjustment(original!.id, 'Duplicate manual cash entry')).toBe(true);
+    expect(store.getState()).toBe(afterReversal);
+    expect(store.getState().transactionEvents).toHaveLength((originalCount || 0) + 1);
+    expect(store.reverseBalanceAdjustment(original!.id, 'Different reason')).toBe(false);
+  });
+
+  it('reverses margin-debt adjustments and preserves the signed balance convention', () => {
+    const store = new PortfolioStore();
+    expect(store.setMarginDebt(75)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Incorrect debt entry')).toBe(true);
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'correction',
+      relatedEventId: original!.id,
+      marginDebtDelta: -75
+    });
+    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()))
+      .toEqual({ matches: true, discrepancies: [] });
+  });
+
+  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', () => {
+    const tradeStore = new PortfolioStore();
+    expect(tradeStore.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
+    const tradeEvent = tradeStore.getState().transactionEvents?.at(-1);
+    const tradeSnapshot = tradeStore.getState();
+    expect(tradeStore.reverseBalanceAdjustment(tradeEvent!.id, 'Incorrect trade')).toBe(false);
+    expect(tradeStore.getState()).toBe(tradeSnapshot);
+
+    // Use an isolated persisted snapshot for the cash scenario; PortfolioStore
+    // intentionally reloads the previous instance's committed local snapshot.
+    sharedTestStorage.clear();
+    const cashStore = new PortfolioStore();
+    expect(cashStore.setFreeCash(100)).toBe(true);
+    const originalCashEvent = cashStore.getState().transactionEvents?.at(-1);
+    expect(cashStore.setFreeCash(20)).toBe(true);
+    const beforeRejectedReversal = cashStore.getState();
+
+    // The original +100 entry has since been mostly consumed. Reversing it
+    // would take free cash below zero, so no state or journal write is allowed.
+    expect(cashStore.reverseBalanceAdjustment(originalCashEvent!.id, 'Undo original cash funding')).toBe(false);
+    expect(cashStore.getState()).toBe(beforeRejectedReversal);
+    expect(cashStore.getState().transactionEvents).toHaveLength(2);
+  });
+
+  it('does not publish or append a reversal when the snapshot commit fails', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(500)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+    const before = store.getState();
+    const failingStorage = {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    };
+    const listener = vi.fn();
+    store.subscribe(listener);
+    vi.stubGlobal('localStorage', failingStorage);
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Cannot commit reversal')).toBe(false);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().cashCushion.freeCash).toBe(500);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing originals, unsupported history corrections and invalid reasons', () => {
+    const store = new PortfolioStore();
+    expect(store.reverseBalanceAdjustment('missing-event', 'A valid reason')).toBe(false);
+    expect(store.reverseBalanceAdjustment('missing-event', '   ')).toBe(false);
+    expect(store.reverseBalanceAdjustment('missing-event', 'x'.repeat(501))).toBe(false);
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
+    const tradeId = store.getState().transactionEvents?.at(-1)?.id;
+    expect(store.reverseBalanceAdjustment(tradeId!, 'Trade reversal is not supported')).toBe(false);
   });
 });

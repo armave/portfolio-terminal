@@ -14,6 +14,7 @@ const HISTORY_RECORD_KEY = 'closed-history-v1';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
+const STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT = 'portfolio_tradenet_cashflow_trade_checkpoint_v1';
 let lastPersistedHistory: ClosedHistorySnapshot | null = null;
 let cachedHistory: ClosedHistorySnapshot | null = null;
 let queuedHistorySnapshot: ClosedHistorySnapshot | null = null;
@@ -291,6 +292,29 @@ export function markFreedomCashflowHistoryBaseline(accountId: string): boolean {
     const storage = getBrowserStorage();
     if (!storage) return false;
     storage.setItem(historyBaselineKey(STORAGE_KEY_CASHFLOW_HISTORY_BASELINE, accountId), '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read the latest closed-trade fingerprint included in a successful cashflow request. */
+export function getFreedomCashflowTradeCheckpoint(accountId: string): string | null {
+  if (!accountId) return null;
+  try {
+    return getBrowserStorage()?.getItem(historyBaselineKey(STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT, accountId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the trade fingerprint only after cashflow rows and allocations are saved. */
+export function markFreedomCashflowTradeCheckpoint(accountId: string, checkpoint: string): boolean {
+  if (!accountId) return false;
+  try {
+    const storage = getBrowserStorage();
+    if (!storage) return false;
+    storage.setItem(historyBaselineKey(STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT, accountId), checkpoint);
     return true;
   } catch {
     return false;

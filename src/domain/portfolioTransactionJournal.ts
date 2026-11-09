@@ -4,7 +4,8 @@ import {
   type PortfolioTransactionContext,
   type PortfolioTransactionDraft,
   type PortfolioTransactionEvent,
-  type PortfolioTransactionEventType
+  type PortfolioTransactionEventType,
+  type PortfolioTransactionLotAllocation
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
@@ -114,6 +115,77 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
   if (value.externalReferenceId !== undefined && (typeof value.externalReferenceId !== 'string' || !value.externalReferenceId.trim())) return false;
   if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
+  if (value.lotId !== undefined &&
+    (typeof value.lotId !== 'string' || !value.lotId.trim() || value.lotId.length > 200)) return false;
+  if (value.acquisitionDate !== undefined &&
+    (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
+  if (value.lotId !== undefined) {
+    if (value.type !== 'trade.buy' || !value.ticker ||
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    if (!closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
+      !closeEnough(value.positionQuantityDelta, value.quantity)) return false;
+  }
+  if (value.lotAllocations !== undefined) {
+    if (value.type !== 'trade.sell' || !Array.isArray(value.lotAllocations) ||
+      value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
+      !value.ticker ||
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta) ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.financingCost !== 'number' || !Number.isFinite(value.financingCost) || value.financingCost < 0 ||
+      typeof value.realizedPnl !== 'number' || !Number.isFinite(value.realizedPnl)) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    let allocatedQuantity = 0;
+    let allocatedFees = 0;
+    let allocatedFinancing = 0;
+    let allocatedPnl = 0;
+    let allocatedGross = 0;
+    const stableLotIds = new Set<string>();
+    for (const rawAllocation of value.lotAllocations) {
+      if (!isPlainRecord(rawAllocation)) return false;
+      const allocation = rawAllocation;
+      if (allocation.identity !== 'stable' && allocation.identity !== 'legacy-unmapped') return false;
+      if (allocation.identity === 'stable') {
+        if (typeof allocation.lotId !== 'string' || !allocation.lotId.trim() || allocation.lotId.length > 200 ||
+          stableLotIds.has(allocation.lotId)) return false;
+        stableLotIds.add(allocation.lotId);
+      }
+      if (allocation.identity === 'legacy-unmapped' && allocation.lotId !== undefined) return false;
+      if (typeof allocation.quantity !== 'number' || !Number.isFinite(allocation.quantity) || allocation.quantity <= 0) return false;
+      if (typeof allocation.acquisitionPrice !== 'number' || !Number.isFinite(allocation.acquisitionPrice) || allocation.acquisitionPrice <= 0) return false;
+      if (allocation.acquisitionDate !== undefined &&
+        (typeof allocation.acquisitionDate !== 'string' || !allocation.acquisitionDate.trim())) return false;
+      if (allocation.acquiredAt !== undefined &&
+        (typeof allocation.acquiredAt !== 'number' || !Number.isFinite(allocation.acquiredAt) || allocation.acquiredAt <= 0)) return false;
+      if (typeof allocation.buyCommissionAllocated !== 'number' ||
+        !Number.isFinite(allocation.buyCommissionAllocated) || allocation.buyCommissionAllocated < 0) return false;
+      if (typeof allocation.sellPrice !== 'number' || !Number.isFinite(allocation.sellPrice) || allocation.sellPrice <= 0 ||
+        !closeEnough(allocation.sellPrice, value.unitPrice)) return false;
+      if (typeof allocation.sellCommissionAllocated !== 'number' ||
+        !Number.isFinite(allocation.sellCommissionAllocated) || allocation.sellCommissionAllocated < 0) return false;
+      if (typeof allocation.financingCostAllocated !== 'number' ||
+        !Number.isFinite(allocation.financingCostAllocated) || allocation.financingCostAllocated < 0) return false;
+      if (typeof allocation.realizedPnl !== 'number' || !Number.isFinite(allocation.realizedPnl)) return false;
+      allocatedQuantity += allocation.quantity;
+      allocatedGross += allocation.quantity * allocation.sellPrice;
+      allocatedFees += allocation.buyCommissionAllocated + allocation.sellCommissionAllocated;
+      allocatedFinancing += allocation.financingCostAllocated;
+      allocatedPnl += allocation.realizedPnl;
+    }
+    if (value.quantity === undefined || !closeEnough(allocatedQuantity, value.quantity)) return false;
+    if (!closeEnough(value.positionQuantityDelta, -value.quantity)) return false;
+    if (!closeEnough(allocatedGross, value.grossAmount)) return false;
+    if (value.fees === undefined || !closeEnough(allocatedFees, value.fees)) return false;
+    if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
+    if (value.realizedPnl === undefined || !closeEnough(allocatedPnl, value.realizedPnl)) return false;
+  }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -132,7 +204,10 @@ export function freezePortfolioTransactionEventList(
   }
   return Object.freeze(events.map((event) => Object.freeze({
     ...event,
-    actor: Object.freeze({ ...event.actor })
+    actor: Object.freeze({ ...event.actor }),
+    ...(event.lotAllocations
+      ? { lotAllocations: Object.freeze(event.lotAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[] }
+      : {})
   }))) as unknown as PortfolioTransactionEvent[];
 }
 
@@ -169,6 +244,9 @@ export function createPortfolioTransactionEvent(
     recordedAt,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     ...(context.requestFingerprint ? { requestFingerprint: context.requestFingerprint } : {}),
+    ...(draft.lotId ? { lotId: draft.lotId.trim() } : {}),
+    ...(draft.acquisitionDate ? { acquisitionDate: draft.acquisitionDate.trim() } : {}),
+    ...(draft.lotAllocations ? { lotAllocations: draft.lotAllocations.map((allocation) => ({ ...allocation })) } : {}),
     ...(draft.ticker ? { ticker: draft.ticker.trim().toUpperCase() } : {}),
     ...(draft.currency ? { currency: draft.currency.trim().toUpperCase() } : {}),
     ...(draft.side ? { side: draft.side.trim().toUpperCase() } : {}),
@@ -210,6 +288,9 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     type: event.type,
     actor: event.actor,
     source: event.source,
+    lotId: event.lotId,
+    acquisitionDate: event.acquisitionDate,
+    lotAllocations: event.lotAllocations,
     effectiveAt: event.effectiveAt,
     ticker: event.ticker,
     currency: event.currency,
@@ -397,6 +478,328 @@ export function verifyPortfolioTransactionParity(
   compare('free-cash', undefined, r.freeCash, Math.max(0, Number(canonical.cashCushion?.freeCash) || 0));
   compare('margin-debt', undefined, r.marginDebt, Math.abs(Number(canonical.balance) || 0));
   return { matches: !discrepancies.length, discrepancies };
+}
+
+type PortfolioTransactionEventDisposition =
+  | 'replayable'
+  | 'evidence-only'
+  | 'audit-only'
+  | 'incomplete'
+  | 'unsupported';
+
+interface PortfolioTransactionJournalCoverageFinding {
+  eventId?: string;
+  eventType?: string;
+  disposition: PortfolioTransactionEventDisposition;
+  reason: string;
+}
+
+export interface PortfolioTransactionJournalCoverageReport {
+  status: 'complete' | 'incomplete' | 'unsupported';
+  eventCount: number;
+  replayableCount: number;
+  evidenceOnlyCount: number;
+  auditOnlyCount: number;
+  findings: PortfolioTransactionJournalCoverageFinding[];
+  issues: PortfolioTransactionJournalCoverageFinding[];
+}
+
+const JOURNAL_DELTA_FIELDS = [
+  'positionQuantityDelta',
+  'cashHoldingQuantityDelta',
+  'cashDelta',
+  'marginDebtDelta'
+] as const;
+
+const EXTERNAL_CASHFLOW_TYPES = new Set<PortfolioTransactionEventType>([
+  'dividend',
+  'fee',
+  'margin.interest',
+  'cash.deposit',
+  'cash.withdrawal',
+  'cash.transfer',
+  'corporate-action'
+]);
+
+function hasJournalDelta(event: PortfolioTransactionEvent): boolean {
+  return JOURNAL_DELTA_FIELDS.some((field) => event[field] !== undefined);
+}
+
+function hasNonZeroJournalDelta(event: PortfolioTransactionEvent): boolean {
+  return JOURNAL_DELTA_FIELDS.some((field) => Number(event[field] || 0) !== 0);
+}
+
+/**
+ * Inspect which journal events can safely participate in the current shadow
+ * replay. This report deliberately covers only active-position quantities,
+ * cash-holding quantities, free cash and margin debt; it does not claim to
+ * reconstruct cost basis, lot identity, closed-trade P&L or realized charges.
+ *
+ * Broker rows are evidence-only unless an explicit app-owned posting delta is
+ * present. Missing data is never treated as a zero-value financial mutation.
+ */
+export function inspectPortfolioTransactionJournalReplayCoverage(
+  events: readonly unknown[]
+): PortfolioTransactionJournalCoverageReport {
+  const findings: PortfolioTransactionJournalCoverageFinding[] = [];
+  const knownEvents = new Map<string, PortfolioTransactionEvent>();
+  for (const candidate of events) {
+    if (isPortfolioTransactionEvent(candidate)) knownEvents.set(candidate.id, candidate);
+  }
+
+  for (const raw of events) {
+    if (!isPortfolioTransactionEvent(raw)) {
+      const malformed = isPlainRecord(raw) ? raw : {};
+      findings.push({
+        ...(typeof malformed.id === 'string' ? { eventId: malformed.id } : {}),
+        ...(typeof malformed.type === 'string' ? { eventType: malformed.type } : {}),
+        disposition: 'unsupported',
+        reason: 'Event is malformed or uses an unsupported transaction schema.'
+      });
+      continue;
+    }
+
+    const event = raw;
+    const base = { eventId: event.id, eventType: event.type };
+    const hasDeltas = hasJournalDelta(event);
+    const hasNonZeroDeltas = hasNonZeroJournalDelta(event);
+
+    if (event.type === 'broker.execution') {
+      if (hasDeltas) {
+        findings.push({
+          ...base,
+          disposition: 'unsupported',
+          reason: 'Broker execution evidence must not post directly to app-owned portfolio balances.'
+        });
+      } else if (!event.externalReferenceId || !event.ticker || !event.side || !event.quantity) {
+        findings.push({
+          ...base,
+          disposition: 'incomplete',
+          reason: 'Broker execution evidence is missing its source reference, instrument, side or quantity.'
+        });
+      } else {
+        findings.push({
+          ...base,
+          disposition: 'evidence-only',
+          reason: 'External broker execution is retained as source evidence and is not replayed into canonical state.'
+        });
+      }
+      continue;
+    }
+
+    if (EXTERNAL_CASHFLOW_TYPES.has(event.type) &&
+      event.externalReferenceId &&
+      event.externalCashFlowAmount !== undefined &&
+      !hasDeltas &&
+      (event.actor.type === 'broker' || event.actor.type === 'import')) {
+      findings.push({
+        ...base,
+        disposition: 'evidence-only',
+        reason: 'External cashflow is retained as broker/import evidence and is not posted a second time.'
+      });
+      continue;
+    }
+
+    switch (event.type) {
+      case 'portfolio.reset':
+        findings.push({
+          ...base,
+          disposition: 'replayable',
+          reason: 'Explicit reset marker clears the replayed position, cash-holding, free-cash and debt projection.'
+        });
+        break;
+
+      case 'history.correction':
+        findings.push({
+          ...base,
+          disposition: hasDeltas
+            ? 'unsupported'
+            : event.note?.trim()
+              ? 'audit-only'
+              : 'incomplete',
+          reason: hasDeltas
+            ? 'Closed-history cleanup must not alter financial replay balances.'
+            : event.note?.trim()
+              ? 'History-display correction is auditable but does not change financial replay balances.'
+              : 'History correction is missing its audit explanation.'
+        });
+        break;
+
+      case 'trade.buy':
+      case 'trade.sell': {
+        const expectedSign = event.type === 'trade.buy' ? 1 : -1;
+        const validDelta = event.positionQuantityDelta !== undefined &&
+          Math.sign(event.positionQuantityDelta) === expectedSign &&
+          event.quantity !== undefined &&
+          Math.abs(Math.abs(event.positionQuantityDelta) - event.quantity) <= 1e-8;
+        findings.push({
+          ...base,
+          disposition: event.ticker && validDelta ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta
+            ? 'Trade event contains an explicit active-position quantity delta.'
+            : 'Trade event requires an instrument, positive quantity and matching signed position delta.'
+        });
+        break;
+      }
+
+      case 'cash-holding.buy':
+      case 'cash-holding.sell':
+      case 'cash-holding.adjustment': {
+        const validDelta = event.cashHoldingQuantityDelta !== undefined &&
+          (event.type === 'cash-holding.adjustment' ||
+            (event.type === 'cash-holding.buy' && event.cashHoldingQuantityDelta > 0) ||
+            (event.type === 'cash-holding.sell' && event.cashHoldingQuantityDelta < 0));
+        findings.push({
+          ...base,
+          disposition: event.ticker && validDelta ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta
+            ? 'Cash-holding event contains an explicit signed quantity delta.'
+            : 'Cash-holding event requires an instrument and a correctly signed quantity delta.'
+        });
+        break;
+      }
+
+      case 'position.adjustment':
+        findings.push({
+          ...base,
+          disposition: event.ticker && event.positionQuantityDelta !== undefined
+            ? 'replayable'
+            : 'incomplete',
+          reason: event.ticker && event.positionQuantityDelta !== undefined
+            ? 'Position tracking adjustment contains an explicit quantity delta.'
+            : 'Position adjustment requires an instrument and an explicit quantity delta.'
+        });
+        break;
+
+      case 'portfolio.reconciliation': {
+        const auditReview = !hasDeltas &&
+          event.actor.type === 'user' &&
+          event.source === 'broker-reconciliation-review' &&
+          Boolean(event.idempotencyKey?.startsWith('reconciliation-review:')) &&
+          Boolean(event.requestFingerprint?.trim()) &&
+          Boolean(event.note?.trim());
+        findings.push({
+          ...base,
+          disposition: auditReview ? 'audit-only' : hasDeltas ? 'replayable' : 'incomplete',
+          reason: auditReview
+            ? 'User review note records an audit decision only; it does not change canonical portfolio state.'
+            : hasDeltas
+              ? 'Snapshot reconciliation records an observed canonical-state delta without inferring a trade.'
+              : 'Snapshot reconciliation has no explicit state delta or complete audit-review contract.'
+        });
+        break;
+      }
+
+      case 'cash.adjustment':
+        findings.push({
+          ...base,
+          disposition: event.cashDelta !== undefined || event.marginDebtDelta !== undefined
+            ? 'replayable'
+            : 'incomplete',
+          reason: event.cashDelta !== undefined || event.marginDebtDelta !== undefined
+            ? 'Cash/debt adjustment contains explicit balance deltas.'
+            : 'Cash adjustment requires an explicit free-cash or margin-debt delta.'
+        });
+        break;
+
+      case 'margin.adjustment':
+      case 'margin.interest':
+        findings.push({
+          ...base,
+          disposition: event.marginDebtDelta !== undefined ? 'replayable' : 'incomplete',
+          reason: event.marginDebtDelta !== undefined
+            ? 'Margin event contains an explicit debt delta.'
+            : 'Margin event requires an explicit debt delta or a complete external cashflow evidence reference.'
+        });
+        break;
+
+      case 'correction': {
+        const original = event.relatedEventId ? knownEvents.get(event.relatedEventId) : undefined;
+        if (!event.note?.trim() || !event.relatedEventId || !hasNonZeroDeltas) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction requires an original event reference, reason and non-zero inverse state delta.'
+          });
+          break;
+        }
+        if (!original) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction references an event that is not present in the supplied journal.'
+          });
+          break;
+        }
+        if (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment') {
+          findings.push({
+            ...base,
+            disposition: 'unsupported',
+            reason: 'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.'
+          });
+          break;
+        }
+        const exactInverse = JOURNAL_DELTA_FIELDS.every((field) => {
+          const originalValue = original[field];
+          const correctionValue = event[field];
+          if (originalValue === undefined) return correctionValue === undefined;
+          return correctionValue !== undefined &&
+            Math.abs(correctionValue + originalValue) <= 1e-8;
+        });
+        findings.push({
+          ...base,
+          disposition: exactInverse ? 'replayable' : 'incomplete',
+          reason: exactInverse
+            ? 'Correction is the exact inverse of a linked cash/debt balance adjustment.'
+            : 'Correction state deltas must be the exact inverse of the linked original balance adjustment.'
+        });
+        break;
+      }
+
+      case 'cash.deposit':
+      case 'cash.withdrawal':
+      case 'cash.transfer':
+      case 'dividend':
+      case 'fee':
+      case 'corporate-action':
+        findings.push({
+          ...base,
+          disposition: hasDeltas ? 'replayable' : 'incomplete',
+          reason: hasDeltas
+            ? 'App-owned posting contains an explicit position, cash-holding, cash or debt delta.'
+            : 'Financial posting has neither an app-owned state delta nor a complete external evidence reference.'
+        });
+        break;
+
+      default:
+        findings.push({
+          ...base,
+          disposition: 'unsupported',
+          reason: 'Event type is not supported by the current quantity/cash/debt replay contract.'
+        });
+    }
+  }
+
+  const issues = findings.filter((finding) =>
+    finding.disposition === 'incomplete' || finding.disposition === 'unsupported'
+  );
+  const replayableCount = findings.filter((finding) => finding.disposition === 'replayable').length;
+  const evidenceOnlyCount = findings.filter((finding) => finding.disposition === 'evidence-only').length;
+  const auditOnlyCount = findings.filter((finding) => finding.disposition === 'audit-only').length;
+
+  return {
+    status: issues.some((finding) => finding.disposition === 'unsupported')
+      ? 'unsupported'
+      : issues.length
+        ? 'incomplete'
+        : 'complete',
+    eventCount: findings.length,
+    replayableCount,
+    evidenceOnlyCount,
+    auditOnlyCount,
+    findings,
+    issues
+  };
 }
 
 function hash(value: string): string {

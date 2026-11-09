@@ -16,6 +16,8 @@ export interface Tranche {
 export interface TrancheItem {
   qty: number;
   price: number;
+  /** Stable identity assigned when this acquisition lot is created by the app. */
+  lotId?: string;
   /** Legacy aliases retained for normalization and compatibility with older snapshots. */
   shares?: number;
   entryPrice?: number;
@@ -123,6 +125,8 @@ interface CashCushionState {
 
 export interface ClosedTrade {
   id?: string;
+  /** Journal sale event that produced this closed-trade row; absent on legacy history. */
+  transactionEventId?: string;
   ticker: string;
   shares: number;
   avgBuyPrice?: number;

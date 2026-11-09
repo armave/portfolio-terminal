@@ -13,6 +13,15 @@ function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('Trades reconciliation audit review', () => {
+  it('records reviewed findings through the audit-only PortfolioStore API', () => {
+    const source = readSource();
+    expect(source).toContain('onRecordReview={(section, findingId, findingType, subject, reason) =>');
+    expect(source).toContain('isSessionCurrent() &&');
+    expect(source).toContain('portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)');
+  });
+});
+
 describe('Trades cache-first rendering', () => {
   it('starts lazy rendering in the navigation render instead of waiting for a passive effect', () => {
     const app = readAppSource();
@@ -136,13 +145,23 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
   });
 
-  it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
+  it('advances the cashflow cursor from the completed broker trade refresh', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
     expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
+    expect(source).toContain('cashflowSyncStartDate.current = getLatestClosedTradeDate(brokerTrades, state.closedTrades || [])');
     expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
     expect(source).toContain('brokerAdapter.fetchCashflows(fromDate)');
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
+  });
+
+  it('requests cashflows only after the broker execution refresh and only for a changed latest-trade checkpoint', () => {
+    const source = readSource();
+    expect(source).toContain('if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;');
+    expect(source).toContain('getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || \'no-trades\'');
+    expect(source).toContain('getFreedomCashflowTradeCheckpoint(accountId)');
+    expect(source).toContain('if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint)');
+    expect(source).toContain('markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)');
   });
 
   it('waits only when there is no cached broker or app-owned trade data', () => {
@@ -157,5 +176,20 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('motion-reduce:animate-none');
     expect(source).not.toContain('backgroundSyncPending && trades.length > 0');
     expect(source).not.toContain('Refreshing TradeNet history…</p>');
+  });
+});
+
+
+describe('Trades broker quote reconciliation wiring', () => {
+  it('passes current app quote provenance and broker snapshot metadata to the read-only review', () => {
+    const source = readSource();
+    expect(source).toContain('positions: state.positions');
+    expect(source).toContain('cashCushion: state.cashCushion');
+    expect(source).toContain('brokerAccountInfo: state.brokerAccountInfo');
+    expect(source).toContain('appQuotes={[');
+    expect(source).toContain('price: holding.currentPrice,');
+    expect(source).not.toContain('price: holding.currentPrice ?? holding.price,');
+    expect(source).toContain('brokerQuoteSnapshot={state.brokerAccountInfo ? {');
+    expect(source).toContain('quality ?? state.brokerAccountInfo.snapshotQuality');
   });
 });
