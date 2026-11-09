@@ -28,7 +28,7 @@ export interface BrokerQuoteSnapshot {
   warnings?: readonly string[];
 }
 
-export interface BrokerQuoteReconciliationFinding {
+interface BrokerQuoteReconciliationFinding {
   id: string;
   type:
     | 'price_mismatch'
