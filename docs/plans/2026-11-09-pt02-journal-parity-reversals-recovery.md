@@ -71,6 +71,17 @@ Primary client/domain ownership:
 
 Avoid changing broker position normalization, margin formulas, reconciliation UI, provider ingestion or tenant authorization in this stream.
 
+### Exact-head validation — implementation slice 2
+
+**Client PR head:** `d30daead9ba818d633236bc4fdd59bb6d1ed0e49` (base `1044727bf3055303ed94a134ee3b8fbb758f12b3`).
+
+- [x] [Pull Request CI #42560729066](https://github.com/armave/portfolio-terminal/actions/runs/42560729066) — TypeScript, all 2,053 Vitest tests (161 files), production build/bundle budget, dead-code validation and full/production dependency audits passed.
+- [x] [Operations Browser Journey #42560729069](https://github.com/armave/portfolio-terminal/actions/runs/42560729069) — 2,053 tests, production build, browser journey, dead-code validation and dependency audits passed.
+- [x] [Trade Lifecycle Browser Smoke #42560729274](https://github.com/armave/portfolio-terminal/actions/runs/42560729274) — 151 focused tests and production browser lifecycle journey passed.
+- [x] No Worker code or Worker deployment was changed by this client/domain slice.
+
+No user-facing copy was added, so no localization catalog changes were needed. Authenticated live broker behavior and actual multi-device reversal workflows remain separate QA for the broader PT-02 acceptance scope.
+
 ## Required validation
 
 - [x] Vitest fixtures for balance-adjustment reversal, coverage classification, event append and existing replay/parity paths.
@@ -79,9 +90,9 @@ Avoid changing broker position normalization, margin formulas, reconciliation UI
 - [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
 - [ ] Duplicate replay, same-key/different-body conflict, stale-revision retry, superseded acknowledgement and cross-tab conflict.
 - [ ] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
-- [ ] `npm run typecheck`, `npm test`, `npm run validate:dead-code`, dependency audits and `npm run build` on the exact PR head.
+- [x] `npm run typecheck`, `npm test`, `npm run validate:dead-code`, full dependency audits and `npm run build` on exact PR head `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`.
 - [ ] Update English/Russian strings and translation parity tests for any newly visible states.
-- [ ] Trade Lifecycle and Operations Browser Journeys pass on the exact PR head.
+- [x] Trade Lifecycle and Operations Browser Journeys pass on exact PR head `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`.
 - [ ] Authenticated live broker and actual multi-device QA are recorded separately; mocked fixtures do not satisfy these gates.
 
 ## Exit criteria and merge gate
