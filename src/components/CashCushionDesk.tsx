@@ -791,7 +791,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>
                             {row.label || (
                               <>
-                                <span aria-hidden="true" class="mx-auto block h-2 w-16 rounded-full bg-slate-700/80 animate-pulse motion-reduce:animate-none" />
+                                <span aria-hidden="true" class="mx-auto block h-2.5 w-16 rounded-full bg-slate-700/80" />
                                 <span class="sr-only">{translateText('Loading guest name', getAppLanguage())}</span>
                               </>
                             )}
