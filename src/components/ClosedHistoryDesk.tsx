@@ -443,9 +443,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   };
 
   useEffect(() => {
-    if (!cashflowHistoryReady || brokerTradesLoading) return;
+    if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;
     void syncCashflowsFromFreedom();
-  }, [cashflowHistoryReady, brokerTradesLoading, brokerTrades]);
+  }, [cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
 
   useEffect(() => {
     const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {
