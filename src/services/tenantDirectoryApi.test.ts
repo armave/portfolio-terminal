@@ -154,19 +154,19 @@ describe('tenant directory authenticated transport', () => {
     const malformedPayloads: unknown[] = [];
 
     const invalidVersion = structuredClone(validPayload);
-    invalidVersion.tenants[0].membership.membershipVersion = '1';
+    (invalidVersion.tenants[0].membership as { membershipVersion: unknown }).membershipVersion = '1';
     malformedPayloads.push(invalidVersion);
 
     const invalidCapabilities = structuredClone(validPayload);
-    invalidCapabilities.tenants[0].portfolios[0].capabilities = ['portfolio.read', 7];
+    (invalidCapabilities.tenants[0].portfolios[0] as { capabilities: unknown }).capabilities = ['portfolio.read', 7];
     malformedPayloads.push(invalidCapabilities);
 
     const invalidRoster = structuredClone(validPayload);
-    invalidRoster.tenants[0].memberships[0].portfolioIds = [42];
+    (invalidRoster.tenants[0].memberships[0] as { portfolioIds: unknown }).portfolioIds = [42];
     malformedPayloads.push(invalidRoster);
 
     const invalidTimestamp = structuredClone(validPayload);
-    invalidTimestamp.tenants[0].tenant.createdAt = 'not-a-date';
+    (invalidTimestamp.tenants[0].tenant as { createdAt: unknown }).createdAt = 'not-a-date';
     malformedPayloads.push(invalidTimestamp);
 
     const fetchMock = vi.fn();
