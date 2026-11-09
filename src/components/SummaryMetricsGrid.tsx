@@ -94,7 +94,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           <div class="margin-risk-gauge-heading">
             <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
             <button
-              type="button"
+              type="button" class="margin-risk-overview-trigger"
               onClick={openOverview}
               aria-haspopup="dialog"
               aria-label={translateText('Open margin risk overview', language)}
@@ -142,7 +142,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
           <button
-            type="button"
+            type="button" class="margin-risk-overview-trigger"
             onClick={openOverview}
             aria-haspopup="dialog"
             aria-label={translateText('Open margin risk overview', language)}
