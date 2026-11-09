@@ -504,6 +504,8 @@ export function resolveClosedTradeTimestamp(
 
 export interface ClosedTradeRecordInput {
   id: string;
+  /** Source transaction-journal sale event; absent for legacy callers/history. */
+  transactionEventId?: string;
   ticker: string;
   shares: number;
   soldCostBasis: number;
@@ -528,6 +530,7 @@ export function createClosedTradeRecord(input: ClosedTradeRecordInput): ClosedTr
 
   return {
     id: input.id,
+    ...(input.transactionEventId ? { transactionEventId: input.transactionEventId } : {}),
     ticker: input.ticker,
     shares: input.shares,
     avgBuyPrice: input.soldCostBasis / input.shares,
