@@ -750,12 +750,14 @@ describe('app localization', () => {
       }, 'Add user')
     );
 
+    const children = userManagement.props.children as unknown as Array<{ props: Record<string, unknown> }>;
+
     expect(userManagement.props['aria-label']).toBe('Таблица управления пользователями');
-    expect(userManagement.props.children[0].props.children).toBe('Управление пользователями');
-    expect(userManagement.props.children[1].props.children).toBe('Администраторы используют общее рабочее пространство владельца. Гости видят только назначенные им данные для чтения; отдельного портфеля у них нет.');
-    expect(userManagement.props.children[2].props.title).toBe('Роль нового пользователя');
-    expect(userManagement.props.children[2].props['aria-label']).toBe('Роль нового пользователя');
-    expect(userManagement.props.children[2].props.children).toBe('Добавить пользователя');
+    expect(children[0].props.children).toBe('Управление пользователями');
+    expect(children[1].props.children).toBe('Администраторы используют общее рабочее пространство владельца. Гости видят только назначенные им данные для чтения; отдельного портфеля у них нет.');
+    expect(children[2].props.title).toBe('Роль нового пользователя');
+    expect(children[2].props['aria-label']).toBe('Роль нового пользователя');
+    expect(children[2].props.children).toBe('Добавить пользователя');
   });
 
   it('localizes the compact cloud sync indicator', () => {
