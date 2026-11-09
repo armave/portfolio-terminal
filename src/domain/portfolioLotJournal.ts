@@ -56,6 +56,7 @@ export interface PortfolioLotParityDiscrepancy {
     | 'open-lot-missing'
     | 'open-lot-quantity'
     | 'open-lot-cost'
+    | 'open-lot-acquisition-date'
     | 'open-lot-buy-commission'
     | 'position-lot-quantity'
     | 'position-buy-commission'
