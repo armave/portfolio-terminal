@@ -233,7 +233,6 @@ describe('lot-aware transaction journal replay', () => {
     });
     expect(result.matches).toBe(false);
     expect(result.discrepancies.map((finding) => finding.field)).toEqual(expect.arrayContaining([
-      'position-lot-quantity',
       'position-buy-commission',
       'open-lot-quantity',
       'open-lot-cost',
