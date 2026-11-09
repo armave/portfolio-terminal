@@ -15,9 +15,9 @@ export function EmptyStatePanel() {
   return (
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <div class="text-lg font-black text-slate-100 tracking-wide">
+        <h1 class="text-lg font-black text-slate-100 tracking-wide">
           NO ACTIVE MARGIN POSITIONS
-        </div>
+        </h1>
         <p class="text-xs text-slate-400 mt-1">
           Start with a trade, add a cash stock, or restore a saved backup to continue.
         </p>

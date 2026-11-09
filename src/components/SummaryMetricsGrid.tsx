@@ -68,12 +68,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const [overviewOpen, setOverviewOpen] = useState(false);
   const openOverview = () => setOverviewOpen(true);
   const closeOverview = () => setOverviewOpen(false);
-  const cardKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openOverview();
-    }
-  };
   const overviewModal = overviewOpen ? (
     <MarginRiskOverviewModal
       onClose={closeOverview}
@@ -96,16 +90,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
       <>
-      <section
-        class="margin-risk-gauge-card margin-risk-gauge-clickable"
-        role="button"
-        tabIndex={0}
-        aria-haspopup="dialog"
-        aria-label={translateText('Open margin risk overview', language)}
-        title={translateText('Click to view margin risk overview', language)}
-        onClick={openOverview}
-        onKeyDown={cardKeyDown}
-      >
+      <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
           <span class="margin-risk-status elevated">{translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}</span>
@@ -128,6 +113,15 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <p class="mt-1 text-[10px] text-slate-400">
           {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', language)}
         </p>
+        <button
+          type="button"
+          class="margin-risk-overview-trigger"
+          onClick={openOverview}
+          aria-haspopup="dialog"
+          title={translateText('Click to view margin risk overview', language)}
+        >
+          {translateText('Open margin risk overview', language)}
+        </button>
       </section>
       {overviewModal}
       </>
@@ -143,16 +137,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
   return (
     <>
-    <section
-      class="margin-risk-gauge-card margin-risk-gauge-clickable"
-      role="button"
-      tabIndex={0}
-      aria-haspopup="dialog"
-      aria-label={translateText('Open margin risk overview', language)}
-      title={translateText('Click to view margin risk overview', language)}
-      onClick={openOverview}
-      onKeyDown={cardKeyDown}
-    >
+    <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
       <div class="margin-risk-gauge-heading">
         <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
@@ -187,6 +172,15 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           {translateText('Short borrow fees and availability costs are not included because broker data is unavailable.', language)}
         </p>
       )}
+      <button
+        type="button"
+        class="margin-risk-overview-trigger"
+        onClick={openOverview}
+        aria-haspopup="dialog"
+        title={translateText('Click to view margin risk overview', language)}
+      >
+        {translateText('Open margin risk overview', language)}
+      </button>
 
     </section>
     {overviewModal}

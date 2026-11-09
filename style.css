@@ -4162,3 +4162,34 @@ table tbody tr:hover {
     font-size: 0.8125rem;
   }
 }
+
+/* The risk overview is a distinct native action, not a clickable content card. */
+.margin-risk-overview-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid rgba(45, 212, 191, 0.36);
+  border-radius: 0.5rem;
+  background: rgba(8, 47, 73, 0.32);
+  color: #a5f3fc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.margin-risk-overview-trigger:hover {
+  border-color: rgba(45, 212, 191, 0.7);
+  background: rgba(8, 47, 73, 0.56);
+  color: #ecfeff;
+}
+
+.margin-risk-overview-trigger:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
