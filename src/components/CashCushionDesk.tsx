@@ -538,7 +538,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const adminHoldingGroups = useMemo(() => isAdmin
     ? getAssignedGuestIds(activeTrancheGuestAssignments).map((guestId) => ({
       key: guestId,
-      label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Unknown guest', getAppLanguage())),
+      label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Guest unavailable', getAppLanguage())),
       holdings: getGuestAssignedCashHoldings({
         guestId,
         activeTranches,
