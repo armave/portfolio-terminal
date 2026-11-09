@@ -474,7 +474,7 @@ async function assertManyTickerNavigation(page) {
     const template = strip.querySelector('button');
     if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
     const clones = [];
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < 50; index += 1) {
       const ticker = 'SMK' + String(index + 1).padStart(2, '0');
       const clone = template.cloneNode(true);
       clone.removeAttribute('id');
@@ -489,36 +489,50 @@ async function assertManyTickerNavigation(page) {
     const nav = document.querySelector('#tickerTabs');
     const navBounds = nav.getBoundingClientRect();
     const cloneBounds = clones.map((clone) => clone.getBoundingClientRect());
+    const fixedButtons = Array.from(nav.querySelectorAll(':scope > button[data-nav-tab="true"]'));
     const result = {
       stripDisplay: getComputedStyle(strip).display,
+      stripClientWidth: strip.clientWidth,
+      stripScrollWidth: strip.scrollWidth,
+      stripBounds: (() => {
+        const bounds = strip.getBoundingClientRect();
+        return { left: bounds.left, right: bounds.right };
+      })(),
       navWidth: nav.clientWidth,
-      navScrollWidth: nav.scrollWidth,
       navBounds: { left: navBounds.left, right: navBounds.right },
-      cloneBounds: cloneBounds.map(({ left, right, top }) => ({ left, right, top })),
+      cloneTops: cloneBounds.map(({ top }) => Math.round(top)),
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
-      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
+      fixedDestinationCount: fixedButtons.length,
+      fixedDestinationsVisible: fixedButtons.every((button) => {
+        const bounds = button.getBoundingClientRect();
+        return button.getClientRects().length > 0 &&
+          bounds.left >= navBounds.left - 1 &&
+          bounds.right <= navBounds.right + 1;
+      })
     };
     clones.forEach((clone) => clone.remove());
     return result;
   });
 
-  if (mobileMeasurements.stripDisplay !== 'contents' || mobileMeasurements.navWidth < 200) {
-    throw new Error('The mobile ticker destinations are not merged into the centered navigation group.');
+  if (mobileMeasurements.stripDisplay !== 'flex' || mobileMeasurements.navWidth < 200) {
+    throw new Error('The mobile ticker rail does not retain its own usable navigation row.');
   }
-  if (new Set(mobileMeasurements.cloneBounds.map(({ top }) => Math.round(top))).size < 2) {
-    throw new Error('A long mobile ticker list did not wrap within the centered navigation group.');
+  if (mobileMeasurements.stripScrollWidth <= mobileMeasurements.stripClientWidth + 20) {
+    throw new Error('A 50-ticker mobile portfolio did not become independently scrollable.');
   }
-  if (mobileMeasurements.cloneBounds.some(({ left, right }) =>
-    left < mobileMeasurements.navBounds.left - 1 || right > mobileMeasurements.navBounds.right + 1
-  )) {
-    throw new Error('A mobile ticker destination is clipped by the centered navigation group.');
+  if (new Set(mobileMeasurements.cloneTops).size !== 1) {
+    throw new Error('Mobile ticker destinations wrapped into multiple rows instead of scrolling.');
+  }
+  if (mobileMeasurements.stripBounds.left < mobileMeasurements.navBounds.left - 1 ||
+      mobileMeasurements.stripBounds.right > mobileMeasurements.navBounds.right + 1) {
+    throw new Error('The mobile ticker rail extends outside the workspace navigation bounds.');
   }
   if (mobileMeasurements.documentWidth > mobileMeasurements.viewportWidth + 1) {
-    throw new Error('A long mobile ticker list caused page-level horizontal overflow: ' + JSON.stringify(mobileMeasurements));
+    throw new Error('A long mobile ticker rail caused page-level horizontal overflow: ' + JSON.stringify(mobileMeasurements));
   }
-  if (!mobileMeasurements.fixedDestinationVisible) {
-    throw new Error('Fixed workspace destinations disappeared beside a long mobile ticker list.');
+  if (mobileMeasurements.fixedDestinationCount < 3 || !mobileMeasurements.fixedDestinationsVisible) {
+    throw new Error('Balance, Trades, and Settings must remain visible beside the mobile ticker rail.');
   }
 
   await page.setViewportSize({ width: 1024, height: 900 });
@@ -526,7 +540,7 @@ async function assertManyTickerNavigation(page) {
     const template = strip.querySelector('button');
     if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
     const clones = [];
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < 50; index += 1) {
       const ticker = 'SMK' + String(index + 1).padStart(2, '0');
       const clone = template.cloneNode(true);
       clone.removeAttribute('id');
