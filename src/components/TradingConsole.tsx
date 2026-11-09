@@ -177,9 +177,9 @@ function TradingConsoleView() {
       <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
         <div class="flex items-center gap-2">
           <span class="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
-          <span class="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
             Trading Console
-          </span>
+          </h2>
         </div>
 
         <div class="flex items-center gap-2">
