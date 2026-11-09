@@ -4801,7 +4801,9 @@ describe('Durable Object tenant directory ownership foundation', () => {
         body: createBody
       }));
       expect(response.status).toBe(405);
-      expect(response.headers.get('Allow')).toBe('GET, POST');
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'Tenant directory routes only support GET and POST.'
+      });
     }
 
     const revoke = await store.fetch(new Request(
@@ -4852,7 +4854,9 @@ describe('tenant directory Worker routing', () => {
       body: JSON.stringify({ name: 'Must not be created' })
     }), { PORTFOLIO_STATE_DO: binding });
     expect(unsupportedMethod.status).toBe(405);
-    expect(unsupportedMethod.headers.get('Allow')).toBe('GET, POST');
+    await expect(unsupportedMethod.json()).resolves.toMatchObject({
+      error: 'Tenant directory routes only support GET and POST.'
+    });
     expect(calls).toEqual(['/api/auth/verify']);
 
     calls.length = 0;
