@@ -101,9 +101,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
       .catch(() => setBrokerReconciliationOpen(false));
   };
-  // Keep the first cached range for both API requests. The broker trade refresh
-  // may return newer sells before the cashflow request starts; that must not move
-  // the cashflow cursor forward and skip fees for those newly fetched trades.
+  // Seed the cursor from cached history for immediate rendering. Before a
+  // cashflow request, it is recalculated from the completed broker refresh so
+  // newly discovered sales are included in the incremental date range.
   const cashflowSyncStartDate = useRef(
     getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
   );
