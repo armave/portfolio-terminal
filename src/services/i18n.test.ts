@@ -669,6 +669,10 @@ describe('app localization', () => {
     )).toBe('Оценка маржинального риска недоступна, пока не удастся оценить денежный баланс и все активы.');
   });
   
+  it('localizes the active-tranche operation group accessible name', () => {
+    expect(translateText('Operation type', 'ru')).toBe('Тип операции');
+  });
+
   it('localizes workspace navigation labels and accessible names', () => {
     expect(translateText('Workspace navigation', 'ru')).toBe('Навигация по разделам');
     expect(translateText('MARGIN DESK', 'ru')).toBe('МАРЖИНАЛЬНЫЙ РАЗДЕЛ');

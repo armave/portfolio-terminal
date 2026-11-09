@@ -13,6 +13,34 @@ import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { translateText } from '../services/i18n';
 
+describe('active tranche operation accessibility', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('keeps Cash, Margin and Mix choices at least 44px with visible focus styling', () => {
+    expect(deskSource.match(/inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-\[10px\] font-bold transition/g)).toHaveLength(6);
+    expect(deskSource).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
+    expect(deskSource).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400');
+    expect(deskSource).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400');
+  });
+
+  it('keeps tranche retry and disclosure actions touch-sized', () => {
+    expect(deskSource).toContain('inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2 py-1');
+    expect(deskSource).toContain('inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-amber-700/70');
+    expect(deskSource).toContain("aria-expanded={activeTranchesExpanded}");
+  });
+
+  it('localizes dynamic active-tranche accessible names without translating ticker values', () => {
+    expect(deskSource).toContain("translateText('Operation type', getAppLanguage()) + ': ' + tranche.ticker");
+    expect(deskSource).toContain("translateText('Cash shares', getAppLanguage()) + ': ' + tranche.ticker");
+    expect(deskSource).toContain("translateText('Margin shares', getAppLanguage()) + ': ' + tranche.ticker");
+    expect(deskSource).toContain("translateText('Guest assignment', getAppLanguage()) + ': ' + tranche.ticker");
+    expect(translateText('Operation type', 'ru') + ': GOOGL').toBe('Тип операции: GOOGL');
+    expect(translateText('Cash shares', 'ru') + ': GOOGL').toBe('Акции за денежные средства: GOOGL');
+    expect(translateText('Margin shares', 'ru') + ': GOOGL').toBe('Маржинальные акции: GOOGL');
+    expect(translateText('Guest assignment', 'ru') + ': GOOGL').toBe('Назначение гостю: GOOGL');
+  });
+});
+
 describe('cash/margin mix inputs', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
