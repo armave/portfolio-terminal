@@ -3465,6 +3465,9 @@ describe('auditable balance adjustment reversals', () => {
     expect(tradeStore.reverseBalanceAdjustment(tradeEvent!.id, 'Incorrect trade')).toBe(false);
     expect(tradeStore.getState()).toBe(tradeSnapshot);
 
+    // Use an isolated persisted snapshot for the cash scenario; PortfolioStore
+    // intentionally reloads the previous instance's committed local snapshot.
+    sharedTestStorage.clear();
     const cashStore = new PortfolioStore();
     expect(cashStore.setFreeCash(100)).toBe(true);
     const originalCashEvent = cashStore.getState().transactionEvents?.at(-1);
