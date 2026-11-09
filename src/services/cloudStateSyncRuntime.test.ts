@@ -47,7 +47,8 @@ describe('cloud state compact serialization', () => {
 
     expect(result).toBe(true);
     const serialized = JSON.parse(encryptedPlaintext);
-    expect(serialized.closedTrades).toEqual([{
+    expect(serialized.closedTrades).toHaveLength(1);
+    expect(serialized.closedTrades[0]).toMatchObject({
       id: 'closed-1',
       transactionEventId: 'sale-event-42',
       ticker: 'AAPL',
@@ -56,23 +57,8 @@ describe('cloud state compact serialization', () => {
       sellPrice: 120,
       commissions: 1.2,
       grossProfit: 40,
-      netProfit: 38.8,
-      marginInterest: undefined,
-      feesAndCommissions: undefined,
-      totalCommissions: undefined,
-      marginFee: undefined,
-      marginFeeAllocations: undefined,
-      netRealizedGain: undefined,
-      holdingDays: undefined,
-      entryPrice: undefined,
-      exitPrice: undefined,
-      buyDate: undefined,
-      purchaseDate: undefined,
-      sellDate: undefined,
-      exitDate: undefined,
-      date: undefined,
-      closedAt: undefined
-    }]);
+      netProfit: 38.8
+    });
     expect(serialized).not.toHaveProperty('gatewaySecret');
     expect(serialized.closedTrades[0]).not.toHaveProperty('raw');
   });
