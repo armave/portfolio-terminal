@@ -1010,6 +1010,52 @@ export class PortfolioStore {
    * event. Trade, lot, closed-history and corporate-action reversals are
    * intentionally rejected until their cost-basis/P&L semantics are modeled.
    */
+  /**
+   * Record that a broker reconciliation finding was reviewed. This appends an
+   * audit-only journal event and deliberately leaves every financial field
+   * unchanged; it is not a correction, resolution or writeback command.
+   */
+  public recordReconciliationReview(
+    section: 'activity' | 'quote',
+    findingId: string,
+    findingType: string,
+    subject: string,
+    reason: string
+  ): boolean {
+    const cleanFindingId = typeof findingId === 'string' ? findingId.trim() : '';
+    const cleanFindingType = typeof findingType === 'string' ? findingType.trim() : '';
+    const cleanSubject = typeof subject === 'string' ? subject.trim() : '';
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+    if ((section !== 'activity' && section !== 'quote') ||
+      !cleanFindingId || cleanFindingId.length > 160 ||
+      !cleanFindingType || cleanFindingType.length > 60 ||
+      !cleanSubject || cleanSubject.length > 80 ||
+      !cleanReason || cleanReason.length > 240) return false;
+
+    const idempotencyKey = `reconciliation-review:${section}:${cleanFindingId}`;
+    const requestFingerprint = createMutationFingerprint([
+      'review', section, cleanFindingType, cleanSubject, cleanReason
+    ]);
+    const context: PortfolioTransactionContext = {
+      idempotencyKey,
+      requestFingerprint,
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review',
+      effectiveAt: Date.now()
+    };
+
+    return this.updateFinancialMutation(context, (state) => ({
+      // A fresh top-level object commits the audit event through the same
+      // persistence-before-publication boundary as other store mutations.
+      state: { ...state },
+      event: {
+        type: 'portfolio.reconciliation',
+        effectiveAt: context.effectiveAt ?? Date.now(),
+        note: `Reviewed ${section} finding ${cleanFindingId} (${cleanFindingType}) for ${cleanSubject}. Reason: ${cleanReason}`
+      }
+    }));
+  }
+
   public reverseBalanceAdjustment(
     originalEventId: string,
     reason: string,

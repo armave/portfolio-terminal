@@ -590,15 +590,24 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
         });
         break;
 
-      case 'portfolio.reconciliation':
+      case 'portfolio.reconciliation': {
+        const auditReview = !hasDeltas &&
+          event.actor.type === 'user' &&
+          event.source === 'broker-reconciliation-review' &&
+          Boolean(event.idempotencyKey?.startsWith('reconciliation-review:')) &&
+          Boolean(event.requestFingerprint?.trim()) &&
+          Boolean(event.note?.trim());
         findings.push({
           ...base,
-          disposition: hasDeltas ? 'replayable' : 'incomplete',
-          reason: hasDeltas
-            ? 'Snapshot reconciliation records an observed canonical-state delta without inferring a trade.'
-            : 'Snapshot reconciliation has no explicit state delta.'
+          disposition: auditReview ? 'audit-only' : hasDeltas ? 'replayable' : 'incomplete',
+          reason: auditReview
+            ? 'User review note records an audit decision only; it does not change canonical portfolio state.'
+            : hasDeltas
+              ? 'Snapshot reconciliation records an observed canonical-state delta without inferring a trade.'
+              : 'Snapshot reconciliation has no explicit state delta or complete audit-review contract.'
         });
         break;
+      }
 
       case 'cash.adjustment':
         findings.push({
