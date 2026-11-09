@@ -35,7 +35,7 @@ This implementation removes a verified legacy mutation fallback and unnecessary 
 | P1 | Terminal buy command dynamically probes buyStock and falls back to addTranche although PortfolioStore exposes the canonical buyStock method. | Use the canonical typed mutation path only. |
 | P1 | Terminal dispatcher uses any casts for store state, tranche reductions, and margin-interest options already covered by domain types. | Remove casts without changing legacy qty/shares fallback behavior or calculation inputs. |
 | P1 | Failed buy persistence must not report success or schedule quote refresh. | Add a focused regression test. |
-| P2 | Cloud sync retains a broad any compatibility boundary in security- and persistence-sensitive code. | Audit separately with a full snapshot/history payload compatibility matrix. |
+| P2 | Cloud sync retained broad any compatibility at its serialization boundary. | Replaced runtime any types with explicit cloud-state records, typed inputs, unknown payload narrowing, and a documented rollover adapter; preserved the legacy serialization contract. |
 | P2 | Desk-level responsive and accessibility review remains open. | Continue by component clusters with i18n parity and browser coverage. |
 | P2 | The composition root and large components remain active. | Extract only cohesive responsibilities with explicit dependencies, disposers, tests, and bundle checks. |
 | Separate release | Tenant financial isolation and Worker/DO routing are not enabled by directory metadata alone. | Keep authorization, storage topology, key lifecycle, migration, and rollback in a separately reviewed server release; retain PT-02/PT-16 gates. |
@@ -45,6 +45,9 @@ This implementation removes a verified legacy mutation fallback and unnecessary 
 - [x] Route terminal buys directly through PortfolioStore.buyStock and remove the obsolete dynamic addTranche fallback.
 - [x] Remove any casts from terminal store state, tranche aggregation/cost-basis reductions, and calculateMarginInterest options.
 - [x] Preserve historical qty ?? shares fallback and numeric normalization.
+- [x] Replace cloud sync runtime any types with explicit cloud snapshot, callback, persistence, and normalized broker-execution contracts.
+- [x] Remove unreachable broker-history compaction code after confirming history arrays are intentionally excluded from portfolio snapshots.
+- [x] Extend serialization regression coverage to prove broker executions, cashflows, and the legacy duplicate history field remain excluded.
 - [x] Add regression coverage proving a failed buy returns the persistence error and emits no follow-up quote side effect.
 - [x] Record prioritized architecture and cleanup follow-ups.
 
@@ -62,7 +65,7 @@ This implementation removes a verified legacy mutation fallback and unnecessary 
 
 ### Phase 2 — client architecture and typing
 - [x] Remove verified terminal dispatcher compatibility branches and type escapes.
-- [ ] Audit cloud-state sync any boundaries only after complete snapshot/history contract tests exist.
+- [x] Replace cloud-state sync any boundaries with explicit snapshot types, unknown payload narrowing, and history-separation regression coverage.
 - [ ] Review runtime dependencies for duplicate orchestration, global state, and sibling-owned DOM work; retain app.ts as composition root.
 - [ ] Split large components only when state ownership, event contracts, and lifecycle ownership can be tested independently.
 
@@ -91,3 +94,14 @@ This implementation removes a verified legacy mutation fallback and unnecessary 
 - [ ] Final diff review for financial, persistence, i18n, API, and Worker changes
 
 A local clone and local test run are not claimed: this environment could not resolve github.com for Git clone. Exact-head GitHub Actions results will be checked after PR creation.
+
+## Cloud-sync typing follow-up — 2026-11-09
+
+- [x] Type cloud sync inputs as a union of canonical PortfolioState and record-shaped legacy/partial payloads.
+- [x] Type the persisted snapshot record, local save/load adapters, rollover adapter, pull callback, and normalized Freedom execution results.
+- [x] Narrow response envelopes, decrypted snapshots, and caught errors from unknown instead of implicit any.
+- [x] Keep the closed-trade whitelist and transactionEventId field unchanged.
+- [x] Remove unreachable TradeNet execution compaction: brokerExecutedTrades and cashflows are removed before portfolio snapshot serialization and are stored in the independent history record.
+- [x] Extend the serialization regression to assert broker executions, cashflows, and closedHistory are excluded from the portfolio snapshot.
+
+This slice does not change encryption envelopes, snapshot field names, revision coordination, request retry/idempotency, history migration ordering, storage layout, or financial calculations. The explicit cast at the API adapter translates the container-validated legacy snapshot into the existing RolloverState domain contract; the rollover algorithm remains unchanged.

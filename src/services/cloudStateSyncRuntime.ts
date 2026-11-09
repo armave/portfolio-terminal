@@ -1,12 +1,33 @@
 import type { CloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { getAppLanguage, translateText } from './i18n';
 import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from './cloudPayloadValidation';
+import type { PortfolioState } from '../types/portfolio';
+import type { FreedomExecutedTrade } from '../types/freedomTrade';
+
+export type CloudStateRecord = Record<string, unknown>;
+export type CloudStateInput = PortfolioState | CloudStateRecord;
+
+function isRecord(value: unknown): value is CloudStateRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function errorMessage(value: unknown, fallback = 'Unknown error.'): string {
+  if (value instanceof Error) return value.message;
+  if (typeof value === 'string') return value;
+  if (isRecord(value) && typeof value.message === 'string') return value.message;
+  return fallback;
+}
+
+function toCloudStateRecord(value?: CloudStateInput): CloudStateRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return { ...value };
+}
 
 export interface SyncOptions {
-  state?: any;
+  state?: CloudStateInput;
   secret?: string;
-  pullCloudAndRewriteLocal?: (state: any) => void;
-  getState?: () => any;
+  pullCloudAndRewriteLocal?: (state: CloudStateRecord) => void;
+  getState?: () => CloudStateInput;
   showToast?: (msg: string, type: string) => void;
   logTerminal?: (msg: string) => void;
   onStatusChange?: (status: 'synced' | 'error') => void;
@@ -21,11 +42,11 @@ export interface CloudStateSyncRuntimeDependencies {
   decryptCloudPayload: (payload: string, sessionToken: string) => Promise<{ plaintext: string; legacy: boolean }>;
   readCloudRevision: (headers?: Headers | null) => number | null;
   revisionCoordinator: Pick<CloudRevisionCoordinator, 'recordPulledRevision' | 'setRevision' | 'enqueueWrite'>;
-  processRollovers: (state: any) => boolean;
-  loadSavedState: (fallback: any) => any;
+  processRollovers: (state: CloudStateRecord) => boolean;
+  loadSavedState: (fallback: CloudStateRecord) => CloudStateRecord;
   loadSavedHistory: () => { brokerExecutedTrades: unknown[]; cashflows: unknown[] };
-  saveState: (state: any) => boolean;
-  normalizeFreedomTrades: (trades: unknown) => any[];
+  saveState: (state: CloudStateRecord) => boolean;
+  normalizeFreedomTrades: (trades: unknown) => FreedomExecutedTrade[];
   fetchImpl?: typeof fetch;
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   now?: () => number;
@@ -36,8 +57,8 @@ export interface CloudHistoryPushOptions {
   force?: boolean;
 }
 export interface CloudStateSyncRuntime {
-  pullCloudState: (options?: SyncOptions | ((state: any) => void), reportResult?: (success: boolean) => void) => Promise<any>;
-  pushCloudState: (state?: any, options?: SyncOptions) => Promise<boolean>;
+  pullCloudState: (options?: SyncOptions | ((state: CloudStateRecord) => void), reportResult?: (success: boolean) => void) => Promise<CloudStateRecord>;
+  pushCloudState: (state?: CloudStateInput, options?: SyncOptions) => Promise<boolean>;
   syncCloudState: (mode?: string, options?: SyncOptions) => Promise<boolean>;
   pushCloudHistory: (history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }, secret?: string, knownRevision?: number, options?: CloudHistoryPushOptions) => Promise<boolean>;
   clearCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
@@ -76,10 +97,10 @@ export function createCloudStateSyncRuntime({
     ...(ifMatch ? { 'If-Match': ifMatch } : {})
   });
   const responseError = async (response: Response): Promise<string> => {
-    const data = await response.json().catch(() => null);
-    return typeof data === 'object' && data !== null
-      ? (data.error || data.message || `HTTP ${response.status}`)
-      : `HTTP ${response.status}`;
+    const data: unknown = await response.json().catch(() => null);
+    const record = isRecord(data) ? data : null;
+    const message = record?.error || record?.message || `HTTP ${response.status}`;
+    return typeof message === 'string' ? message : String(message);
   };
   const pushCloudWrite = (...args: [RequestInfo | URL, RequestInit, () => boolean]) =>
     import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
@@ -111,8 +132,9 @@ export function createCloudStateSyncRuntime({
       throw new Error('Cloud encryption verification did not observe a newer record revision.');
     }
 
-    const envelope = await response.json();
-    if (!envelope || typeof envelope !== 'object' || !hasAesGcmV2Envelope(envelope.encryptedPayload)) {
+    const envelopeValue: unknown = await response.json();
+    const envelope = isRecord(envelopeValue) ? envelopeValue : null;
+    if (!envelope || !hasAesGcmV2Envelope(envelope.encryptedPayload)) {
       throw new Error('Cloud record is not stored in the authenticated AES-GCM format.');
     }
     const decrypted = await decryptCloudPayload(envelope.encryptedPayload, secret);
@@ -129,9 +151,9 @@ export function createCloudStateSyncRuntime({
   }
 
 async function pullCloudState(
-  options: SyncOptions | ((state: any) => void) = {},
+  options: SyncOptions | ((state: CloudStateRecord) => void) = {},
   reportResult?: (success: boolean) => void
-): Promise<any> {
+): Promise<CloudStateRecord> {
   const handlers: SyncOptions = typeof options === 'function' ? { pullCloudAndRewriteLocal: options } : options;
   const {
     state,
@@ -142,16 +164,16 @@ async function pullCloudState(
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
   const isCurrentSession = handlers.isCurrentSession || (() => true);
-  const stalePullFallback = () => {
+  const stalePullFallback = (): CloudStateRecord => {
     reportResult?.(false);
-    return loadSavedState(state || {});
+    return loadSavedState(toCloudStateRecord(state));
   };
 
   if (!currentSecret) {
     handlers.onStatusChange?.('error');
     reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
-    return loadSavedState(state || {});
+    return loadSavedState(toCloudStateRecord(state));
   }
 
   // showToast('Pulling portfolio from KV cloud...', 'info');
@@ -177,7 +199,7 @@ async function pullCloudState(
       }
       reportResult?.(false);
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
-      return loadSavedState(state || {});
+      return loadSavedState(toCloudStateRecord(state));
     }
 
     if (!res.ok) {
@@ -186,13 +208,14 @@ async function pullCloudState(
       throw new Error(errorMessage);
     }
 
-    const data = await res.json();
+    const responseBody: unknown = await res.json();
     if (!isCurrentSession()) return stalePullFallback();
-    if (!data || typeof data !== 'object') {
+    const data = isRecord(responseBody) ? responseBody : null;
+    if (!data) {
       throw new Error('Invalid state payload from KV.');
     }
 
-    let parsedState: any;
+    let parsedState: unknown;
     let requiresEncryptionUpgrade = false;
     if (typeof data.encryptedPayload === 'string') {
       try {
@@ -201,12 +224,12 @@ async function pullCloudState(
         requiresEncryptionUpgrade = decrypted.legacy;
         try {
           parsedState = JSON.parse(decrypted.plaintext);
-        } catch (parseErr: any) {
-          throw new Error(`Invalid JSON in decrypted state: ${parseErr.message}`);
+        } catch (parseErr: unknown) {
+          throw new Error(`Invalid JSON in decrypted state: ${errorMessage(parseErr)}`);
         }
-      } catch (decryptErr: any) {
+      } catch (decryptErr: unknown) {
         console.error('[Sync]: Cloud payload authentication/decryption failed.');
-        throw new Error(`Failed to decrypt cloud state: ${decryptErr instanceof Error ? decryptErr.message : 'invalid ciphertext'}`);
+        throw new Error(`Failed to decrypt cloud state: ${errorMessage(decryptErr, 'invalid ciphertext')}`);
       }
     } else {
       parsedState = data;
@@ -335,14 +358,15 @@ async function pullCloudState(
     handlers.onStatusChange?.('synced');
     reportResult?.(true);
     return parsedState;
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (!isCurrentSession()) return stalePullFallback();
+    const message = errorMessage(err);
     handlers.onStatusChange?.('error');
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
-    showToast(`Cloud pull failed: ${err.message}`, 'error');
-    logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
-    return loadSavedState(state || {});
+    showToast(`Cloud pull failed: ${message}`, 'error');
+    logTerminal(`[KV Cloud Error]: ${message}. Retaining local state.`);
+    return loadSavedState(toCloudStateRecord(state));
   }
 }
 
@@ -539,14 +563,14 @@ async function performPullCloudHistory(
   };
 }
 
-function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
+function pushCloudState(state?: CloudStateInput, options: SyncOptions = {}): Promise<boolean> {
   return revisionCoordinator.enqueueWrite((expectedRevision) =>
     performPushCloudState(state, options, expectedRevision)
   );
 }
 
 async function performPushCloudState(
-  state: any = undefined,
+  state: CloudStateInput | undefined = undefined,
   options: SyncOptions = {},
   expectedRevision: number
 ): Promise<boolean> {
@@ -571,65 +595,44 @@ async function performPushCloudState(
     // Closed history has its own record and is synchronized only by its data
     // owner when source history or calculated fee metadata actually changes.
     // Portfolio UI/state writes must never implicitly trigger history GET/POST pairs.
-    const stateToEncrypt = { ...currentState };
+    const stateToEncrypt: CloudStateRecord = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
     delete stateToEncrypt.brokerExecutedTrades;
     delete stateToEncrypt.cashflows;
-    // Broker API rows may contain a large duplicated raw payload. Cloud sync
-    // only needs normalized execution fields and fee-allocation metadata.
-    // A previous build may have persisted full TradeNet rows (including their
-    // duplicated raw API payload). Keep only normalized fields required for
-    // closed-history display and financing-fee reconciliation before cloud sync.
-    if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
-      stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
-        id: trade?.id,
-        ticker: trade?.ticker,
-        side: trade?.side,
-        quantity: trade?.quantity,
-        price: trade?.price,
-        currency: trade?.currency,
-        executedAt: trade?.executedAt,
-        tradeValue: trade?.tradeValue,
-        profit: trade?.profit,
-        marginFee: trade?.marginFee,
-        commission: trade?.commission,
-        commissionCurrency: trade?.commissionCurrency,
-        marginFeeAllocations: trade?.marginFeeAllocations,
-        feesAndCommissions: trade?.feesAndCommissions,
-        netProfit: trade?.netProfit
-      }));
-    }
     // Persist closed trades as compact canonical records. Older builds could
     // carry arbitrary broker/raw fields or duplicate the same records in
     // closedHistory, inflating every cloud sync even when history was unchanged.
     if (Array.isArray(stateToEncrypt.closedTrades)) {
-      stateToEncrypt.closedTrades = stateToEncrypt.closedTrades.map((trade: any) => ({
-        id: trade?.id,
-        transactionEventId: trade?.transactionEventId,
-        ticker: trade?.ticker,
-        shares: trade?.shares,
-        avgBuyPrice: trade?.avgBuyPrice,
-        entryPrice: trade?.entryPrice,
-        sellPrice: trade?.sellPrice,
-        exitPrice: trade?.exitPrice,
-        buyDate: trade?.buyDate,
-        purchaseDate: trade?.purchaseDate,
-        sellDate: trade?.sellDate,
-        exitDate: trade?.exitDate,
-        date: trade?.date,
-        closedAt: trade?.closedAt,
-        grossProfit: trade?.grossProfit,
-        commissions: trade?.commissions,
-        feesAndCommissions: trade?.feesAndCommissions,
-        totalCommissions: trade?.totalCommissions,
-        marginInterest: trade?.marginInterest,
-        marginFee: trade?.marginFee,
-        marginFeeAllocations: trade?.marginFeeAllocations,
-        netProfit: trade?.netProfit,
-        netRealizedGain: trade?.netRealizedGain,
-        holdingDays: trade?.holdingDays
-      }));
+      stateToEncrypt.closedTrades = stateToEncrypt.closedTrades.map((value: unknown) => {
+        const trade = isRecord(value) ? value : {};
+        return {
+          id: trade.id,
+          transactionEventId: trade.transactionEventId,
+          ticker: trade.ticker,
+          shares: trade.shares,
+          avgBuyPrice: trade.avgBuyPrice,
+          entryPrice: trade.entryPrice,
+          sellPrice: trade.sellPrice,
+          exitPrice: trade.exitPrice,
+          buyDate: trade.buyDate,
+          purchaseDate: trade.purchaseDate,
+          sellDate: trade.sellDate,
+          exitDate: trade.exitDate,
+          date: trade.date,
+          closedAt: trade.closedAt,
+          grossProfit: trade.grossProfit,
+          commissions: trade.commissions,
+          feesAndCommissions: trade.feesAndCommissions,
+          totalCommissions: trade.totalCommissions,
+          marginInterest: trade.marginInterest,
+          marginFee: trade.marginFee,
+          marginFeeAllocations: trade.marginFeeAllocations,
+          netProfit: trade.netProfit,
+          netRealizedGain: trade.netRealizedGain,
+          holdingDays: trade.holdingDays
+        };
+      });
     }
     delete stateToEncrypt.closedHistory;
     const fingerprintState = { ...stateToEncrypt };
@@ -677,17 +680,18 @@ async function performPushCloudState(
 
     handlers.onStatusChange?.('synced');
     return true;
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (!isCurrentSession()) return false;
+    const message = errorMessage(err);
     console.error('Failed to push to KV cloud:', err);
     handlers.onStatusChange?.('error');
-    showToast(`Cloud push failed: ${err.message}`, 'error');
+    showToast(`Cloud push failed: ${message}`, 'error');
     return false;
   }
 }
 
 async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise<boolean> {
-  const handlers = typeof options === 'function' ? { pullCloudAndRewriteLocal: options } : options;
+  const handlers = options;
   if (mode === 'push') {
     const currentState = handlers.state || handlers.getState?.() || {};
     return pushCloudState(currentState, handlers);

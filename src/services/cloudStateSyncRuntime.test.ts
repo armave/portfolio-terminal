@@ -31,6 +31,9 @@ describe('cloud state compact serialization', () => {
 
     const result = await runtime.pushCloudState({
       gatewaySecret: 'must-not-sync',
+      brokerExecutedTrades: [{ id: 'history-trade-1', raw: { providerPayload: 'history-only' } }],
+      cashflows: [{ id: 'history-cashflow-1', amount: 50 }],
+      closedHistory: [{ id: 'duplicate-history-row' }],
       closedTrades: [{
         id: 'closed-1',
         transactionEventId: 'sale-event-42',
@@ -60,6 +63,9 @@ describe('cloud state compact serialization', () => {
       netProfit: 38.8
     });
     expect(serialized).not.toHaveProperty('gatewaySecret');
+    expect(serialized).not.toHaveProperty('brokerExecutedTrades');
+    expect(serialized).not.toHaveProperty('cashflows');
+    expect(serialized).not.toHaveProperty('closedHistory');
     expect(serialized.closedTrades[0]).not.toHaveProperty('raw');
   });
 });
