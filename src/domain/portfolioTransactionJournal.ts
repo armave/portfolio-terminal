@@ -120,7 +120,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.acquisitionDate !== undefined &&
     (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
   if (value.lotId !== undefined) {
-    if (value.type !== 'trade.buy' || !value.ticker || !value.acquisitionDate ||
+    if (value.type !== 'trade.buy' || !value.ticker ||
       value.quantity === undefined || value.unitPrice === undefined ||
       value.grossAmount === undefined || value.fees === undefined ||
       value.positionQuantityDelta === undefined) return false;
