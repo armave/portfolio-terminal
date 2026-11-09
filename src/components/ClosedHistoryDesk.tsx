@@ -816,7 +816,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                 provider: state.brokerAccountInfo.provider,
                 source: state.brokerAccountInfo.source,
                 quality: state.brokerAccountInfo.snapshotQuality ?? state.brokerAccountInfo.quality ?? 'unknown',
-                status: state.brokerAccountInfo.status || 'unavailable',
+                status: state.brokerAccountInfo.status,
                 observedAt: state.brokerAccountInfo.observedAt,
                 receivedAt: state.brokerAccountInfo.receivedAt,
                 warnings: state.brokerAccountInfo.warnings || []
