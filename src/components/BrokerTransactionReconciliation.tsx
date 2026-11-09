@@ -328,7 +328,7 @@ export function BrokerTransactionReconciliation({
                       <span>{translateBrokerReconciliationCopy('App quote')}: {formatValue(finding.appValue, finding.appCurrency || finding.currency)}</span>
                       <span>{translateBrokerReconciliationCopy('Broker quote')}: {formatValue(finding.brokerValue, finding.brokerCurrency || finding.currency)}</span>
                       {finding.appCurrency && <span>{translateBrokerReconciliationCopy('App currency')}: {finding.appCurrency}</span>}
-                      {finding.brokerCurrency && <span>{translateBrokerReconciliationCopy('Broker currency')}: {finding.brokerCurrency}</span>
+                      {finding.brokerCurrency && <span>{translateBrokerReconciliationCopy('Broker currency')}: {finding.brokerCurrency}</span>}
                       {finding.appProvider && <span>{translateBrokerReconciliationCopy('App quote source')}: {finding.appProvider}</span>}
                       {finding.brokerProvider && <span>{translateBrokerReconciliationCopy('Broker quote source')}: {finding.brokerProvider}</span>}
                       {finding.appObservedAt && <span>{translateBrokerReconciliationCopy('App observation')}: {formatTimestamp(finding.appObservedAt)}</span>}
