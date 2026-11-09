@@ -4073,6 +4073,96 @@ table tbody tr:hover {
 }
 
 
+/* Keep mobile workspace destinations visible while ticker navigation scales horizontally. */
+@media (max-width: 768px) {
+  #tickerTabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list {
+    display: flex;
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+    padding: 0.25rem 0.125rem 0.625rem;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list>* {
+    flex: 0 0 auto;
+    min-height: 44px;
+    scroll-snap-align: start;
+  }
+
+  #tickerTabs>button[data-nav-tab="true"] {
+    flex: 0 0 auto;
+    min-height: 44px;
+    scroll-margin-inline: 0.5rem;
+  }
+}
+
+/* Financial readability: prioritize decision-critical figures over metadata. */
+.portfolio-micro-heading,
+.portfolio-metric-label {
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.portfolio-micro-market-primary .portfolio-metric-value {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.margin-risk-equity {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.margin-risk-buffer-stat strong {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.margin-risk-status {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767px) {
+  .portfolio-micro-row .portfolio-metric-value {
+    font-size: 0.8125rem;
+  }
+
+  .portfolio-micro-market-primary .portfolio-metric-value {
+    font-size: 0.9375rem;
+  }
+
+  .margin-risk-equity {
+    font-size: 0.9375rem;
+  }
+
+  .margin-risk-buffer-stat strong {
+    font-size: 0.8125rem;
+  }
+}
+
 /* The risk overview is a distinct native action, not a clickable content card. */
 .margin-risk-overview-trigger {
   display: inline-flex;

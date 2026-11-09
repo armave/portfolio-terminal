@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   trade-lifecycle:
-        # Pin Chromium browser tests to a Playwright-supported hosted runner.
+    # Pin Chromium browser tests to a Playwright-supported hosted runner.
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
