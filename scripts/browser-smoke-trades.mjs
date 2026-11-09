@@ -171,7 +171,21 @@ async function mockWorkerApi(page) {
           }, {}, call);
           return;
         case 'freedom-trades':
-          await json(route, 200, { data: { trades: { trade: [] } } }, {}, call);
+          // A stable broker-only fill gives the reconciliation audit-review
+          // browser journey a deterministic finding that cannot alter app state.
+          await json(route, 200, {
+            data: { trades: { trade: [{
+              trade_id: 'audit-review-smoke-fill',
+              instr_nm: 'REV',
+              type: '1',
+              q: '2',
+              p: '101',
+              curr_c: 'USD',
+              date: '2026-11-08T13:00:00.000Z',
+              commission: '0',
+              commission_currency: 'USD'
+            }] } }
+          }, {}, call);
           return;
         case 'freedom-orders':
           await json(route, 200, { ok: true, data: { orders: { order: [] } } }, {}, call);
@@ -510,6 +524,78 @@ try {
     const text = document.querySelector('#closedTradesTableBody')?.textContent || '';
     return text.includes('QA') && text.includes('MRG');
   }, 'closed history rows for the full trade lifecycle');
+
+  // Record a review note against an intentionally broker-only test execution.
+  // The review is audit-only and must survive reload without changing any
+  // financial fields or converting the provisional finding into a resolution.
+  await page.getByRole('button', { name: /Reconcile broker activity/ }).click();
+  const reviewFinding = page.locator('article').filter({ hasText: 'REV BUY' }).first();
+  await reviewFinding.waitFor({ state: 'visible', timeout: 20000 });
+  await reviewFinding.getByRole('button', { name: 'Review item' })
+    .waitFor({ state: 'visible', timeout: 10000 });
+  const financialSnapshot = async () => page.evaluate(() => {
+    const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+    const state = raw ? JSON.parse(raw) : {};
+    return {
+      positions: state.positions || {},
+      cashBalance: state.cashBalance,
+      balance: state.balance,
+      cashCushion: state.cashCushion || {},
+      closedTrades: state.closedTrades || []
+    };
+  });
+  const financialBeforeReview = await financialSnapshot();
+  const reviewReason = 'Browser smoke: broker-only execution evidence checked; no posting authorized.';
+  await reviewFinding.getByRole('button', { name: 'Review item' }).click();
+  await reviewFinding.getByLabel('Reason for review').fill(reviewReason);
+  await reviewFinding.getByRole('button', { name: 'Record review' }).click();
+  await reviewFinding.getByText('Reviewed · not resolved').waitFor({ state: 'visible', timeout: 15000 });
+  const reviewedSnapshot = await portfolioSnapshot(page);
+  const reviewEvents = (reviewedSnapshot.transactionEvents || []).filter((event) =>
+    event.type === 'portfolio.reconciliation' &&
+    event.actor?.type === 'user' &&
+    event.source === 'broker-reconciliation-review' &&
+    event.idempotencyKey === 'reconciliation-review:activity:execution-unmatched-broker:audit-review-smoke-fill' &&
+    event.requestFingerprint &&
+    event.note?.includes(reviewReason)
+  );
+  if (reviewEvents.length !== 1) {
+    throw new Error(`Expected one stable audit-only review event; found ${reviewEvents.length}.`);
+  }
+  const reviewEvent = reviewEvents[0];
+  if (reviewEvent.positionQuantityDelta !== undefined ||
+      reviewEvent.cashHoldingQuantityDelta !== undefined ||
+      reviewEvent.cashDelta !== undefined ||
+      reviewEvent.marginDebtDelta !== undefined) {
+    throw new Error('Reconciliation review event contains a financial delta.');
+  }
+  const financialAfterReview = await financialSnapshot();
+  if (JSON.stringify(financialAfterReview) !== JSON.stringify(financialBeforeReview)) {
+    throw new Error('Recording a reconciliation review changed portfolio/accounting fields.');
+  }
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 30000 });
+  await page.getByRole('button', { name: 'Trades' }).click();
+  await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByRole('button', { name: /Reconcile broker activity/ }).click();
+  const restoredFinding = page.locator('article').filter({ hasText: 'REV BUY' }).first();
+  await restoredFinding.getByText(reviewReason, { exact: false }).waitFor({ state: 'visible', timeout: 20000 });
+  await restoredFinding.getByText('Reviewed · not resolved').waitFor({ state: 'visible', timeout: 15000 });
+  if (await restoredFinding.getByRole('button', { name: 'Review item' }).count() !== 0) {
+    throw new Error('Reloaded reviewed finding still offered a duplicate review action.');
+  }
+  const afterReloadSnapshot = await portfolioSnapshot(page);
+  const persistedReviewEvents = (afterReloadSnapshot.transactionEvents || []).filter((event) =>
+    event.idempotencyKey === reviewEvent.idempotencyKey
+  );
+  if (persistedReviewEvents.length !== 1) {
+    throw new Error('The audit-only review event was duplicated or lost after reload.');
+  }
+  const financialAfterReload = await financialSnapshot();
+  if (JSON.stringify(financialAfterReload) !== JSON.stringify(financialBeforeReview)) {
+    throw new Error('Reloading the audit-only review changed portfolio/accounting fields.');
+  }
 
   // Exercise the Balance-desk reversal UI only after the original trade and
   // Closed History journey has passed. Keeping this test at the end prevents
