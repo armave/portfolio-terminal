@@ -117,20 +117,36 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
   if (value.lotId !== undefined &&
     (typeof value.lotId !== 'string' || !value.lotId.trim() || value.lotId.length > 200)) return false;
-  if (value.lotId !== undefined && value.type !== 'trade.buy') return false;
+  if (value.lotId !== undefined) {
+    if (value.type !== 'trade.buy' || !value.ticker ||
+      value.quantity === undefined || value.unitPrice === undefined ||
+      value.grossAmount === undefined || value.fees === undefined ||
+      value.positionQuantityDelta === undefined) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    if (value.unitPrice <= 0 || value.grossAmount < 0 ||
+      !closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
+      !closeEnough(value.positionQuantityDelta, value.quantity)) return false;
+  }
   if (value.lotAllocations !== undefined) {
     if (value.type !== 'trade.sell' || !Array.isArray(value.lotAllocations) ||
-      value.lotAllocations.length === 0 || value.lotAllocations.length > 500) return false;
+      value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
+      !value.ticker || value.quantity === undefined || value.unitPrice === undefined ||
+      value.grossAmount === undefined || value.positionQuantityDelta === undefined) return false;
     let allocatedQuantity = 0;
     let allocatedFees = 0;
     let allocatedFinancing = 0;
     let allocatedPnl = 0;
+    let allocatedGross = 0;
+    const stableLotIds = new Set<string>();
     for (const rawAllocation of value.lotAllocations) {
       if (!isPlainRecord(rawAllocation)) return false;
       const allocation = rawAllocation;
       if (allocation.identity !== 'stable' && allocation.identity !== 'legacy-unmapped') return false;
-      if (allocation.identity === 'stable' &&
-        (typeof allocation.lotId !== 'string' || !allocation.lotId.trim() || allocation.lotId.length > 200)) return false;
+      if (allocation.identity === 'stable') {
+        if (typeof allocation.lotId !== 'string' || !allocation.lotId.trim() || allocation.lotId.length > 200 ||
+          stableLotIds.has(allocation.lotId)) return false;
+        stableLotIds.add(allocation.lotId);
+      }
       if (allocation.identity === 'legacy-unmapped' && allocation.lotId !== undefined) return false;
       if (typeof allocation.quantity !== 'number' || !Number.isFinite(allocation.quantity) || allocation.quantity <= 0) return false;
       if (typeof allocation.acquisitionPrice !== 'number' || !Number.isFinite(allocation.acquisitionPrice) || allocation.acquisitionPrice <= 0) return false;
@@ -140,19 +156,23 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
         (typeof allocation.acquiredAt !== 'number' || !Number.isFinite(allocation.acquiredAt) || allocation.acquiredAt <= 0)) return false;
       if (typeof allocation.buyCommissionAllocated !== 'number' ||
         !Number.isFinite(allocation.buyCommissionAllocated) || allocation.buyCommissionAllocated < 0) return false;
-      if (typeof allocation.sellPrice !== 'number' || !Number.isFinite(allocation.sellPrice) || allocation.sellPrice <= 0) return false;
+      if (typeof allocation.sellPrice !== 'number' || !Number.isFinite(allocation.sellPrice) || allocation.sellPrice <= 0 ||
+        !closeEnough(allocation.sellPrice, value.unitPrice)) return false;
       if (typeof allocation.sellCommissionAllocated !== 'number' ||
         !Number.isFinite(allocation.sellCommissionAllocated) || allocation.sellCommissionAllocated < 0) return false;
       if (typeof allocation.financingCostAllocated !== 'number' ||
         !Number.isFinite(allocation.financingCostAllocated) || allocation.financingCostAllocated < 0) return false;
       if (typeof allocation.realizedPnl !== 'number' || !Number.isFinite(allocation.realizedPnl)) return false;
       allocatedQuantity += allocation.quantity;
+      allocatedGross += allocation.quantity * allocation.sellPrice;
       allocatedFees += allocation.buyCommissionAllocated + allocation.sellCommissionAllocated;
       allocatedFinancing += allocation.financingCostAllocated;
       allocatedPnl += allocation.realizedPnl;
     }
     const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
     if (value.quantity === undefined || !closeEnough(allocatedQuantity, value.quantity)) return false;
+    if (!closeEnough(value.positionQuantityDelta, -value.quantity)) return false;
+    if (!closeEnough(allocatedGross, value.grossAmount)) return false;
     if (value.fees === undefined || !closeEnough(allocatedFees, value.fees)) return false;
     if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
     if (value.realizedPnl === undefined || !closeEnough(allocatedPnl, value.realizedPnl)) return false;
