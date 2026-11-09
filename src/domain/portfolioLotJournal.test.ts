@@ -285,6 +285,35 @@ describe('lot-aware transaction journal replay', () => {
     expect(replay.issues).toHaveLength(2);
   });
 
+  it('rejects sale allocations that skip an older open lot instead of following FIFO', () => {
+    const nonFifoSale = sale('sale-skips-oldest-lot', 1, 130, [{
+      lotId: 'lot-two',
+      identity: 'stable',
+      quantity: 1,
+      acquisitionPrice: 120,
+      acquisitionDate: '2026-11-02',
+      buyCommissionAllocated: 2,
+      sellPrice: 130,
+      sellCommissionAllocated: 0.4,
+      financingCostAllocated: 0,
+      realizedPnl: 7.6
+    }]);
+    const replay = replayPortfolioTransactionLots([buyOne, buyTwo, nonFifoSale]);
+    expect(replay.status).toBe('unsupported');
+    expect(replay.sales).toEqual([]);
+    expect(replay.openLots.map((lot) => [lot.lotId, lot.openQuantity])).toEqual([
+      ['lot-one', 2],
+      ['lot-two', 3]
+    ]);
+    expect(replay.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        eventId: 'sale-skips-oldest-lot',
+        disposition: 'unsupported',
+        reason: expect.stringContaining('FIFO order')
+      })
+    ]));
+  });
+
   it('flags a stable lot reference that cannot be found in the buy-event history', () => {
     const orphaned = sale('orphaned-sale', 1, 110, [{
       lotId: 'unknown-lot',
