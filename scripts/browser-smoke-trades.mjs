@@ -663,7 +663,7 @@ try {
   }
   const financialAfterReload = await financialSnapshot();
   if (JSON.stringify(financialAfterReload) !== JSON.stringify(financialBeforeReview)) {
-    throw new Error('Reloading the audit-only review changed portfolio/accounting fields.');
+    throw new Error('Reloading the audit-only review changed portfolio/accounting fields: ' + JSON.stringify({ before: financialBeforeReview, after: financialAfterReload }));
   }
 
   // Exercise the Balance-desk reversal UI only after the original trade and
