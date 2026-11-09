@@ -1589,7 +1589,7 @@ export default {
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
         const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
-        const tenantMembershipRoute = /^\\/api\\/tenants\\/[A-Za-z0-9_-]{8,80}\\/memberships(?:\\/revoke)?$/.test(pathname);
+        const tenantMembershipRoute = /^\/api\/tenants\/[A-Za-z0-9_-]{8,80}\/memberships(?:\/revoke)?$/.test(pathname);
         const tenantDirectoryRoute = pathname === "/api/tenants" || tenantMembershipRoute;
         if (tenantDirectoryPath && !["GET", "POST"].includes(request.method)) {
             return new Response(JSON.stringify({ error: "Tenant directory routes only support GET and POST." }), {
