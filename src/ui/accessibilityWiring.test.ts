@@ -237,7 +237,7 @@ describe('Stage 10 accessibility wiring', () => {
 
     expect(source.match(/min-h-11 min-w-11/g)).toHaveLength(5);
     for (const label of ['Add user', 'Save', 'Delete', 'Save rules', 'Restore defaults']) {
-      expect(source).toContain(`>{label}</button>`);
+      expect(source).toContain(`>${label}</button>`);
     }
   });
 });
