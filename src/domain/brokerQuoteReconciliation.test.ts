@@ -141,6 +141,10 @@ describe('reconcileBrokerQuotePrices', () => {
     expect(report.findings).toContainEqual(expect.objectContaining({
       type: 'currency_mismatch',
       ticker: 'AAPL',
+      appCurrency: 'EUR',
+      brokerCurrency: 'USD',
+      appValue: 100,
+      brokerValue: 100,
       confidence: 'provisional',
       explanation: expect.stringContaining('No conversion was attempted')
     }));
@@ -150,6 +154,18 @@ describe('reconcileBrokerQuotePrices', () => {
     const report = reconcile([appQuote({ price: 101 })], snapshot({ status: 'stale' }));
     expect(report.status).toBe('stale');
     expect(report.findings).toEqual([]);
+  });
+
+  it('keeps old broker receipt timestamps provisional even when the observation timestamp is recent', () => {
+    const report = reconcile(
+      [appQuote({ price: 101 })],
+      snapshot({ receivedAt: now - 10 * 60_000 })
+    );
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'price_mismatch',
+      confidence: 'provisional'
+    }));
   });
 
   it('does not confirm broker prices without a source observation timestamp', () => {
