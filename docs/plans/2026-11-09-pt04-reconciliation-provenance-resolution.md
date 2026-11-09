@@ -41,14 +41,16 @@ The on-demand Trades / Closed History review remains the entry point. No large a
 ### Tests added
 - [x] Confirmed same-currency price difference with fresh complete provenance.
 - [x] Absolute/relative price tolerance.
-- [x] Provisional outcome for missing/unknown freshness and a quote whose source timestamp is old even when its saved freshness flag says `fresh`.
-- [x] Currency mismatch without FX conversion.
+- [x] Provisional outcome for missing/unknown freshness and a quote whose observation or receipt timestamp is old even when its saved freshness flag says `fresh`.
+- [x] Provisional outcome when same-price duplicate app holdings do not all have current quote provenance.
+- [x] Partial/legacy broker snapshots remain provisional; incomplete or future/old broker receipt evidence cannot be confirmed.
+- [x] Currency mismatch displays both currency codes and available source prices without FX conversion.
 - [x] Stale broker snapshot suppression.
 - [x] Missing broker observation timestamp.
 - [x] Conflicting app and broker price rows.
 - [x] Source-object immutability.
 - [x] No comparable ticker/currency pair does not produce a false successful match.
-- [x] Russian copy/status and Trades state-wiring tests.
+- [x] Russian copy/status, receipt-time labels and Trades state-wiring tests.
 
 ## Explicitly deferred
 
