@@ -607,20 +607,76 @@ describe('transaction journal replay coverage inspection', () => {
     })]);
   });
 
-  it('accepts a linked correction only when it has a reason and explicit inverse delta', () => {
+  it('accepts a correction only when it exactly reverses a linked balance adjustment', () => {
+    const original = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: 125
+    }, { eventId: 'original-cash-adjustment' });
     const reversal = createPortfolioTransactionEvent({
       type: 'correction',
       effectiveAt: draft.effectiveAt,
       cashDelta: -125,
-      relatedEventId: 'original-cash-adjustment',
+      relatedEventId: original.id,
       note: 'Reversal of original-cash-adjustment: duplicate cash entry.'
     }, { eventId: 'cash-reversal' });
 
-    expect(inspectPortfolioTransactionJournalReplayCoverage([reversal])).toMatchObject({
+    expect(inspectPortfolioTransactionJournalReplayCoverage([original, reversal])).toMatchObject({
       status: 'complete',
-      replayableCount: 1,
+      replayableCount: 2,
       issues: []
     });
+  });
+
+  it('rejects corrections with missing originals, non-inverse deltas or unsupported trade targets', () => {
+    const missingOriginal = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: -125,
+      relatedEventId: 'missing-adjustment',
+      note: 'Original missing.'
+    }, { eventId: 'missing-original-reversal' });
+    const original = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: 125
+    }, { eventId: 'original-cash-adjustment' });
+    const wrongInverse = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: -100,
+      relatedEventId: original.id,
+      note: 'This does not reverse the original amount.'
+    }, { eventId: 'wrong-inverse' });
+    const trade = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'AAPL',
+      quantity: 1,
+      positionQuantityDelta: 1
+    }, { eventId: 'original-trade' });
+    const unsupportedTradeReversal = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: draft.effectiveAt,
+      positionQuantityDelta: -1,
+      relatedEventId: trade.id,
+      note: 'Trade reversal is not yet supported.'
+    }, { eventId: 'unsupported-trade-reversal' });
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([
+      missingOriginal,
+      original,
+      wrongInverse,
+      trade,
+      unsupportedTradeReversal
+    ]);
+
+    expect(report.status).toBe('unsupported');
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ eventId: 'missing-original-reversal', disposition: 'incomplete' }),
+      expect.objectContaining({ eventId: 'wrong-inverse', disposition: 'incomplete' }),
+      expect.objectContaining({ eventId: 'unsupported-trade-reversal', disposition: 'unsupported' })
+    ]));
   });
 });
 
