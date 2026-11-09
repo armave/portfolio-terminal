@@ -3,6 +3,7 @@ import {
   getBrokerReconciliationCountLabel,
   getBrokerReconciliationEmptyMessage,
   getBrokerReconciliationHeadline,
+  getBrokerQuoteReconciliationHeadline,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
 
@@ -46,5 +47,25 @@ describe('broker reconciliation empty-state wording', () => {
     expect(getBrokerReconciliationEmptyMessage('partial')).toContain('incomplete coverage');
     expect(getBrokerReconciliationEmptyMessage('unavailable')).toContain('unavailable');
     expect(getBrokerReconciliationEmptyMessage('matched')).toBe('No transaction-level differences were found in the available records.');
+  });
+});
+
+
+describe('broker quote reconciliation localization and status', () => {
+  it('localizes quote provenance and safety explanations in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Broker market prices', 'ru')).toBe('Рыночные цены брокера');
+    expect(translateBrokerReconciliationCopy('Price mismatch', 'ru')).toBe('Расхождение цены');
+    expect(translateBrokerReconciliationCopy(
+      'The app and broker quotes use different or unverified currencies. No conversion was attempted.',
+      'ru'
+    )).toContain('Конвертация не выполнялась');
+  });
+
+  it('keeps quote-status wording conservative for stale or incomplete inputs', () => {
+    expect(getBrokerQuoteReconciliationHeadline('unavailable')).toBe('Broker quote data unavailable');
+    expect(getBrokerQuoteReconciliationHeadline('stale')).toBe('Stale broker quote snapshot');
+    expect(getBrokerQuoteReconciliationHeadline('partial')).toBe('Provisional price comparison');
+    expect(getBrokerQuoteReconciliationHeadline('differences')).toBe('Price differences found');
+    expect(getBrokerQuoteReconciliationHeadline('matched')).toBe('Prices matched');
   });
 });
