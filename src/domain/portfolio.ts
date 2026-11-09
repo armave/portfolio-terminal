@@ -755,8 +755,13 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
   if (Object.hasOwn(candidate, 'cashCushion') && !isRecord(candidate.cashCushion)) {
     throw new Error('Invalid cashCushion in portfolio backup: expected an object.');
   }
-  if (Object.hasOwn(candidate, 'closedTrades') && !Array.isArray(candidate.closedTrades)) {
-    throw new Error('Invalid closedTrades in portfolio backup: expected an array.');
+  if (Object.hasOwn(candidate, 'closedTrades')) {
+    if (!Array.isArray(candidate.closedTrades)) {
+      throw new Error('Invalid closedTrades in portfolio backup: expected an array.');
+    }
+    if (!candidate.closedTrades.every(isRecord)) {
+      throw new Error('Invalid closedTrades in portfolio backup: each history row must be an object.');
+    }
   }
 
   if (Object.hasOwn(candidate, 'transactionEvents') && !isPortfolioTransactionEventList(candidate.transactionEvents)) {

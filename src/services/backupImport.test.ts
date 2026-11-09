@@ -24,6 +24,30 @@ describe('commitPortfolioBackupImport', () => {
     expect(persistState).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed closed-history rows before replacing or persisting the active portfolio', () => {
+    const previous = { activeView: 'AAPL', balance: 100 };
+    let active = previous;
+    const replaceState = vi.fn((next: typeof previous) => { active = next; });
+    const persistState = vi.fn(() => true);
+
+    expect(() => {
+      const imported = normalizePortfolioBackup({
+        positions: {},
+        closedTrades: [{
+          id: 'valid-row',
+          ticker: 'AAPL',
+          shares: 2,
+          netProfit: 25
+        }, null]
+      }, 10_000);
+      commitPortfolioBackupImport(imported, previous, replaceState, persistState);
+    }).toThrow('Invalid closedTrades in portfolio backup: each history row must be an object.');
+
+    expect(active).toBe(previous);
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(persistState).not.toHaveBeenCalled();
+  });
+
   it('normalizes and commits a legacy holdings backup as canonical positions', () => {
     const previous = { activeView: 'COMBINED', balance: 0 };
     let active: unknown = previous;
