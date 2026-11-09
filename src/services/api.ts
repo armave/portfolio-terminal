@@ -9,6 +9,7 @@ import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './reques
 export type { AuthUser, AuthSession } from './authTransportRuntime';
 export type { SyncOptions, CloudHistoryPushOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
+import type { RolloverState } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
 import { normalizeFreedomTrades } from './freedomTradeContracts';
@@ -322,7 +323,8 @@ const cloudStateSyncRuntime = createCloudStateSyncRuntime({
   decryptCloudPayload,
   readCloudRevision,
   revisionCoordinator: cloudRevisionCoordinator,
-  processRollovers: (state) => processRollovers(state),
+  // Cloud snapshots are container-validated but preserve optional legacy fields.
+  processRollovers: (state) => processRollovers(state as unknown as RolloverState),
   loadSavedState: (fallback) => loadSavedState(fallback),
   loadSavedHistory: () => loadSavedHistory(),
   saveState: (state) => saveState(state),
