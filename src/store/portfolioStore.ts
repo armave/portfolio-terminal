@@ -1047,8 +1047,13 @@ export class PortfolioStore {
     // Reject unsafe inverse deltas before entering updateFinancialMutation:
     // its generic no-op result is intentionally successful for idempotent
     // commands, while this API must report an unsafe reversal as false.
-    const currentFreeCash = Math.max(0, Number(this.state.cashCushion?.freeCash) || 0);
-    const currentDebt = Math.abs(Number(this.state.balance) || 0);
+    const currentFreeCashValue = this.state.cashCushion?.freeCash;
+    const currentBalanceValue = this.state.balance;
+    if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+      currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+      !Number.isFinite(currentBalanceValue)) return false;
+    const currentFreeCash = currentFreeCashValue;
+    const currentDebt = Math.abs(currentBalanceValue);
     const nextFreeCash = currentFreeCash - originalCashDelta;
     const nextDebt = currentDebt - originalDebtDelta;
     const tolerance = 1e-8;
@@ -1082,8 +1087,13 @@ export class PortfolioStore {
       if (![cashDelta, debtDelta].every(Number.isFinite) ||
         (Math.abs(cashDelta) < 1e-10 && Math.abs(debtDelta) < 1e-10)) return null;
 
-      const currentFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
-      const currentDebt = Math.abs(Number(state.balance) || 0);
+      const currentFreeCashValue = state.cashCushion?.freeCash;
+      const currentBalanceValue = state.balance;
+      if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+        currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+        !Number.isFinite(currentBalanceValue)) return null;
+      const currentFreeCash = currentFreeCashValue;
+      const currentDebt = Math.abs(currentBalanceValue);
       const nextFreeCash = currentFreeCash - cashDelta;
       const nextDebt = currentDebt - debtDelta;
       const tolerance = 1e-8;
