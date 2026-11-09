@@ -120,7 +120,7 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 ## Implementation slice 2 — auditable balance reversals and replay coverage
 
 **Client PR:** [#402 — PT-02 auditable balance reversals and replay coverage](https://github.com/armave/portfolio-terminal/pull/402)  
-**Implementation code head:** `1438f82d47f596cbc5667bdeb72171c5e3f1ee51`  
+**Implementation code head:** `a38a25c805cf39ca97ad2eb3a186e45d0d22533b`  
 **Target:** `dev`; no Worker/server changes in this slice.
 
 - [x] Add atomic `PortfolioStore.reverseBalanceAdjustment` for manual `cash.adjustment` and `margin.adjustment` events only.
@@ -131,6 +131,6 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 - [x] Explicitly reject trade, lot, closed-history and corporate-action reversals until inverse cost-basis and realized-P&L contracts exist.
 - [x] Add a journal replay-coverage report distinguishing app-owned replay deltas, broker/import evidence-only rows, history audit-only events, incomplete events and unsupported/malformed schemas.
 - [x] Require a correction to reference an existing cash/debt adjustment and carry its exact inverse deltas before calling it replayable.
-- [x] Validate TypeScript, 2,054 Vitest tests, production build/bundle budget, dead-code validation, dependency audits, Operations Browser Journey and Trade Lifecycle Browser Smoke. Exact runs: [CI](https://github.com/armave/portfolio-terminal/actions/runs/42561306230), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/42561306240), [Trade Lifecycle](https://github.com/armave/portfolio-terminal/actions/runs/42561306491).
+- [x] Validate TypeScript, 2,054 Vitest tests, production build/bundle budget, dead-code validation, dependency audits, Operations Browser Journey and Trade Lifecycle Browser Smoke. Exact runs: [CI](https://github.com/armave/portfolio-terminal/actions/runs/42561609030), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/42561608991), [Trade Lifecycle](https://github.com/armave/portfolio-terminal/actions/runs/42561608981).
 
 **Not closed by this slice:** trade/lot/corporate-action reversal, cost-basis and closed-history replay, full mutation inventory, backup/cloud restore and cross-device/manual broker QA. The portfolio snapshot remains canonical and the additive journal remains evidence/replay support; no ledger cutover is authorized.
