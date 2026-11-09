@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   operations-browser:
-    runs-on: ubuntu-latest
+    # Pin Chromium browser tests to a Playwright-supported hosted runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Check out repository

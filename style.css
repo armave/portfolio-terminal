@@ -4071,3 +4071,44 @@ table tbody tr:hover {
     grid-column: auto;
   }
 }
+
+
+/* Keep mobile workspace destinations visible while ticker navigation scales horizontally. */
+@media (max-width: 768px) {
+  #tickerTabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list {
+    display: flex;
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+    padding: 0.25rem 0.125rem 0.625rem;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list>* {
+    flex: 0 0 auto;
+    min-height: 44px;
+    scroll-snap-align: start;
+  }
+
+  #tickerTabs>button[data-nav-tab="true"] {
+    flex: 0 0 auto;
+    min-height: 44px;
+    scroll-margin-inline: 0.5rem;
+  }
+}
