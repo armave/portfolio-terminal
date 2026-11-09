@@ -4,7 +4,7 @@
 **Tracking issue:** [#330](https://github.com/armave/portfolio-terminal/issues/330)  
 **Existing charter:** [Wave 3 PT-02](../wave-3/workstreams/PT-02-transaction-integrity-completion.md)  
 **Implementation target:** `dev` for client/domain; Worker/Durable Object changes remain direct-to-`main`.  
-**Status:** Plan for implementation review; no application behavior changes in this plan PR.
+**Status:** Partial implementation delivered in this PR; broader PT-02 acceptance remains open.
 
 ## Audit baseline
 
@@ -20,6 +20,16 @@ This work must not reimplement those mechanisms or claim that all financial path
 4. **Replay and parity:** add a deterministic shadow verifier for the subset whose events contain sufficient information. Report unsupported/incomplete events as such; do not infer missing inputs or cut over the canonical store.
 5. **Recovery and concurrency:** expand backup/import/reset/reload and multi-tab/cloud conflict tests. Keep server receipt idempotency distinct from application-level replay and financial-command idempotency.
 
+## Delivered implementation in this PR
+
+- [x] Add `PortfolioStore.reverseBalanceAdjustment` for explicit reversals of `cash.adjustment` and `margin.adjustment` events. It appends a linked `correction` event and never deletes or edits the original event.
+- [x] Make balance reversals idempotent by original event and reason; a second reversal or conflicting reason is rejected.
+- [x] Refuse unsupported trade/lot/closed-history/corporate-action reversals. Refuse a reversal when a later cash/debt movement means the inverse would create a negative free-cash or margin-debt balance.
+- [x] Add `inspectPortfolioTransactionJournalReplayCoverage` to separate replayable app-owned deltas, evidence-only broker/import records, audit-only history corrections, incomplete events and unsupported/malformed schemas.
+- [x] Add Vitest cases for cash/debt reversal, linked immutable correction history, duplicate retries, conflicting reasons, insufficient remaining cash, unsupported trade reversal and journal coverage classification.
+
+**Important scope limitation:** these reversals intentionally cover balance-only adjustments. They do not reverse stock buys/sells, acquisition lots, realized P&L, closed-trade records, tranche tracking edits or corporate actions. Those operations need richer event/cost-basis contracts and separate review before they can be safely reversed. The coverage report is scoped to the existing replay projection (position quantity, cash-holding quantity, free cash and margin debt); it does not claim to reconstruct cost basis, lot identity, realized P&L or realized charges.
+
 ## Implementation plan
 
 ### A. Complete the mutation inventory
@@ -30,16 +40,17 @@ This work must not reimplement those mechanisms or claim that all financial path
 - [ ] Document unsupported or not-yet-reconstructable paths.
 
 ### B. Add explicit correction/reversal semantics
-- [ ] Define immutable correction/reversal event relationships and validation rules.
-- [ ] Require the original event reference, reason, actor and effective timestamp.
-- [ ] Make correction commands idempotent and reject conflicting key reuse.
-- [ ] Prove a reversal restores the expected position/cash/debt/fee/P&L state in hand-calculated fixtures.
-- [ ] Keep original and superseding events visible in history.
+- [x] Define immutable correction/reversal event relationships for cash/debt balance adjustments, with validation rules.
+- [x] Require the original event reference, reason, actor and effective timestamp for balance-adjustment reversals.
+- [x] Make balance-adjustment reversal commands idempotent and reject conflicting key reuse.
+- [x] Prove supported cash/debt reversals restore the prior balances in hand-calculated fixtures.
+- [x] Keep original and superseding events visible in history.
+- [ ] Extend correction semantics to trades, acquisition lots, realized P&L and corporate actions only after exact inverse accounting is modeled.
 
 ### C. Verify journal-to-state parity
-- [ ] Implement a read-only replay/verification path for fully supported event types.
-- [ ] Compare replay output with canonical `positions`, cash, margin debt, cash holdings and closed history.
-- [ ] Return explicit mismatch, incomplete and unsupported classifications with event references.
+- [x] Add a read-only replay-coverage inspector for the existing positions/cash-holdings/free-cash/margin-debt projection.
+- [x] Classify app-owned state deltas, external broker/import evidence, audit-only history changes, incomplete events and unsupported/malformed schemas.
+- [ ] Extend comparisons to canonical closed history, cost basis, lot identity, realized P&L and realized charges; these are not covered by the current replay projection.
 - [ ] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
 - [ ] Keep canonical-state migration out of scope; any cutover requires a separate approved design, migration and rollback.
 
@@ -62,8 +73,9 @@ Avoid changing broker position normalization, margin formulas, reconciliation UI
 
 ## Required validation
 
-- [ ] Vitest fixtures for every supported mutation, event append, replay and parity path.
-- [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement.
+- [x] Vitest fixtures for balance-adjustment reversal, coverage classification, event append and existing replay/parity paths.
+- [ ] Complete the remaining mutation inventory and add any missing event/replay fixtures discovered by that review.
+- [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
 - [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
 - [ ] Duplicate replay, same-key/different-body conflict, stale-revision retry, superseded acknowledgement and cross-tab conflict.
 - [ ] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
@@ -74,8 +86,9 @@ Avoid changing broker position normalization, margin formulas, reconciliation UI
 
 ## Exit criteria and merge gate
 
-- Every supported financial mutation is either journaled with complete semantics or explicitly listed as unsupported.
-- Reversals/corrections are immutable, reviewable, idempotent and balance-verified.
-- Replay/parity checks cover only the explicitly supported subset and fail closed on unknowns.
+- [ ] Every supported financial mutation is either journaled with complete semantics or explicitly listed as unsupported.
+- [x] Supported balance-adjustment reversals are immutable, reviewable, idempotent and balance-verified.
+- [x] Replay coverage is explicit for the current quantity/cash/debt projection and fails closed on malformed/unknown events.
+- [ ] Trade/lot/corporate-action reversals and replay of cost basis, closed history, realized P&L and realized charges remain open.
 - Existing positions-as-canonical compatibility and cloud receipt behavior remain intact.
 - No canonical-ledger cutover or new financial write path is enabled by this work alone.
