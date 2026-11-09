@@ -26,7 +26,7 @@ This work must not reimplement those mechanisms or claim that all financial path
 - [x] Make balance reversals idempotent by original event and reason; a second reversal or conflicting reason is rejected.
 - [x] Refuse unsupported trade/lot/closed-history/corporate-action reversals. Refuse a reversal when a later cash/debt movement means the inverse would create a negative free-cash or margin-debt balance.
 - [x] Add `inspectPortfolioTransactionJournalReplayCoverage` to separate replayable app-owned deltas, evidence-only broker/import records, audit-only history corrections, incomplete events and unsupported/malformed schemas.
-- [x] Add Vitest cases for cash/debt reversal, linked immutable correction history, duplicate retries, conflicting reasons, insufficient remaining cash, unsupported trade reversal and journal coverage classification.
+- [x] Add Vitest cases for cash/debt reversal, linked immutable correction history, duplicate retries, conflicting reasons, insufficient remaining cash, unsupported trade reversal, journal coverage classification and atomic persistence-failure rollback.
 
 **Important scope limitation:** these reversals intentionally cover balance-only adjustments. They do not reverse stock buys/sells, acquisition lots, realized P&L, closed-trade records, tranche tracking edits or corporate actions. Those operations need richer event/cost-basis contracts and separate review before they can be safely reversed. The coverage report is scoped to the existing replay projection (position quantity, cash-holding quantity, free cash and margin debt); it does not claim to reconstruct cost basis, lot identity, realized P&L or realized charges.
 
@@ -73,11 +73,11 @@ Avoid changing broker position normalization, margin formulas, reconciliation UI
 
 ### Exact-head validation — implementation slice 2
 
-**Client PR head:** `d30daead9ba818d633236bc4fdd59bb6d1ed0e49` (base `1044727bf3055303ed94a134ee3b8fbb758f12b3`).
+**Implementation code head:** `1438f82d47f596cbc5667bdeb72171c5e3f1ee51` (PR base `1044727bf3055303ed94a134ee3b8fbb758f12b3`).
 
-- [x] [Pull Request CI #42560729066](https://github.com/armave/portfolio-terminal/actions/runs/42560729066) — TypeScript, all 2,053 Vitest tests (161 files), production build/bundle budget, dead-code validation and full/production dependency audits passed.
-- [x] [Operations Browser Journey #42560729069](https://github.com/armave/portfolio-terminal/actions/runs/42560729069) — 2,053 tests, production build, browser journey, dead-code validation and dependency audits passed.
-- [x] [Trade Lifecycle Browser Smoke #42560729274](https://github.com/armave/portfolio-terminal/actions/runs/42560729274) — 151 focused tests and production browser lifecycle journey passed.
+- [x] [Pull Request CI #42561306230](https://github.com/armave/portfolio-terminal/actions/runs/42561306230) — TypeScript, all 2,054 Vitest tests (161 files), production build/bundle budget, dead-code validation and full/production dependency audits passed.
+- [x] [Operations Browser Journey #42561306240](https://github.com/armave/portfolio-terminal/actions/runs/42561306240) — 2,053 tests, production build, browser journey, dead-code validation and dependency audits passed.
+- [x] [Trade Lifecycle Browser Smoke #42561306491](https://github.com/armave/portfolio-terminal/actions/runs/42561306491) — 151 focused tests and production browser lifecycle journey passed.
 - [x] No Worker code or Worker deployment was changed by this client/domain slice.
 
 No user-facing copy was added, so no localization catalog changes were needed. Authenticated live broker behavior and actual multi-device reversal workflows remain separate QA for the broader PT-02 acceptance scope.
