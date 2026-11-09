@@ -4861,6 +4861,23 @@ describe('tenant directory Worker routing', () => {
     }), { PORTFOLIO_STATE_DO: binding });
     expect(unsupportedPath.status).toBe(404);
     expect(calls).toEqual(['/api/auth/verify']);
+
+    // The directory exposes metadata only. Guessed financial data routes must
+    // fail at the Worker allowlist and must never reach the legacy Durable Object.
+    for (const path of [
+      '/api/tenants/tenant-id-123456/state',
+      '/api/tenants/tenant-id-123456/history',
+      '/api/tenants/tenant-id-123456/backups',
+      '/api/tenants/tenant-id-123456/portfolios/portfolio-id-123456'
+    ]) {
+      calls.length = 0;
+      const financialRoute = await worker.fetch(new Request('https://worker.test' + path, {
+        method: 'GET',
+        headers: { 'X-App-Auth': 'guest-token' }
+      }), { PORTFOLIO_STATE_DO: binding });
+      expect(financialRoute.status, path).toBe(404);
+      expect(calls, path).toEqual(['/api/auth/verify']);
+    }
   });
 
   it('routes authenticated guest directory reads to the identity Durable Object', async () => {
