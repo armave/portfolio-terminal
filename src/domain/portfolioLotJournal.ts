@@ -10,7 +10,7 @@ export interface PortfolioLotReplayOpenLot {
   ticker: string;
   buyEventId: string;
   acquiredAt: number;
-  acquisitionDate: string;
+  acquisitionDate: string | null;
   acquisitionPrice: number;
   acquiredQuantity: number;
   openQuantity: number;
@@ -154,10 +154,9 @@ export function replayPortfolioTransactionLots(
         addIssue(event, 'unsupported', 'A stable acquisition lot ID is reused by more than one buy event.');
         continue;
       }
-      const acquisitionDate = event.acquisitionDate?.trim() || dateOnly(event.effectiveAt);
+      const acquisitionDate = event.acquisitionDate?.trim() || null;
       if (!acquisitionDate) {
-        addIssue(event, 'incomplete', 'Buy event has no valid source acquisition date.');
-        continue;
+        addIssue(event, 'incomplete', 'Buy event predates exact acquisition-date capture; source date was not inferred from the event timestamp.');
       }
       const commission = optionalNumber(event.fees);
       if (commission === null || commission < 0) {
@@ -206,7 +205,8 @@ export function replayPortfolioTransactionLots(
         if (lot.ticker !== ticker ||
           !closeEnough(lot.acquisitionPrice, allocation.acquisitionPrice, DEFAULT_TOLERANCE) ||
           quantity - lot.openQuantity > DEFAULT_TOLERANCE ||
-          (allocation.acquisitionDate !== undefined && allocation.acquisitionDate !== lot.acquisitionDate) ||
+          (lot.acquisitionDate !== null && allocation.acquisitionDate !== undefined &&
+            allocation.acquisitionDate !== lot.acquisitionDate) ||
           (allocation.acquiredAt !== undefined && !closeEnough(allocation.acquiredAt, lot.acquiredAt, 1))) {
           addIssue(event, 'unsupported', 'Sale allocation conflicts with the referenced acquisition lot identity, price, date or remaining quantity.');
           validStableAllocations = false;
@@ -391,7 +391,7 @@ export function verifyPortfolioTransactionLotParity(
     }
     addDiscrepancy(discrepancies, 'open-lot-quantity', lot.lotId, lot.openQuantity, Number(canonicalLot.tranche.qty), tolerance);
     addDiscrepancy(discrepancies, 'open-lot-cost', lot.lotId, lot.acquisitionPrice, Number(canonicalLot.tranche.price), tolerance);
-    if (canonicalLot.tranche.date) {
+    if (canonicalLot.tranche.date && lot.acquisitionDate !== null) {
       if (canonicalLot.tranche.date !== lot.acquisitionDate) {
         discrepancies.push({
           field: 'open-lot-acquisition-date',
@@ -401,7 +401,7 @@ export function verifyPortfolioTransactionLotParity(
         });
       }
     } else {
-      issues.push({ disposition: 'incomplete', reason: `Canonical lot ${lot.lotId} has no acquisition date.` });
+      issues.push({ disposition: 'incomplete', reason: `Canonical lot ${lot.lotId} cannot be checked against a source acquisition date.` });
     }
     if (lot.openBuyCommission !== null && canonicalLot.tranche.buyCommission !== undefined) {
       addDiscrepancy(discrepancies, 'open-lot-buy-commission', lot.lotId, lot.openBuyCommission, Number(canonicalLot.tranche.buyCommission), tolerance);
