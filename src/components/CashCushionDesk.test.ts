@@ -345,6 +345,17 @@ describe('balance adjustment reversal access', () => {
     ]);
   });
 
+  it('keeps an adjustment visible when a linked correction is not its exact inverse', () => {
+    const original = event('cash-original', 'cash.adjustment', 1, { cashDelta: 125 });
+    const inconsistentCorrection = event('cash-correction', 'correction', 2, {
+      relatedEventId: original.id,
+      cashDelta: -120
+    });
+
+    expect(getReversibleBalanceAdjustmentEvents([original, inconsistentCorrection]).map((item) => item.id))
+      .toEqual(['cash-original']);
+  });
+
   it('keeps reversal controls restricted to the admin Balance desk and calls the guarded store command', () => {
     const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain('isAdmin && !guestUserId');
