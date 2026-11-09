@@ -1307,6 +1307,7 @@ export class PortfolioStore {
           effectiveAt,
           ticker: clean,
           lotId,
+          acquisitionDate: purchaseDate,
           quantity: shares,
           positionQuantityDelta: shares,
           unitPrice: price,
