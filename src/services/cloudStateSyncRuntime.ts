@@ -4,7 +4,8 @@ import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from '
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
-export interface CloudStateRecord extends Partial<PortfolioState> {
+export interface CloudStateRecord {
+  transactionEvents?: PortfolioState['transactionEvents'];
   [key: string]: unknown;
 }
 export type CloudStateInput = PortfolioState | CloudStateRecord;
