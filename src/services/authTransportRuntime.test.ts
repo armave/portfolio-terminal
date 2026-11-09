@@ -104,6 +104,7 @@ describe('auth transport runtime', () => {
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-1' }]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await runtime.createUser({ name: 'Guest 2', password: 'password', role: 'guest' });
+    expect(runtime.getCachedUsers()).toBeNull();
     directoryVersion = 2;
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-2' }]);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
