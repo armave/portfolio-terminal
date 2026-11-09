@@ -294,7 +294,7 @@ describe('Balance cache-first rendering wiring', () => {
   it('keeps guest group rows stable without exposing raw IDs while names resolve', () => {
     expect(deskSource).toContain('getCachedUsers()');
     expect(deskSource).toContain('guestDirectoryPending');
-    expect(deskSource).toContain("label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Unknown guest'");
+    expect(deskSource).toContain("label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Guest unavailable'");
     expect(deskSource).toContain("translateText('Loading guest name', getAppLanguage())");
     expect(deskSource).not.toContain('guestNames.get(guestId) || guestId');
     expect(deskSource).toContain("...(isAdmin\n      ? [{ type: 'group' as const");
