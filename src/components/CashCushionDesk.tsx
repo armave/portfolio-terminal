@@ -1,8 +1,9 @@
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
-import { usePortfolioSelector } from '../store/portfolioStore';
+import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, PortfolioState, QuoteDetails } from '../types/portfolio';
+import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
@@ -78,7 +79,8 @@ function selectCashCushionPortfolioState(state: PortfolioState) {
     activeTrancheTypes: state.activeTrancheTypes,
     activeTrancheMixes: state.activeTrancheMixes,
     cashHoldings: state.cashCushion?.holdings,
-    positions: state.positions
+    positions: state.positions,
+    transactionEvents: state.transactionEvents
   };
 }
 
@@ -93,7 +95,8 @@ function areCashCushionPortfolioStatesEqual(
     previous.activeTrancheTypes === next.activeTrancheTypes &&
     previous.activeTrancheMixes === next.activeTrancheMixes &&
     previous.cashHoldings === next.cashHoldings &&
-    previous.positions === next.positions;
+    previous.positions === next.positions &&
+    previous.transactionEvents === next.transactionEvents;
 }
 
 export function formatDailyQuoteRange(details: Pick<QuoteDetails, 'high' | 'low'>): string {
@@ -112,6 +115,43 @@ export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; pri
   };
 
   return positivePrice(holding.currentPrice) ?? positivePrice(holding.price);
+}
+
+/**
+ * Return only unreversed cash/margin balance adjustments that the store's
+ * guarded reversal command explicitly supports. Trade, lot and corporate
+ * action events remain excluded.
+ */
+export function getReversibleBalanceAdjustmentEvents(
+  events: readonly PortfolioTransactionEvent[] | undefined
+): PortfolioTransactionEvent[] {
+  if (!Array.isArray(events) || events.length === 0) return [];
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const reversedEventIds = new Set<string>();
+  for (const correction of events) {
+    if (correction.type !== 'correction' || typeof correction.relatedEventId !== 'string') continue;
+    const original = eventsById.get(correction.relatedEventId);
+    if (!original || (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment')) continue;
+    const cashDeltaMatches = original.cashDelta === undefined
+      ? correction.cashDelta === undefined
+      : typeof correction.cashDelta === 'number' &&
+        Math.abs(correction.cashDelta + original.cashDelta) <= 1e-10;
+    const debtDeltaMatches = original.marginDebtDelta === undefined
+      ? correction.marginDebtDelta === undefined
+      : typeof correction.marginDebtDelta === 'number' &&
+        Math.abs(correction.marginDebtDelta + original.marginDebtDelta) <= 1e-10;
+    if (cashDeltaMatches && debtDeltaMatches) reversedEventIds.add(original.id);
+  }
+  return events
+    .filter((event) => {
+      if (event.type !== 'cash.adjustment' && event.type !== 'margin.adjustment') return false;
+      if (reversedEventIds.has(event.id)) return false;
+      return [event.cashDelta, event.marginDebtDelta].some((delta) =>
+        typeof delta === 'number' && Number.isFinite(delta) && Math.abs(delta) > 1e-10
+      );
+    })
+    .sort((left, right) => right.recordedAt - left.recordedAt)
+    .slice(0, 5);
 }
 
 type ActiveTrancheQuoteRecord = {
@@ -195,6 +235,28 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
+  const [balanceAdjustmentReasons, setBalanceAdjustmentReasons] = useState<Record<string, string>>({});
+  const [balanceAdjustmentNotice, setBalanceAdjustmentNotice] = useState('');
+  const [pendingBalanceAdjustmentId, setPendingBalanceAdjustmentId] = useState<string | null>(null);
+  const reversibleBalanceAdjustments = useMemo(
+    () => getReversibleBalanceAdjustmentEvents(state.transactionEvents),
+    [state.transactionEvents]
+  );
+  const submitBalanceAdjustmentReversal = (eventId: string) => {
+    const reason = (balanceAdjustmentReasons[eventId] || '').trim();
+    if (!reason) {
+      setBalanceAdjustmentNotice('Enter a reason to reverse this adjustment.');
+      return;
+    }
+    const reversed = portfolioStore.reverseBalanceAdjustment(eventId, reason);
+    setBalanceAdjustmentNotice(reversed
+      ? 'Balance adjustment reversed.'
+      : 'Balance adjustment could not be reversed. The balance may have changed since the original adjustment.');
+    setPendingBalanceAdjustmentId(null);
+    if (reversed) {
+      setBalanceAdjustmentReasons((current) => ({ ...current, [eventId]: '' }));
+    }
+  };
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS, guestUserId ? 'guest' : 'admin');
   const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
   const [marketDepthAvailable, setMarketDepthAvailable] = useState(() => shouldShowCashHoldingMarketDepth());
@@ -848,6 +910,105 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </tfoot>
             </table>
           </TableScrollRegion>
+        )}
+
+        {isAdmin && !guestUserId && (reversibleBalanceAdjustments.length > 0 || balanceAdjustmentNotice) && (
+          <section
+            class="mt-4 space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+            aria-labelledby="balanceAdjustmentHistoryHeading"
+          >
+            <div class="space-y-1">
+              <h3 id="balanceAdjustmentHistoryHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">
+                {translateText('Recent balance adjustments', getAppLanguage())}
+              </h3>
+              <p class="text-[11px] text-slate-400">
+                {translateText('Review and reverse eligible manual cash or margin adjustments.', getAppLanguage())}
+              </p>
+              <p class="text-[10px] text-slate-500">
+                {translateText('A reversal appends an immutable correction event. It is blocked when available cash or debt has already been used.', getAppLanguage())}
+              </p>
+            </div>
+            {balanceAdjustmentNotice && (
+              <p role="status" aria-live="polite" class="rounded border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs text-cyan-200">
+                {translateText(balanceAdjustmentNotice, getAppLanguage())}
+              </p>
+            )}
+            {reversibleBalanceAdjustments.map((event) => {
+              const label = event.type === 'cash.adjustment' ? 'Cash adjustment' : 'Margin adjustment';
+              const cashDelta = typeof event.cashDelta === 'number' ? event.cashDelta : null;
+              const debtDelta = typeof event.marginDebtDelta === 'number' ? event.marginDebtDelta : null;
+              const recordedAt = new Date(event.recordedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US');
+              const reasonId = `balance-adjustment-reason-${event.id}`;
+              return (
+                <article
+                  key={event.id}
+                  data-balance-adjustment-event-id={event.id}
+                  class="space-y-2 rounded border border-slate-800 px-3 py-2"
+                >
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <strong class="text-xs text-slate-200">{translateText(label, getAppLanguage())}</strong>
+                    <span class="text-[10px] text-slate-500">{recordedAt}</span>
+                  </div>
+                  <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-slate-300">
+                    {cashDelta !== null && (
+                      <span>{translateText('Cash change', getAppLanguage())}: {formatUSD(cashDelta)}</span>
+                    )}
+                    {debtDelta !== null && (
+                      <span>{translateText('Margin debt change', getAppLanguage())}: {formatUSD(debtDelta)}</span>
+                    )}
+                  </div>
+                  {event.note && <p class="text-[10px] text-slate-500">{event.note}</p>}
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <label class="flex-1 space-y-1 text-[10px] text-slate-400" for={reasonId}>
+                      <span>{translateText('Reason for reversal', getAppLanguage())}</span>
+                      <input
+                        id={reasonId}
+                        type="text"
+                        maxLength={500}
+                        value={balanceAdjustmentReasons[event.id] || ''}
+                        onInput={(inputEvent) => setBalanceAdjustmentReasons((current) => ({
+                          ...current,
+                          [event.id]: inputEvent.currentTarget.value
+                        }))}
+                        placeholder={translateText('Enter why this adjustment should be reversed', getAppLanguage())}
+                        class="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+                      />
+                    </label>
+                    {pendingBalanceAdjustmentId === event.id ? (
+                      <div class="flex flex-col gap-2 rounded border border-amber-800/50 bg-amber-950/20 p-2 sm:flex-row sm:items-center" role="group" aria-label={translateText('Confirm balance reversal', getAppLanguage())}>
+                        <span class="flex-1 text-[10px] text-amber-100">
+                          {translateText('Confirm this balance change. The original event remains in history.', getAppLanguage())}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => submitBalanceAdjustmentReversal(event.id)}
+                          class="rounded border border-amber-700 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
+                        >
+                          {translateText('Confirm reversal', getAppLanguage())}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingBalanceAdjustmentId(null)}
+                          class="rounded border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300"
+                        >
+                          {translateText('Cancel', getAppLanguage())}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!(balanceAdjustmentReasons[event.id] || '').trim()}
+                        onClick={() => setPendingBalanceAdjustmentId(event.id)}
+                        class="rounded border border-amber-800/70 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {translateText('Review reversal', getAppLanguage())}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </section>
         )}
 
         {showActiveTranches && <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
