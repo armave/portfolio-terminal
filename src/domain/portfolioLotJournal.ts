@@ -216,21 +216,23 @@ export function replayPortfolioTransactionLots(
       // The event schema validates slice totals and unique identities, but
       // FIFO ordering is a domain invariant: a sale cannot skip an older open
       // lot or move to the next lot before exhausting the current one.
-      const fifoLots = [...lots.values()].filter((lot) =>
-        lot.ticker === ticker && lot.openQuantity > DEFAULT_TOLERANCE
-      );
-      let fifoIndex = 0;
-      for (let index = 0; index < stableAllocations.length; index += 1) {
-        const allocation = stableAllocations[index];
-        const expectedLot = fifoLots[fifoIndex];
-        if (!expectedLot || allocation.lotId !== expectedLot.lotId ||
-          (index < stableAllocations.length - 1 &&
-            allocation.quantity < expectedLot.openQuantity - DEFAULT_TOLERANCE)) {
-          addIssue(event, 'unsupported', 'Sale allocations do not consume the known open acquisition lots in FIFO order.');
-          validStableAllocations = false;
-          break;
+      if (validStableAllocations) {
+        const fifoLots = [...lots.values()].filter((lot) =>
+          lot.ticker === ticker && lot.openQuantity > DEFAULT_TOLERANCE
+        );
+        let fifoIndex = 0;
+        for (let index = 0; index < stableAllocations.length; index += 1) {
+          const allocation = stableAllocations[index];
+          const expectedLot = fifoLots[fifoIndex];
+          if (!expectedLot || allocation.lotId !== expectedLot.lotId ||
+            (index < stableAllocations.length - 1 &&
+              allocation.quantity < expectedLot.openQuantity - DEFAULT_TOLERANCE)) {
+            addIssue(event, 'unsupported', 'Sale allocations do not consume the known open acquisition lots in FIFO order.');
+            validStableAllocations = false;
+            break;
+          }
+          fifoIndex += 1;
         }
-        fifoIndex += 1;
       }
       if (!validStableAllocations) continue;
 
