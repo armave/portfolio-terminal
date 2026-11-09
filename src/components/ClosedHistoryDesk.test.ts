@@ -154,6 +154,15 @@ describe('Trades cache-first rendering', () => {
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
   });
 
+  it('requests cashflows only after the broker execution refresh and only for a changed latest-trade checkpoint', () => {
+    const source = readSource();
+    expect(source).toContain('if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;');
+    expect(source).toContain('getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || \'no-trades\'');
+    expect(source).toContain('getFreedomCashflowTradeCheckpoint(accountId)');
+    expect(source).toContain('if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint)');
+    expect(source).toContain('markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)');
+  });
+
   it('waits only when there is no cached broker or app-owned trade data', () => {
     const source = readSource();
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
