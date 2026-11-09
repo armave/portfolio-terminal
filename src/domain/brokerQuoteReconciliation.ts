@@ -33,11 +33,12 @@ interface BrokerQuoteReconciliationFinding {
   type:
     | 'price_mismatch'
     | 'currency_mismatch'
-    | 'quote_unclassified'
     | 'ambiguous_app_quote'
     | 'ambiguous_broker_quote';
   ticker: string;
   currency?: string;
+  appCurrency?: string;
+  brokerCurrency?: string;
   appValue: number | null;
   brokerValue: number | null;
   difference?: number;
@@ -77,7 +78,6 @@ interface NormalizedAppQuote {
   price: number;
   currency: string;
   provider: string | null;
-  exchange: string | null;
   observedAt: number | null;
   receivedAt: number | null;
   verified: boolean;
@@ -130,12 +130,11 @@ function normalizeAppQuote(row: AppQuoteHolding, now: number, maxAgeMs: number):
   const provider = typeof (details?.provider || row?.quoteSource) === 'string'
     ? String(details?.provider || row?.quoteSource).trim().toUpperCase() || null
     : null;
-  const exchange = typeof details?.exchange === 'string'
-    ? details.exchange.trim().toUpperCase() || null
-    : null;
   const observationAgeMs = observedAt === null ? null : now - observedAt;
+  const receivedAgeMs = receivedAt === null ? null : now - receivedAt;
   const observationFresh = observationAgeMs !== null &&
-    observationAgeMs >= -60_000 && observationAgeMs <= maxAgeMs;
+    observationAgeMs >= -60_000 && observationAgeMs <= maxAgeMs &&
+    receivedAgeMs !== null && receivedAgeMs >= -60_000 && receivedAgeMs <= maxAgeMs;
   const verified = Boolean(
     currency &&
     provider &&
@@ -148,7 +147,7 @@ function normalizeAppQuote(row: AppQuoteHolding, now: number, maxAgeMs: number):
     details?.cacheStatus !== 'stale-fallback'
   );
 
-  return { ticker, price, currency, provider, exchange, observedAt, receivedAt, verified };
+  return { ticker, price, currency, provider, observedAt, receivedAt, verified };
 }
 
 function normalizeBrokerQuote(
@@ -166,7 +165,9 @@ function normalizeBrokerQuote(
   const receivedAt = finiteTimestamp(snapshot.receivedAt);
   const ageReference = observedAt ?? receivedAt;
   const ageMs = ageReference === null ? null : now - ageReference;
-  const timestampUsable = ageMs !== null && ageMs >= -60_000 && ageMs <= maxAgeMs;
+  const receivedAgeMs = receivedAt === null ? null : now - receivedAt;
+  const timestampUsable = ageMs !== null && ageMs >= -60_000 && ageMs <= maxAgeMs &&
+    receivedAgeMs !== null && receivedAgeMs >= -60_000 && receivedAgeMs <= maxAgeMs;
   const provider = typeof snapshot.provider === 'string'
     ? snapshot.provider.trim().toUpperCase() || null
     : null;
@@ -292,13 +293,25 @@ export function reconcileBrokerQuotePrices(
 
     const commonCurrencies = [...appCurrencies.keys()].filter(currency => brokerCurrencies.has(currency));
     if (commonCurrencies.length === 0) {
+      const appRows = [...appCurrencies.values()].flat();
+      const brokerRows = [...brokerCurrencies.values()].flat();
+      const appCurrency = [...appCurrencies.keys()].sort().join(', ');
+      const brokerCurrency = [...brokerCurrencies.keys()].sort().join(', ');
       findings.push({
         id: `currency:${ticker}`,
         type: 'currency_mismatch',
         ticker,
-        appValue: null,
-        brokerValue: null,
+        appCurrency,
+        brokerCurrency,
+        appValue: appRows.length === 1 ? appRows[0].price : null,
+        brokerValue: brokerRows.length === 1 ? brokerRows[0].price : null,
         confidence: 'provisional',
+        appProvider: appRows.length === 1 ? appRows[0].provider ?? undefined : undefined,
+        brokerProvider: brokerRows.length === 1 ? brokerRows[0].provider ?? undefined : undefined,
+        appObservedAt: appRows.length === 1 ? appRows[0].observedAt ?? undefined : undefined,
+        appReceivedAt: appRows.length === 1 ? appRows[0].receivedAt ?? undefined : undefined,
+        brokerObservedAt: brokerRows.length === 1 ? brokerRows[0].observedAt ?? undefined : undefined,
+        brokerReceivedAt: brokerRows.length === 1 ? brokerRows[0].receivedAt ?? undefined : undefined,
         explanation: 'App and broker quotes use different or unverified currencies. No conversion was attempted.'
       });
       continue;
@@ -374,7 +387,8 @@ export function reconcileBrokerQuotePrices(
     [...currencies.values()].some(rows => rows.some(row => !row.verified))
   );
   const snapshotVerified = snapshot.status === 'current' && quality === 'complete' &&
-    Boolean(provider && observedAt && receivedAt && ageMs !== null && ageMs >= -60_000 && ageMs <= maxAgeMs);
+    Boolean(provider && observedAt && receivedAt && ageMs !== null && ageMs >= -60_000 && ageMs <= maxAgeMs &&
+      now - receivedAt >= -60_000 && now - receivedAt <= maxAgeMs);
   const hasProvisionalFinding = findings.some(finding => finding.confidence === 'provisional');
   const hasConfirmedFinding = findings.some(finding => finding.confidence === 'confirmed');
   const hasEvidenceWarnings = warnings.length > 0 || hasUnverifiedAppQuotes || !snapshotVerified;
