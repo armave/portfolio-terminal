@@ -168,6 +168,8 @@ describe('Trades broker quote reconciliation wiring', () => {
     expect(source).toContain('cashCushion: state.cashCushion');
     expect(source).toContain('brokerAccountInfo: state.brokerAccountInfo');
     expect(source).toContain('appQuotes={[');
+    expect(source).toContain('price: holding.currentPrice,');
+    expect(source).not.toContain('price: holding.currentPrice ?? holding.price,');
     expect(source).toContain('brokerQuoteSnapshot={state.brokerAccountInfo ? {');
     expect(source).toContain('quality ?? state.brokerAccountInfo.snapshotQuality');
   });
