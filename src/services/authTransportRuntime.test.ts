@@ -130,7 +130,10 @@ describe('auth transport runtime', () => {
     expect(runtime.getCachedUsers()).toBeNull();
     token = 'session-token';
     clock += 15_001;
-    expect(runtime.getCachedUsers()).toBeNull();
+    // Keep the old labels visible while listUsers() revalidates the expired cache.
+    expect(runtime.getCachedUsers()).toMatchObject([{ id: 'guest-1' }, { id: 'admin-2' }]);
+    await runtime.listUsers();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('does not let an invalidated in-flight directory read refill the cache', async () => {
