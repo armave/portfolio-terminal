@@ -273,13 +273,17 @@ describe('margin-call buffer presentation', () => {
 });
 
 
-describe('clickable Margin Health overview', () => {
-  it('opens one overview modal from the original risk section', () => {
+describe('accessible Margin Health overview action', () => {
+  it('opens the risk overview from native, translated buttons rather than clickable sections', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('margin-risk-gauge-clickable');
+    expect(source).toContain('margin-risk-overview-trigger');
+    expect(source.match(/class="margin-risk-overview-trigger"/g)).toHaveLength(2);
     expect(source).toContain('onClick={openOverview}');
-    expect(source).toContain('<MarginRiskOverviewModal');
+    expect(source).toContain('aria-haspopup="dialog"');
+    expect(source).toContain("translateText('Open margin risk overview', language)");
+    expect(source).not.toContain('role="button"');
+    expect(source).not.toContain('onKeyDown={cardKeyDown}');
     expect(modal).toContain('role="dialog"');
     expect(modal).toContain('aria-modal="true"');
     expect(modal).toContain('onEscape: onClose');
