@@ -159,3 +159,16 @@ describe('Trades cache-first rendering', () => {
     expect(source).not.toContain('Refreshing TradeNet history…</p>');
   });
 });
+
+
+describe('Trades broker quote reconciliation wiring', () => {
+  it('passes current app quote provenance and broker snapshot metadata to the read-only review', () => {
+    const source = readSource();
+    expect(source).toContain('positions: state.positions');
+    expect(source).toContain('cashCushion: state.cashCushion');
+    expect(source).toContain('brokerAccountInfo: state.brokerAccountInfo');
+    expect(source).toContain('appQuotes={[');
+    expect(source).toContain('brokerQuoteSnapshot={state.brokerAccountInfo ? {');
+    expect(source).toContain('snapshotQuality ?? state.brokerAccountInfo.quality');
+  });
+});
