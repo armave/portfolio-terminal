@@ -126,9 +126,22 @@ export function getReversibleBalanceAdjustmentEvents(
   events: readonly PortfolioTransactionEvent[] | undefined
 ): PortfolioTransactionEvent[] {
   if (!Array.isArray(events) || events.length === 0) return [];
-  const reversedEventIds = new Set(events
-    .filter((event) => event.type === 'correction' && typeof event.relatedEventId === 'string')
-    .map((event) => event.relatedEventId as string));
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const reversedEventIds = new Set<string>();
+  for (const correction of events) {
+    if (correction.type !== 'correction' || typeof correction.relatedEventId !== 'string') continue;
+    const original = eventsById.get(correction.relatedEventId);
+    if (!original || (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment')) continue;
+    const cashDeltaMatches = original.cashDelta === undefined
+      ? correction.cashDelta === undefined
+      : typeof correction.cashDelta === 'number' &&
+        Math.abs(correction.cashDelta + original.cashDelta) <= 1e-10;
+    const debtDeltaMatches = original.marginDebtDelta === undefined
+      ? correction.marginDebtDelta === undefined
+      : typeof correction.marginDebtDelta === 'number' &&
+        Math.abs(correction.marginDebtDelta + original.marginDebtDelta) <= 1e-10;
+    if (cashDeltaMatches && debtDeltaMatches) reversedEventIds.add(original.id);
+  }
   return events
     .filter((event) => {
       if (event.type !== 'cash.adjustment' && event.type !== 'margin.adjustment') return false;
