@@ -231,6 +231,15 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('aria-label="User name"');
     expect(source).toContain('aria-label="Password (6+ characters)"');
   });
+
+  it('keeps admin user-management and broker-rule actions at least 44px for touch use', () => {
+    const source = readSource('../components/SettingsDesk.tsx');
+
+    expect(source.match(/min-h-11 min-w-11/g)).toHaveLength(5);
+    for (const label of ['Add user', 'Save', 'Delete', 'Save rules', 'Restore defaults']) {
+      expect(source).toContain(`>{label}</button>`);
+    }
+  });
 });
 
 
