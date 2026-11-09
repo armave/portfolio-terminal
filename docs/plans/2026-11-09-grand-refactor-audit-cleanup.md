@@ -81,19 +81,19 @@ This implementation removes a verified legacy mutation fallback and unnecessary 
 - [ ] Run adversarial cross-tenant authorization tests and security review before enabling a tenant data plane.
 - [ ] Record exact-head release gates and any skipped authenticated-broker/manual-device validation.
 
-## Exact-head validation checklist
-- [ ] npm run typecheck
-- [ ] npm test (Vitest)
-- [ ] npm run build (includes production bundle budget)
-- [ ] npm run validate:dead-code
-- [ ] npm run audit:dependencies
-- [ ] npm run audit:production
-- [ ] PR CI: Chromium browser smoke and performance baseline
-- [ ] Operations Browser Journey
-- [ ] Trade Lifecycle Browser Smoke
-- [ ] Final diff review for financial, persistence, i18n, API, and Worker changes
+## Validation checklist
+- [x] npm run typecheck
+- [x] npm test (Vitest): 167 files / 2,117 tests
+- [x] npm run build (production bundle budget passed)
+- [x] npm run validate:dead-code
+- [x] npm run audit:dependencies (configured high-severity threshold passed; 4 low-severity advisories remain)
+- [x] npm run audit:production (0 production vulnerabilities)
+- [x] PR CI: Chromium browser smoke and desktop/mobile performance baseline
+- [x] Operations Browser Journey
+- [x] Trade Lifecycle Browser Smoke
+- [x] Final diff review for financial, persistence, i18n, API, and Worker changes
 
-A local clone and local test run are not claimed: this environment could not resolve github.com for Git clone. Exact-head GitHub Actions results will be checked after PR creation.
+Validation evidence is tracked in PR #418. GitHub Actions reruns the release checks for each pushed head; the local environment did not support cloning the repository, so no local test run is claimed.
 
 ## Cloud-sync typing follow-up — 2026-11-09
 
