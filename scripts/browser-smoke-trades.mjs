@@ -426,7 +426,7 @@ try {
   if (!successfulCorrection?.note?.includes('Browser smoke: reverse the test cash adjustment')) {
     throw new Error('The successful balance reversal did not retain its review reason.');
   }
-  if (await page.locator('article').filter({ hasText: 'Cash adjustment' }).count() !== 0) {
+  if (await page.locator('section[aria-labelledby="balanceAdjustmentHistoryHeading"] article').count() !== 0) {
     throw new Error('A reversed cash adjustment remained in the eligible Balance-desk list.');
   }
 
