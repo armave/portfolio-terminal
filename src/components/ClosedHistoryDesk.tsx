@@ -794,6 +794,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
               legacyClosedTrades={state.closedTrades || []}
+              onRecordReview={(section, findingId, findingType, subject, reason) =>
+                portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)
+              }
               appQuotes={[
                 ...Object.values(state.positions || {}).map(position => ({
                   ticker: position.ticker,
