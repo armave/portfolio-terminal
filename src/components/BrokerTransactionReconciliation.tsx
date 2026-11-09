@@ -111,6 +111,8 @@ const RU_COPY: Record<string, string> = {
   'Broker quote source': 'Источник котировки брокера',
   'App observation': 'Наблюдение приложения',
   'Broker observation': 'Наблюдение брокера',
+  'App currency': 'Валюта приложения',
+  'Broker currency': 'Валюта брокера',
   'The app and broker quotes use different or unverified currencies. No conversion was attempted.': 'Котировки приложения и брокера указаны в разных или неподтверждённых валютах. Конвертация не выполнялась.',
   'The reported prices differ, but one or both source observations are incomplete, stale, delayed, or unverifiable.': 'Указанные цены различаются, но одно или оба исходных наблюдения неполные, устаревшие, задержанные или не подтверждены.',
   'The app and broker report different prices for the same currency-qualified instrument with fresh source observations.': 'Приложение и брокер сообщают разные цены для одного инструмента в одинаковой валюте с актуальными исходными наблюдениями.',
@@ -320,8 +322,10 @@ export function BrokerTransactionReconciliation({
                     </div>
                     <p class="mt-1 text-slate-400">{translateBrokerReconciliationCopy(finding.explanation)}</p>
                     <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
-                      <span>{translateBrokerReconciliationCopy('App quote')}: {formatValue(finding.appValue, finding.currency)}</span>
-                      <span>{translateBrokerReconciliationCopy('Broker quote')}: {formatValue(finding.brokerValue, finding.currency)}</span>
+                      <span>{translateBrokerReconciliationCopy('App quote')}: {formatValue(finding.appValue, finding.appCurrency || finding.currency)}</span>
+                      <span>{translateBrokerReconciliationCopy('Broker quote')}: {formatValue(finding.brokerValue, finding.brokerCurrency || finding.currency)}</span>
+                      {finding.appCurrency && <span>{translateBrokerReconciliationCopy('App currency')}: {finding.appCurrency}</span>}
+                      {finding.brokerCurrency && <span>{translateBrokerReconciliationCopy('Broker currency')}: {finding.brokerCurrency}</span>
                       {finding.appProvider && <span>{translateBrokerReconciliationCopy('App quote source')}: {finding.appProvider}</span>}
                       {finding.brokerProvider && <span>{translateBrokerReconciliationCopy('Broker quote source')}: {finding.brokerProvider}</span>}
                       {finding.appObservedAt && <span>{translateBrokerReconciliationCopy('App observation')}: {formatTimestamp(finding.appObservedAt)}</span>}
