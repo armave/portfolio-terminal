@@ -331,6 +331,7 @@ describe('balance adjustment reversal access', () => {
     const events = [
       event('cash-old', 'cash.adjustment', 1),
       event('cash-reversed', 'cash.adjustment', 2),
+      event('cash-reversal-invalid', 'correction', 2.5, { relatedEventId: 'cash-reversed', cashDelta: -90 }),
       event('cash-reversal', 'correction', 3, { relatedEventId: 'cash-reversed', cashDelta: -100 }),
       event('trade', 'trade.buy', 4, { ticker: 'AAPL', quantity: 1, cashDelta: -100 }),
       ...Array.from({ length: 6 }, (_, index) =>
