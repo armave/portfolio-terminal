@@ -53,6 +53,16 @@ describe('terminal command validation and cash routing', () => {
     expect(buyStock).toHaveBeenCalledWith('AAPL', 2, 100, expect.any(String), undefined);
   });
 
+  it('does not schedule follow-up work when a buy cannot be persisted', () => {
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockReturnValue(false);
+    const result = CommandDispatcher.execute('bought 2 AAPL for 100');
+
+    expect(buyStock).toHaveBeenCalledWith('AAPL', 2, 100, expect.any(String), undefined);
+    expect(result.type).toBe('err');
+    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
   it('dispatches a live quote request as a visible side effect', () => {
     const result = CommandDispatcher.execute('quote AAPL');
 
