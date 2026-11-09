@@ -2790,6 +2790,13 @@ export class PortfolioStateDO {
     const session = await this.resolveSession(request);
     if (!session) return jsonResponse({ error: "Authentication required." }, 401);
 
+    if (!["GET", "POST"].includes(request.method)) {
+      return new Response(JSON.stringify({ error: "Tenant directory routes only support GET and POST." }), {
+        status: 405,
+        headers: { ...CORS_HEADERS, "Allow": "GET, POST", "Cache-Control": "no-store" }
+      });
+    }
+
     const directory = await this.ensureTenantDirectory();
     if (!directory) return jsonResponse({ error: "Tenant directory is unavailable or requires recovery." }, 503);
 

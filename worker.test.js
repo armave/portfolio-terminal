@@ -4781,6 +4781,42 @@ describe('Durable Object tenant directory ownership foundation', () => {
     expect(forgedCapabilities.status).toBe(400);
   });
 
+  it('rejects non-GET/POST directory methods without provisioning or changing membership state', async () => {
+    const { store, values } = await makeTenantStore();
+    const initial = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(initial.status).toBe(200);
+    const before = structuredClone(values.get('tenant:directory:v1'));
+
+    const createBody = JSON.stringify({
+      name: 'Must Not Be Created',
+      workspaceName: 'No Workspace',
+      portfolioName: 'No Portfolio'
+    });
+    for (const method of ['PUT', 'PATCH', 'DELETE']) {
+      const response = await store.fetch(new Request('https://store.test/api/tenants', {
+        method,
+        headers: headers('tenant-admin-token'),
+        body: createBody
+      }));
+      expect(response.status).toBe(405);
+      expect(response.headers.get('Allow')).toBe('GET, POST');
+    }
+
+    const revoke = await store.fetch(new Request(
+      'https://store.test/api/tenants/tenant-id-123456/memberships/revoke',
+      {
+        method: 'DELETE',
+        headers: headers('tenant-admin-token'),
+        body: JSON.stringify({ userId: 'guest-2' })
+      }
+    ));
+    expect(revoke.status).toBe(405);
+    expect(values.get('tenant:directory:v1')).toEqual(before);
+    expect(values.get('tenant:directory:v1').tenants.some((item) => item.name === 'Must Not Be Created')).toBe(false);
+  });
+
   it('fails closed for missing, invalid or expired authentication and malformed stored directory records', async () => {
     const { store, values } = await makeTenantStore();
     const unauthorized = await store.fetch(new Request('https://store.test/api/tenants'));
@@ -4796,6 +4832,39 @@ describe('Durable Object tenant directory ownership foundation', () => {
 });
 
 describe('tenant directory Worker routing', () => {
+  it('rejects unsupported verbs and unknown tenant paths before forwarding them', async () => {
+    const calls = [];
+    const stub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        calls.push(url.pathname);
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Unexpected tenant directory forwarding.' }), { status: 500 });
+      })
+    };
+    const binding = { idFromName: vi.fn((name) => name), get: vi.fn(() => stub) };
+
+    const unsupportedMethod = await worker.fetch(new Request('https://worker.test/api/tenants', {
+      method: 'PUT',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Must not be created' })
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(unsupportedMethod.status).toBe(405);
+    expect(unsupportedMethod.headers.get('Allow')).toBe('GET, POST');
+    expect(calls).toEqual(['/api/auth/verify']);
+
+    calls.length = 0;
+    const unsupportedPath = await worker.fetch(new Request('https://worker.test/api/tenants/unknown/secret', {
+      method: 'POST',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'guest-2' })
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(unsupportedPath.status).toBe(404);
+    expect(calls).toEqual(['/api/auth/verify']);
+  });
+
   it('routes authenticated guest directory reads to the identity Durable Object', async () => {
     const calls = [];
     const stub = {

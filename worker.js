@@ -1588,7 +1588,18 @@ export default {
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
-        const tenantDirectoryRoute = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
+        const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
+        const tenantMembershipRoute = /^\\/api\\/tenants\\/[A-Za-z0-9_-]{8,80}\\/memberships(?:\\/revoke)?$/.test(pathname);
+        const tenantDirectoryRoute = pathname === "/api/tenants" || tenantMembershipRoute;
+        if (tenantDirectoryPath && !["GET", "POST"].includes(request.method)) {
+            return new Response(JSON.stringify({ error: "Tenant directory routes only support GET and POST." }), {
+                status: 405,
+                headers: { ...corsHeaders, "Allow": "GET, POST", "Cache-Control": "no-store" }
+            });
+        }
+        if (tenantDirectoryPath && !tenantDirectoryRoute) {
+            return jsonError("Not found.", 404, corsHeaders);
+        }
         if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin && !tenantDirectoryRoute) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
