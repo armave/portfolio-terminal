@@ -493,7 +493,7 @@ try {
   if (!afterRejectedReversal.transactionEvents.some((event) => event.id === consumedCashAdjustment.id)) {
     throw new Error('The rejected balance reversal lost its original journal event.');
   }
-  await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).click();
+  await page.getByRole('button', { name: 'Margin: QA' }).click();
   await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 20000 });
 
   await runCommand(page, 'bought 2 QA for 120', { confirmTrade: true });
