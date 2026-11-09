@@ -1027,14 +1027,14 @@ export class PortfolioStore {
     const cleanSubject = typeof subject === 'string' ? subject.trim() : '';
     const cleanReason = typeof reason === 'string' ? reason.trim() : '';
     if ((section !== 'activity' && section !== 'quote') ||
-      !cleanFindingId || cleanFindingId.length > 80 ||
+      !cleanFindingId || cleanFindingId.length > 160 ||
       !cleanFindingType || cleanFindingType.length > 60 ||
       !cleanSubject || cleanSubject.length > 80 ||
       !cleanReason || cleanReason.length > 240) return false;
 
     const idempotencyKey = `reconciliation-review:${section}:${cleanFindingId}`;
     const requestFingerprint = createMutationFingerprint([
-      'review', section, cleanFindingId, cleanFindingType, cleanSubject, cleanReason
+      'review', section, cleanFindingType, cleanSubject, cleanReason
     ]);
     const context: PortfolioTransactionContext = {
       idempotencyKey,
