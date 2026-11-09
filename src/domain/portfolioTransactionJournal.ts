@@ -4,7 +4,8 @@ import {
   type PortfolioTransactionContext,
   type PortfolioTransactionDraft,
   type PortfolioTransactionEvent,
-  type PortfolioTransactionEventType
+  type PortfolioTransactionEventType,
+  type PortfolioTransactionLotAllocation
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
