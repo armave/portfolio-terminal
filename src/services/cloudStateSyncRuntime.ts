@@ -4,14 +4,14 @@ import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from '
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
-export interface CloudStateRecord {
+interface CloudStateRecord {
   transactionEvents?: PortfolioState['transactionEvents'];
   positions?: Record<string, { shares?: number | string }>;
   cashCushion?: { freeCash?: number | string; holdings?: Array<{ ticker: string; shares: number | string }> };
   balance?: number | string;
   [key: string]: unknown;
 }
-export type CloudStateInput = PortfolioState | CloudStateRecord;
+type CloudStateInput = PortfolioState | CloudStateRecord;
 
 function isRecord(value: unknown): value is CloudStateRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
