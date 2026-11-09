@@ -5,7 +5,7 @@ import type {
 } from '../types/portfolioTransaction';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
 
-export interface PortfolioLotReplayOpenLot {
+interface PortfolioLotReplayOpenLot {
   lotId: string;
   ticker: string;
   buyEventId: string;
@@ -22,7 +22,7 @@ export interface PortfolioLotReplayOpenLot {
   realizedPnl: number;
 }
 
-export interface PortfolioLotReplaySale {
+interface PortfolioLotReplaySale {
   eventId: string;
   ticker: string;
   quantity: number;
@@ -38,7 +38,7 @@ export interface PortfolioLotReplaySale {
   allocations: PortfolioTransactionLotAllocation[];
 }
 
-export interface PortfolioLotJournalIssue {
+interface PortfolioLotJournalIssue {
   eventId?: string;
   disposition: 'incomplete' | 'unsupported';
   reason: string;
@@ -51,7 +51,7 @@ export interface PortfolioLotJournalReplay {
   issues: PortfolioLotJournalIssue[];
 }
 
-export interface PortfolioLotParityDiscrepancy {
+interface PortfolioLotParityDiscrepancy {
   field:
     | 'open-lot-missing'
     | 'open-lot-quantity'
