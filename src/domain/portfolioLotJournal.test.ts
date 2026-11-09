@@ -374,9 +374,16 @@ describe('lot-aware transaction journal replay', () => {
     expect(isPortfolioTransactionEvent(wrongGross)).toBe(false);
   });
 
-  it('validates a new buy lot only when it contains its source date and acquisition deltas', () => {
+  it('keeps older stable-lot events readable but marks missing source dates incomplete', () => {
     expect(isPortfolioTransactionEvent(buyOne)).toBe(true);
     const missingAcquisitionDate = { ...buyOne, acquisitionDate: undefined };
-    expect(isPortfolioTransactionEvent(missingAcquisitionDate)).toBe(false);
+    expect(isPortfolioTransactionEvent(missingAcquisitionDate)).toBe(true);
+    const replay = replayPortfolioTransactionLots([missingAcquisitionDate]);
+    expect(replay.status).toBe('incomplete');
+    expect(replay.openLots[0]).toMatchObject({
+      lotId: 'lot-one',
+      openQuantity: 2,
+      acquisitionDate: null
+    });
   });
 });
