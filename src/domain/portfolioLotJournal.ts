@@ -100,11 +100,6 @@ function cleanTicker(value: unknown): string {
   return typeof value === 'string' ? value.trim().toUpperCase() : '';
 }
 
-function dateOnly(value: number): string {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : '';
-}
-
 function summarizeStatus(issues: readonly PortfolioLotJournalIssue[]): PortfolioLotJournalReplay['status'] {
   return issues.some((issue) => issue.disposition === 'unsupported')
     ? 'unsupported'
