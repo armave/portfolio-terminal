@@ -791,7 +791,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 id="boardTitleRow"
                 class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
               >
-                <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
+                <h1 class="board-title-text min-w-0 text-lg font-bold text-white text-center md:text-left" id="boardTitle">
                   {boardTitle}
                 </h1>
 

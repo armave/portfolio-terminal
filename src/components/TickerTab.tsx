@@ -73,39 +73,19 @@ export const TickerTabs = memo(function TickerTabs({
 
   return (
     <>
-      {isAdmin && (
+      {isAdmin && tickers.length > 1 && (
         <div
           class="workspace-nav-ticker-list"
           role="group"
           aria-label={translateText('MARGIN DESK', getAppLanguage())}
         >
-          {isAdmin && tickers.length === 0 && (
+          <>
             <button
               type="button"
-              data-nav-tab="true"
-              data-nav-index={0}
-              ref={(element) => { tabButtonRefs.current[0] = element; }}
-              onKeyDown={handleTabKeyDown}
               onClick={() => selectView('COMBINED')}
               aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
-              aria-pressed={isMarginDeskActive}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
-                ? 'bg-emerald-600 text-black'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-            >
-              <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
-              <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-            </button>
-          )}
-
-          {isAdmin && tickers.length === 1 && (
-            <button
-              type="button"
-              onClick={() => selectView(tickers[0])}
-              aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
-              aria-pressed={activeView === tickers[0]}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
+              aria-pressed={activeView === 'COMBINED'}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
@@ -114,54 +94,71 @@ export const TickerTabs = memo(function TickerTabs({
               ref={(element) => { tabButtonRefs.current[0] = element; }}
               onKeyDown={handleTabKeyDown}
             >
-              <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
-              <span class="workspace-nav-label--mobile">{tickers[0]}</span>
+              <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+              <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
             </button>
-          )}
 
-          {isAdmin && tickers.length > 1 && (
-            <>
+            {tickers.map((t, index) => (
               <button
+                key={t}
                 type="button"
-                onClick={() => selectView('COMBINED')}
-                aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
-                aria-pressed={activeView === 'COMBINED'}
-                class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
+                onClick={() => selectView(t)}
+                aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
+                aria-pressed={activeView === t}
+                class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
                   ? 'bg-emerald-600 text-black'
                   : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                   }`}
                 data-nav-tab="true"
-                data-nav-index={0}
-                ref={(element) => { tabButtonRefs.current[0] = element; }}
+                data-nav-index={index + 1}
+                ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
                 onKeyDown={handleTabKeyDown}
               >
-                <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-                <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+                {t}
               </button>
-
-              {tickers.map((t, index) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => selectView(t)}
-                  aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
-                  aria-pressed={activeView === t}
-                  class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
-                    ? 'bg-emerald-600 text-black'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  data-nav-tab="true"
-                  data-nav-index={index + 1}
-                  ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
-                  onKeyDown={handleTabKeyDown}
-                >
-                  {t}
-                </button>
-              ))}
-            </>
-          )}
-
+            ))}
+          </>
         </div>
+      )}
+
+      {isAdmin && tickers.length === 1 && (
+        <button
+          type="button"
+          onClick={() => selectView(tickers[0])}
+          aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
+          aria-pressed={activeView === tickers[0]}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+        >
+          <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
+          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
+        </button>
+      )}
+
+      {isAdmin && tickers.length === 0 && (
+        <button
+          type="button"
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => selectView('COMBINED')}
+          aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
+          aria-pressed={isMarginDeskActive}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+        >
+          <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
+          <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+        </button>
       )}
 
       <button
