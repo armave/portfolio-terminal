@@ -233,7 +233,9 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
 
   const getCachedUsers = (): AuthUser[] | null => {
     const token = dependencies.getActiveGatewaySecret();
-    if (!token || usersCache?.token !== token || usersCache.expiresAt <= now()) return null;
+    // Display-only stale-while-revalidate: callers still invoke listUsers(),
+    // which refreshes expired data. Never expose another session's directory.
+    if (!token || usersCache?.token !== token) return null;
     return usersCache.users;
   };
 
