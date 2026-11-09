@@ -99,7 +99,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
               aria-haspopup="dialog"
               aria-label={translateText('Open margin risk overview', language)}
               title={translateText('Click to view margin risk overview', language)}
-              >
+              class="margin-risk-overview-trigger">
               <span class="margin-risk-status elevated">
                 {translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}
               </span>
@@ -147,7 +147,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             aria-haspopup="dialog"
             aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
-            >
+            class="margin-risk-overview-trigger">
             <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
               {risk.summaryText.split(' · ')[0]}
             </span>
