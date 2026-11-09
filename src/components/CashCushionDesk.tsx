@@ -603,9 +603,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       <div class={`flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2 ${!isAdmin && 'hidden'}`}>
         <div>
           <div class="flex items-center gap-2">
-            <h2 class="text-lg font-black text-cyan-400 tracking-wide">
+            <h1 class="text-lg font-black text-cyan-400 tracking-wide">
               {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
-            </h2>
+            </h1>
             {balanceRefreshing && (
               <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
                 <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
