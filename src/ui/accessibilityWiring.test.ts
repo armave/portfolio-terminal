@@ -132,6 +132,16 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
   });
 
+  it('keeps Closed History funding controls at least 44px tall for touch use', () => {
+    const source = readSource('../components/ClosedHistoryDesk.tsx');
+
+    expect(source).toContain("aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}");
+    expect(source.match(/inline-flex min-h-11 min-w-11 items-center justify-center/g)).toHaveLength(6);
+    expect(source).toContain("aria-pressed={allocationType === 'cash'}");
+    expect(source).toContain("aria-pressed={allocationType === 'margin'}");
+    expect(source).toContain("aria-pressed={allocationType === 'mix'}");
+  });
+
   it('does not display missing margin quotes as zero-value positions or false negative returns', () => {
     const source = readSource('../components/SummaryMetricsGrid.tsx');
     expect(source).toContain('getUsableMarketPrice(pos.currentPrice)');
