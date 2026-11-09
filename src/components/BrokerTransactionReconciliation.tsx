@@ -111,6 +111,7 @@ const RU_COPY: Record<string, string> = {
   'Broker quote source': 'Источник котировки брокера',
   'App observation': 'Наблюдение приложения',
   'Broker observation': 'Наблюдение брокера',
+  'Received': 'Получено',
   'App currency': 'Валюта приложения',
   'Broker currency': 'Валюта брокера',
   'The app and broker quotes use different or unverified currencies. No conversion was attempted.': 'Котировки приложения и брокера указаны в разных или неподтверждённых валютах. Конвертация не выполнялась.',
