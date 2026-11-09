@@ -132,6 +132,17 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
   });
 
+  it('keeps Guest LOTS filters and broker reconciliation actions touch-sized', () => {
+    const guestHistory = readSource('../components/GuestTrancheHistory.tsx');
+    const reconciliation = readSource('../components/BrokerTransactionReconciliation.tsx');
+
+    expect(guestHistory.match(/class="min-h-11 rounded border border-slate-700/g)).toHaveLength(4);
+    expect(guestHistory).not.toContain('class="h-8 rounded border border-slate-700');
+    expect(reconciliation.match(/inline-flex min-h-11 min-w-11 items-center justify-center rounded border/g)).toHaveLength(3);
+    expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300');
+    expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300');
+  });
+
   it('keeps Closed History funding controls at least 44px tall for touch use', () => {
     const source = readSource('../components/ClosedHistoryDesk.tsx');
 

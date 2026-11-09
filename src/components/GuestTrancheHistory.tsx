@@ -78,12 +78,12 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
           Ticker
           <input type="search" value={tickerFilter} onInput={(event) => setTickerFilter((event.currentTarget as HTMLInputElement).value)}
-            placeholder="All tickers" class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
+            placeholder="All tickers" class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
           Status
           <select value={statusFilter} onChange={(event) => setStatusFilter((event.currentTarget as HTMLSelectElement).value as typeof statusFilter)}
-            class="h-8 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
+            class="min-h-11 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
             <option value="all" class="text-center">All statuses</option>
             <option value="active" class="text-center">Active</option>
             <option value="closed" class="text-center">Closed</option>
@@ -93,12 +93,12 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
           Date from
           <input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate((event.currentTarget as HTMLInputElement).value)}
-            class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
+            class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
           Date to
           <input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate((event.currentTarget as HTMLInputElement).value)}
-            class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
+            class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
         </label>
       </div>
 
