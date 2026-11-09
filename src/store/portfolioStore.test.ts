@@ -3399,3 +3399,92 @@ describe('broker position integrity persistence', () => {
     });
   });
 });
+
+
+describe('auditable balance adjustment reversals', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('reverses a free-cash adjustment with one immutable linked correction event', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(500)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+    expect(original).toMatchObject({ type: 'cash.adjustment', cashDelta: 500 });
+    const originalCount = store.getState().transactionEvents?.length;
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Duplicate manual cash entry')).toBe(true);
+    const afterReversal = store.getState();
+    const reversal = afterReversal.transactionEvents?.at(-1);
+
+    expect(afterReversal.cashCushion.freeCash).toBe(0);
+    expect(afterReversal.cashBalance).toBe(0);
+    expect(reversal).toMatchObject({
+      type: 'correction',
+      relatedEventId: original!.id,
+      cashDelta: -500,
+      note: `Reversal of balance adjustment ${original!.id}: Duplicate manual cash entry`,
+      actor: { type: 'user' },
+      source: 'transaction-reversal'
+    });
+    expect(afterReversal.transactionEvents).toHaveLength((originalCount || 0) + 1);
+    expect(inspectPortfolioTransactionJournalReplayCoverage(afterReversal.transactionEvents || []).status).toBe('complete');
+    expect(verifyPortfolioTransactionParity(afterReversal.transactionEvents || [], afterReversal))
+      .toEqual({ matches: true, discrepancies: [] });
+
+    // A repeat is idempotent and does not append a second correction or notify
+    // listeners with a new snapshot.
+    expect(store.reverseBalanceAdjustment(original!.id, 'Duplicate manual cash entry')).toBe(true);
+    expect(store.getState()).toBe(afterReversal);
+    expect(store.getState().transactionEvents).toHaveLength((originalCount || 0) + 1);
+    expect(store.reverseBalanceAdjustment(original!.id, 'Different reason')).toBe(false);
+  });
+
+  it('reverses margin-debt adjustments and preserves the signed balance convention', () => {
+    const store = new PortfolioStore();
+    expect(store.setMarginDebt(75)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Incorrect debt entry')).toBe(true);
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'correction',
+      relatedEventId: original!.id,
+      marginDebtDelta: -75
+    });
+    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()))
+      .toEqual({ matches: true, discrepancies: [] });
+  });
+
+  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', () => {
+    const tradeStore = new PortfolioStore();
+    expect(tradeStore.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
+    const tradeEvent = tradeStore.getState().transactionEvents?.at(-1);
+    const tradeSnapshot = tradeStore.getState();
+    expect(tradeStore.reverseBalanceAdjustment(tradeEvent!.id, 'Incorrect trade')).toBe(false);
+    expect(tradeStore.getState()).toBe(tradeSnapshot);
+
+    const cashStore = new PortfolioStore();
+    expect(cashStore.setFreeCash(100)).toBe(true);
+    const originalCashEvent = cashStore.getState().transactionEvents?.at(-1);
+    expect(cashStore.setFreeCash(20)).toBe(true);
+    const beforeRejectedReversal = cashStore.getState();
+
+    // The original +100 entry has since been mostly consumed. Reversing it
+    // would take free cash below zero, so no state or journal write is allowed.
+    expect(cashStore.reverseBalanceAdjustment(originalCashEvent!.id, 'Undo original cash funding')).toBe(false);
+    expect(cashStore.getState()).toBe(beforeRejectedReversal);
+    expect(cashStore.getState().transactionEvents).toHaveLength(2);
+  });
+
+  it('rejects missing originals, unsupported history corrections and invalid reasons', () => {
+    const store = new PortfolioStore();
+    expect(store.reverseBalanceAdjustment('missing-event', 'A valid reason')).toBe(false);
+    expect(store.reverseBalanceAdjustment('missing-event', '   ')).toBe(false);
+    expect(store.reverseBalanceAdjustment('missing-event', 'x'.repeat(501))).toBe(false);
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
+    const tradeId = store.getState().transactionEvents?.at(-1)?.id;
+    expect(store.reverseBalanceAdjustment(tradeId!, 'Trade reversal is not supported')).toBe(false);
+  });
+});
