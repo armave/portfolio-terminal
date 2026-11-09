@@ -17,6 +17,7 @@ describe('Trades reconciliation audit review', () => {
   it('records reviewed findings through the audit-only PortfolioStore API', () => {
     const source = readSource();
     expect(source).toContain('onRecordReview={(section, findingId, findingType, subject, reason) =>');
+    expect(source).toContain('isSessionCurrent() &&');
     expect(source).toContain('portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)');
   });
 });
