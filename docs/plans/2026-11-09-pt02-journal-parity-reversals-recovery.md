@@ -124,3 +124,17 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [ ] Complete authenticated live TradeNet validation, backup/cloud restore review and multi-device concurrency QA separately.
 
 **Safety boundary:** this is a shadow replay and auditability improvement, not a canonical-ledger cutover. Legacy/mixed histories remain explicitly incomplete. Exact reversal of stock trades, fee/financing corrections and corporate actions requires a separately accepted accounting contract.
+
+### Exact-head validation — implementation slice 3
+
+**PR:** [#410 — lot-aware trade journal and shadow parity](https://github.com/armave/portfolio-terminal/pull/410)  
+**Final tested head:** `5a1c714b8584a31838b402bd55cacd85d702840a`
+
+- [x] [Pull Request CI #42584548202](https://github.com/armave/portfolio-terminal/actions/runs/42584548202) — typecheck, all 2,100 Vitest tests (164 files), production build and bundle budget (420,529 bytes / 128,998 bytes gzip), production browser smoke, desktop/mobile performance baseline, dead-code validation and full/production dependency audits passed.
+- [x] [Operations Browser Journey #42584548162](https://github.com/armave/portfolio-terminal/actions/runs/42584548162) — unit/Worker tests, production account/Settings browser journey, dead-code validation and dependency audits passed.
+- [x] [Trade Lifecycle Browser Smoke #42584548184](https://github.com/armave/portfolio-terminal/actions/runs/42584548184) — typecheck, focused trade-lifecycle tests, production build and Chromium journey passed, including stable lot identity, a six-share FIFO sale across two lots, remaining-lot and closed-trade/event linkage assertions, reload and PR #409 review-note persistence.
+- [x] Manual source review of the new replay path: stable lot references, duplicate IDs, acquisition chronology, exact FIFO order, legacy-unmapped history, malformed/unsupported quantity changes and canonical open/closed parity fail closed without synthetic cost basis.
+- [x] Add regression coverage rejecting a sale that skips an older open lot; preserve `incomplete` (not `unsupported`) classification when the referenced lot is absent from available history.
+- [x] Confirm branch is based on current `dev` with zero commits behind; no Worker/Cloudflare code or deployment changed.
+
+**Separate operational gates, not certified by mocked CI:** authenticated live TradeNet validation, backup/export/import and encrypted cloud restore rehearsal, and real cross-device concurrency/stale-revision QA remain open for broader PT-02 acceptance. This PR does not claim those gates are complete.
