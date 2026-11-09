@@ -19,7 +19,13 @@ This PR now contains the first runtime implementation slice while preserving the
 - [ ] No tenant financial-state route or tenant Durable Object binding is enabled by this slice.
 - [ ] No per-tenant key is generated, rotated, recovered, exported, or deleted by this slice.
 
-**Direct-to-main server companion:** `016f17330877edd6098ff8b667c1d298da1e00ef` (method/path enforcement and Worker tests), corrected by `f33d9b592a0b72b7cd44f97b699cee8b59eecf5e` (route matcher correction). Exact CI/deployment evidence will be appended after the push workflow finishes.
+**Direct-to-main server companion:** [commit `8c920311e8a29f32b844fed6558a99ad466f4bbc`](https://github.com/armave/portfolio-terminal/commit/8c920311e8a29f32b844fed6558a99ad466f4bbc) on `main`, containing the Worker/DO method and route guards plus the final regression-test corrections.
+
+- [x] Worker test validation and pinned Wrangler deployment: [Deploy Cloudflare Worker #42561426103](https://github.com/armave/portfolio-terminal/actions/runs/42561426103) — success on the exact server commit.
+- [x] Main-branch Operations Browser Journey: [run #42561426142](https://github.com/armave/portfolio-terminal/actions/runs/42561426142) — success on the exact server commit.
+- [ ] Authenticated live tenant-boundary smoke/security review: not claimed by mocked Worker tests or the browser fixture.
+
+The deployment preserves `mode: directory-metadata-only` and `financialDataEnabled: false`; it does not enable independent tenant financial data.
 
 **Security disposition:** this is not completion of tenant data-plane isolation. The directory continues to return `mode: directory-metadata-only` and `financialDataEnabled: false`. The design explicitly prohibits enabling financial routes until PT-02 issue #330 and PT-16 issue #344, per-tenant key ownership/recovery, migration/rollback, and adversarial authorization gates are satisfied.
 
