@@ -168,6 +168,29 @@ describe('reconcileBrokerQuotePrices', () => {
     }));
   });
 
+  it('keeps comparisons provisional when broker snapshot quality is partial', () => {
+    const report = reconcile([appQuote({ price: 101 })], snapshot({ quality: 'partial' }));
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'price_mismatch',
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain('The broker position snapshot is incomplete; price findings are provisional.');
+  });
+
+  it('keeps legacy broker snapshots without current status provisional', () => {
+    const report = reconcile(
+      [appQuote({ price: 101 })],
+      snapshot({ status: undefined })
+    );
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'price_mismatch',
+      confidence: 'provisional'
+    }));
+    expect(report.warnings).toContain('The broker snapshot current status is not verified; price findings are provisional.');
+  });
+
   it('does not confirm broker prices without a source observation timestamp', () => {
     const report = reconcile(
       [appQuote({ price: 101 })],
