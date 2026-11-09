@@ -4,6 +4,7 @@ import {
   appendBrokerHistoryAuditEvents,
   createPortfolioTransactionEvent,
   hasPortfolioTransactionIdempotencyKey,
+  inspectPortfolioTransactionJournalReplayCoverage,
   isPortfolioTransactionEvent,
   isPortfolioTransactionEventList,
   mergePortfolioTransactionEvents,
@@ -503,6 +504,123 @@ describe('broker history audit events', () => {
 
     const replay = replayPortfolioTransactionJournal(events);
     expect(replay).toEqual({ positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0 });
+  });
+});
+
+describe('transaction journal replay coverage inspection', () => {
+  it('separates app-owned replay deltas from broker evidence and audit-only history corrections', () => {
+    const trade = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'AAPL',
+      quantity: 2,
+      positionQuantityDelta: 2,
+      cashDelta: -201.25,
+      marginDebtDelta: 0
+    }, { eventId: 'coverage-trade' });
+    const execution = createPortfolioTransactionEvent({
+      type: 'broker.execution',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 2,
+      externalReferenceId: 'fill-42'
+    }, { eventId: 'coverage-fill', actor: { type: 'broker' }, source: 'freedom-tradenet' });
+    const cashflow = createPortfolioTransactionEvent({
+      type: 'fee',
+      effectiveAt: draft.effectiveAt,
+      currency: 'USD',
+      externalReferenceId: 'fee-42',
+      externalCashFlowAmount: -1.25
+    }, { eventId: 'coverage-fee', actor: { type: 'broker' }, source: 'freedom-tradenet-cashflow' });
+    const historyCorrection = createPortfolioTransactionEvent({
+      type: 'history.correction',
+      effectiveAt: draft.effectiveAt,
+      note: 'Closed-history display row removed; financial balances were unchanged.'
+    }, { eventId: 'coverage-history-correction' });
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([
+      trade,
+      execution,
+      cashflow,
+      historyCorrection
+    ]);
+
+    expect(report).toMatchObject({
+      status: 'complete',
+      eventCount: 4,
+      replayableCount: 1,
+      evidenceOnlyCount: 2,
+      auditOnlyCount: 1,
+      issues: []
+    });
+    expect(report.findings.map(({ disposition }) => disposition)).toEqual([
+      'replayable',
+      'evidence-only',
+      'evidence-only',
+      'audit-only'
+    ]);
+  });
+
+  it('fails closed when a trade or financial correction is missing required replay evidence', () => {
+    const incompleteTrade = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'AAPL',
+      quantity: 2
+    }, { eventId: 'incomplete-trade' });
+    const incompleteCorrection = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: -10,
+      note: 'Correction missing its original event reference.'
+    }, { eventId: 'incomplete-correction' });
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([
+      incompleteTrade,
+      incompleteCorrection
+    ]);
+
+    expect(report.status).toBe('incomplete');
+    expect(report.issues).toHaveLength(2);
+    expect(report.issues.map(({ eventId, disposition }) => [eventId, disposition])).toEqual([
+      ['incomplete-trade', 'incomplete'],
+      ['incomplete-correction', 'incomplete']
+    ]);
+  });
+
+  it('reports unknown or malformed event schemas as unsupported instead of ignoring them', () => {
+    const valid = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: 25
+    }, { eventId: 'known-event' });
+    const unknown = { ...valid, id: 'unknown-event', type: 'future.financial-action' };
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([valid, unknown]);
+
+    expect(report.status).toBe('unsupported');
+    expect(report.replayableCount).toBe(1);
+    expect(report.issues).toEqual([expect.objectContaining({
+      eventId: 'unknown-event',
+      disposition: 'unsupported'
+    })]);
+  });
+
+  it('accepts a linked correction only when it has a reason and explicit inverse delta', () => {
+    const reversal = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: -125,
+      relatedEventId: 'original-cash-adjustment',
+      note: 'Reversal of original-cash-adjustment: duplicate cash entry.'
+    }, { eventId: 'cash-reversal' });
+
+    expect(inspectPortfolioTransactionJournalReplayCoverage([reversal])).toMatchObject({
+      status: 'complete',
+      replayableCount: 1,
+      issues: []
+    });
   });
 });
 
