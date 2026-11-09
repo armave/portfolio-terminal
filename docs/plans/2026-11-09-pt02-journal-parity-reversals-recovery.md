@@ -73,11 +73,11 @@ Avoid changing broker position normalization, margin formulas, reconciliation UI
 
 ### Exact-head validation — implementation slice 2
 
-**Implementation code head:** `1438f82d47f596cbc5667bdeb72171c5e3f1ee51` (PR base `1044727bf3055303ed94a134ee3b8fbb758f12b3`).
+**Implementation code head:** `a38a25c805cf39ca97ad2eb3a186e45d0d22533b` (PR base `1044727bf3055303ed94a134ee3b8fbb758f12b3`).
 
-- [x] [Pull Request CI #42561306230](https://github.com/armave/portfolio-terminal/actions/runs/42561306230) — TypeScript, all 2,054 Vitest tests (161 files), production build/bundle budget, dead-code validation and full/production dependency audits passed.
-- [x] [Operations Browser Journey #42561306240](https://github.com/armave/portfolio-terminal/actions/runs/42561306240) — 2,053 tests, production build, browser journey, dead-code validation and dependency audits passed.
-- [x] [Trade Lifecycle Browser Smoke #42561306491](https://github.com/armave/portfolio-terminal/actions/runs/42561306491) — 151 focused tests and production browser lifecycle journey passed.
+- [x] [Pull Request CI #42561609030](https://github.com/armave/portfolio-terminal/actions/runs/42561306230) — TypeScript, all 2,054 Vitest tests (161 files), production build/bundle budget, dead-code validation and full/production dependency audits passed.
+- [x] [Operations Browser Journey #42561608991](https://github.com/armave/portfolio-terminal/actions/runs/42561306240) — 2,053 tests, production build, browser journey, dead-code validation and dependency audits passed.
+- [x] [Trade Lifecycle Browser Smoke #42561608981](https://github.com/armave/portfolio-terminal/actions/runs/42561306491) — 151 focused tests and production browser lifecycle journey passed.
 - [x] No Worker code or Worker deployment was changed by this client/domain slice.
 
 No user-facing copy was added, so no localization catalog changes were needed. Authenticated live broker behavior and actual multi-device reversal workflows remain separate QA for the broader PT-02 acceptance scope.
