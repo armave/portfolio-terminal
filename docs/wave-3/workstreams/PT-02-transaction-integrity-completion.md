@@ -115,3 +115,21 @@ The Worker deployment workflow required a test-fixture isolation correction for 
 ### Remaining PT-02 acceptance scope
 
 This implementation slice closes the lost-response retry gap; it does **not** close PT-02. Still required: end-to-end inventory of every financial mutation call path, explicit correction/reversal semantics and unsupported-path handling, full lifecycle/backup-import/restore/reload parity, cross-tab conflict UX under real multi-device use, and a reviewed versioned migration/rollback procedure. The event journal and `PortfolioState.positions` remain additive/canonical respectively.
+
+
+## Implementation slice 2 — auditable balance reversals and replay coverage
+
+**Client PR:** [#402 — PT-02 auditable balance reversals and replay coverage](https://github.com/armave/portfolio-terminal/pull/402)  
+**Exact validated head:** `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`  
+**Target:** `dev`; no Worker/server changes in this slice.
+
+- [x] Add atomic `PortfolioStore.reverseBalanceAdjustment` for manual `cash.adjustment` and `margin.adjustment` events only.
+- [x] Append an immutable `correction` event linked to the original, with reason, actor/source and exact inverse deltas; preserve the original event.
+- [x] Make retries idempotent and reject a conflicting second reversal.
+- [x] Refuse a reversal that would make free cash or margin debt negative after subsequent movements.
+- [x] Explicitly reject trade, lot, closed-history and corporate-action reversals until inverse cost-basis and realized-P&L contracts exist.
+- [x] Add a journal replay-coverage report distinguishing app-owned replay deltas, broker/import evidence-only rows, history audit-only events, incomplete events and unsupported/malformed schemas.
+- [x] Require a correction to reference an existing cash/debt adjustment and carry its exact inverse deltas before calling it replayable.
+- [x] Validate TypeScript, 2,053 Vitest tests, production build/bundle budget, dead-code validation, dependency audits, Operations Browser Journey and Trade Lifecycle Browser Smoke. Exact runs: [CI](https://github.com/armave/portfolio-terminal/actions/runs/42560729066), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/42560729069), [Trade Lifecycle](https://github.com/armave/portfolio-terminal/actions/runs/42560729274).
+
+**Not closed by this slice:** trade/lot/corporate-action reversal, cost-basis and closed-history replay, full mutation inventory, backup/cloud restore and cross-device/manual broker QA. The portfolio snapshot remains canonical and the additive journal remains evidence/replay support; no ledger cutover is authorized.
