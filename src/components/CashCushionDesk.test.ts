@@ -362,6 +362,9 @@ describe('balance adjustment reversal access', () => {
     expect(source).toContain('portfolioStore.reverseBalanceAdjustment(eventId, reason)');
     expect(source).toContain('immutable correction event');
     expect(source).toContain('disabled={!(balanceAdjustmentReasons[event.id] || \'\').trim()}');
+    expect(source).toContain('onClick={() => setPendingBalanceAdjustmentId(event.id)}');
+    expect(source).toContain("translateText('Confirm reversal', getAppLanguage())");
+    expect(source).toContain("translateText('Cancel', getAppLanguage())");
   });
 
   it('localizes every new adjustment review label in Russian', () => {
@@ -375,7 +378,11 @@ describe('balance adjustment reversal access', () => {
       'Margin debt change',
       'Reason for reversal',
       'Enter why this adjustment should be reversed',
-      'Reverse adjustment',
+      'Review reversal',
+      'Confirm reversal',
+      'Confirm balance reversal',
+      'Confirm this balance change. The original event remains in history.',
+      'Cancel',
       'Enter a reason to reverse this adjustment.',
       'Balance adjustment reversed.',
       'Balance adjustment could not be reversed. The balance may have changed since the original adjustment.'
