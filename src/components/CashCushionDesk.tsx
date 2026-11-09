@@ -237,6 +237,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
   const [balanceAdjustmentReasons, setBalanceAdjustmentReasons] = useState<Record<string, string>>({});
   const [balanceAdjustmentNotice, setBalanceAdjustmentNotice] = useState('');
+  const [pendingBalanceAdjustmentId, setPendingBalanceAdjustmentId] = useState<string | null>(null);
   const reversibleBalanceAdjustments = useMemo(
     () => getReversibleBalanceAdjustmentEvents(state.transactionEvents),
     [state.transactionEvents]
@@ -251,6 +252,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     setBalanceAdjustmentNotice(reversed
       ? 'Balance adjustment reversed.'
       : 'Balance adjustment could not be reversed. The balance may have changed since the original adjustment.');
+    setPendingBalanceAdjustmentId(null);
     if (reversed) {
       setBalanceAdjustmentReasons((current) => ({ ...current, [eventId]: '' }));
     }
@@ -968,14 +970,36 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         class="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
                       />
                     </label>
-                    <button
-                      type="button"
-                      disabled={!(balanceAdjustmentReasons[event.id] || '').trim()}
-                      onClick={() => submitBalanceAdjustmentReversal(event.id)}
-                      class="rounded border border-amber-800/70 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {translateText('Reverse adjustment', getAppLanguage())}
-                    </button>
+                    {pendingBalanceAdjustmentId === event.id ? (
+                      <div class="flex flex-col gap-2 rounded border border-amber-800/50 bg-amber-950/20 p-2 sm:flex-row sm:items-center" role="group" aria-label={translateText('Confirm balance reversal', getAppLanguage())}>
+                        <span class="flex-1 text-[10px] text-amber-100">
+                          {translateText('Confirm this balance change. The original event remains in history.', getAppLanguage())}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => submitBalanceAdjustmentReversal(event.id)}
+                          class="rounded border border-amber-700 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
+                        >
+                          {translateText('Confirm reversal', getAppLanguage())}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingBalanceAdjustmentId(null)}
+                          class="rounded border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300"
+                        >
+                          {translateText('Cancel', getAppLanguage())}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!(balanceAdjustmentReasons[event.id] || '').trim()}
+                        onClick={() => setPendingBalanceAdjustmentId(event.id)}
+                        class="rounded border border-amber-800/70 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {translateText('Review reversal', getAppLanguage())}
+                      </button>
+                    )}
                   </div>
                 </article>
               );
