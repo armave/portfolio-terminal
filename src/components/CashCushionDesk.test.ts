@@ -192,6 +192,12 @@ describe('cash holdings quote context', () => {
     ]);
     expect(buildCashHoldingTableRows(groups, false).map((row) => row.type))
       .toEqual(['holding', 'holding', 'holding']);
+    expect(buildCashHoldingTableRows([
+      { key: 'guest-pending', label: '', holdings: [{ ticker: 'TSLA' }] }
+    ], true)).toEqual([
+      { type: 'group', key: 'group-guest-pending', label: '' },
+      { type: 'holding', key: 'holding-guest-pending-TSLA', holding: { ticker: 'TSLA' } }
+    ]);
   });
 
   it('does not nest the group heading inside a conditional holding fragment', () => {
@@ -283,6 +289,15 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain('usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual)');
     expect(deskSource).not.toContain('const state = usePortfolio();');
     expect(deskSource).toContain('useMemo(() => activeTrancheSource.map');
+  });
+
+  it('keeps guest group rows stable without exposing raw IDs while names resolve', () => {
+    expect(deskSource).toContain('getCachedUsers()');
+    expect(deskSource).toContain('guestDirectoryPending');
+    expect(deskSource).toContain("label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Unknown guest'");
+    expect(deskSource).toContain("translateText('Loading guest name', getAppLanguage())");
+    expect(deskSource).not.toContain('guestNames.get(guestId) || guestId');
+    expect(deskSource).toContain("...(isAdmin\n      ? [{ type: 'group' as const");
   });
 
   it('uses the shared role-specific quote refresh defaults', () => {
