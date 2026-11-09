@@ -109,6 +109,30 @@ describe('auth transport runtime', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('exposes only a fresh user directory cached for the active authentication token', async () => {
+    let clock = 100;
+    let token = 'session-token';
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      users: [guest, { ...admin, id: 'admin-2' }]
+    }), { status: 200 })) as unknown as typeof fetch;
+    const runtime = createAuthTransportRuntime({
+      apiUrl: 'https://worker.example',
+      getActiveGatewaySecret: () => token,
+      fetchImpl,
+      now: () => clock
+    });
+
+    expect(runtime.getCachedUsers()).toBeNull();
+    await runtime.listUsers();
+    expect(runtime.getCachedUsers()).toMatchObject([{ id: 'guest-1' }, { id: 'admin-2' }]);
+
+    token = 'different-session';
+    expect(runtime.getCachedUsers()).toBeNull();
+    token = 'session-token';
+    clock += 15_001;
+    expect(runtime.getCachedUsers()).toBeNull();
+  });
+
   it('does not let an invalidated in-flight directory read refill the cache', async () => {
     let resolveStale!: (response: Response) => void;
     let getCount = 0;
