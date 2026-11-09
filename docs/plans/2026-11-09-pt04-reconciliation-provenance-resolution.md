@@ -76,11 +76,13 @@ No edits to Worker/Durable Object code, broker adapter normalization, PT-02 jour
 - [x] Domain tests cover fresh/stale/partial/missing provenance, currency mismatch, tolerance, ambiguity and immutability.
 - [x] Component tests cover English/Russian wording and status classifications.
 - [x] Trades wiring tests verify the app and broker provenance sources are supplied.
-- [ ] Exact-head `npm run typecheck`.
-- [ ] Exact-head `npm test`.
-- [ ] Exact-head production build, browser smoke, dead-code validation and dependency audits.
-- [ ] Operations Browser Journey and Trade Lifecycle Browser Smoke pass on exact PR head.
+- [x] Exact-head typecheck, complete Vitest suite (162 test files / 2,073 tests) and production build.
+- [x] Exact-head production browser smoke and responsive app check.
+- [x] Dead-code validation and full/production dependency audits.
+- [x] Operations Browser Journey and Trade Lifecycle Browser Smoke pass on the implementation head.
 - [ ] Authenticated live TradeNet QA recorded separately; not satisfied by mocked CI.
+
+Validation evidence: implementation commit `e1a9f55e7a935f058aa74bd4a04918fe541de024`; Pull Request CI run `42562789327`, Operations Browser Journey run `42562789325`, and Trade Lifecycle Browser Smoke run `42562789332` all succeeded.
 
 ## Merge criteria for this slice
 
