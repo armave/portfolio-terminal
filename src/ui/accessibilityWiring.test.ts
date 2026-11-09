@@ -132,6 +132,18 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
   });
 
+  it('keeps Market Insights and portfolio summary actions touch-sized', () => {
+    const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
+    const summary = readSource('../components/SummaryMetricsGrid.tsx');
+
+    expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700/g)).toHaveLength(4);
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
+    expect(summary).toContain('class="min-h-11 rounded border border-cyan-800/70');
+    expect(summary).toContain('class="min-h-11 rounded border border-emerald-800/70');
+    expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
+  });
+
   it('keeps Guest LOTS filters and broker reconciliation actions touch-sized', () => {
     const guestHistory = readSource('../components/GuestTrancheHistory.tsx');
     const reconciliation = readSource('../components/BrokerTransactionReconciliation.tsx');
