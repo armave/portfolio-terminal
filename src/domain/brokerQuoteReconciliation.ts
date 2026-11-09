@@ -118,7 +118,7 @@ function withinTolerance(left: number, right: number, tolerance: number): boolea
   return Math.abs(left - right) <= Math.max(tolerance, Math.abs(right) * 0.0001);
 }
 
-function normalizeAppQuote(row: AppQuoteHolding): NormalizedAppQuote | null {
+function normalizeAppQuote(row: AppQuoteHolding, now: number, maxAgeMs: number): NormalizedAppQuote | null {
   const ticker = normalizeTicker(row?.ticker);
   const price = finitePositive(row?.price);
   const details = row?.quoteDetails;
@@ -133,11 +133,15 @@ function normalizeAppQuote(row: AppQuoteHolding): NormalizedAppQuote | null {
   const exchange = typeof details?.exchange === 'string'
     ? details.exchange.trim().toUpperCase() || null
     : null;
+  const observationAgeMs = observedAt === null ? null : now - observedAt;
+  const observationFresh = observationAgeMs !== null &&
+    observationAgeMs >= -60_000 && observationAgeMs <= maxAgeMs;
   const verified = Boolean(
     currency &&
     provider &&
     observedAt &&
     receivedAt &&
+    observationFresh &&
     details?.freshness === 'fresh' &&
     details?.delayClass === 'live' &&
     details?.dataQuality === 'complete' &&
@@ -246,7 +250,7 @@ export function reconcileBrokerQuotePrices(
 
   const appGroups = new Map<string, Map<string, NormalizedAppQuote[]>>();
   input.appQuotes.forEach((row, index) => {
-    const normalized = normalizeAppQuote(row);
+    const normalized = normalizeAppQuote(row, now, maxAgeMs);
     const ticker = normalizeTicker(row?.ticker);
     if (!normalized) {
       if (ticker) warnings.push(`The app quote for ${ticker} is missing a usable positive price and was excluded.`);
@@ -265,7 +269,7 @@ export function reconcileBrokerQuotePrices(
   });
 
   const brokerGroups = new Map<string, Map<string, NormalizedBrokerQuote[]>>();
-  snapshot.positions.forEach((row, index) => {
+  snapshot.positions.forEach((row) => {
     const normalized = normalizeBrokerQuote(row, snapshot, now, maxAgeMs);
     if (!normalized) {
       if (normalizeTicker(row?.ticker)) warnings.push('One or more broker position prices were invalid or lacked a supported currency and were excluded.');
