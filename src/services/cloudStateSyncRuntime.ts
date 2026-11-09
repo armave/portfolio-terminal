@@ -6,6 +6,9 @@ import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 export interface CloudStateRecord {
   transactionEvents?: PortfolioState['transactionEvents'];
+  positions?: Record<string, { shares?: number | string }>;
+  cashCushion?: { freeCash?: number | string; holdings?: Array<{ ticker: string; shares: number | string }> };
+  balance?: number | string;
   [key: string]: unknown;
 }
 export type CloudStateInput = PortfolioState | CloudStateRecord;
