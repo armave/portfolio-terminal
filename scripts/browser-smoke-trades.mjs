@@ -575,7 +575,9 @@ try {
   }
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 30000 });
+  // The active desk is restored as Trades after reload, so the terminal
+  // command editor is expected to remain hidden until Combined Portfolio opens.
+  await page.getByRole('button', { name: 'Trades' }).waitFor({ state: 'visible', timeout: 30000 });
   await page.getByRole('button', { name: 'Trades' }).click();
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByRole('button', { name: /Reconcile broker activity/ }).click();
