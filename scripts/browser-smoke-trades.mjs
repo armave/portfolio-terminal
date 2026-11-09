@@ -536,12 +536,51 @@ try {
   const financialSnapshot = async () => page.evaluate(() => {
     const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
     const state = raw ? JSON.parse(raw) : {};
+    const positions = Object.fromEntries(Object.entries(state.positions || {}).map(([ticker, position]) => [
+      ticker,
+      {
+        shares: position.shares,
+        commBuy: position.commBuy,
+        marginCharged: position.marginCharged,
+        tranches: (position.tranches || []).map((tranche) => ({
+          qty: tranche.qty,
+          price: tranche.price,
+          date: tranche.date,
+          acquiredAt: tranche.acquiredAt,
+          buyCommission: tranche.buyCommission
+        }))
+      }
+    ]));
+    const closedTrades = (state.closedTrades || []).map((trade) => ({
+      id: trade.id,
+      ticker: trade.ticker,
+      shares: trade.shares,
+      avgBuyPrice: trade.avgBuyPrice,
+      entryPrice: trade.entryPrice,
+      sellPrice: trade.sellPrice,
+      exitPrice: trade.exitPrice,
+      buyDate: trade.buyDate,
+      purchaseDate: trade.purchaseDate,
+      sellDate: trade.sellDate,
+      exitDate: trade.exitDate,
+      grossProfit: trade.grossProfit,
+      commissions: trade.commissions,
+      feesAndCommissions: trade.feesAndCommissions,
+      totalCommissions: trade.totalCommissions,
+      marginInterest: trade.marginInterest,
+      netProfit: trade.netProfit,
+      netRealizedGain: trade.netRealizedGain
+    }));
     return {
-      positions: state.positions || {},
-      cashBalance: state.cashBalance,
-      balance: state.balance,
-      cashCushion: state.cashCushion || {},
-      closedTrades: state.closedTrades || []
+      positions,
+      balance: Number(state.balance ?? 0),
+      freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0),
+      cashHoldings: (state.cashCushion?.holdings || []).map((holding) => ({
+        ticker: holding.ticker,
+        shares: holding.shares,
+        averagePrice: holding.averagePrice
+      })),
+      closedTrades
     };
   });
   const financialBeforeReview = await financialSnapshot();
