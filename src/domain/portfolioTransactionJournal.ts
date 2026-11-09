@@ -132,6 +132,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
       value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
       !value.ticker || value.quantity === undefined || value.unitPrice === undefined ||
       value.grossAmount === undefined || value.positionQuantityDelta === undefined) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
     let allocatedQuantity = 0;
     let allocatedFees = 0;
     let allocatedFinancing = 0;
@@ -169,7 +170,6 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
       allocatedFinancing += allocation.financingCostAllocated;
       allocatedPnl += allocation.realizedPnl;
     }
-    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
     if (value.quantity === undefined || !closeEnough(allocatedQuantity, value.quantity)) return false;
     if (!closeEnough(value.positionQuantityDelta, -value.quantity)) return false;
     if (!closeEnough(allocatedGross, value.grossAmount)) return false;
