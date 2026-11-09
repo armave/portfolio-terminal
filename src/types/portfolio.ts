@@ -125,6 +125,8 @@ interface CashCushionState {
 
 export interface ClosedTrade {
   id?: string;
+  /** Journal sale event that produced this closed-trade row; absent on legacy history. */
+  transactionEventId?: string;
   ticker: string;
   shares: number;
   avgBuyPrice?: number;
