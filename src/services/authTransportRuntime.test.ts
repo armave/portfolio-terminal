@@ -110,12 +110,12 @@ describe('auth transport runtime', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
-  it('exposes only a fresh user directory cached for the active authentication token', async () => {
+  it('exposes the active session cached directory synchronously during revalidation', async () => {
     let clock = 100;
     let token = 'session-token';
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
       users: [guest, { ...admin, id: 'admin-2' }]
-    }), { status: 200 })) as unknown as typeof fetch;
+    }), { status: 200 }))) as unknown as typeof fetch;
     const runtime = createAuthTransportRuntime({
       apiUrl: 'https://worker.example',
       getActiveGatewaySecret: () => token,
