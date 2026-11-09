@@ -93,13 +93,17 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
           <div class="margin-risk-gauge-heading">
             <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
-            <span
+            <button
+              type="button"
               onClick={openOverview}
               aria-haspopup="dialog"
+              aria-label={translateText('Open margin risk overview', language)}
               title={translateText('Click to view margin risk overview', language)}
-              class="margin-risk-status elevated">
-              {translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}
-            </span>
+              class="margin-risk-overview-trigger">
+              <span class="margin-risk-status elevated">
+                {translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}
+              </span>
+            </button>
           </div>
           <p class="mt-2 text-xs leading-relaxed text-amber-200">
             {risk.reason?.includes('position integrity')
@@ -137,11 +141,17 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
-          <span
+          <button
+            type="button"
             onClick={openOverview}
             aria-haspopup="dialog"
+            aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
-            class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
+            class="margin-risk-overview-trigger">
+            <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
+              {risk.summaryText.split(' · ')[0]}
+            </span>
+          </button>
         </div>
         <div class="margin-risk-meter" role="progressbar" aria-label={translateText('Account equity percentage', language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', language)}>
           <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, ACCOUNT_EQUITY_HEALTH_REFERENCE * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
