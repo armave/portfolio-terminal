@@ -4060,3 +4060,14 @@ table tbody tr:hover {
       max(15px, env(safe-area-inset-left));
   }
 }
+
+/* Mobile Settings actions: keep admin account controls consistently stacked. */
+@media (max-width: 640px) {
+  #settingsDesk .settings-account-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #settingsDesk .settings-sync-button {
+    grid-column: auto;
+  }
+}
