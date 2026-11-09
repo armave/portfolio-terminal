@@ -83,6 +83,78 @@ describe('portfolio domain', () => {
     expect(normalizePortfolioBackup(exported, 1_800_000_000_002).transactionEvents).toEqual([event]);
   });
 
+  it('preserves linked closed-trade accounting fields across backup export and import', () => {
+    const saleEvent = createPortfolioTransactionEvent({
+      type: 'trade.sell',
+      effectiveAt: 1_800_000_000_000,
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 120,
+      grossAmount: 240,
+      positionQuantityDelta: -2,
+      fees: 1.2,
+      financingCost: 0.5,
+      realizedPnl: 38.3
+    }, { eventId: 'sale-event-42' }, 1_800_000_000_001);
+    const closedTrade = {
+      id: 'closed-trade-42',
+      transactionEventId: saleEvent.id,
+      ticker: 'AAPL',
+      shares: 2,
+      avgBuyPrice: 100,
+      entryPrice: 100,
+      sellPrice: 120,
+      exitPrice: 120,
+      buyDate: '2026-10-20',
+      purchaseDate: '2026-10-20',
+      sellDate: '2026-11-09',
+      exitDate: '2026-11-09',
+      date: 1_800_000_000_000,
+      closedAt: 1_800_000_000_000,
+      grossProfit: 40,
+      commissions: 1.2,
+      feesAndCommissions: 1.2,
+      totalCommissions: 1.2,
+      marginInterest: 0.5,
+      netProfit: 38.3,
+      netRealizedGain: 38.3,
+      holdingDays: 20,
+      raw: { providerPayload: 'must-not-import' }
+    };
+    const exported = createPortfolioBackupSnapshot({
+      positions: {},
+      transactionEvents: [saleEvent],
+      closedTrades: [closedTrade]
+    });
+    const restored = normalizePortfolioBackup(exported, 1_800_000_000_002);
+
+    expect(restored.transactionEvents).toEqual([saleEvent]);
+    expect(restored.closedTrades).toHaveLength(1);
+    expect(restored.closedTrades[0]).toMatchObject({
+      id: 'closed-trade-42',
+      transactionEventId: 'sale-event-42',
+      ticker: 'AAPL',
+      shares: 2,
+      avgBuyPrice: 100,
+      entryPrice: 100,
+      sellPrice: 120,
+      exitPrice: 120,
+      buyDate: '2026-10-20',
+      purchaseDate: '2026-10-20',
+      sellDate: '2026-11-09',
+      exitDate: '2026-11-09',
+      grossProfit: 40,
+      commissions: 1.2,
+      feesAndCommissions: 1.2,
+      totalCommissions: 1.2,
+      marginInterest: 0.5,
+      netProfit: 38.3,
+      netRealizedGain: 38.3,
+      holdingDays: 20
+    });
+    expect(restored.closedTrades[0]).not.toHaveProperty('raw');
+  });
+
   it('rejects malformed versioned transaction history in a backup instead of silently dropping it', () => {
     expect(() => normalizePortfolioBackup({
       positions: {},

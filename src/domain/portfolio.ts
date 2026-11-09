@@ -37,12 +37,28 @@ export interface MarginPosition {
 }
 
 interface ClosedTrade {
+  id?: string;
+  transactionEventId?: string;
   ticker: string;
   date: number;
   shares: number;
-  holdingDays: number;
+  avgBuyPrice?: number;
+  entryPrice?: number;
+  sellPrice?: number;
+  exitPrice?: number;
+  buyDate?: string;
+  purchaseDate?: string;
+  sellDate?: string;
+  exitDate?: string;
+  closedAt?: number | string;
+  grossProfit?: number;
+  commissions?: number;
   feesAndCommissions: number;
+  totalCommissions?: number;
+  marginInterest?: number;
   netProfit: number;
+  netRealizedGain?: number;
+  holdingDays: number;
 }
 
 /** Legacy/backup portfolio shape. The live application contract is defined in src/types/portfolio.ts. */
@@ -513,6 +529,21 @@ function finiteNumber(value: unknown, fallback: number): number {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function optionalFiniteNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function optionalDateValue(value: unknown): number | string | undefined {
+  if (typeof value === 'string') return value.trim() ? value : undefined;
+  return optionalFiniteNumber(value);
+}
+
 /** Resolve legacy/canonical tranche aliases into the quantity and price used by portfolio calculations. */
 export function normalizePortfolioTranche(tranche: Record<string, unknown>): TradeTranche {
   const firstPositive = (...values: unknown[]): number => {
@@ -634,15 +665,35 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): L
   });
 
   const sourceTimestamp = Number(candidate.lastRolloverTimestamp);
-  const closedTrades = Array.isArray(candidate.closedTrades)
-    ? candidate.closedTrades.filter(isRecord).map(trade => ({
-      ticker: typeof trade.ticker === 'string' ? trade.ticker : '',
-      date: finiteNumber(trade.date, now),
-      shares: finiteNumber(trade.shares, 0),
-      holdingDays: finiteNumber(trade.holdingDays, 0),
-      feesAndCommissions: finiteNumber(trade.feesAndCommissions, 0),
-      netProfit: finiteNumber(trade.netProfit, 0)
-    }))
+  const closedTrades: ClosedTrade[] = Array.isArray(candidate.closedTrades)
+    ? candidate.closedTrades.filter(isRecord).map((trade) => {
+      const normalized: ClosedTrade = {
+        ticker: typeof trade.ticker === 'string' ? trade.ticker : '',
+        date: finiteNumber(trade.date, now),
+        shares: finiteNumber(trade.shares, 0),
+        holdingDays: finiteNumber(trade.holdingDays, 0),
+        feesAndCommissions: finiteNumber(trade.feesAndCommissions, 0),
+        netProfit: finiteNumber(trade.netProfit, 0)
+      };
+      const id = optionalNonEmptyString(trade.id);
+      const transactionEventId = optionalNonEmptyString(trade.transactionEventId);
+      if (id) normalized.id = id;
+      if (transactionEventId) normalized.transactionEventId = transactionEventId;
+      for (const field of ['buyDate', 'purchaseDate', 'sellDate', 'exitDate'] as const) {
+        const value = optionalNonEmptyString(trade[field]);
+        if (value) normalized[field] = value;
+      }
+      const closedAt = optionalDateValue(trade.closedAt);
+      if (closedAt !== undefined) normalized.closedAt = closedAt;
+      for (const field of [
+        'avgBuyPrice', 'entryPrice', 'sellPrice', 'exitPrice', 'grossProfit',
+        'commissions', 'totalCommissions', 'marginInterest', 'netRealizedGain'
+      ] as const) {
+        const value = optionalFiniteNumber(trade[field]);
+        if (value !== undefined) normalized[field] = value;
+      }
+      return normalized;
+    })
     : [];
   return {
     ...blankState,
