@@ -399,14 +399,14 @@ export function verifyPortfolioTransactionParity(
   return { matches: !discrepancies.length, discrepancies };
 }
 
-export type PortfolioTransactionEventDisposition =
+type PortfolioTransactionEventDisposition =
   | 'replayable'
   | 'evidence-only'
   | 'audit-only'
   | 'incomplete'
   | 'unsupported';
 
-export interface PortfolioTransactionJournalCoverageFinding {
+interface PortfolioTransactionJournalCoverageFinding {
   eventId?: string;
   eventType?: string;
   disposition: PortfolioTransactionEventDisposition;
