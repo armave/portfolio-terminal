@@ -566,8 +566,8 @@ try {
   if (!successfulCorrection?.note?.includes('Browser smoke: reverse the test cash adjustment')) {
     throw new Error('Successful balance reversal did not retain the review reason.');
   }
-  if (await page.locator('section[aria-labelledby="balanceAdjustmentHistoryHeading"] article').count() !== 0) {
-    throw new Error('A reversed cash adjustment remained in the eligible Balance-desk list.');
+  if (await page.locator(`article[data-balance-adjustment-event-id="${firstCashAdjustment.id}"]`).count() !== 0) {
+    throw new Error('The reversed cash adjustment remained in the eligible Balance-desk list.');
   }
 
   await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).click();
