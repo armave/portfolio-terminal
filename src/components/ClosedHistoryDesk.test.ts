@@ -13,6 +13,14 @@ function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('Trades reconciliation audit review', () => {
+  it('records reviewed findings through the audit-only PortfolioStore API', () => {
+    const source = readSource();
+    expect(source).toContain('onRecordReview={(section, findingId, findingType, subject, reason) =>');
+    expect(source).toContain('portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)');
+  });
+});
+
 describe('Trades cache-first rendering', () => {
   it('starts lazy rendering in the navigation render instead of waiting for a passive effect', () => {
     const app = readAppSource();
