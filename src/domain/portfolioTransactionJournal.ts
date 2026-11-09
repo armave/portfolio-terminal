@@ -464,7 +464,10 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
 
   for (const raw of events) {
     if (!isPortfolioTransactionEvent(raw)) {
+      const malformed = isPlainRecord(raw) ? raw : {};
       findings.push({
+        ...(typeof malformed.id === 'string' ? { eventId: malformed.id } : {}),
+        ...(typeof malformed.type === 'string' ? { eventType: malformed.type } : {}),
         disposition: 'unsupported',
         reason: 'Event is malformed or uses an unsupported transaction schema.'
       });
