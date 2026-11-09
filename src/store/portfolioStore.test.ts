@@ -3401,6 +3401,89 @@ describe('broker position integrity persistence', () => {
 });
 
 
+describe('audit-only broker reconciliation review records', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('appends an idempotent review event without changing financial state', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(250)).toBe(true);
+    expect(store.buyStock('AAPL', 1, 50, '2026-11-08')).toBe(true);
+    const before = store.getState();
+    const financialBefore = {
+      positions: before.positions,
+      cashBalance: before.cashBalance,
+      balance: before.balance,
+      cashCushion: before.cashCushion,
+      closedTrades: before.closedTrades
+    };
+
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'Compared the broker fee reference with the saved execution evidence.'
+    )).toBe(true);
+
+    const after = store.getState();
+    const review = after.transactionEvents?.at(-1);
+    expect(review).toMatchObject({
+      type: 'portfolio.reconciliation',
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review',
+      idempotencyKey: 'reconciliation-review:activity:finding-42',
+      note: 'Reviewed activity finding finding-42 (execution_fee_mismatch) for AAPL. Reason: Compared the broker fee reference with the saved execution evidence.'
+    });
+    expect(review?.positionQuantityDelta).toBeUndefined();
+    expect(review?.cashHoldingQuantityDelta).toBeUndefined();
+    expect(review?.cashDelta).toBeUndefined();
+    expect(review?.marginDebtDelta).toBeUndefined();
+    expect({
+      positions: after.positions,
+      cashBalance: after.cashBalance,
+      balance: after.balance,
+      cashCushion: after.cashCushion,
+      closedTrades: after.closedTrades
+    }).toEqual(financialBefore);
+    const coverage = inspectPortfolioTransactionJournalReplayCoverage(after.transactionEvents || []);
+    expect(coverage.status).toBe('complete');
+    expect(coverage.auditOnlyCount).toBe(1);
+
+    const eventCount = after.transactionEvents?.length;
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'Compared the broker fee reference with the saved execution evidence.'
+    )).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(eventCount);
+
+    // A finding's stable review key cannot be silently reused for a different reason.
+    expect(store.recordReconciliationReview(
+      'activity',
+      'finding-42',
+      'execution_fee_mismatch',
+      'AAPL',
+      'A different review reason.'
+    )).toBe(false);
+    expect(store.getState().transactionEvents).toHaveLength(eventCount);
+    expect(store.recordReconciliationReview('quote', 'finding-42', 'price_mismatch', 'AAPL', 'Checked the quote.')).toBe(true);
+  });
+
+  it('rejects malformed or oversized review input without changing the journal', () => {
+    const store = new PortfolioStore();
+    const before = store.getState();
+    expect(store.recordReconciliationReview('activity', '', 'mismatch', 'AAPL', 'Reason')).toBe(false);
+    expect(store.recordReconciliationReview('activity', 'id', 'mismatch', 'AAPL', '     ')).toBe(false);
+    expect(store.recordReconciliationReview('activity', 'id', 'mismatch', 'AAPL', 'x'.repeat(241))).toBe(false);
+    expect(store.getState()).toBe(before);
+  });
+});
+
 describe('auditable balance adjustment reversals', () => {
   beforeEach(() => {
     sharedTestStorage.clear();
