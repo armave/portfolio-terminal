@@ -34,7 +34,7 @@ export interface AuthTransportRuntime {
   bootstrapAdmin: (name: string, password: string, bootstrapSecret: string) => Promise<AuthSession>;
   getCurrentUser: () => Promise<AuthUser>;
   listUsers: () => Promise<AuthUser[]>;
-  /** Returns the current token-scoped directory cache synchronously, if it is fresh. */
+  /** Returns this session's in-memory directory snapshot synchronously, including stale rows during revalidation. */
   getCachedUsers: () => AuthUser[] | null;
   createUser: (input: { name: string; password: string; role: "guest" | "admin"; language?: AppLanguage }) => Promise<AuthUser>;
   updateUser: (id: string, input: { name: string; role: "guest" | "admin"; language?: AppLanguage; password?: string }) => Promise<AuthUser>;
