@@ -3452,7 +3452,7 @@ describe('audit-only broker reconciliation review records', () => {
     expect(coverage.status).toBe('complete');
     expect(coverage.auditOnlyCount).toBe(1);
 
-    const eventCount = after.transactionEvents?.length;
+    const eventCount = after.transactionEvents?.length ?? 0;
     expect(store.recordReconciliationReview(
       'activity',
       'finding-42',
