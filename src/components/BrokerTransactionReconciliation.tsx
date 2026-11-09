@@ -112,6 +112,8 @@ const RU_COPY: Record<string, string> = {
   'App observation': 'Наблюдение приложения',
   'Broker observation': 'Наблюдение брокера',
   'Received': 'Получено',
+  'App received': 'Получено приложением',
+  'Broker received': 'Получено брокером',
   'App currency': 'Валюта приложения',
   'Broker currency': 'Валюта брокера',
   'The app and broker quotes use different or unverified currencies. No conversion was attempted.': 'Котировки приложения и брокера указаны в разных или неподтверждённых валютах. Конвертация не выполнялась.',
@@ -330,7 +332,9 @@ export function BrokerTransactionReconciliation({
                       {finding.appProvider && <span>{translateBrokerReconciliationCopy('App quote source')}: {finding.appProvider}</span>}
                       {finding.brokerProvider && <span>{translateBrokerReconciliationCopy('Broker quote source')}: {finding.brokerProvider}</span>}
                       {finding.appObservedAt && <span>{translateBrokerReconciliationCopy('App observation')}: {formatTimestamp(finding.appObservedAt)}</span>}
+                      {finding.appReceivedAt && <span>{translateBrokerReconciliationCopy('App received')}: {formatTimestamp(finding.appReceivedAt)}</span>}
                       {finding.brokerObservedAt && <span>{translateBrokerReconciliationCopy('Broker observation')}: {formatTimestamp(finding.brokerObservedAt)}</span>}
+                      {finding.brokerReceivedAt && <span>{translateBrokerReconciliationCopy('Broker received')}: {formatTimestamp(finding.brokerReceivedAt)}</span>}
                     </div>
                   </article>
                 );
