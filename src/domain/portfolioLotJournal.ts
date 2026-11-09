@@ -101,7 +101,8 @@ function cleanTicker(value: unknown): string {
 }
 
 function dateOnly(value: number): string {
-  return new Date(value).toISOString().slice(0, 10);
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : '';
 }
 
 function summarizeStatus(issues: readonly PortfolioLotJournalIssue[]): PortfolioLotJournalReplay['status'] {
@@ -153,6 +154,11 @@ export function replayPortfolioTransactionLots(
         addIssue(event, 'unsupported', 'A stable acquisition lot ID is reused by more than one buy event.');
         continue;
       }
+      const acquisitionDate = event.acquisitionDate?.trim() || dateOnly(event.effectiveAt);
+      if (!acquisitionDate) {
+        addIssue(event, 'incomplete', 'Buy event has no valid source acquisition date.');
+        continue;
+      }
       const commission = optionalNumber(event.fees);
       if (commission === null || commission < 0) {
         addIssue(event, 'incomplete', 'Buy event does not contain a verifiable non-negative commission amount.');
@@ -162,7 +168,7 @@ export function replayPortfolioTransactionLots(
         ticker,
         buyEventId: event.id,
         acquiredAt: event.effectiveAt,
-        acquisitionDate: dateOnly(event.effectiveAt),
+        acquisitionDate,
         acquisitionPrice: price,
         acquiredQuantity: quantity,
         openQuantity: quantity,
@@ -266,6 +272,20 @@ export function replayPortfolioTransactionLots(
         allocations: stableAllocations.map((allocation) => ({ ...allocation }))
       });
     }
+
+    if ((event.type === 'position.adjustment' ||
+      event.type === 'portfolio.reconciliation' ||
+      event.type === 'corporate-action') &&
+      event.positionQuantityDelta !== undefined &&
+      Math.abs(event.positionQuantityDelta) > DEFAULT_TOLERANCE) {
+      addIssue(event, 'incomplete', 'Position quantity changed without an exact acquisition-lot adjustment; lot identity was not inferred.');
+    } else if (event.type === 'correction' &&
+      event.positionQuantityDelta !== undefined &&
+      Math.abs(event.positionQuantityDelta) > DEFAULT_TOLERANCE) {
+      addIssue(event, 'unsupported', 'Trade or lot quantity corrections are not supported by the current reversal contract.');
+    } else if (event.type === 'history.correction') {
+      addIssue(event, 'incomplete', 'Closed-history correction has no linked lot-level correction projection.');
+    }
   }
 
   const openLots = [...lots.values()].filter((lot) => lot.openQuantity > DEFAULT_TOLERANCE);
@@ -321,7 +341,6 @@ export function verifyPortfolioTransactionLotParity(
   const replayById = new Map(replay.openLots.map((lot) => [lot.lotId, lot]));
   const canonicalById = new Map<string, { ticker: string; tranche: TrancheItem }>();
   const positions = canonical.positions || {};
-  const tickerSet = new Set([...Object.keys(positions).map(cleanTicker), ...replay.openLots.map((lot) => lot.ticker)]);
 
   for (const [rawTicker, position] of Object.entries(positions)) {
     const ticker = cleanTicker(rawTicker);
@@ -372,6 +391,18 @@ export function verifyPortfolioTransactionLotParity(
     }
     addDiscrepancy(discrepancies, 'open-lot-quantity', lot.lotId, lot.openQuantity, Number(canonicalLot.tranche.qty), tolerance);
     addDiscrepancy(discrepancies, 'open-lot-cost', lot.lotId, lot.acquisitionPrice, Number(canonicalLot.tranche.price), tolerance);
+    if (canonicalLot.tranche.date) {
+      if (canonicalLot.tranche.date !== lot.acquisitionDate) {
+        discrepancies.push({
+          field: 'open-lot-acquisition-date',
+          identity: lot.lotId,
+          replayed: lot.acquisitionDate,
+          canonical: canonicalLot.tranche.date
+        });
+      }
+    } else {
+      issues.push({ disposition: 'incomplete', reason: `Canonical lot ${lot.lotId} has no acquisition date.` });
+    }
     if (lot.openBuyCommission !== null && canonicalLot.tranche.buyCommission !== undefined) {
       addDiscrepancy(discrepancies, 'open-lot-buy-commission', lot.lotId, lot.openBuyCommission, Number(canonicalLot.tranche.buyCommission), tolerance);
     } else if (lot.openBuyCommission !== null && canonicalLot.tranche.buyCommission === undefined) {
