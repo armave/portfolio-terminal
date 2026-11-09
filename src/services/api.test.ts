@@ -479,7 +479,7 @@ describe('cloud state sync', () => {
       positions: expect.objectContaining({ AAPL: expect.objectContaining({ shares: 2 }) }),
       cashCushion: expect.objectContaining({ freeCash: 800 })
     }));
-    expect(verifyPortfolioTransactionParity(restored.transactionEvents, restored).matches).toBe(true);
+    expect(verifyPortfolioTransactionParity(restored.transactionEvents ?? [], restored).matches).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

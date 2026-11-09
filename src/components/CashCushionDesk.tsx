@@ -624,7 +624,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           <span>{balanceSync.hasSnapshot
             ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
             : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
-          <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
+          <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
         </div>
       )}
 
@@ -657,7 +657,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             type="button"
             onClick={retryExecutedTrades}
             aria-label="Retry TradeNet history"
-            class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
+            class="self-start inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
           >Retry</button>
         </div>
       )}
@@ -1038,7 +1038,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
                 {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : executedTrades.length ? 'Trades synced' : 'Waiting for trade history'}
               </span>
-              <button type="button" aria-expanded={activeTranchesExpanded} aria-controls="activeTranchesTable" onClick={() => setActiveTranchesExpanded((expanded) => !expanded)} class="rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-cyan-300 hover:bg-slate-900">
+              <button type="button" aria-expanded={activeTranchesExpanded} aria-controls="activeTranchesTable" onClick={() => setActiveTranchesExpanded((expanded) => !expanded)} class="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-cyan-300 hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
                 {activeTranchesExpanded ? 'Collapse' : 'Expand'}
               </button>
             </div>
@@ -1061,7 +1061,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 disabled={guestDirectory.status === 'refreshing'}
                 onClick={retryGuestUsers}
                 aria-label="Retry guest account list"
-                class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-wait disabled:opacity-60 sm:self-auto"
+                class="self-start inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-wait disabled:opacity-60 sm:self-auto"
               >{guestDirectory.status === 'refreshing' ? 'Retrying…' : 'Retry'}</button>
             </div>
           )}
@@ -1134,13 +1134,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td data-label="Average cost" class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
                           <td data-label="Market value" class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
                           <td data-label="Operation" class="py-2 px-2 text-center">
-                            <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={tranche.ticker + ' operation type'}>
+                            <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={translateText('Operation type', getAppLanguage()) + ': ' + tranche.ticker}>
                               <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
-                                class={type === 'cash' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Cash</button>
+                                class={type === 'cash' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400'}>Cash</button>
                               <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
-                                class={type === 'margin' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-amber-950 text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Margin</button>
+                                class={type === 'margin' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition bg-amber-950 text-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400'}>Margin</button>
                               <button type="button" aria-pressed={type === 'mix'} aria-expanded={type === 'mix' && mixExpanded} title={type === 'mix' && mixExpanded ? 'Hide cash and margin quantities' : 'Edit cash and margin quantities'} onClick={selectMix}
-                                class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix <span aria-hidden="true">{type === 'mix' && mixExpanded ? '−' : '+'}</span></button>
+                                class={type === 'mix' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400'}>Mix <span aria-hidden="true">{type === 'mix' && mixExpanded ? '−' : '+'}</span></button>
                             </div>
                             <div
                               aria-hidden={!(type === 'mix' && mixExpanded)}
@@ -1158,7 +1158,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
                                       Cash
                                       <input
-                                        aria-label={tranche.ticker + ' cash shares'}
+                                        aria-label={translateText('Cash shares', getAppLanguage()) + ': ' + tranche.ticker}
                                         type="number"
                                         min="0"
                                         max={tranche.quantity}
@@ -1171,7 +1171,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
                                       Margin
                                       <input
-                                        aria-label={tranche.ticker + ' margin shares'}
+                                        aria-label={translateText('Margin shares', getAppLanguage()) + ': ' + tranche.ticker}
                                         type="number"
                                         min="0"
                                         max={tranche.quantity}
@@ -1190,7 +1190,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {cashQuantity > 0 ? (
                               <div class="flex flex-col items-center gap-1">
                                 <select
-                                  aria-label={`Guest for ${tranche.ticker} cash tranche`}
+                                  aria-label={translateText('Guest assignment', getAppLanguage()) + ': ' + tranche.ticker}
                                   value={assignedGuestId}
                                   onChange={(event) => emitBrokerEvent('broker:assign-active-tranche-guest', {
                                     trancheId: tranche.id,

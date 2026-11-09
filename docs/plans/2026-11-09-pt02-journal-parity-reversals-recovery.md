@@ -138,3 +138,12 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [x] Confirm branch is based on current `dev` with zero commits behind; no Worker/Cloudflare code or deployment changed.
 
 **Separate operational gates, not certified by mocked CI:** authenticated live TradeNet validation, backup/export/import and encrypted cloud restore rehearsal, and real cross-device concurrency/stale-revision QA remain open for broader PT-02 acceptance. This PR does not claim those gates are complete.
+
+
+## Backup restore hardening — closed-history row validation — 2026-11-09
+
+- [x] Validate every entry in a present `closedTrades` backup array as an object before normalization.
+- [x] Reject mixed valid/invalid history arrays rather than silently filtering malformed rows and committing a partial restore.
+- [x] Add a regression at the backup-import commit boundary proving malformed closed-history data is rejected before live state replacement or persistence.
+- [x] Keep the change limited to backup validation: no transaction-event schema, canonical portfolio ownership, financial calculation, or localization key changes.
+- [ ] Run exact-head typecheck, full Vitest, build/bundle, dead-code and dependency audits plus browser journeys.

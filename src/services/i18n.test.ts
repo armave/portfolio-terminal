@@ -669,6 +669,10 @@ describe('app localization', () => {
     )).toBe('Оценка маржинального риска недоступна, пока не удастся оценить денежный баланс и все активы.');
   });
   
+  it('localizes the active-tranche operation group accessible name', () => {
+    expect(translateText('Operation type', 'ru')).toBe('Тип операции');
+  });
+
   it('localizes workspace navigation labels and accessible names', () => {
     expect(translateText('Workspace navigation', 'ru')).toBe('Навигация по разделам');
     expect(translateText('MARGIN DESK', 'ru')).toBe('МАРЖИНАЛЬНЫЙ РАЗДЕЛ');
@@ -682,6 +686,83 @@ describe('app localization', () => {
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
   });
 
+
+  it('localizes Settings user-management and broker-rule controls in Russian', () => {
+    const settingsCopy = [
+      'TERMINAL SETTINGS & SYNC',
+      'Manage your account and mandatory portfolio sync preferences.',
+      'Configure broker assumptions, mandatory portfolio synchronization, and account access.',
+      'User management',
+      'Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.',
+      'Admin controls',
+      'User name',
+      'Password (6+ characters)',
+      'New user role',
+      'New user language',
+      'Guest',
+      'Admin',
+      'English',
+      'Russian',
+      'Add user',
+      'User management table',
+      'Name',
+      'Role',
+      'Language',
+      'New password',
+      'Actions',
+      'Leave blank to keep',
+      'Save',
+      'Delete',
+      'Only administrators can view or manage the user list.',
+      'Broker Rules',
+      'Margin and commission rules (USD)',
+      'Annual margin rate (%)',
+      'Interest day-count',
+      '365 days',
+      '360 days',
+      'Maintenance equity (%)',
+      'Stop-out equity (%)',
+      'Rollover time (ARM)',
+      'Commission / share ($)',
+      'Commission by value (%)',
+      'Min comm. / order ($)',
+      'Save rules',
+      'Restore defaults',
+      'Saved in this browser. Confirm rates with your broker.'
+    ];
+
+    for (const copy of settingsCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+
+    expect(translateText('Name for Armen', 'ru')).toBe('Имя: Armen');
+    expect(translateText('Role for Armen', 'ru')).toBe('Роль: Armen');
+    expect(translateText('Language for Armen', 'ru')).toBe('Язык: Armen');
+    expect(translateText('New password for Armen', 'ru')).toBe('Новый пароль: Armen');
+  });
+
+  it('translates nested Settings controls and their accessible attributes when Preact nodes are created', () => {
+    setAppLanguage('ru');
+    const userManagement = h('section', {
+      'aria-label': 'User management table'
+    },
+      h('h3', {}, 'User management'),
+      h('p', {}, 'Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.'),
+      h('button', {
+        title: 'New user role',
+        'aria-label': 'New user role'
+      }, 'Add user')
+    );
+
+    const children = userManagement.props.children as unknown as Array<{ props: Record<string, unknown> }>;
+
+    expect(userManagement.props['aria-label']).toBe('Таблица управления пользователями');
+    expect(children[0].props.children).toBe('Управление пользователями');
+    expect(children[1].props.children).toBe('Администраторы используют общее рабочее пространство владельца. Гости видят только назначенные им данные для чтения; отдельного портфеля у них нет.');
+    expect(children[2].props.title).toBe('Роль нового пользователя');
+    expect(children[2].props['aria-label']).toBe('Роль нового пользователя');
+    expect(children[2].props.children).toBe('Добавить пользователя');
+  });
 
   it('localizes the compact cloud sync indicator', () => {
     expect(translateText('Synced', 'ru')).toBe('Синхронизировано');

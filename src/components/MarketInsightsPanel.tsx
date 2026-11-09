@@ -827,7 +827,7 @@ function MarketInsightsPanelView() {
             <div class="mt-2">
               <button type="button" onClick={() => setMarketEventsRefreshRequest(value => value + 1)}
                 disabled={eventsLoading}
-                class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
+                class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
                 {eventsLoading ? marketEventLabel('Loading events…') : marketEventLabel('Refresh')}
               </button>
             </div>
@@ -897,7 +897,7 @@ function MarketInsightsPanelView() {
                             : marketEventLabel('Split evidence saved for review. No position or cash was changed.');
                         setCorporateActionFeedback({ sourceId: event.sourceId, message });
                       }}
-                      class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+                      class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                       {alreadyApplied ? marketEventLabel('Split already applied')
                         : notApplicable ? marketEventLabel('No adjustment needed')
                           : isDividend && alreadyRecorded ? marketEventLabel('Dividend evidence saved')
@@ -918,7 +918,7 @@ function MarketInsightsPanelView() {
               <h4 class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{marketEventLabel('Daily price history')}</h4>
               <button type="button" onClick={() => setMarketHistoryRequest(value => value + 1)}
                 disabled={historyLoading}
-                class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
+                class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-50">
                 {historyLoading ? marketEventLabel('Loading history…') : marketEventLabel(currentHistory ? 'Refresh history' : 'Load daily history')}
               </button>
             </div>
@@ -953,7 +953,7 @@ function MarketInsightsPanelView() {
                                 reason: ''
                               });
                             }}
-                            class="min-h-8 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40">
+                            class="min-h-11 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40">
                             {marketEventLabel('Correct close')}
                           </button>
                         </span>
@@ -1025,11 +1025,11 @@ function MarketInsightsPanelView() {
                                   });
                                 }
                               }}
-                              class="min-h-9 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40">
+                              class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40">
                               {marketEventLabel('Save correction')}
                             </button>
                             <button type="button" onClick={() => setHistoryCorrectionDraft(null)}
-                              class="min-h-9 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300">
+                              class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300">
                               {marketEventLabel('Cancel')}
                             </button>
                           </div>

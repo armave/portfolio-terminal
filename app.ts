@@ -704,9 +704,13 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
 
 const pushStateToGist = pushStateToCloud;
 
-function pullCloudAndRewriteLocal(parsedState: any) {
+function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
   const currentView = state.activeView;
-  const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
+  // The cloud validator checks safe containers; this migration helper owns legacy field normalization.
+  const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
+    parsedState as unknown as Partial<PortfolioState>,
+    state
+  );
   const mergedState = { ...state, ...compatibleCloudState };
   if (currentAccountRole === 'guest') {
     // The shared snapshot may contain the admin's last-opened desk. Guest login

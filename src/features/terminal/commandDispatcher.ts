@@ -186,7 +186,7 @@ export class CommandDispatcher {
     const state = portfolioStore.getState();
     const position = state.positions?.[ticker];
     const availableShares = Number(position?.shares) ||
-      (position?.tranches || []).reduce((sum: number, tranche: any) =>
+      (position?.tranches || []).reduce((sum, tranche) =>
         sum + Number(tranche.qty ?? tranche.shares ?? 0), 0);
     const shares = sellMatch[1].toLowerCase() === 'all' ? null : cleanNumber(sellMatch[1]);
     const requestedShares = shares === null ? availableShares : shares;
@@ -348,7 +348,7 @@ export class CommandDispatcher {
         const pos = state.positions?.[sym];
         const availableShares =
           Number(pos?.shares) ||
-          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0);
+          (pos?.tranches || []).reduce((sum, tranche) => sum + Number(tranche.qty ?? tranche.shares ?? 0), 0);
 
         if (availableShares <= 0) {
           throw new Error(`No open position found for ${sym}.`);
@@ -484,22 +484,13 @@ export class CommandDispatcher {
           }
         }
 
-        if (typeof (portfolioStore as any).buyStock === 'function') {
-          if (!portfolioStore.buyStock(
-            sym,
-            qty,
-            price,
-            dateStr,
-            Number.isFinite(pt) && pt > 0 ? pt : undefined
-          )) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
-        } else if (typeof (portfolioStore as any).addTranche === 'function') {
-          if (!(portfolioStore as any).addTranche(sym, {
-            shares: qty,
-            entryPrice: price,
-            purchaseDate: dateStr,
-            ...(Number.isFinite(pt) && pt > 0 ? { targetPrice: pt } : {})
-          })) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
-        }
+        if (!portfolioStore.buyStock(
+          sym,
+          qty,
+          price,
+          dateStr,
+          Number.isFinite(pt) && pt > 0 ? pt : undefined
+        )) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
 
         const isToday = dateStr === toLocalIsoDate(new Date());
         return {
@@ -515,7 +506,7 @@ export class CommandDispatcher {
         raw.match(/^(?:target|pt)\s+(?:([a-zA-Z]+)\s+)?([$0-9.,]+)$/i) ||
         raw.match(/^set\s+([a-zA-Z]+)\s+(?:pt|target(?:\s+price)?)\s+(?:to\s+)?([$0-9.,]+)$/i);
       if (ptMatch) {
-        const state: any = portfolioStore.getState();
+        const state = portfolioStore.getState();
         const sym = (ptMatch[1] || state.activeView || '').toUpperCase();
         const pt = cleanNumber(ptMatch[2]);
 
@@ -595,7 +586,7 @@ export class CommandDispatcher {
     const rules = this.getRules(state);
 
     const shares = Number(pos.shares);
-    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+    const costBasis = (pos.tranches || []).reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0);
     const grossSell = shares * simPrice;
     const commSell = calculateCommission(shares, grossSell, rules);
     const totalComms = (Number(pos.commBuy) || 0) + commSell;
@@ -605,7 +596,7 @@ export class CommandDispatcher {
       dailyRate: rules.dailyRate,
       marginDebt: totalDebt,
       totalDebt
-    } as any);
+    });
     const projectedMargin = currentMargin + totalDebt * rules.dailyRate * daysOffset;
     const netProfit = grossSell - costBasis - totalComms - projectedMargin;
 
@@ -621,12 +612,12 @@ export class CommandDispatcher {
     const shares = Number(pos.shares);
     if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
 
-    const costBasis = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
+    const costBasis = (pos.tranches || []).reduce((sum, tranche) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
     const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
     const balance = Number(state.balance) || 0;
     const startingCash = Number(state.cashBalance ?? state.cashCushion?.freeCash) || 0;
     const debt = Math.max(0, -balance);
-    const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
+    const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt });
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const rows = scenarios.map(s => {
@@ -692,7 +683,7 @@ export class CommandDispatcher {
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
       throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
     }
-    const state: any = portfolioStore.getState();
+    const state = portfolioStore.getState();
     const pos = state.positions?.[ticker];
     if (!pos || !(Number(pos.shares) > 0)) {
       throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
@@ -701,7 +692,7 @@ export class CommandDispatcher {
     const rules = this.getRules(state);
     const oldShares = Number(pos.shares);
     const oldCost = (pos.tranches || []).reduce(
-      (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
+      (sum, tranche) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
     );
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
     const purchaseValue = qty * price;
@@ -726,7 +717,7 @@ export class CommandDispatcher {
     const downsidePrice = quote * 0.9;
     const currentMargin = calculateMarginInterest(pos.tranches || [], {
       dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
-    } as any);
+    });
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>

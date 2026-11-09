@@ -132,6 +132,41 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
   });
 
+  it('keeps Market Insights and portfolio summary actions touch-sized', () => {
+    const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
+    const summary = readSource('../components/SummaryMetricsGrid.tsx');
+
+    expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700 px-2 py-1 text-\[10px\] font-semibold text-cyan-300 disabled:opacity-50"/g)).toHaveLength(2);
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40"');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
+    expect(summary).toContain('class="min-h-11 rounded border border-cyan-800/70');
+    expect(summary).toContain('class="min-h-11 rounded border border-emerald-800/70');
+    expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
+  });
+
+  it('keeps Guest LOTS filters and broker reconciliation actions touch-sized', () => {
+    const guestHistory = readSource('../components/GuestTrancheHistory.tsx');
+    const reconciliation = readSource('../components/BrokerTransactionReconciliation.tsx');
+
+    expect(guestHistory.match(/class="min-h-11 rounded border border-slate-700/g)).toHaveLength(4);
+    expect(guestHistory).not.toContain('class="h-8 rounded border border-slate-700');
+    expect(reconciliation.match(/inline-flex min-h-11 min-w-11 items-center justify-center rounded border/g)).toHaveLength(3);
+    expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300');
+    expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300');
+  });
+
+  it('keeps Closed History funding controls at least 44px tall for touch use', () => {
+    const source = readSource('../components/ClosedHistoryDesk.tsx');
+
+    expect(source).toContain("aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}");
+    expect(source.match(/inline-flex min-h-11 min-w-11 items-center justify-center/g)).toHaveLength(6);
+    expect(source).toContain("aria-pressed={allocationType === 'cash'}");
+    expect(source).toContain("aria-pressed={allocationType === 'margin'}");
+    expect(source).toContain("aria-pressed={allocationType === 'mix'}");
+  });
+
   it('does not display missing margin quotes as zero-value positions or false negative returns', () => {
     const source = readSource('../components/SummaryMetricsGrid.tsx');
     expect(source).toContain('getUsableMarketPrice(pos.currentPrice)');
@@ -220,6 +255,17 @@ describe('Stage 10 accessibility wiring', () => {
     const source = readSource('../components/SettingsDesk.tsx');
     expect(source).toContain('aria-label="User name"');
     expect(source).toContain('aria-label="Password (6+ characters)"');
+  });
+
+  it('keeps admin user-management and broker-rule actions at least 44px for touch use', () => {
+    const source = readSource('../components/SettingsDesk.tsx');
+
+    expect(source.match(/min-h-11 min-w-11/g)).toHaveLength(5);
+    expect(source).toContain('Add user</button>');
+    expect(source).toContain('>Save</button>');
+    expect(source).toContain('>Delete</button>');
+    expect(source).toContain('Save rules');
+    expect(source).toContain('Restore defaults');
   });
 });
 
