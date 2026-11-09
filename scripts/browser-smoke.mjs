@@ -470,6 +470,20 @@ async function assertNewsDialogTouchTargets(page) {
 
 async function assertManyTickerNavigation(page) {
   await page.setViewportSize({ width: 360, height: 844 });
+  // The app intentionally renders a standalone ticker tab for a one-ticker
+  // portfolio. Build the same wrapper used by the multi-ticker state so this
+  // stress test can expand that real destination into a synthetic 50-ticker rail.
+  await page.locator('#tickerTabs').evaluate((nav) => {
+    if (nav.querySelector(':scope > .workspace-nav-ticker-list')) return;
+    const tickerButton = nav.querySelector(':scope > button[data-nav-tab="true"]');
+    if (!tickerButton) throw new Error('The workspace navigation has no ticker destination to extend.');
+    const strip = document.createElement('div');
+    strip.className = 'workspace-nav-ticker-list';
+    strip.setAttribute('role', 'group');
+    strip.setAttribute('aria-label', 'MARGIN DESK');
+    nav.insertBefore(strip, tickerButton);
+    strip.appendChild(tickerButton);
+  });
   const mobileMeasurements = await page.locator('.workspace-nav-ticker-list').evaluate((strip) => {
     const template = strip.querySelector('button');
     if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
