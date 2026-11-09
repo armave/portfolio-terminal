@@ -4,7 +4,7 @@
 **Tracking issue:** [#330](https://github.com/armave/portfolio-terminal/issues/330)  
 **Existing charter:** [Wave 3 PT-02](../wave-3/workstreams/PT-02-transaction-integrity-completion.md)  
 **Implementation target:** `dev` for client/domain; Worker/Durable Object changes remain direct-to-`main`.  
-**Status:** Partial implementation delivered in this PR; broader PT-02 acceptance remains open.
+**Status:** Partial implementation delivered in slices 2 and 3; broader PT-02 acceptance remains open.
 
 ## Audit baseline
 
@@ -50,7 +50,8 @@ This work must not reimplement those mechanisms or claim that all financial path
 ### C. Verify journal-to-state parity
 - [x] Add a read-only replay-coverage inspector for the existing positions/cash-holdings/free-cash/margin-debt projection.
 - [x] Classify app-owned state deltas, external broker/import evidence, audit-only history changes, incomplete events and unsupported/malformed schemas.
-- [ ] Extend comparisons to canonical closed history, cost basis, lot identity, realized P&L and realized charges; these are not covered by the current replay projection.
+- [x] Add shadow replay and parity for stable acquisition lots, FIFO sale allocations, remaining buy fees, linked closed history and recorded realized P&L.
+- [ ] Extend the replay contract to cash-holding acquisition lots, realized charges outside recorded sale allocations and supported corporate-action lot adjustments.
 - [ ] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
 - [ ] Keep canonical-state migration out of scope; any cutover requires a separate approved design, migration and rollback.
 
@@ -103,3 +104,37 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [ ] Trade/lot/corporate-action reversals and replay of cost basis, closed history, realized P&L and realized charges remain open.
 - Existing positions-as-canonical compatibility and cloud receipt behavior remain intact.
 - No canonical-ledger cutover or new financial write path is enabled by this work alone.
+
+
+## Implementation slice 3 — lot-aware trade journal and shadow parity
+
+**Branch:** `feat/pt02-lot-aware-trade-journal-2026-11-09`  
+**Target:** `dev`; client/domain only. No Worker or Cloudflare changes.
+
+- [x] Preserve stable acquisition-lot IDs on new position tranches and their matching `trade.buy` events.
+- [x] Persist the exact source acquisition date on new buy events; older stable-lot events without this new field remain readable but are marked incomplete for date parity.
+- [x] Persist exact FIFO lot slices on `trade.sell` events, including quantity, acquisition price/date, allocated buy commission, sell commission, financing cost and realized-P&L contribution.
+- [x] Validate stable sale slices for unique lot identity, positive amounts, sale-price consistency, exact quantity, gross proceeds, fees, financing and realized P&L totals.
+- [x] Link each new closed-trade row to the immutable sale event that produced it, for both manual and AI-confirmed/terminal sales.
+- [x] Add a read-only `replayPortfolioTransactionLots` projection and `verifyPortfolioTransactionLotParity` checker for stable margin-position lots and linked closed-sale history. `PortfolioState.positions` and `closedTrades` remain canonical.
+- [x] Classify legacy lots without IDs, legacy sale events without allocations, unlinked legacy closed trades and quantity-changing paths without exact lot slices as incomplete. Do not synthesize lot IDs or infer acquisition cost basis.
+- [x] Keep trade/lot reversals, tranche corrections, and corporate-action accounting outside this slice; unsupported corrections are not replayed as if they were safe.
+- [x] Add Vitest fixtures for multi-buy FIFO sale spanning two lots, partial remainder, final close, commission and realized-P&L parity, malformed sale allocations, unknown lot references, duplicate lot IDs, legacy-unmapped allocations and unsupported quantity corrections.
+- [x] Extend the production browser journey to assert stable lot IDs, a sale across two FIFO lots, exact remaining quantity, and closed-trade/event linkage; retain the previously merged PR #409 audit-review persistence journey.
+- [ ] Complete authenticated live TradeNet validation, backup/cloud restore review and multi-device concurrency QA separately.
+
+**Safety boundary:** this is a shadow replay and auditability improvement, not a canonical-ledger cutover. Legacy/mixed histories remain explicitly incomplete. Exact reversal of stock trades, fee/financing corrections and corporate actions requires a separately accepted accounting contract.
+
+### Exact-head validation — implementation slice 3
+
+**PR:** [#410 — lot-aware trade journal and shadow parity](https://github.com/armave/portfolio-terminal/pull/410)  
+**Final tested head:** `5a1c714b8584a31838b402bd55cacd85d702840a`
+
+- [x] [Pull Request CI #42584548202](https://github.com/armave/portfolio-terminal/actions/runs/42584548202) — typecheck, all 2,100 Vitest tests (164 files), production build and bundle budget (420,529 bytes / 128,998 bytes gzip), production browser smoke, desktop/mobile performance baseline, dead-code validation and full/production dependency audits passed.
+- [x] [Operations Browser Journey #42584548162](https://github.com/armave/portfolio-terminal/actions/runs/42584548162) — unit/Worker tests, production account/Settings browser journey, dead-code validation and dependency audits passed.
+- [x] [Trade Lifecycle Browser Smoke #42584548184](https://github.com/armave/portfolio-terminal/actions/runs/42584548184) — typecheck, focused trade-lifecycle tests, production build and Chromium journey passed, including stable lot identity, a six-share FIFO sale across two lots, remaining-lot and closed-trade/event linkage assertions, reload and PR #409 review-note persistence.
+- [x] Manual source review of the new replay path: stable lot references, duplicate IDs, acquisition chronology, exact FIFO order, legacy-unmapped history, malformed/unsupported quantity changes and canonical open/closed parity fail closed without synthetic cost basis.
+- [x] Add regression coverage rejecting a sale that skips an older open lot; preserve `incomplete` (not `unsupported`) classification when the referenced lot is absent from available history.
+- [x] Confirm branch is based on current `dev` with zero commits behind; no Worker/Cloudflare code or deployment changed.
+
+**Separate operational gates, not certified by mocked CI:** authenticated live TradeNet validation, backup/export/import and encrypted cloud restore rehearsal, and real cross-device concurrency/stale-revision QA remain open for broader PT-02 acceptance. This PR does not claim those gates are complete.

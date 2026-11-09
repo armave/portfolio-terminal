@@ -49,7 +49,7 @@ import {
 import type { PortfolioSnapshotOptions } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { validateSaleCostBasisTranches } from '../domain/saleCostBasis';
-import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
+import { allocateFifoSaleTranches, buildSaleLotJournalAllocations, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -62,6 +62,19 @@ export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+let fallbackTransactionIdSequence = 0;
+
+function createPortfolioTransactionId(): string {
+  try {
+    const randomUUID = globalThis.crypto?.randomUUID;
+    if (typeof randomUUID === 'function') return randomUUID.call(globalThis.crypto);
+  } catch {
+    // The fallback is only an opaque local identifier, not a security token.
+  }
+  fallbackTransactionIdSequence += 1;
+  return `tx-${Date.now().toString(36)}-${fallbackTransactionIdSequence.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /** Validate persisted daily valuation rows before exposing them to calculations. */
@@ -1191,9 +1204,14 @@ export class PortfolioStore {
     const parsedEffectiveAt = Date.parse(purchaseDate);
     const effectiveAt = context?.effectiveAt ??
       (Number.isFinite(parsedEffectiveAt) && parsedEffectiveAt > 0 ? parsedEffectiveAt : Date.now());
+    // Generate the event and lot identity before the mutation callback so the
+    // committed snapshot and journal event always refer to the same acquisition.
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
+    const lotId = `lot-${eventId}`;
 
     return this.updateFinancialMutation({
       ...context,
+      eventId,
       effectiveAt,
       requestFingerprint: createMutationFingerprint(['trade.buy', clean, shares, price, purchaseDate]),
       source: context?.source ?? 'manual',
@@ -1216,7 +1234,7 @@ export class PortfolioStore {
       const existingPos = positions[clean];
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
-        { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
+        { qty: shares, price, date: purchaseDate, buyCommission: buyComm, lotId }
       ];
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
       const nextCommBuy = (Number(existingPos?.commBuy) || 0) + buyComm;
@@ -1288,6 +1306,8 @@ export class PortfolioStore {
           type: 'trade.buy',
           effectiveAt,
           ticker: clean,
+          lotId,
+          acquisitionDate: purchaseDate,
           quantity: shares,
           positionQuantityDelta: shares,
           unitPrice: price,
@@ -1402,8 +1422,12 @@ export class PortfolioStore {
       sellPrice,
       exitDate
     ]);
+    // Generate the journal event identity before the atomic sale mutation so
+    // the closed-history row can link back to its exact immutable trade.sell event.
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt,
       requestFingerprint,
       source: context?.source ?? 'manual',
@@ -1492,6 +1516,14 @@ export class PortfolioStore {
       if (![marginInterestAllocated, totalCommissions, grossProfit, netProfit, netCashProceeds]
         .every(Number.isFinite)) return null;
 
+      const lotAllocations = buildSaleLotJournalAllocations({
+        soldLots: allocation.soldLots,
+        sellPrice,
+        sellCommission: sellComm,
+        financingCost: marginInterestAllocated,
+        totalRealizedPnl: netProfit
+      });
+
       const totalDebt = Math.abs(Number(state.balance) || 0);
       const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const settlement = settleSaleProceeds(
@@ -1534,6 +1566,7 @@ export class PortfolioStore {
 
       const closedRecord = createClosedTradeRecord({
         id: `${clean}-${Date.now()}`,
+        transactionEventId: options.transactionContext?.eventId,
         ticker: clean,
         shares: actualSold,
         soldCostBasis,
@@ -1585,7 +1618,8 @@ export class PortfolioStore {
           cashDelta: freeCash - previousFreeCash,
           marginDebtDelta: currentDebt - totalDebt,
           netAmount: netCashProceeds,
-          realizedPnl: netProfit
+          realizedPnl: netProfit,
+          lotAllocations
         }
       };
     });
@@ -2100,8 +2134,10 @@ export class PortfolioStore {
     // The caller's idempotency key identifies the command; a retry may naturally
     // arrive at a different wall-clock instant, which must not change its fingerprint.
     const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice]);
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt: context?.effectiveAt ?? closedAt,
       requestFingerprint,
       source: context?.source ?? 'ai-confirmed',

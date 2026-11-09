@@ -75,6 +75,10 @@ export function validateSaleCostBasisTranches(
     }
 
     const tranche = value as Record<string, unknown>;
+    if (tranche.lotId !== undefined &&
+      (typeof tranche.lotId !== 'string' || !tranche.lotId.trim() || tranche.lotId.length > 200)) {
+      throw new Error(`Position contains an invalid cost-basis tranche${ticker ? ` for ${ticker}` : ''}: lot ID must be a non-empty string of at most 200 characters; reconcile lots before selling.`);
+    }
     const qty = readPositiveFiniteAlias(
       [tranche.qty, tranche.shares, tranche.quantity],
       'quantity',

@@ -4,7 +4,8 @@ import {
   type PortfolioTransactionContext,
   type PortfolioTransactionDraft,
   type PortfolioTransactionEvent,
-  type PortfolioTransactionEventType
+  type PortfolioTransactionEventType,
+  type PortfolioTransactionLotAllocation
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
@@ -114,6 +115,77 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.financingCost !== undefined && Number(value.financingCost) < 0) return false;
   if (value.externalReferenceId !== undefined && (typeof value.externalReferenceId !== 'string' || !value.externalReferenceId.trim())) return false;
   if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
+  if (value.lotId !== undefined &&
+    (typeof value.lotId !== 'string' || !value.lotId.trim() || value.lotId.length > 200)) return false;
+  if (value.acquisitionDate !== undefined &&
+    (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
+  if (value.lotId !== undefined) {
+    if (value.type !== 'trade.buy' || !value.ticker ||
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    if (!closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
+      !closeEnough(value.positionQuantityDelta, value.quantity)) return false;
+  }
+  if (value.lotAllocations !== undefined) {
+    if (value.type !== 'trade.sell' || !Array.isArray(value.lotAllocations) ||
+      value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
+      !value.ticker ||
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta) ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.financingCost !== 'number' || !Number.isFinite(value.financingCost) || value.financingCost < 0 ||
+      typeof value.realizedPnl !== 'number' || !Number.isFinite(value.realizedPnl)) return false;
+    const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    let allocatedQuantity = 0;
+    let allocatedFees = 0;
+    let allocatedFinancing = 0;
+    let allocatedPnl = 0;
+    let allocatedGross = 0;
+    const stableLotIds = new Set<string>();
+    for (const rawAllocation of value.lotAllocations) {
+      if (!isPlainRecord(rawAllocation)) return false;
+      const allocation = rawAllocation;
+      if (allocation.identity !== 'stable' && allocation.identity !== 'legacy-unmapped') return false;
+      if (allocation.identity === 'stable') {
+        if (typeof allocation.lotId !== 'string' || !allocation.lotId.trim() || allocation.lotId.length > 200 ||
+          stableLotIds.has(allocation.lotId)) return false;
+        stableLotIds.add(allocation.lotId);
+      }
+      if (allocation.identity === 'legacy-unmapped' && allocation.lotId !== undefined) return false;
+      if (typeof allocation.quantity !== 'number' || !Number.isFinite(allocation.quantity) || allocation.quantity <= 0) return false;
+      if (typeof allocation.acquisitionPrice !== 'number' || !Number.isFinite(allocation.acquisitionPrice) || allocation.acquisitionPrice <= 0) return false;
+      if (allocation.acquisitionDate !== undefined &&
+        (typeof allocation.acquisitionDate !== 'string' || !allocation.acquisitionDate.trim())) return false;
+      if (allocation.acquiredAt !== undefined &&
+        (typeof allocation.acquiredAt !== 'number' || !Number.isFinite(allocation.acquiredAt) || allocation.acquiredAt <= 0)) return false;
+      if (typeof allocation.buyCommissionAllocated !== 'number' ||
+        !Number.isFinite(allocation.buyCommissionAllocated) || allocation.buyCommissionAllocated < 0) return false;
+      if (typeof allocation.sellPrice !== 'number' || !Number.isFinite(allocation.sellPrice) || allocation.sellPrice <= 0 ||
+        !closeEnough(allocation.sellPrice, value.unitPrice)) return false;
+      if (typeof allocation.sellCommissionAllocated !== 'number' ||
+        !Number.isFinite(allocation.sellCommissionAllocated) || allocation.sellCommissionAllocated < 0) return false;
+      if (typeof allocation.financingCostAllocated !== 'number' ||
+        !Number.isFinite(allocation.financingCostAllocated) || allocation.financingCostAllocated < 0) return false;
+      if (typeof allocation.realizedPnl !== 'number' || !Number.isFinite(allocation.realizedPnl)) return false;
+      allocatedQuantity += allocation.quantity;
+      allocatedGross += allocation.quantity * allocation.sellPrice;
+      allocatedFees += allocation.buyCommissionAllocated + allocation.sellCommissionAllocated;
+      allocatedFinancing += allocation.financingCostAllocated;
+      allocatedPnl += allocation.realizedPnl;
+    }
+    if (value.quantity === undefined || !closeEnough(allocatedQuantity, value.quantity)) return false;
+    if (!closeEnough(value.positionQuantityDelta, -value.quantity)) return false;
+    if (!closeEnough(allocatedGross, value.grossAmount)) return false;
+    if (value.fees === undefined || !closeEnough(allocatedFees, value.fees)) return false;
+    if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
+    if (value.realizedPnl === undefined || !closeEnough(allocatedPnl, value.realizedPnl)) return false;
+  }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   return true;
@@ -132,7 +204,10 @@ export function freezePortfolioTransactionEventList(
   }
   return Object.freeze(events.map((event) => Object.freeze({
     ...event,
-    actor: Object.freeze({ ...event.actor })
+    actor: Object.freeze({ ...event.actor }),
+    ...(event.lotAllocations
+      ? { lotAllocations: Object.freeze(event.lotAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[] }
+      : {})
   }))) as unknown as PortfolioTransactionEvent[];
 }
 
@@ -169,6 +244,9 @@ export function createPortfolioTransactionEvent(
     recordedAt,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     ...(context.requestFingerprint ? { requestFingerprint: context.requestFingerprint } : {}),
+    ...(draft.lotId ? { lotId: draft.lotId.trim() } : {}),
+    ...(draft.acquisitionDate ? { acquisitionDate: draft.acquisitionDate.trim() } : {}),
+    ...(draft.lotAllocations ? { lotAllocations: draft.lotAllocations.map((allocation) => ({ ...allocation })) } : {}),
     ...(draft.ticker ? { ticker: draft.ticker.trim().toUpperCase() } : {}),
     ...(draft.currency ? { currency: draft.currency.trim().toUpperCase() } : {}),
     ...(draft.side ? { side: draft.side.trim().toUpperCase() } : {}),
@@ -210,6 +288,9 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     type: event.type,
     actor: event.actor,
     source: event.source,
+    lotId: event.lotId,
+    acquisitionDate: event.acquisitionDate,
+    lotAllocations: event.lotAllocations,
     effectiveAt: event.effectiveAt,
     ticker: event.ticker,
     currency: event.currency,

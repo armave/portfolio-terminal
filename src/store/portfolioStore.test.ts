@@ -2538,6 +2538,15 @@ describe('portfolio transaction journal integration', () => {
     });
     expect(store.setCashBalance(5_000)).toBe(true);
     expect(store.buyStock('AAPL', 2, 100, '2026-11-01')).toBe(true);
+    const buyEvent = store.getState().transactionEvents?.find((item) => item.type === 'trade.buy');
+    expect(buyEvent).toMatchObject({
+      type: 'trade.buy',
+      lotId: expect.any(String),
+      acquisitionDate: '2026-11-01',
+      quantity: 2,
+      positionQuantityDelta: 2
+    });
+    expect(store.getState().positions.AAPL.tranches?.[0]?.lotId).toBe(buyEvent?.lotId);
 
     const saleContext = {
       idempotencyKey: 'terminal-sale-2026-11-06-001',
@@ -2561,7 +2570,24 @@ describe('portfolio transaction journal integration', () => {
       cashDelta: 120,
       marginDebtDelta: 0
     });
+    expect(event).toMatchObject({
+      lotAllocations: [{
+        lotId: buyEvent?.lotId,
+        identity: 'stable',
+        quantity: 1,
+        acquisitionPrice: 100,
+        acquisitionDate: '2026-11-01',
+        buyCommissionAllocated: 0,
+        sellPrice: 120,
+        sellCommissionAllocated: 0,
+        financingCostAllocated: 0,
+        realizedPnl: 20
+      }]
+    });
     expect(event?.realizedPnl).toBe(store.getState().closedTrades[0].netProfit);
+    expect(store.getState().closedTrades[0].transactionEventId).toBe(event?.id);
+    const restored = new PortfolioStore().getState();
+    expect(restored.closedTrades?.[0]?.transactionEventId).toBe(event?.id);
     expect(store.getState().positions.AAPL.shares).toBe(1);
   });
 
@@ -3033,6 +3059,9 @@ describe('portfolio transaction journal integration', () => {
       idempotencyKey: undefined,
       requestFingerprint: undefined,
       type: 'cash.adjustment' as const,
+      lotId: undefined,
+      acquisitionDate: undefined,
+      lotAllocations: undefined,
       ticker: undefined,
       quantity: undefined,
       unitPrice: undefined,

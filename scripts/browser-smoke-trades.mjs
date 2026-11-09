@@ -171,8 +171,8 @@ async function mockWorkerApi(page) {
           }, {}, call);
           return;
         case 'freedom-trades':
-          // A stable broker-only fill gives the reconciliation audit-review
-          // browser journey a deterministic finding that cannot alter app state.
+          // A stable broker-only fill gives the audit-review browser journey a
+          // deterministic finding without adding any app-owned trade or cash.
           await json(route, 200, {
             data: { trades: { trade: [{
               trade_id: 'audit-review-smoke-fill',
@@ -418,6 +418,18 @@ try {
   if (state.positions.QA.tranches?.length !== 2) {
     throw new Error('Additional buy did not retain two distinct acquisition lots.');
   }
+  const qaBuyEvents = (state.transactionEvents || []).filter((event) =>
+    event.type === 'trade.buy' && event.ticker === 'QA'
+  );
+  const qaLots = state.positions.QA.tranches || [];
+  if (qaBuyEvents.length !== 2 ||
+      new Set(qaBuyEvents.map((event) => event.lotId)).size !== 2 ||
+      qaLots.some((lot, index) =>
+        !lot.lotId || lot.lotId !== qaBuyEvents[index]?.lotId ||
+        qaBuyEvents[index]?.acquisitionDate !== lot.date
+      )) {
+    throw new Error('Buy events and canonical FIFO tranches do not share two stable acquisition lot identities.');
+  }
   if (Number(state.positions.QA.pt) !== 150) {
     throw new Error('Initial price target was not retained after the additional buy.');
   }
@@ -428,29 +440,43 @@ try {
     return raw && Number(JSON.parse(raw).positions?.QA?.pt) === 180;
   }, 'target price update');
 
-  // Partial exit consumes three shares from the first FIFO lot. The two
-  // remaining shares of that lot and the later two-share lot both stay open.
-  await runCommand(page, 'sold 3 QA for 130', { confirmTrade: true });
-  await waitForPosition(page, 'QA', 4);
+  // Sell across both FIFO acquisitions: all five shares of the first lot,
+  // then one share of the second lot. The remaining second-lot share stays open.
+  await runCommand(page, 'sold 6 QA for 130', { confirmTrade: true });
+  await waitForPosition(page, 'QA', 1);
   state = await portfolioSnapshot(page);
   const remainingLots = state.positions.QA.tranches || [];
-  if (remainingLots.length !== 2 ||
-      Number(remainingLots[0]?.qty) !== 2 || Number(remainingLots[0]?.price) !== 100 ||
-      Number(remainingLots[1]?.qty) !== 2 || Number(remainingLots[1]?.price) !== 120) {
-    throw new Error('Partial exit did not preserve the unsold FIFO acquisition lots.');
+  if (remainingLots.length !== 1 ||
+      Number(remainingLots[0]?.qty) !== 1 || Number(remainingLots[0]?.price) !== 120 ||
+      remainingLots[0]?.lotId !== qaLots[1]?.lotId) {
+    throw new Error('Multi-lot FIFO sale did not preserve the exact unsold acquisition slice.');
+  }
+  const partialSaleEvent = [...(state.transactionEvents || [])].reverse().find((event) =>
+    event.type === 'trade.sell' && event.ticker === 'QA'
+  );
+  const partialSlices = partialSaleEvent?.lotAllocations || [];
+  if (!partialSaleEvent ||
+      partialSaleEvent.quantity !== 6 ||
+      partialSlices.length !== 2 ||
+      partialSlices[0].lotId !== qaLots[0]?.lotId ||
+      partialSlices[0].quantity !== 5 ||
+      partialSlices[1].lotId !== qaLots[1]?.lotId ||
+      partialSlices[1].quantity !== 1 ||
+      state.closedTrades?.[0]?.transactionEventId !== partialSaleEvent.id) {
+    throw new Error('Sale event did not journal both exact FIFO lot slices and link its closed-history record.');
   }
   if (!Array.isArray(state.closedTrades) || state.closedTrades.length !== 1) {
     throw new Error('Partial sale was not retained in closed-trade history.');
   }
 
-  // Over-sales are rejected before confirmation and must not be clamped to 4.
-  await runCommand(page, 'sold 5 QA for 135');
+  // Over-sales are rejected before confirmation and must not be clamped to 1.
+  await runCommand(page, 'sold 2 QA for 135');
   await waitForCondition(page, () =>
-    document.querySelector('#terminalLog')?.textContent?.includes('only 4 shares are available') ||
-    document.querySelector('#terminalLog')?.textContent?.includes('доступно только 4 акций'),
+    document.querySelector('#terminalLog')?.textContent?.includes('only 1') ||
+    document.querySelector('#terminalLog')?.textContent?.includes('доступно только 1'),
   'oversized sale rejection');
   state = await portfolioSnapshot(page);
-  if (Number(state.positions.QA?.shares) !== 4 || state.closedTrades?.length !== 1) {
+  if (Number(state.positions.QA?.shares) !== 1 || state.closedTrades?.length !== 1) {
     throw new Error('Oversized sale modified the portfolio.');
   }
 
@@ -543,6 +569,7 @@ try {
         commBuy: position.commBuy,
         marginCharged: position.marginCharged,
         tranches: (position.tranches || []).map((tranche) => ({
+          lotId: tranche.lotId,
           qty: tranche.qty,
           price: tranche.price,
           date: tranche.date,
@@ -553,6 +580,7 @@ try {
     ]));
     const closedTrades = (state.closedTrades || []).map((trade) => ({
       id: trade.id,
+      transactionEventId: trade.transactionEventId,
       ticker: trade.ticker,
       shares: trade.shares,
       avgBuyPrice: trade.avgBuyPrice,
@@ -635,7 +663,7 @@ try {
   }
   const financialAfterReload = await financialSnapshot();
   if (JSON.stringify(financialAfterReload) !== JSON.stringify(financialBeforeReview)) {
-    throw new Error('Reloading the audit-only review changed portfolio/accounting fields.');
+    throw new Error('Reloading the audit-only review changed portfolio/accounting fields: ' + JSON.stringify({ before: financialBeforeReview, after: financialAfterReload }));
   }
 
   // Exercise the Balance-desk reversal UI only after the original trade and
