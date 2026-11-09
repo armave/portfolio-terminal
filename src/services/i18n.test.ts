@@ -442,6 +442,7 @@ describe('app localization', () => {
   it('localizes remaining authentication, guest balance, and trade-history copy', () => {
     expect(translateText('Authentication failed.', 'ru')).toBe('Не удалось пройти аутентификацию.');
     expect(translateText('Could not load guest accounts.', 'ru')).toBe('Не удалось загрузить список гостевых учётных записей.');
+    expect(translateText('Loading guest name', 'ru')).toBe('Загрузка имени гостя');
     expect(translateText('Loading holdings, trade activity and account allocations…', 'ru'))
       .toBe('Загрузка активов, истории сделок и распределения по счетам…');
     expect(translateText('No stocks are assigned to your account yet.', 'ru')).toBe('В вашей учётной записи пока нет назначенных акций.');

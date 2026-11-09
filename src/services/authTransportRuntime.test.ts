@@ -104,9 +104,37 @@ describe('auth transport runtime', () => {
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-1' }]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await runtime.createUser({ name: 'Guest 2', password: 'password', role: 'guest' });
+    expect(runtime.getCachedUsers()).toBeNull();
     directoryVersion = 2;
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-2' }]);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('exposes the active session cached directory synchronously during revalidation', async () => {
+    let clock = 100;
+    let token = 'session-token';
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      users: [guest, { ...admin, id: 'admin-2' }]
+    }), { status: 200 }))) as unknown as typeof fetch;
+    const runtime = createAuthTransportRuntime({
+      apiUrl: 'https://worker.example',
+      getActiveGatewaySecret: () => token,
+      fetchImpl,
+      now: () => clock
+    });
+
+    expect(runtime.getCachedUsers()).toBeNull();
+    await runtime.listUsers();
+    expect(runtime.getCachedUsers()).toMatchObject([{ id: 'guest-1' }, { id: 'admin-2' }]);
+
+    token = 'different-session';
+    expect(runtime.getCachedUsers()).toBeNull();
+    token = 'session-token';
+    clock += 15_001;
+    // Keep the old labels visible while listUsers() revalidates the expired cache.
+    expect(runtime.getCachedUsers()).toMatchObject([{ id: 'guest-1' }, { id: 'admin-2' }]);
+    await runtime.listUsers();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('does not let an invalidated in-flight directory read refill the cache', async () => {

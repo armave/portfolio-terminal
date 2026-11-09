@@ -368,6 +368,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Cash shares': 'Акции за денежные средства',
   'Margin shares': 'Маржинальные акции',
   'Guest unavailable': 'Гость недоступен',
+  'Loading guest name': 'Загрузка имени гостя',
   'No guest accounts': 'Нет гостевых учётных записей',
   'Refreshing guest accounts…': 'Обновление списка гостевых учётных записей…',
   'Guest account refresh failed. Existing assignments are still shown.': 'Не удалось обновить список гостевых учётных записей. Текущие назначения сохранены.',

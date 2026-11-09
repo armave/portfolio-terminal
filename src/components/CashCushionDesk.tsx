@@ -8,7 +8,7 @@ import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTr
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
-import { listUsers, type AuthUser } from '../services/api';
+import { getCachedUsers, listUsers, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
@@ -59,7 +59,7 @@ export function buildCashHoldingTableRows<T extends { ticker: string }>(
   isAdmin: boolean
 ): CashHoldingTableRow<T>[] {
   return groups.flatMap((group) => [
-    ...(isAdmin && group.label
+    ...(isAdmin
       ? [{ type: 'group' as const, key: `group-${group.key}`, label: group.label }]
       : []),
     ...group.holdings.map((holding) => ({
@@ -312,7 +312,15 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const [guestDirectory, dispatchGuestDirectory] = useReducer(
     guestDirectoryReducer<AuthUser>,
     undefined,
-    () => createGuestDirectoryState<AuthUser>(showActiveTranches)
+    () => {
+      // Reuse the auth runtime's in-memory token-scoped snapshot on navigation.
+      // This avoids an empty-directory render when a previous desk has already
+      // fetched guest names; a cold cache uses stable group placeholders below.
+      const cachedUsers = getCachedUsers();
+      return cachedUsers
+        ? { users: cachedUsers.filter((user) => user.role === 'guest'), status: 'ready' as const, error: '' }
+        : createGuestDirectoryState<AuthUser>(showActiveTranches);
+    }
   );
   const guestUsers = guestDirectory.users;
   const guestUsersLoading = guestDirectory.status === 'loading';
@@ -521,14 +529,16 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return { unpricedHoldingCount: unpriced, pricedHoldingCount: priced, stocksTotal: total };
   }, [holdings]);
 
+  const guestDirectoryPending = guestDirectory.status === 'loading' ||
+    (guestDirectory.status === 'refreshing' && guestUsers.length === 0);
   const guestNames = useMemo(
-    () => new Map(guestUsers.map((guest) => [guest.id, guest.name || guest.id])),
+    () => new Map(guestUsers.map((guest) => [guest.id, guest.name || ''])),
     [guestUsers]
   );
   const adminHoldingGroups = useMemo(() => isAdmin
     ? getAssignedGuestIds(activeTrancheGuestAssignments).map((guestId) => ({
       key: guestId,
-      label: guestNames.get(guestId) || guestId,
+      label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Guest unavailable', getAppLanguage())),
       holdings: getGuestAssignedCashHoldings({
         guestId,
         activeTranches,
@@ -539,7 +549,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       })
     })).filter((group) => group.holdings.length > 0)
     : [],
-    [isAdmin, guestNames, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
+    [isAdmin, guestNames, guestDirectoryPending, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
 
   const unassignedHoldings = useMemo(() => {
     if (!isAdmin) return [];
@@ -778,7 +788,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     if (row.type === 'group') {
                       return (
                         <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
-                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>{row.label}</td>
+                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>
+                            {row.label || (
+                              <>
+                                <span aria-hidden="true" class="mx-auto block h-2.5 w-16 rounded-full bg-slate-700/80" />
+                                <span class="sr-only">{translateText('Loading guest name', getAppLanguage())}</span>
+                              </>
+                            )}
+                          </td>
                         </tr>
                       );
                     }
