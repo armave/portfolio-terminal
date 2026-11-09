@@ -117,8 +117,10 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.externalOrderReferenceId !== undefined && (typeof value.externalOrderReferenceId !== 'string' || !value.externalOrderReferenceId.trim())) return false;
   if (value.lotId !== undefined &&
     (typeof value.lotId !== 'string' || !value.lotId.trim() || value.lotId.length > 200)) return false;
+  if (value.acquisitionDate !== undefined &&
+    (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
   if (value.lotId !== undefined) {
-    if (value.type !== 'trade.buy' || !value.ticker ||
+    if (value.type !== 'trade.buy' || !value.ticker || !value.acquisitionDate ||
       value.quantity === undefined || value.unitPrice === undefined ||
       value.grossAmount === undefined || value.fees === undefined ||
       value.positionQuantityDelta === undefined) return false;
@@ -236,6 +238,7 @@ export function createPortfolioTransactionEvent(
     ...(idempotencyKey ? { idempotencyKey } : {}),
     ...(context.requestFingerprint ? { requestFingerprint: context.requestFingerprint } : {}),
     ...(draft.lotId ? { lotId: draft.lotId.trim() } : {}),
+    ...(draft.acquisitionDate ? { acquisitionDate: draft.acquisitionDate.trim() } : {}),
     ...(draft.lotAllocations ? { lotAllocations: draft.lotAllocations.map((allocation) => ({ ...allocation })) } : {}),
     ...(draft.ticker ? { ticker: draft.ticker.trim().toUpperCase() } : {}),
     ...(draft.currency ? { currency: draft.currency.trim().toUpperCase() } : {}),
@@ -279,6 +282,7 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     actor: event.actor,
     source: event.source,
     lotId: event.lotId,
+    acquisitionDate: event.acquisitionDate,
     lotAllocations: event.lotAllocations,
     effectiveAt: event.effectiveAt,
     ticker: event.ticker,
