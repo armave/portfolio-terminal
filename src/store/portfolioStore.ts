@@ -2134,8 +2134,10 @@ export class PortfolioStore {
     // The caller's idempotency key identifies the command; a retry may naturally
     // arrive at a different wall-clock instant, which must not change its fingerprint.
     const requestFingerprint = createMutationFingerprint(['trade.sell', clean, sharesToSell, sellPrice]);
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt: context?.effectiveAt ?? closedAt,
       requestFingerprint,
       source: context?.source ?? 'ai-confirmed',
