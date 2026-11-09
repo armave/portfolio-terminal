@@ -145,10 +145,11 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
   });
 
-  it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
+  it('advances the cashflow cursor from the completed broker trade refresh', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
     expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
+    expect(source).toContain('cashflowSyncStartDate.current = getLatestClosedTradeDate(brokerTrades, state.closedTrades || [])');
     expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
     expect(source).toContain('brokerAdapter.fetchCashflows(fromDate)');
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
