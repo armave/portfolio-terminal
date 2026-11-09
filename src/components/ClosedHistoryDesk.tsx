@@ -752,7 +752,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
-          <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
+          <h1 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
             Trades
             {isBackgroundUpdating && (
               <span
@@ -779,7 +779,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                 </svg>
               </span>
             )}
-          </h2>
+          </h1>
           <p class="text-xs text-slate-400">
             Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
           </p>
