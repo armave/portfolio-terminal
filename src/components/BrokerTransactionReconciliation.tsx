@@ -25,7 +25,7 @@ export function getBrokerReconciliationReviewIdempotencyKey(
   findingId: string
 ): string {
   const id = typeof findingId === 'string' ? findingId.trim() : '';
-  if (!id || id.length > 80) return '';
+  if (!id || id.length > 160) return '';
   return `reconciliation-review:${section}:${id}`;
 }
 
