@@ -346,7 +346,7 @@ describe('lot-aware transaction journal replay', () => {
   });
 
   it('validates stable sale slices as unique and gross-proceeds-consistent', () => {
-    const duplicateAllocation = sale('duplicate-allocation', 2, 110, [
+    const validSale = sale('valid-two-lot-sale', 2, 110, [
       {
         lotId: 'lot-one', identity: 'stable', quantity: 1,
         acquisitionPrice: 100, acquisitionDate: '2026-11-01',
@@ -354,19 +354,22 @@ describe('lot-aware transaction journal replay', () => {
         sellCommissionAllocated: 0, financingCostAllocated: 0, realizedPnl: 10
       },
       {
-        lotId: 'lot-one', identity: 'stable', quantity: 1,
-        acquisitionPrice: 100, acquisitionDate: '2026-11-01',
+        lotId: 'lot-two', identity: 'stable', quantity: 1,
+        acquisitionPrice: 120, acquisitionDate: '2026-11-02',
         buyCommissionAllocated: 0, sellPrice: 110,
-        sellCommissionAllocated: 0, financingCostAllocated: 0, realizedPnl: 10
+        sellCommissionAllocated: 0, financingCostAllocated: 0, realizedPnl: -10
       }
     ]);
+    const duplicateAllocation = {
+      ...validSale,
+      lotAllocations: validSale.lotAllocations?.map((allocation) => ({
+        ...allocation,
+        lotId: 'lot-one'
+      }))
+    };
     const wrongGross = {
-      ...sale('wrong-gross', 1, 110, [{
-        lotId: 'lot-one', identity: 'stable', quantity: 1,
-        acquisitionPrice: 100, acquisitionDate: '2026-11-01',
-        buyCommissionAllocated: 0, sellPrice: 110,
-        sellCommissionAllocated: 0, financingCostAllocated: 0, realizedPnl: 10
-      }]),
+      ...validSale,
+      id: 'wrong-gross',
       grossAmount: 999
     };
     expect(isPortfolioTransactionEvent(duplicateAllocation)).toBe(false);
