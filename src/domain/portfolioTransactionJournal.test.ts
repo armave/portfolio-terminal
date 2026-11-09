@@ -607,6 +607,43 @@ describe('transaction journal replay coverage inspection', () => {
     })]);
   });
 
+  it('classifies explicit user reconciliation reviews as audit-only, not financial replay', () => {
+    const review = createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: draft.effectiveAt,
+      note: 'Reviewed activity finding-42. Reason: broker timestamp reviewed.'
+    }, {
+      eventId: 'reconciliation-review-1',
+      idempotencyKey: 'reconciliation-review:activity:finding-42',
+      requestFingerprint: 'review-fingerprint-1',
+      actor: { type: 'user' },
+      source: 'broker-reconciliation-review'
+    });
+    const incomplete = createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: draft.effectiveAt,
+      note: 'Legacy reconciliation note without review identity.'
+    }, {
+      eventId: 'reconciliation-review-incomplete',
+      actor: { type: 'user' },
+      source: 'manual'
+    });
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([review, incomplete]);
+
+    expect(report).toMatchObject({
+      status: 'incomplete',
+      eventCount: 2,
+      replayableCount: 0,
+      auditOnlyCount: 1,
+      issues: [expect.objectContaining({
+        eventId: 'reconciliation-review-incomplete',
+        disposition: 'incomplete'
+      })]
+    });
+    expect(report.findings.map((finding) => finding.disposition)).toEqual(['audit-only', 'incomplete']);
+  });
+
   it('accepts a correction only when it exactly reverses a linked balance adjustment', () => {
     const original = createPortfolioTransactionEvent({
       type: 'cash.adjustment',
