@@ -54,34 +54,71 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Validate the runtime response before a typed value reaches the Settings UI. */
+function isNonEmptyString(value: unknown, maximumLength = 160): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maximumLength;
+}
+
+function isTimestampString(value: unknown): value is string {
+  return isNonEmptyString(value, 64) && Number.isFinite(Date.parse(value));
+}
+
+function isStringList(value: unknown, maximumItems = 100): value is string[] {
+  return Array.isArray(value) && value.length <= maximumItems &&
+    value.every((item) => isNonEmptyString(item, 100));
+}
+
+function isTenantRole(value: unknown): value is TenantDirectoryMembership['role'] {
+  return ['owner', 'manager', 'investor', 'guest'].includes(String(value));
+}
+
+/** Validate the complete runtime contract before data reaches the Settings UI. */
 function isTenantDirectoryResponse(value: unknown): value is TenantDirectoryResponse {
   if (!isRecord(value) || value.version !== 1 ||
       !Number.isSafeInteger(value.revision) || (value.revision as number) < 0 ||
       value.mode !== 'directory-metadata-only' || value.financialDataEnabled !== false ||
-      !Array.isArray(value.tenants)) return false;
+      !Array.isArray(value.tenants) || value.tenants.length > 100) return false;
 
   return value.tenants.every((item) => {
     if (!isRecord(item) || !isRecord(item.tenant) || !isRecord(item.membership) ||
-        !Array.isArray(item.workspaces) || !Array.isArray(item.portfolios)) return false;
-    if (typeof item.tenant.id !== 'string' || typeof item.tenant.name !== 'string' ||
+        !Array.isArray(item.workspaces) || item.workspaces.length > 250 ||
+        !Array.isArray(item.portfolios) || item.portfolios.length > 1000) return false;
+
+    if (!isNonEmptyString(item.tenant.id, 80) ||
+        !isNonEmptyString(item.tenant.name, 80) ||
+        !isTimestampString(item.tenant.createdAt) ||
         !['active', 'suspended'].includes(String(item.tenant.status))) return false;
-    if (!['owner', 'manager', 'investor', 'guest'].includes(String(item.membership.role)) ||
-        item.membership.status !== 'active' || !Array.isArray(item.membership.capabilities)) return false;
+
+    if (!isTenantRole(item.membership.role) ||
+        item.membership.status !== 'active' ||
+        !Number.isSafeInteger(item.membership.membershipVersion) ||
+        (item.membership.membershipVersion as number) < 1 ||
+        !isStringList(item.membership.capabilities, 64)) return false;
+
     if (!item.workspaces.every((workspace) => isRecord(workspace) &&
-        typeof workspace.id === 'string' && typeof workspace.name === 'string' &&
-        typeof workspace.status === 'string')) return false;
+        isNonEmptyString(workspace.id, 80) &&
+        isNonEmptyString(workspace.name, 80) &&
+        isNonEmptyString(workspace.status, 32))) return false;
+
     if (!item.portfolios.every((portfolio) => isRecord(portfolio) &&
-        typeof portfolio.id === 'string' && typeof portfolio.workspaceId === 'string' &&
-        typeof portfolio.name === 'string' && typeof portfolio.status === 'string' &&
+        isNonEmptyString(portfolio.id, 80) &&
+        isNonEmptyString(portfolio.workspaceId, 80) &&
+        isNonEmptyString(portfolio.name, 80) &&
+        isNonEmptyString(portfolio.status, 32) &&
         ['owner', 'portfolio', 'projection'].includes(String(portfolio.access)) &&
-        Array.isArray(portfolio.capabilities))) return false;
+        isStringList(portfolio.capabilities, 64))) return false;
+
     if (item.memberships !== undefined && !Array.isArray(item.memberships)) return false;
-    return item.memberships === undefined || item.memberships.every((member) =>
-      isRecord(member) && typeof member.userId === 'string' &&
-      ['owner', 'manager', 'investor', 'guest'].includes(String(member.role)) &&
-      ['active', 'revoked'].includes(String(member.status)) &&
-      Array.isArray(member.portfolioIds)
-    );
+    return item.memberships === undefined || (item.memberships.length <= 5000 &&
+      item.memberships.every((member) =>
+        isRecord(member) &&
+        isNonEmptyString(member.userId, 128) &&
+        isTenantRole(member.role) &&
+        ['active', 'revoked'].includes(String(member.status)) &&
+        Number.isSafeInteger(member.membershipVersion) &&
+        (member.membershipVersion as number) >= 1 &&
+        isTimestampString(member.createdAt) &&
+        isStringList(member.portfolioIds, 1000)
+      ));
   });
 }
 
