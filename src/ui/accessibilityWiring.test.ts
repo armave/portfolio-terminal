@@ -236,9 +236,11 @@ describe('Stage 10 accessibility wiring', () => {
     const source = readSource('../components/SettingsDesk.tsx');
 
     expect(source.match(/min-h-11 min-w-11/g)).toHaveLength(5);
-    for (const label of ['Add user', 'Save', 'Delete', 'Save rules', 'Restore defaults']) {
-      expect(source).toContain(`>${label}</button>`);
-    }
+    expect(source).toContain('Add user</button>');
+    expect(source).toContain('>Save</button>');
+    expect(source).toContain('>Delete</button>');
+    expect(source).toContain('Save rules');
+    expect(source).toContain('Restore defaults');
   });
 });
 
