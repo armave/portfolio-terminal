@@ -33,7 +33,6 @@ export interface BrokerQuoteReconciliationFinding {
   type:
     | 'price_mismatch'
     | 'currency_mismatch'
-    | 'instrument_mismatch'
     | 'quote_unclassified'
     | 'ambiguous_app_quote'
     | 'ambiguous_broker_quote';
@@ -187,13 +186,6 @@ function normalizeBrokerQuote(
   };
 }
 
-function addFinding(
-  findings: BrokerQuoteReconciliationFinding[],
-  finding: BrokerQuoteReconciliationFinding
-): void {
-  findings.push(finding);
-}
-
 /**
  * Compare app-owned quote observations with broker-reported position prices.
  *
@@ -257,26 +249,12 @@ export function reconcileBrokerQuotePrices(
     const normalized = normalizeAppQuote(row);
     const ticker = normalizeTicker(row?.ticker);
     if (!normalized) {
-      if (ticker) {
-        addFinding([], {
-          id: `unused:${index}`, type: 'quote_unclassified', ticker, appValue: null,
-          brokerValue: null, confidence: 'provisional',
-          explanation: 'The app quote is missing a usable positive price and was excluded from comparison.'
-        });
-      }
-      warnings.push('One or more app quote rows were missing a usable positive price and were excluded.');
+      if (ticker) warnings.push(`The app quote for ${ticker} is missing a usable positive price and was excluded.`);
+      else warnings.push(`App quote row ${index + 1} has no usable ticker or price and was excluded.`);
       return;
     }
     if (!normalized.currency) {
-      addFinding([], {
-        id: `unused-currency:${index}`, type: 'quote_unclassified', ticker: normalized.ticker,
-        appValue: normalized.price, brokerValue: null, confidence: 'provisional',
-        appProvider: normalized.provider ?? undefined,
-        appObservedAt: normalized.observedAt ?? undefined,
-        appReceivedAt: normalized.receivedAt ?? undefined,
-        explanation: 'The app quote currency is unknown; no currency or FX pair was inferred.'
-      });
-      warnings.push('One or more app quotes have unknown currency and cannot be compared safely.');
+      warnings.push(`The app quote currency for ${normalized.ticker} is unknown; no currency or FX pair was inferred.`);
       return;
     }
     const currencies = appGroups.get(normalized.ticker) ?? new Map<string, NormalizedAppQuote[]>();
@@ -362,26 +340,6 @@ export function reconcileBrokerQuotePrices(
       const app = appRows[0];
       const broker = brokerRows[0];
       matchedCount += 1;
-
-      if (app.exchange && broker.exchange && app.exchange !== broker.exchange) {
-        findings.push({
-          id: `instrument:${ticker}:${currency}`,
-          type: 'instrument_mismatch',
-          ticker,
-          currency,
-          appValue: app.price,
-          brokerValue: broker.price,
-          confidence: 'provisional',
-          appProvider: app.provider ?? undefined,
-          brokerProvider: broker.provider ?? undefined,
-          appObservedAt: app.observedAt ?? undefined,
-          appReceivedAt: app.receivedAt ?? undefined,
-          brokerObservedAt: broker.observedAt ?? undefined,
-          brokerReceivedAt: broker.receivedAt ?? undefined,
-          explanation: 'The app and broker quote exchange metadata differs; the prices were not treated as the same verified instrument.'
-        });
-        continue;
-      }
 
       if (!withinTolerance(app.price, broker.price, priceTolerance)) {
         const verified = app.verified && broker.verified;
