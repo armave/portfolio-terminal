@@ -1421,8 +1421,12 @@ export class PortfolioStore {
       sellPrice,
       exitDate
     ]);
+    // Generate the journal event identity before the atomic sale mutation so
+    // the closed-history row can link back to its exact immutable trade.sell event.
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
     const transactionContext: PortfolioTransactionContext = {
       ...context,
+      eventId,
       effectiveAt,
       requestFingerprint,
       source: context?.source ?? 'manual',
@@ -1561,6 +1565,7 @@ export class PortfolioStore {
 
       const closedRecord = createClosedTradeRecord({
         id: `${clean}-${Date.now()}`,
+        transactionEventId: options.transactionContext?.eventId,
         ticker: clean,
         shares: actualSold,
         soldCostBasis,
