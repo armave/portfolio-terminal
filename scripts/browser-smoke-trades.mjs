@@ -604,10 +604,32 @@ try {
 
   await page.getByRole('button', { name: 'Trades' }).click();
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20000 });
-  await waitForCondition(page, () => {
-    const text = document.querySelector('#closedTradesTableBody')?.textContent || '';
-    return text.includes('QA') && text.includes('MRG');
-  }, 'closed history rows for the full trade lifecycle');
+  try {
+    await waitForCondition(page, () => {
+      const text = document.querySelector('#closedTradesTableBody')?.textContent || '';
+      return text.includes('QA') && text.includes('MRG');
+    }, 'closed history rows for the full trade lifecycle');
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+      const state = raw ? JSON.parse(raw) : null;
+      return {
+        activeNavigation: [...document.querySelectorAll('button[data-nav-tab="true"]')]
+          .filter((button) => button.getAttribute('aria-pressed') === 'true')
+          .map((button) => ({ text: button.innerText, ariaLabel: button.getAttribute('aria-label') })),
+        navigation: [...document.querySelectorAll('button[data-nav-tab="true"]')]
+          .map((button) => ({ text: button.innerText, ariaLabel: button.getAttribute('aria-label') })),
+        commandInputVisible: Boolean(document.querySelector('#cmdInput')?.getClientRects().length),
+        closedHistoryVisible: Boolean(document.querySelector('#closedHistoryContainer')?.getClientRects().length),
+        closedTradesTable: document.querySelector('#closedTradesTableBody')?.textContent || null,
+        closedTradeCount: state?.closedTrades?.length ?? null,
+        closedTradeTickers: (state?.closedTrades || []).map((trade) => trade.ticker),
+        activeView: state?.activeView,
+        bodyTail: document.body.innerText.slice(-2400)
+      };
+    });
+    throw new Error('Closed History diagnostic: ' + JSON.stringify(diagnostic) + '; original: ' + error.message);
+  }
 
   if (pageErrors.length > 0) {
     throw new Error(`Uncaught browser errors during trade lifecycle: ${pageErrors.join('; ')}`);
