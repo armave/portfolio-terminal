@@ -244,6 +244,17 @@ export function reconcileBrokerQuotePrices(
 
   if (observedAt === null) {
     warnings.push('The broker provider observation timestamp is unknown; price findings cannot be confirmed.');
+  } else if (ageMs !== null && ageMs < -60_000) {
+    warnings.push('The broker provider observation timestamp is in the future; price findings cannot be confirmed.');
+  }
+  const receivedAgeMs = receivedAt === null ? null : now - receivedAt;
+  if (receivedAgeMs === null) {
+    warnings.push('The broker snapshot receipt timestamp is unknown; price findings cannot be confirmed.');
+  } else if (receivedAgeMs < -60_000 || receivedAgeMs > maxAgeMs) {
+    warnings.push('The broker snapshot receipt timestamp is outside the freshness window; price findings are provisional.');
+  }
+  if (snapshot.status !== 'current') {
+    warnings.push('The broker snapshot current status is not verified; price findings are provisional.');
   }
   if (quality !== 'complete') {
     warnings.push('The broker position snapshot is incomplete; price findings are provisional.');
