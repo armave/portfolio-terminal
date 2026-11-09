@@ -70,6 +70,8 @@ export interface PortfolioTransactionEvent {
   requestFingerprint?: string;
   /** Stable ID of the acquisition lot created by this buy event. */
   lotId?: string;
+  /** Exact source purchase date retained separately from the event timestamp. */
+  acquisitionDate?: string;
   /** Exact per-lot FIFO allocations for a sell; legacy lots are explicitly unmapped. */
   lotAllocations?: PortfolioTransactionLotAllocation[];
   ticker?: string;
@@ -110,6 +112,7 @@ export interface PortfolioTransactionDraft {
   type: PortfolioTransactionEventType;
   effectiveAt: number;
   lotId?: string;
+  acquisitionDate?: string;
   lotAllocations?: PortfolioTransactionLotAllocation[];
   ticker?: string;
   currency?: string;
