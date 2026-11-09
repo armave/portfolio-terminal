@@ -121,19 +121,26 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
   if (value.lotId !== undefined) {
     if (value.type !== 'trade.buy' || !value.ticker ||
-      value.quantity === undefined || value.unitPrice === undefined ||
-      value.grossAmount === undefined || value.fees === undefined ||
-      value.positionQuantityDelta === undefined) return false;
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) return false;
     const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
-    if (value.unitPrice <= 0 || value.grossAmount < 0 ||
-      !closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
+    if (!closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
       !closeEnough(value.positionQuantityDelta, value.quantity)) return false;
   }
   if (value.lotAllocations !== undefined) {
     if (value.type !== 'trade.sell' || !Array.isArray(value.lotAllocations) ||
       value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
-      !value.ticker || value.quantity === undefined || value.unitPrice === undefined ||
-      value.grossAmount === undefined || value.positionQuantityDelta === undefined) return false;
+      !value.ticker ||
+      typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
+      typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
+      typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
+      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta) ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
+      typeof value.financingCost !== 'number' || !Number.isFinite(value.financingCost) || value.financingCost < 0 ||
+      typeof value.realizedPnl !== 'number' || !Number.isFinite(value.realizedPnl)) return false;
     const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
     let allocatedQuantity = 0;
     let allocatedFees = 0;
