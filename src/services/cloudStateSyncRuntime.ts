@@ -4,7 +4,9 @@ import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from '
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
-export type CloudStateRecord = Record<string, unknown>;
+export interface CloudStateRecord extends Partial<PortfolioState> {
+  [key: string]: unknown;
+}
 export type CloudStateInput = PortfolioState | CloudStateRecord;
 
 function isRecord(value: unknown): value is CloudStateRecord {
