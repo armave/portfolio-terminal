@@ -2546,7 +2546,7 @@ describe('portfolio transaction journal integration', () => {
       quantity: 2,
       positionQuantityDelta: 2
     });
-    expect(store.getState().positions.AAPL.tranches[0].lotId).toBe(buyEvent?.lotId);
+    expect(store.getState().positions.AAPL.tranches?.[0]?.lotId).toBe(buyEvent?.lotId);
 
     const saleContext = {
       idempotencyKey: 'terminal-sale-2026-11-06-001',
