@@ -1,6 +1,7 @@
 import type { BrokerAssumptions, ClosedTrade, PositionRecord, TrancheItem } from '../types/portfolio';
 import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from './portfolio';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
+import type { PortfolioTransactionLotAllocation } from '../types/portfolioTransaction';
 
 function requireFiniteNumber(value: number, label: string): number {
   if (!Number.isFinite(value)) {
@@ -84,10 +85,97 @@ function sumTrancheInvestment(
   }, 0);
 }
 
+export interface SoldLotSlice {
+  lotId?: string;
+  identity: 'stable' | 'legacy-unmapped';
+  quantity: number;
+  acquisitionPrice: number;
+  acquisitionDate?: string;
+  acquiredAt?: number;
+  buyCommissionAllocated: number;
+}
+
 export interface FifoSaleAllocation {
   soldCostBasis: number;
   buyCommissionAllocated: number;
   remainingTranches: TrancheItem[];
+  soldLots: SoldLotSlice[];
+}
+
+/** Split an already-rounded monetary amount by lot quantity, placing any cent residual on the final slice. */
+function allocateRoundedAmountByQuantity(amount: number, quantities: readonly number[]): number[] {
+  if (!Number.isFinite(amount) || amount < 0 || quantities.length === 0 ||
+    quantities.some((quantity) => !Number.isFinite(quantity) || quantity <= 0)) {
+    throw new RangeError('Lot allocation inputs must contain a non-negative amount and positive finite quantities.');
+  }
+  const totalQuantity = quantities.reduce((sum, quantity) => sum + quantity, 0);
+  if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
+    throw new RangeError('Lot allocation total quantity must be positive and finite.');
+  }
+  const normalizedAmount = Number(amount.toFixed(2));
+  let allocated = 0;
+  return quantities.map((quantity, index) => {
+    if (index === quantities.length - 1) {
+      return Number((normalizedAmount - allocated).toFixed(2));
+    }
+    const part = Number((normalizedAmount * quantity / totalQuantity).toFixed(2));
+    allocated = Number((allocated + part).toFixed(2));
+    return part;
+  });
+}
+
+/**
+ * Turn FIFO slices into immutable sale-event metadata. Per-lot values are
+ * rounded to cents and the final slice receives any aggregate residual so the
+ * allocation totals exactly match the canonical sale accounting result.
+ */
+export function buildSaleLotJournalAllocations(input: {
+  soldLots: readonly SoldLotSlice[];
+  sellPrice: number;
+  sellCommission: number;
+  financingCost: number;
+  totalRealizedPnl: number;
+}): PortfolioTransactionLotAllocation[] {
+  const { soldLots, sellPrice, sellCommission, financingCost, totalRealizedPnl } = input;
+  if (soldLots.length === 0 || !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+    !Number.isFinite(totalRealizedPnl) ||
+    !Number.isFinite(sellCommission) || sellCommission < 0 ||
+    !Number.isFinite(financingCost) || financingCost < 0) {
+    throw new RangeError('Sale lot journal allocation inputs are invalid.');
+  }
+  const quantities = soldLots.map((lot) => lot.quantity);
+  const sellCommissionParts = allocateRoundedAmountByQuantity(sellCommission, quantities);
+  const financingParts = allocateRoundedAmountByQuantity(financingCost, quantities);
+  let priorRealizedPnl = 0;
+
+  return soldLots.map((lot, index) => {
+    const sellCommissionAllocated = sellCommissionParts[index];
+    const financingCostAllocated = financingParts[index];
+    const calculatedPnl = Number((
+      lot.quantity * (sellPrice - lot.acquisitionPrice) -
+      lot.buyCommissionAllocated -
+      sellCommissionAllocated -
+      financingCostAllocated
+    ).toFixed(2));
+    const realizedPnl = index === soldLots.length - 1
+      ? Number((Number(totalRealizedPnl.toFixed(2)) - priorRealizedPnl).toFixed(2))
+      : calculatedPnl;
+    priorRealizedPnl = Number((priorRealizedPnl + realizedPnl).toFixed(2));
+
+    return {
+      ...(lot.lotId ? { lotId: lot.lotId } : {}),
+      identity: lot.identity,
+      quantity: lot.quantity,
+      acquisitionPrice: lot.acquisitionPrice,
+      ...(lot.acquisitionDate ? { acquisitionDate: lot.acquisitionDate } : {}),
+      ...(lot.acquiredAt !== undefined ? { acquiredAt: lot.acquiredAt } : {}),
+      buyCommissionAllocated: lot.buyCommissionAllocated,
+      sellPrice,
+      sellCommissionAllocated,
+      financingCostAllocated,
+      realizedPnl
+    };
+  });
 }
 
 /**
@@ -121,6 +209,7 @@ export function allocateFifoSaleTranches(
   let soldCostBasis = 0;
   let buyCommissionAllocated = 0;
   const remainingTranches: TrancheItem[] = [];
+  const soldLots: SoldLotSlice[] = [];
   const hasPerTrancheCommissions = validated.hasPerTrancheCommissions;
 
   for (const tranche of validated.tranches) {
@@ -143,6 +232,18 @@ export function allocateFifoSaleTranches(
       ? Number((trancheBuyCommission * take / trancheShares).toFixed(2))
       : 0;
     buyCommissionAllocated += commissionForTake;
+    const lotId = typeof tranche.lotId === 'string' && tranche.lotId.trim()
+      ? tranche.lotId.trim()
+      : undefined;
+    soldLots.push({
+      ...(lotId ? { lotId } : {}),
+      identity: lotId ? 'stable' : 'legacy-unmapped',
+      quantity: take,
+      acquisitionPrice: tranchePrice,
+      ...(tranche.date ? { acquisitionDate: tranche.date } : {}),
+      ...(tranche.acquiredAt !== undefined ? { acquiredAt: tranche.acquiredAt } : {}),
+      buyCommissionAllocated: commissionForTake
+    });
 
     if (trancheShares - take > 0) {
       remainingTranches.push({
@@ -167,11 +268,21 @@ export function allocateFifoSaleTranches(
   const allocatedCommission = hasPerTrancheCommissions
     ? Number((buyCommissionAllocated + unassignedBuyCommission * sellRatio).toFixed(2))
     : Number((normalizedAggregateBuyCommission * sellRatio).toFixed(2));
+  const unassignedAllocatedCommission = Number(Math.max(0, allocatedCommission - buyCommissionAllocated).toFixed(2));
+  const extraCommissionParts = allocateRoundedAmountByQuantity(
+    unassignedAllocatedCommission,
+    soldLots.map((lot) => lot.quantity)
+  );
+  const completedSoldLots = soldLots.map((lot, index) => ({
+    ...lot,
+    buyCommissionAllocated: Number((lot.buyCommissionAllocated + extraCommissionParts[index]).toFixed(2))
+  }));
 
   return {
     soldCostBasis: Number(soldCostBasis.toFixed(8)),
     buyCommissionAllocated: allocatedCommission,
-    remainingTranches
+    remainingTranches,
+    soldLots: completedSoldLots
   };
 }
 
