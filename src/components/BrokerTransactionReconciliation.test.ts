@@ -55,6 +55,8 @@ describe('broker quote reconciliation localization and status', () => {
   it('localizes quote provenance and safety explanations in Russian', () => {
     expect(translateBrokerReconciliationCopy('Broker market prices', 'ru')).toBe('Рыночные цены брокера');
     expect(translateBrokerReconciliationCopy('Price mismatch', 'ru')).toBe('Расхождение цены');
+    expect(translateBrokerReconciliationCopy('App currency', 'ru')).toBe('Валюта приложения');
+    expect(translateBrokerReconciliationCopy('Broker received', 'ru')).toBe('Получено брокером');
     expect(translateBrokerReconciliationCopy(
       'The app and broker quotes use different or unverified currencies. No conversion was attempted.',
       'ru'
