@@ -940,7 +940,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               const recordedAt = new Date(event.recordedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US');
               const reasonId = `balance-adjustment-reason-${event.id}`;
               return (
-                <article key={event.id} class="space-y-2 rounded border border-slate-800 px-3 py-2">
+                <article
+                  key={event.id}
+                  data-balance-adjustment-event-id={event.id}
+                  class="space-y-2 rounded border border-slate-800 px-3 py-2"
+                >
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <strong class="text-xs text-slate-200">{translateText(label, getAppLanguage())}</strong>
                     <span class="text-[10px] text-slate-500">{recordedAt}</span>
