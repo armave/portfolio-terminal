@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   operations-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Check out repository
@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-1.56.1-chromium
+          key: ${{ runner.os }}-ubuntu-24.04-playwright-1.56.1-chromium
 
       - name: Install Chromium
         id: install_chromium
