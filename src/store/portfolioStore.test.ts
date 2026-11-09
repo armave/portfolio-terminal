@@ -3481,6 +3481,27 @@ describe('auditable balance adjustment reversals', () => {
     expect(cashStore.getState().transactionEvents).toHaveLength(2);
   });
 
+  it('does not publish or append a reversal when the snapshot commit fails', () => {
+    const store = new PortfolioStore();
+    expect(store.setFreeCash(500)).toBe(true);
+    const original = store.getState().transactionEvents?.at(-1);
+    const before = store.getState();
+    const failingStorage = {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    };
+    const listener = vi.fn();
+    store.subscribe(listener);
+    vi.stubGlobal('localStorage', failingStorage);
+
+    expect(store.reverseBalanceAdjustment(original!.id, 'Cannot commit reversal')).toBe(false);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().cashCushion.freeCash).toBe(500);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('rejects missing originals, unsupported history corrections and invalid reasons', () => {
     const store = new PortfolioStore();
     expect(store.reverseBalanceAdjustment('missing-event', 'A valid reason')).toBe(false);
