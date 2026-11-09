@@ -360,6 +360,7 @@ describe('balance adjustment reversal access', () => {
     const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain('isAdmin && !guestUserId');
     expect(source).toContain('portfolioStore.reverseBalanceAdjustment(eventId, reason)');
+    expect(source).toContain('data-balance-adjustment-event-id={event.id}');
     expect(source).toContain('immutable correction event');
     expect(source).toContain('disabled={!(balanceAdjustmentReasons[event.id] || \'\').trim()}');
     expect(source).toContain('onClick={() => setPendingBalanceAdjustmentId(event.id)}');
