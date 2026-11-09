@@ -399,6 +399,319 @@ export function verifyPortfolioTransactionParity(
   return { matches: !discrepancies.length, discrepancies };
 }
 
+type PortfolioTransactionEventDisposition =
+  | 'replayable'
+  | 'evidence-only'
+  | 'audit-only'
+  | 'incomplete'
+  | 'unsupported';
+
+interface PortfolioTransactionJournalCoverageFinding {
+  eventId?: string;
+  eventType?: string;
+  disposition: PortfolioTransactionEventDisposition;
+  reason: string;
+}
+
+export interface PortfolioTransactionJournalCoverageReport {
+  status: 'complete' | 'incomplete' | 'unsupported';
+  eventCount: number;
+  replayableCount: number;
+  evidenceOnlyCount: number;
+  auditOnlyCount: number;
+  findings: PortfolioTransactionJournalCoverageFinding[];
+  issues: PortfolioTransactionJournalCoverageFinding[];
+}
+
+const JOURNAL_DELTA_FIELDS = [
+  'positionQuantityDelta',
+  'cashHoldingQuantityDelta',
+  'cashDelta',
+  'marginDebtDelta'
+] as const;
+
+const EXTERNAL_CASHFLOW_TYPES = new Set<PortfolioTransactionEventType>([
+  'dividend',
+  'fee',
+  'margin.interest',
+  'cash.deposit',
+  'cash.withdrawal',
+  'cash.transfer',
+  'corporate-action'
+]);
+
+function hasJournalDelta(event: PortfolioTransactionEvent): boolean {
+  return JOURNAL_DELTA_FIELDS.some((field) => event[field] !== undefined);
+}
+
+function hasNonZeroJournalDelta(event: PortfolioTransactionEvent): boolean {
+  return JOURNAL_DELTA_FIELDS.some((field) => Number(event[field] || 0) !== 0);
+}
+
+/**
+ * Inspect which journal events can safely participate in the current shadow
+ * replay. This report deliberately covers only active-position quantities,
+ * cash-holding quantities, free cash and margin debt; it does not claim to
+ * reconstruct cost basis, lot identity, closed-trade P&L or realized charges.
+ *
+ * Broker rows are evidence-only unless an explicit app-owned posting delta is
+ * present. Missing data is never treated as a zero-value financial mutation.
+ */
+export function inspectPortfolioTransactionJournalReplayCoverage(
+  events: readonly unknown[]
+): PortfolioTransactionJournalCoverageReport {
+  const findings: PortfolioTransactionJournalCoverageFinding[] = [];
+  const knownEvents = new Map<string, PortfolioTransactionEvent>();
+  for (const candidate of events) {
+    if (isPortfolioTransactionEvent(candidate)) knownEvents.set(candidate.id, candidate);
+  }
+
+  for (const raw of events) {
+    if (!isPortfolioTransactionEvent(raw)) {
+      const malformed = isPlainRecord(raw) ? raw : {};
+      findings.push({
+        ...(typeof malformed.id === 'string' ? { eventId: malformed.id } : {}),
+        ...(typeof malformed.type === 'string' ? { eventType: malformed.type } : {}),
+        disposition: 'unsupported',
+        reason: 'Event is malformed or uses an unsupported transaction schema.'
+      });
+      continue;
+    }
+
+    const event = raw;
+    const base = { eventId: event.id, eventType: event.type };
+    const hasDeltas = hasJournalDelta(event);
+    const hasNonZeroDeltas = hasNonZeroJournalDelta(event);
+
+    if (event.type === 'broker.execution') {
+      if (hasDeltas) {
+        findings.push({
+          ...base,
+          disposition: 'unsupported',
+          reason: 'Broker execution evidence must not post directly to app-owned portfolio balances.'
+        });
+      } else if (!event.externalReferenceId || !event.ticker || !event.side || !event.quantity) {
+        findings.push({
+          ...base,
+          disposition: 'incomplete',
+          reason: 'Broker execution evidence is missing its source reference, instrument, side or quantity.'
+        });
+      } else {
+        findings.push({
+          ...base,
+          disposition: 'evidence-only',
+          reason: 'External broker execution is retained as source evidence and is not replayed into canonical state.'
+        });
+      }
+      continue;
+    }
+
+    if (EXTERNAL_CASHFLOW_TYPES.has(event.type) &&
+      event.externalReferenceId &&
+      event.externalCashFlowAmount !== undefined &&
+      !hasDeltas &&
+      (event.actor.type === 'broker' || event.actor.type === 'import')) {
+      findings.push({
+        ...base,
+        disposition: 'evidence-only',
+        reason: 'External cashflow is retained as broker/import evidence and is not posted a second time.'
+      });
+      continue;
+    }
+
+    switch (event.type) {
+      case 'portfolio.reset':
+        findings.push({
+          ...base,
+          disposition: 'replayable',
+          reason: 'Explicit reset marker clears the replayed position, cash-holding, free-cash and debt projection.'
+        });
+        break;
+
+      case 'history.correction':
+        findings.push({
+          ...base,
+          disposition: hasDeltas
+            ? 'unsupported'
+            : event.note?.trim()
+              ? 'audit-only'
+              : 'incomplete',
+          reason: hasDeltas
+            ? 'Closed-history cleanup must not alter financial replay balances.'
+            : event.note?.trim()
+              ? 'History-display correction is auditable but does not change financial replay balances.'
+              : 'History correction is missing its audit explanation.'
+        });
+        break;
+
+      case 'trade.buy':
+      case 'trade.sell': {
+        const expectedSign = event.type === 'trade.buy' ? 1 : -1;
+        const validDelta = event.positionQuantityDelta !== undefined &&
+          Math.sign(event.positionQuantityDelta) === expectedSign &&
+          event.quantity !== undefined &&
+          Math.abs(Math.abs(event.positionQuantityDelta) - event.quantity) <= 1e-8;
+        findings.push({
+          ...base,
+          disposition: event.ticker && validDelta ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta
+            ? 'Trade event contains an explicit active-position quantity delta.'
+            : 'Trade event requires an instrument, positive quantity and matching signed position delta.'
+        });
+        break;
+      }
+
+      case 'cash-holding.buy':
+      case 'cash-holding.sell':
+      case 'cash-holding.adjustment': {
+        const validDelta = event.cashHoldingQuantityDelta !== undefined &&
+          (event.type === 'cash-holding.adjustment' ||
+            (event.type === 'cash-holding.buy' && event.cashHoldingQuantityDelta > 0) ||
+            (event.type === 'cash-holding.sell' && event.cashHoldingQuantityDelta < 0));
+        findings.push({
+          ...base,
+          disposition: event.ticker && validDelta ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta
+            ? 'Cash-holding event contains an explicit signed quantity delta.'
+            : 'Cash-holding event requires an instrument and a correctly signed quantity delta.'
+        });
+        break;
+      }
+
+      case 'position.adjustment':
+        findings.push({
+          ...base,
+          disposition: event.ticker && event.positionQuantityDelta !== undefined
+            ? 'replayable'
+            : 'incomplete',
+          reason: event.ticker && event.positionQuantityDelta !== undefined
+            ? 'Position tracking adjustment contains an explicit quantity delta.'
+            : 'Position adjustment requires an instrument and an explicit quantity delta.'
+        });
+        break;
+
+      case 'portfolio.reconciliation':
+        findings.push({
+          ...base,
+          disposition: hasDeltas ? 'replayable' : 'incomplete',
+          reason: hasDeltas
+            ? 'Snapshot reconciliation records an observed canonical-state delta without inferring a trade.'
+            : 'Snapshot reconciliation has no explicit state delta.'
+        });
+        break;
+
+      case 'cash.adjustment':
+        findings.push({
+          ...base,
+          disposition: event.cashDelta !== undefined || event.marginDebtDelta !== undefined
+            ? 'replayable'
+            : 'incomplete',
+          reason: event.cashDelta !== undefined || event.marginDebtDelta !== undefined
+            ? 'Cash/debt adjustment contains explicit balance deltas.'
+            : 'Cash adjustment requires an explicit free-cash or margin-debt delta.'
+        });
+        break;
+
+      case 'margin.adjustment':
+      case 'margin.interest':
+        findings.push({
+          ...base,
+          disposition: event.marginDebtDelta !== undefined ? 'replayable' : 'incomplete',
+          reason: event.marginDebtDelta !== undefined
+            ? 'Margin event contains an explicit debt delta.'
+            : 'Margin event requires an explicit debt delta or a complete external cashflow evidence reference.'
+        });
+        break;
+
+      case 'correction': {
+        const original = event.relatedEventId ? knownEvents.get(event.relatedEventId) : undefined;
+        if (!event.note?.trim() || !event.relatedEventId || !hasNonZeroDeltas) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction requires an original event reference, reason and non-zero inverse state delta.'
+          });
+          break;
+        }
+        if (!original) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction references an event that is not present in the supplied journal.'
+          });
+          break;
+        }
+        if (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment') {
+          findings.push({
+            ...base,
+            disposition: 'unsupported',
+            reason: 'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.'
+          });
+          break;
+        }
+        const exactInverse = JOURNAL_DELTA_FIELDS.every((field) => {
+          const originalValue = original[field];
+          const correctionValue = event[field];
+          if (originalValue === undefined) return correctionValue === undefined;
+          return correctionValue !== undefined &&
+            Math.abs(correctionValue + originalValue) <= 1e-8;
+        });
+        findings.push({
+          ...base,
+          disposition: exactInverse ? 'replayable' : 'incomplete',
+          reason: exactInverse
+            ? 'Correction is the exact inverse of a linked cash/debt balance adjustment.'
+            : 'Correction state deltas must be the exact inverse of the linked original balance adjustment.'
+        });
+        break;
+      }
+
+      case 'cash.deposit':
+      case 'cash.withdrawal':
+      case 'cash.transfer':
+      case 'dividend':
+      case 'fee':
+      case 'corporate-action':
+        findings.push({
+          ...base,
+          disposition: hasDeltas ? 'replayable' : 'incomplete',
+          reason: hasDeltas
+            ? 'App-owned posting contains an explicit position, cash-holding, cash or debt delta.'
+            : 'Financial posting has neither an app-owned state delta nor a complete external evidence reference.'
+        });
+        break;
+
+      default:
+        findings.push({
+          ...base,
+          disposition: 'unsupported',
+          reason: 'Event type is not supported by the current quantity/cash/debt replay contract.'
+        });
+    }
+  }
+
+  const issues = findings.filter((finding) =>
+    finding.disposition === 'incomplete' || finding.disposition === 'unsupported'
+  );
+  const replayableCount = findings.filter((finding) => finding.disposition === 'replayable').length;
+  const evidenceOnlyCount = findings.filter((finding) => finding.disposition === 'evidence-only').length;
+  const auditOnlyCount = findings.filter((finding) => finding.disposition === 'audit-only').length;
+
+  return {
+    status: issues.some((finding) => finding.disposition === 'unsupported')
+      ? 'unsupported'
+      : issues.length
+        ? 'incomplete'
+        : 'complete',
+    eventCount: findings.length,
+    replayableCount,
+    evidenceOnlyCount,
+    auditOnlyCount,
+    findings,
+    issues
+  };
+}
+
 function hash(value: string): string {
   let a = 2166136261, b = 0x9e3779b9;
   for (let i = 0; i < value.length; i++) {

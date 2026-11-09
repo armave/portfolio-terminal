@@ -1005,6 +1005,130 @@ export class PortfolioStore {
     });
   }
 
+  /**
+   * Reverse a balance-only manual adjustment without deleting its original
+   * event. Trade, lot, closed-history and corporate-action reversals are
+   * intentionally rejected until their cost-basis/P&L semantics are modeled.
+   */
+  public reverseBalanceAdjustment(
+    originalEventId: string,
+    reason: string,
+    context?: PortfolioTransactionContext
+  ): boolean {
+    const originalId = typeof originalEventId === 'string' ? originalEventId.trim() : '';
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+    if (!originalId || !cleanReason || cleanReason.length > 500) return false;
+
+    const original = (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) && event.id === originalId
+    );
+    if (!original ||
+      (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment')) return false;
+
+    const originalCashDelta = Number(original.cashDelta ?? 0);
+    const originalDebtDelta = Number(original.marginDebtDelta ?? 0);
+    if (![originalCashDelta, originalDebtDelta].every(Number.isFinite) ||
+      (Math.abs(originalCashDelta) < 1e-10 && Math.abs(originalDebtDelta) < 1e-10)) return false;
+
+    const requestFingerprint = createMutationFingerprint([
+      'transaction.reversal.balance-adjustment',
+      original.id,
+      cleanReason
+    ]);
+    const previousReversal = (this.state.transactionEvents || []).find((event) =>
+      isPortfolioTransactionEvent(event) &&
+      event.type === 'correction' &&
+      event.relatedEventId === original.id
+    );
+    if (previousReversal) {
+      return previousReversal.requestFingerprint === requestFingerprint;
+    }
+
+    // Reject unsafe inverse deltas before entering updateFinancialMutation:
+    // its generic no-op result is intentionally successful for idempotent
+    // commands, while this API must report an unsafe reversal as false.
+    const currentFreeCashValue = this.state.cashCushion?.freeCash;
+    const currentBalanceValue = this.state.balance;
+    if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+      currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+      !Number.isFinite(currentBalanceValue)) return false;
+    const currentFreeCash = currentFreeCashValue;
+    const currentDebt = Math.abs(currentBalanceValue);
+    const nextFreeCash = currentFreeCash - originalCashDelta;
+    const nextDebt = currentDebt - originalDebtDelta;
+    const tolerance = 1e-8;
+    if (!Number.isFinite(nextFreeCash) || !Number.isFinite(nextDebt) ||
+      nextFreeCash < -tolerance || nextDebt < -tolerance) return false;
+
+    const mutationContext: PortfolioTransactionContext = {
+      ...context,
+      idempotencyKey: context?.idempotencyKey ?? `transaction-reversal:${original.id}`,
+      requestFingerprint,
+      actor: context?.actor ?? { type: 'user' },
+      source: context?.source ?? 'transaction-reversal',
+      effectiveAt: context?.effectiveAt ?? Date.now()
+    };
+
+    return this.updateFinancialMutation(mutationContext, (state) => {
+      const journal = state.transactionEvents || [];
+      const currentOriginal = journal.find((event) =>
+        isPortfolioTransactionEvent(event) && event.id === original.id
+      );
+      if (!currentOriginal ||
+        (currentOriginal.type !== 'cash.adjustment' && currentOriginal.type !== 'margin.adjustment') ||
+        journal.some((event) =>
+          isPortfolioTransactionEvent(event) &&
+          event.type === 'correction' &&
+          event.relatedEventId === currentOriginal.id
+        )) return null;
+
+      const cashDelta = Number(currentOriginal.cashDelta ?? 0);
+      const debtDelta = Number(currentOriginal.marginDebtDelta ?? 0);
+      if (![cashDelta, debtDelta].every(Number.isFinite) ||
+        (Math.abs(cashDelta) < 1e-10 && Math.abs(debtDelta) < 1e-10)) return null;
+
+      const currentFreeCashValue = state.cashCushion?.freeCash;
+      const currentBalanceValue = state.balance;
+      if (typeof currentFreeCashValue !== 'number' || !Number.isFinite(currentFreeCashValue) ||
+        currentFreeCashValue < 0 || typeof currentBalanceValue !== 'number' ||
+        !Number.isFinite(currentBalanceValue)) return null;
+      const currentFreeCash = currentFreeCashValue;
+      const currentDebt = Math.abs(currentBalanceValue);
+      const nextFreeCash = currentFreeCash - cashDelta;
+      const nextDebt = currentDebt - debtDelta;
+      const tolerance = 1e-8;
+
+      // A later transaction may already have spent the adjusted cash or repaid
+      // the adjusted debt. Never create a negative balance to force a reversal.
+      if (!Number.isFinite(nextFreeCash) || !Number.isFinite(nextDebt) ||
+        nextFreeCash < -tolerance || nextDebt < -tolerance) return null;
+
+      const freeCash = Math.max(0, Number(nextFreeCash.toFixed(8)));
+      const debt = Math.max(0, Number(nextDebt.toFixed(8)));
+      return {
+        state: {
+          ...state,
+          balance: debt > 0 ? -debt : 0,
+          cashBalance: freeCash,
+          cashCushion: {
+            ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+            freeCash
+          }
+        },
+        event: {
+          type: 'correction',
+          effectiveAt: mutationContext.effectiveAt ?? Date.now(),
+          ...(currentOriginal.ticker ? { ticker: currentOriginal.ticker } : {}),
+          ...(currentOriginal.currency ? { currency: currentOriginal.currency } : {}),
+          ...(currentOriginal.cashDelta !== undefined ? { cashDelta: -cashDelta } : {}),
+          ...(currentOriginal.marginDebtDelta !== undefined ? { marginDebtDelta: -debtDelta } : {}),
+          relatedEventId: currentOriginal.id,
+          note: `Reversal of balance adjustment ${currentOriginal.id}: ${cleanReason}`
+        }
+      };
+    });
+  }
+
   public buyStock(
     ticker: string,
     shares: number,
