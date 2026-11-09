@@ -4851,7 +4851,7 @@ describe('tenant directory Worker routing', () => {
       body: JSON.stringify({ name: 'Must not be created' })
     }), { PORTFOLIO_STATE_DO: binding });
     expect(unsupportedMethod.status).toBe(405);
-    expect(calls).toEqual(['/api/auth/verify']);
+    expect(calls).toEqual([]); // The Worker rejects unsupported methods before session forwarding.
 
     calls.length = 0;
     const unsupportedPath = await worker.fetch(new Request('https://worker.test/api/tenants/unknown/secret', {
