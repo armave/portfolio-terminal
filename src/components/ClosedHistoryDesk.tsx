@@ -804,7 +804,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                 })),
                 ...(state.cashCushion?.holdings || []).map(holding => ({
                   ticker: holding.ticker,
-                  price: holding.currentPrice ?? holding.price,
+                  price: holding.currentPrice,
                   quoteSource: holding.quoteSource,
                   quoteUpdatedAt: holding.quoteUpdatedAt,
                   quoteDetails: holding.quoteDetails
