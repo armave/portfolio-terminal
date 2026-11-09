@@ -340,18 +340,18 @@ export function BrokerTransactionReconciliation({
             {error && <p role="alert" class="text-[10px] text-amber-300">{translateBrokerReconciliationCopy(error)}</p>}
             <div class="flex flex-wrap gap-2">
               <button type="button" disabled={!reason.trim()} onClick={submit}
-                class="rounded border border-cyan-700/70 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200 hover:bg-cyan-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
+                class="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-cyan-700/70 px-2.5 py-1.5 text-[10px] font-bold text-cyan-200 hover:bg-cyan-950/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">
                 {translateBrokerReconciliationCopy('Record review')}
               </button>
               <button type="button" onClick={() => { setReviewOpenKey(null); setReviewErrorByKey((current) => ({ ...current, [key]: '' })); }}
-                class="rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300">
+                class="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-300">
                 {translateBrokerReconciliationCopy('Cancel')}
               </button>
             </div>
           </div>
         ) : (
           <button type="button" onClick={() => setReviewOpenKey(key)}
-            class="rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:border-cyan-700 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
+            class="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:border-cyan-700 hover:text-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
             {translateBrokerReconciliationCopy('Review item')}
           </button>
         )}
