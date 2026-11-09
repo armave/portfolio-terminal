@@ -5,7 +5,23 @@
 **Security dependency:** [PT-16 issue #344](https://github.com/armave/portfolio-terminal/issues/344)  
 **Existing charter:** [Wave 3 PT-05](../wave-3/workstreams/PT-05-multi-portfolio-ownership.md)  
 **Client target:** `dev`; Worker/Durable Object implementation must be committed directly to `main`.  
-**Status:** Plan for implementation review; no application behavior changes in this plan PR.
+**Status:** First safe implementation slice delivered; tenant financial data plane remains deliberately disabled pending PT-02/PT-16 and key-recovery gates.
+
+## Implemented security hardening — 2026-11-09
+
+This PR now contains the first runtime implementation slice while preserving the metadata-only contract:
+
+- [x] Public Worker allows only the tenant directory's supported GET/POST methods and rejects unknown tenant paths before forwarding.
+- [x] `PortfolioStateDO.handleTenantDirectory` independently enforces the same method allowlist and returns `405 Allow: GET, POST` for unsupported verbs.
+- [x] Worker and Durable Object tests cover PUT/PATCH/DELETE rejection, no mutation on rejected requests, and unknown-path rejection.
+- [x] Client runtime validation checks nested tenant timestamps, membership versions, role/capability arrays, portfolio metadata, and owner roster fields before the Settings UI consumes the response.
+- [x] Vitest cases cover malformed nested permission, membership, and timestamp data.
+- [ ] No tenant financial-state route or tenant Durable Object binding is enabled by this slice.
+- [ ] No per-tenant key is generated, rotated, recovered, exported, or deleted by this slice.
+
+**Direct-to-main server companion:** `016f17330877edd6098ff8b667c1d298da1e00ef` (method/path enforcement and Worker tests), corrected by `f33d9b592a0b72b7cd44f97b699cee8b59eecf5e` (route matcher correction). Exact CI/deployment evidence will be appended after the push workflow finishes.
+
+**Security disposition:** this is not completion of tenant data-plane isolation. The directory continues to return `mode: directory-metadata-only` and `financialDataEnabled: false`. The design explicitly prohibits enabling financial routes until PT-02 issue #330 and PT-16 issue #344, per-tenant key ownership/recovery, migration/rollback, and adversarial authorization gates are satisfied.
 
 ## Audit baseline
 
