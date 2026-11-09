@@ -367,10 +367,14 @@ export function reconcileBrokerQuotePrices(
 
       const app = appRows[0];
       const broker = brokerRows[0];
+      const appProviders = [...new Set(appRows.map(row => row.provider).filter((value): value is string => Boolean(value)))];
+      const brokerProviders = [...new Set(brokerRows.map(row => row.provider).filter((value): value is string => Boolean(value)))];
+      const appObservedAtIsConsistent = appRows.every(row => row.observedAt === app.observedAt);
+      const appReceivedAtIsConsistent = appRows.every(row => row.receivedAt === app.receivedAt);
       matchedCount += 1;
 
       if (!withinTolerance(app.price, broker.price, priceTolerance)) {
-        const verified = app.verified && broker.verified;
+        const verified = appRows.every(row => row.verified) && brokerRows.every(row => row.verified);
         findings.push({
           id: `price:${ticker}:${currency}`,
           type: 'price_mismatch',
@@ -380,10 +384,10 @@ export function reconcileBrokerQuotePrices(
           brokerValue: broker.price,
           difference: app.price - broker.price,
           confidence: verified ? 'confirmed' : 'provisional',
-          appProvider: app.provider ?? undefined,
-          brokerProvider: broker.provider ?? undefined,
-          appObservedAt: app.observedAt ?? undefined,
-          appReceivedAt: app.receivedAt ?? undefined,
+          appProvider: appProviders.length ? appProviders.join(', ') : undefined,
+          brokerProvider: brokerProviders.length ? brokerProviders.join(', ') : undefined,
+          appObservedAt: appObservedAtIsConsistent ? app.observedAt ?? undefined : undefined,
+          appReceivedAt: appReceivedAtIsConsistent ? app.receivedAt ?? undefined : undefined,
           brokerObservedAt: broker.observedAt ?? undefined,
           brokerReceivedAt: broker.receivedAt ?? undefined,
           explanation: verified
