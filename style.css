@@ -4112,3 +4112,53 @@ table tbody tr:hover {
     scroll-margin-inline: 0.5rem;
   }
 }
+
+/* Financial readability: prioritize decision-critical figures over metadata. */
+.portfolio-micro-heading,
+.portfolio-metric-label {
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.portfolio-micro-market-primary .portfolio-metric-value {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.margin-risk-equity {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.margin-risk-buffer-stat strong {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.margin-risk-status {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767px) {
+  .portfolio-micro-row .portfolio-metric-value {
+    font-size: 0.8125rem;
+  }
+
+  .portfolio-micro-market-primary .portfolio-metric-value {
+    font-size: 0.9375rem;
+  }
+
+  .margin-risk-equity {
+    font-size: 0.9375rem;
+  }
+
+  .margin-risk-buffer-stat strong {
+    font-size: 0.8125rem;
+  }
+}
