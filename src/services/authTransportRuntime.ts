@@ -34,6 +34,8 @@ export interface AuthTransportRuntime {
   bootstrapAdmin: (name: string, password: string, bootstrapSecret: string) => Promise<AuthSession>;
   getCurrentUser: () => Promise<AuthUser>;
   listUsers: () => Promise<AuthUser[]>;
+  /** Returns the current token-scoped directory cache synchronously, if it is fresh. */
+  getCachedUsers: () => AuthUser[] | null;
   createUser: (input: { name: string; password: string; role: "guest" | "admin"; language?: AppLanguage }) => Promise<AuthUser>;
   updateUser: (id: string, input: { name: string; role: "guest" | "admin"; language?: AppLanguage; password?: string }) => Promise<AuthUser>;
   updateMyLanguage: (language: AppLanguage) => Promise<AuthUser>;
@@ -229,6 +231,12 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     return request;
   };
 
+  const getCachedUsers = (): AuthUser[] | null => {
+    const token = dependencies.getActiveGatewaySecret();
+    if (!token || usersCache?.token !== token || usersCache.expiresAt <= now()) return null;
+    return usersCache.users;
+  };
+
   const createUser = async (input: { name: string; password: string; role: "guest" | "admin"; language?: AppLanguage }): Promise<AuthUser> => {
     const token = dependencies.getActiveGatewaySecret();
     if (!token) throw new Error("Not signed in.");
@@ -296,6 +304,7 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     bootstrapAdmin,
     getCurrentUser,
     listUsers,
+    getCachedUsers,
     createUser,
     updateUser,
     updateMyLanguage,
