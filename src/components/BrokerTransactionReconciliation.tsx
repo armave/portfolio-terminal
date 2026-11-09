@@ -12,7 +12,7 @@ import {
 } from '../domain/brokerQuoteReconciliation';
 
 export type BrokerReconciliationReviewSection = 'activity' | 'quote';
-export type RecordBrokerReconciliationReview = (
+type RecordBrokerReconciliationReview = 
   section: BrokerReconciliationReviewSection,
   findingId: string,
   findingType: string,
