@@ -15,6 +15,11 @@ describe('navigation portfolio sync control', () => {
     expect(tickerTabSource).not.toContain('id="refreshQuotesButton"');
   });
 
+  it('keeps the icon-only full-sync action at a 44px touch target', () => {
+    expect(syncButtonSource).toContain('min-h-11 min-w-11');
+    expect(syncButtonSource).not.toContain('class="h-8');
+  });
+
   it('keeps automatic navigation quote refresh separate from full sync', () => {
     expect(tickerTabSource).toContain("emitUiEvent('portfolio:refresh-live-prices'");
     expect(tickerTabSource).toContain('if (refreshQuotes) void handleRefreshQuotes();');

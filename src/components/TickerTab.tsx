@@ -276,7 +276,7 @@ export function PortfolioSyncButton({
       aria-busy={isSyncingPortfolio}
       disabled={isSyncingPortfolio}
       onClick={handleSyncPortfolio}
-      class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
+      class="min-h-11 min-w-11 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
     >
       <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
     </button>
