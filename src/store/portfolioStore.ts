@@ -1044,6 +1044,17 @@ export class PortfolioStore {
       return previousReversal.requestFingerprint === requestFingerprint;
     }
 
+    // Reject unsafe inverse deltas before entering updateFinancialMutation:
+    // its generic no-op result is intentionally successful for idempotent
+    // commands, while this API must report an unsafe reversal as false.
+    const currentFreeCash = Math.max(0, Number(this.state.cashCushion?.freeCash) || 0);
+    const currentDebt = Math.abs(Number(this.state.balance) || 0);
+    const nextFreeCash = currentFreeCash - originalCashDelta;
+    const nextDebt = currentDebt - originalDebtDelta;
+    const tolerance = 1e-8;
+    if (!Number.isFinite(nextFreeCash) || !Number.isFinite(nextDebt) ||
+      nextFreeCash < -tolerance || nextDebt < -tolerance) return false;
+
     const mutationContext: PortfolioTransactionContext = {
       ...context,
       idempotencyKey: context?.idempotencyKey ?? `transaction-reversal:${original.id}`,
