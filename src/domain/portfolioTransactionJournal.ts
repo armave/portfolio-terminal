@@ -461,6 +461,10 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
   events: readonly unknown[]
 ): PortfolioTransactionJournalCoverageReport {
   const findings: PortfolioTransactionJournalCoverageFinding[] = [];
+  const knownEvents = new Map<string, PortfolioTransactionEvent>();
+  for (const candidate of events) {
+    if (isPortfolioTransactionEvent(candidate)) knownEvents.set(candidate.id, candidate);
+  }
 
   for (const raw of events) {
     if (!isPortfolioTransactionEvent(raw)) {
@@ -619,17 +623,48 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
         });
         break;
 
-      case 'correction':
+      case 'correction': {
+        const original = event.relatedEventId ? knownEvents.get(event.relatedEventId) : undefined;
+        if (!event.note?.trim() || !event.relatedEventId || !hasNonZeroDeltas) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction requires an original event reference, reason and non-zero inverse state delta.'
+          });
+          break;
+        }
+        if (!original) {
+          findings.push({
+            ...base,
+            disposition: 'incomplete',
+            reason: 'Financial correction references an event that is not present in the supplied journal.'
+          });
+          break;
+        }
+        if (original.type !== 'cash.adjustment' && original.type !== 'margin.adjustment') {
+          findings.push({
+            ...base,
+            disposition: 'unsupported',
+            reason: 'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.'
+          });
+          break;
+        }
+        const exactInverse = JOURNAL_DELTA_FIELDS.every((field) => {
+          const originalValue = original[field];
+          const correctionValue = event[field];
+          if (originalValue === undefined) return correctionValue === undefined;
+          return correctionValue !== undefined &&
+            Math.abs(correctionValue + originalValue) <= 1e-8;
+        });
         findings.push({
           ...base,
-          disposition: event.relatedEventId && event.note?.trim() && hasNonZeroDeltas
-            ? 'replayable'
-            : 'incomplete',
-          reason: event.relatedEventId && event.note?.trim() && hasNonZeroDeltas
-            ? 'Linked correction offsets an earlier financial event with explicit state deltas.'
-            : 'Financial correction requires an original event reference, reason and non-zero inverse state delta.'
+          disposition: exactInverse ? 'replayable' : 'incomplete',
+          reason: exactInverse
+            ? 'Correction is the exact inverse of a linked cash/debt balance adjustment.'
+            : 'Correction state deltas must be the exact inverse of the linked original balance adjustment.'
         });
         break;
+      }
 
       case 'cash.deposit':
       case 'cash.withdrawal':
