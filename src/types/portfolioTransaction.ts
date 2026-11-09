@@ -36,6 +36,23 @@ interface PortfolioTransactionActor {
   id?: string;
 }
 
+/** Exact FIFO slice removed from one acquisition lot by a sell execution. */
+export interface PortfolioTransactionLotAllocation {
+  /** Absent only for pre-identity/legacy lots that cannot be linked to a buy event. */
+  lotId?: string;
+  identity: 'stable' | 'legacy-unmapped';
+  quantity: number;
+  acquisitionPrice: number;
+  acquisitionDate?: string;
+  acquiredAt?: number;
+  buyCommissionAllocated: number;
+  sellPrice: number;
+  sellCommissionAllocated: number;
+  financingCostAllocated: number;
+  /** Net realized contribution after buy/sell commissions and allocated financing. */
+  realizedPnl: number;
+}
+
 export interface PortfolioTransactionEvent {
   id: string;
   schemaVersion: typeof PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION;
@@ -51,6 +68,10 @@ export interface PortfolioTransactionEvent {
   idempotencyKey?: string;
   /** Non-secret canonical command fingerprint to reject key reuse for a different command. */
   requestFingerprint?: string;
+  /** Stable ID of the acquisition lot created by this buy event. */
+  lotId?: string;
+  /** Exact per-lot FIFO allocations for a sell; legacy lots are explicitly unmapped. */
+  lotAllocations?: PortfolioTransactionLotAllocation[];
   ticker?: string;
   currency?: string;
   /** Broker-reported execution side (e.g. BUY/SELL), separate from app commands. */
@@ -88,6 +109,8 @@ export interface PortfolioTransactionEvent {
 export interface PortfolioTransactionDraft {
   type: PortfolioTransactionEventType;
   effectiveAt: number;
+  lotId?: string;
+  lotAllocations?: PortfolioTransactionLotAllocation[];
   ticker?: string;
   currency?: string;
   side?: string;
