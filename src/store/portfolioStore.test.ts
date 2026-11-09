@@ -2586,6 +2586,8 @@ describe('portfolio transaction journal integration', () => {
     });
     expect(event?.realizedPnl).toBe(store.getState().closedTrades[0].netProfit);
     expect(store.getState().closedTrades[0].transactionEventId).toBe(event?.id);
+    const restored = new PortfolioStore().getState();
+    expect(restored.closedTrades[0].transactionEventId).toBe(event?.id);
     expect(store.getState().positions.AAPL.shares).toBe(1);
   });
 
