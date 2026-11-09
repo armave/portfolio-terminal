@@ -795,6 +795,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               appHistoryStatus="partial"
               legacyClosedTrades={state.closedTrades || []}
               onRecordReview={(section, findingId, findingType, subject, reason) =>
+                isSessionCurrent() &&
                 portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)
               }
               appQuotes={[
