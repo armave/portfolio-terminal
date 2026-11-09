@@ -428,7 +428,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText(reviewTitle, language)}
           aria-label={translateText(reviewLabel, language)}
           onClick={() => emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})}
-          class="rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50"
+          class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50"
         >
           ✦ {translateText(reviewLabel, language)}
         </button>
@@ -437,7 +437,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
           aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
           onClick={() => emitUiEvent('terminal:market-depth-request', { ticker })}
-          class="rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50"
+          class="min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50"
         >
           ▤ {translateText('Depth', language)}
         </button>}
@@ -923,7 +923,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                       </div>
                     </div>
                   </div>
-                  <button type="button" class="mt-1 inline-flex items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
+                  <button type="button" class="mt-1 inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
                     {tranchesExpanded ? translateText('Show less', getAppLanguage()) : translateText('Show {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
                   </button>
                 </>
