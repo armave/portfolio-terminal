@@ -1,82 +1,91 @@
-# PT-04 next-stage plan — provenance reconciliation and reviewed resolutions
+# PT-04 implementation — broker market-price provenance comparison
 
 **Prepared:** 2026-11-09  
 **Tracking issue:** [#332](https://github.com/armave/portfolio-terminal/issues/332)  
 **Existing charter:** [Wave 3 PT-04](../wave-3/workstreams/PT-04-reconciliation-completion.md)  
-**Implementation target:** `dev` for client/domain; any Worker-only work remains direct-to-`main`.  
-**Status:** Plan for implementation review; no application behavior changes in this plan PR.
+**Implementation target:** `dev`; no Worker/Cloudflare changes in this slice.  
+**Status:** First implementation slice delivered in this PR. The broader PT-04 roadmap remains open.
 
-## Audit baseline
+## Existing baseline retained
 
-The read-only reconciliation foundation is substantially further along than the broad roadmap title suggests:
+This PR builds on, and does not replace, the merged read-only reconciliation work:
 
-- PR #358 added aggregate broker/app quantity comparison, provenance and conservative handling of incomplete or stale snapshots.
-- PR #380 added transaction-level matching for executions, partial fills, duplicates, commissions, cashflows and event timing, with an on-demand Trades / Closed History review surface.
-- PR #385 made reconciliation provisional while broker feeds are loading, refreshing, stale or failed.
-- PR #398 added legacy closed-sale matching against broker sell fills.
+- PR #358: aggregate broker/app quantity comparison, provenance and conservative stale/partial handling.
+- PR #380: transaction-level matching for executions, partial fills, duplicates, commissions, cashflows and event timing.
+- PR #385: provisional reconciliation while broker feeds are loading, refreshing, stale or failed.
+- PR #398: legacy closed-sale matching against broker sell fills.
 
-These changes are the baseline. Do not rebuild the matcher or reintroduce the removed large reconciliation status panel on the portfolio desk.
+The on-demand Trades / Closed History review remains the entry point. No large always-visible reconciliation panel is added to the portfolio desk.
 
-## Remaining risks to close
+## Delivered in this PR
 
-1. **Price and history provenance:** reconciliation does not yet comprehensively compare app valuation prices, source observations, stale/delayed states, FX rates and corporate-action-adjusted history.
-2. **Resolution workflow:** discrepancies are read-only. There is no complete proposal → user review → confirmed PT-02 command → audit-event lifecycle.
-3. **False-positive control:** incomplete event history, ambiguous matching, missing fee fields or currency/FX inputs must remain provisional, not be treated as zero or confirmed mismatch.
-4. **User-facing workflow evidence:** automated tests cover matcher behavior, but a dedicated browser journey must prove that users can inspect, defer, decline and confirm a safe resolution.
-5. **Live validation:** fixtures do not prove actual authenticated Freedom/TradeNet identifier, correction or fee semantics.
+### Read-only price evidence comparison
+- [x] Add a deterministic domain contract to compare app-owned quote observations with broker-reported position market prices.
+- [x] Normalize tickers and require an exact currency match; never infer a currency or reverse/guess an FX pair.
+- [x] Retain the distinct app and broker providers, source observation times and receipt times in each price finding.
+- [x] Validate app quote age against the comparison time independently of a persisted `fresh` flag.
+- [x] Confirm a price difference only when both sides have explicit provider, currency, observation/receipt timestamps, complete quality and fresh/live evidence.
+- [x] Keep delayed, stale, partial, missing-timestamp and otherwise unverifiable observations provisional.
+- [x] Suppress price findings when the broker snapshot is stale or unavailable.
+- [x] Report conflicting app or broker prices as ambiguous instead of choosing a row arbitrarily.
+- [x] Keep comparison read-only; it never changes positions, lots, cash, debt, cost basis or transaction events.
 
-## Implementation plan
+### Trades review integration
+- [x] Reuse the existing on-demand **Reconcile broker activity** surface in Trades.
+- [x] Supply app margin-position and cash-holding quote metadata alongside the latest broker account snapshot.
+- [x] Preserve the existing transaction execution/cashflow reconciliation unchanged.
+- [x] Show quote comparison status, matched pair count, source, timestamps, warnings and provisional/confirmed price findings.
+- [x] Add English/Russian translations for the new labels and safety explanations.
+- [x] Keep the component accessible through the existing labelled, expandable section.
 
-### A. Complete price, FX and corporate-action comparison
-- [ ] Consume PT-07 quote/history provenance: provider, instrument identity, currency, exchange, observation time, receipt time, session status and freshness.
-- [ ] Detect stale/delayed/closed-session and app-vs-broker price differences without calling providers from the reconciliation engine.
-- [ ] Compare FX only when a sourced, timestamped rate and an unambiguous pair direction are available.
-- [ ] Match corporate-action evidence to supported app events; distinguish a missing adjustment from an unverified provider event.
-- [ ] Keep missing FX, unsupported actions and incomplete histories as unknown/provisional.
-- [ ] Preserve last-known-good snapshots and suppress absence-based findings while a feed is partial or unavailable.
+### Tests added
+- [x] Confirmed same-currency price difference with fresh complete provenance.
+- [x] Absolute/relative price tolerance.
+- [x] Provisional outcome for missing/unknown freshness and a quote whose source timestamp is old even when its saved freshness flag says `fresh`.
+- [x] Currency mismatch without FX conversion.
+- [x] Stale broker snapshot suppression.
+- [x] Missing broker observation timestamp.
+- [x] Conflicting app and broker price rows.
+- [x] Source-object immutability.
+- [x] No comparable ticker/currency pair does not produce a false successful match.
+- [x] Russian copy/status and Trades state-wiring tests.
 
-### B. Add reviewable resolution proposals
-- [ ] Define a typed proposal containing discrepancy ID, supporting source evidence, proposed action, affected financial fields, confidence and expiry/staleness checks.
-- [ ] Present before/after values and the exact source facts used; do not present inferred matches as certain.
-- [ ] Support defer/decline without mutating financial state.
-- [ ] Confirm through an explicit PT-02 store command/event only after PT-02 correction, reversal and idempotency semantics are accepted.
-- [ ] Make confirmation idempotent and append an audit-linked event; reject stale proposals if underlying portfolio/broker revisions changed.
-- [ ] Never auto-rewrite app-owned lots, cost basis, cash or debt from aggregate broker values.
+## Explicitly deferred
 
-### C. Improve evidence and workflow traceability
-- [ ] Ensure every finding retains normalized source, broker/execution reference, provider observation time, receipt time, amount/quantity, currency and matching rationale.
-- [ ] Separate exact-ID matches from heuristic fallback matches and disclose ambiguity.
-- [ ] Add reproducible snapshot fixtures so each discrepancy can be independently regenerated.
-- [ ] Keep the existing on-demand compact reconciliation surface; localize all new copy in English/Russian.
+These items are still open in issue #332 and are not represented as delivered by this PR:
 
-## File ownership
+1. **Historical price / FX reconciliation:** sourced FX-pair checks and historical candle comparison/corrections need dedicated contracts and known-answer fixtures.
+2. **Corporate-action reconciliation:** compare sourced split/dividend/rename/merger/spin-off evidence against accepted app-owned actions; never treat provider evidence alone as a financial posting.
+3. **Resolution proposals and audited writeback:** PT-04 must remain read-only until PT-02 supplies accepted correction/reversal and idempotent store-command semantics. Any later resolution must be user-confirmed, revision-checked and journaled.
+4. **Authenticated live TradeNet validation:** CI fixtures do not prove production provider identifiers, quote semantics, fees, corrections or actual account data. Record source paths/timestamps without credentials.
+5. **Manual real-browser validation:** the PR browser workflows are synthetic or mocked and must not be represented as a live broker verification.
 
-Primary ownership:
-- `src/domain/brokerTransactionReconciliation.ts` and its Vitest suite
-- `src/components/BrokerTransactionReconciliation.tsx` and focused Closed History/Trades wiring
-- `src/types/portfolioTransaction.ts` only by coordination with PT-02; prefer consuming the accepted event contract
-- `src/services/marketDataContracts.ts`, `src/services/corporateActions.ts` as read-only consumers; coordinate with PT-07 instead of editing provider normalization
-- `src/services/i18n.ts`, `src/services/i18n-ru.ts` and localization tests for any added strings
+## File ownership and boundaries
 
-Avoid changing the PT-02 journal semantics, TradeNet adapter normalization, portfolio accounting formulas or tenant authorization.
+Client/domain files changed:
+- `src/domain/brokerQuoteReconciliation.ts` and `src/domain/brokerQuoteReconciliation.test.ts`
+- `src/components/BrokerTransactionReconciliation.tsx` and its localization/status tests
+- `src/components/ClosedHistoryDesk.tsx` and its wiring tests
 
-## Required validation
+No edits to Worker/Durable Object code, broker adapter normalization, PT-02 journal semantics, app accounting formulas, market-data providers or corporate-action write paths are part of this slice.
 
-- [ ] Vitest known-answer fixtures for exact/fallback identity, partial fills, duplicates, ordering, corrections, fees, cashflows, currency and ambiguous matches.
-- [ ] Price/freshness/FX cases with stale, delayed, market-closed, missing timestamp, wrong FX direction and missing-rate inputs.
-- [ ] Corporate-action split/dividend/rename evidence and replay cases; no silent portfolio mutation.
-- [ ] Proposal expiry/staleness, decline/defer, confirmation, repeated confirmation, conflicting revisions and audit-event linkage.
-- [ ] Assert comparison itself is read-only; only confirmed commands can mutate.
-- [ ] English/Russian localization parity and component accessibility checks.
-- [ ] Browser journey: open a finding, inspect supporting evidence, decline/defer, then confirm a valid proposal and verify the audit trail.
-- [ ] `npm run typecheck`, `npm test`, dead-code validation, dependency audits and production build on the exact PR head.
-- [ ] Operations Browser Journey and Trade Lifecycle Browser Smoke pass on the exact PR head.
-- [ ] Authenticated live TradeNet verification is documented separately, including source paths and timestamps without credentials or tokens.
+## Validation checklist
 
-## Exit criteria and merge gate
+- [x] Domain tests cover fresh/stale/partial/missing provenance, currency mismatch, tolerance, ambiguity and immutability.
+- [x] Component tests cover English/Russian wording and status classifications.
+- [x] Trades wiring tests verify the app and broker provenance sources are supplied.
+- [ ] Exact-head `npm run typecheck`.
+- [ ] Exact-head `npm test`.
+- [ ] Exact-head production build, browser smoke, dead-code validation and dependency audits.
+- [ ] Operations Browser Journey and Trade Lifecycle Browser Smoke pass on exact PR head.
+- [ ] Authenticated live TradeNet QA recorded separately; not satisfied by mocked CI.
 
-- Findings are reproducible, source-backed and correctly qualified by feed completeness.
-- Price, FX and corporate-action checks do not invent missing data.
-- Resolutions are optional, explicit, revision-checked, idempotent and journaled through PT-02.
-- No silent correction or automatic mutation is introduced.
-- Live broker verification remains a separately recorded release gate.
+## Merge criteria for this slice
+
+- Price comparisons are source-backed, read-only and never infer FX.
+- Confirmed differences require both app and broker observations to be fresh and complete; anything less is provisional or withheld.
+- The existing execution/cashflow matching behavior and persisted state remain unchanged.
+- English/Russian copy and Vitest coverage pass.
+- Exact-head required checks pass.
+
+Merge of this slice does **not** close issue #332. Historical/FX/corporate-action checks, user-reviewed PT-02-linked resolution proposals and authenticated live broker validation remain follow-up release gates.
