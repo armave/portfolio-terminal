@@ -382,6 +382,78 @@ try {
     const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
     return raw && Number(JSON.parse(raw).cashCushion?.freeCash) === 1000;
   }, 'initial free cash snapshot');
+
+  // Exercise the new Balance-desk reversal UI with a real mounted synthetic
+  // account. The action must append an exact inverse correction and clear the
+  // original from the eligible reversal list without changing any other state.
+  const firstCashAdjustment = await page.evaluate(() => {
+    const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+    const events = raw ? JSON.parse(raw).transactionEvents || [] : [];
+    return [...events].reverse().find((event) =>
+      event.type === 'cash.adjustment' && Number(event.cashDelta) === 1000
+    ) || null;
+  });
+  if (!firstCashAdjustment?.id) {
+    throw new Error('Initial manual cash adjustment was not recorded in the transaction journal.');
+  }
+  const balanceNav = page.locator('button[data-nav-tab="true"]').filter({ hasText: 'BALANCE' });
+  await balanceNav.click();
+  await page.getByRole('heading', { name: 'Recent balance adjustments' })
+    .waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByLabel('Reason for reversal').first().fill('Browser smoke: reverse the test cash adjustment');
+  await page.getByRole('button', { name: 'Review reversal' }).first().click();
+  await page.getByRole('button', { name: 'Confirm reversal' }).click();
+  await waitForCondition(
+    page,
+    (originalEventId) => {
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+      if (!raw) return false;
+      const state = JSON.parse(raw);
+      const correction = (state.transactionEvents || []).find((event) =>
+        event.type === 'correction' &&
+        event.relatedEventId === originalEventId &&
+        Math.abs(Number(event.cashDelta) + 1000) < 1e-8
+      );
+      return Number(state.cashCushion?.freeCash) === 0 && Boolean(correction);
+    },
+    'confirmed balance reversal and immutable correction',
+    firstCashAdjustment.id
+  );
+  let stateAfterSuccessfulReversal = await portfolioSnapshot(page);
+  const successfulCorrection = stateAfterSuccessfulReversal.transactionEvents.find((event) =>
+    event.type === 'correction' && event.relatedEventId === firstCashAdjustment.id
+  );
+  if (!successfulCorrection?.note?.includes('Browser smoke: reverse the test cash adjustment')) {
+    throw new Error('The successful balance reversal did not retain its review reason.');
+  }
+  if (await page.locator('article').filter({ hasText: 'Cash adjustment' }).count() !== 0) {
+    throw new Error('A reversed cash adjustment remained in the eligible Balance-desk list.');
+  }
+
+  await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).click();
+  await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 20000 });
+
+  // Fund a second adjustment. It must remain unreversed after a later buy has
+  // consumed part of that cash: the guarded store command must reject an
+  // inverse that would create negative free cash and leave the journal intact.
+  await runCommand(page, 'cash 1000');
+  await waitForCondition(page, () => {
+    const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+    return raw && Number(JSON.parse(raw).cashCushion?.freeCash) === 1000;
+  }, 'second free cash adjustment');
+  const consumedCashAdjustment = await page.evaluate((firstId) => {
+    const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+    const events = raw ? JSON.parse(raw).transactionEvents || [] : [];
+    return [...events].reverse().find((event) =>
+      event.id !== firstId &&
+      event.type === 'cash.adjustment' &&
+      Number(event.cashDelta) === 1000
+    ) || null;
+  }, firstCashAdjustment.id);
+  if (!consumedCashAdjustment?.id) {
+    throw new Error('Second manual cash adjustment was not recorded.');
+  }
+
   const beforeCancelledBuy = await portfolioSnapshot(page);
   await runCommand(page, 'bought 5 QA for 100, pt 150', { confirmTrade: true, accept: false });
   const afterCancelledBuy = await portfolioSnapshot(page);
@@ -396,6 +468,34 @@ try {
   // New buy and additional buy preserve distinct acquisition lots and target.
   await runCommand(page, 'bought 5 QA for 100, pt 150', { confirmTrade: true });
   await waitForPosition(page, 'QA', 5);
+
+  const consumedSnapshot = await portfolioSnapshot(page);
+  const cashAfterFirstBuy = Number(consumedSnapshot.cashCushion?.freeCash);
+  if (!(cashAfterFirstBuy >= 0 && cashAfterFirstBuy < 1000)) {
+    throw new Error('The synthetic purchase did not consume the second cash adjustment as expected.');
+  }
+  await balanceNav.click();
+  await page.getByRole('heading', { name: 'Recent balance adjustments' })
+    .waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByLabel('Reason for reversal').first().fill('Browser smoke: reject after cash has been spent');
+  await page.getByRole('button', { name: 'Review reversal' }).first().click();
+  await page.getByRole('button', { name: 'Confirm reversal' }).click();
+  await page.getByText(
+    'Balance adjustment could not be reversed. The balance may have changed since the original adjustment.'
+  ).waitFor({ state: 'visible', timeout: 10000 });
+  const afterRejectedReversal = await portfolioSnapshot(page);
+  if (Number(afterRejectedReversal.cashCushion?.freeCash) !== cashAfterFirstBuy ||
+      afterRejectedReversal.transactionEvents.some((event) =>
+        event.type === 'correction' && event.relatedEventId === consumedCashAdjustment.id
+      )) {
+    throw new Error('An unsafe balance reversal changed cash or appended a correction.');
+  }
+  if (!afterRejectedReversal.transactionEvents.some((event) => event.id === consumedCashAdjustment.id)) {
+    throw new Error('The rejected balance reversal lost its original journal event.');
+  }
+  await page.getByRole('button', { name: 'COMBINED PORTFOLIO' }).click();
+  await page.locator('#cmdInput').waitFor({ state: 'visible', timeout: 20000 });
+
   await runCommand(page, 'bought 2 QA for 120', { confirmTrade: true });
   await waitForPosition(page, 'QA', 7);
   let state = await portfolioSnapshot(page);
@@ -513,7 +613,7 @@ try {
     throw new Error(`Uncaught browser errors during trade lifecycle: ${pageErrors.join('; ')}`);
   }
 
-  console.log('Trade lifecycle browser smoke passed: confirmation/cancellation, additional buys, target persistence, FIFO partial exit, oversell rejection, final exit, independent cash holding, margin funding/debt settlement, reload recovery and Closed History.');
+  console.log('Trade lifecycle browser smoke passed: confirmation/cancellation, balance-adjustment review/confirmation, exact inverse correction, consumed-cash reversal rejection, additional buys, target persistence, FIFO partial exit, oversell rejection, final exit, independent cash holding, margin funding/debt settlement, reload recovery and Closed History.');
 } finally {
   await browser?.close();
   if (server.exitCode === null && server.signalCode === null) {
