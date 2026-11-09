@@ -1,4 +1,34 @@
 import { createHmac } from 'node:crypto';
+
+async function encryptMarginDigestFixture(digest, keyMaterial) {
+  const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+  const key = await crypto.subtle.importKey("raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt"]);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce, tagLength: 128 },
+    key,
+    new TextEncoder().encode(JSON.stringify(digest))
+  );
+  const toBase64 = (bytes) => {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  };
+  return "aesgcm:v2:" + toBase64(nonce) + ":" + toBase64(new Uint8Array(ciphertext));
+}
+
+function tamperAesGcmV2Tag(payload) {
+  const parts = payload.split(":");
+  if (parts.length !== 4 || parts[0] !== "aesgcm" || parts[1] !== "v2") {
+    throw new Error("Invalid AES-GCM v2 test fixture.");
+  }
+  const binary = atob(parts[3]);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  bytes[bytes.length - 1] ^= 1;
+  let output = "";
+  for (const byte of bytes) output += String.fromCharCode(byte);
+  return parts[0] + ":" + parts[1] + ":" + parts[2] + ":" + btoa(output);
+}
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
@@ -1781,13 +1811,62 @@ describe('provider-quote proxy validation', () => {
 });
 
 
+
+describe("Margin Intelligence encryption migration Worker boundary", () => {
+  it("routes inventory requests to the identity Durable Object for administrators only", async () => {
+    let role = "admin";
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === "/api/auth/verify") {
+          return new Response(JSON.stringify({ user: { id: "user-1", role } }), {
+            status: 200, headers: { "Content-Type": "application/json" }
+          });
+        }
+        if (pathname === "/api/margin-digest-migration") {
+          return new Response(JSON.stringify({ totalRecords: 0, plaintextRecords: 0, migrationReady: true }), {
+            status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+          });
+        }
+        throw new Error("Unexpected Durable Object path: " + pathname);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    const adminResponse = await worker.fetch(new Request("https://worker.test/api/margin-digest-migration", {
+      headers: { "X-App-Auth": "admin-session", Authorization: "Bearer admin-session" }
+    }), { PORTFOLIO_STATE_DO: namespace });
+    expect(adminResponse.status).toBe(200);
+    expect(namespace.idFromName).toHaveBeenCalledWith("portfolio_state");
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/verify", "/api/margin-digest-migration"
+    ]);
+
+    role = "guest";
+    stateStub.fetch.mockClear();
+    const guestResponse = await worker.fetch(new Request("https://worker.test/api/margin-digest-migration", {
+      headers: { "X-App-Auth": "guest-session", Authorization: "Bearer guest-session" }
+    }), { PORTFOLIO_STATE_DO: namespace });
+    expect(guestResponse.status).toBe(403);
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/verify"
+    ]);
+  });
+});
+
 describe('PortfolioStateDO optimistic concurrency', () => {
-  function makeDurableObject(legacyPayload = null) {
+  function makeDurableObject(legacyPayload = null, envOverrides = {}) {
     const values = new Map();
     const storage = {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
       delete: async (key) => values.delete(key),
+      list: async ({ prefix = "", startAfter, limit = 1000 } = {}) => {
+        const entries = [...values.entries()].filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter)).sort(([a], [b]) => a.localeCompare(b)).slice(0, limit);
+        return new Map(entries);
+      },
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
         put: async (key, value) => values.set(key, value),
@@ -1796,7 +1875,8 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     };
     const ctx = { storage };
     const env = {
-      PORTFOLIO_KV: { get: async (key) => key === 'portfolio_state' ? legacyPayload : null }
+      PORTFOLIO_KV: { get: async (key) => key === 'portfolio_state' ? legacyPayload : null },
+      ...envOverrides
     };
     return new PortfolioStateDO(ctx, env);
   }
@@ -1822,6 +1902,113 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     const latest = await store.fetch(new Request('https://worker.test/api/state'));
     expect(await latest.json()).toEqual({ encryptedPayload: 'first' });
     expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('replays an identical cloud write after an ambiguous response without incrementing the revision twice', async () => {
+    const store = makeDurableObject();
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-write-retry-0001'
+    };
+    const body = JSON.stringify({ encryptedPayload: 'stable-encrypted-snapshot' });
+
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers, body
+    }));
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+
+    const retry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers, body
+    }));
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    expect(await retry.json()).toMatchObject({
+      success: true, revision: 1, committedRevision: 1, replayed: true
+    });
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:record');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ key: 'cloud-write-retry-0001', revision: 1 });
+    expect(JSON.stringify(receipts)).not.toContain('stable-encrypted-snapshot');
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'stable-encrypted-snapshot' });
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('rejects reuse of an idempotency key for a different payload without changing the snapshot', async () => {
+    const store = makeDurableObject();
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"', 'Idempotency-Key': 'cloud-write-conflict-0001' },
+      body: JSON.stringify({ encryptedPayload: 'first' })
+    }));
+    expect(first.status).toBe(200);
+
+    const conflictingRetry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"', 'Idempotency-Key': 'cloud-write-conflict-0001' },
+      body: JSON.stringify({ encryptedPayload: 'different' })
+    }));
+    expect(conflictingRetry.status).toBe(409);
+    expect(await conflictingRetry.json()).toMatchObject({ conflict: true, idempotencyConflict: true });
+
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'first' });
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('does not acknowledge an old retry after a newer device has superseded its snapshot', async () => {
+    const store = makeDurableObject();
+    const originalHeaders = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-write-old-0001'
+    };
+    const originalBody = JSON.stringify({ encryptedPayload: 'older-snapshot' });
+    const first = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers: originalHeaders, body: originalBody
+    }));
+    expect(first.status).toBe(200);
+
+    const newer = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"', 'Idempotency-Key': 'cloud-write-new-0001' },
+      body: JSON.stringify({ encryptedPayload: 'newer-snapshot' })
+    }));
+    expect(newer.status).toBe(200);
+
+    const delayedRetry = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST', headers: originalHeaders, body: originalBody
+    }));
+    expect(delayedRetry.status).toBe(409);
+    expect(await delayedRetry.json()).toMatchObject({
+      conflict: true, idempotencySuperseded: true, currentRevision: 2
+    });
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'newer-snapshot' });
+    expect(latest.headers.get('ETag')).toBe('"2"');
+  });
+
+  it('validates idempotency keys and keeps legacy writes without the optional header compatible', async () => {
+    const store = makeDurableObject();
+    const invalid = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"', 'Idempotency-Key': 'contains spaces' },
+      body: JSON.stringify({ encryptedPayload: 'invalid-key' })
+    }));
+    expect(invalid.status).toBe(400);
+
+    const legacy = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'legacy-client' })
+    }));
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers.get('ETag')).toBe('"1"');
+    expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
   });
 
   it('allows only one of two simultaneous writes using the same revision', async () => {
@@ -1856,52 +2043,368 @@ describe('PortfolioStateDO optimistic concurrency', () => {
   });
 
 
-  it('stores independent server-synced digests for portfolio and ticker keys', async () => {
+  it('stores margin digests as ciphertext-only envelopes and preserves per-key revisions', async () => {
     const store = makeDurableObject();
-    const digest = {
+    const envelope = {
       key: 'position:GOOGL',
-      title: 'GOOGL · Position Review',
-      scope: 'position',
-      ticker: 'GOOGL',
-      analysis: '**Stance** Hold.',
-      articles: [{ ticker: 'GOOGL', headline: 'Example', source: 'Test', url: 'https://example.com' }],
-      syncedAt: '2026-10-28T05:00:00.000Z'
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
     };
     const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(write.status).toBe(200);
     expect(write.headers.get('ETag')).toBe('"1"');
 
+    const stored = await store.ctx.storage.get('marginDigestRecord:position:GOOGL');
+    expect(stored.payload).toBe(JSON.stringify(envelope));
+    expect(stored.payload).not.toContain('analysis');
+    expect(stored.payload).not.toContain('GOOGL · Position Review');
+
     const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=position%3AGOOGL'));
     expect(read.status).toBe(200);
-    expect(await read.json()).toEqual(digest);
+    expect(await read.json()).toEqual(envelope);
     expect(read.headers.get('ETag')).toBe('"1"');
 
     const missing = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
     expect(missing.status).toBe(404);
   });
 
-  it('rejects invalid margin digest keys and stale writes', async () => {
+  it('replays an identical idempotent write for a keyed encrypted cloud record', async () => {
+    const store = makeDurableObject();
+    const envelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-margin-digest-retry-0001'
+    };
+    const body = JSON.stringify(envelope);
+
+    const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST', headers, body
+    }));
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+
+    const retry = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST', headers, body
+    }));
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    expect(await retry.json()).toMatchObject({
+      success: true, revision: 1, committedRevision: 1, replayed: true
+    });
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:marginDigestRecord:portfolio');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({ key: 'cloud-margin-digest-retry-0001', revision: 1 });
+    expect(JSON.stringify(receipts)).not.toContain(envelope.encryptedPayload);
+
+    const latest = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(latest.status).toBe(200);
+    expect(await latest.json()).toEqual(envelope);
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
+  it('keeps legacy plaintext digest reads and writes available during the compatibility window', async () => {
+    const store = makeDurableObject();
+    const legacyDigest = {
+      key: 'portfolio',
+      title: 'Portfolio Review',
+      scope: 'portfolio',
+      analysis: 'legacy readable review',
+      articles: [],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(legacyDigest)
+    }));
+    expect(write.status).toBe(200);
+    const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(await read.json()).toEqual(legacyDigest);
+  });
+
+  it('rejects plaintext writes and extra plaintext fields when encrypted digests are required', async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: 'true' });
+    const legacyDigest = {
+      key: 'portfolio',
+      title: 'Portfolio Review',
+      scope: 'portfolio',
+      analysis: 'must not be stored',
+      articles: [],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const plaintextWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(legacyDigest)
+    }));
+    expect(plaintextWrite.status).toBe(400);
+
+    const validEnvelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const encryptedWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(validEnvelope)
+    }));
+    expect(encryptedWrite.status).toBe(200);
+
+    const mixedPayloadWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' },
+      body: JSON.stringify({ ...validEnvelope, analysis: 'plaintext leak' })
+    }));
+    expect(mixedPayloadWrite.status).toBe(400);
+  });
+
+  it('rejects invalid margin digest keys, malformed encrypted envelopes, and stale writes', async () => {
     const store = makeDurableObject();
     const invalid = await store.fetch(new Request('https://worker.test/api/margin-digest?key=bad%2Fkey'));
     expect(invalid.status).toBe(400);
 
-    const digest = { key: 'portfolio', title: 'Portfolio Review', scope: 'portfolio', analysis: 'Review', articles: [], syncedAt: '2026-10-28T05:00:00.000Z' };
+    const malformed = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ key: 'portfolio', encryptedPayload: 'aesgcm:v2:bad-envelope' })
+    }));
+    expect(malformed.status).toBe(400);
+
+    const envelope = { key: 'portfolio', encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA' };
     const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(first.status).toBe(200);
     const stale = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify(digest)
+      body: JSON.stringify(envelope)
     }));
     expect(stale.status).toBe(409);
+  });
+
+
+  it("inventories Margin Intelligence digest formats without returning digest contents", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    const plaintext = {
+      key: "position:GOOGL", analysis: "private analysis text", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    await store.ctx.storage.put("marginDigestRecord:position:GOOGL", {
+      payload: JSON.stringify(plaintext), revision: 3
+    });
+    const validEncryptedPayload = await encryptMarginDigestFixture({
+      key: "portfolio", analysis: "private encrypted analysis", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    }, "test-workspace-key");
+    await store.ctx.storage.put("marginDigestRecord:portfolio", {
+      payload: JSON.stringify({ key: "portfolio", encryptedPayload: validEncryptedPayload }),
+      revision: 4
+    });
+    const tamperedPayload = tamperAesGcmV2Tag(await encryptMarginDigestFixture({
+      key: "position:AMD", analysis: "tampered encrypted analysis", articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    }, "test-workspace-key"));
+    await store.ctx.storage.put("marginDigestRecord:position:AMD", {
+      payload: JSON.stringify({ key: "position:AMD", encryptedPayload: tamperedPayload }),
+      revision: 1
+    });
+    await store.ctx.storage.put("marginDigestRecord:position:MSFT", {
+      payload: "{malformed", revision: 1
+    });
+    await store.ctx.storage.put("marginDigestRecord:position:TSLA", {
+      payload: JSON.stringify({ key: "position:TSLA", encryptedPayload: "aesgcm:v2:bad-envelope" }),
+      revision: 1
+    });
+    await store.ctx.storage.put("marginDigestRecord:position:NVDA", {
+      payload: JSON.stringify({ key: "position:NVDA", encryptedPayload: "aesgcm:v2:AAAAAAAAAAAAAAAA:!!!!!!!!!!!!!!!!!!!!!!!!" }),
+      revision: 1
+    });
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    expect(response.status).toBe(200);
+    const inventory = await response.json();
+    expect(inventory).toMatchObject({
+      totalRecords: 6, plaintextRecords: 1, encryptedV2Records: 1,
+      legacyEncryptedRecords: 0, unreadableRecords: 4, migrationReady: false
+    });
+    expect(JSON.stringify(inventory)).not.toContain("private analysis text");
+    expect(JSON.stringify(inventory)).not.toContain("GOOGL");
+  });
+
+  it("migrates plaintext digest records to AES-GCM v2 with a revision-guarded update", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    const digest = {
+      key: "position:GOOGL", analysis: "private analysis text",
+      articles: [{ headline: "private headline" }],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    await store.ctx.storage.put("marginDigestRecord:position:GOOGL", {
+      payload: JSON.stringify(digest), revision: 7
+    });
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 1, alreadyEncrypted: 0, unreadable: 0, conflicts: 0, done: true
+    });
+
+    const stored = await store.ctx.storage.get("marginDigestRecord:position:GOOGL");
+    expect(stored.revision).toBe(8);
+    const envelope = JSON.parse(stored.payload);
+    expect(Object.keys(envelope).sort()).toEqual(["encryptedPayload", "key"]);
+    expect(envelope.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    expect(stored.payload).not.toContain("private analysis text");
+    expect(stored.payload).not.toContain("private headline");
+
+    const repeated = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    await expect(repeated.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 0, alreadyEncrypted: 1, unreadable: 0, conflicts: 0, done: true
+    });
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(inventory.json()).resolves.toMatchObject({
+      totalRecords: 1, plaintextRecords: 0, encryptedV2Records: 1, migrationReady: true
+    });
+  });
+
+  it("resumes digest migration across bounded storage pages", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    for (const ticker of ["AAPL", "MSFT"]) {
+      await store.ctx.storage.put("marginDigestRecord:position:" + ticker, {
+        payload: JSON.stringify({
+          key: "position:" + ticker,
+          analysis: "private analysis",
+          articles: [],
+          syncedAt: "2026-11-06T00:00:00.000Z"
+        }),
+        revision: 1
+      });
+    }
+
+    const first = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1 })
+    }));
+    const firstResult = await first.json();
+    expect(firstResult).toMatchObject({ scanned: 1, migrated: 1, done: false });
+    expect(firstResult.nextCursor).toMatch(/^marginDigestRecord:/);
+
+    const second = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1, cursor: firstResult.nextCursor })
+    }));
+    await expect(second.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 1, unreadable: 0, conflicts: 0, done: true, nextCursor: null
+    });
+
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(inventory.json()).resolves.toMatchObject({
+      totalRecords: 2, plaintextRecords: 0, encryptedV2Records: 2, migrationReady: true
+    });
+  });
+
+  it("counts all digest records when the inventory spans multiple storage pages", async () => {
+    const store = makeDurableObject();
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    for (let index = 0; index < 105; index += 1) {
+      const key = "position:T" + String(index).padStart(3, "0");
+      const encryptedPayload = await encryptMarginDigestFixture({
+        key, analysis: "private analysis", articles: [],
+        syncedAt: "2026-11-06T00:00:00.000Z"
+      }, "test-workspace-key");
+      await store.ctx.storage.put("marginDigestRecord:" + key, {
+        payload: JSON.stringify({ key, encryptedPayload }),
+        revision: 1
+      });
+    }
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    await expect(response.json()).resolves.toMatchObject({
+      totalRecords: 105,
+      plaintextRecords: 0,
+      encryptedV2Records: 105,
+      legacyEncryptedRecords: 0,
+      unreadableRecords: 0,
+      migrationReady: true
+    });
+  });
+
+  it("does not overwrite a digest changed while an encryption batch is running", async () => {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: "false" });
+    await store.ctx.storage.put("auth:cloud-encryption-key", "test-workspace-key");
+    store.resolveSession = async () => ({ user: { id: "admin-1", role: "admin" } });
+    const storageKey = "marginDigestRecord:position:GOOGL";
+    const original = {
+      key: "position:GOOGL",
+      analysis: "original private analysis",
+      articles: [],
+      syncedAt: "2026-11-06T00:00:00.000Z"
+    };
+    const concurrent = {
+      key: "position:GOOGL",
+      analysis: "newer analysis from another device",
+      articles: [],
+      syncedAt: "2026-11-07T00:00:00.000Z"
+    };
+    await store.ctx.storage.put(storageKey, { payload: JSON.stringify(original), revision: 7 });
+    const transaction = store.ctx.storage.transaction;
+    store.ctx.storage.transaction = async (callback) => transaction(async (tx) => {
+      await tx.put(storageKey, { payload: JSON.stringify(concurrent), revision: 8 });
+      return callback(tx);
+    });
+
+    const response = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 1 })
+    }));
+    await expect(response.json()).resolves.toMatchObject({
+      scanned: 1, migrated: 0, conflicts: 1, done: true
+    });
+    await expect(store.ctx.storage.get(storageKey)).resolves.toEqual({
+      payload: JSON.stringify(concurrent), revision: 8
+    });
+  });
+
+  it("rejects guests from digest migration inventory and write operations", async () => {
+    const store = makeDurableObject();
+    store.resolveSession = async () => ({ user: { id: "guest-1", role: "guest" } });
+    const inventory = await store.fetch(new Request("https://store.test/api/margin-digest-migration"));
+    const migration = await store.fetch(new Request("https://store.test/api/margin-digest-migration", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 10 })
+    }));
+    expect(inventory.status).toBe(403);
+    expect(migration.status).toBe(403);
   });
 
   it('migrates an existing KV portfolio without changing its payload', async () => {
@@ -4052,6 +4555,311 @@ describe('Durable Object guest portfolio ownership', () => {
 });
 
 
+
+describe('Durable Object tenant directory ownership foundation', () => {
+  async function makeTenantStore() {
+    const values = new Map();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
+      list: async ({ prefix = "", limit = Number.POSITIVE_INFINITY, startAfter } = {}) =>
+        new Map([...values.entries()]
+          .filter(([key]) => key.startsWith(prefix) && (typeof startAfter !== "string" || key > startAfter))
+          .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+          .slice(0, limit)),
+      transaction: async (callback) => callback({
+        get: async (key) => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
+      })
+    };
+    const users = [
+      { id: 'admin-1', name: 'Admin', role: 'admin', createdAt: '2026-11-01T00:00:00.000Z' },
+      { id: 'guest-1', name: 'Guest One', role: 'guest', createdAt: '2026-11-02T00:00:00.000Z' },
+      { id: 'guest-2', name: 'Guest Two', role: 'guest', createdAt: '2026-11-03T00:00:00.000Z' }
+    ];
+    values.set('auth:users', users);
+    values.set('auth:cloud-encryption-key', 'legacy-workspace-key');
+    const issueSession = async (token, userId) => {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+      const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      const issuedAt = Date.now();
+      values.set('auth:session:' + hex, {
+        userId, issuedAt, expiresAt: issuedAt + 60_000
+      });
+    };
+    await issueSession('tenant-admin-token', 'admin-1');
+    await issueSession('tenant-guest-one-token', 'guest-1');
+    await issueSession('tenant-guest-two-token', 'guest-2');
+    return { store: new PortfolioStateDO({ storage }, {}), values };
+  }
+
+  const headers = (token) => ({
+    'Content-Type': 'application/json',
+    'X-App-Auth': token,
+    Authorization: 'Bearer ' + token
+  });
+
+  it('lazily maps the current shared admin workspace and read-only guest projections into a legacy tenant', async () => {
+    const { store, values } = await makeTenantStore();
+    const ownerResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(ownerResponse.status).toBe(200);
+    const ownerView = await ownerResponse.json();
+    expect(ownerView).toMatchObject({
+      version: 1,
+      mode: 'directory-metadata-only',
+      financialDataEnabled: false,
+      tenants: [{
+        tenant: { id: 'legacy-tenant-v1' },
+        membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) },
+        portfolios: [{ id: 'legacy-portfolio-v1', access: 'owner' }],
+        memberships: expect.arrayContaining([
+          expect.objectContaining({ userId: 'admin-1', role: 'owner', status: 'active' }),
+          expect.objectContaining({ userId: 'guest-1', role: 'guest', status: 'active' })
+        ])
+      }]
+    });
+
+    const guestResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-one-token')
+    }));
+    expect(guestResponse.status).toBe(200);
+    const guestView = await guestResponse.json();
+    expect(guestView.tenants).toHaveLength(1);
+    expect(guestView.tenants[0]).not.toHaveProperty('memberships');
+    expect(guestView.tenants[0]).toMatchObject({
+      tenant: { id: 'legacy-tenant-v1' },
+      membership: { role: 'guest', capabilities: ['portfolio.projection.read'] },
+      portfolios: [{ id: 'legacy-portfolio-v1', access: 'projection', capabilities: ['portfolio.projection.read'] }]
+    });
+    expect(JSON.stringify(guestView)).not.toContain('guest-2');
+    expect(values.get('tenant:directory:v1').memberships).toHaveLength(3);
+    expect([...values.keys()].some((key) => key.startsWith('tenant:audit:v1:'))).toBe(true);
+  });
+
+  it('creates a tenant, workspace and portfolio with explicit creator ownership and audit metadata only', async () => {
+    const { store, values } = await makeTenantStore();
+    const response = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({
+        name: 'Family Investments',
+        workspaceName: 'Family Workspace',
+        portfolioName: 'Long-term Portfolio'
+      })
+    }));
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      success: true,
+      financialDataEnabled: false,
+      tenant: { name: 'Family Investments', status: 'active' },
+      workspace: { name: 'Family Workspace' },
+      portfolio: { name: 'Long-term Portfolio' },
+      membership: { role: 'owner', capabilities: expect.arrayContaining(['tenant.members.manage']) }
+    });
+    const directory = values.get('tenant:directory:v1');
+    expect(directory.tenants).toHaveLength(2);
+    expect(directory.memberships.find((item) => item.tenantId === body.tenant.id)).toMatchObject({
+      userId: 'admin-1', role: 'owner', status: 'active'
+    });
+    const auditEvents = [...values.entries()].filter(([key]) => key.startsWith('tenant:audit:v1:')).map(([, value]) => value);
+    expect(auditEvents.some((event) => event.type === 'tenant_created' && event.tenantId === body.tenant.id)).toBe(true);
+    expect(directory).not.toHaveProperty('portfolioStates');
+    expect(directory).not.toHaveProperty('encryptedPayload');
+    expect(values.has('record')).toBe(false);
+    expect(values.has('historyRecord')).toBe(false);
+  });
+
+  it('grants scoped investor/manager reads and a guest projection-only grant', async () => {
+    const { store } = await makeTenantStore();
+    const create = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Research', workspaceName: 'Research workspace', portfolioName: 'Core book' })
+    }));
+    const { tenant, portfolio } = await create.json();
+
+    const investor = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [portfolio.id] })
+    }));
+    expect(investor.status).toBe(200);
+    const investorBody = await investor.json();
+    expect(investorBody.membership.capabilities).toContain('portfolio.performance.read');
+    expect(investorBody.membership.capabilities).not.toContain('portfolio.transactions.write');
+
+    const guest = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-1', role: 'guest', portfolioIds: [portfolio.id] })
+    }));
+    expect(guest.status).toBe(200);
+    const guestBody = await guest.json();
+    expect(guestBody.membership.capabilities).toEqual(['portfolio.projection.read']);
+
+    const guestView = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-one-token')
+    }));
+    const visible = await guestView.json();
+    const newTenantView = visible.tenants.find((item) => item.tenant.id === tenant.id);
+    expect(newTenantView.portfolios).toEqual([expect.objectContaining({
+      id: portfolio.id,
+      access: 'projection',
+      capabilities: ['portfolio.projection.read']
+    })]);
+  });
+
+  it('revokes a scoped membership immediately and retains an auditable revoked record', async () => {
+    const { store, values } = await makeTenantStore();
+    const create = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Private Book' })
+    }));
+    const { tenant, portfolio } = await create.json();
+    const grant = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'manager', portfolioIds: [portfolio.id] })
+    }));
+    expect(grant.status).toBe(200);
+
+    const before = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-two-token')
+    }));
+    expect((await before.json()).tenants.some((item) => item.tenant.id === tenant.id)).toBe(true);
+
+    const revoke = await store.fetch(new Request('https://store.test/api/tenants/' + tenant.id + '/memberships/revoke', {
+      method: 'POST',
+      headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2' })
+    }));
+    expect(revoke.status).toBe(200);
+    const after = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-guest-two-token')
+    }));
+    expect((await after.json()).tenants.some((item) => item.tenant.id === tenant.id)).toBe(false);
+    const directory = values.get('tenant:directory:v1');
+    expect(directory.memberships.find((item) => item.tenantId === tenant.id && item.userId === 'guest-2').status).toBe('revoked');
+    expect(directory.grants.find((item) => item.tenantId === tenant.id && item.userId === 'guest-2').status).toBe('revoked');
+  });
+
+  it('rejects cross-tenant management, owner self-assignment, forged capabilities and non-owner mutation', async () => {
+    const { store } = await makeTenantStore();
+    const first = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'First tenant' })
+    }));
+    const firstBody = await first.json();
+    const second = await store.fetch(new Request('https://store.test/api/tenants', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ name: 'Second tenant' })
+    }));
+    const secondBody = await second.json();
+
+    const forged = await store.fetch(new Request('https://store.test/api/tenants/' + secondBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-guest-one-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [secondBody.portfolio.id] })
+    }));
+    expect(forged.status).toBe(404);
+
+    const selfElevation = await store.fetch(new Request('https://store.test/api/tenants/' + firstBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'owner', portfolioIds: [firstBody.portfolio.id] })
+    }));
+    expect(selfElevation.status).toBe(400);
+
+    const forgedCapabilities = await store.fetch(new Request('https://store.test/api/tenants/' + firstBody.tenant.id + '/memberships', {
+      method: 'POST', headers: headers('tenant-admin-token'),
+      body: JSON.stringify({ userId: 'guest-2', role: 'investor', portfolioIds: [firstBody.portfolio.id], capabilities: ['portfolio.transactions.write'] })
+    }));
+    expect(forgedCapabilities.status).toBe(400);
+  });
+
+  it('fails closed for missing, invalid or expired authentication and malformed stored directory records', async () => {
+    const { store, values } = await makeTenantStore();
+    const unauthorized = await store.fetch(new Request('https://store.test/api/tenants'));
+    expect(unauthorized.status).toBe(401);
+
+    values.set('tenant:directory:v1', { version: 1, tenants: [], memberships: [] });
+    const invalid = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(invalid.status).toBe(503);
+    expect(values.get('tenant:directory:v1')).toMatchObject({ version: 1, tenants: [], memberships: [] });
+  });
+});
+
+describe('tenant directory Worker routing', () => {
+  it('routes authenticated guest directory reads to the identity Durable Object', async () => {
+    const calls = [];
+    const stub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        calls.push({ path: url.pathname, authorization: request.headers.get('Authorization') });
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), { status: 200 });
+        }
+        if (url.pathname === '/api/tenants') {
+          return new Response(JSON.stringify({
+            version: 1, mode: 'directory-metadata-only', financialDataEnabled: false, tenants: []
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Not found.' }), { status: 404 });
+      })
+    };
+    const binding = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stub)
+    };
+    const response = await worker.fetch(new Request('https://worker.test/api/tenants', {
+      headers: { 'X-App-Auth': 'guest-token' }
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ mode: 'directory-metadata-only', financialDataEnabled: false });
+    expect(binding.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(calls.map((call) => call.path)).toEqual(['/api/auth/verify', '/api/tenants']);
+  });
+
+  it('delegates tenant membership writes to scoped DO authorization but keeps shared portfolio writes guest-blocked', async () => {
+    const calls = [];
+    const stub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        calls.push(url.pathname);
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'Tenant not found or membership management is not permitted.' }), { status: 404 });
+      })
+    };
+    const binding = { idFromName: vi.fn((name) => name), get: vi.fn(() => stub) };
+    const body = JSON.stringify({ userId: 'guest-2' });
+    const delegated = await worker.fetch(new Request('https://worker.test/api/tenants/tenant-id-123456/memberships/revoke', {
+      method: 'POST',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(delegated.status).toBe(404);
+    expect(calls).toEqual(['/api/auth/verify', '/api/tenants/tenant-id-123456/memberships/revoke']);
+
+    calls.length = 0;
+    const legacyWrite = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'X-App-Auth': 'guest-token', 'Content-Type': 'application/json' },
+      body: '{}'
+    }), { PORTFOLIO_STATE_DO: binding });
+    expect(legacyWrite.status).toBe(403);
+    expect(calls).toEqual(['/api/auth/verify']);
+  });
+});
+
+
 describe('retired TradeNet session cleanup', () => {
   it('deletes the stored Market Depth SID once and records the migration', async () => {
     const values = new Map([['freedom:tradenet-session', {
@@ -4073,5 +4881,235 @@ describe('retired TradeNet session cleanup', () => {
     await store.clearRetiredTradeNetSession();
     expect(storage.delete).toHaveBeenCalledTimes(1);
     expect(storage.put).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+
+describe('Finnhub exchange calendar route', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns sanitized holiday and early-close events plus a current session snapshot', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'L', timezone: 'Europe/London',
+        data: [
+          { eventName: 'Christmas Day', atDate: '2026-12-25', tradingHour: '' },
+          { eventName: 'Christmas Eve', atDate: '2026-12-24', tradingHour: '08:00-12:30', rawSecret: 'hidden' },
+          { eventName: 'Invalid date', atDate: '2026-02-30', tradingHour: '' }
+        ]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'L', timezone: 'Europe/London', isOpen: false,
+        session: null, holiday: null, t: 1793966400, token: 'hidden'
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=LSE',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'private-key' });
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toMatchObject({
+      provider: 'Finnhub',
+      exchange: 'LSE',
+      providerExchange: 'L',
+      timeZone: 'Europe/London',
+      holidays: ['2026-12-25'],
+      earlyCloses: { '2026-12-24': 750 },
+      marketStatus: { isOpen: false, timeZone: 'Europe/London', timestamp: 1793966400000 }
+    });
+    expect(data.events).toHaveLength(2);
+    expect(JSON.stringify(data)).not.toContain('rawSecret');
+    expect(JSON.stringify(data)).not.toContain('private-key');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects unsupported exchanges and missing provider credentials before fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const unsupported = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=UNKNOWN',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'key' });
+    const missingKey = await worker.fetch(new Request(
+      'https://worker.test/?action=market-calendar&exchange=NASDAQ',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+    expect(unsupported.status).toBe(400);
+    expect(missingKey.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+  it('refreshes current market status faster than the holiday calendar', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-07T12:00:00.000Z'));
+    try {
+      const initialStatusTime = Math.floor(Date.now() / 1000);
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          exchange: 'HK', timezone: 'Asia/Hong_Kong',
+          data: [{ eventName: 'Christmas Day', atDate: '2026-12-25', tradingHour: '' }]
+        }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          exchange: 'HK', timezone: 'Asia/Hong_Kong', isOpen: false,
+          session: 'closed', holiday: null, t: initialStatusTime
+        }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const env = { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'private-key' };
+      const request = () => worker.fetch(new Request(
+        'https://worker.test/?action=market-calendar&exchange=HKEX',
+        { headers: { 'X-App-Auth': 'test-secret' } }
+      ), env);
+
+      const first = await request();
+      expect(first.status).toBe(200);
+      await first.json();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      vi.setSystemTime(new Date(Date.now() + 16_000));
+      const refreshedStatusTime = Math.floor(Date.now() / 1000);
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+        exchange: 'HK', timezone: 'Asia/Hong_Kong', isOpen: true,
+        session: 'regular', holiday: null, t: refreshedStatusTime
+      }), { status: 200 }));
+
+      const second = await request();
+      expect(second.status).toBe(200);
+      await expect(second.json()).resolves.toMatchObject({
+        marketStatus: { isOpen: true, timestamp: refreshedStatusTime * 1000 }
+      });
+      // The 6-hour holiday schedule is reused; the 15-second live session
+      // snapshot has expired and is fetched again.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+describe('Finnhub market-data routes',()=>{
+ afterEach(()=>vi.unstubAllGlobals());
+ it('returns sanitized historical OHLCV candles',async()=>{
+  const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({s:'ok',t:[1793966400],o:[280],h:[286],l:[279],c:[284.64],v:[1000]}),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=D&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);const data=await response.json();
+  expect(data).toMatchObject({provider:'Finnhub',symbol:'GOOGL',points:[{timestamp:1793966400000,price:284.64,open:280,high:286,low:279,volume:1000}]});
+  expect(JSON.stringify(data)).not.toContain('private-key');
+ });
+ it('rejects invalid history range/resolution and missing credentials',async()=>{
+  const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+  const bad=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=2&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
+  const noKey=await worker.fetch(new Request('https://worker.test/?action=provider-history&symbol=GOOGL&resolution=D&from=1793960000&to=1794060000',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret'});
+  expect(bad.status).toBe(400);expect(noKey.status).toBe(503);expect(fetchMock).not.toHaveBeenCalled();
+ });
+ it('returns typed earnings/dividend events and allows partial feed failure',async()=>{
+   const fetchMock=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[{symbol:'GOOGL',date:'2026-11-07',hour:'amc',epsEstimate:2.1,rawSecret:'hidden'}]}),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD',rawSecret:'hidden'}]),{status:200})).mockResolvedValueOnce(new Response(JSON.stringify([{symbol:'GOOGL',date:'2026-11-20',fromFactor:1,toFactor:4,rawSecret:'hidden'}]),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+   const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=GOOGL&from=2026-11-01&to=2026-11-30',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);const data=await response.json();
+   expect(data).toMatchObject({earnings:[{date:'2026-11-07',epsEstimate:2.1}],dividends:[{date:'2026-11-10',amount:0.2,payDate:'2026-11-20',currency:'USD'}],corporateActions:[{date:'2026-11-20',fromFactor:1,toFactor:4}],corporateActionsAvailable:true});
+  expect(JSON.stringify(data)).not.toContain('rawSecret');expect(JSON.stringify(data)).not.toContain('private-key');
+ });
+ it('withholds provider event rows that omit or mismatch their instrument symbol',async()=>{
+  const fetchMock=vi.fn()
+   .mockResolvedValueOnce(new Response(JSON.stringify({earningsCalendar:[
+    {date:'2026-12-07',epsEstimate:2.1},
+    {symbol:'MSFT',date:'2026-12-08',epsEstimate:2.2}
+   ]}),{status:200}))
+   .mockResolvedValueOnce(new Response(JSON.stringify([
+    {date:'2026-12-10',amount:0.2,currency:'USD'},
+    {symbol:'MSFT',date:'2026-12-11',amount:0.3,currency:'USD'}
+   ]),{status:200}))
+   .mockResolvedValueOnce(new Response(JSON.stringify([
+    {date:'2026-12-20',fromFactor:1,toFactor:4},
+    {symbol:'MSFT',date:'2026-12-21',fromFactor:1,toFactor:2}
+   ]),{status:200}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=PT02SYMBOLCHECK&from=2026-12-01&to=2026-12-31',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'private-key'});
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toMatchObject({
+   earningsAvailable:true,dividendsAvailable:true,corporateActionsAvailable:true,
+   earnings:[],dividends:[],corporateActions:[]
+  });
+ });
+ it('keeps the available feed when the other feed fails',async()=>{
+  const fetchMock=vi.fn(async input=>String(input).includes('/calendar/earnings')
+   ?new Response(JSON.stringify({earningsCalendar:[{symbol:'PT02EVENTS',date:'2026-12-07'}]}),{status:200})
+   :new Response('{}',{status:503}));
+  vi.stubGlobal('fetch',fetchMock);
+  const response=await worker.fetch(new Request('https://worker.test/?action=market-events&symbol=PT02EVENTS&from=2026-12-01&to=2026-12-31',{headers:{'X-App-Auth':'test-secret'}}),{GATEWAY_SECRET:'test-secret',FINNHUB_KEY:'key'});
+  expect(response.status).toBe(200);await expect(response.json()).resolves.toMatchObject({earningsAvailable:true,dividendsAvailable:false,corporateActionsAvailable:false,earnings:[{date:'2026-12-07'}],dividends:[],corporateActions:[]});
+ });
+});
+
+
+describe("Freedom daily historical candles", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("calls TradeNet getHloc with the documented daily timeframe and requested UTC date range", async () => {
+    const hloc = [{ t: 1793491200, o: 280, h: 286, l: 279, c: 284.64, v: 1000 }];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ hloc }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const startAt = Date.parse("2026-11-01T00:00:00.000Z");
+    const endAt = Date.parse("2026-11-07T23:59:00.000Z");
+    const response = await worker.fetch(new Request(
+      "https://worker.test/?action=freedom-history&symbol=GOOGL.US&startAt=" + startAt + "&endAt=" + endAt,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), {
+      GATEWAY_SECRET: "test-secret",
+      FREEDOM_PUBLIC_KEY: "public-key",
+      FREEDOM_PRIVATE_KEY: "private-key"
+    });
+
+    expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      ok: true,
+      provider: "Freedom TradeNet",
+      symbol: "GOOGL.US",
+      data: { hloc }
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://tradernet.com/api/getHloc");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      id: "GOOGL.US",
+      timeframe: 1440,
+      date_from: "01.11.2026 00:00",
+      date_to: "07.11.2026 23:59",
+      count: 0,
+      intervalMode: "ClosedRay"
+    });
+    const serialized = JSON.stringify(responseBody);
+    expect(serialized).not.toContain("public-key");
+    expect(serialized).not.toContain("private-key");
+  });
+
+  it("rejects malformed or overlong date ranges before reaching TradeNet", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const startAt = Date.parse("2025-01-01T00:00:00.000Z");
+    const endAt = Date.parse("2026-11-07T00:00:00.000Z");
+    const response = await worker.fetch(new Request(
+      "https://worker.test/?action=freedom-history&symbol=GOOGL.US&startAt=" + startAt + "&endAt=" + endAt,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), {
+      GATEWAY_SECRET: "test-secret",
+      FREEDOM_PUBLIC_KEY: "public-key",
+      FREEDOM_PRIVATE_KEY: "private-key"
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Freedom history date range is invalid or exceeds the one-year limit."
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

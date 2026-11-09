@@ -6,8 +6,8 @@ export { sanitizeFreedomMarketDepth };
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
-const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000 };
-const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000 };
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 5 * 60 * 1000, finnhub_events: 5 * 60 * 1000, finnhub_calendar: 6 * 60 * 60 * 1000, finnhub_market_status: 15_000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000, finnhub_calendar: 30_000, finnhub_market_status: 5_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
@@ -154,6 +154,19 @@ function isValidDateOnly(value) {
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function formatTradeNetHistoryDate(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) {
+        throw new Error("Historical date range is invalid.");
+    }
+    const pad = value => String(value).padStart(2, "0");
+    return pad(date.getUTCDate()) + "." +
+        pad(date.getUTCMonth() + 1) + "." +
+        date.getUTCFullYear() + " " +
+        pad(date.getUTCHours()) + ":" +
+        pad(date.getUTCMinutes());
+}
+
 export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
@@ -237,8 +250,8 @@ function resolveCorsHeaders(request, env = {}) {
         "Access-Control-Allow-Origin": origin || configuredOrigins[0],
         "Vary": "Origin",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
-        "Access-Control-Expose-Headers": "ETag"
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
+        "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
     };
 }
 
@@ -1569,18 +1582,22 @@ export default {
         if (gatewayAdmin && !accountRole) accountRole = "admin";
         if (gatewayAdmin && !accountId) accountId = "legacy-admin";
         if (!gatewayAdmin && !accountRole) return jsonError("Unauthorized gateway access.", 401, corsHeaders);
-        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin) {
+        // Tenant-directory writes are separately authorized by the Durable Object
+        // against the caller's stored tenant-owner membership. Do not treat the
+        // current global admin/guest role as tenant authorization.
+        const url = new URL(request.url);
+        const action = url.searchParams.get("action");
+        const pathname = url.pathname;
+        const tenantDirectoryRoute = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
+        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin && !tenantDirectoryRoute) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
         // Parse and validate the request contract before reading any POST body.
         // Authenticated but invalid requests should not consume the body budget.
-        const url = new URL(request.url);
-        const action = url.searchParams.get("action");
-        const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
         if (accountRole === "guest") {
-            const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
+            const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
                 "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
@@ -1599,10 +1616,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -2137,7 +2154,37 @@ export default {
                 const command = action === "freedom-quote" ? "getStockQuotesJson" : action === "freedom-news" ? "getNews" : "getHloc";
                 // requestTradeNet targets the API-key v2 route: the command is in the URL,
                 // and the signed JSON body contains only these method parameters.
-                const params = action === "freedom-quote" ? { tickers: [symbol] } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
+                let params;
+                if (action === "freedom-quote") {
+                    params = { tickers: [symbol] };
+                } else if (action === "freedom-news") {
+                    params = { ticker: symbol, limit: 10 };
+                } else {
+                    // TradeNet getHloc uses a ticker ID, a minute-based timeframe,
+                    // and DD.MM.YYYY HH:mm date bounds. The previous {ticker, interval,
+                    // limit} shape was rejected by the broker with HTTP 400.
+                    const startAtParam = incomingUrl.searchParams.get("startAt");
+                    const endAtParam = incomingUrl.searchParams.get("endAt");
+                    const hasRange = startAtParam !== null || endAtParam !== null;
+                    const endAt = hasRange ? Number(endAtParam) : Date.now();
+                    const startAt = hasRange
+                        ? Number(startAtParam)
+                        : endAt - 90 * 24 * 60 * 60 * 1000;
+                    const maxRangeMs = 366 * 24 * 60 * 60 * 1000;
+                    if ((hasRange && (startAtParam === null || endAtParam === null)) ||
+                        !Number.isSafeInteger(startAt) || !Number.isSafeInteger(endAt) ||
+                        startAt <= 0 || endAt <= startAt || endAt - startAt > maxRangeMs) {
+                        return jsonError("Freedom history date range is invalid or exceeds the one-year limit.", 400, corsHeaders);
+                    }
+                    params = {
+                        id: symbol,
+                        timeframe: 1440,
+                        date_from: formatTradeNetHistoryDate(startAt),
+                        date_to: formatTradeNetHistoryDate(endAt),
+                        count: 0,
+                        intervalMode: "ClosedRay"
+                    };
+                }
                 try {
                     const data = action === "freedom-quote"
                         ? await withProviderCache("freedom_quote", symbol, () => requestTradeNet(env, command, params))
@@ -2241,15 +2288,18 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
+            const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
+            if (tenantDirectoryPath || pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/margin-digest-migration" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,
                         headers: corsHeaders
                     });
                 }
-                // The app intentionally has one shared personal portfolio across the owner's
-                // devices. Do not change this identity to a client-controlled value.
+                // Tenant directory metadata remains in the authenticated identity/legacy DO.
+                // Financial tenant data is not routed here; do not derive any DO ID from
+                // untrusted tenant/workspace/portfolio identifiers.
+                // The legacy portfolio remains on its fixed canonical identity.
                 const id = env.PORTFOLIO_STATE_DO.idFromName("portfolio_state");
                 const stub = env.PORTFOLIO_STATE_DO.get(id);
                 const stateResponse = await stub.fetch(new Request(request.url, {
@@ -2480,6 +2530,203 @@ export default {
                     const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
                     return jsonError(error instanceof Error ? error.message : `${providerName} quote failed.`, status, corsHeaders);
                 }
+            }
+
+            if (action === "provider-history") {
+                const ticker = symbol.trim();
+                const resolution = url.searchParams.get("resolution") || "D";
+                const from = Number(url.searchParams.get("from"));
+                const to = Number(url.searchParams.get("to"));
+                const supported = new Set(["1", "5", "15", "30", "60", "D", "W", "M"]);
+                const key = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
+                if (!ticker || ticker.includes(",") || !/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) return jsonError("A single valid historical symbol is required.", 400, corsHeaders);
+                if (!supported.has(resolution)) return jsonError("Unsupported Finnhub candle resolution.", 400, corsHeaders);
+                if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from <= 0 || to <= from || to - from > 20 * 366 * 86400) return jsonError("Historical date range is invalid or exceeds the 20-year limit.", 400, corsHeaders);
+                if (!key) return jsonError("Finnhub provider key is not configured.", 503, corsHeaders);
+                try {
+                    const data = await withProviderCache("finnhub_history", [ticker, resolution, from, to].join(":"), async () => {
+                        const endpoint = new URL("https://finnhub.io/api/v1/stock/candle");
+                        endpoint.searchParams.set("symbol", ticker);
+                        endpoint.searchParams.set("resolution", resolution);
+                        endpoint.searchParams.set("from", String(from));
+                        endpoint.searchParams.set("to", String(to));
+                        endpoint.searchParams.set("token", key);
+                        const response = await fetchWithTimeout(endpoint.toString(), { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } });
+                        const raw = await response.json().catch(() => null);
+                        if (!response.ok) throw Object.assign(new Error("Finnhub historical data is temporarily unavailable."), { status: response.status });
+                        if (!raw || raw.s !== "ok" || !Array.isArray(raw.t) || !Array.isArray(raw.c) || raw.t.length !== raw.c.length || raw.t.length > 20000) throw Object.assign(new Error("Finnhub returned invalid historical candles."), { status: 502 });
+                        const points = [];
+                        for (let i=0;i<raw.t.length;i++) {
+                            const seconds=Number(raw.t[i]), close=Number(raw.c[i]);
+                            if (!Number.isSafeInteger(seconds)||seconds<=0||!Number.isFinite(close)||close<=0) continue;
+                            const point={timestamp:seconds*1000,price:close};
+                            for (const [field,values] of [["open",raw.o],["high",raw.h],["low",raw.l],["volume",raw.v]]) {
+                                const value=Array.isArray(values)?Number(values[i]):NaN;
+                                if(Number.isFinite(value)&&(field==="volume"?value>=0:value>0)) point[field]=value;
+                            }
+                            points.push(point);
+                        }
+                        if(!points.length) throw Object.assign(new Error("Finnhub returned no valid historical prices."),{status:502});
+                        points.sort((a,b)=>a.timestamp-b.timestamp);
+                        return {ok:true,provider:"Finnhub",symbol:ticker,interval:resolution,observedAt:points[points.length-1].timestamp,points};
+                    });
+                    return new Response(JSON.stringify({...data,receivedAt:Date.now()}),{headers:corsHeaders});
+                } catch(error) {
+                    const status=Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:502;
+                    return jsonError(status===429?"Finnhub historical data is rate limited; retry later.":"Finnhub historical data is temporarily unavailable.",status,corsHeaders);
+                }
+            }
+
+            if (action === "market-calendar") {
+                const requestedExchange = (url.searchParams.get("exchange") || "").trim().toUpperCase();
+                const exchangeCodes = {
+                    US: "US", NASDAQ: "US", NYSE: "US",
+                    LSE: "L", XETRA: "DE", TSX: "TO", TSE: "T", HKEX: "HK"
+                };
+                const providerExchange = exchangeCodes[requestedExchange];
+                const key = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
+                if (!providerExchange) return jsonError("Unsupported market calendar exchange.", 400, corsHeaders);
+                if (!key) return jsonError("Finnhub provider key is not configured.", 503, corsHeaders);
+                try {
+                    // Holiday/early-close definitions change infrequently; the
+                    // current market-status snapshot must never inherit that long TTL.
+                    const [holidayPayload, statusPayload] = await Promise.all([
+                        withProviderCache("finnhub_calendar", providerExchange, async () => {
+                            const endpoint = new URL("https://finnhub.io/api/v1/stock/market-holiday");
+                            endpoint.searchParams.set("exchange", providerExchange);
+                            endpoint.searchParams.set("token", key);
+                            const response = await fetchWithTimeout(endpoint.toString(), {
+                                headers: { "Accept": "application/json", "User-Agent": USER_AGENT }
+                            });
+                            const raw = await response.json().catch(() => null);
+                            if (!response.ok || !raw || raw.exchange !== providerExchange ||
+                                typeof raw.timezone !== "string" || !Array.isArray(raw.data)) {
+                                throw Object.assign(new Error("Finnhub exchange holiday calendar is temporarily unavailable."), {
+                                    status: response.status === 429 ? 429 : 502
+                                });
+                            }
+                            return raw;
+                        }),
+                        withProviderCache("finnhub_market_status", providerExchange, async () => {
+                            const endpoint = new URL("https://finnhub.io/api/v1/stock/market-status");
+                            endpoint.searchParams.set("exchange", providerExchange);
+                            endpoint.searchParams.set("token", key);
+                            const response = await fetchWithTimeout(endpoint.toString(), {
+                                headers: { "Accept": "application/json", "User-Agent": USER_AGENT }
+                            });
+                            const raw = await response.json().catch(() => null);
+                            if (!response.ok || !raw || raw.exchange !== providerExchange ||
+                                typeof raw.timezone !== "string" || !Number.isFinite(Number(raw.t))) {
+                                throw Object.assign(new Error("Finnhub current market status is temporarily unavailable."), {
+                                    status: response.status === 429 ? 429 : 502
+                                });
+                            }
+                            return raw;
+                        })
+                    ]);
+                    if (holidayPayload.timezone !== statusPayload.timezone) {
+                        throw Object.assign(new Error("Finnhub exchange calendar timezone sources disagree."), { status: 502 });
+                    }
+                    const events = holidayPayload.data.slice(0, 300).flatMap(row => {
+                        if (!row || typeof row !== "object" || Array.isArray(row) ||
+                            typeof row.atDate !== "string" || !isValidDateOnly(row.atDate)) return [];
+                        const eventName = typeof row.eventName === "string" && row.eventName.length <= 100
+                            ? row.eventName : null;
+                        const tradingHour = typeof row.tradingHour === "string" && row.tradingHour.length <= 32
+                            ? row.tradingHour : "";
+                        let earlyCloseMinute = null;
+                        if (tradingHour) {
+                            const match = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(tradingHour);
+                            if (match) {
+                                const openHour = Number(match[1]), openMinute = Number(match[2]);
+                                const closeHour = Number(match[3]), closeMinute = Number(match[4]);
+                                const valid = openHour < 24 && closeHour < 24 && openMinute < 60 && closeMinute < 60 &&
+                                    closeHour * 60 + closeMinute > openHour * 60 + openMinute;
+                                if (valid) earlyCloseMinute = closeHour * 60 + closeMinute;
+                            }
+                        }
+                        return [{
+                            date: row.atDate,
+                            name: eventName,
+                            tradingHour: tradingHour || null,
+                            kind: earlyCloseMinute === null ? "CLOSED" : "EARLY_CLOSE",
+                            earlyCloseMinute
+                        }];
+                    });
+                    const holidays = events.filter(event => event.kind === "CLOSED").map(event => event.date);
+                    const earlyCloses = Object.fromEntries(events
+                        .filter(event => event.kind === "EARLY_CLOSE" && event.earlyCloseMinute !== null)
+                        .map(event => [event.date, event.earlyCloseMinute]));
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Finnhub",
+                        exchange: requestedExchange,
+                        providerExchange,
+                        timeZone: holidayPayload.timezone,
+                        receivedAt: Date.now(),
+                        events,
+                        holidays,
+                        earlyCloses,
+                        marketStatus: {
+                            isOpen: statusPayload.isOpen === true,
+                            session: typeof statusPayload.session === "string" ? statusPayload.session : null,
+                            holiday: typeof statusPayload.holiday === "string" ? statusPayload.holiday : null,
+                            timeZone: statusPayload.timezone,
+                            timestamp: Number(statusPayload.t) * 1000
+                        }
+                    }), { headers: corsHeaders });
+                } catch (error) {
+                    const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
+                    return jsonError(status === 429
+                        ? "Finnhub exchange calendar is rate limited; retry later."
+                        : "Finnhub exchange calendar is temporarily unavailable.", status, corsHeaders);
+                }
+            }
+
+            if (action === "market-events") {
+                const ticker=symbol.trim(), fromDate=url.searchParams.get("from"), toDate=url.searchParams.get("to");
+                const key=env.FINNHUB_KEY||env.FINNHUB_API_KEY;
+                if(!ticker||ticker.includes(",")||!/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) return jsonError("A single valid market-events symbol is required.",400,corsHeaders);
+                if(!isValidDateOnly(fromDate)||!isValidDateOnly(toDate)||toDate<fromDate||Date.parse(toDate+"T00:00:00Z")-Date.parse(fromDate+"T00:00:00Z")>366*86400000) return jsonError("Market-event date range must be valid YYYY-MM-DD dates within one year.",400,corsHeaders);
+                if(!key) return jsonError("Finnhub provider key is not configured.",503,corsHeaders);
+                const safeText=v=>typeof v==="string"&&v.length<=64?v:null;
+                const safeNumber=v=>{if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null;};
+                const fetchFeed=feed=>withProviderCache("finnhub_events",[feed,ticker,fromDate,toDate].join(":"),async()=>{
+                    const endpoint=new URL(feed==="earnings"?"https://finnhub.io/api/v1/calendar/earnings":feed==="dividends"?"https://finnhub.io/api/v1/stock/dividend":"https://finnhub.io/api/v1/stock/split");
+                    endpoint.searchParams.set("symbol",ticker);endpoint.searchParams.set("from",fromDate);endpoint.searchParams.set("to",toDate);endpoint.searchParams.set("token",key);
+                    const response=await fetchWithTimeout(endpoint.toString(),{headers:{"Accept":"application/json","User-Agent":USER_AGENT}});
+                    if(!response.ok)throw new Error("Finnhub event feed unavailable");
+                    const raw=await response.json().catch(()=>null);
+                    if(feed==="earnings"){if(!Array.isArray(raw?.earningsCalendar))throw new Error("Invalid earnings response");return raw.earningsCalendar;}
+                    if(!Array.isArray(raw))throw new Error("Invalid "+feed+" response");return raw;
+                });
+                const [earningsResult,dividendsResult,splitsResult]=await Promise.allSettled([
+                    fetchFeed("earnings"),fetchFeed("dividends"),fetchFeed("splits")
+                ]);
+                const earningsAvailable=earningsResult.status==="fulfilled";
+                const dividendsAvailable=dividendsResult.status==="fulfilled";
+                const corporateActionsAvailable=splitsResult.status==="fulfilled";
+                if(!earningsAvailable&&!dividendsAvailable&&!corporateActionsAvailable) return jsonError("Finnhub market events are temporarily unavailable.",502,corsHeaders);
+                // Preserve provider instrument identity exactly; never fill a missing or mismatched symbol from the request.
+                const earnings=(earningsAvailable?earningsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date))return[];
+                    return[{symbol:rowSymbol,date,hour:safeText(row.hour),epsActual:safeNumber(row.epsActual),epsEstimate:safeNumber(row.epsEstimate),revenueActual:safeNumber(row.revenueActual),revenueEstimate:safeNumber(row.revenueEstimate),quarter:safeNumber(row.quarter),year:safeNumber(row.year),currency:safeText(row.currency)}];
+                });
+                const dividends=(dividendsAvailable?dividendsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date))return[];
+                    return[{symbol:rowSymbol,date,amount:safeNumber(row.amount),adjustedAmount:safeNumber(row.adjustedAmount),payDate:safeText(row.payDate),recordDate:safeText(row.recordDate),declarationDate:safeText(row.declarationDate),currency:safeText(row.currency),frequency:safeNumber(row.freq)}];
+                });
+                const corporateActions=(corporateActionsAvailable?splitsResult.value:[]).slice(0,200).flatMap(row=>{
+                    if(!row||typeof row!=="object"||Array.isArray(row))return[];
+                    const rowSymbol=safeText(row.symbol)?.trim().toUpperCase(),date=safeText(row.date),fromFactor=safeNumber(row.fromFactor),toFactor=safeNumber(row.toFactor);
+                    if(rowSymbol!==ticker.toUpperCase()||!date||!isValidDateOnly(date)||!Number.isFinite(fromFactor)||fromFactor<=0||!Number.isFinite(toFactor)||toFactor<=0||fromFactor===toFactor)return[];
+                    return[{symbol:rowSymbol,date,fromFactor,toFactor}];
+                });
+                return new Response(JSON.stringify({ok:true,provider:"Finnhub",symbol:ticker,from:fromDate,to:toDate,receivedAt:Date.now(),earnings,dividends,corporateActions,earningsAvailable,dividendsAvailable,corporateActionsAvailable}),{headers:corsHeaders});
             }
 
             // Lightweight Yahoo quote path: chart metadata avoids quoteSummary's

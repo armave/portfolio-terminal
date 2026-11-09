@@ -5,8 +5,8 @@ const CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
-  "Access-Control-Expose-Headers": "ETag"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
+  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
 };
 
 function jsonResponse(body, status = 200, revision = null) {
@@ -96,6 +96,64 @@ const AUTH_SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const AUTH_SESSION_CLEANUP_CURSOR_KEY = "maintenance:auth-session-cleanup-cursor:v1";
 const AUTH_SESSION_CLEANUP_LAST_RUN_KEY = "maintenance:auth-session-cleanup-last-run:v1";
 const AUTH_USER_SESSION_INDEX_PREFIX = "auth:user-sessions:";
+
+const TENANT_DIRECTORY_KEY = "tenant:directory:v1";
+const TENANT_AUDIT_PREFIX = "tenant:audit:v1:";
+const LEGACY_TENANT_ID = "legacy-tenant-v1";
+const LEGACY_WORKSPACE_ID = "legacy-workspace-v1";
+const LEGACY_PORTFOLIO_ID = "legacy-portfolio-v1";
+const TENANT_DIRECTORY_MAX_TENANTS = 100;
+const TENANT_DIRECTORY_MAX_WORKSPACES = 250;
+const TENANT_DIRECTORY_MAX_PORTFOLIOS = 1000;
+const TENANT_DIRECTORY_MAX_MEMBERSHIPS = 5000;
+const TENANT_DIRECTORY_MAX_GRANTS = 10000;
+const TENANT_DIRECTORY_MAX_BODY_BYTES = 16 * 1024;
+
+const TENANT_ROLE_CAPABILITIES = Object.freeze({
+  owner: [
+    "tenant.read", "tenant.update", "tenant.members.manage",
+    "workspace.read", "workspace.create", "workspace.update",
+    "portfolio.read", "portfolio.create", "portfolio.update",
+    "portfolio.archive", "portfolio.delete", "portfolio.share.manage"
+  ],
+  manager: [
+    "tenant.read", "workspace.read", "portfolio.read",
+    "portfolio.positions.read", "portfolio.transactions.read",
+    "portfolio.performance.read", "portfolio.risk.read", "portfolio.reports.read"
+  ],
+  investor: [
+    "tenant.read", "workspace.read", "portfolio.read",
+    "portfolio.positions.read", "portfolio.performance.read",
+    "portfolio.risk.read", "portfolio.reports.read"
+  ],
+  guest: ["portfolio.projection.read"]
+});
+
+function isTenantDirectoryRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
+    value.version === 1 && Number.isSafeInteger(value.revision) && value.revision >= 1 &&
+    Array.isArray(value.tenants) && Array.isArray(value.workspaces) &&
+    Array.isArray(value.portfolios) && Array.isArray(value.memberships) &&
+    Array.isArray(value.grants) &&
+    value.tenants.length <= TENANT_DIRECTORY_MAX_TENANTS &&
+    value.workspaces.length <= TENANT_DIRECTORY_MAX_WORKSPACES &&
+    value.portfolios.length <= TENANT_DIRECTORY_MAX_PORTFOLIOS &&
+    value.memberships.length <= TENANT_DIRECTORY_MAX_MEMBERSHIPS &&
+    value.grants.length <= TENANT_DIRECTORY_MAX_GRANTS);
+}
+
+function normalizeTenantDisplayName(value, fallback = "") {
+  if (value === undefined && fallback) return fallback;
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFC").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  if (normalized.length < 2 || normalized.length > 80) return null;
+  return normalized;
+}
+
+function tenantAuditKey() {
+  return TENANT_AUDIT_PREFIX + String(Date.now()).padStart(13, "0") + ":" + crypto.randomUUID();
+}
+
 
 function userSessionIndexKey(userId) {
   return AUTH_USER_SESSION_INDEX_PREFIX + userId;
@@ -2245,6 +2303,727 @@ export class PortfolioStateDO {
     };
   }
 
+
+  async ensureTenantDirectory() {
+    return this.ctx.storage.transaction(async (transaction) => {
+      const users = await transaction.get(AUTH_USERS_KEY);
+      const accountUsers = Array.isArray(users) ? users.filter((user) =>
+        user && typeof user.id === "string" && (user.role === "admin" || user.role === "guest")
+      ) : [];
+      let directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      const now = new Date().toISOString();
+      let created = false;
+      let changedUsers = 0;
+
+      if (directory !== undefined && !isTenantDirectoryRecord(directory)) {
+        // Never replace or silently reset a malformed ownership directory.
+        return null;
+      }
+
+      if (directory === undefined) {
+        directory = {
+          version: 1,
+          revision: 1,
+          createdAt: now,
+          migration: "legacy-admin-guest-v1",
+          tenants: [{
+            id: LEGACY_TENANT_ID,
+            name: "Legacy shared workspace",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          workspaces: [{
+            id: LEGACY_WORKSPACE_ID,
+            tenantId: LEGACY_TENANT_ID,
+            name: "Legacy workspace",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          portfolios: [{
+            id: LEGACY_PORTFOLIO_ID,
+            tenantId: LEGACY_TENANT_ID,
+            workspaceId: LEGACY_WORKSPACE_ID,
+            name: "Legacy shared portfolio",
+            status: "active",
+            createdAt: now,
+            createdBy: null,
+            legacy: true
+          }],
+          memberships: [],
+          grants: []
+        };
+        created = true;
+      }
+
+      const legacyTenant = directory.tenants.find((item) => item.id === LEGACY_TENANT_ID);
+      if (!legacyTenant) {
+        // A directory created by a newer schema must not be silently rewritten.
+        return null;
+      }
+
+      const knownUserIds = new Set(accountUsers.map((user) => user.id));
+      for (const user of accountUsers) {
+        let membership = directory.memberships.find((item) =>
+          item.tenantId === LEGACY_TENANT_ID && item.userId === user.id
+        );
+        const expectedRole = user.role === "admin" ? "owner" : "guest";
+        if (!membership) {
+          membership = {
+            tenantId: LEGACY_TENANT_ID,
+            userId: user.id,
+            role: expectedRole,
+            status: "active",
+            membershipVersion: 1,
+            capabilities: [...TENANT_ROLE_CAPABILITIES[expectedRole]],
+            createdAt: user.createdAt || now,
+            createdBy: null,
+            legacy: true
+          };
+          directory.memberships.push(membership);
+          changedUsers += 1;
+        } else if (membership.status !== "active" || membership.role !== expectedRole) {
+          membership.role = expectedRole;
+          membership.status = "active";
+          membership.membershipVersion = Math.max(1, Number(membership.membershipVersion) || 0) + 1;
+          membership.capabilities = [...TENANT_ROLE_CAPABILITIES[expectedRole]];
+          membership.updatedAt = now;
+          changedUsers += 1;
+        }
+
+        if (expectedRole === "guest") {
+          let grant = directory.grants.find((item) =>
+            item.tenantId === LEGACY_TENANT_ID &&
+            item.portfolioId === LEGACY_PORTFOLIO_ID &&
+            item.userId === user.id
+          );
+          if (!grant) {
+            directory.grants.push({
+              tenantId: LEGACY_TENANT_ID,
+              portfolioId: LEGACY_PORTFOLIO_ID,
+              userId: user.id,
+              scope: "projection",
+              capabilities: ["portfolio.projection.read"],
+              status: "active",
+              membershipVersion: membership.membershipVersion,
+              createdAt: user.createdAt || now,
+              createdBy: null,
+              legacy: true
+            });
+            changedUsers += 1;
+          } else if (grant.status !== "active" ||
+              !Array.isArray(grant.capabilities) || grant.capabilities.length !== 1 ||
+              grant.capabilities[0] !== "portfolio.projection.read") {
+            grant.status = "active";
+            grant.scope = "projection";
+            grant.capabilities = ["portfolio.projection.read"];
+            grant.membershipVersion = membership.membershipVersion;
+            grant.updatedAt = now;
+            changedUsers += 1;
+          }
+        } else {
+          for (const grant of directory.grants) {
+            if (grant.tenantId === LEGACY_TENANT_ID && grant.userId === user.id && grant.status === "active") {
+              grant.status = "revoked";
+              grant.updatedAt = now;
+              changedUsers += 1;
+            }
+          }
+        }
+      }
+
+      for (const membership of directory.memberships) {
+        if (membership.tenantId === LEGACY_TENANT_ID &&
+            membership.status === "active" && !knownUserIds.has(membership.userId)) {
+          membership.status = "revoked";
+          membership.membershipVersion = Math.max(1, Number(membership.membershipVersion) || 0) + 1;
+          membership.updatedAt = now;
+          changedUsers += 1;
+          for (const grant of directory.grants) {
+            if (grant.tenantId === LEGACY_TENANT_ID && grant.userId === membership.userId && grant.status === "active") {
+              grant.status = "revoked";
+              grant.updatedAt = now;
+            }
+          }
+        }
+      }
+
+      if (created || changedUsers > 0) {
+        if (!created) directory.revision += 1;
+        directory.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, directory);
+        await transaction.put(tenantAuditKey(), {
+          version: 1,
+          eventId: crypto.randomUUID(),
+          type: created ? "legacy_directory_initialized" : "legacy_memberships_reconciled",
+          tenantId: LEGACY_TENANT_ID,
+          actorUserId: null,
+          recordedAt: now,
+          details: { changedAccountMemberships: changedUsers }
+        });
+      }
+      return directory;
+    });
+  }
+
+  buildTenantDirectoryView(directory, userId) {
+    const memberships = directory.memberships.filter((item) =>
+      item.userId === userId && item.status === "active"
+    );
+    const tenants = [];
+    for (const membership of memberships) {
+      const tenant = directory.tenants.find((item) =>
+        item.id === membership.tenantId && item.status === "active"
+      );
+      if (!tenant) continue;
+      const grants = directory.grants.filter((item) =>
+        item.tenantId === tenant.id && item.userId === userId && item.status === "active"
+      );
+      const isOwner = membership.role === "owner";
+      const visiblePortfolios = directory.portfolios.filter((portfolio) =>
+        portfolio.tenantId === tenant.id && portfolio.status === "active" &&
+        (isOwner || grants.some((grant) => grant.portfolioId === portfolio.id))
+      );
+      const visibleWorkspaceIds = new Set(visiblePortfolios.map((portfolio) => portfolio.workspaceId));
+      const visibleWorkspaces = directory.workspaces.filter((workspace) =>
+        workspace.tenantId === tenant.id && workspace.status === "active" &&
+        (isOwner || visibleWorkspaceIds.has(workspace.id))
+      );
+
+      tenants.push({
+        tenant: {
+          id: tenant.id,
+          name: tenant.name,
+          status: tenant.status,
+          createdAt: tenant.createdAt
+        },
+        membership: {
+          role: membership.role,
+          status: membership.status,
+          membershipVersion: membership.membershipVersion,
+          capabilities: [...(membership.capabilities || TENANT_ROLE_CAPABILITIES[membership.role] || [])]
+        },
+        workspaces: visibleWorkspaces.map((workspace) => ({
+          id: workspace.id,
+          name: workspace.name,
+          status: workspace.status
+        })),
+        portfolios: visiblePortfolios.map((portfolio) => {
+          const grant = grants.find((item) => item.portfolioId === portfolio.id);
+          return {
+            id: portfolio.id,
+            workspaceId: portfolio.workspaceId,
+            name: portfolio.name,
+            status: portfolio.status,
+            access: isOwner ? "owner" : grant?.scope || "portfolio",
+            capabilities: isOwner
+              ? [...TENANT_ROLE_CAPABILITIES.owner]
+              : [...(grant?.capabilities || [])]
+          };
+        }),
+        // Only tenant owners receive the roster, and it contains directory
+        // metadata only. Financial history, credentials and session tokens
+        // remain outside this response.
+        memberships: isOwner ? directory.memberships
+          .filter((item) => item.tenantId === tenant.id)
+          .map((item) => ({
+            userId: item.userId,
+            role: item.role,
+            status: item.status,
+            membershipVersion: item.membershipVersion,
+            createdAt: item.createdAt,
+            portfolioIds: directory.grants
+              .filter((grant) => grant.tenantId === tenant.id &&
+                grant.userId === item.userId && grant.status === "active")
+              .map((grant) => grant.portfolioId)
+          })) : undefined
+      });
+    }
+
+    return {
+      version: 1,
+      revision: directory.revision,
+      mode: "directory-metadata-only",
+      financialDataEnabled: false,
+      tenants
+    };
+  }
+
+
+  /**
+   * Inventory and migrate legacy Margin Intelligence digests without returning
+   * their contents to the browser. Each record is rewritten with a revision
+   * compare-and-swap so a concurrent client update always wins.
+   */
+  async handleMarginDigestMigration(request) {
+    const session = await this.resolveSession(request);
+    if (!session) return jsonResponse({ error: "Authentication required." }, 401);
+    if (session.user.role !== "admin") return jsonResponse({ error: "Administrator access is required." }, 403);
+    if (typeof this.ctx.storage.list !== "function") {
+      return jsonResponse({ error: "Digest inventory is unavailable in this storage runtime." }, 503);
+    }
+
+    const respond = (body, status = 200) => {
+      const response = jsonResponse(body, status);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    };
+    const prefix = "marginDigestRecord:";
+    const validDigestKey = (value) => typeof value === "string" &&
+      /^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(value);
+    const readAesGcmV2Envelope = (payload) => {
+      if (typeof payload !== "string" || payload.length > 128 * 1024 ||
+          !payload.startsWith("aesgcm:v2:")) return null;
+      const parts = payload.slice("aesgcm:v2:".length).split(":");
+      if (parts.length !== 2) return null;
+      const decodeBase64 = (encoded) => {
+        if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
+        try {
+          const decoded = atob(encoded);
+          if (btoa(decoded) !== encoded) return null;
+          return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+        } catch {
+          return null;
+        }
+      };
+      const nonce = decodeBase64(parts[0]);
+      const ciphertext = decodeBase64(parts[1]);
+      if (!nonce || nonce.byteLength !== 12 || !ciphertext || ciphertext.byteLength < 16) return null;
+      return { nonce, ciphertext };
+    };
+    const inspect = (record, storageKey) => {
+      if (!record || typeof record.payload !== "string") return "unreadable";
+      let value;
+      try { value = JSON.parse(record.payload); } catch { return "unreadable"; }
+      if (!value || typeof value !== "object" || Array.isArray(value) ||
+          !validDigestKey(value.key) || storageKey !== prefix + value.key) return "unreadable";
+      if (typeof value.encryptedPayload === "string") {
+        const keys = Object.keys(value).sort();
+        const exactEnvelope = keys.length === 2 && keys[0] === "encryptedPayload" && keys[1] === "key";
+        if (exactEnvelope && readAesGcmV2Envelope(value.encryptedPayload)) return "encryptedV2Candidate";
+        if (exactEnvelope && !value.encryptedPayload.startsWith("aesgcm:v2:")) return "legacyEncrypted";
+        return "unreadable";
+      }
+      if (typeof value.analysis === "string" && value.analysis.trim() &&
+          Array.isArray(value.articles) && value.articles.length <= 20 &&
+          typeof value.syncedAt === "string" && Number.isFinite(Date.parse(value.syncedAt))) {
+        return "plaintext";
+      }
+      return "unreadable";
+    };
+    // Inventory only treats a v2 envelope as migrated after authenticating its GCM tag and digest identity.
+    const isAuthenticatedEncryptedRecord = async (record, storageKey, encryptionKey) => {
+      if (!encryptionKey || inspect(record, storageKey) !== "encryptedV2Candidate") return false;
+      try {
+        const envelopeRecord = JSON.parse(record.payload);
+        const envelope = readAesGcmV2Envelope(envelopeRecord.encryptedPayload);
+        if (!envelope) return false;
+        const plaintext = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: envelope.nonce, tagLength: 128 },
+          encryptionKey,
+          envelope.ciphertext
+        );
+        const digest = JSON.parse(new TextDecoder().decode(plaintext));
+        return Boolean(
+          digest && typeof digest === "object" && !Array.isArray(digest) &&
+          digest.key === envelopeRecord.key && validDigestKey(digest.key) &&
+          typeof digest.analysis === "string" && digest.analysis.trim() &&
+          Array.isArray(digest.articles) && digest.articles.length <= 20 &&
+          typeof digest.syncedAt === "string" && Number.isFinite(Date.parse(digest.syncedAt))
+        );
+      } catch {
+        // A well-formed envelope with a bad GCM tag or invalid plaintext is unreadable.
+        return false;
+      }
+    };
+
+    if (request.method === "GET") {
+      const counts = { totalRecords: 0, plaintextRecords: 0, encryptedV2Records: 0,
+        legacyEncryptedRecords: 0, unreadableRecords: 0 };
+      const keyMaterial = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+      let decryptionKey = null;
+      if (typeof keyMaterial === "string" && keyMaterial) {
+        const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+        decryptionKey = await crypto.subtle.importKey(
+          "raw", keyDigest, { name: "AES-GCM" }, false, ["decrypt"]
+        );
+      }
+      let cursor = null;
+      do {
+        const page = await this.ctx.storage.list({
+          prefix,
+          limit: 100,
+          ...(cursor ? { startAfter: cursor } : {})
+        });
+        if (!page || typeof page.entries !== "function" || typeof page.size !== "number") {
+          return respond({ error: "Digest inventory could not be read." }, 503);
+        }
+        for (const [storageKey, record] of page.entries()) {
+          counts.totalRecords += 1;
+          const category = inspect(record, storageKey);
+          if (category === "plaintext") counts.plaintextRecords += 1;
+          else if (category === "encryptedV2Candidate") {
+            if (await isAuthenticatedEncryptedRecord(record, storageKey, decryptionKey)) counts.encryptedV2Records += 1;
+            else counts.unreadableRecords += 1;
+          } else if (category === "legacyEncrypted") counts.legacyEncryptedRecords += 1;
+          else counts.unreadableRecords += 1;
+        }
+        cursor = page.size === 100 ? [...page.keys()].at(-1) || null : null;
+      } while (cursor);
+
+      return respond({
+        ...counts,
+        scannedAt: new Date().toISOString(),
+        migrationReady: counts.plaintextRecords === 0 &&
+          counts.legacyEncryptedRecords === 0 && counts.unreadableRecords === 0
+      });
+    }
+
+    if (request.method !== "POST") return respond({ error: "Method not allowed." }, 405);
+    if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+      return respond({ error: "Digest migration requests must use application/json." }, 415);
+    }
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 4096) {
+      return respond({ error: "Digest migration request exceeds the 4 KB limit." }, 413);
+    }
+    let body;
+    try { body = rawBody ? JSON.parse(rawBody) : {}; }
+    catch { return respond({ error: "Invalid digest migration request." }, 400); }
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        Object.keys(body).some((key) => key !== "limit" && key !== "cursor")) {
+      return respond({ error: "Invalid digest migration request." }, 400);
+    }
+    const limit = body.limit === undefined ? 25 : Number(body.limit);
+    const cursor = body.cursor === undefined || body.cursor === null ? null : body.cursor;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 ||
+        (cursor !== null && (typeof cursor !== "string" || !cursor.startsWith(prefix) || cursor.length > 100))) {
+      return respond({ error: "Digest migration limit or cursor is invalid." }, 400);
+    }
+
+    // Read one extra key so an exactly-full final page can report completion
+    // without requiring an empty follow-up request from the client.
+    const page = await this.ctx.storage.list({
+      prefix,
+      limit: limit + 1,
+      ...(cursor ? { startAfter: cursor } : {})
+    });
+    if (!page || typeof page.entries !== "function" || typeof page.size !== "number") {
+      return respond({ error: "Digest migration batch could not be read." }, 503);
+    }
+    const listedEntries = [...page.entries()];
+    const batchEntries = listedEntries.slice(0, limit);
+    const hasMore = listedEntries.length > limit;
+
+    const keyMaterial = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+    if (typeof keyMaterial !== "string" || !keyMaterial) {
+      return respond({ error: "The workspace encryption key is unavailable; no digest records were changed." }, 503);
+    }
+    const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
+    const encryptionKey = await crypto.subtle.importKey(
+      "raw", keyDigest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]
+    );
+    const toBase64 = (bytes) => {
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    };
+
+    const result = { scanned: 0, migrated: 0, alreadyEncrypted: 0, unreadable: 0, conflicts: 0 };
+    let lastKey = null;
+    for (const [storageKey, listedRecord] of batchEntries) {
+      lastKey = storageKey;
+      result.scanned += 1;
+      const category = inspect(listedRecord, storageKey);
+      if (category === "encryptedV2Candidate") {
+        if (await isAuthenticatedEncryptedRecord(listedRecord, storageKey, encryptionKey)) {
+          result.alreadyEncrypted += 1;
+        } else {
+          result.unreadable += 1;
+        }
+        continue;
+      }
+      if (category !== "plaintext") {
+        result.unreadable += 1;
+        continue;
+      }
+
+      const digest = JSON.parse(listedRecord.payload);
+      const nonce = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce, tagLength: 128 },
+        encryptionKey,
+        new TextEncoder().encode(listedRecord.payload)
+      );
+      const envelope = {
+        key: digest.key,
+        encryptedPayload: "aesgcm:v2:" + toBase64(nonce) + ":" +
+          toBase64(new Uint8Array(ciphertext))
+      };
+      const migrated = await this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get(storageKey);
+        if (!current || current.revision !== listedRecord.revision ||
+            current.payload !== listedRecord.payload) return "conflict";
+        if (inspect(current, storageKey) !== "plaintext") return "encrypted";
+        await transaction.put(storageKey, {
+          payload: JSON.stringify(envelope),
+          revision: current.revision + 1
+        });
+        return "migrated";
+      });
+      if (migrated === "migrated") result.migrated += 1;
+      else if (migrated === "encrypted") result.alreadyEncrypted += 1;
+      else result.conflicts += 1;
+    }
+
+    return respond({
+      ...result,
+      nextCursor: hasMore ? lastKey : null,
+      done: !hasMore
+    });
+  }
+
+  async handleTenantDirectory(request) {
+    const session = await this.resolveSession(request);
+    if (!session) return jsonResponse({ error: "Authentication required." }, 401);
+
+    const directory = await this.ensureTenantDirectory();
+    if (!directory) return jsonResponse({ error: "Tenant directory is unavailable or requires recovery." }, 503);
+
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    if (request.method === "GET") {
+      if (pathname !== "/api/tenants") return jsonResponse({ error: "Not found." }, 404);
+      return new Response(JSON.stringify(this.buildTenantDirectoryView(directory, session.user.id)), {
+        status: 200,
+        headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
+      });
+    }
+
+    if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+      return jsonResponse({ error: "Tenant directory writes must use application/json." }, 415);
+    }
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > TENANT_DIRECTORY_MAX_BODY_BYTES) {
+      return jsonResponse({ error: "Tenant directory request exceeds the 16 KB limit." }, 413);
+    }
+    let body;
+    try {
+      body = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
+
+    if (pathname === "/api/tenants") {
+      if (session.user.role !== "admin") {
+        return jsonResponse({ error: "Administrator access is required to provision a tenant." }, 403);
+      }
+      const allowedKeys = new Set(["name", "workspaceName", "portfolioName"]);
+      if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+        return jsonResponse({ error: "Tenant creation accepts only name, workspaceName, and portfolioName." }, 400);
+      }
+      const name = normalizeTenantDisplayName(body.name);
+      const workspaceName = normalizeTenantDisplayName(body.workspaceName, "Main workspace");
+      const portfolioName = normalizeTenantDisplayName(body.portfolioName, "Main portfolio");
+      if (!name || !workspaceName || !portfolioName) {
+        return jsonResponse({ error: "Tenant, workspace, and portfolio names must contain 2–80 characters." }, 400);
+      }
+
+      const tenantId = crypto.randomUUID();
+      const workspaceId = crypto.randomUUID();
+      const portfolioId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const result = await this.ctx.storage.transaction(async (transaction) => {
+        const current = await transaction.get(TENANT_DIRECTORY_KEY);
+        if (!isTenantDirectoryRecord(current)) return { error: "Tenant directory is unavailable.", status: 503 };
+        if (current.revision !== directory.revision) return { error: "Tenant directory changed. Refresh and retry.", status: 409 };
+        if (current.tenants.length >= TENANT_DIRECTORY_MAX_TENANTS ||
+            current.workspaces.length >= TENANT_DIRECTORY_MAX_WORKSPACES ||
+            current.portfolios.length >= TENANT_DIRECTORY_MAX_PORTFOLIOS ||
+            current.memberships.length >= TENANT_DIRECTORY_MAX_MEMBERSHIPS) {
+          return { error: "Tenant directory capacity has been reached.", status: 409 };
+        }
+        const tenant = {
+          id: tenantId, name, status: "active", createdAt: now,
+          createdBy: session.user.id, legacy: false
+        };
+        const workspace = {
+          id: workspaceId, tenantId, name: workspaceName, status: "active",
+          createdAt: now, createdBy: session.user.id, legacy: false
+        };
+        const portfolio = {
+          id: portfolioId, tenantId, workspaceId, name: portfolioName, status: "active",
+          createdAt: now, createdBy: session.user.id, legacy: false
+        };
+        const membership = {
+          tenantId, userId: session.user.id, role: "owner", status: "active",
+          membershipVersion: 1, capabilities: [...TENANT_ROLE_CAPABILITIES.owner],
+          createdAt: now, createdBy: session.user.id
+        };
+        current.tenants.push(tenant);
+        current.workspaces.push(workspace);
+        current.portfolios.push(portfolio);
+        current.memberships.push(membership);
+        current.revision += 1;
+        current.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, current);
+        await transaction.put(tenantAuditKey(), {
+          version: 1, eventId: crypto.randomUUID(), type: "tenant_created",
+          tenantId, workspaceId, portfolioId, actorUserId: session.user.id,
+          recordedAt: now
+        });
+        return { tenant, workspace, portfolio, revision: current.revision };
+      });
+      if (result.error) return jsonResponse({ error: result.error }, result.status);
+      return jsonResponse({
+        success: true,
+        revision: result.revision,
+        financialDataEnabled: false,
+        tenant: result.tenant,
+        workspace: result.workspace,
+        portfolio: result.portfolio,
+        membership: { role: "owner", capabilities: [...TENANT_ROLE_CAPABILITIES.owner] }
+      }, 201);
+    }
+
+    const route = pathname.match(/^\/api\/tenants\/([A-Za-z0-9_-]{8,80})\/memberships(?:\/(revoke))?$/);
+    if (!route) return jsonResponse({ error: "Not found." }, 404);
+    const tenantId = route[1];
+    const isRevoke = route[2] === "revoke";
+    const allowedKeys = isRevoke
+      ? new Set(["userId"])
+      : new Set(["userId", "role", "portfolioIds"]);
+    if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+      return jsonResponse({ error: "Membership requests contain unsupported fields." }, 400);
+    }
+
+    const actorMembership = directory.memberships.find((item) =>
+      item.tenantId === tenantId && item.userId === session.user.id &&
+      item.status === "active" && item.role === "owner" &&
+      item.capabilities?.includes("tenant.members.manage")
+    );
+    if (!actorMembership) return jsonResponse({ error: "Tenant not found or membership management is not permitted." }, 404);
+
+    if (typeof body.userId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(body.userId) ||
+        body.userId === session.user.id) {
+      return jsonResponse({ error: "A different valid userId is required." }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const result = await this.ctx.storage.transaction(async (transaction) => {
+      const current = await transaction.get(TENANT_DIRECTORY_KEY);
+      if (!isTenantDirectoryRecord(current)) return { error: "Tenant directory is unavailable.", status: 503 };
+      if (current.revision !== directory.revision) return { error: "Tenant directory changed. Refresh and retry.", status: 409 };
+      const existing = current.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === body.userId
+      );
+
+      if (isRevoke) {
+        if (!existing || existing.status !== "active") return { error: "Membership not found.", status: 404 };
+        if (existing.role === "owner") return { error: "Owner transfer is a separate, gated operation.", status: 409 };
+        existing.status = "revoked";
+        existing.membershipVersion = Math.max(1, Number(existing.membershipVersion) || 0) + 1;
+        existing.updatedAt = now;
+        for (const grant of current.grants) {
+          if (grant.tenantId === tenantId && grant.userId === body.userId && grant.status === "active") {
+            grant.status = "revoked";
+            grant.updatedAt = now;
+          }
+        }
+        current.revision += 1;
+        current.updatedAt = now;
+        await transaction.put(TENANT_DIRECTORY_KEY, current);
+        await transaction.put(tenantAuditKey(), {
+          version: 1, eventId: crypto.randomUUID(), type: "tenant_membership_revoked",
+          tenantId, targetUserId: body.userId, actorUserId: session.user.id,
+          recordedAt: now, membershipVersion: existing.membershipVersion
+        });
+        return { success: true, revision: current.revision, membershipVersion: existing.membershipVersion };
+      }
+
+      if (!["manager", "investor", "guest"].includes(body.role)) {
+        return { error: "Membership role must be manager, investor, or guest. Owner assignment is not supported here.", status: 400 };
+      }
+      if (!Array.isArray(body.portfolioIds) || body.portfolioIds.length < 1 ||
+          body.portfolioIds.length > 50 ||
+          body.portfolioIds.some((id) => typeof id !== "string") ||
+          new Set(body.portfolioIds).size !== body.portfolioIds.length) {
+        return { error: "Provide 1–50 unique portfolioIds.", status: 400 };
+      }
+      if (body.role === "guest" && body.portfolioIds.length !== 1) {
+        return { error: "Guest membership must be scoped to exactly one portfolio projection.", status: 400 };
+      }
+      const users = await transaction.get(AUTH_USERS_KEY) || [];
+      if (!Array.isArray(users) || !users.some((user) => user.id === body.userId)) {
+        return { error: "Target user not found.", status: 404 };
+      }
+      const tenant = current.tenants.find((item) => item.id === tenantId && item.status === "active");
+      if (!tenant) return { error: "Tenant not found.", status: 404 };
+      const portfolios = body.portfolioIds.map((id) => current.portfolios.find((portfolio) =>
+        portfolio.id === id && portfolio.tenantId === tenantId && portfolio.status === "active"
+      ));
+      if (portfolios.some((portfolio) => !portfolio)) {
+        return { error: "One or more portfolios are outside this tenant or unavailable.", status: 404 };
+      }
+      if (existing?.status === "active" && existing.role === "owner") {
+        return { error: "An owner cannot be replaced by a scoped membership.", status: 409 };
+      }
+
+      const membershipVersion = Math.max(0, Number(existing?.membershipVersion) || 0) + 1;
+      const capabilities = [...TENANT_ROLE_CAPABILITIES[body.role]];
+      const membership = {
+        tenantId, userId: body.userId, role: body.role, status: "active",
+        membershipVersion, capabilities,
+        createdAt: existing?.createdAt || now, createdBy: existing?.createdBy || session.user.id,
+        updatedAt: now
+      };
+      if (existing) Object.assign(existing, membership);
+      else current.memberships.push(membership);
+
+      for (const grant of current.grants) {
+        if (grant.tenantId === tenantId && grant.userId === body.userId && grant.status === "active") {
+          grant.status = "revoked";
+          grant.updatedAt = now;
+        }
+      }
+      for (const portfolio of portfolios) {
+        current.grants.push({
+          tenantId, portfolioId: portfolio.id, userId: body.userId,
+          scope: body.role === "guest" ? "projection" : "portfolio",
+          capabilities: body.role === "guest" ? ["portfolio.projection.read"] : capabilities.filter((capability) => capability.startsWith("portfolio.")),
+          status: "active", membershipVersion,
+          createdAt: now, createdBy: session.user.id
+        });
+      }
+      if (current.grants.length > TENANT_DIRECTORY_MAX_GRANTS ||
+          current.memberships.length > TENANT_DIRECTORY_MAX_MEMBERSHIPS) {
+        return { error: "Tenant directory capacity has been reached.", status: 409 };
+      }
+      current.revision += 1;
+      current.updatedAt = now;
+      await transaction.put(TENANT_DIRECTORY_KEY, current);
+      await transaction.put(tenantAuditKey(), {
+        version: 1, eventId: crypto.randomUUID(), type: "tenant_membership_granted",
+        tenantId, targetUserId: body.userId, role: body.role,
+        portfolioIds: [...body.portfolioIds], actorUserId: session.user.id,
+        recordedAt: now, membershipVersion
+      });
+      return {
+        success: true, revision: current.revision,
+        membership: { userId: body.userId, role: body.role, status: "active", membershipVersion, capabilities }
+      };
+    });
+    if (result.error) return jsonResponse({ error: result.error }, result.status);
+    return jsonResponse(result);
+  }
+
   async handleGuestPortfolio(request) {
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
@@ -2469,6 +3248,8 @@ export class PortfolioStateDO {
     }
     await this.clearRetiredTradeNetSession();
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
+    if (requestUrl.pathname === "/api/tenants" || requestUrl.pathname.startsWith("/api/tenants/")) return this.handleTenantDirectory(request);
+    if (requestUrl.pathname === "/api/margin-digest-migration") return this.handleMarginDigestMigration(request);
     if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
 
     await this.ensureInitialized();
@@ -2549,27 +3330,130 @@ export class PortfolioStateDO {
       if (typeof body.key !== "string" || !/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(body.key)) {
         return jsonResponse({ error: "Digest key must identify a portfolio or ticker position." }, 400);
       }
-      if (typeof body.analysis !== "string" || !body.analysis.trim() || body.analysis.length > 30_000 ||
-          !Array.isArray(body.articles) || body.articles.length > 20 ||
-          typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
-        return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
+
+      if (typeof body.encryptedPayload === "string") {
+        // New clients send only the lookup key and an AES-GCM v2 envelope.
+        // Analysis, headlines, URLs, and other digest contents must never be
+        // duplicated beside the ciphertext in the Durable Object record.
+        const encryptedKeysOnly = Object.keys(body).every((key) => key === "key" || key === "encryptedPayload");
+        const validEnvelope = body.encryptedPayload.length <= 128 * 1024 &&
+          /^aesgcm:v2:[A-Za-z0-9+/]{16}:[A-Za-z0-9+/]{22,}={0,2}$/.test(body.encryptedPayload);
+        if (!encryptedKeysOnly || !validEnvelope) {
+          return jsonResponse({ error: "Margin digest must contain only a valid AES-GCM encrypted payload." }, 400);
+        }
+      } else {
+        // Rollout compatibility: old clients may still send plaintext during
+        // the client release window. Flip this Worker variable to true after
+        // the encrypted client is deployed and legacy records have migrated.
+        if (this.env?.MARGIN_DIGEST_ENCRYPTION_REQUIRED === "true") {
+          return jsonResponse({ error: "Margin digest encryption is required." }, 400);
+        }
+        if (typeof body.analysis !== "string" || !body.analysis.trim() || body.analysis.length > 30_000 ||
+            !Array.isArray(body.articles) || body.articles.length > 20 ||
+            typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
+          return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
+        }
       }
       recordKey = "marginDigestRecord:" + body.key;
     } else if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {
       return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
 
-    const result = await this.ctx.storage.transaction(async () => {
-      const current = await this.ctx.storage.get(recordKey);
+    const idempotencyHeader = request.headers.get("Idempotency-Key");
+    const idempotencyKey = idempotencyHeader === null ? null : idempotencyHeader.trim();
+    if (idempotencyHeader !== null &&
+        (!idempotencyKey || idempotencyKey.length > 180 || !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey))) {
+      return jsonResponse({ error: "Invalid Idempotency-Key header." }, 400);
+    }
+    // Hash the exact request envelope, never store ciphertext or financial payloads
+    // a second time in the idempotency receipt.
+    const idempotencyFingerprint = idempotencyKey
+      ? await digestHex(JSON.stringify(body))
+      : null;
+    const receiptStorageKey = "cloud-write-idempotency:" + recordKey;
+
+    const result = await this.ctx.storage.transaction(async (transactionStorage) => {
+      const current = await transactionStorage.get(recordKey);
       const currentRevision = current?.revision ?? 0;
+      const now = Date.now();
+      const storedReceipts = idempotencyKey
+        ? await transactionStorage.get(receiptStorageKey)
+        : null;
+      const receipts = Array.isArray(storedReceipts)
+        ? storedReceipts.filter((receipt) =>
+            receipt && typeof receipt.key === "string" &&
+            typeof receipt.fingerprint === "string" &&
+            Number.isSafeInteger(receipt.revision) &&
+            Number.isFinite(receipt.expiresAt) && receipt.expiresAt > now)
+        : [];
+
+      if (idempotencyKey) {
+        const priorReceipt = receipts.find((receipt) => receipt.key === idempotencyKey);
+        if (priorReceipt) {
+          if (priorReceipt.fingerprint !== idempotencyFingerprint) {
+            return { idempotencyConflict: true, revision: currentRevision };
+          }
+          // Do not turn a delayed retry into permission to overwrite a newer
+          // device's snapshot. A replay is successful only while its commit is
+          // still the latest revision for this record.
+          if (currentRevision !== priorReceipt.revision) {
+            return { idempotencySuperseded: true, revision: currentRevision };
+          }
+          return {
+            replayed: true,
+            revision: currentRevision,
+            committedRevision: priorReceipt.revision
+          };
+        }
+      }
+
       if (currentRevision !== expectedRevision) {
         return { conflict: true, revision: currentRevision };
       }
+
       const nextRevision = currentRevision + 1;
-      await this.ctx.storage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      await transactionStorage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      if (idempotencyKey && idempotencyFingerprint) {
+        // Keep a small rolling window of receipts. The seven-day TTL bounds
+        // stale keys; the count cap bounds Durable Object storage growth.
+        // Receipts remain coupled to the encrypted snapshot in this transaction.
+        const nextReceipts = [...receipts, {
+          key: idempotencyKey,
+          fingerprint: idempotencyFingerprint,
+          revision: nextRevision,
+          expiresAt: now + 7 * 24 * 60 * 60 * 1000
+        }].slice(-100);
+        await transactionStorage.put(receiptStorageKey, nextReceipts);
+      }
       return { conflict: false, revision: nextRevision };
     });
 
+    if (result.idempotencyConflict) {
+      return jsonResponse({
+        error: "Idempotency key was already used for a different cloud write.",
+        conflict: true,
+        idempotencyConflict: true,
+        currentRevision: result.revision
+      }, 409, result.revision);
+    }
+    if (result.idempotencySuperseded) {
+      return jsonResponse({
+        error: "This cloud write was committed but has since been superseded by a newer snapshot. Pull the latest state before saving again.",
+        conflict: true,
+        idempotencySuperseded: true,
+        currentRevision: result.revision
+      }, 409, result.revision);
+    }
+    if (result.replayed) {
+      const replayResponse = jsonResponse({
+        success: true,
+        revision: result.revision,
+        committedRevision: result.committedRevision,
+        replayed: true
+      }, 200, result.revision);
+      replayResponse.headers.set("Idempotency-Replayed", "true");
+      return replayResponse;
+    }
     if (result.conflict) {
       return jsonResponse({
         error: "Cloud portfolio changed since this device last synced. Pull the latest state before saving.",
