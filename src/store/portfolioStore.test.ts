@@ -9,7 +9,7 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
-import { verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
