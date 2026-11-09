@@ -32,7 +32,7 @@ The on-demand Trades / Closed History review remains the entry point. No large a
 
 ### Trades review integration
 - [x] Reuse the existing on-demand **Reconcile broker activity** surface in Trades.
-- [x] Supply app margin-position and cash-holding quote metadata alongside the latest broker account snapshot.
+- [x] Supply app margin-position and cash-holding quote metadata alongside the latest broker account snapshot; use only cash-holding `currentPrice`, never the weighted-average entry-price `price` fallback.
 - [x] Preserve the existing transaction execution/cashflow reconciliation unchanged.
 - [x] Show quote comparison status, matched pair count, source, timestamps, warnings and provisional/confirmed price findings.
 - [x] Add English/Russian translations for the new labels and safety explanations.
