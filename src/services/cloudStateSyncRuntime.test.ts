@@ -63,3 +63,62 @@ describe('cloud state compact serialization', () => {
     expect(serialized.closedTrades[0]).not.toHaveProperty('raw');
   });
 });
+
+
+describe('cloud state sync options', () => {
+  it('prefers an explicit state and falls back to the latest state getter', async () => {
+    const encryptedStates: string[] = [];
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'active-secret',
+      encryptCloudPayload: async (plaintext) => {
+        encryptedStates.push(plaintext);
+        return 'aesgcm:v2:test-ciphertext:test-nonce';
+      },
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: () => 2,
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(1)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => new Response(
+        JSON.stringify({ success: true, revision: 2 }),
+        { status: 200, headers: { ETag: '"2"' } }
+      )
+    });
+
+    let getterCalls = 0;
+    const explicitState = { activeView: 'AAPL', balance: 100 };
+    const explicitResult = await runtime.syncCloudState('push', {
+      state: explicitState,
+      getState: () => {
+        getterCalls += 1;
+        return { activeView: 'SHOULD_NOT_BE_USED', balance: 999 };
+      },
+      secret: 'explicit-state-secret'
+    });
+
+    expect(explicitResult).toBe(true);
+    expect(getterCalls).toBe(0);
+    expect(JSON.parse(encryptedStates[0])).toMatchObject(explicitState);
+
+    const getterState = { activeView: 'MSFT', balance: -200 };
+    const getterResult = await runtime.syncCloudState('push', {
+      getState: () => {
+        getterCalls += 1;
+        return getterState;
+      },
+      secret: 'getter-state-secret'
+    });
+
+    expect(getterResult).toBe(true);
+    expect(getterCalls).toBe(1);
+    expect(JSON.parse(encryptedStates[1])).toMatchObject(getterState);
+  });
+});

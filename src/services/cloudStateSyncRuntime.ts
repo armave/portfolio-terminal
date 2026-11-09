@@ -689,7 +689,7 @@ async function performPushCloudState(
 async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise<boolean> {
   const handlers = typeof options === 'function' ? { pullCloudAndRewriteLocal: options } : options;
   if (mode === 'push') {
-    const currentState = (handlers as any).state || (typeof (handlers as any).getState === 'function' ? (handlers as any).getState() : {});
+    const currentState = handlers.state || handlers.getState?.() || {};
     return pushCloudState(currentState, handlers);
   }
   if (mode === 'pull') {
