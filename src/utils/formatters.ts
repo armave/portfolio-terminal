@@ -57,14 +57,16 @@ export function formatUSD(val: unknown): string {
 
 /** Formats an already-currency-labelled table value with locale grouping and consistent signs. */
 export function formatUSDDisplayValue(value: string): string {
-  const match = value.trim().match(/^([+\-−]?)\s*\$\s*([\d,]+(?:\.\d+)?)$/);
+  const match = value.trim().match(/^([+\\-−]?)\\s*\\$\\s*([\\d,]+(?:\\.\\d+)?)$/);
   if (!match) return value;
 
   const amount = Number(match[2].replace(/,/g, ''));
   if (!Number.isFinite(amount)) return value;
 
   const sign = match[1] === '+' ? '+' : match[1] ? '−' : '';
-  return sign + '
+  const currencySymbol = String.fromCharCode(36);
+  return sign + currencySymbol + formatUSD(amount);
+}
 
 export function formatQuoteVolume(value: unknown): string | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
