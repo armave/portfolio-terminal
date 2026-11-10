@@ -79,6 +79,24 @@ function translatePeriodName(days: number, language: 'en' | 'ru'): string {
   return translateText('In {days} days', language).replace('{days}', String(days));
 }
 
+function formatResultColumn(
+  column: string,
+  index: number,
+  isFresh: boolean,
+  offsets: Array<number | null>,
+  prices: number[],
+  language: 'en' | 'ru'
+): string {
+  const days = offsets[index];
+  if (isFresh && days !== null && Number.isFinite(prices[index]) && prices[index] > 0) {
+    return translatePeriodName(days, language) + ' · ' + formatUSD(prices[index]);
+  }
+  return column
+    .replace(/\\s·\\sBEST$/, '')
+    .replace(/^Today(?=\\s·)/, translateText('Today', language))
+    .replace(/^(\\d+) Days(?=\\s·)/, (_match, value: string) => translatePeriodName(Number(value), language));
+}
+
 function resultsMatch(left: ExitComparisonSavedResult | null, right: ExitComparisonSavedResult): boolean {
   if (!left || left.columns.some((value, index) => value !== right.columns[index]) || left.rows.length !== right.rows.length) return false;
   return left.rows.every((row, index) => {
@@ -381,7 +399,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
                 <table class="w-full min-w-[30rem] border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   <thead><tr class="border-b border-slate-800 text-slate-400">
                     <th scope="col" class="px-3 py-2.5 text-left font-semibold">{translateText('Metric', language)}</th>
-                    {displayedResult.columns.map((column, index) => <th key={index} scope="col" class={'px-3 py-2.5 text-right font-semibold ' + (bestIndex === index ? 'text-emerald-300' : 'text-cyan-200')}>{index === 0 ? translateText('Period A', language) : translateText('Period B', language)}<span class="mt-1 block whitespace-normal text-[10px] font-normal text-slate-500">{column}</span></th>)}
+                    {displayedResult.columns.map((column, index) => <th key={index} scope="col" class={'px-3 py-2.5 text-right font-semibold ' + (bestIndex === index ? 'text-emerald-300' : 'text-cyan-200')}>{index === 0 ? translateText('Period A', language) : translateText('Period B', language)}<span class="mt-1 block whitespace-normal text-[10px] font-normal text-slate-500">{formatResultColumn(column, index, hasLiveResult, offsets, prices, language)}</span></th>)}
                   </tr></thead>
                   <tbody>
                     {resultRows.map((row, rowIndex) => <tr key={row.label + rowIndex} class={
