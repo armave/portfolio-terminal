@@ -118,9 +118,9 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   }, [state, ticker, sharesInput, priceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;
-  const displayedResult = resultData ?? savedResult;
-  const displayedSummary = resultData ? preview?.text ?? '' : savedResult?.summary ?? '';
-  const isSavedFallback = !resultData && Boolean(savedResult);
+  const displayedResult = resultError ? null : resultData ?? savedResult;
+  const displayedSummary = resultError ? '' : resultData ? preview?.text ?? '' : savedResult?.summary ?? '';
+  const isSavedFallback = !resultError && !resultData && Boolean(savedResult);
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
   useEffect(() => {
