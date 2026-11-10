@@ -780,8 +780,8 @@ export class CommandDispatcher {
     const purchaseValue = qty * price;
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
-    const balance = Number(state.balance) || 0;
-    const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const balance = Number(state.balance);
+    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance);
     const additionalDebt = Math.max(0, totalOutlay - freeCash);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
