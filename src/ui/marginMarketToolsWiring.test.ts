@@ -37,6 +37,8 @@ describe('Margin Market Tools placement', () => {
     expect(appSource).toContain('boardAnalystConsensus');
     expect(quickActionsSource).not.toContain('News + Review');
     expect(quickActionsSource).not.toContain('Portfolio Review');
-    expect(quickActionsSource).toContain('Compare Exits…');
+    expect(quickActionsSource).not.toContain('Compare Exits…');
+    expect(summarySource).toContain("translateText('Compare Exits', language)");
+    expect(summarySource).toContain("emitUiEvent('terminal:exit-comparison-request', ticker ? { ticker } : {})");
   });
 });
