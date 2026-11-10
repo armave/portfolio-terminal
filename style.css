@@ -3860,6 +3860,70 @@ table tbody tr:hover {
   outline-offset: 3px;
 }
 
+/* Keep Compare Exits outside app stacking contexts and within the visible viewport. */
+.exit-comparison-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding:
+    max(0.5rem, env(safe-area-inset-top))
+    max(0.5rem, env(safe-area-inset-right))
+    max(0.5rem, env(safe-area-inset-bottom))
+    max(0.5rem, env(safe-area-inset-left));
+  -webkit-overflow-scrolling: touch;
+}
+
+.exit-comparison-backdrop .exit-comparison-dialog {
+  box-sizing: border-box;
+  width: min(100%, 64rem);
+  max-width: 64rem;
+  max-height: calc(
+    100dvh
+    - max(0.5rem, env(safe-area-inset-top))
+    - max(0.5rem, env(safe-area-inset-bottom))
+  );
+  min-width: 0;
+  min-height: 0;
+  flex: 0 1 auto;
+  margin: auto;
+}
+
+.exit-comparison-dialog>header {
+  flex: 0 0 auto;
+}
+
+.exit-comparison-dialog>div {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+@media (max-width: 640px) {
+  .exit-comparison-backdrop {
+    align-items: center;
+  }
+
+  .exit-comparison-backdrop .exit-comparison-dialog {
+    width: 100%;
+    border-radius: 0.875rem;
+  }
+}
+
 .margin-risk-overview-backdrop {
   position: fixed;
   inset: 0;

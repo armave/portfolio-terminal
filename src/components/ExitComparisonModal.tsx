@@ -1,3 +1,4 @@
+import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CommandDispatcher } from '../features/terminal/commandDispatcher';
 import {
@@ -181,6 +182,14 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   }, []);
 
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!ticker) return;
     const nextResult: ExitComparisonSavedResult | null = resultData ? {
       savedAt: Date.now(),
@@ -323,16 +332,17 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
     ? `${shares.toLocaleString()} ${translateText('shares', language)} · ${referencePrice === null ? translateText('Reference price unavailable', language) : translateText('Reference', language) + ' ' + formatUSD(referencePrice)}`
     : translateText('No open position selected', language);
 
-  return (
+  return createPortal(
     <div
       id="exitComparisonModal"
-      class={'fixed inset-0 z-[1200] flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm transition-opacity duration-200 sm:p-4 ' + (isClosing ? 'opacity-0' : 'opacity-100')}
+      class={'exit-comparison-backdrop fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm transition-opacity duration-200 ' + (isClosing ? 'opacity-0' : 'opacity-100')}
+      role="presentation"
       onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}
     >
       <section
         ref={dialogRef}
         id="exitComparisonDialog"
-        class={'flex max-h-[min(94dvh,980px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-200 ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
+        class={'exit-comparison-dialog flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-200 ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
         role="dialog"
         aria-modal="true"
         aria-labelledby="exitComparisonTitle"
@@ -430,6 +440,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
           <p class="rounded-lg border border-slate-800 bg-slate-900/45 px-3 py-2.5 text-[10px] leading-relaxed text-slate-400">{translateText('Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.', language)}</p>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
