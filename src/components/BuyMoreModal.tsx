@@ -118,6 +118,12 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   }, [state, ticker, sharesInput, priceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;
+  const marginLimitError = typeof preview?.maxSafeShares === 'number' &&
+    typeof preview.requiredEquityRatio === 'number' &&
+    typeof preview.projectedEquityRatio === 'number';
+  const projectedEquityRatioText = marginLimitError && Number.isFinite(preview.projectedEquityRatio)
+    ? (preview.projectedEquityRatio * 100).toFixed(1) + '%'
+    : '—';
   const displayedResult = resultError ? null : resultData ?? savedResult;
   const displayedSummary = resultError ? '' : resultData ? preview?.text ?? '' : savedResult?.summary ?? '';
   const isSavedFallback = !resultError && !resultData && Boolean(savedResult);
@@ -267,11 +273,18 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
           {translateText('Enter a positive share amount and purchase price to calculate this scenario.', language)}
         </p>}
         {resultError && !resultData && <div role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
-          <p>{translateText(resultError, language)}</p>
-          {typeof preview?.maxSafeShares === 'number' && preview.maxSafeShares > 0 && <div class="mt-2 flex flex-wrap items-center gap-2">
+          {marginLimitError ? <>
+            <p>{translateText('This purchase would leave projected account equity below the app planning floor.', language)}</p>
+            <p class="mt-1 font-mono tabular-nums">
+              {translateText('Projected equity', language)}: {projectedEquityRatioText} · {translateText('App planning floor', language)}: {(preview.requiredEquityRatio! * 100).toFixed(1)}% · {translateText('Broker maintenance', language)}: {(state.brokerAssumptions.maintenanceEquityRatio * 100).toFixed(1)}%
+            </p>
+            <p class="mt-1">{translateText('Maximum additional shares at this price', language)}: {formatQuantity(preview.maxSafeShares!, language)}</p>
+            <p class="mt-1 text-[11px] text-rose-200/80">{translateText('The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit.', language)}</p>
+          </> : <p>{translateText(resultError, language)}</p>}
+          {marginLimitError && preview.maxSafeShares! > 0 && <div class="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setSharesInput(String(preview.maxSafeShares))}
               class="min-h-10 rounded-lg border border-rose-700/70 bg-rose-950/40 px-3 py-1.5 text-[11px] font-semibold text-rose-100 hover:bg-rose-900/50"
-            >{translateText('Use maximum safe quantity', language)} · {formatQuantity(preview.maxSafeShares, language)}</button>
+            >{translateText('Use maximum safe quantity', language)} · {formatQuantity(preview.maxSafeShares!, language)}</button>
           </div>}
         </div>}
 
