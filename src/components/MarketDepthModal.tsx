@@ -264,7 +264,9 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
       }
     });
   }
-  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
   useEffect(() => {
     let active = true;
@@ -320,7 +322,8 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
     dialogClassName="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-emerald-900/60 bg-slate-950 shadow-2xl shadow-black/60"
     dialogRef={dialogRef}
     ariaLabelledBy="marketDepthTitle"
-    onBackdropClick={onClose}
+    closeRef={closeRef}
+    onClose={onClose}
   >
       <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-950 to-rose-950/30 px-4 py-3 sm:px-5">
         <div>
@@ -332,7 +335,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           <span class={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusTone}`} role="status" aria-live="polite" aria-label={depthText(statusLabel)}>
             {displayState === 'live' ? '● ' : ''}{depthText(statusLabel)}
           </span>
-          <button ref={closeButtonRef} type="button" onClick={onClose} aria-label={depthText('Close')} class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">{depthText('Close')}</button>
+          <button ref={closeButtonRef} type="button" onClick={requestClose} aria-label={depthText('Close')} class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">{depthText('Close')}</button>
         </div>
       </header>
 
