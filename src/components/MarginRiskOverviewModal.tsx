@@ -11,11 +11,16 @@ function formatPercentage(value: number): string {
 
 function formatMoney(value: number | null, currency: string, language: string): string {
   if (value === null || !Number.isFinite(value)) return translateText('Not reported', language);
-  return new Intl.NumberFormat(language === 'ru' ? 'ru-RU' : 'en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2
-  }).format(value);
+  const locale = language === 'ru' ? 'ru-RU' : 'en-US';
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2
+    }).format(value);
+  } catch {
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value)} ${currency}`;
+  }
 }
 
 function sourceLabel(source: 'broker' | 'configured-assumption' | 'unknown' | 'unavailable', language: string): string {
@@ -29,9 +34,9 @@ function sourceLabel(source: 'broker' | 'configured-assumption' | 'unknown' | 'u
   return translateText(label, language);
 }
 
-function requirementText(
+function sourcedMoneyText(
   amount: number | null,
-  source: 'broker' | 'configured-assumption' | 'unavailable',
+  source: 'broker' | 'configured-assumption' | 'unknown' | 'unavailable',
   currency: string,
   language: string
 ): string {
@@ -146,13 +151,13 @@ export function MarginRiskOverviewModal({
                 <OverviewItem label={translateText('Short exposure', language)} value={formatMoney(riskSnapshot.shortExposure, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Cash balance', language)} value={formatMoney(riskSnapshot.cashBalance, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Margin debit', language)} value={formatMoney(riskSnapshot.marginDebt, riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Eligible collateral', language)} value={`${formatMoney(riskSnapshot.eligibleCollateral, riskSnapshot.currency, language)} · ${sourceLabel(riskSnapshot.eligibleCollateralSource, language)}`} />
-                <OverviewItem label={translateText('Initial margin requirement', language)} value={requirementText(riskSnapshot.initialMarginRequirement.amount, riskSnapshot.initialMarginRequirement.source, riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Broker maintenance requirement', language)} value={requirementText(riskSnapshot.maintenanceMarginRequirement.amount, riskSnapshot.maintenanceMarginRequirement.source, riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Concentration add-on', language)} value={requirementText(riskSnapshot.concentrationAddOn.amount, riskSnapshot.concentrationAddOn.source, riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Eligible collateral', language)} value={`${sourcedMoneyText(riskSnapshot.eligibleCollateral, riskSnapshot.eligibleCollateralSource, riskSnapshot.currency, language)}`} />
+                <OverviewItem label={translateText('Initial margin requirement', language)} value={sourcedMoneyText(riskSnapshot.initialMarginRequirement.amount, riskSnapshot.initialMarginRequirement.source, riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Broker maintenance requirement', language)} value={sourcedMoneyText(riskSnapshot.maintenanceMarginRequirement.amount, riskSnapshot.maintenanceMarginRequirement.source, riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Concentration add-on', language)} value={sourcedMoneyText(riskSnapshot.concentrationAddOn.amount, riskSnapshot.concentrationAddOn.source, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Total maintenance requirement', language)} value={formatMoney(riskSnapshot.totalMaintenanceRequirement, riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Estimated annual financing', language)} value={formatMoney(riskSnapshot.annualInterestCost, riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Estimated daily financing', language)} value={formatMoney(riskSnapshot.dailyInterestCost, riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Estimated annual financing', language)} value={sourcedMoneyText(riskSnapshot.annualInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Estimated daily financing', language)} value={sourcedMoneyText(riskSnapshot.dailyInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Input freshness', language)} value={translateText(({ fresh: 'Fresh', stale: 'Stale', delayed: 'Delayed', indicative: 'Indicative', unknown: 'Unknown' } as const)[riskSnapshot.freshness], language)} />
                 <OverviewItem label={translateText('Source observation', language)} value={observedAtText(riskSnapshot.observedAt, language)} />
               </div>
