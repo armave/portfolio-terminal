@@ -453,6 +453,7 @@ export function subscribeAppLanguage(listener: (language: AppLanguage) => void):
       ': ' + buyMoreLimit[5] +
       '. Плановый минимум — это консервативный резерв приложения, а не официальный лимит покупательной способности брокера. Уменьшите количество акций или цену либо добавьте денежные средства.';
   }
+
   const unavailableShares = normalized.match(/^Cannot sell (.+?) (.+?); only (.+?) shares are available\.$/i);
   if (unavailableShares) {
     return `Нельзя продать ${unavailableShares[1]} ${unavailableShares[2]}: доступно только ${unavailableShares[3]} акций.`;
