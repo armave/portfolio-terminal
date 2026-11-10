@@ -1273,7 +1273,7 @@ function MarketInsightsPanelView() {
           ariaLabelledBy="newsArticleModalTitle"
           onBackdropClick={closeNewsDialog}
         >
-            <header            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
+            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
               <div class="min-w-0">
                 <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
                   {currentSelectedNews.source || 'Company news'} · {formatNewsRelativeTime(currentSelectedNews.datetime)}
