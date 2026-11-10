@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useDialogFocus } from '../ui/dialogFocus';
-import { scheduleDialogClose } from '../ui/dialogClose';
+import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
 
 interface ScenarioComparisonModalProps {
@@ -10,28 +10,22 @@ interface ScenarioComparisonModalProps {
   onClose: () => void;
 }
 
-function formatNumberGroups(text: string): string {
-  return text.replace(/(?<![\\w.,/-])(-?\\d{4,})(\\.\\d+)?(?![\\w/-])/g, (_match, integer: string, fraction = '') => {
-    const sign = integer.startsWith('-') ? '-' : '';
-    const digits = sign ? integer.slice(1) : integer;
-    return sign + digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + fraction;
+export function formatNumberGroups(text: string): string {
+  // Group large numeric tokens (including signed/currency values) without
+  // changing dates, decimals, percentages, ratios, or already-grouped values.
+  const groupSeparator = getAppLanguage() === 'ru' ? '\u202f' : ',';
+  return text.replace(/(?<![\w.,/+:-])([+-]?\$?)(\d{4,})(\.\d+)?(?![\w/.-])/g, (_match, prefix: string, integer: string, fraction = '') => {
+    return prefix + integer.replace(/\B(?=(\d{3})+(?!\d))/g, groupSeparator) + fraction;
   });
 }
 
 export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonModalProps) {
   const [activeColumns, setActiveColumns] = useState(() => data.columns.map((_, index) => index));
   const [activePreset, setActivePreset] = useState(0);
-  const [isClosing, setIsClosing] = useState(false);
-  const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelCloseRef = useRef<(() => void) | null>(null);
-  const requestClose = () => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-    cancelCloseRef.current = scheduleDialogClose(onClose, 180);
-  };
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
   const isExit = data.kind === 'exit-comparison';
   const isBuyMore = data.kind === 'buy-more';
@@ -41,11 +35,7 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   useEffect(() => {
     const onResize = () => setIsMobile(window.matchMedia('(max-width: 767px)').matches);
     window.addEventListener('resize', onResize, { passive: true });
-    return () => {
-      window.removeEventListener('resize', onResize);
-      cancelCloseRef.current?.();
-      cancelCloseRef.current = null;
-    };
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : activeColumns;
@@ -77,8 +67,18 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
     : 'border-b border-slate-800/80 text-slate-300';
 
   return (
-    <div id="scenarioComparisonModal" class={"scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4 " + (isClosing ? "scenario-modal-closing" : "")} style={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
-      <section ref={dialogRef} id="scenarioComparisonDialog" class="scenario-modal-dialog w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col" style={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }} role="dialog" aria-modal="true" aria-labelledby="scenarioComparisonTitle" tabIndex={-1}>
+    <ModalFrame
+      backdropId="scenarioComparisonModal"
+      backdropClassName="scenario-modal-backdrop fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto overscroll-contain p-2 sm:items-center sm:p-4"
+      backdropStyle={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      dialogId="scenarioComparisonDialog"
+      dialogClassName="scenario-modal-dialog flex min-h-0 w-full min-w-0 max-w-5xl max-h-[calc(100vh-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-xl sm:max-h-[calc(100vh-2rem)] sm:max-h-[calc(100dvh-2rem)]"
+      dialogStyle={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }}
+      dialogRef={dialogRef}
+      ariaLabelledBy="scenarioComparisonTitle"
+      closeRef={closeRef}
+      onClose={onClose}
+    >
         <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
           <div class="min-w-0"><h2 id="scenarioComparisonTitle" class="text-base sm:text-lg font-bold text-white">{translateText(data.title, getAppLanguage())}</h2><p class="mt-1 text-[11px] font-medium text-slate-400">{translateText(data.subtitle, getAppLanguage())}</p></div>
           <button ref={closeButtonRef} id="scenarioComparisonClose" type="button" class="shrink-0 min-h-11 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" aria-label={translateText('Close scenario comparison', getAppLanguage())} onClick={requestClose}>{translateText('Close · Esc', getAppLanguage())}</button>
@@ -95,14 +95,13 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
               {data.rows.map((row, rowIndex) => <div key={row.label+rowIndex} class="flex items-start justify-between gap-3 border-b border-slate-800/70 py-2 last:border-0"><span class="text-[11px] text-slate-400">{row.label}</span><span class={'text-right font-mono text-xs font-semibold ' + (row.kind === 'result' ? 'text-emerald-300' : row.kind === 'balance' ? 'text-cyan-200' : 'text-slate-200')} style={{ fontVariantNumeric: 'tabular-nums' }}>{formatNumberGroups(row.values[columnIndex] ?? '—')}{row.deltas?.[columnIndex] && <span class={'mt-1 ml-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' + (row.deltas[columnIndex]!.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400')}>{formatNumberGroups(row.deltas[columnIndex]!)}</span>}</span></div>)}
             </section>)}</div>
           ) : (
-            <table class="w-full border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <div class="min-w-0 overflow-x-auto overscroll-x-contain"><table class="w-full min-w-[42rem] border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
               <caption class="sr-only">{data.title}</caption>
               <thead><tr class="border-b border-slate-700 text-slate-300"><th scope="col" class="px-2 py-2 text-left font-semibold">{translateText(isBuyMore ? 'Projection Date' : 'Metric', getAppLanguage())}</th>{shownColumns.map(index => <th key={index} scope="col" class="min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap" style={isBuyMore && index % 2 === 1 ? { color: '#6ee7b7' } : {}}>{data.columns[index]}</th>)}</tr></thead>
               <tbody>{data.rows.map((row, rowIndex) => <tr key={row.label+rowIndex} class={rowClass(row.kind)}><th scope="row" class="px-2 py-2 text-left font-medium whitespace-nowrap">{row.label}</th>{shownColumns.map(index => <td key={index} class={'px-2 py-2 text-right font-mono whitespace-nowrap ' + (isBuyMore ? (index % 2 === 0 ? 'text-slate-400 bg-slate-950/30' : 'text-emerald-200 bg-emerald-950/20 border-l border-emerald-900/40') : '')} style={{ fontVariantNumeric: 'tabular-nums' }}><span>{formatNumberGroups(row.values[index] ?? '—')}</span>{row.deltas?.[index] && <span class={'ml-1.5 inline-flex rounded px-1.5 py-0.5 align-middle text-[9px] font-semibold ' + (row.deltas[index]!.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400')}>{formatNumberGroups(row.deltas[index]!)}</span>}</td>)}</tr>)}</tbody>
-            </table>
+            </table></div>
           )}
         </div>
-      </section>
-    </div>
+      </ModalFrame>
   );
 }

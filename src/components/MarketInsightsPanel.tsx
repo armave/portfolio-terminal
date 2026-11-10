@@ -1,6 +1,7 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
 import { createPortal, memo } from 'preact/compat';
+import { ModalFrame } from './ModalFrame';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
@@ -255,7 +256,9 @@ function MarketInsightsPanelView() {
   const newsDialogRef = useRef<HTMLElement | null>(null);
   const newsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const newsTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const closeNewsDialog = () => setSelectedNews(null);
+  const newsCloseRef = useRef<(() => void) | null>(null);
+  const dismissNewsDialog = () => setSelectedNews(null);
+  const requestCloseNewsDialog = () => { newsCloseRef.current?.(); };
   useEffect(() => {
     if (selectedNews && selectedNews.ticker !== ticker) setSelectedNews(null);
   }, [ticker, selectedNews]);
@@ -263,7 +266,7 @@ function MarketInsightsPanelView() {
     active: currentSelectedNews !== null,
     initialFocusRef: newsCloseButtonRef,
     restoreFocusRef: newsTriggerRef,
-    onEscape: closeNewsDialog
+    onEscape: requestCloseNewsDialog
   });
   const [marketEventsState, setMarketEventsState] = useState<{
     ticker: string | null; data: MarketEventsResult | null; loading: boolean; error: string | null;
@@ -1265,20 +1268,14 @@ function MarketInsightsPanelView() {
       </section>
 
       {currentSelectedNews && createPortal(
-        <div
-          class="news-article-modal news-modal-enter fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-sm"
-          role="presentation"
-          onClick={closeNewsDialog}
+        <ModalFrame
+          backdropClassName="news-article-modal fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-sm"
+          dialogClassName="news-article-dialog flex w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
+          dialogRef={newsDialogRef}
+          ariaLabelledBy="newsArticleModalTitle"
+          closeRef={newsCloseRef}
+          onClose={dismissNewsDialog}
         >
-          <section
-            ref={newsDialogRef}
-            tabIndex={-1}
-            class="news-article-dialog news-dialog-enter flex w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="newsArticleModalTitle"
-            onClick={(event: MouseEvent) => event.stopPropagation()}
-          >
             <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
               <div class="min-w-0">
                 <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
@@ -1288,7 +1285,7 @@ function MarketInsightsPanelView() {
                   {currentSelectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
-              <button ref={newsCloseButtonRef} type="button" class="shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" style={{ minHeight: '44px', minWidth: '44px' }} onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
+              <button ref={newsCloseButtonRef} type="button" class="shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" style={{ minHeight: '44px', minWidth: '44px' }} onClick={requestCloseNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}>
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
@@ -1296,8 +1293,7 @@ function MarketInsightsPanelView() {
               </div>
               {currentSelectedNews.url && <a href={currentSelectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">Read full article ↗</a>}
             </div>
-          </section>
-        </div>,
+          </ModalFrame>,
         document.body
       )}
     </>

@@ -36,7 +36,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('active: currentSelectedNews !== null');
     expect(source).toContain('initialFocusRef: newsCloseButtonRef');
     expect(source).toContain('restoreFocusRef: newsTriggerRef');
-    expect(source).toContain('onEscape: closeNewsDialog');
+    expect(source).toContain('onEscape: requestCloseNewsDialog');
     expect(source).toContain('ref={newsCloseButtonRef}');
     expect(source).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
   });
@@ -85,6 +85,59 @@ describe('Stage 10 accessibility wiring', () => {
     expect(intelligence).toContain('focus-visible:ring-2');
     expect(coverageCopy).toContain("translateText('Feed unavailable', language)");
     expect(coverageCopy).toContain("translateText('Feed returned no articles', language)");
+  });
+
+  it('provides accessible, keyboard-managed controls in the Market Tools exit comparison dialog', () => {
+    const exit = readSource('../components/ExitComparisonModal.tsx');
+    expect(exit).toContain('useDialogFocus(dialogRef');
+    expect(exit).toContain('<ModalFrame');
+    expect(exit).toContain('ariaLabelledBy="exitComparisonTitle"');
+    expect(exit).toContain('initialFocusRef: closeButtonRef');
+    expect(exit).toContain('type="date"');
+    expect(exit).toContain('type="number"');
+    expect(exit).toContain('min-h-11');
+    expect(exit).toContain('focus-visible:ring-2');
+    expect(exit).toContain("translateText('Compare Exits', language)");
+  });
+
+  it('portals Compare Exits above app layers and constrains it to the safe viewport', () => {
+    const exit = readSource('../components/ExitComparisonModal.tsx');
+    const styles = readSource('../../style.css');
+
+    expect(exit).toContain("import { createPortal } from 'preact/compat';");
+    expect(exit).toContain('document.body');
+    expect(exit).toContain('exit-comparison-backdrop');
+    expect(exit).toContain('exit-comparison-dialog');
+    // useDialogFocus owns the shared reference-counted body + document scroll lock.
+    // A second component-local lock would restore "hidden" after shared cleanup.
+    expect(exit).toContain('useDialogFocus(dialogRef');
+    expect(exit).not.toContain('document.body.style.overflow');
+    expect(exit).not.toContain('document.documentElement.style.overflow');
+    expect(exit).toContain('formatUSDDisplayValue(value)');
+    expect(styles).toContain('.exit-comparison-backdrop {');
+    expect(styles).toContain('z-index: 10000;');
+    expect(styles).toContain('height: 100dvh;');
+    expect(styles).toContain('align-items: center;');
+    expect(styles).toContain('overflow-y: auto;');
+    expect(styles).toContain('env(safe-area-inset-top)');
+    expect(styles).toContain('env(safe-area-inset-bottom)');
+    expect(styles).toContain('.exit-comparison-backdrop .exit-comparison-dialog');
+    expect(styles).toContain('max-height: calc(');
+    expect(styles).toContain('.exit-comparison-dialog>div');
+  });
+
+  it('uses the shared modal frame for smooth opening and closing transitions', () => {
+    const exit = readSource('../components/ExitComparisonModal.tsx');
+    const frame = readSource('../components/ModalFrame.tsx');
+
+    expect(exit).toContain('<ModalFrame');
+    expect(exit).toContain('closeRef={closeRef}');
+    expect(exit).not.toContain('scheduleDialogClose');
+    expect(frame).toContain('MODAL_TRANSITION_MS = 200');
+    expect(frame).toContain('view.requestAnimationFrame');
+    expect(frame).toContain('window.setTimeout');
+    expect(frame).toContain('prefers-reduced-motion: reduce');
+    expect(frame).toContain('transform: isVisible');
   });
 
   it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {

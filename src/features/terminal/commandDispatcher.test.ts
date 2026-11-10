@@ -4,6 +4,7 @@ import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from '../../store
 
 describe('terminal command validation and cash routing', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -304,6 +305,203 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain(firstDate);
     expect(result.text).toContain(secondDate);
     expect(result.text).toContain('BEST:');
+  });
+
+  it('exposes the same deterministic engine for a read-only two-period Market Tools preview', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock');
+    const updateTargetPrice = vi.spyOn(portfolioStore, 'updateTargetPrice');
+
+    const result = CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.kind).toBe('exit-comparison');
+    expect(result.modal?.columns).toHaveLength(2);
+    expect(result.modal?.rows.map(row => row.label)).toEqual([
+      'Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance'
+    ]);
+    expect(sellStock).not.toHaveBeenCalled();
+    expect(updateTargetPrice).not.toHaveBeenCalled();
+  });
+
+  it('uses sale accounting, position-weighted compounded carry, and signed cash settlement for exit estimates', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-10T08:30:00.000Z'));
+    const state = portfolioStore.getState();
+    const positions = {
+      GOOGL: {
+        ticker: 'GOOGL',
+        shares: 10,
+        currentPrice: 120,
+        pt: 130,
+        commBuy: 10,
+        marginCharged: 7,
+        tranches: [{ qty: 10, price: 100, date: '2026-11-09', buyCommission: 10 }]
+      },
+      AAPL: {
+        ticker: 'AAPL',
+        shares: 10,
+        currentPrice: 100,
+        pt: 110,
+        commBuy: 0,
+        tranches: [{ qty: 10, price: 100, date: '2026-11-09', buyCommission: 0 }]
+      }
+    };
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'GOOGL',
+      balance: -1000,
+      cashBalance: 0,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 200 },
+      brokerAssumptions: {
+        ...state.brokerAssumptions,
+        annualBorrowRate: 3.65,
+        dayCountBasis: 365,
+        commissionPerShare: 0,
+        commissionRatePct: 0,
+        commissionMin: 1
+      },
+      positions
+    } as any);
+
+    const result = CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 120 },
+      { label: 'In 2 days', days: 2, price: 125 }
+    ]);
+    const row = (label: string) => result.modal?.rows.find((candidate) => candidate.label === label)?.values;
+
+    expect(result.type).toBe('res');
+    expect(row('Cost Basis')).toEqual(['$1000.00', '$1000.00']);
+    expect(row('Gross Proceeds')).toEqual(['$1200.00', '$1250.00']);
+    expect(row('Total Fee Friction')).toEqual(['$18.00', '$28.05']);
+    expect(row('Net P&L')).toEqual(['+$182.00', '+$221.95']);
+    expect(row('Resulting Account Balance')).toEqual(['$399.00', '$428.90']);
+  });
+
+  it('rejects invalid Market Tools exit preview inputs', () => {
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: -1, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 0 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0.5, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+  });
+
+  it('uses cash and cash-cushion holdings when evaluating account maintenance headroom', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -22_363.64,
+      cashBalance: 0,
+      cashCushion: {
+        freeCash: 5_000,
+        holdings: [{ ticker: 'CASHETF', shares: 20, currentPrice: 297.63 }]
+      },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.10, stopOutRatio: 0 },
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL', shares: 68, currentPrice: 288.10, pt: 385, commBuy: 27.17,
+          tranches: [{ qty: 68, price: 322.96 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.previewBuyMoreScenario('GOOGL', 1, 288.11);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.kind).toBe('buy-more');
+    expect(result.text).toContain('[BUY MORE: GOOGL]');
+  });
+
+  it('blocks an oversized Buy More request while reporting the maximum quantity above the planning buffer', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -22_363.64,
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{ ticker: 'CASHETF', shares: 38, currentPrice: 289.50 }]
+      },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.10, stopOutRatio: 0 },
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL', shares: 68, currentPrice: 288.18, pt: 335, commBuy: 27.17,
+          tranches: [{ qty: 68, price: 322.96 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.previewBuyMoreScenario('GOOGL', 180, 288.11);
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.projectedEquityRatio).toBeLessThan(0.20);
+    expect(result.requiredEquityRatio).toBe(0.20);
+    expect(result.maxSafeShares).toBeGreaterThan(0);
+    expect(result.maxSafeShares).toBeLessThan(180);
+    expect(result.text).toContain('app planning floor of 20.0%');
+    expect(result.text).toContain('Maximum additional shares');
+  });
+
+  it('blocks buy-more comparisons when the proposed purchase breaches maintenance or stop-out limits', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -9_000,
+      cashCushion: { ...state.cashCushion, freeCash: 0 },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.25, stopOutRatio: 0.1 },
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 0,
+          tranches: [{ qty: 10, price: 100 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.execute('buy scenario 100 AAPL at 100');
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.text).toContain('this purchase would leave projected account equity');
+    expect(result.text).toContain('maintenance limit');
+  });
+
+  it('blocks buy-more comparisons when portfolio market-value inputs are unavailable', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: 0,
+      cashCushion: { ...state.cashCushion, freeCash: 1_000 },
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 0, pt: 120, commBuy: 0, tranches: [] }
+      }
+    } as any);
+
+    const result = CommandDispatcher.execute('buy scenario 1 AAPL at 100');
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.text).toContain('portfolio market valuation is incomplete');
   });
 
   it('simulates buying more shares without calling portfolio mutation methods', () => {

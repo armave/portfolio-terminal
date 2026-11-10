@@ -77,6 +77,12 @@ const MarketInsightsPanel = lazy(() =>
 const ScenarioComparisonModal = lazy(() =>
   import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
 );
+const ExitComparisonModal = lazy(() =>
+  import('./components/ExitComparisonModal').then(({ ExitComparisonModal }) => ({ default: ExitComparisonModal }))
+);
+const BuyMoreModal = lazy(() =>
+  import('./components/BuyMoreModal').then(({ BuyMoreModal }) => ({ default: BuyMoreModal }))
+);
 const ScenarioReportModal = lazy(() =>
   import('./components/ScenarioReportModal').then(({ ScenarioReportModal }) => ({ default: ScenarioReportModal }))
 );
@@ -426,10 +432,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const errorToasts = useErrorToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
+  const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
+  const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const [marketDepthTicker, setMarketDepthTicker] = useState<string | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
+  const closeExitComparison = useCallback(() => setExitComparisonRequest(null), []);
+  const closeBuyMore = useCallback(() => setBuyMoreRequest(null), []);
 
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
     addErrorToast(translateText(message, getAppLanguage()));
@@ -659,6 +669,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setAuthOpen(event.detail.isOpen);
     };
     const handleScenarioModal = (event: UiEvent<ScenarioModalData>) => setScenarioModalData(event.detail);
+    const handleExitComparisonRequest = (event: UiEvent<{ ticker?: string }>) => {
+      setExitComparisonRequest(event.detail);
+    };
+    const handleBuyMoreRequest = (event: UiEvent<{ ticker?: string }>) => {
+      setBuyMoreRequest(event.detail);
+    };
     const handleMarketDepthRequest = (event: UiEvent<{ ticker: string }>) => {
       if (permissions.isAdmin) setMarketDepthTicker(event.detail.ticker);
     };
@@ -670,6 +686,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       // Invalidate broker work synchronously, before Preact schedules the state update.
       brokerSessionIdentityRef.current.setIdentity(user ? `${user.role}:${user.id}` : null);
       setMarketDepthTicker(null);
+      setExitComparisonRequest(null);
       setCurrentUser(user);
       setAppLanguage(user?.language ?? 'en');
     };
@@ -684,6 +701,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
     addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
+    addUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
+    addUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
     addUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
@@ -693,6 +712,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
       removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
+      removeUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
+      removeUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
       removeUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
@@ -941,6 +962,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
+      {exitComparisonRequest && <Suspense fallback={null}>
+        <ExitComparisonModal
+          key={`${currentUser?.id || 'local'}:${exitComparisonRequest.ticker || 'portfolio'}`}
+          initialTicker={exitComparisonRequest.ticker}
+          storageKey={`portfolio-terminal:exit-comparison:v1:${currentUser?.id || 'local'}`}
+          onClose={closeExitComparison}
+        />
+      </Suspense>}
+      {buyMoreRequest && <Suspense fallback={null}>
+        <BuyMoreModal
+          key={`${currentUser?.id || 'local'}:${buyMoreRequest.ticker || 'portfolio'}`}
+          initialTicker={buyMoreRequest.ticker}
+          storageKey={`portfolio-terminal:buy-more:v1:${currentUser?.id || 'local'}`}
+          onClose={closeBuyMore}
+        />
+      </Suspense>}
       {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
