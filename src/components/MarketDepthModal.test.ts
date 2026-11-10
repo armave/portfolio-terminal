@@ -181,8 +181,8 @@ describe('Market Depth modal wiring', () => {
 
     expect(modalSource).toContain('createFreedomMarketDepthStreamRuntime');
     expect(modalSource).toContain('groupFreedomMarketDepthByPrice');
-    expect(modalSource).toContain('role="dialog"');
-    expect(modalSource).toContain('aria-modal="true"');
+    expect(modalSource).toContain('<ModalFrame');
+    expect(modalSource).toContain('ariaLabelledBy="marketDepthTitle"');
     expect(modalSource).toContain("aria-label={depthText('Proportional market depth ladder')}");
     expect(modalSource).toContain('<details');
     expect(modalSource).toContain('depth supplied by TradeNet');
