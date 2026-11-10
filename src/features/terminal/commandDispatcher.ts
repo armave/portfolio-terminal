@@ -783,6 +783,52 @@ export class CommandDispatcher {
     const balance = Number(state.balance) || 0;
     const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
     const additionalDebt = Math.max(0, totalOutlay - freeCash);
+    if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
+      throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
+    }
+    if (!Number.isFinite(rules.dailyRate) || rules.dailyRate < 0 ||
+        !Number.isFinite(state.brokerAssumptions.maintenanceEquityRatio) ||
+        state.brokerAssumptions.maintenanceEquityRatio <= 0 ||
+        state.brokerAssumptions.maintenanceEquityRatio >= 1 ||
+        !Number.isFinite(state.brokerAssumptions.stopOutRatio) ||
+        state.brokerAssumptions.stopOutRatio < 0 ||
+        state.brokerAssumptions.stopOutRatio > state.brokerAssumptions.maintenanceEquityRatio) {
+      throw new Error('Buy scenario blocked: broker margin limits are unavailable or invalid. Review broker assumptions before comparing.');
+    }
+    const portfolioExposure = Object.entries(state.positions || {}).reduce((total, [symbol, position]) => {
+      const shares = Number(position?.shares);
+      const quote = Number(position?.currentPrice);
+      const tranches = Array.isArray(position?.tranches) ? position.tranches : [];
+      const cost = tranches.reduce((sum, tranche) =>
+        sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
+      const fallbackPrice = shares > 0 && cost > 0 ? cost / shares : 0;
+      const mark = Number.isFinite(quote) && quote > 0 ? quote : fallbackPrice;
+      const marketValue = shares * mark;
+      if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(mark) || mark <= 0 ||
+          !Number.isFinite(marketValue) || !Number.isFinite(total + marketValue)) {
+        throw new Error('Buy scenario blocked: market value for ' + symbol + ' is unavailable. Refresh portfolio quotes before comparing.');
+      }
+      return total + marketValue;
+    }, 0);
+    const cashUsed = Math.min(freeCash, totalOutlay);
+    const currentDebt = Math.max(0, -balance);
+    const projectedDebtForLimits = currentDebt + additionalDebt;
+    const projectedAssetsForLimits = portfolioExposure + freeCash - cashUsed + qty * quote;
+    const projectedEquityForLimits = projectedAssetsForLimits - projectedDebtForLimits;
+    const projectedEquityRatio = projectedAssetsForLimits > 0
+      ? projectedEquityForLimits / projectedAssetsForLimits
+      : -Infinity;
+    const maintenanceLimit = state.brokerAssumptions.maintenanceEquityRatio;
+    const stopOutLimit = state.brokerAssumptions.stopOutRatio;
+    if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio < maintenanceLimit ||
+        projectedEquityRatio <= stopOutLimit) {
+      throw new Error(
+        'Buy scenario blocked: the proposed purchase would exceed your margin limits. ' +
+        'Projected equity ratio ' + (Number.isFinite(projectedEquityRatio) ? (projectedEquityRatio * 100).toFixed(1) : 'unavailable') +
+        '% must remain above the maintenance limit of ' + (maintenanceLimit * 100).toFixed(1) +
+        '% and stop-out limit of ' + (stopOutLimit * 100).toFixed(1) + '%. Reduce shares or price, or add cash before comparing.'
+      );
+    }
     const balanceAfter = balance - additionalDebt;
     const currentDebt = Math.max(0, -balance);
     const dailyMarginBefore = currentDebt * rules.dailyRate;
