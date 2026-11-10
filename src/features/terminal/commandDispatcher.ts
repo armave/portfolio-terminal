@@ -4,7 +4,12 @@ import { calculateAccruedFees, calculateCommission, calculateMarginInterest, cal
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
+import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
 import type { ScenarioInput, ScenarioModalData } from './scenarioContracts';
+
+/** Buy More planning reserve: 10 percentage points above maintenance, at least 20% equity. */
+const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
+const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
 
 type SideEffectAction =
   | { type: 'FETCH_QUOTE'; ticker: string }
@@ -18,6 +23,10 @@ export interface CommandOutput {
   type: 'cmd' | 'res' | 'err' | 'confirm' | 'unrecognized';
   sideEffect?: SideEffectAction;
   modal?: ScenarioModalData;
+  /** Maximum additional quantity that preserves the app's conservative Buy More equity buffer. */
+  maxSafeShares?: number;
+  requiredEquityRatio?: number;
+  projectedEquityRatio?: number;
 }
 
 function cleanNumber(val: string | undefined): number {
@@ -800,8 +809,7 @@ export class CommandDispatcher {
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance);
-    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance);
-    const additionalDebt = Math.max(0, totalOutlay - freeCash);
+    const freeCash = Number(state.cashCushion?.freeCash ?? 0);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
     }
@@ -814,41 +822,82 @@ export class CommandDispatcher {
         state.brokerAssumptions.stopOutRatio > state.brokerAssumptions.maintenanceEquityRatio) {
       throw new Error('Buy scenario blocked: broker margin limits are unavailable or invalid. Review broker assumptions before comparing.');
     }
-    const portfolioExposure = Object.entries(state.positions || {}).reduce((total, [symbol, position]) => {
-      const shares = Number(position?.shares);
-      const quote = Number(position?.currentPrice);
-      const tranches = Array.isArray(position?.tranches) ? position.tranches : [];
-      const cost = tranches.reduce((sum, tranche) =>
-        sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
-      const fallbackPrice = shares > 0 && cost > 0 ? cost / shares : 0;
-      const mark = Number.isFinite(quote) && quote > 0 ? quote : fallbackPrice;
-      const marketValue = shares * mark;
-      if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(mark) || mark <= 0 ||
-          !Number.isFinite(marketValue) || !Number.isFinite(total + marketValue)) {
-        throw new Error('Buy scenario blocked: market value for ' + symbol + ' is unavailable. Refresh portfolio quotes before comparing.');
-      }
-      return total + marketValue;
-    }, 0);
-    const cashUsed = Math.min(freeCash, totalOutlay);
-    const currentDebtForLimits = Math.max(0, -balance);
-    const projectedDebtForLimits = currentDebtForLimits + additionalDebt;
-    const projectedAssetsForLimits = portfolioExposure + freeCash - cashUsed + qty * quote;
-    const projectedEquityForLimits = projectedAssetsForLimits - projectedDebtForLimits;
-    const projectedEquityRatio = projectedAssetsForLimits > 0
-      ? projectedEquityForLimits / projectedAssetsForLimits
-      : -Infinity;
+    // Keep the projection on the same account-wide basis as calculateMarginRiskSnapshot:
+    // signed broker cash/debt + free cash + all margin and cash-cushion holdings.
+    const valuation = calculatePortfolioValuation({
+      signedAccountBalance: balance,
+      freeCash,
+      marginPositions: Object.values(state.positions || {}),
+      cashHoldings: state.cashCushion?.holdings || []
+    });
+    if (!valuation.accountBalanceAvailable ||
+        ![valuation.cashBalance, valuation.marginDebt, valuation.totalHoldingsValue].every(Number.isFinite)) {
+      throw new Error('Buy scenario blocked: the account equity inputs are unavailable. Refresh the portfolio balance before comparing.');
+    }
+    if (valuation.unpricedHoldings > 0) {
+      throw new Error('Buy scenario blocked: portfolio market valuation is incomplete. Refresh quotes for all margin and cash-cushion holdings before comparing.');
+    }
+
     const maintenanceLimit = state.brokerAssumptions.maintenanceEquityRatio;
     const stopOutLimit = state.brokerAssumptions.stopOutRatio;
-    if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio < maintenanceLimit ||
+    // Maintenance is a liquidation-risk boundary, not a prudent buy-more target.
+    // Keep at least a 10 percentage-point cushion and never plan below 20% equity.
+    // This is an app-side planning guard, not broker-reported buying power.
+    const requiredEquityRatio = Math.max(BUY_MORE_MIN_EQUITY_RATIO, maintenanceLimit + BUY_MORE_MAINTENANCE_RESERVE_RATIO);
+    const projectPurchase = (sharesToBuy: number) => {
+      const orderValue = sharesToBuy * price;
+      const commission = calculateCommission(sharesToBuy, orderValue, rules);
+      const outlay = orderValue + commission;
+      const freeCashUsed = Math.min(freeCash, outlay);
+      const remainingOutlay = outlay - freeCashUsed;
+      // Free cash is consumed first; any remainder changes the signed broker cash
+      // balance, increasing margin debt only after positive broker cash is exhausted.
+      const projectedBalance = balance - remainingOutlay;
+      const cashUsed = Math.min(valuation.cashBalance, outlay);
+      const projectedDebt = Math.max(0, -projectedBalance);
+      const projectedAssets = valuation.totalHoldingsValue + valuation.cashBalance - cashUsed + sharesToBuy * quote;
+      const projectedEquity = projectedAssets - projectedDebt;
+      const equityRatio = projectedAssets > 0 ? projectedEquity / projectedAssets : -Infinity;
+      return { projectedBalance, equityRatio };
+    };
+    const projected = projectPurchase(qty);
+    const projectedEquityRatio = projected.equityRatio;
+
+    const calculateMaximumSafeShares = (): number => {
+      if (requiredEquityRatio >= 1 || projectPurchase(0).equityRatio <= requiredEquityRatio) return 0;
+      let low = 0;
+      let high = Math.max(1, qty);
+      while (high < 1_000_000_000 && projectPurchase(high).equityRatio > requiredEquityRatio) {
+        low = high;
+        high *= 2;
+      }
+      for (let iteration = 0; iteration < 56; iteration += 1) {
+        const middle = (low + high) / 2;
+        if (projectPurchase(middle).equityRatio > requiredEquityRatio) low = middle;
+        else high = middle;
+      }
+      return Math.floor(low * 1_000_000) / 1_000_000;
+    };
+
+    if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio <= requiredEquityRatio ||
         projectedEquityRatio <= stopOutLimit) {
-      throw new Error(
-        'Buy scenario blocked: the proposed purchase would exceed your margin limits. ' +
-        'Projected equity ratio ' + (Number.isFinite(projectedEquityRatio) ? (projectedEquityRatio * 100).toFixed(1) : 'unavailable') +
-        '% must remain above the maintenance limit of ' + (maintenanceLimit * 100).toFixed(1) +
-        '% and stop-out limit of ' + (stopOutLimit * 100).toFixed(1) + '%. Reduce shares or price, or add cash before comparing.'
-      );
+      const maxSafeShares = calculateMaximumSafeShares();
+      return {
+        type: 'err',
+        maxSafeShares,
+        requiredEquityRatio,
+        projectedEquityRatio,
+        text:
+          'Buy scenario blocked: this purchase would leave projected account equity at ' +
+          (Number.isFinite(projectedEquityRatio) ? (projectedEquityRatio * 100).toFixed(1) : 'unavailable') +
+          '%, below the app planning floor of ' + (requiredEquityRatio * 100).toFixed(1) +
+          '% (broker maintenance limit: ' + (maintenanceLimit * 100).toFixed(1) +
+          '%). Maximum additional shares at $' + price.toFixed(2) + ': ' +
+          maxSafeShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
+          '. The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit. Reduce shares, lower the price, or add cash before comparing.'
+      };
     }
-    const balanceAfter = balance - additionalDebt;
+    const balanceAfter = projected.projectedBalance;
     const currentDebt = Math.max(0, -balance);
     const dailyMarginBefore = currentDebt * rules.dailyRate;
     const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;

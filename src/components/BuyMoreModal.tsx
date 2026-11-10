@@ -67,6 +67,14 @@ function makeSavedResult(
 function rowLabel(label: string, language: 'en' | 'ru'): string {
   return label.replace(/TODAY/g, translateText('TODAY', language));
 }
+export function formatBuyMoreTableAmount(value: string, language: 'en' | 'ru'): string {
+  const separator = language === 'ru' ? '\u202f' : ',';
+  return value.replace(
+    /(^|[^\w.,/])([+\-−]?\$?)(\d{4,})(\.\d+)?(?=$|[^\w/.-])/g,
+    (_match, boundary: string, signAndCurrency: string, integer: string, fraction = '') =>
+      boundary + signAndCurrency + integer.replace(/\B(?=(\d{3})+(?!\d))/g, separator) + fraction
+  );
+}
 function valueTone(value: string): string {
   if (value.startsWith('-') || value.startsWith('−')) return 'text-rose-300';
   if (value.startsWith('+')) return 'text-emerald-300';
@@ -118,9 +126,15 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   }, [state, ticker, sharesInput, priceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;
-  const displayedResult = resultData ?? savedResult;
-  const displayedSummary = resultData ? preview?.text ?? '' : savedResult?.summary ?? '';
-  const isSavedFallback = !resultData && Boolean(savedResult);
+  const marginLimitError = typeof preview?.maxSafeShares === 'number' &&
+    typeof preview.requiredEquityRatio === 'number' &&
+    typeof preview.projectedEquityRatio === 'number';
+  const projectedEquityRatioText = typeof preview?.projectedEquityRatio === 'number' && Number.isFinite(preview.projectedEquityRatio)
+    ? (preview.projectedEquityRatio * 100).toFixed(1) + '%'
+    : '—';
+  const displayedResult = resultError ? null : resultData ?? savedResult;
+  const displayedSummary = resultError ? '' : resultData ? preview?.text ?? '' : savedResult?.summary ?? '';
+  const isSavedFallback = !resultError && !resultData && Boolean(savedResult);
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
   useEffect(() => {
@@ -266,9 +280,21 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
         {position && !inputsValid && <p role="status" class="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2.5 text-xs text-amber-200">
           {translateText('Enter a positive share amount and purchase price to calculate this scenario.', language)}
         </p>}
-        {resultError && !resultData && <p role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
-          {translateText(resultError, language)}
-        </p>}
+        {resultError && !resultData && <div role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
+          {marginLimitError ? <>
+            <p>{translateText('This purchase would leave projected account equity below the app planning floor.', language)}</p>
+            <p class="mt-1 font-mono tabular-nums">
+              {translateText('Projected equity', language)}: {projectedEquityRatioText} · {translateText('App planning floor', language)}: {(preview.requiredEquityRatio! * 100).toFixed(1)}% · {translateText('Broker maintenance', language)}: {(state.brokerAssumptions.maintenanceEquityRatio * 100).toFixed(1)}%
+            </p>
+            <p class="mt-1">{translateText('Maximum additional shares at this price', language)}: {formatQuantity(preview.maxSafeShares!, language)}</p>
+            <p class="mt-1 text-[11px] text-rose-200/80">{translateText('The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit.', language)}</p>
+          </> : <p>{translateText(resultError, language)}</p>}
+          {marginLimitError && preview.maxSafeShares! > 0 && <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setSharesInput(String(preview.maxSafeShares!))}
+              class="min-h-10 rounded-lg border border-rose-700/70 bg-rose-950/40 px-3 py-1.5 text-[11px] font-semibold text-rose-100 hover:bg-rose-900/50"
+            >{translateText('Use maximum safe quantity', language)} · {formatQuantity(preview.maxSafeShares!, language)}</button>
+          </div>}
+        </div>}
 
         {displayedResult && <section class="space-y-3" aria-label={translateText('Buy More results', language)}>
           <div class="flex flex-wrap items-end justify-between gap-2">
@@ -302,8 +328,8 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
                     : index % 2 === 0 ? 'border-b border-slate-800/70 bg-slate-900/20' : 'border-b border-slate-800/70';
                   return <tr key={row.label + '-' + index} class={rowClass}>
                     <th scope="row" class="sticky left-0 z-10 whitespace-nowrap bg-slate-950/95 px-3 py-2 text-left font-semibold text-slate-300">{rowLabel(row.label,language)}</th>
-                    {current.map((value,valueIndex) => <td key={'current-' + valueIndex} class={'whitespace-nowrap px-3 py-2 text-right ' + valueTone(value)}>{value}</td>)}
-                    {projected.map((value,valueIndex) => <td key={'projected-' + valueIndex} class={'whitespace-nowrap border-l border-slate-800/80 px-3 py-2 text-right ' + valueTone(value)}>{value}</td>)}
+                    {current.map((value,valueIndex) => <td key={'current-' + valueIndex} class={'whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums ' + valueTone(value)}>{formatBuyMoreTableAmount(value, language)}</td>)}
+                    {projected.map((value,valueIndex) => <td key={'projected-' + valueIndex} class={'whitespace-nowrap border-l border-slate-800/80 px-3 py-2 text-right font-mono tabular-nums ' + valueTone(value)}>{formatBuyMoreTableAmount(value, language)}</td>)}
                   </tr>;
                 })}
               </tbody>
