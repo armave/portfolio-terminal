@@ -45,44 +45,6 @@ describe('app localization', () => {
     }
   });
 
-  it('keeps scenario modal and market-status copy localized in Russian', () => {
-    const scenarioAndMarketCopy = [
-      'Close · Esc',
-      'Close scenario comparison',
-      'Compare',
-      'BEST',
-      'What-if analysis',
-      'Close',
-      'Close scenario report',
-      'Scenario report',
-      'Estimates only · actual results may differ.',
-      'Done',
-      'Current position vs. proposed purchase · profit, downside, exposure and fees',
-      'Sell now vs. future exits · estimated net results after costs',
-      'Before vs. after · estimated values',
-      'Portfolio market',
-      'Your market',
-      'Premarket',
-      'Market',
-      'Postmarket',
-      'Closed',
-      'Premarket in {time}',
-      'Opens in {time}',
-      'Closes in {time}',
-      '{minutes}m',
-      '{hours}h',
-      '{hours}h {minutes}m',
-      '{days}d',
-      '{days}d {hours}h',
-      '{days}d {hours}h {minutes}m',
-      'Unavailable'
-    ];
-
-    for (const copy of scenarioAndMarketCopy) {
-      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
-    }
-  });
-
   it('localizes the Market Tools two-period exit comparison experience', () => {
     const exitComparisonCopy = [
       'In {days} days', 'In {duration}', 'Choose a valid date', 'Period A', 'Period B', 'BEST RESULT',
@@ -144,7 +106,7 @@ describe('app localization', () => {
       'No articles were available from the connected news feeds. News-dependent conclusions are limited.',
       'No server-synced digest yet', 'Portfolio snapshot',
       'Refresh margin intelligence', 'Close margin intelligence',
-      'Switch to 7d', 'Lock 14d Best', 'Invert Comparison', 'Stage target command',
+      'Switch to 7d', 'Lock 14d Best', 'Invert Comparison',
       'Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.',
       'Select or mention an active stock before requesting an AI simulation, comparison, or quote.'
     ];
@@ -344,21 +306,6 @@ describe('app localization', () => {
     expect(translateText('Quote sources and observation times', 'ru')).toBe('Источники котировок и время наблюдения');
   });
 
-  it('localizes terminal trade confirmation and dynamic oversized-sale feedback', () => {
-    expect(translateText('Review this portfolio change:', 'ru')).toBe('Проверьте это изменение портфеля:');
-    expect(translateText('These are portfolio-model estimates only. No broker order is submitted.', 'ru'))
-      .toBe('Это оценка модели портфеля. Заявка брокеру не отправляется.');
-    expect(translateText('Verify quantities, prices, and fees before applying this change.', 'ru'))
-      .toBe('Перед применением проверьте количество, цены и комиссии.');
-    expect(translateText('Apply this change?', 'ru')).toBe('Применить это изменение?');
-    expect(translateText('Trade cancelled. The portfolio was not changed.', 'ru'))
-      .toBe('Сделка отменена. Портфель не изменён.');
-    expect(translateText('Duplicate terminal command ignored while the first submission is running.', 'ru'))
-      .toBe('Повторная команда проигнорирована: предыдущая ещё выполняется.');
-    expect(translateText('Cannot sell 6 AAPL; only 5 shares are available.', 'ru'))
-      .toBe('Нельзя продать 6 AAPL: доступно только 5 акций.');
-  });
-
   it('localizes cost-basis sale rejection messaging into Russian', () => {
     expect(translateText(
       'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
@@ -522,7 +469,6 @@ describe('app localization', () => {
     expect(translateText('HYPOTHETICAL BUY: NVDA', 'ru')).toBe('ПОКУПКА В СЦЕНАРИИ: NVDA');
     expect(translateText('MULTI-DATE EXIT COMPARISON: TSLA', 'ru'))
       .toBe('СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ: TSLA');
-    expect(translateText('Scenario report', 'ru')).toBe('Отчёт по сценарию');
   });
 
   it('localizes active-order refresh warnings', () => {
@@ -551,11 +497,9 @@ describe('app localization', () => {
     expect(translateText('Untitled news item', 'ru')).toBe('Новость без заголовка');
   });
 
-  it('localizes terminal badges, external links, and portfolio valuation summaries', () => {
+  it('localizes market-status badges, external links, and portfolio valuation summaries', () => {
     expect(translateText('ERROR', 'ru')).toBe('ОШИБКА');
     expect(translateText('INFO', 'ru')).toBe('ИНФО');
-    expect(translateText('SIM', 'ru')).toBe('СИМУЛЯЦИЯ');
-    expect(translateText('COMPARISON', 'ru')).toBe('СРАВНЕНИЕ');
     expect(translateText('BROKER', 'ru')).toBe('БРОКЕР');
     expect(translateText('BALANCE', 'ru')).toBe('БАЛАНС');
     expect(translateText('TV Chart', 'ru')).toBe('График TradingView');
@@ -581,15 +525,7 @@ describe('app localization', () => {
       .toBe('Повышенный риск · 32.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
   });
 
-  it('localizes terminal and CLI feedback while preserving command values', () => {
-    expect(translateText('Please replace [shares] with a value before running this command.', 'ru'))
-      .toBe('Замените [shares] на значение перед выполнением команды.');
-    expect(translateText('Switched view to CASH_CUSHION.', 'ru'))
-      .toBe('Выполнено переключение на раздел Баланс.');
-    expect(translateText('Sold 2 AAPL @ $190.00', 'ru'))
-      .toBe('Продано 2 акций AAPL по цене $190.00.');
-    expect(translateText('Added 5 MSFT to cash holdings @ $420.00.', 'ru'))
-      .toBe('В денежные активы добавлено 5 акций MSFT по цене $420.00.');
+  it('localizes application status and backup feedback while preserving file names', () => {
     expect(translateText('Only administrators can reset the portfolio.', 'ru'))
       .toBe('Только администраторы могут сбрасывать портфель.');
     expect(translateText('[System]: Live market quotes refreshed for 4 assets.', 'ru'))
@@ -600,11 +536,6 @@ describe('app localization', () => {
       .toBe('[Импорт резервной копии]: Файл backup.json импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.');
     expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
       .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
-  });
-
-  it('localizes multiline terminal outputs line by line', () => {
-    expect(translateText('Terminal cleared.\nRefreshing all live quotes...', 'ru'))
-      .toBe('Терминал очищен.\nОбновление всех актуальных котировок…');
   });
 
   it('localizes detailed portfolio execution and synchronization logs', () => {

@@ -841,7 +841,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
-          {/* Keep the command console available on both Margin and Cash desks. */}
+          {/* Desk-specific content stays within the responsive portfolio workspace. */}
           
 
         </div>

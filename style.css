@@ -21,7 +21,469 @@
   --color-warning: #fbbf24;
   --color-accent: #22d3ee;
 
-  
+  /* Standardized Section Themes */
+  --theme-combined: #3b82f6;
+  --theme-cash: #06b6d4;
+  --theme-closed: #a855f7;
+  --theme-settings: #94a3b8;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* Shared control, layout, surface, and motion tokens. */
+  --control-height: 2.75rem;
+  --surface-hover: rgba(148, 163, 184, 0.08);
+  --layout-gutter: clamp(0.75rem, 1.6vw, 1.5rem);
+  --layout-stack-gap: clamp(0.75rem, 1.35vw, 1.25rem);
+  --surface-radius: clamp(0.75rem, 1vw, 1rem);
+  --surface-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2);
+  --surface-shadow-hover: 0 1rem 2.5rem rgba(0, 0, 0, 0.26);
+  --motion-fluid: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+html {
+  scroll-behavior: auto;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(16, 185, 129, 0.06), transparent 30rem),
+    var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+body::before {
+  content: none;
+}
+
+.border-card {
+  position: relative;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: border-color 180ms ease;
+}
+
+.border-card::before {
+  content: none;
+}
+
+#root {
+  padding-top: 1.5%;
+}
+
+input,
+select,
+button {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+#settings,
+#closedHistoryContainer {
+  margin-top: 10px;
+}
+
+.portfolio-risk-summary {
+  padding-top: 10px !important;
+  justify-content: center;
+}
+
+#tickerTabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+#tickerTabs::-webkit-scrollbar-thumb {
+  background: var(--text-dim);
+  border-radius: 999px;
+}
+
+button {
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    filter 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:hover:not(:disabled) {
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+  }
+}
+
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  filter: none;
+}
+
+input,
+select {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+input::placeholder {
+  color: var(--text-dim);
+}
+
+input[type="number"],
+.number-input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="number"]:focus-visible,
+input[type="text"]:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+input[type="number"]:user-invalid {
+  border-color: var(--color-loss);
+}
+
+input,
+select {
+  min-height: 2.5rem;
+}
+
+.settings-toolbar input,
+.settings-toolbar select,
+.settings-toolbar button,
+.settings-toolbar label.cursor-pointer {
+  min-height: 0;
+}
+
+table thead {
+  text-align: center;
+  background: var(--bg-table-head);
+}
+
+.text-profit,
+.text-emerald-400 {
+  color: var(--color-profit);
+}
+
+.text-loss,
+.text-rose-400 {
+  color: var(--color-loss);
+}
+
+.text-warning,
+.text-amber-400 {
+  color: var(--color-warning);
+}
+
+table th {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+table tbody tr:nth-child(even) {
+  background: var(--bg-table-zebra);
+}
+
+tbody tr {
+  text-align: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+tbody tr:hover {
+  background-color: rgba(30, 41, 59, 0.42) !important;
+}
+
+summary {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+summary:hover {
+  color: var(--color-accent);
+}
+
+.insight-tab {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.portfolio-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portfolio-metric {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  background: var(--bg-surface-subtle);
+  padding: 0.375rem 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.portfolio-metric-label {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.portfolio-metric-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-risk-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.5rem;
+}
+
+#boardQuoteMeta {
+  color: var(--text-muted);
+}
+
+.board-header-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.board-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.stock-external-link,
+#boardExternalLinks a {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  line-height: 1;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+#finvizLink,
+.stock-link-finviz {
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+}
+
+#finvizLink:hover,
+.stock-link-finviz:hover {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+#stocktwitsLink,
+.stock-link-stocktwits {
+  background: rgba(6, 182, 212, 0.18);
+  border: 1px solid #06b6d4;
+  color: #22d3ee;
+}
+
+#stocktwitsLink:hover,
+.stock-link-stocktwits:hover {
+  background: rgba(6, 182, 212, 0.32);
+  color: #a5f3fc;
+}
+
+#tvChartLink,
+.stock-link-tv-chart {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #e4e4e7;
+  color: #ffffff;
+}
+
+#tvChartLink:hover,
+.stock-link-tv-chart:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid #ffffff;
+  color: #ffffff;
+}
+
+#tvIdeasLink,
+.stock-link-tv-ideas {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #71717a;
+  color: #a1a1aa;
+}
+
+#tvIdeasLink:hover,
+.stock-link-tv-ideas:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid #d4d4d8;
+  color: #f4f4f5;
+}
+
+#boardTitle {
+  min-width: 0;
+  word-break: normal;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+#marketInsightsContent {
+  font-family: var(--font-mono);
+}
+
+.ui-view-enter {
+  animation: ui-view-enter 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.ui-toast-enter {
+  animation: ui-toast-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ui-toast-exit {
+  animation: ui-toast-exit 0.2s ease-in forwards;
+}
+
+@keyframes ui-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes ui-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(1.25rem) scale(0.96);
+  }
+}
+
+#auth-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+}
+
+#auth-container input[type="password"] {
+  background: #090c13;
+  color: var(--text-primary);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  letter-spacing: 0.08em;
+}
+
+#mainDeskContainer,
+#cashCushionContainer,
+#closedHistoryContainer,
+#settings {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Keep the active desk and trading terminal side by side only when both columns
+ * have enough room. auto-fit naturally moves the terminal below the desk on
+ * narrower viewports, including intermediate widths and zoomed layouts.
+ */
 .trading-workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -91,9 +553,488 @@
   margin: 0 auto;
 }
 
+/* The projection table has five financial columns; allow the wrapper to scroll
+   rather than clipping columns to the old 550px table cap. */
+#projectionTableContainer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
 
+#projectionTableContainer table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.25rem 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+#projectionTableContainer table th:nth-child(2),
+#projectionTableContainer table td:nth-child(2) {
+  width: 17%;
+}
+
+#projectionTableContainer table th:nth-child(3),
+#projectionTableContainer table td:nth-child(3) {
+  width: 16%;
+}
+
+#projectionTableContainer table th:nth-child(4),
+#projectionTableContainer table td:nth-child(4) {
+  width: 23%;
+}
+
+#projectionTableContainer table th:nth-child(5),
+#projectionTableContainer table td:nth-child(5) {
+  width: 20%;
+}
+
+#projectionTableContainer tbody td[colspan="5"] {
+  white-space: normal;
+  min-width: 0;
+  max-width: 620px;
+  line-height: 1.4;
+}
+
+.table-scroll-wrapper th,
+.table-scroll-wrapper td {
+  white-space: nowrap;
+}
+
+.projection-date-cell {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  max-width: fit-content;
+}
+
+@media (max-width: 768px) {
+
+  input,
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="time"],
+select {
+    /* 16px prevents iOS Safari from zooming the page on form focus. */
+    font-size: 16px !important;
+  }
+
+  body {
+    padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
+    padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+    line-height: 1.45;
+  }
+
+  td,
+th {
+    padding: 6px 8px;
+  }
+
+  #summary-cards {
+    grid-template-columns: 1fr !important;
+  }
+
+  .border-card {
+    border-radius: 0.875rem;
+  }
+
+  .portfolio-metric {
+    padding: 0.375rem 0.625rem;
+  }
+
+  .board-header-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  #tickerTabs button,
+#tickerTabs>* {
+    flex-shrink: 0;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.85rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 0.375rem;
+  }
+
+  #daysToBreakeven {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+  }
+
+  .board-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  #boardTitle {
+    min-width: 0;
+    width: 100%;
+    word-break: normal;
+    font-size: 1.25rem;
+  }
+
+  .board-title-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #cashCushionContainer>.bg-slate-900\/60 {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  #cashCushionContainer>.bg-slate-900\/60>div:last-child {
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+/* Touch controls stay comfortable without inflating desktop controls. */
+@media (pointer: coarse) {
+
+  button,
+[role="button"],
+input,
+select,
+textarea {
+    min-height: 44px;
+  }
+
+  button,
+[role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 420px) {
+  #mainTerminalView {
+    padding-inline: 0.5rem;
+  }
+
+  .table-scroll-wrapper,
+#projectionTableContainer {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+}
+
+
+/* Compact, information-dense portfolio workspace */
+#mainTerminalView {
+  padding: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  #mainTerminalView {
+    padding: 1rem;
+  }
+}
+
+#boardHeaderBanner {
+  padding-bottom: 0.5rem;
+  margin-bottom: 0;
+}
+
+#portfolioMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  align-items: stretch;
+}
+
+#portfolioMetricsGrid>* {
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+}
+
+#mainDeskContainer {
+  gap: 0.75rem;
+}
+
+#boardTitle {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+#projectionTableContainer {
+  padding-top: 0.25rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.25rem 0.375rem;
+}
+
+#projectionTableContainer table th:not(:first-child),
+#projectionTableContainer table td:not(:first-child) {
+  white-space: nowrap;
+}
+
+#projectionTableContainer table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-table-head);
+}
+
+#projectionTableContainer table tbody tr {
+  height: auto;
+}
+
+@media (max-width: 639px) {
+  #mainTerminalView {
+    padding: 0.625rem;
+  }
+
+  #portfolioMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #projectionTableContainer table th,
+#projectionTableContainer table td {
+    padding: 0.25rem 0.3rem;
+  }
+
+  #projectionTableContainer table {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+
+/* Center the projection table wrapper within the desktop workspace grid. */
+.desktop-workspace-grid {
+  justify-items: center;
+}
+
+.desktop-workspace-grid>#projectionTableContainer {
+  justify-self: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.desktop-workspace-grid #projectionTableContainer table {
+  margin-inline: auto;
+}
+
+
+/* Shared keyboard focus treatment and compact settings controls (UI/UX PR 4). */
+:where(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid rgb(34 211 238 / 0.95);
+  outline-offset: 2px;
+}
+
+#settings .settings-toolbar {
+  align-items: stretch;
+}
+
+#settings .settings-toolbar>div {
+  min-width: 0;
+}
+
+#settings details>summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(51 65 85 / 0.8);
+  border-radius: 0.5rem;
+  background: rgb(15 23 42 / 0.45);
+}
+
+#settings details>summary:focus-visible {
+  outline-offset: 3px;
+}
+
+#settings #brokerRulesForm input,
+#settings #brokerRulesForm select {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 639px) {
+  #settings .settings-toolbar {
+    gap: 0.75rem;
+  }
+
+  #settings #brokerRulesForm .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
+/* Keep projection columns readable on narrow screens; scroll rather than crush cells. */
+@media (max-width: 639px) {
+  #projectionTableContainer {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #projectionTableContainer table {
+    min-width: 520px;
+    width: 520px;
+    table-layout: fixed;
+  }
+
+  #projectionTableContainer table th,
+#projectionTableContainer table td {
+    padding: 0.45rem 0.5rem;
+  }
+}
+
+#auth-container button:focus-visible,
+#auth-container input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+#auth-container {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.auth-card {
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  border-radius: 1rem;
+  backdrop-filter: blur(16px);
+}
+
+.auth-card form {
+  align-items: stretch;
+}
+
+.auth-card input {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.auth-card button {
+  min-height: 2.75rem;
+  margin-top: 0.75rem;
+}
+
+@keyframes modal-overlay-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+}
+
+
+
+/* Smoothly reveal content as modal data arrives, not just when the dialog opens. */
+.margin-intelligence-overlay {
+  animation: modal-overlay-enter 180ms ease-out both;
+}
+
+.margin-intelligence-dialog {
+  animation: modal-dialog-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[role="dialog"] [data-animate-content],
+[role="dialog"] [aria-live="polite"]>*,
+[role="dialog"] article,
+[role="dialog"] .news-feed-item,
+[role="dialog"] .stocktwits-feed-item,
+[role="dialog"] .digest-content,
+[role="dialog"] .digest-article {
+  animation: modal-data-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modal-data-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 767px) {
+}
+
+
+
+/* Responsive terminal workspace refinements */
+.trading-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trading-workspace-grid>* {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .trading-workspace-grid {
+    grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 1fr);
+    align-items: start;
+  }
+}
+
+/* Keep quick actions in a touch-friendly horizontal rail on small screens. */
+@media (max-width: 767px) {
+  #mainTerminalView {
+    padding: 0.75rem;
+  }
+
+  #projectionTableContainer,
+.table-scroll-wrapper {
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* Prefer sticky positioning over fixed positioning so the console never covers
+   portfolio content or the mobile keyboard. */
 @media (min-width: 64rem) {
 }
+
+
 
 
 /* Margin risk visual gauges */
@@ -340,6 +1281,8 @@
 }
 
 
+
+
 /* Portfolio micro-summary: one compact surface above account equity health. */
 .portfolio-metrics-grid {
   grid-template-columns: minmax(0, 1fr) !important;
@@ -444,12 +1387,12 @@
   }
 
   .portfolio-micro-market,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
   .portfolio-micro-costs,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     grid-column: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding-top: 0.75rem;
@@ -475,7 +1418,7 @@
   }
 
   .portfolio-micro-market,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     border-left: 0 !important;
   }
 
@@ -484,7 +1427,7 @@
   }
 
   .portfolio-micro-costs,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -601,8 +1544,8 @@ table td {
 #projectionTableContainer table th {
   font-size: 0.6875rem;
 }
-#marketInsightsPanel 
-{
+
+#marketInsightsPanel {
   min-width: 0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
@@ -654,7 +1597,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-  #projectionTableContainer table td {
+#projectionTableContainer table td {
     padding: 0.5rem;
   }
 }
@@ -714,8 +1657,7 @@ textarea {
 #mainDeskContainer,
 #tradingWorkspaceGrid,
 #projectionTableContainer,
-.table-scroll-wrapper 
-{
+.table-scroll-wrapper {
   min-width: 0;
 }
 
@@ -758,7 +1700,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-  #projectionTableContainer table td {
+#projectionTableContainer table td {
     padding: 0.5rem;
   }
 
@@ -777,9 +1719,9 @@ textarea {
   }
 
   .border-card,
-  .portfolio-metric,
-  #projectionTableContainer,
-  .table-scroll-wrapper {
+.portfolio-metric,
+#projectionTableContainer,
+.table-scroll-wrapper {
     border-color: var(--border-card);
   }
 
@@ -794,9 +1736,9 @@ textarea {
   }
 
   .border-card,
-  .portfolio-metric,
-  #projectionTableContainer,
-  .table-scroll-wrapper {
+.portfolio-metric,
+#projectionTableContainer,
+.table-scroll-wrapper {
     border: 1px solid CanvasText;
   }
 }
@@ -952,6 +1894,8 @@ textarea {
 }
 
 
+
+
 /* Keep the auth overlay mounted so its exit transition can finish cleanly. */
 #auth-container.auth-overlay {
   display: flex;
@@ -996,7 +1940,13 @@ table tbody tr:hover {
 }
 
 
+
+
+
+
 /* Scenario comparison modal: transitions are owned by the shared ModalFrame. */
+
+
 
 
 /* News and Stocktwits: animate feed entry and item hover without affecting layout. */
@@ -1019,6 +1969,7 @@ table tbody tr:hover {
 .stocktwits-feed-list {
   overscroll-behavior: contain;
 }
+
 
 
 #activeTranches,
@@ -1075,22 +2026,19 @@ summary:focus-visible {
 }
 
 
-/* Responsive portfolio desk: give the data area priority without crowding the console. */
+
+
+/* Responsive portfolio workspace layout. */
 #tradingWorkspaceGrid.trading-workspace-grid {
   grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
-#tradingWorkspaceGrid>#cashCushionContainer
-{
+#tradingWorkspaceGrid>#cashCushionContainer {
   min-width: 0;
 }
 
 @media (min-width: 65rem) {
-  #tradingWorkspaceGrid.trading-workspace-grid {
-    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
-    gap: 1rem;
-  }
 }
 
 /* Tables keep their full desktop detail; on phones each holding becomes a compact card. */
@@ -1116,7 +2064,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table,
-  .active-tranches-table {
+.active-tranches-table {
     display: block;
     width: 100%;
     min-width: 0 !important;
@@ -1124,7 +2072,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table>thead,
-  .active-tranches-table>thead {
+.active-tranches-table>thead {
     position: absolute !important;
     width: 1px;
     height: 1px;
@@ -1137,14 +2085,14 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holdings-body,
-  .active-tranches-table .active-tranches-body {
+.active-tranches-table .active-tranches-body {
     display: grid;
     gap: 0.7rem;
     padding: 0.625rem;
   }
 
   .cash-holdings-table .cash-holding-row,
-  .active-tranches-table .active-tranche-row {
+.active-tranches-table .active-tranche-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     min-width: 0;
@@ -1156,7 +2104,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td,
-  .active-tranches-table .active-tranche-row td {
+.active-tranches-table .active-tranche-row td {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -1171,7 +2119,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td::before,
-  .active-tranches-table .active-tranche-row td::before {
+.active-tranches-table .active-tranche-row td::before {
     content: attr(data-label);
     color: #94a3b8;
     font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
@@ -1183,7 +2131,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td:first-child,
-  .active-tranches-table .active-tranche-row td:first-child {
+.active-tranches-table .active-tranche-row td:first-child {
     grid-column: 1 / -1;
     flex-direction: row;
     align-items: center;
@@ -1193,7 +2141,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td:first-child::before,
-  .active-tranches-table .active-tranche-row td:first-child::before {
+.active-tranches-table .active-tranche-row td:first-child::before {
     margin-right: 0.75rem;
   }
 
@@ -1206,14 +2154,14 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-group-row,
-  .cash-holdings-table .cash-holding-empty-row,
-  .active-tranches-table .active-tranche-empty-row {
+.cash-holdings-table .cash-holding-empty-row,
+.active-tranches-table .active-tranche-empty-row {
     display: block;
   }
 
   .cash-holdings-table .cash-holding-group-row td,
-  .cash-holdings-table .cash-holding-empty-row td,
-  .active-tranches-table .active-tranche-empty-row td {
+.cash-holdings-table .cash-holding-empty-row td,
+.active-tranches-table .active-tranche-empty-row td {
     display: block;
     width: 100%;
     padding: 0.75rem !important;
@@ -1259,8 +2207,8 @@ summary:focus-visible {
   }
 
   .active-tranches-table .active-tranche-row td:nth-child(2),
-  .active-tranches-table .active-tranche-row td:nth-child(6),
-  .active-tranches-table .active-tranche-row td:nth-child(7) {
+.active-tranches-table .active-tranche-row td:nth-child(6),
+.active-tranches-table .active-tranche-row td:nth-child(7) {
     grid-column: 1 / -1;
   }
 
@@ -1286,7 +2234,7 @@ summary:focus-visible {
   }
 
   #activeTranches .table-scroll-wrapper,
-  #cashCushionContainer .table-scroll-wrapper {
+#cashCushionContainer .table-scroll-wrapper {
     overflow-x: visible;
   }
 }
@@ -1328,6 +2276,7 @@ summary:focus-visible {
     transform: translateX(260%);
   }
 }
+
 
 
 /* Keep the ticker strip independent on desktop and merge it into the centered
@@ -1448,8 +2397,7 @@ summary:focus-visible {
 #mainDeskContainer,
 #tradingWorkspaceGrid,
 #tradingWorkspaceGrid>*,
-#cashCushionContainer 
-{
+#cashCushionContainer {
   min-width: 0;
 }
 
@@ -1524,10 +2472,6 @@ summary:focus-visible {
 }
 
 @container portfolio-workspace (min-width: 72rem) {
-  #tradingWorkspaceGrid.trading-workspace-grid {
-    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
-    gap: clamp(1rem, 1.5cqw, 1.5rem);
-  }
 }
 
 #portfolioMetricsGrid {
@@ -1602,12 +2546,12 @@ summary:focus-visible {
   }
 
   .portfolio-micro-column.portfolio-micro-market,
-  .portfolio-micro-column.portfolio-micro-actions {
+.portfolio-micro-column.portfolio-micro-actions {
     border-left: 1px solid rgba(148, 163, 184, 0.12);
   }
 
   .portfolio-micro-costs,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     grid-column: auto;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
@@ -1620,13 +2564,13 @@ summary:focus-visible {
   }
 
   .portfolio-micro-column+.portfolio-micro-column,
-  .portfolio-micro-market {
+.portfolio-micro-market {
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
   .portfolio-micro-costs,
-  .portfolio-micro-actions {
+.portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -1666,8 +2610,8 @@ summary:focus-visible {
 table tbody tr:hover {
   transform: none;
 }
-#marketInsightsPanel 
-{
+
+#marketInsightsPanel {
   min-width: 0;
   border-radius: var(--surface-radius);
   transition:
@@ -1692,17 +2636,11 @@ table tbody tr:hover {
 @media (hover: hover) and (pointer: fine) {
 
   .portfolio-metric:hover,
-  .portfolio-micro-summary:hover,
-  .margin-risk-gauge-card:hover {
+.portfolio-micro-summary:hover,
+.margin-risk-gauge-card:hover {
     border-color: rgba(148, 163, 184, 0.22);
     box-shadow: var(--surface-shadow-hover);
   }
-}
-
-
-/* Margin desk: align the projection table and market insights as a single data row. */
-#tradingWorkspaceGrid.margin-workspace-layout {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 #mainDeskContainer {
@@ -1951,7 +2889,7 @@ table tbody tr:hover {
   }
 
   #boardTitleRow>div,
-  #daysToBreakeven {
+#daysToBreakeven {
     text-align: center;
   }
 }
@@ -2049,6 +2987,8 @@ table tbody tr:hover {
 }
 
 
+
+
 /* Page changes animate a normal block wrapper around the table, not the tbody. */
 .closed-history-page-transition {
   display: flow-root;
@@ -2093,6 +3033,7 @@ table tbody tr:hover {
     transform-origin: top left;
   }
 }
+
 
 
 /* Margin projection pagination: animate newly keyed rows without transforming table internals. */
@@ -2153,6 +3094,7 @@ table tbody tr:hover {
     justify-content: space-between;
   }
 }
+
 
 
 #marginDataWorkspace {
@@ -2317,7 +3259,7 @@ table tbody tr:hover {
 
 @media (hover: hover) {
   .cloud-sync-indicator:hover .cloud-sync-indicator__timestamp,
-  .cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
+.cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
     display: block;
   }
 }
@@ -2340,6 +3282,7 @@ table tbody tr:hover {
     font-size: 0.65rem;
   }
 }
+
 
 
 /* Stage 3: keep summary labels readable without competing with primary values. */
@@ -2375,44 +3318,44 @@ table tbody tr:hover {
   }
 }
 
-/* One reduced-motion policy for the portfolio app. */
+/* One reduced-motion policy for the entire terminal. */
 @media (prefers-reduced-motion: reduce) {
 
   *,
-  *::before,
-  *::after {
+*::before,
+*::after {
     scroll-behavior: auto !important;
     animation: none !important;
     transition: none !important;
   }
 
   .ui-view-enter,
-  .ui-toast-enter,
-  .ui-toast-exit,
-  #marketInsightsContent,
-  #auth-container,
-  #auth-container .auth-card,
-  .quote-flash-up,
-  .quote-flash-down,
-  .desk-view-transition:not(.hidden),
-  table tbody tr,
-  #auth-container.auth-overlay,
-  #auth-container.auth-overlay .auth-card,
-  .news-feed-enter,
-  .stocktwits-feed-enter,
-  .news-feed-item,
-  .stocktwits-feed-item,
-  .news-modal-enter,
-  .news-dialog-enter,
-  .expandable-motion,
-  .expandable-motion__inner,
-  .credentials-motion,
-  .desk-section-loading,
-  .desk-section-loading__bar,
-  #settingsDesk .settings-broker-rules[open]>div,
-  #auth-container .auth-feedback,
-  .desk-content-reveal,
-  .closed-history-page-transition {
+.ui-toast-enter,
+.ui-toast-exit,
+#marketInsightsContent,
+#auth-container,
+#auth-container .auth-card,
+.quote-flash-up,
+.quote-flash-down,
+.desk-view-transition:not(.hidden),
+table tbody tr,
+#auth-container.auth-overlay,
+#auth-container.auth-overlay .auth-card,
+.news-feed-enter,
+.stocktwits-feed-enter,
+.news-feed-item,
+.stocktwits-feed-item,
+.news-modal-enter,
+.news-dialog-enter,
+.expandable-motion,
+.expandable-motion__inner,
+.credentials-motion,
+.desk-section-loading,
+.desk-section-loading__bar,
+#settingsDesk .settings-broker-rules[open]>div,
+#auth-container .auth-feedback,
+.desk-content-reveal,
+.closed-history-page-transition {
     transform: none !important;
   }
 }
