@@ -109,8 +109,12 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).toContain('document.body');
     expect(exit).toContain('exit-comparison-backdrop');
     expect(exit).toContain('exit-comparison-dialog');
-    expect(exit).toContain("document.body.style.overflow = 'hidden'");
-    expect(exit).toContain('document.body.style.overflow = previousOverflow');
+    // useDialogFocus owns the shared reference-counted body + document scroll lock.
+    // A second component-local lock would restore "hidden" after shared cleanup.
+    expect(exit).toContain('useDialogFocus(dialogRef');
+    expect(exit).not.toContain('document.body.style.overflow');
+    expect(exit).not.toContain('document.documentElement.style.overflow');
+    expect(exit).toContain('formatUSDDisplayValue(value)');
     expect(styles).toContain('.exit-comparison-backdrop {');
     expect(styles).toContain('z-index: 10000;');
     expect(styles).toContain('height: 100dvh;');
