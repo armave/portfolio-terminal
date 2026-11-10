@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -19,6 +19,18 @@ describe('display formatters', () => {
     expect(formatUSD(1234.5)).toBe('1,234.50');
     expect(formatUSD('12')).toBe('12.00');
     expect(formatUSD(Number.NaN)).toBe('0.00');
+  });
+
+  it('adds locale-aware thousands separators to signed currency table values', () => {
+    expect(formatUSDDisplayValue('$1234567.89')).toBe('$1,234,567.89');
+    expect(formatUSDDisplayValue('+$1234.50')).toBe('+$1,234.50');
+    expect(formatUSDDisplayValue('-$1234.50')).toBe('−$1,234.50');
+    expect(formatUSDDisplayValue('−$0.01')).toBe('−$0.01');
+    expect(formatUSDDisplayValue('—')).toBe('—');
+    expect(formatUSDDisplayValue('Not available')).toBe('Not available');
+
+    setAppLanguage('ru');
+    expect(formatUSDDisplayValue('$1234567.89')).toMatch(/1.*234.*567,89/);
   });
 
   it('formats provider-reported volume compactly and omits invalid values', () => {
