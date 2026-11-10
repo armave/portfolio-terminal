@@ -430,7 +430,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('terminal:buy-more-request', ticker ? { ticker } : {})}
           class="min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
         >
-          ⇧ {translateText('Buy More Preview', language)}
+          ⇧ {translateText('Compare Buying', language)}
         </button>
         <button
           type="button"

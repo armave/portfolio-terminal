@@ -620,7 +620,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Last saved": "Последнее сохранение",
   "Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.": "Только оценка. Модель использует сохранённое количество акций, себестоимость, настройки комиссий, баланс счёта и расчётные проценты по марже. Будущие цены являются предположениями; данные не изменяются, заявки брокеру не отправляются.",
   "⇧ Buy More Scenario…": "⇧ Сценарий дополнительной покупки…",
-  "⇧ Buy More Preview": "⇧ Если Купить Больше…",
+  "⇧ Compare Buying": "⇧ Сравнить Докупку",
   "Immediately pull latest quote for": "Немедленно получить последнюю котировку для",
   "Review recent news and margin-position risks for": "Проанализировать последние новости и риски маржинальной позиции",
   "Compare exit scenarios without placing a trade": "Сравнить сценарии выхода без размещения заявки",
