@@ -123,6 +123,17 @@ describe('Stage 10 accessibility wiring', () => {
     expect(styles).toContain('.exit-comparison-dialog>div');
   });
 
+  it('animates Compare Exits entrance and exit with reduced-motion support', () => {
+    const exit = readSource('../components/ExitComparisonModal.tsx');
+    expect(exit).toContain('const [isOpen, setIsOpen] = useState(false)');
+    expect(exit).toContain('window.requestAnimationFrame');
+    expect(exit).toContain('window.cancelAnimationFrame(frame)');
+    expect(exit).toContain('if (!closingRef.current) setIsOpen(true)');
+    expect(exit).toContain('scheduleDialogClose(onClose, prefersReducedMotion ? 0 : 200)');
+    expect(exit).toContain('duration-200 ease-out motion-reduce:transition-none');
+    expect(exit).toContain('(isClosing || !isOpen ?');
+  });
+
   it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
     const comparison = readSource('../components/ScenarioComparisonModal.tsx');
     const report = readSource('../components/ScenarioReportModal.tsx');
