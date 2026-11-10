@@ -889,7 +889,8 @@ export class CommandDispatcher {
           (Number.isFinite(projectedEquityRatio) ? (projectedEquityRatio * 100).toFixed(1) : 'unavailable') +
           '%, below the app planning floor of ' + (requiredEquityRatio * 100).toFixed(1) +
           '% (broker maintenance limit: ' + (maintenanceLimit * 100).toFixed(1) +
-          '%). Maximum additional shares at 
+          '%). Maximum additional shares at $' + price.toFixed(2) + ': ' +
+          maxSafeShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
           '. The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit. Reduce shares, lower the price, or add cash before comparing.'
       };
     }
