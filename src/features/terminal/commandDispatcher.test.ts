@@ -432,6 +432,36 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('[BUY MORE: GOOGL]');
   });
 
+  it('blocks an oversized Buy More request while reporting the maximum quantity above the planning buffer', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -22_363.64,
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{ ticker: 'CASHETF', shares: 38, currentPrice: 289.50 }]
+      },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.10, stopOutRatio: 0 },
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL', shares: 68, currentPrice: 288.18, pt: 335, commBuy: 27.17,
+          tranches: [{ qty: 68, price: 322.96 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.previewBuyMoreScenario('GOOGL', 180, 288.11);
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.projectedEquityRatio).toBeLessThan(0.20);
+    expect(result.requiredEquityRatio).toBe(0.20);
+    expect(result.maxSafeShares).toBeGreaterThan(0);
+    expect(result.maxSafeShares).toBeLessThan(180);
+    expect(result.text).toContain('app planning floor of 20.0%');
+    expect(result.text).toContain('Maximum additional shares');
+  });
+
   it('blocks buy-more comparisons when the proposed purchase breaches maintenance or stop-out limits', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
