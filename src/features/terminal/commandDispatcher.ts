@@ -888,8 +888,105 @@ export class CommandDispatcher {
           'Buy scenario blocked: this purchase would leave projected account equity at ' +
           (Number.isFinite(projectedEquityRatio) ? (projectedEquityRatio * 100).toFixed(1) : 'unavailable') +
           '%, below the app planning floor of ' + (requiredEquityRatio * 100).toFixed(1) +
-          '% (broker maintenance: ' + (maintenanceLimit * 100).toFixed(1) +
-          '%). Maximum additional shares at ' + money(price) + ': ' +
+          '% (broker maintenance limit: ' + (maintenanceLimit * 100).toFixed(1) +
+          '%). Maximum additional shares at 
+          maxSafeShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
+          '. The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit. Reduce shares, lower the price, or add cash before comparing.'
+      };
+    }
+    const balanceAfter = projected.projectedBalance;
+    const currentDebt = Math.max(0, -balance);
+    const dailyMarginBefore = currentDebt * rules.dailyRate;
+    const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
+    const dailyMarginFeeDifference = dailyMarginAfter - dailyMarginBefore;
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyFee = oldBuyFee + purchaseFee;
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const target = Number(pos.pt);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    const downsidePrice = quote * 0.9;
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
+    });
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
+      shares * exitPrice - cost - buyFee -
+      calculateCommission(shares, shares * exitPrice, rules) - currentMargin;
+    const modal: ScenarioModalData = {
+      kind: 'buy-more',
+      title: 'Buy More Projection · ' + ticker,
+      subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
+      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
+      rows: (() => {
+        const projectionPrice = hasTarget ? target : quote;
+        const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
+        const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
+        const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
+        const currentDebt = Math.max(0, -balance);
+        const projectedDebt = Math.max(0, -balanceAfter);
+        return dates.map(item => {
+          const dateLabel = item.date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
+            weekday: 'short', month: 'short', day: 'numeric'
+          });
+          const rowLabel = item.kind === 'today'
+            ? dateLabel + ' · TODAY'
+            : dateLabel + (item.label ? ' · ' + item.label.replace(/^\\(|\\)$/g, '') : '');
+          if (item.kind === 'entry') {
+            return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
+          }
+          const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
+          const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
+          const currentAccrual = currentDebtAtDate - currentDebt;
+          const afterAccrual = afterDebtAtDate - projectedDebt;
+          const currentFees = calculateAccruedFees(currentComms, currentMargin, currentAccrual);
+          const afterFees = calculateAccruedFees(projectedComms, currentMargin, afterAccrual);
+          const currentNet = oldShares * projectionPrice - oldCost - currentFees;
+          const afterNet = newShares * projectionPrice - newCost - afterFees;
+          return {
+            label: rowLabel,
+            values: [
+              signed(currentNet),
+              signed(afterNet),
+              money(currentFees),
+              money(afterFees),
+              money(currentMargin + currentAccrual) + ' (' + money(currentDebtAtDate * rules.dailyRate) + ')',
+              money(currentMargin + afterAccrual) + ' (' + money(afterDebtAtDate * rules.dailyRate) + ')',
+              '−' + money(currentDebtAtDate),
+              '−' + money(afterDebtAtDate)
+            ],
+            kind: item.kind === 'today' ? 'result' as const : 'fee' as const
+          };
+        });
+      })(),
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.'
+    };
+    const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
+    const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
+    const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote) - scenarioPnl(oldShares, oldCost, oldBuyFee, quote);
+    const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice) - scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice);
+    const lines = [
+      '[BUY MORE: ' + ticker + ']',
+      'Cash needed: ' + money(totalOutlay) + ' incl. fee',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
+      'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote)),
+      ...(hasTarget ? ['Net P&L at target: ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl)] : []),
+      'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice)),
+      'Final margin balance: ' + money(balance) + ' → ' + money(balanceAfter),
+      'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',
+      'Trade-off: quote P&L changes by ' + signed(currentDelta) + '; downside P&L changes by ' + signed(downsideDelta) + '.',
+      'Estimate only · no portfolio changes.'
+    ];
+    return { type: 'res', text: lines.join('\n'), modal };
+  }
+
+
+
+}
+
+ + price.toFixed(2) + ': ' +
           maxSafeShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
           '. The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit. Reduce shares, lower the price, or add cash before comparing.'
       };
