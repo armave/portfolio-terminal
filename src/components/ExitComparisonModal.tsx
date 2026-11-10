@@ -23,7 +23,13 @@ interface ExitComparisonModalProps {
 
 const PERIOD_PRESETS = [0, 7, 14, 30, 60, 90];
 
-function getReferencePrice(position?: { currentPrice?: number; shares?: number; tranches?: Array<{ qty: number; price: number }> }): number | null {
+interface ExitPositionReference {
+  currentPrice?: number;
+  shares?: number;
+  tranches?: Array<{ qty: number; price: number }>;
+}
+
+function getReferencePrice(position?: ExitPositionReference): number | null {
   if (!position) return null;
   const quote = Number(position.currentPrice);
   if (Number.isFinite(quote) && quote > 0) return quote;
@@ -36,7 +42,7 @@ function getReferencePrice(position?: { currentPrice?: number; shares?: number; 
   return Number.isFinite(shares) && shares > 0 && cost > 0 ? cost / shares : null;
 }
 
-function makeDefaultPeriods(position?: Parameters<typeof getReferencePrice>[0], today = toLocalIsoDate()): [ExitComparisonPeriodInput, ExitComparisonPeriodInput] {
+function makeDefaultPeriods(position?: ExitPositionReference, today = toLocalIsoDate()): [ExitComparisonPeriodInput, ExitComparisonPeriodInput] {
   const reference = getReferencePrice(position);
   const firstPrice = reference === null ? '' : reference.toFixed(2);
   const secondPrice = reference === null ? '' : (reference * 1.03).toFixed(2);
