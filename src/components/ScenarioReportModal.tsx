@@ -106,7 +106,7 @@ export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanc
       ariaLabelledBy="scenarioReportTitle"
       onBackdropClick={requestClose}
     >
-        <header        <header class="flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6">
+        <header class="flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6">
           <div class="min-w-0">
             <div class="mb-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300">{translateText('What-if analysis', getAppLanguage())}</div>
             <h2 id="scenarioReportTitle" class="break-words text-base font-bold tracking-tight text-white sm:text-lg">{translateText(title, getAppLanguage())}</h2>
