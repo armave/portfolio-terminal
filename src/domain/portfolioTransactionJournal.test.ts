@@ -589,6 +589,76 @@ describe('transaction journal replay coverage inspection', () => {
     ]);
   });
 
+  it('requires cost-basis evidence before classifying cash-holding buys and sells as replayable', () => {
+    const acquisitionAt = Date.parse('2026-11-01T09:00:00.000Z');
+    const cashBuy = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: acquisitionAt,
+      ticker: 'MSFT',
+      quantity: 2,
+      cashHoldingQuantityDelta: 2,
+      lotId: 'cash-lot-coverage',
+      acquisitionDate: '2026-11-01',
+      unitPrice: 100,
+      grossAmount: 200,
+      fees: 0,
+      cashDelta: 0
+    }, { eventId: 'coverage-cash-buy' });
+    const cashSell = createPortfolioTransactionEvent({
+      type: 'cash-holding.sell',
+      effectiveAt: acquisitionAt + 86_400_000,
+      ticker: 'MSFT',
+      quantity: 1,
+      cashHoldingQuantityDelta: -1,
+      unitPrice: 110,
+      grossAmount: 110,
+      fees: 0,
+      financingCost: 0,
+      realizedPnl: 10,
+      netAmount: 110,
+      cashDelta: 110,
+      marginDebtDelta: 0,
+      lotAllocations: [{
+        lotId: 'cash-lot-coverage',
+        identity: 'stable',
+        quantity: 1,
+        acquisitionPrice: 100,
+        acquisitionDate: '2026-11-01',
+        acquiredAt: acquisitionAt,
+        buyCommissionAllocated: 0,
+        sellPrice: 110,
+        sellCommissionAllocated: 0,
+        financingCostAllocated: 0,
+        realizedPnl: 10
+      }]
+    }, { eventId: 'coverage-cash-sell' });
+
+    const complete = inspectPortfolioTransactionJournalReplayCoverage([cashBuy, cashSell]);
+    expect(complete).toMatchObject({
+      status: 'complete',
+      replayableCount: 2,
+      issues: []
+    });
+
+    const unpricedBuy = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: acquisitionAt,
+      ticker: 'VTI',
+      quantity: 1,
+      cashHoldingQuantityDelta: 1,
+      cashDelta: 0
+    }, { eventId: 'coverage-unpriced-cash-buy' });
+    const incomplete = inspectPortfolioTransactionJournalReplayCoverage([unpricedBuy]);
+    expect(incomplete).toMatchObject({
+      status: 'incomplete',
+      replayableCount: 0,
+      issues: [expect.objectContaining({
+        eventId: 'coverage-unpriced-cash-buy',
+        disposition: 'incomplete'
+      })]
+    });
+  });
+
   it('reports unknown or malformed event schemas as unsupported instead of ignoring them', () => {
     const valid = createPortfolioTransactionEvent({
       type: 'cash.adjustment',

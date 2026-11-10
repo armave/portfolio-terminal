@@ -102,9 +102,22 @@ interface CashStock {
   quoteRequestSequence?: number;
 }
 
+export interface CashStockLot {
+  lotId: string;
+  qty: number;
+  price: number;
+  /** Effective calendar date retained separately from the event timestamp. */
+  date: string;
+  acquiredAt: number;
+  /** Manual cash-holding additions currently have no buy-side commission. */
+  buyCommission: number;
+}
+
 export interface CashStockHolding {
   ticker: string;
   shares: number | string;
+  /** Stable app-recorded lots only; broker averages are never converted into synthetic lots. */
+  lots?: CashStockLot[];
   /** Weighted average entry price of the still-open cash-allocated purchase lots. */
   averagePrice?: number | null;
   price?: number | string;

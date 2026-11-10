@@ -722,6 +722,36 @@ describe('cash holdings average purchase price', () => {
     expect(result.cashStocks[0].averagePrice).toBeCloseTo(760 / 7, 8);
   });
 
+  it('preserves complete app-recorded cash acquisition lots over broker-derived average prices', () => {
+    const trades = [
+      { id: 'broker-buy-one', ticker: 'MSFT', side: 'BUY', quantity: 2, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'broker-buy-two', ticker: 'MSFT', side: 'BUY', quantity: 3, price: 120, executedAt: '2026-01-02T10:00:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'MSFT', quantity: 5, marketPrice: 130 }]
+    };
+    const appLots = [
+      { lotId: 'app-lot-one', qty: 2, price: 80, date: '2026-01-01', acquiredAt: Date.parse('2026-01-01T10:00:00Z'), buyCommission: 0 },
+      { lotId: 'app-lot-two', qty: 3, price: 90, date: '2026-01-02', acquiredAt: Date.parse('2026-01-02T10:00:00Z'), buyCommission: 0 }
+    ];
+
+    const result = classifyFreedomPortfolio(snapshot, {}, [{
+      ticker: 'MSFT',
+      shares: 5,
+      averagePrice: 110,
+      lots: appLots
+    }], {}, 123, trades);
+
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'MSFT',
+      shares: 5,
+      averagePrice: 86,
+      lots: appLots
+    });
+  });
+
   it('does not fabricate an average when an open cash lot has no purchase price', () => {
     const trades = [
       { id: 'buy-priced', ticker: 'MSFT', side: 'BUY', quantity: 2, price: 100, executedAt: '2026-01-01T10:00:00Z' },

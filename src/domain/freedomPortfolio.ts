@@ -655,13 +655,32 @@ export function classifyFreedomPortfolio(
     if (unsupportedTickers.has(tickerKey(holding.ticker))) return holding;
     const cost = cashCostByTicker.get(tickerKey(holding.ticker));
     const quantity = Number(holding.shares) || 0;
-    const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
+    const localLots = Array.isArray(holding.lots) ? holding.lots : [];
+    const validLocalLots = localLots.length > 0 && localLots.every((lot) =>
+      typeof lot?.lotId === 'string' && Boolean(lot.lotId.trim()) &&
+      Number.isFinite(lot.qty) && lot.qty > 0 &&
+      Number.isFinite(lot.price) && lot.price > 0 &&
+      typeof lot.date === 'string' && Boolean(lot.date.trim()) &&
+      Number.isFinite(lot.acquiredAt) && lot.acquiredAt > 0 &&
+      Number.isFinite(lot.buyCommission) && lot.buyCommission >= 0
+    );
+    const localLotQuantity = validLocalLots
+      ? localLots.reduce((sum, lot) => sum + lot.qty, 0)
+      : 0;
+    const hasCompleteLocalLots = validLocalLots && quantity > 0 &&
+      Math.abs(localLotQuantity - quantity) <= 1e-8;
+    const hasCompleteBrokerCostBasis = localLots.length === 0 && cost !== undefined && quantity > 0 &&
       Math.abs(cost.pricedQuantity - quantity) <= 1e-8;
     return {
       ...holding,
-      // Do not show a partial or fabricated average when any open cash shares
-      // are missing a purchase price.
-      averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
+      // Prefer explicit app-recorded lots. Broker-derived average prices remain
+      // a display fallback only when no app lots exist; they are never converted
+      // into synthetic lot identities or blended with a partial local ledger.
+      averagePrice: hasCompleteLocalLots
+        ? Number((localLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0) / quantity).toFixed(8))
+        : hasCompleteBrokerCostBasis
+          ? cost.totalCost / quantity
+          : null
     };
   });
   return { positions, cashStocks, ...(positionIntegrityIssues.length ? { positionIntegrityIssues } : {}) };

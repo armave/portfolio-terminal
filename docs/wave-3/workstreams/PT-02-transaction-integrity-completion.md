@@ -52,16 +52,20 @@ The current client store audit distinguishes app-owned financial commands from b
 |---|---|---|
 | Manual and AI-confirmed buys, partial/full margin sales | `PortfolioStore.buyStock` / `sellMarginPosition`; same FIFO, commission and settlement path | Atomic `trade.buy` / `trade.sell` event in the same snapshot; command fingerprint and caller idempotency key where supplied |
 | Manual cash/debt changes and rollover | `setCashBalance`, `setFreeCash`, `setMarginDebt`, `applyRollover` | Atomic cash, margin and interest events; rollover is timestamp-idempotent |
-| Cash-cushion holding add/sell/remove | `addCashHolding`, `sellCashHolding`, `removeCashStock` | Atomic holding events; remove/track-only paths do not invent sale proceeds or cost basis |
+| Cash-cushion holding add/sell/remove | `addCashHolding`, `sellCashHolding`, `removeCashStock` | Explicitly priced app additions create stable acquisition lots; sales use exact FIFO allocations and realized P&L only when app lots cover the full holding. Unpriced/broker-only quantities remain unmapped; removal remains a tracking correction without proceeds |
 | Tranche removal and closed-history cleanup | `removeTranche`, `deleteClosedTrade` | Explicit position/history correction evidence; cleanup does not reverse historical cash or realized P&L |
 | Broker executions and cashflows | Imported broker history normalized by `appendBrokerHistoryAuditEvents` | Stable provider references and source/actor attribution; evidence only, not posted again to canonical cash, debt or positions |
 | Imported cashflow categories | Dividend, deposit, withdrawal, transfer, fee/commission, margin interest and corporate-action/cash-in-lieu descriptions | Typed external-flow events retain signed source amount, currency and reference; no local cash delta, quantity, realized P&L or corporate-action basis adjustment is inferred |
-| Generic import, broker refresh/reclassification or legacy direct state edits | Validated `importState` / `setState` normalization and canonical parity check | Append observed position, cash-holding, free-cash and debt deltas as `portfolio.reconciliation`; never guess buy/sell, proceeds, fees or cost basis |
+| Generic import, broker refresh/reclassification or legacy direct state edits | Validated `importState` / `setState` normalization and canonical parity check | Append observed position, cash-holding, free-cash and debt deltas as `portfolio.reconciliation`; quantity-only cash changes remain incomplete in lot replay and never receive guessed buy/sell, proceeds, fees or cost basis |
 | Quotes, target prices, active desk, pending confirmation, API keys and account credentials | Derived/display or configuration paths | Intentionally outside financial transaction journal |
 
 The expanded regression fixtures assert broker cashflow classification for dividend, deposit, withdrawal, transfer, fee, margin interest and corporate action, and verify that those source facts do not double-post into canonical balances. Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash and margin debt.
 
 **Explicit limits:** broker corporate-action rows remain external evidence only. This implementation does not apply split ratios, merger consideration, spin-off cost-basis allocations, tax treatment or cash-in-lieu settlement to canonical holdings. Closed-trade removal is a history correction, not a reversal of the underlying position or cash transaction. No generic financial reversal command is claimed until its lot, cash, debt, fee and realized-P&L effects are specified and independently tested. Imported cashflows with unsupported or ambiguous descriptions remain generic `cash.adjustment` evidence rather than guessed classifications.
+
+## Cash-holding lot replay follow-on — 2026-11-11
+
+App-recorded cash-holding purchases with an explicit positive entry price now receive stable lot IDs and acquisition dates. Supported cash-holding sales consume those lots in FIFO order, persist exact allocation slices and realized P&L, and retain remaining lots in the canonical holding snapshot. Broker aggregates, unpriced adds, partial lot coverage, direct import/reconciliation deltas and remove-from-tracking commands remain incomplete rather than inventing acquisition history. The portfolio snapshot remains canonical; this is a shadow replay and parity extension, not a ledger cutover.
 
 ## Proposed reversible migration sequence — design only, no cutover approval
 

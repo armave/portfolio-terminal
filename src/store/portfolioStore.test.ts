@@ -10,6 +10,7 @@ import {
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 import { inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
@@ -2677,6 +2678,114 @@ describe('portfolio transaction journal integration', () => {
     expect(reloaded.sellCashHolding('NVDA', 2, 21, context)).toBeNull();
   });
 
+
+  it('weights app-recorded cash lots and realizes FIFO cost basis across partial sales', () => {
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0
+    });
+    const firstAt = Date.parse('2026-11-01T09:00:00.000Z');
+    const secondAt = Date.parse('2026-11-02T09:00:00.000Z');
+    expect(store.addCashHolding('NVDA', 2, 100, {
+      eventId: 'cash-buy-one',
+      effectiveAt: firstAt
+    })).not.toBeNull();
+    expect(store.addCashHolding('NVDA', 3, 120, {
+      eventId: 'cash-buy-two',
+      effectiveAt: secondAt
+    })).not.toBeNull();
+    expect(store.getState().cashCushion.holdings[0]).toMatchObject({
+      ticker: 'NVDA',
+      shares: 5,
+      averagePrice: 112,
+      lots: [
+        { lotId: 'cash-lot-cash-buy-one', qty: 2, price: 100, buyCommission: 0 },
+        { lotId: 'cash-lot-cash-buy-two', qty: 3, price: 120, buyCommission: 0 }
+      ]
+    });
+
+    const result = store.sellCashHolding('NVDA', 3, 130, {
+      eventId: 'cash-sale-partial',
+      effectiveAt: Date.parse('2026-11-03T09:00:00.000Z')
+    });
+    expect(result).toMatchObject({ sharesSold: 3, remainingShares: 2, netProceeds: 390 });
+    const sale = store.getState().transactionEvents?.find((event) => event.id === 'cash-sale-partial');
+    expect(sale).toMatchObject({
+      type: 'cash-holding.sell',
+      quantity: 3,
+      cashHoldingQuantityDelta: -3,
+      realizedPnl: 70,
+      lotAllocations: [
+        expect.objectContaining({ lotId: 'cash-lot-cash-buy-one', quantity: 2, acquisitionPrice: 100, realizedPnl: 60 }),
+        expect.objectContaining({ lotId: 'cash-lot-cash-buy-two', quantity: 1, acquisitionPrice: 120, realizedPnl: 10 })
+      ]
+    });
+
+    const holding = store.getState().cashCushion.holdings[0];
+    expect(holding).toMatchObject({
+      ticker: 'NVDA',
+      shares: 2,
+      averagePrice: 120,
+      lots: [{ lotId: 'cash-lot-cash-buy-two', qty: 2, price: 120 }]
+    });
+    const events = store.getState().transactionEvents || [];
+    const replay = replayPortfolioTransactionLots(events);
+    expect(replay.status).toBe('complete');
+    expect(replay.cashHoldingOpenLots).toMatchObject([{ lotId: 'cash-lot-cash-buy-two', openQuantity: 2 }]);
+    expect(replay.cashHoldingSales).toMatchObject([{ eventId: 'cash-sale-partial', soldCostBasis: 320, realizedPnl: 70 }]);
+    expect(verifyPortfolioTransactionLotParity(events, { cashHoldings: [holding] }))
+      .toMatchObject({ status: 'complete', matches: true, discrepancies: [], issues: [] });
+
+    const restored = new PortfolioStore().getState();
+    expect(restored.cashCushion.holdings[0]).toMatchObject({
+      shares: 2,
+      averagePrice: 120,
+      lots: [{ lotId: 'cash-lot-cash-buy-two', qty: 2 }]
+    });
+  });
+
+  it('does not treat a broker average price as app-owned lot cost basis when selling a legacy holding', () => {
+    const store = new PortfolioStore();
+    expect(store.importState({
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{ ticker: 'NVDA', shares: 3, price: 20, currentPrice: 20, averagePrice: 15 }]
+      }
+    })).toBe(true);
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0,
+      commissionRatePct: 0,
+      minCommOrder: 0,
+      commissionMin: 0
+    });
+
+    const result = store.sellCashHolding('NVDA', 1, 20);
+    expect(result).toMatchObject({ sharesSold: 1, remainingShares: 2, netProceeds: 20 });
+    const sale = store.getState().transactionEvents?.find((event) => event.type === 'cash-holding.sell');
+    expect(sale?.lotAllocations).toBeUndefined();
+    expect(sale?.realizedPnl).toBeUndefined();
+    expect(sale?.note).toContain('cost basis and realized P&L remain unavailable');
+    expect(store.getState().cashCushion.holdings[0]).toMatchObject({
+      ticker: 'NVDA',
+      shares: 2,
+      averagePrice: null
+    });
+
+    const replay = replayPortfolioTransactionLots(store.getState().transactionEvents || []);
+    expect(replay.status).toBe('incomplete');
+    expect(replay.cashHoldingOpenLots).toEqual([]);
+    expect(replay.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: expect.stringContaining('Cash-holding quantity changed without an exact') }),
+      expect.objectContaining({ reason: expect.stringContaining('Sale event has no exact FIFO lot allocations') })
+    ]));
+  });
 
   it('deduplicates a confirmed cash-holding removal after the holding is gone', () => {
     const store = new PortfolioStore();

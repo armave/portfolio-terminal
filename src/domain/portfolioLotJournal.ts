@@ -1,4 +1,4 @@
-import type { ClosedTrade, PositionRecord, TrancheItem } from '../types/portfolio';
+import type { CashStockHolding, ClosedTrade, PositionRecord, TrancheItem } from '../types/portfolio';
 import type {
   PortfolioTransactionEvent,
   PortfolioTransactionLotAllocation
@@ -48,6 +48,8 @@ export interface PortfolioLotJournalReplay {
   status: 'complete' | 'incomplete' | 'unsupported';
   openLots: PortfolioLotReplayOpenLot[];
   sales: PortfolioLotReplaySale[];
+  cashHoldingOpenLots: PortfolioLotReplayOpenLot[];
+  cashHoldingSales: PortfolioLotReplaySale[];
   issues: PortfolioLotJournalIssue[];
 }
 
@@ -58,6 +60,11 @@ interface PortfolioLotParityDiscrepancy {
     | 'open-lot-cost'
     | 'open-lot-acquisition-date'
     | 'open-lot-buy-commission'
+    | 'cash-holding-lot-missing'
+    | 'cash-holding-lot-quantity'
+    | 'cash-holding-lot-cost'
+    | 'cash-holding-lot-acquisition-date'
+    | 'cash-holding-lot-buy-commission'
     | 'position-lot-quantity'
     | 'position-buy-commission'
     | 'closed-trade-missing'
@@ -108,9 +115,9 @@ function summarizeStatus(issues: readonly PortfolioLotJournalIssue[]): Portfolio
 }
 
 /**
- * Rebuild the stable acquisition lots and FIFO sale slices from immutable
- * trade events. Legacy tranches without an ID, old sales without allocations,
- * resets and direct quantity corrections are never assigned guessed history.
+ * Rebuild stable margin-position and cash-holding acquisition lots and FIFO
+ * sale slices from immutable events. Legacy holdings without app-owned lot
+ * history, resets and direct quantity corrections are never assigned guesses.
  *
  * This is a read-only shadow projection. PortfolioState.positions remains the
  * canonical state and this projection never writes back to the store.
@@ -123,7 +130,9 @@ export function replayPortfolioTransactionLots(
   }
 
   const lots = new Map<string, PortfolioLotReplayOpenLot>();
+  const cashLots = new Map<string, PortfolioLotReplayOpenLot>();
   const sales: PortfolioLotReplaySale[] = [];
+  const cashHoldingSales: PortfolioLotReplaySale[] = [];
   const issues: PortfolioLotJournalIssue[] = [];
   const addIssue = (
     event: PortfolioTransactionEvent | undefined,
@@ -134,30 +143,35 @@ export function replayPortfolioTransactionLots(
   for (const event of events) {
     if (event.type === 'portfolio.reset') {
       lots.clear();
+      cashLots.clear();
       sales.length = 0;
+      cashHoldingSales.length = 0;
       continue;
     }
 
-    if (event.type === 'cash-holding.buy' ||
-      event.type === 'cash-holding.sell' ||
-      event.type === 'cash-holding.adjustment') {
-      addIssue(event, 'incomplete', 'Cash-holding transactions do not yet contain acquisition-lot cost-basis allocations; cash-holding lot replay is not supported.');
+    if (event.type === 'cash-holding.adjustment') {
+      addIssue(event, 'incomplete', 'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics; removed cost basis is not treated as a sale.');
       continue;
     }
 
-    if (event.type === 'trade.buy') {
+    if (event.type === 'trade.buy' || event.type === 'cash-holding.buy') {
+      const isCashHolding = event.type === 'cash-holding.buy';
+      const targetLots = isCashHolding ? cashLots : lots;
       const ticker = cleanTicker(event.ticker);
       const quantity = optionalNumber(event.quantity);
       const price = optionalNumber(event.unitPrice);
-      if (!event.lotId || !ticker || quantity === null || quantity <= 0 || price === null || price <= 0) {
-        addIssue(event, 'incomplete', 'Buy event does not contain a stable lot ID, ticker, positive quantity and acquisition price.');
+      const quantityDelta = isCashHolding ? event.cashHoldingQuantityDelta : event.positionQuantityDelta;
+      const acquisitionDate = event.acquisitionDate?.trim() || null;
+      if (!event.lotId || !ticker || quantity === null || quantity <= 0 || price === null || price <= 0 ||
+        quantityDelta === undefined || !closeEnough(quantityDelta, quantity, DEFAULT_TOLERANCE) ||
+        (isCashHolding && !acquisitionDate)) {
+        addIssue(event, 'incomplete', 'Buy event does not contain a stable lot ID, ticker, exact acquisition date, positive quantity, acquisition price and matching quantity delta.');
         continue;
       }
-      if (lots.has(event.lotId)) {
+      if (targetLots.has(event.lotId) || (isCashHolding ? lots.has(event.lotId) : cashLots.has(event.lotId))) {
         addIssue(event, 'unsupported', 'A stable acquisition lot ID is reused by more than one buy event.');
         continue;
       }
-      const acquisitionDate = event.acquisitionDate?.trim() || null;
       if (!acquisitionDate) {
         addIssue(event, 'incomplete', 'Buy event predates exact acquisition-date capture; source date was not inferred from the event timestamp.');
       }
@@ -165,7 +179,7 @@ export function replayPortfolioTransactionLots(
       if (commission === null || commission < 0) {
         addIssue(event, 'incomplete', 'Buy event does not contain a verifiable non-negative commission amount.');
       }
-      lots.set(event.lotId, {
+      targetLots.set(event.lotId, {
         lotId: event.lotId,
         ticker,
         buyEventId: event.id,
@@ -184,7 +198,10 @@ export function replayPortfolioTransactionLots(
       continue;
     }
 
-    if (event.type === 'trade.sell') {
+    if (event.type === 'trade.sell' || event.type === 'cash-holding.sell') {
+      const isCashHolding = event.type === 'cash-holding.sell';
+      const targetLots = isCashHolding ? cashLots : lots;
+      const saleCollection = isCashHolding ? cashHoldingSales : sales;
       if (!event.lotAllocations?.length) {
         addIssue(event, 'incomplete', 'Sale event has no exact FIFO lot allocations; no acquisition lot was inferred.');
         continue;
@@ -198,7 +215,7 @@ export function replayPortfolioTransactionLots(
 
       let validStableAllocations = stableAllocations.length > 0;
       for (const allocation of stableAllocations) {
-        const lot = allocation.lotId ? lots.get(allocation.lotId) : undefined;
+        const lot = allocation.lotId ? targetLots.get(allocation.lotId) : undefined;
         if (!lot) {
           addIssue(event, 'incomplete', 'Sale references a stable lot ID that is absent from the available buy-event history.');
           validStableAllocations = false;
@@ -224,7 +241,7 @@ export function replayPortfolioTransactionLots(
       // FIFO ordering is a domain invariant: a sale cannot skip an older open
       // lot or move to the next lot before exhausting the current one.
       if (validStableAllocations) {
-        const fifoLots = [...lots.values()].filter((lot) =>
+        const fifoLots = [...targetLots.values()].filter((lot) =>
           lot.ticker === ticker && lot.openQuantity > DEFAULT_TOLERANCE
         );
         let fifoIndex = 0;
@@ -244,7 +261,7 @@ export function replayPortfolioTransactionLots(
       if (!validStableAllocations) continue;
 
       for (const allocation of stableAllocations) {
-        const lot = lots.get(allocation.lotId!)!;
+        const lot = targetLots.get(allocation.lotId!)!;
         lot.openQuantity = Math.max(0, lot.openQuantity - allocation.quantity);
         if (lot.openQuantity <= DEFAULT_TOLERANCE) lot.openQuantity = 0;
         if (lot.openBuyCommission !== null) {
@@ -280,7 +297,7 @@ export function replayPortfolioTransactionLots(
         addIssue(event, 'unsupported', 'Stable lot sale allocations do not agree with the sale event price and gross proceeds.');
         continue;
       }
-      sales.push({
+      saleCollection.push({
         eventId: event.id,
         ticker,
         quantity,
@@ -303,25 +320,32 @@ export function replayPortfolioTransactionLots(
       event.positionQuantityDelta !== undefined &&
       Math.abs(event.positionQuantityDelta) > DEFAULT_TOLERANCE) {
       addIssue(event, 'incomplete', 'Position quantity changed without an exact acquisition-lot adjustment; lot identity was not inferred.');
+    } else if ((event.type === 'portfolio.reconciliation' || event.type === 'corporate-action') &&
+      event.cashHoldingQuantityDelta !== undefined &&
+      Math.abs(event.cashHoldingQuantityDelta) > DEFAULT_TOLERANCE) {
+      addIssue(event, 'incomplete', 'Cash-holding quantity changed without exact acquisition-lot or disposal allocations; cost basis was not inferred.');
     } else if (event.type === 'correction' &&
-      event.positionQuantityDelta !== undefined &&
-      Math.abs(event.positionQuantityDelta) > DEFAULT_TOLERANCE) {
-      addIssue(event, 'unsupported', 'Trade or lot quantity corrections are not supported by the current reversal contract.');
+      ((event.positionQuantityDelta !== undefined && Math.abs(event.positionQuantityDelta) > DEFAULT_TOLERANCE) ||
+        (event.cashHoldingQuantityDelta !== undefined && Math.abs(event.cashHoldingQuantityDelta) > DEFAULT_TOLERANCE))) {
+      addIssue(event, 'unsupported', 'Trade or cash-holding lot quantity corrections are not supported by the current reversal contract.');
     } else if (event.type === 'history.correction') {
       addIssue(event, 'incomplete', 'Closed-history correction has no linked lot-level correction projection.');
     }
   }
 
   const openLots = [...lots.values()].filter((lot) => lot.openQuantity > DEFAULT_TOLERANCE);
-  const detachedLots = openLots.map((lot) => Object.freeze({ ...lot }));
-  const detachedSales = sales.map((sale) => Object.freeze({
+  const cashHoldingOpenLots = [...cashLots.values()].filter((lot) => lot.openQuantity > DEFAULT_TOLERANCE);
+  const detachLots = (items: PortfolioLotReplayOpenLot[]) => items.map((lot) => Object.freeze({ ...lot }));
+  const detachSales = (items: PortfolioLotReplaySale[]) => items.map((sale) => Object.freeze({
     ...sale,
     allocations: Object.freeze(sale.allocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[]
   }));
   return {
     status: summarizeStatus(issues),
-    openLots: detachedLots,
-    sales: detachedSales,
+    openLots: detachLots(openLots),
+    sales: detachSales(sales),
+    cashHoldingOpenLots: detachLots(cashHoldingOpenLots),
+    cashHoldingSales: detachSales(cashHoldingSales),
     issues
   };
 }
@@ -355,6 +379,7 @@ export function verifyPortfolioTransactionLotParity(
   canonical: {
     positions?: Record<string, Pick<PositionRecord, 'shares' | 'commBuy' | 'tranches'>>;
     closedTrades?: readonly ClosedTrade[];
+    cashHoldings?: readonly Pick<CashStockHolding, 'ticker' | 'shares' | 'lots'>[];
   },
   tolerance = DEFAULT_TOLERANCE
 ): PortfolioLotParityResult {
@@ -438,6 +463,81 @@ export function verifyPortfolioTransactionLotParity(
   for (const [lotId, canonicalLot] of canonicalById) {
     if (!replayById.has(lotId)) {
       discrepancies.push({ field: 'open-lot-missing', identity: lotId, replayed: 0, canonical: Number(canonicalLot.tranche.qty) || 0 });
+    }
+  }
+
+  const replayCashLots = new Map(replay.cashHoldingOpenLots.map((lot) => [lot.lotId, lot]));
+  const canonicalCashLots = new Map<string, { ticker: string; lot: NonNullable<CashStockHolding['lots']>[number] }>();
+  for (const holding of canonical.cashHoldings || []) {
+    const ticker = cleanTicker(holding.ticker);
+    const holdingShares = optionalNumber(holding.shares);
+    if (holdingShares === null || holdingShares <= tolerance) continue;
+    const rawLots = Array.isArray(holding.lots) ? holding.lots : [];
+    if (!rawLots.length) {
+      issues.push({
+        disposition: 'incomplete',
+        reason: `Canonical cash holding ${ticker} has no app-recorded acquisition lots; broker average prices were not converted into synthetic lots.`
+      });
+      continue;
+    }
+    let lotQuantity = 0;
+    for (const lot of rawLots) {
+      if (!lot || typeof lot !== 'object' || typeof lot.lotId !== 'string' || !lot.lotId.trim() ||
+        !Number.isFinite(lot.qty) || lot.qty <= 0 ||
+        !Number.isFinite(lot.price) || lot.price <= 0 ||
+        typeof lot.date !== 'string' || !lot.date.trim() ||
+        !Number.isFinite(lot.acquiredAt) || lot.acquiredAt <= 0 ||
+        !Number.isFinite(lot.buyCommission) || lot.buyCommission < 0) {
+        issues.push({ disposition: 'incomplete', reason: `Canonical cash holding ${ticker} contains an invalid or incomplete acquisition lot.` });
+        continue;
+      }
+      lotQuantity += lot.qty;
+      if (canonicalCashLots.has(lot.lotId) || canonicalById.has(lot.lotId)) {
+        issues.push({ disposition: 'unsupported', reason: `Canonical portfolio reuses acquisition lot ID ${lot.lotId}.` });
+        continue;
+      }
+      canonicalCashLots.set(lot.lotId, { ticker, lot });
+    }
+    if (Math.abs(lotQuantity - holdingShares) > tolerance) {
+      issues.push({
+        disposition: 'incomplete',
+        reason: `Canonical cash holding ${ticker} has ${holdingShares} shares but only ${lotQuantity} shares with app-recorded cost basis; remaining quantity is unmapped.`
+      });
+    }
+  }
+
+  for (const [lotId, replayedLot] of replayCashLots) {
+    const canonicalLot = canonicalCashLots.get(lotId);
+    if (!canonicalLot) {
+      discrepancies.push({ field: 'cash-holding-lot-missing', identity: lotId, replayed: replayedLot.openQuantity, canonical: 0 });
+      continue;
+    }
+    if (canonicalLot.ticker !== replayedLot.ticker) {
+      discrepancies.push({ field: 'cash-holding-lot-cost', identity: lotId, replayed: replayedLot.ticker, canonical: canonicalLot.ticker });
+      continue;
+    }
+    addDiscrepancy(discrepancies, 'cash-holding-lot-quantity', lotId, replayedLot.openQuantity, canonicalLot.lot.qty, tolerance);
+    addDiscrepancy(discrepancies, 'cash-holding-lot-cost', lotId, replayedLot.acquisitionPrice, canonicalLot.lot.price, tolerance);
+    if (replayedLot.acquisitionDate !== canonicalLot.lot.date) {
+      discrepancies.push({
+        field: 'cash-holding-lot-acquisition-date',
+        identity: lotId,
+        replayed: replayedLot.acquisitionDate || 'unknown',
+        canonical: canonicalLot.lot.date
+      });
+    }
+    addDiscrepancy(
+      discrepancies,
+      'cash-holding-lot-buy-commission',
+      lotId,
+      replayedLot.openBuyCommission ?? 'unknown',
+      canonicalLot.lot.buyCommission,
+      tolerance
+    );
+  }
+  for (const [lotId, canonicalLot] of canonicalCashLots) {
+    if (!replayCashLots.has(lotId)) {
+      discrepancies.push({ field: 'cash-holding-lot-missing', identity: lotId, replayed: 0, canonical: canonicalLot.lot.qty });
     }
   }
 
