@@ -2237,7 +2237,7 @@ table tbody tr:hover {
 
 
 
-/* Dialog entrance and exit motion is owned by the shared ModalFrame. */
+/* Scenario comparison modal: transitions are owned by the shared ModalFrame. */
 
 
 
