@@ -68,8 +68,8 @@ describe('exit comparison preferences', () => {
     expect(getExitDayOffset('2026-11-10', '2026-11-10')).toBe(0);
     expect(getExitDayOffset('2026-11-24', '2026-11-10')).toBe(14);
     expect(getExitDayOffset('2026-11-09', '2026-11-10')).toBeNull();
-    expect(getExitDayOffset('2036-11-10', '2026-11-10')).toBe(3653);
-    expect(getExitDayOffset('2036-11-11', '2026-11-10')).toBeNull();
+    expect(getExitDayOffset(addCalendarDays('2026-11-10', 3650), '2026-11-10')).toBe(3650);
+    expect(getExitDayOffset('2036-11-10', '2026-11-10')).toBeNull();
     expect(addCalendarDays('2026-12-31', 1)).toBe('2027-01-01');
     expect(toLocalIsoDate(new Date(2026, 10, 10, 12))).toBe('2026-11-10');
   });
