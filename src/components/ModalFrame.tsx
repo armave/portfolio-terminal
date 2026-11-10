@@ -103,7 +103,7 @@ export function ModalFrame({
       id={backdropId}
       class={backdropClassName}
       style={{
-        ...(backdropStyle || {}),
+        ...(typeof backdropStyle === 'object' && backdropStyle !== null ? backdropStyle : {}),
         opacity: isVisible ? 1 : 0,
         transition
       }}
@@ -118,7 +118,7 @@ export function ModalFrame({
         id={dialogId}
         class={dialogClassName}
         style={{
-          ...(dialogStyle || {}),
+          ...(typeof dialogStyle === 'object' && dialogStyle !== null ? dialogStyle : {}),
           opacity: isVisible ? 1 : 0,
           transform: isVisible ? 'translate3d(0, 0, 0) scale(1)' : 'translate3d(0, 10px, 0) scale(0.985)',
           transition: dialogTransition
