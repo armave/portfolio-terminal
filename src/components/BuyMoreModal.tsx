@@ -68,11 +68,11 @@ function rowLabel(label: string, language: 'en' | 'ru'): string {
   return label.replace(/TODAY/g, translateText('TODAY', language));
 }
 export function formatBuyMoreTableAmount(value: string, language: 'en' | 'ru'): string {
-  const separator = language === 'ru' ? '\\u202f' : ',';
+  const separator = language === 'ru' ? '\u202f' : ',';
   return value.replace(
-    /(^|[^\\w.,/])([+\\-−]?\\$?)(\\d{4,})(\\.\\d+)?(?=$|[^\\w/.-])/g,
+    /(^|[^\w.,/])([+\-−]?\$?)(\d{4,})(\.\d+)?(?=$|[^\w/.-])/g,
     (_match, boundary: string, signAndCurrency: string, integer: string, fraction = '') =>
-      boundary + signAndCurrency + integer.replace(/\\B(?=(\\d{3})+(?!\\d))/g, separator) + fraction
+      boundary + signAndCurrency + integer.replace(/\B(?=(\d{3})+(?!\d))/g, separator) + fraction
   );
 }
 function valueTone(value: string): string {
