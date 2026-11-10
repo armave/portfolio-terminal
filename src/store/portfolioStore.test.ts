@@ -2782,7 +2782,7 @@ describe('portfolio transaction journal integration', () => {
     expect(replay.status).toBe('incomplete');
     expect(replay.cashHoldingOpenLots).toEqual([]);
     expect(replay.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ reason: expect.stringContaining('Cash-holding quantity changed without an exact') }),
+      expect.objectContaining({ reason: expect.stringContaining('Cash-holding quantity changed without exact') }),
       expect.objectContaining({ reason: expect.stringContaining('Sale event has no exact FIFO lot allocations') })
     ]));
   });
@@ -2885,7 +2885,7 @@ describe('portfolio transaction journal integration', () => {
     });
     expect(event?.unitPrice).toBeUndefined();
     expect(event?.grossAmount).toBeUndefined();
-    expect(event?.note).toContain('no execution price');
+    expect(event?.note).toContain('without an execution price');
   });
 
 
