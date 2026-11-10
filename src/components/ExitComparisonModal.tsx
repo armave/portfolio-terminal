@@ -21,7 +21,7 @@ interface ExitComparisonModalProps {
   onClose: () => void;
 }
 
-const PERIOD_PRESETS = [0, 7, 14, 30, 60, 90];
+const PERIOD_PRESETS = [0, 7, 14, 30, 60, 90, 180];
 
 interface ExitPositionReference {
   currentPrice?: number;
