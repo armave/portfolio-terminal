@@ -71,7 +71,7 @@ describe('app localization', () => {
 
   it('localizes the Market Tools two-period exit comparison experience', () => {
     const exitComparisonCopy = [
-      'In {days} days', 'Choose a valid date', 'Period A', 'Period B', 'BEST RESULT',
+      'In {days} days', 'In {duration}', 'Choose a valid date', 'Period A', 'Period B', 'BEST RESULT',
       'Exit date', 'Expected exit price',
       'Use the latest available quote, or average entry if no quote is available',
       'Use reference', 'Exit date presets', 'shares', 'Reference price unavailable',
