@@ -462,13 +462,10 @@ describe('app localization', () => {
     expect(translateText('Known net P&L', 'ru')).toBe('Чистая прибыль/убыток по известным сделкам');
   });
 
-  it('localizes dynamic position-review and scenario-report labels', () => {
+  it('localizes dynamic margin position-review labels', () => {
     expect(translateText('AAPL · Position Review', 'ru')).toBe('AAPL · Анализ маржинальной позиции');
     expect(translateText('No active margin position was found for NVDA. Select an active margin ticker and try again.', 'ru'))
       .toBe('Не найдена активная маржинальная позиция NVDA. Выберите активный маржинальный тикер и повторите попытку.');
-    expect(translateText('HYPOTHETICAL BUY: NVDA', 'ru')).toBe('ПОКУПКА В СЦЕНАРИИ: NVDA');
-    expect(translateText('MULTI-DATE EXIT COMPARISON: TSLA', 'ru'))
-      .toBe('СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ: TSLA');
   });
 
   it('localizes active-order refresh warnings', () => {
@@ -553,7 +550,7 @@ describe('app localization', () => {
       .toBe('[Баланс]: AAPL удалён из активов баланса.');
   });
 
-  it('localizes broker errors and scenario-independent price updates', () => {
+  it('localizes broker and portfolio status messages', () => {
     expect(translateText('[Market Data Error]: Could not fetch AAPL. Timeout. Retained tracked price: $180.00. Set manually via: price AAPL <number>.', 'ru'))
       .toBe('[Ошибка рыночных данных]: Не удалось получить котировку AAPL. Timeout. Сохранена отслеживаемая цена: $180.00. Установить вручную: price AAPL <number>.');
     expect(translateText('[Target Updated]: AAPL PT updated to $210.00.', 'ru'))
@@ -562,11 +559,9 @@ describe('app localization', () => {
       .toBe('[Цена обновлена]: Рыночная цена MSFT установлена на $420.00.');
     expect(translateText('[Margin Synced]: Total margin balance explicitly set to -$1,500.00.', 'ru'))
       .toBe('[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -$1,500.00.');
-    expect(translateText('[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.', 'ru'))
-      .toBe('[Команда]: Неизвестная команда. Введите "help" для локальных команд или добавьте префикс "ask ..." для обращения к ИИ-советнику.');
   });
 
-  it('localizes multiline scenario reports and their dynamic labels', () => {
+  it('localizes retained Market Tools calculation summaries', () => {
     expect(translateText('[EXIT COMPARISON: AAPL]', 'ru'))
       .toBe('[СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА: AAPL]');
     expect(translateText('[BUY MORE: MSFT]', 'ru')).toBe('[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: MSFT]');
@@ -583,17 +578,6 @@ describe('app localization', () => {
     expect(translateText('Total Fee Friction', 'ru')).toBe('Общие комиссии и расходы');
     expect(translateText('Estimate only · no portfolio changes.', 'ru'))
       .toBe('Только оценка · портфель не изменяется.');
-  });
-
-  it('localizes command help examples and simulation output', () => {
-    expect(translateText('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200', 'ru'))
-      .toBe('Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200');
-    expect(translateText('Select a ticker tab or specify a ticker (e.g., "sell AAPL today for $180 vs sell 14 days later for $185").', 'ru'))
-      .toBe('Выберите вкладку тикера или укажите тикер (например, "sell AAPL today for $180 vs sell 14 days later for $185").');
-    expect(translateText('• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)', 'ru'))
-      .toBe('• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)');
-    expect(translateText('[Sim AAPL @ $205.00 in 14d]: Gross $200.00 | Comms -$4.00 | Margin -$3.00 → Net P&L: +$193.00', 'ru'))
-      .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
   it('localizes Guest LOTS mixed status and valuation explanation', () => {
