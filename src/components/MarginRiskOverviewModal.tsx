@@ -3,13 +3,14 @@ import { useRef } from 'preact/hooks';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
+import type { AppLanguage } from '../services/i18n';
 import type { MarginRiskSnapshot } from '../domain/marginRisk';
 
 function formatPercentage(value: number): string {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—';
 }
 
-function formatMoney(value: number | null, currency: string, language: string): string {
+function formatMoney(value: number | null, currency: string, language: AppLanguage): string {
   if (value === null || !Number.isFinite(value)) return translateText('Not reported', language);
   const locale = language === 'ru' ? 'ru-RU' : 'en-US';
   try {
@@ -23,7 +24,7 @@ function formatMoney(value: number | null, currency: string, language: string): 
   }
 }
 
-function sourceLabel(source: 'broker' | 'configured-assumption' | 'unknown' | 'unavailable', language: string): string {
+function sourceLabel(source: 'broker' | 'configured-assumption' | 'unknown' | 'unavailable', language: AppLanguage): string {
   const label = source === 'broker'
     ? 'Broker reported'
     : source === 'configured-assumption'
@@ -38,13 +39,13 @@ function sourcedMoneyText(
   amount: number | null,
   source: 'broker' | 'configured-assumption' | 'unknown' | 'unavailable',
   currency: string,
-  language: string
+  language: AppLanguage
 ): string {
   if (amount === null) return translateText('Not reported', language);
   return `${formatMoney(amount, currency, language)} · ${sourceLabel(source, language)}`;
 }
 
-function observedAtText(timestamp: number | null, language: string): string {
+function observedAtText(timestamp: number | null, language: AppLanguage): string {
   if (timestamp === null) return translateText('Not reported', language);
   return new Intl.DateTimeFormat(language === 'ru' ? 'ru-RU' : 'en-US', {
     dateStyle: 'medium',
