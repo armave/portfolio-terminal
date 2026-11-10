@@ -322,7 +322,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
     ariaLabelledBy="marketDepthTitle"
     onBackdropClick={onClose}
   >
-      <header      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-950 to-rose-950/30 px-4 py-3 sm:px-5">
+      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-950 to-rose-950/30 px-4 py-3 sm:px-5">
         <div>
           <div class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-emerald-300">{depthText('TradeNet · Order Book')}</div>
           <h2 id="marketDepthTitle" class="mt-1 text-xl font-black tracking-tight text-white">{ticker.trim().toUpperCase()} {depthText('Market Depth')}</h2>
