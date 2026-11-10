@@ -6,6 +6,22 @@ function readSource(path: string): string {
 }
 
 describe('shared modal frame', () => {
+  it('owns the common opening and closing animation lifecycle', () => {
+    const frame = readSource('./ModalFrame.tsx');
+
+    expect(frame).toContain("type ModalPhase = 'opening' | 'open' | 'closing'");
+    expect(frame).toContain('MODAL_TRANSITION_MS = 200');
+    expect(frame).toContain('view.requestAnimationFrame');
+    expect(frame).toContain('window.setTimeout');
+    expect(frame).toContain('prefers-reduced-motion: reduce');
+    expect(frame).toContain('data-modal-state={phase}');
+    expect(frame).toContain('translate3d(0, 10px, 0) scale(0.985)');
+    expect(frame).toContain('transition: dialogTransition');
+    expect(frame).toContain('closeRef.current = requestClose');
+    expect(frame).toContain('onCloseRef.current()');
+    expect(frame).toContain("phaseRef.current === 'closing'");
+  });
+
   it('owns accessible dialog semantics and only dismisses when the backdrop itself is clicked', () => {
     const frame = readSource('./ModalFrame.tsx');
 
@@ -15,10 +31,35 @@ describe('shared modal frame', () => {
     expect(frame).toContain('aria-labelledby={ariaLabelledBy}');
     expect(frame).toContain('tabIndex={-1}');
     expect(frame).toContain('event.target === event.currentTarget');
-    expect(frame).toContain('onBackdropClick()');
+    expect(frame).toContain('requestClose();');
   });
 
-  it('is reused by every backdrop-based modal while keeping focus and content in their owning modules', () => {
+  it('routes all migrated modal close controls through the shared frame lifecycle', () => {
+    const modalPaths = [
+      './ScenarioComparisonModal.tsx',
+      './ScenarioReportModal.tsx',
+      './ExitComparisonModal.tsx',
+      './MarginIntelligenceModal.tsx',
+      './MarketDepthModal.tsx',
+      './MarginRiskOverviewModal.tsx'
+    ];
+
+    for (const path of modalPaths) {
+      const source = readSource(path);
+      expect(source, path).toContain('<ModalFrame');
+      expect(source, path).toContain('closeRef={closeRef}');
+      expect(source, path).toContain('onClose={onClose}');
+      expect(source, path).toContain('closeRef.current?.()');
+      expect(source, path).not.toContain('scheduleDialogClose');
+    }
+
+    const news = readSource('./MarketInsightsPanel.tsx');
+    expect(news).toContain('closeRef={newsCloseRef}');
+    expect(news).toContain('onClose={dismissNewsDialog}');
+    expect(news).toContain('newsCloseRef.current?.()');
+  });
+
+  it('keeps focus management and content in their owning modules', () => {
     const modalPaths = [
       './ScenarioComparisonModal.tsx',
       './ScenarioReportModal.tsx',
@@ -51,16 +92,17 @@ describe('shared modal frame', () => {
     }
   });
 
-  it('preserves caller-owned transitions and custom dialog styling', () => {
+  it('preserves caller-owned backgrounds and custom dialog styling while the frame animates', () => {
     const comparison = readSource('./ScenarioComparisonModal.tsx');
     const report = readSource('./ScenarioReportModal.tsx');
     const exit = readSource('./ExitComparisonModal.tsx');
+    const frame = readSource('./ModalFrame.tsx');
 
     expect(comparison).toContain('backdropStyle=');
     expect(comparison).toContain('dialogStyle=');
-    expect(comparison).toContain('scenario-modal-closing');
-    expect(report).toContain('transition-[opacity,transform]');
-    expect(exit).toContain('motion-reduce:transition-none');
-    expect(exit).toContain('isClosing || !isOpen');
+    expect(report).toContain('scenario-modal-dialog');
+    expect(exit).toContain('exit-comparison-dialog');
+    expect(frame).toContain('...(backdropStyle || {})');
+    expect(frame).toContain('...(dialogStyle || {})');
   });
 });
