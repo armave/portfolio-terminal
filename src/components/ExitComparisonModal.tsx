@@ -92,9 +92,9 @@ function formatResultColumn(
     return translatePeriodName(days, language) + ' · ' + formatUSD(prices[index]);
   }
   return column
-    .replace(/\s·\\sBEST$/, '')
-    .replace(/^Today(?=\\s·)/, translateText('Today', language))
-    .replace(/^(\\d+) Days(?=\\s·)/, (_match, value: string) => translatePeriodName(Number(value), language));
+    .replace(/\s·\sBEST$/, '')
+    .replace(/^Today(?=\s·)/, translateText('Today', language))
+    .replace(/^(\d+) Days(?=\s·)/, (_match, value: string) => translatePeriodName(Number(value), language));
 }
 
 function resultsMatch(left: ExitComparisonSavedResult | null, right: ExitComparisonSavedResult): boolean {
