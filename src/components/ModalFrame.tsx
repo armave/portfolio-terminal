@@ -3,10 +3,10 @@ import type { ComponentChildren, JSX } from 'preact';
 export interface ModalFrameProps {
   backdropId?: string;
   backdropClassName: string;
-  backdropStyle?: JSX.HTMLAttributes<HTMLDivElement>['style'];
+  backdropStyle?: JSX.IntrinsicElements['div']['style'];
   dialogId?: string;
   dialogClassName: string;
-  dialogStyle?: JSX.HTMLAttributes<HTMLElement>['style'];
+  dialogStyle?: JSX.IntrinsicElements['section']['style'];
   dialogRef?: { current: HTMLElement | null };
   ariaLabelledBy: string;
   onBackdropClick?: () => void;
