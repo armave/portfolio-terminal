@@ -482,7 +482,7 @@ describe('terminal command validation and cash routing', () => {
 
     expect(result.type).toBe('err');
     expect(result.modal).toBeUndefined();
-    expect(result.text).toContain('would exceed your margin limits');
+    expect(result.text).toContain('this purchase would leave projected account equity');
     expect(result.text).toContain('maintenance limit');
   });
 
