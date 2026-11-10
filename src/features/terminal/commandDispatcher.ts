@@ -7,6 +7,10 @@ import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
 import type { ScenarioInput, ScenarioModalData } from './scenarioContracts';
 
+/** Buy More planning reserve: 10 percentage points above maintenance, at least 20% equity. */
+const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
+const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
+
 type SideEffectAction =
   | { type: 'FETCH_QUOTE'; ticker: string }
   | { type: 'REFRESH_ALL' }
@@ -839,7 +843,7 @@ export class CommandDispatcher {
     // Maintenance is a liquidation-risk boundary, not a prudent buy-more target.
     // Keep at least a 10 percentage-point cushion and never plan below 20% equity.
     // This is an app-side planning guard, not broker-reported buying power.
-    const requiredEquityRatio = Math.max(0.20, maintenanceLimit + 0.10);
+    const requiredEquityRatio = Math.max(BUY_MORE_MIN_EQUITY_RATIO, maintenanceLimit + BUY_MORE_MAINTENANCE_RESERVE_RATIO);
     const projectPurchase = (sharesToBuy: number) => {
       const orderValue = sharesToBuy * price;
       const commission = calculateCommission(sharesToBuy, orderValue, rules);
