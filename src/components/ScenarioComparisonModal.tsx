@@ -13,8 +13,8 @@ interface ScenarioComparisonModalProps {
 export function formatNumberGroups(text: string): string {
   // Group large numeric tokens (including signed/currency values) without
   // changing dates, decimals, percentages, ratios, or already-grouped values.
-  return text.replace(/(?<![\\w.,/+:-])([+-]?\\$?)(\\d{4,})(\\.\\d+)?(?![\\w/.-])/g, (_match, prefix: string, integer: string, fraction = '') => {
-    return prefix + integer.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + fraction;
+  return text.replace(/(?<![\w.,/+:-])([+-]?\$?)(\d{4,})(\.\d+)?(?![\w/.-])/g, (_match, prefix: string, integer: string, fraction = '') => {
+    return prefix + integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction;
   });
 }
 
