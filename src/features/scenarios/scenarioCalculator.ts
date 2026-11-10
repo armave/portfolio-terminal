@@ -23,7 +23,7 @@ export class ScenarioCalculator {
   static previewExitComparison(
     tickerArg: string,
     scenarios: Array<{ label: string; days: number; price: number }>
-  ): CommandOutput {
+  ): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) || scenarios.length !== 2 ||
       scenarios.some((scenario) => !Number.isInteger(scenario.days) || scenario.days < 0 || scenario.days > 3650 ||
         !Number.isFinite(scenario.price) || scenario.price <= 0)) {
@@ -41,7 +41,7 @@ export class ScenarioCalculator {
 
   /** Read-only entry point for the Market Tools buy-more calculator. */
 
-  static previewBuyMoreScenario(tickerArg: string, shares: number, price: number): CommandOutput {
+  static previewBuyMoreScenario(tickerArg: string, shares: number, price: number): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) ||
       !Number.isFinite(shares) || shares <= 0 ||
       !Number.isFinite(price) || price <= 0 ||

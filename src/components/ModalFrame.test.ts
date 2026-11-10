@@ -59,8 +59,6 @@ describe('shared modal frame', () => {
 
   it('keeps focus management and content in their owning modules', () => {
     const modalPaths = [
-      './ScenarioComparisonModal.tsx',
-      './ScenarioReportModal.tsx',
       './ExitComparisonModal.tsx',
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',

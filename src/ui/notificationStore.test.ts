@@ -1,43 +1,51 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  appendTerminalLog,
-  clearTerminalLogEntries,
-  dismissScenarioReport,
-  setScenarioReport,
-  subscribeScenarioReport,
-  subscribeTerminalLog
-} from './notificationStore';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { addToast, dismissToast, subscribeToasts } from './notificationStore';
 
-describe('notification UI store', () => {
+describe('app notification store', () => {
+  beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
-    clearTerminalLogEntries();
-    dismissScenarioReport();
-    vi.restoreAllMocks();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
-  it('publishes terminal entries without touching a DOM node', () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeTerminalLog(listener);
-    clearTerminalLogEntries();
+  it('publishes typed notifications and removes them after the exit transition', () => {
+    const snapshots: Array<Array<{ id: string; message: string; variant: string; isClosing: boolean }>> = [];
+    const unsubscribe = subscribeToasts((items) => snapshots.push(items.map((item) => ({ ...item }))));
 
-    appendTerminalLog('[CLI]: Ready', false, false);
-
-    expect(listener).toHaveBeenLastCalledWith([
-      expect.objectContaining({ message: '[CLI]: Ready', isUser: false, isError: false })
+    addToast('Portfolio sync completed.', 'success');
+    expect(snapshots.at(-1)).toEqual([
+      expect.objectContaining({ message: 'Portfolio sync completed.', variant: 'success', isClosing: false })
     ]);
-    expect(listener.mock.calls.at(-1)?.[0][0].time).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+
+    const toast = snapshots.at(-1)![0];
+    dismissToast(toast.id);
+    expect(snapshots.at(-1)?.[0]).toMatchObject({ id: toast.id, isClosing: true });
+    vi.advanceTimersByTime(180);
+    expect(snapshots.at(-1)).toEqual([]);
+
     unsubscribe();
   });
 
-  it('publishes and dismisses scenario-report state', () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeScenarioReport(listener);
+  it('automatically dismisses a notification after its display period', () => {
+    const snapshots: number[] = [];
+    const unsubscribe = subscribeToasts((items) => snapshots.push(items.length));
 
-    setScenarioReport('[SIM EXIT]\nDetails');
-    expect(listener).toHaveBeenLastCalledWith('[SIM EXIT]\nDetails');
+    addToast('Broker connection restored.', 'info');
+    vi.advanceTimersByTime(4_500);
+    expect(snapshots.at(-1)).toBe(1);
+    vi.advanceTimersByTime(180);
+    expect(snapshots.at(-1)).toBe(0);
 
-    dismissScenarioReport();
-    expect(listener).toHaveBeenLastCalledWith(null);
+    unsubscribe();
+  });
+
+  it('ignores blank messages and caps the visible message length', () => {
+    const snapshots: Array<Array<{ message: string }>> = [];
+    const unsubscribe = subscribeToasts((items) => snapshots.push(items));
+    addToast('   ');
+    expect(snapshots.at(-1)).toEqual([]);
+    addToast('x'.repeat(250), 'warning');
+    expect(snapshots.at(-1)?.[0].message).toHaveLength(180);
     unsubscribe();
   });
 });

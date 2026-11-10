@@ -16,7 +16,7 @@ import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
 import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
-import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
+import { calculatePortfolioValuation } from './domain/portfolioValuation';
 import { addToast, useToasts } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';

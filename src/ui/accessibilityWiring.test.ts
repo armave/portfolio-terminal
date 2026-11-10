@@ -53,15 +53,6 @@ describe('Stage 10 accessibility wiring', () => {
     expect(styles).toContain('.margin-risk-overview-dialog');
   });
 
-  it('keeps the terminal log keyboard-scrollable and avoids forcing readers back to the latest line', () => {
-    const source = readSource('../components/TerminalLog.tsx');
-
-    expect(source).toContain('shouldFollowLatestRef.current) viewport.scrollTop = viewport.scrollHeight');
-    expect(source).toContain('shouldFollowLatestRef.current = isTerminalLogAtBottom(viewport)');
-    expect(source).toContain('role="region" aria-label="Terminal activity log" tabIndex={0}');
-    expect(source).toContain('onScroll={handleViewportScroll}');
-  });
-
   it('makes News and Stocktwits feeds keyboard-scrollable named regions', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
 
