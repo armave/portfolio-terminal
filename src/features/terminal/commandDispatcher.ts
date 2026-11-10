@@ -548,7 +548,7 @@ export class CommandDispatcher {
     tickerArg: string,
     scenarios: Array<{ label: string; days: number; price: number }>
   ): CommandOutput {
-    if (!tickerArg || !/^[A-Z0-9.\\-]{1,16}$/i.test(tickerArg) || scenarios.length !== 2 ||
+    if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) || scenarios.length !== 2 ||
       scenarios.some((scenario) => !Number.isFinite(scenario.days) || scenario.days < 0 || scenario.days > 3650 ||
         !Number.isFinite(scenario.price) || scenario.price <= 0)) {
       return { type: 'err', text: 'Enter a valid positive price and exit date for both periods.' };
