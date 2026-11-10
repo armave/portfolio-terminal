@@ -23,7 +23,7 @@ describe('Buy More table amount formatting', () => {
   });
 
   it('uses narrow no-break spaces for Russian thousands grouping', () => {
-    expect(formatBuyMoreTableAmount('-$22363.64', 'ru')).toBe('-$22\\u202f363.64');
+    expect(formatBuyMoreTableAmount('-$22363.64', 'ru')).toBe('-$22\u202f363.64');
   });
 
   it('preserves dates, smaller values, and already grouped balances', () => {
