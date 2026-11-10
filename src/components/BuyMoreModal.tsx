@@ -122,7 +122,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
     Number.isFinite(shares * purchasePrice));
   const preview = useMemo(() => {
     if (!ticker || !position || !inputsValid) return null;
-    return CommandDispatcher.previewBuyMoreScenario(ticker, shares, purchasePrice);
+    return ScenarioCalculator.previewBuyMoreScenario(ticker, shares, purchasePrice);
   }, [state, ticker, sharesInput, priceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;
