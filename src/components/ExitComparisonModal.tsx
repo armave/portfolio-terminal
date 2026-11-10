@@ -4,6 +4,7 @@ import { CommandDispatcher } from '../features/terminal/commandDispatcher';
 import {
   addCalendarDays,
   getExitDayOffset,
+  getExitDurationParts,
   loadExitComparisonPreferences,
   saveExitComparisonPreferences,
   toLocalIsoDate,
@@ -75,8 +76,41 @@ function formatSavedTime(timestamp: number, language: 'en' | 'ru'): string {
   }
 }
 
+function formatDurationUnit(value: number, unit: 'month' | 'day', language: 'en' | 'ru'): string {
+  try {
+    return new Intl.NumberFormat(language === 'ru' ? 'ru-RU' : 'en-US', {
+      style: 'unit',
+      unit,
+      unitDisplay: 'long'
+    }).format(value);
+  } catch {
+    const englishUnit = unit === 'month'
+      ? (value === 1 ? 'month' : 'months')
+      : (value === 1 ? 'day' : 'days');
+    return value + ' ' + englishUnit;
+  }
+}
+
+function formatLongDuration(days: number, language: 'en' | 'ru'): string {
+  const parts = getExitDurationParts(days);
+  if (!parts) return formatDurationUnit(days, 'day', language);
+  const units: string[] = [];
+  if (parts.months > 0) units.push(formatDurationUnit(parts.months, 'month', language));
+  if (parts.days > 0) units.push(formatDurationUnit(parts.days, 'day', language));
+  return units.join(language === 'ru' ? ' и ' : ' and ');
+}
+
+function formatPresetPeriod(days: number, language: 'en' | 'ru'): string {
+  if (days === 0) return translateText('Today', language);
+  if (days <= 31) return days + 'd';
+  return formatLongDuration(days, language);
+}
+
 function translatePeriodName(days: number, language: 'en' | 'ru'): string {
   if (days === 0) return translateText('Today', language);
+  if (days > 31) {
+    return translateText('In {duration}', language).replace('{duration}', formatLongDuration(days, language));
+  }
   return translateText('In {days} days', language).replace('{days}', String(days));
 }
 
@@ -133,6 +167,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   const [savedResult, setSavedResult] = useState<ExitComparisonSavedResult | null>(() => restoredPreferences?.lastResult ?? null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(() => restoredPreferences?.lastResult?.savedAt ?? null);
   const [isClosing, setIsClosing] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -171,7 +206,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
     if (closingRef.current) return;
     closingRef.current = true;
     setIsClosing(true);
-    cancelCloseRef.current = scheduleDialogClose(onClose, 180);
+    const prefersReducedMotion = typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    cancelCloseRef.current = scheduleDialogClose(onClose, prefersReducedMotion ? 0 : 200);
   };
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
@@ -179,6 +216,13 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   useEffect(() => () => {
     cancelCloseRef.current?.();
     cancelCloseRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (!closingRef.current) setIsOpen(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -319,7 +363,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             onClick={() => setPeriodOffset(index, days)}
             class={'min-h-11 rounded-lg border px-2.5 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ' +
               (offset === days ? 'border-cyan-600 bg-cyan-950/60 text-cyan-100' : 'border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-500 hover:text-slate-200')}
-          >{days === 0 ? translateText('Today', language) : days + 'd'}</button>)}
+          >{formatPresetPeriod(days, language)}</button>)}
         </div>
       </section>
     );
@@ -335,14 +379,14 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   return createPortal(
     <div
       id="exitComparisonModal"
-      class={'exit-comparison-backdrop fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm transition-opacity duration-200 ' + (isClosing ? 'opacity-0' : 'opacity-100')}
+      class={'exit-comparison-backdrop fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm transition-opacity duration-200 ease-out motion-reduce:transition-none ' + (isClosing || !isOpen ? 'opacity-0' : 'opacity-100')}
       role="presentation"
       onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}
     >
       <section
         ref={dialogRef}
         id="exitComparisonDialog"
-        class={'exit-comparison-dialog flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-200 ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
+        class={'exit-comparison-dialog flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ' + (isClosing || !isOpen ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
         role="dialog"
         aria-modal="true"
         aria-labelledby="exitComparisonTitle"
