@@ -15,6 +15,8 @@ describe('Margin Market Tools placement', () => {
     expect(summarySource).toContain("emitUiEvent('terminal:market-depth-request', { ticker })");
     expect(summarySource).toContain('ticker && isAdmin && marketDepthAvailable && <button');
     expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
+    expect(summarySource).toContain("emitUiEvent('terminal:buy-more-request', ticker ? { ticker } : {})");
+    expect(summarySource).toContain("translateText('Buy More', language)");
   });
 
   it('wires the Market Tools launcher to the lazy, account-scoped exit comparison modal', () => {
@@ -23,6 +25,11 @@ describe('Margin Market Tools placement', () => {
     expect(appSource).toContain('<ExitComparisonModal');
     expect(appSource).toContain('initialTicker={exitComparisonRequest.ticker}');
     expect(appSource).toContain('portfolio-terminal:exit-comparison:v1:');
+    expect(appSource).toContain("addUiEventListener('terminal:buy-more-request', handleBuyMoreRequest)");
+    expect(appSource).toContain("removeUiEventListener('terminal:buy-more-request', handleBuyMoreRequest)");
+    expect(appSource).toContain('<BuyMoreModal');
+    expect(appSource).toContain('initialTicker={buyMoreRequest.ticker}');
+    expect(appSource).toContain('portfolio-terminal:buy-more:v1:');
   });
 
   it('keeps the analyst target beside the ticker title in one wrapping header row', () => {
@@ -46,6 +53,7 @@ describe('Margin Market Tools placement', () => {
     expect(quickActionsSource).not.toContain('News + Review');
     expect(quickActionsSource).not.toContain('Portfolio Review');
     expect(quickActionsSource).not.toContain('Compare Exits…');
+    expect(quickActionsSource).not.toContain('Buy More Scenario…');
     expect(summarySource).toContain("translateText('Compare Exits', language)");
     expect(summarySource).toContain("emitUiEvent('terminal:exit-comparison-request', ticker ? { ticker } : {})");
   });
