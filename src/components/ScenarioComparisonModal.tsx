@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { ModalFrame } from './ModalFrame';
 import { scheduleDialogClose } from '../ui/dialogClose';
 import { getAppLanguage, translateText } from '../services/i18n';
 
@@ -77,9 +78,18 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
     : 'border-b border-slate-800/80 text-slate-300';
 
   return (
-    <div id="scenarioComparisonModal" class={"scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4 " + (isClosing ? "scenario-modal-closing" : "")} style={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
-      <section ref={dialogRef} id="scenarioComparisonDialog" class="scenario-modal-dialog w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col" style={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }} role="dialog" aria-modal="true" aria-labelledby="scenarioComparisonTitle" tabIndex={-1}>
-        <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+    <ModalFrame
+      backdropId="scenarioComparisonModal"
+      backdropClassName={"scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4 " + (isClosing ? "scenario-modal-closing" : "")}
+      backdropStyle={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      dialogId="scenarioComparisonDialog"
+      dialogClassName="scenario-modal-dialog w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col"
+      dialogStyle={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }}
+      dialogRef={dialogRef}
+      ariaLabelledBy="scenarioComparisonTitle"
+      onBackdropClick={requestClose}
+    >
+        <header        <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
           <div class="min-w-0"><h2 id="scenarioComparisonTitle" class="text-base sm:text-lg font-bold text-white">{translateText(data.title, getAppLanguage())}</h2><p class="mt-1 text-[11px] font-medium text-slate-400">{translateText(data.subtitle, getAppLanguage())}</p></div>
           <button ref={closeButtonRef} id="scenarioComparisonClose" type="button" class="shrink-0 min-h-11 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" aria-label={translateText('Close scenario comparison', getAppLanguage())} onClick={requestClose}>{translateText('Close · Esc', getAppLanguage())}</button>
         </header>
@@ -102,7 +112,6 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
             </table>
           )}
         </div>
-      </section>
-    </div>
+      </ModalFrame>
   );
 }
