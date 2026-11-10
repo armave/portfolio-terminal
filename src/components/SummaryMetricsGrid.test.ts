@@ -284,8 +284,8 @@ describe('accessible Margin Health overview action', () => {
     expect(source).toContain("translateText('Open margin risk overview', language)");
     expect(source).not.toContain('role="button"');
     expect(source).not.toContain('onKeyDown={cardKeyDown}');
-    expect(modal).toContain('role="dialog"');
-    expect(modal).toContain('aria-modal="true"');
+    expect(modal).toContain('<ModalFrame');
+    expect(modal).toContain('ariaLabelledBy="marginRiskOverviewTitle"');
     expect(modal).toContain('onEscape: onClose');
     expect(modal).not.toContain('role="tablist"');
     expect(modal).not.toContain('MarginRiskModalTab');
