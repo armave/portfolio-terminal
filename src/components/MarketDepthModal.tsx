@@ -3,6 +3,7 @@ import { buildFreedomMarketDepthStreamSocketUrl, createFreedomMarketDepthStreamT
 import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
 import { createFreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamStatus } from '../services/freedomMarketDepthStreamRuntime';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { createLatestFramePublisher, type LatestFramePublisher } from '../services/marketDepthFramePublisher';
 
@@ -314,19 +315,14 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
       ? 'border-rose-800 bg-rose-950/30 text-rose-300'
       : 'border-cyan-900 bg-cyan-950/20 text-cyan-200';
 
-  return <div
-    class="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/85 p-2 backdrop-blur-sm sm:p-4"
-    onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+  return <ModalFrame
+    backdropClassName="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/85 p-2 backdrop-blur-sm sm:p-4"
+    dialogClassName="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-emerald-900/60 bg-slate-950 shadow-2xl shadow-black/60"
+    dialogRef={dialogRef}
+    ariaLabelledBy="marketDepthTitle"
+    onBackdropClick={onClose}
   >
-    <section
-      ref={dialogRef}
-      class="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-emerald-900/60 bg-slate-950 shadow-2xl shadow-black/60"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="marketDepthTitle"
-      tabIndex={-1}
-    >
-      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-950 to-rose-950/30 px-4 py-3 sm:px-5">
+      <header      <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-emerald-950/40 via-slate-950 to-rose-950/30 px-4 py-3 sm:px-5">
         <div>
           <div class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-emerald-300">{depthText('TradeNet · Order Book')}</div>
           <h2 id="marketDepthTitle" class="mt-1 text-xl font-black tracking-tight text-white">{ticker.trim().toUpperCase()} {depthText('Market Depth')}</h2>
@@ -466,6 +462,5 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           {depthText('No live Market Depth data is available.')}
         </p>}
       </div>
-    </section>
-  </div>;
+  </ModalFrame>;
 }
