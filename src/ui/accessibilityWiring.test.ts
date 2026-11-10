@@ -101,6 +101,28 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).toContain("translateText('Compare Exits', language)");
   });
 
+  it('portals Compare Exits above app layers and constrains it to the safe viewport', () => {
+    const exit = readSource('../components/ExitComparisonModal.tsx');
+    const styles = readSource('../../style.css');
+
+    expect(exit).toContain("import { createPortal } from 'preact/compat';");
+    expect(exit).toContain('document.body');
+    expect(exit).toContain('exit-comparison-backdrop');
+    expect(exit).toContain('exit-comparison-dialog');
+    expect(exit).toContain("document.body.style.overflow = 'hidden'");
+    expect(exit).toContain('document.body.style.overflow = previousOverflow');
+    expect(styles).toContain('.exit-comparison-backdrop {');
+    expect(styles).toContain('z-index: 10000;');
+    expect(styles).toContain('height: 100dvh;');
+    expect(styles).toContain('align-items: center;');
+    expect(styles).toContain('overflow-y: auto;');
+    expect(styles).toContain('env(safe-area-inset-top)');
+    expect(styles).toContain('env(safe-area-inset-bottom)');
+    expect(styles).toContain('.exit-comparison-backdrop .exit-comparison-dialog');
+    expect(styles).toContain('max-height: calc(');
+    expect(styles).toContain('.exit-comparison-dialog>div');
+  });
+
   it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
     const comparison = readSource('../components/ScenarioComparisonModal.tsx');
     const report = readSource('../components/ScenarioReportModal.tsx');
