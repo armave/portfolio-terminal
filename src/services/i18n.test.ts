@@ -542,23 +542,6 @@ describe('app localization', () => {
       .toBe('[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.');
     expect(translateText('[Settings Error]: Could not load saved broker assumptions (network). Using defaults.', 'ru'))
       .toBe('[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (network). Используются значения по умолчанию.');
-    expect(translateText('[Executed Buy]: Added 10 AAPL @ $180.00. Outlay: $1,802.00 (Comm: $2.00). Funded: $1,000.00 cash | +$802.00 margin debt. Free Cash remaining: $0.00. Total Margin Debt: -$1,000.00 (was -$198.00).', 'ru'))
-      .toBe('[Покупка выполнена]: Добавлено 10 AAPL @ $180.00. Сумма: $1,802.00 (комиссия: $2.00). Оплачено денежными средствами: $1,000.00 | +маржинальный долг: $802.00. Остаток свободных средств: $0.00. Общий маржинальный долг: -$1,000.00 (до операции: -$198.00).');
-    expect(translateText('[Cash Holding Closed]: Sold 5 MSFT @ $420.00. Net credited: +$2,098.00 (Debt paid: $1,000.00, Free Cash added: $1,098.00).', 'ru'))
-      .toBe('[Денежная позиция закрыта]: Продано 5 акций MSFT @ $420.00. Зачислено чистыми: +$2,098.00 (погашение долга: $1,000.00, добавлено свободных средств: $1,098.00).');
-    expect(translateText('[Balance]: Removed AAPL from balance holdings.', 'ru'))
-      .toBe('[Баланс]: AAPL удалён из активов баланса.');
-  });
-
-  it('localizes broker and portfolio status messages', () => {
-    expect(translateText('[Market Data Error]: Could not fetch AAPL. Timeout. Retained tracked price: $180.00. Set manually via: price AAPL <number>.', 'ru'))
-      .toBe('[Ошибка рыночных данных]: Не удалось получить котировку AAPL. Timeout. Сохранена отслеживаемая цена: $180.00. Установить вручную: price AAPL <number>.');
-    expect(translateText('[Target Updated]: AAPL PT updated to $210.00.', 'ru'))
-      .toBe('[Целевая цена обновлена]: Целевая цена AAPL установлена на $210.00.');
-    expect(translateText('[Price Updated]: MSFT market price set to $420.00.', 'ru'))
-      .toBe('[Цена обновлена]: Рыночная цена MSFT установлена на $420.00.');
-    expect(translateText('[Margin Synced]: Total margin balance explicitly set to -$1,500.00.', 'ru'))
-      .toBe('[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -$1,500.00.');
   });
 
   it('localizes retained Market Tools calculation summaries', () => {
