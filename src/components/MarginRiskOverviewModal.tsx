@@ -159,7 +159,7 @@ export function MarginRiskOverviewModal({
                 <OverviewItem label={translateText('Total maintenance requirement', language)} value={formatMoney(riskSnapshot.totalMaintenanceRequirement, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Estimated annual financing', language)} value={sourcedMoneyText(riskSnapshot.annualInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Estimated daily financing', language)} value={sourcedMoneyText(riskSnapshot.dailyInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
-                <OverviewItem label={translateText('Input freshness', language)} value={translateText(({ fresh: 'Fresh', stale: 'Stale', delayed: 'Delayed', indicative: 'Indicative', unknown: 'Unknown' } as const)[riskSnapshot.freshness], language)} />
+                <OverviewItem label={translateText('Input freshness', language)} value={translateText(({ fresh: 'Fresh input', stale: 'Stale', delayed: 'Delayed', indicative: 'Indicative', unknown: 'Unknown' } as const)[riskSnapshot.freshness], language)} />
                 <OverviewItem label={translateText('Source observation', language)} value={observedAtText(riskSnapshot.observedAt, language)} />
               </div>
             </section>

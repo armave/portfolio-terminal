@@ -12,7 +12,7 @@ describe('app localization', () => {
       'Eligible collateral', 'Initial margin requirement', 'Broker maintenance requirement',
       'Concentration add-on', 'Total maintenance requirement', 'Estimated annual financing',
       'Estimated daily financing', 'Input freshness', 'Source observation', 'Broker reported',
-      'Configured assumption', 'Not reported', 'Source unknown', 'Fresh', 'Stale', 'Delayed',
+      'Configured assumption', 'Not reported', 'Source unknown', 'Fresh', 'Fresh input', 'Stale', 'Delayed',
       'Indicative', 'Unknown', 'Configured maintenance threshold', 'Configured stop-out buffer'
     ];
     for (const copy of marginRiskCopy) {
