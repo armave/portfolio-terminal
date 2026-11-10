@@ -121,7 +121,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   const marginLimitError = typeof preview?.maxSafeShares === 'number' &&
     typeof preview.requiredEquityRatio === 'number' &&
     typeof preview.projectedEquityRatio === 'number';
-  const projectedEquityRatioText = marginLimitError && Number.isFinite(preview.projectedEquityRatio)
+  const projectedEquityRatioText = typeof preview?.projectedEquityRatio === 'number' && Number.isFinite(preview.projectedEquityRatio)
     ? (preview.projectedEquityRatio * 100).toFixed(1) + '%'
     : '—';
   const displayedResult = resultError ? null : resultData ?? savedResult;
