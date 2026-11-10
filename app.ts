@@ -12,13 +12,12 @@ import {
   collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
-  resolveSaleQuantity,
 } from './src/domain/portfolio';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import {
   calculateTargetUpsidePercent,
 } from './src/features/quotes/sentiment';
-import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
+import { nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
 import { resolveFreedomAccountRefreshMode } from './src/services/freedomAccountStreamHealth';
@@ -54,7 +53,6 @@ import {
   clearFreedomCashflowCache,
   pullCloudHistory,
   pushCloudHistory,
-  proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
   validateGatewaySecret,
@@ -98,7 +96,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
-import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
+import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import {
   applyCashflowAllocationsToBrokerExecutions,
@@ -167,7 +165,6 @@ guestPortfolioAssignmentRuntime.bind();
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let guestCloudRefreshInFlight: Promise<unknown> | null = null;
 let lastRenderedDeskView: string | null = null;
-const livePriceRequests = new Map<string, Promise<any>>();
 let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
@@ -1226,122 +1223,6 @@ function stopFreedomQuoteStreamRuntime(): void {
 }
 
 
-
-function addCashHolding(ticker: string, shares: number, givenPrice = 0, context?: PortfolioTransactionContext) {
-  const symbol = ticker.trim().toUpperCase();
-  const quantity = Number(shares);
-  const manualPrice = Number(givenPrice);
-  if (!symbol || !Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('Ticker and a positive share quantity are required.');
-  }
-
-  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice, context);
-  if (!added) {
-    throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
-  }
-
-  if (Number.isFinite(manualPrice) && manualPrice > 0) {
-    recordTrackedPrice(symbol, manualPrice, 'Manual');
-  }
-  return added;
-}
-
-function removeCashHolding(ticker: string, context?: PortfolioTransactionContext) {
-  const symbol = ticker.trim().toUpperCase();
-  const holdings = state.cashCushion?.holdings;
-  if (!symbol || !Array.isArray(holdings)) return null;
-
-  const removed = holdings.find((holding: any) => holding.ticker === symbol);
-
-  // Let the store resolve an already-committed idempotent retry even when the
-  // first attempt removed the holding from the current snapshot.
-  if (!removed) {
-    return portfolioStore.removeCashStock(symbol, context) ? { ticker: symbol } : null;
-  }
-
-  // Let the store own this state transition; its subscriber updates the runtime
-  // state reference after the canonical mutation has been committed.
-  if (!portfolioStore.removeCashStock(symbol, context)) return null;
-  return removed;
-}
-
-function setCurrentBalance(value: number, context?: PortfolioTransactionContext): { balance: number; debt: number } | null {
-  if (!portfolioStore.setCashBalance(value, context)) return null;
-
-  const current: any = portfolioStore.getState();
-  return {
-    balance: current.cashCushion?.freeCash || 0,
-    debt: Math.abs(current.balance || 0)
-  };
-}
-
-async function requestLivePrice(symbol: string, force = false) {
-  const existingRequest = livePriceRequests.get(symbol);
-  if (existingRequest && !force) return existingRequest;
-
-  const requestStartedAt = Date.now();
-  const request = fetchLivePriceFromProviders(symbol, requestStartedAt, force).then(result => ({
-    ...result,
-    matched: result.price !== null
-      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails, requestStartedAt)
-      : false
-  }));
-  livePriceRequests.set(symbol, request);
-  try {
-    return await request;
-  } finally {
-    if (livePriceRequests.get(symbol) === request) livePriceRequests.delete(symbol);
-  }
-}
-
-
-async function fetchLivePrice(ticker: string, silent = false, force = false) {
-  const symbol = ticker.toUpperCase();
-  const sessionKey = currentAccountRole && currentAccountId
-    ? `${currentAccountRole}:${currentAccountId}`
-    : '';
-  const hasActiveQuoteSocket = Boolean(
-    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
-    freedomQuoteStreamRuntime.isSocketOpen()
-  );
-  if (hasActiveQuoteSocket && !freedomQuoteStreamRuntime?.isSubscribed(symbol)) {
-    await refreshAllLivePrices(force);
-  }
-  const quoteSocketIsOpenForSession = Boolean(
-    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
-    freedomQuoteStreamRuntime.isSocketOpen()
-  );
-  if (quoteSocketIsOpenForSession) {
-    const trackedPrice = Number(state.positions[symbol]?.currentPrice ||
-      state.cashCushion?.holdings?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.price ||
-      state.cashStocks?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.currentPrice ||
-      0);
-    if (!silent) {
-      logAppMessage(freedomQuoteStreamRuntime?.isSubscribed(symbol)
-        ? `[System]: ${symbol} is subscribed to the live quote socket; the REST quote backup was skipped.`
-        : `[System]: ${symbol} is awaiting live quote socket subscription; the REST quote backup was skipped.`);
-    }
-    return Number.isFinite(trackedPrice) && trackedPrice > 0 ? trackedPrice : null;
-  }
-  const result = await requestLivePrice(symbol, force);
-
-  if (result.price !== null) {
-    // Quote refreshes are transient market data; persist locally without
-    // uploading the full portfolio to cloud on every manual quote lookup.
-    saveState(state);
-    renderBoard();
-    if (!silent) {
-      logAppMessage(`[${result.sourceName}]: ${symbol} updated to ${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
-    }
-    return result.price;
-  }
-
-  const tracked = state.positions[symbol]?.currentPrice || (state.cashCushion?.holdings?.find((h: any) => h.ticker === symbol)?.price) || 0;
-  if (!silent) {
-    logAppMessage(`[Market Data Error]: Could not fetch ${symbol}. ${result.error}. Retained tracked price: ${formatUSD(tracked)}. Set manually via: price ${symbol} <number>.`);
-  }
-  return null;
-}
 
 const liveQuoteRefreshCoordinator = createQuoteRefreshCoordinator(performRefreshAllLivePrices);
 

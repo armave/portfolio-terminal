@@ -366,7 +366,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             >{translateText('Export')}</button>
             <button
               type="button"
-              onClick={() => emitUiEvent('terminal:backup-import-request')}
+              onClick={() => emitUiEvent('settings:backup-import-request')}
               title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
               aria-label="Import portfolio backup from JSON"
               class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"

@@ -5,7 +5,6 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
-import type { QuoteProvenanceHolding } from './components/QuoteProvenance';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
@@ -20,7 +19,7 @@ import { calculatePortfolioValuation } from './domain/portfolioValuation';
 import { addToast, useToasts } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
-import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
+import { getQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
@@ -324,59 +323,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   );
   const activeDeskView = useActiveView();
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
-  const scenarioValuationSnapshot = usePortfolioSelector(
-    (state) => ({
-      positions: state.positions || {},
-      cashHoldings: state.cashCushion?.holdings || [],
-      balance: state.balance,
-      freeCash: state.cashCushion?.freeCash,
-      brokerAccountInfo: state.brokerAccountInfo
-    }),
-    (previous, next) =>
-      previous.positions === next.positions &&
-      previous.cashHoldings === next.cashHoldings &&
-      previous.balance === next.balance &&
-      previous.freeCash === next.freeCash &&
-      previous.brokerAccountInfo === next.brokerAccountInfo
-  );
   const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
     DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     currentUser?.role === 'guest' ? 'guest' : 'admin'
   );
-  const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
-    ...Object.values(scenarioValuationSnapshot.positions)
-      .filter((position) => Number(position.shares) > 0)
-      .map((position) => ({ ...position, kind: 'Margin position' as const })),
-    ...scenarioValuationSnapshot.cashHoldings
-      .filter((holding) => Number(holding.shares) > 0)
-      .map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-  ];
-  const scenarioQuoteHoldings = scenarioQuoteProvenanceHoldings.map((holding) => {
-    const price = holding.kind === 'Margin position'
-      ? Number(holding.currentPrice)
-      : Number(holding.currentPrice ?? holding.price);
-    return Number.isFinite(price) && price > 0
-      ? holding
-      : { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined };
-  });
-  const scenarioQuoteSummary = summarizeQuoteFreshness(
-    scenarioQuoteHoldings,
-    Date.now(),
-    scenarioRefreshIntervalMs
-  );
-  const scenarioValuation = calculatePortfolioValuation({
-    signedAccountBalance: scenarioValuationSnapshot.balance,
-    freeCash: scenarioValuationSnapshot.freeCash,
-    marginPositions: Object.values(scenarioValuationSnapshot.positions),
-    cashHoldings: scenarioValuationSnapshot.cashHoldings
-  });
-  const scenarioHasCurrentBrokerBalance = scenarioValuationSnapshot.brokerAccountInfo?.loaded === true &&
-    Array.isArray(scenarioValuationSnapshot.brokerAccountInfo.balances) &&
-    scenarioValuationSnapshot.brokerAccountInfo.balances.some((balance) =>
-      String(balance.currency ?? '').toUpperCase() === 'USD' &&
-      balance.amount !== null && balance.amount !== undefined &&
-      Number.isFinite(Number(balance.amount))
-    );
   const guestHistorySnapshot = usePortfolioSelector(
     (state) => ({
       guestTrancheLedger: state.guestTrancheLedger || [],
