@@ -1,6 +1,7 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
 import { createPortal, memo } from 'preact/compat';
+import { ModalFrame } from './ModalFrame';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
@@ -1265,21 +1266,14 @@ function MarketInsightsPanelView() {
       </section>
 
       {currentSelectedNews && createPortal(
-        <div
-          class="news-article-modal news-modal-enter fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-sm"
-          role="presentation"
-          onClick={closeNewsDialog}
+        <ModalFrame
+          backdropClassName="news-article-modal news-modal-enter fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-sm"
+          dialogClassName="news-article-dialog news-dialog-enter flex w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
+          dialogRef={newsDialogRef}
+          ariaLabelledBy="newsArticleModalTitle"
+          onBackdropClick={closeNewsDialog}
         >
-          <section
-            ref={newsDialogRef}
-            tabIndex={-1}
-            class="news-article-dialog news-dialog-enter flex w-full max-w-3xl min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="newsArticleModalTitle"
-            onClick={(event: MouseEvent) => event.stopPropagation()}
-          >
-            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
+            <header            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
               <div class="min-w-0">
                 <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
                   {currentSelectedNews.source || 'Company news'} · {formatNewsRelativeTime(currentSelectedNews.datetime)}
@@ -1296,8 +1290,7 @@ function MarketInsightsPanelView() {
               </div>
               {currentSelectedNews.url && <a href={currentSelectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">Read full article ↗</a>}
             </div>
-          </section>
-        </div>,
+          </ModalFrame>,
         document.body
       )}
     </>
