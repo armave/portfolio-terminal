@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getAppLanguage, setAppLanguage } from '../services/i18n';
+import { setAppLanguage } from '../services/i18n';
 import { formatNumberGroups } from './ScenarioComparisonModal';
 
 describe('scenario modal financial number formatting', () => {
