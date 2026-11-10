@@ -1,4 +1,4 @@
-export interface BuyMoreSavedRow {
+interface BuyMoreSavedRow {
   label: string;
   values: string[];
   kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
