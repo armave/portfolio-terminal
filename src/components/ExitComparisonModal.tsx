@@ -92,7 +92,7 @@ function formatResultColumn(
     return translatePeriodName(days, language) + ' · ' + formatUSD(prices[index]);
   }
   return column
-    .replace(/\\s·\\sBEST$/, '')
+    .replace(/\s·\\sBEST$/, '')
     .replace(/^Today(?=\\s·)/, translateText('Today', language))
     .replace(/^(\\d+) Days(?=\\s·)/, (_match, value: string) => translatePeriodName(Number(value), language));
 }
@@ -217,7 +217,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
         lastResult: null
       });
     }
-  }, [storageKey, ticker, periods[0].date, periods[0].price, periods[1].date, periods[1].price, resultData?.columns.join('|'), preview?.text]);
+  }, [storageKey, ticker, periods[0].date, periods[0].price, periods[1].date, periods[1].price, resultData?.columns.join('|'), preview?.text, savedResult, lastSavedAt]);
 
   const updatePeriod = (index: 0 | 1, changes: Partial<ExitComparisonPeriodInput>) => {
     setPeriods((previous) => previous.map((period, periodIndex) =>
