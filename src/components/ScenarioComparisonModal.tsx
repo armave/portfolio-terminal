@@ -3,7 +3,6 @@ import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
-import { scheduleDialogClose } from '../ui/dialogClose';
 import { getAppLanguage, translateText } from '../services/i18n';
 
 interface ScenarioComparisonModalProps {
@@ -22,17 +21,10 @@ function formatNumberGroups(text: string): string {
 export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonModalProps) {
   const [activeColumns, setActiveColumns] = useState(() => data.columns.map((_, index) => index));
   const [activePreset, setActivePreset] = useState(0);
-  const [isClosing, setIsClosing] = useState(false);
-  const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelCloseRef = useRef<(() => void) | null>(null);
-  const requestClose = () => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-    cancelCloseRef.current = scheduleDialogClose(onClose, 180);
-  };
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
   const isExit = data.kind === 'exit-comparison';
   const isBuyMore = data.kind === 'buy-more';
@@ -42,11 +34,7 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   useEffect(() => {
     const onResize = () => setIsMobile(window.matchMedia('(max-width: 767px)').matches);
     window.addEventListener('resize', onResize, { passive: true });
-    return () => {
-      window.removeEventListener('resize', onResize);
-      cancelCloseRef.current?.();
-      cancelCloseRef.current = null;
-    };
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : activeColumns;
@@ -80,14 +68,15 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   return (
     <ModalFrame
       backdropId="scenarioComparisonModal"
-      backdropClassName={"scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4 " + (isClosing ? "scenario-modal-closing" : "")}
+      backdropClassName="scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4"
       backdropStyle={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
       dialogId="scenarioComparisonDialog"
       dialogClassName="scenario-modal-dialog w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col"
       dialogStyle={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }}
       dialogRef={dialogRef}
       ariaLabelledBy="scenarioComparisonTitle"
-      onBackdropClick={requestClose}
+      closeRef={closeRef}
+      onClose={onClose}
     >
         <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
           <div class="min-w-0"><h2 id="scenarioComparisonTitle" class="text-base sm:text-lg font-bold text-white">{translateText(data.title, getAppLanguage())}</h2><p class="mt-1 text-[11px] font-medium text-slate-400">{translateText(data.subtitle, getAppLanguage())}</p></div>
