@@ -102,7 +102,7 @@ describe('shared modal frame', () => {
     expect(comparison).toContain('dialogStyle=');
     expect(report).toContain('scenario-modal-dialog');
     expect(exit).toContain('exit-comparison-dialog');
-    expect(frame).toContain('typeof backdropStyle === 'object' && backdropStyle !== null');
-    expect(frame).toContain('typeof dialogStyle === 'object' && dialogStyle !== null');
+    expect(frame).toContain("typeof backdropStyle === 'object' && backdropStyle !== null");
+    expect(frame).toContain("typeof dialogStyle === 'object' && dialogStyle !== null");
   });
 });
