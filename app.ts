@@ -1173,7 +1173,6 @@ function stopFreedomAccountStreamRuntime(): void {
 }
 
 let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
-let freedomQuoteStreamRuntime: FreedomQuoteStreamRuntime | null = null;
 
 function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
   if (!freedomQuoteStreamRuntimePromise) {
@@ -1205,11 +1204,9 @@ function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
             }
           }
         });
-        freedomQuoteStreamRuntime = runtime;
         return runtime;
       }).catch((error) => {
         freedomQuoteStreamRuntimePromise = null;
-        freedomQuoteStreamRuntime = null;
         throw error;
       });
   }
