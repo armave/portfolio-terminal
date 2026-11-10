@@ -662,7 +662,7 @@ export class CommandDispatcher {
         if (!tranche || typeof tranche !== 'object' || Array.isArray(tranche)) {
           throw new Error('Portfolio position ' + ticker + ' tranche ' + (index + 1) + ' is invalid.');
         }
-        const lot = tranche as Record<string, unknown>;
+        const lot = tranche as unknown as Record<string, unknown>;
         const readPositiveAlias = (values: unknown[], label: string): number => {
           for (const value of values) {
             if (value === undefined || value === null || value === '') continue;
