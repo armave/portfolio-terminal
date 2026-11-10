@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import type { ComponentChild } from 'preact';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
-import { scheduleDialogClose } from '../ui/dialogClose';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 import { getAppLanguage, translateText } from '../services/i18n';
 
@@ -70,22 +69,10 @@ function renderReportLines(report: string): ComponentChild[] {
 }
 
 export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanceHoldings = [], onClose }: ScenarioReportModalProps) {
-  const [isClosing, setIsClosing] = useState(false);
-  const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelCloseRef = useRef<(() => void) | null>(null);
-  const requestClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-    cancelCloseRef.current = scheduleDialogClose(onClose, 200);
-  }, [onClose]);
-
-  useEffect(() => () => {
-    cancelCloseRef.current?.();
-    cancelCloseRef.current = null;
-  }, []);
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
@@ -100,11 +87,12 @@ export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanc
   return (
     <ModalFrame
       backdropId="scenarioReportModal"
-      backdropClassName={'scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm transition-opacity duration-200 ease-out sm:p-6 ' + (isClosing ? 'opacity-0' : 'opacity-100')}
-      dialogClassName={'scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 transition-[opacity,transform] duration-200 sm:max-h-[90vh] ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
+      backdropClassName="scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6"
+      dialogClassName="scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 sm:max-h-[90vh]"
       dialogRef={dialogRef}
       ariaLabelledBy="scenarioReportTitle"
-      onBackdropClick={requestClose}
+      closeRef={closeRef}
+      onClose={onClose}
     >
         <header class="flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6">
           <div class="min-w-0">
