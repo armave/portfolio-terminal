@@ -150,9 +150,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
 
   const preview = useMemo(() => {
     if (!ticker || !position || !inputsValid) return null;
-    const scenarios = periods.map((period, index) => ({
-      label: translatePeriodName(offsets[index] as number, language),
-      days: offsets[index] as number,
+    const scenarios = offsets.map((days, index) => ({
+      label: translatePeriodName(days as number, language),
+      days: days as number,
       price: prices[index]
     }));
     return CommandDispatcher.previewExitComparison(ticker, scenarios);
