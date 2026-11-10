@@ -7,7 +7,6 @@ export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
 import { formatUSD } from '../utils/formatters';
 import {
   BrokerAssumptions,
-  PositionRecord,
   BoardState
 } from '../types/portfolio';
 
