@@ -16,7 +16,6 @@ import { formatUSD, formatUSDDisplayValue } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
-import { scheduleDialogClose } from '../ui/dialogClose';
 
 interface ExitComparisonModalProps {
   initialTicker?: string;
@@ -167,12 +166,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   );
   const [savedResult, setSavedResult] = useState<ExitComparisonSavedResult | null>(() => restoredPreferences?.lastResult ?? null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(() => restoredPreferences?.lastResult?.savedAt ?? null);
-  const [isClosing, setIsClosing] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelCloseRef = useRef<(() => void) | null>(null);
+  const closeRef = useRef<(() => void) | null>(null);
   const today = toLocalIsoDate();
   const maximumDate = addCalendarDays(today, 3650);
   const position = ticker ? state.positions[ticker] : undefined;
@@ -203,28 +199,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
     : null;
   const bestIndex = netRow?.deltas?.findIndex((delta) => delta?.includes('BEST')) ?? -1;
 
-  const requestClose = () => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-    const prefersReducedMotion = typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    cancelCloseRef.current = scheduleDialogClose(onClose, prefersReducedMotion ? 0 : 200);
-  };
+  const requestClose = () => { closeRef.current?.(); };
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
-
-  useEffect(() => () => {
-    cancelCloseRef.current?.();
-    cancelCloseRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      if (!closingRef.current) setIsOpen(true);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     if (!ticker) return;
@@ -372,12 +349,13 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   return createPortal(
     <ModalFrame
       backdropId="exitComparisonModal"
-      backdropClassName={'exit-comparison-backdrop fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm transition-opacity duration-200 ease-out motion-reduce:transition-none ' + (isClosing || !isOpen ? 'opacity-0' : 'opacity-100')}
+      backdropClassName="exit-comparison-backdrop fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto bg-black/80 backdrop-blur-sm"
       dialogId="exitComparisonDialog"
-      dialogClassName={'exit-comparison-dialog flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none ' + (isClosing || !isOpen ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')}
+      dialogClassName="exit-comparison-dialog flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-900/50 bg-slate-950 shadow-2xl shadow-black/60"
       dialogRef={dialogRef}
       ariaLabelledBy="exitComparisonTitle"
-      onBackdropClick={requestClose}
+      closeRef={closeRef}
+      onClose={onClose}
     >
         <header class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/30 px-4 py-4 sm:px-6">
           <div class="min-w-0">
