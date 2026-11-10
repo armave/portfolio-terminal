@@ -67,7 +67,7 @@ export function MarginRiskOverviewModal({
       ariaLabelledBy="marginRiskOverviewTitle"
       onBackdropClick={onClose}
     >
-        <header        <header class="margin-risk-overview-header">
+        <header class="margin-risk-overview-header">
           <div>
             <span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span>
             <h2 id="marginRiskOverviewTitle">{translateText('Margin risk overview', language)}</h2>
