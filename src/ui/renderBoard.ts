@@ -5,7 +5,6 @@ import {
 } from '../domain/portfolioSelectors';
 export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
 import { formatUSD } from '../utils/formatters';
-export { formatUSD } from '../utils/formatters';
 import {
   BrokerAssumptions,
   PositionRecord,
@@ -13,7 +12,6 @@ import {
 } from '../types/portfolio';
 
 export type {
-  PositionRecord,
   BoardState
 };
 

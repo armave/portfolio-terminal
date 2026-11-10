@@ -1,28 +1,3 @@
-interface ScenarioExitPoint {
-  label: string;
-  days: number;
-  price: number;
-}
-
-export type ScenarioInput =
-  | {
-      kind: 'single-projection';
-      ticker?: string;
-      price: number;
-      days: number;
-    }
-  | {
-      kind: 'exit-comparison';
-      ticker?: string;
-      scenarios: ScenarioExitPoint[];
-    }
-  | {
-      kind: 'buy-more';
-      ticker: string;
-      shares: number;
-      price: number;
-    };
-
 interface ScenarioModalRow {
   label: string;
   values: string[];
