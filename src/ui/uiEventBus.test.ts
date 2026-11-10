@@ -29,6 +29,19 @@ describe('typed UI event bus', () => {
     removeUiEventListener('terminal:market-depth-request', listener);
   });
 
+  it('delivers Market Tools exit comparison requests with an optional selected ticker', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:exit-comparison-request', listener);
+
+    emitUiEvent('terminal:exit-comparison-request', { ticker: 'GOOGL' });
+    emitUiEvent('terminal:exit-comparison-request', {});
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener.mock.calls[0][0].detail).toEqual({ ticker: 'GOOGL' });
+    expect(listener.mock.calls[1][0].detail).toEqual({});
+    removeUiEventListener('terminal:exit-comparison-request', listener);
+  });
+
   it('delivers the discriminated scenario modal contract to subscribers', () => {
     const listener = vi.fn((event: { detail: ScenarioModalData }) => event.detail);
     const scenario: ScenarioModalData = {
