@@ -51,7 +51,9 @@ export function MarginRiskOverviewModal({
   const language = getAppLanguage();
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
   const dataQuality = riskStatus === 'unavailable' || valuationStatus === 'incomplete'
     ? 'Incomplete'
@@ -65,7 +67,8 @@ export function MarginRiskOverviewModal({
       dialogClassName="margin-risk-overview-dialog"
       dialogRef={dialogRef}
       ariaLabelledBy="marginRiskOverviewTitle"
-      onBackdropClick={onClose}
+      closeRef={closeRef}
+      onClose={onClose}
     >
         <header class="margin-risk-overview-header">
           <div>
@@ -77,7 +80,7 @@ export function MarginRiskOverviewModal({
             type="button"
             class="margin-risk-overview-close"
             aria-label={translateText('Close', language)}
-            onClick={onClose}
+            onClick={requestClose}
           >×</button>
         </header>
 
