@@ -36,7 +36,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('active: currentSelectedNews !== null');
     expect(source).toContain('initialFocusRef: newsCloseButtonRef');
     expect(source).toContain('restoreFocusRef: newsTriggerRef');
-    expect(source).toContain('onEscape: closeNewsDialog');
+    expect(source).toContain('onEscape: requestCloseNewsDialog');
     expect(source).toContain('ref={newsCloseButtonRef}');
     expect(source).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
   });
@@ -126,15 +126,18 @@ describe('Stage 10 accessibility wiring', () => {
     expect(styles).toContain('.exit-comparison-dialog>div');
   });
 
-  it('animates Compare Exits entrance and exit with reduced-motion support', () => {
+  it('uses the shared modal frame for smooth opening and closing transitions', () => {
     const exit = readSource('../components/ExitComparisonModal.tsx');
-    expect(exit).toContain('const [isOpen, setIsOpen] = useState(false)');
-    expect(exit).toContain('window.requestAnimationFrame');
-    expect(exit).toContain('window.cancelAnimationFrame(frame)');
-    expect(exit).toContain('if (!closingRef.current) setIsOpen(true)');
-    expect(exit).toContain('scheduleDialogClose(onClose, prefersReducedMotion ? 0 : 200)');
-    expect(exit).toContain('duration-200 ease-out motion-reduce:transition-none');
-    expect(exit).toContain('(isClosing || !isOpen ?');
+    const frame = readSource('../components/ModalFrame.tsx');
+
+    expect(exit).toContain('<ModalFrame');
+    expect(exit).toContain('closeRef={closeRef}');
+    expect(exit).not.toContain('scheduleDialogClose');
+    expect(frame).toContain('MODAL_TRANSITION_MS = 200');
+    expect(frame).toContain('view.requestAnimationFrame');
+    expect(frame).toContain('window.setTimeout');
+    expect(frame).toContain('prefers-reduced-motion: reduce');
+    expect(frame).toContain('transform: isVisible');
   });
 
   it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
