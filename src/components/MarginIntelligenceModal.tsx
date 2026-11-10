@@ -135,8 +135,10 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
   const [now, setNow] = useState(Date.now());
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeRef = useRef<(() => void) | null>(null);
   const coverage = Array.isArray(data.coverage) ? data.coverage : [];
-  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
+  const requestClose = () => { closeRef.current?.(); };
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
@@ -148,7 +150,8 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
       dialogClassName="margin-intelligence-dialog flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl"
       dialogRef={dialogRef}
       ariaLabelledBy="marginIntelligenceTitle"
-      onBackdropClick={onClose}
+      closeRef={closeRef}
+      onClose={onClose}
     >
         <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
           <div class="min-w-0">
@@ -160,7 +163,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button type="button" onClick={onRefresh} disabled={data.loading} aria-label={translateText('Refresh margin intelligence', getAppLanguage())} class="min-h-11 rounded border border-cyan-800 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50">{data.loading ? translateText('Refreshing…', getAppLanguage()) : translateText('↻ Refresh', getAppLanguage())}</button>
-            <button ref={closeButtonRef} type="button" onClick={onClose} aria-label={translateText('Close margin intelligence', getAppLanguage())} class="min-h-11 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Close', getAppLanguage())}</button>
+            <button ref={closeButtonRef} type="button" onClick={requestClose} aria-label={translateText('Close margin intelligence', getAppLanguage())} class="min-h-11 rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Close', getAppLanguage())}</button>
           </div>
         </header>
         <div class="min-h-0 flex-1 overflow-y-auto p-4" role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}>
