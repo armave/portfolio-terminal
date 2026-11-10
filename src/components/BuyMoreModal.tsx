@@ -67,6 +67,14 @@ function makeSavedResult(
 function rowLabel(label: string, language: 'en' | 'ru'): string {
   return label.replace(/TODAY/g, translateText('TODAY', language));
 }
+export function formatBuyMoreTableAmount(value: string, language: 'en' | 'ru'): string {
+  const separator = language === 'ru' ? '\\u202f' : ',';
+  return value.replace(
+    /(^|[^\\w.,/])([+\\-−]?\\$?)(\\d{4,})(\\.\\d+)?(?=$|[^\\w/.-])/g,
+    (_match, boundary: string, signAndCurrency: string, integer: string, fraction = '') =>
+      boundary + signAndCurrency + integer.replace(/\\B(?=(\\d{3})+(?!\\d))/g, separator) + fraction
+  );
+}
 function valueTone(value: string): string {
   if (value.startsWith('-') || value.startsWith('−')) return 'text-rose-300';
   if (value.startsWith('+')) return 'text-emerald-300';
@@ -320,8 +328,8 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
                     : index % 2 === 0 ? 'border-b border-slate-800/70 bg-slate-900/20' : 'border-b border-slate-800/70';
                   return <tr key={row.label + '-' + index} class={rowClass}>
                     <th scope="row" class="sticky left-0 z-10 whitespace-nowrap bg-slate-950/95 px-3 py-2 text-left font-semibold text-slate-300">{rowLabel(row.label,language)}</th>
-                    {current.map((value,valueIndex) => <td key={'current-' + valueIndex} class={'whitespace-nowrap px-3 py-2 text-right ' + valueTone(value)}>{value}</td>)}
-                    {projected.map((value,valueIndex) => <td key={'projected-' + valueIndex} class={'whitespace-nowrap border-l border-slate-800/80 px-3 py-2 text-right ' + valueTone(value)}>{value}</td>)}
+                    {current.map((value,valueIndex) => <td key={'current-' + valueIndex} class={'whitespace-nowrap px-3 py-2 text-right font-mono tabular-nums ' + valueTone(value)}>{formatBuyMoreTableAmount(value, language)}</td>)}
+                    {projected.map((value,valueIndex) => <td key={'projected-' + valueIndex} class={'whitespace-nowrap border-l border-slate-800/80 px-3 py-2 text-right font-mono tabular-nums ' + valueTone(value)}>{formatBuyMoreTableAmount(value, language)}</td>)}
                   </tr>;
                 })}
               </tbody>
