@@ -565,6 +565,24 @@ export class CommandDispatcher {
     }
   }
 
+  /** Read-only entry point for the Market Tools buy-more calculator. */
+  static previewBuyMoreScenario(tickerArg: string, shares: number, price: number): CommandOutput {
+    if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) ||
+      !Number.isFinite(shares) || shares <= 0 ||
+      !Number.isFinite(price) || price <= 0 ||
+      !Number.isFinite(shares * price)) {
+      return { type: 'err', text: 'Enter a valid position, positive share amount and purchase price.' };
+    }
+    try {
+      return this.evaluateBuyScenario(shares, tickerArg.toUpperCase(), price);
+    } catch (error) {
+      return {
+        type: 'err',
+        text: error instanceof Error ? error.message : 'Buy More could not be calculated.'
+      };
+    }
+  }
+
   private static evaluateScenario(input: ScenarioInput): CommandOutput {
     switch (input.kind) {
       case 'single-projection':
@@ -818,7 +836,7 @@ export class CommandDispatcher {
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
         return dates.map(item => {
-          const dateLabel = item.date.toLocaleDateString('en-US', {
+          const dateLabel = item.date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
             weekday: 'short', month: 'short', day: 'numeric'
           });
           const rowLabel = item.kind === 'today'

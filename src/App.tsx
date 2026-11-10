@@ -80,6 +80,9 @@ const ScenarioComparisonModal = lazy(() =>
 const ExitComparisonModal = lazy(() =>
   import('./components/ExitComparisonModal').then(({ ExitComparisonModal }) => ({ default: ExitComparisonModal }))
 );
+const BuyMoreModal = lazy(() =>
+  import('./components/BuyMoreModal').then(({ BuyMoreModal }) => ({ default: BuyMoreModal }))
+);
 const ScenarioReportModal = lazy(() =>
   import('./components/ScenarioReportModal').then(({ ScenarioReportModal }) => ({ default: ScenarioReportModal }))
 );
@@ -430,11 +433,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
+  const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const [marketDepthTicker, setMarketDepthTicker] = useState<string | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
   const closeExitComparison = useCallback(() => setExitComparisonRequest(null), []);
+  const closeBuyMore = useCallback(() => setBuyMoreRequest(null), []);
 
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
     addErrorToast(translateText(message, getAppLanguage()));
@@ -667,6 +672,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleExitComparisonRequest = (event: UiEvent<{ ticker?: string }>) => {
       setExitComparisonRequest(event.detail);
     };
+    const handleBuyMoreRequest = (event: UiEvent<{ ticker?: string }>) => {
+      setBuyMoreRequest(event.detail);
+    };
     const handleMarketDepthRequest = (event: UiEvent<{ ticker: string }>) => {
       if (permissions.isAdmin) setMarketDepthTicker(event.detail.ticker);
     };
@@ -694,6 +702,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
+    addUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
     addUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
@@ -704,6 +713,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
+      removeUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
       removeUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
@@ -958,6 +968,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           initialTicker={exitComparisonRequest.ticker}
           storageKey={`portfolio-terminal:exit-comparison:v1:${currentUser?.id || 'local'}`}
           onClose={closeExitComparison}
+        />
+      </Suspense>}
+      {buyMoreRequest && <Suspense fallback={null}>
+        <BuyMoreModal
+          key={`${currentUser?.id || 'local'}:${buyMoreRequest.ticker || 'portfolio'}`}
+          initialTicker={buyMoreRequest.ticker}
+          storageKey={`portfolio-terminal:buy-more:v1:${currentUser?.id || 'local'}`}
+          onClose={closeBuyMore}
         />
       </Suspense>}
       {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}

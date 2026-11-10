@@ -13,6 +13,7 @@ export interface UiEventPayloads {
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
   'terminal:scenario-modal': ScenarioModalData;
   'terminal:exit-comparison-request': { ticker?: string };
+  'terminal:buy-more-request': { ticker?: string };
   'terminal:startup-offline': undefined;
   'terminal:startup-retry': undefined;
   'terminal:startup-state': { visible: boolean; failed: boolean };
