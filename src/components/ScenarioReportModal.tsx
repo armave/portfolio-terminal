@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import type { ComponentChild } from 'preact';
 import { useDialogFocus } from '../ui/dialogFocus';
-import { scheduleDialogClose } from '../ui/dialogClose';
+import { ModalFrame } from './ModalFrame';
 import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 import { getAppLanguage, translateText } from '../services/i18n';
 
@@ -69,22 +69,10 @@ function renderReportLines(report: string): ComponentChild[] {
 }
 
 export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanceHoldings = [], onClose }: ScenarioReportModalProps) {
-  const [isClosing, setIsClosing] = useState(false);
-  const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const cancelCloseRef = useRef<(() => void) | null>(null);
-  const requestClose = useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-    cancelCloseRef.current = scheduleDialogClose(onClose, 200);
-  }, [onClose]);
-
-  useEffect(() => () => {
-    cancelCloseRef.current?.();
-    cancelCloseRef.current = null;
-  }, []);
+  const closeRef = useRef<(() => void) | null>(null);
+  const requestClose = () => { closeRef.current?.(); };
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
@@ -97,8 +85,15 @@ export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanc
       : 'Before vs. after · estimated values', getAppLanguage());
 
   return (
-    <div id="scenarioReportModal" class={'scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm transition-opacity duration-200 ease-out sm:p-6 ' + (isClosing ? 'opacity-0' : 'opacity-100')} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
-      <section ref={dialogRef} class={'scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 transition-[opacity,transform] duration-200 sm:max-h-[90vh] ' + (isClosing ? 'translate-y-3 scale-[0.985] opacity-0' : 'translate-y-0 scale-100 opacity-100')} role="dialog" aria-modal="true" aria-labelledby="scenarioReportTitle" tabIndex={-1}>
+    <ModalFrame
+      backdropId="scenarioReportModal"
+      backdropClassName="scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6"
+      dialogClassName="scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 sm:max-h-[90vh]"
+      dialogRef={dialogRef}
+      ariaLabelledBy="scenarioReportTitle"
+      closeRef={closeRef}
+      onClose={onClose}
+    >
         <header class="flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6">
           <div class="min-w-0">
             <div class="mb-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300">{translateText('What-if analysis', getAppLanguage())}</div>
@@ -116,7 +111,6 @@ export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanc
           <p class="max-w-xl text-[11px] leading-relaxed text-slate-400">{translateText('Estimates only · actual results may differ.', getAppLanguage())}</p>
           <button type="button" class="min-h-11 rounded-lg bg-purple-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-purple-950/30 transition duration-150 hover:-translate-y-px hover:bg-purple-300 hover:shadow-purple-900/30 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose}>{translateText('Done', getAppLanguage())}</button>
         </footer>
-      </section>
-    </div>
+      </ModalFrame>
   );
 }
