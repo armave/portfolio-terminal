@@ -406,6 +406,32 @@ describe('terminal command validation and cash routing', () => {
     ]).type).toBe('err');
   });
 
+  it('uses cash and cash-cushion holdings when evaluating account maintenance headroom', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -22_363.64,
+      cashBalance: 0,
+      cashCushion: {
+        freeCash: 5_000,
+        holdings: [{ ticker: 'CASHETF', shares: 20, currentPrice: 297.63 }]
+      },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.10, stopOutRatio: 0 },
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL', shares: 68, currentPrice: 288.10, pt: 385, commBuy: 27.17,
+          tranches: [{ qty: 68, price: 322.96 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.previewBuyMoreScenario('GOOGL', 1, 288.11);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.kind).toBe('buy-more');
+    expect(result.text).toContain('[BUY MORE: GOOGL]');
+  });
+
   it('blocks buy-more comparisons when the proposed purchase breaches maintenance or stop-out limits', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
@@ -445,7 +471,7 @@ describe('terminal command validation and cash routing', () => {
 
     expect(result.type).toBe('err');
     expect(result.modal).toBeUndefined();
-    expect(result.text).toContain('market value for AAPL is unavailable');
+    expect(result.text).toContain('portfolio market valuation is incomplete');
   });
 
   it('simulates buying more shares without calling portfolio mutation methods', () => {
