@@ -124,7 +124,7 @@ export function loadExitComparisonPreferences(
     const raw = storage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (parsed.version !== 1 || typeof parsed.ticker !== 'string' || !/^[A-Z0-9.\\-]{1,16}$/i.test(parsed.ticker) ||
+    if (parsed.version !== 1 || typeof parsed.ticker !== 'string' || !/^[A-Z0-9.-]{1,16}$/i.test(parsed.ticker) ||
       !Array.isArray(parsed.periods) || parsed.periods.length !== 2) return null;
     const first = normalizePeriod(parsed.periods[0]);
     const second = normalizePeriod(parsed.periods[1]);
