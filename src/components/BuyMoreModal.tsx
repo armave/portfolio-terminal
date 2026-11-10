@@ -266,9 +266,14 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
         {position && !inputsValid && <p role="status" class="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2.5 text-xs text-amber-200">
           {translateText('Enter a positive share amount and purchase price to calculate this scenario.', language)}
         </p>}
-        {resultError && !resultData && <p role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
-          {translateText(resultError, language)}
-        </p>}
+        {resultError && !resultData && <div role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
+          <p>{translateText(resultError, language)}</p>
+          {typeof preview?.maxSafeShares === 'number' && preview.maxSafeShares > 0 && <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setSharesInput(String(preview.maxSafeShares))}
+              class="min-h-10 rounded-lg border border-rose-700/70 bg-rose-950/40 px-3 py-1.5 text-[11px] font-semibold text-rose-100 hover:bg-rose-900/50"
+            >{translateText('Use maximum safe quantity', language)} · {formatQuantity(preview.maxSafeShares, language)}</button>
+          </div>}
+        </div>}
 
         {displayedResult && <section class="space-y-3" aria-label={translateText('Buy More results', language)}>
           <div class="flex flex-wrap items-end justify-between gap-2">
