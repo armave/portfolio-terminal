@@ -1,6 +1,7 @@
 import { createPortal } from 'preact/compat';
 import { useRef } from 'preact/hooks';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
 
 function formatPercentage(value: number): string {
@@ -59,19 +60,14 @@ export function MarginRiskOverviewModal({
       : 'Current';
 
   return createPortal(
-    <div
-      class="margin-risk-overview-backdrop"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    <ModalFrame
+      backdropClassName="margin-risk-overview-backdrop"
+      dialogClassName="margin-risk-overview-dialog"
+      dialogRef={dialogRef}
+      ariaLabelledBy="marginRiskOverviewTitle"
+      onBackdropClick={onClose}
     >
-      <section
-        ref={dialogRef}
-        class="margin-risk-overview-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="marginRiskOverviewTitle"
-        tabIndex={-1}
-      >
-        <header class="margin-risk-overview-header">
+        <header        <header class="margin-risk-overview-header">
           <div>
             <span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span>
             <h2 id="marginRiskOverviewTitle">{translateText('Margin risk overview', language)}</h2>
@@ -107,8 +103,7 @@ export function MarginRiskOverviewModal({
             {translateText('Estimates use configured broker thresholds and are not live broker risk indicators.', language)}
           </p>
         </div>
-      </section>
-    </div>,
+      </ModalFrame>,
     document.body
   );
 }
