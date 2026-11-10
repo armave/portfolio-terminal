@@ -686,7 +686,39 @@ export class CommandDispatcher {
       ? Math.min(1, costBasis / totalPortfolioInvested)
       : 1;
 
-    const money = (n: number) => (n < 0 ? '-
+    const dollar = String.fromCharCode(36);
+    const money = (n: number) => (n < 0 ? '-' : '') + dollar + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+' : n < 0 ? '-' : '') + dollar + Math.abs(n).toFixed(2);
+    const rows = scenarios.map(s => {
+      const gross = shares * s.price;
+      const sellFee = calculateSaleCommission(shares, gross, state.brokerAssumptions);
+      const accounting = calculateSaleAccounting({
+        tranches: validatedCostBasis.tranches,
+        positions: state.positions,
+        positionShares: shares,
+        sharesSold: shares,
+        balance: signedBalance,
+        brokerAssumptions: state.brokerAssumptions,
+        positionMarginCharged: pos.marginCharged,
+        sellProceeds: gross,
+        soldCostBasis: costBasis,
+        buyCommissionAllocated: buyCommission,
+        sellCommission: sellFee
+      });
+      // The live margin ledger compounds the whole account debt daily and rounds each
+      // rollover to cents. Allocate that projected increase to this ticker by the same
+      // cost-basis weight used by realized-sale accounting.
+      const projectedDebt = calculateProjectedDebt(debt, rules.dailyRate, s.days);
+      const portfolioCarry = Math.max(0, projectedDebt - debt);
+      const carry = Number((portfolioCarry * positionWeight).toFixed(2));
+      const marginFee = Number((accounting.marginInterestAllocated + carry).toFixed(2));
+      const net = Number((accounting.netProfit - carry).toFixed(2));
+      // Current accrued interest is already reflected in the signed account balance.
+      // Only future interest changes projected debt; do not deduct historical charges twice.
+      const resultingAccountBalance = Number((startingCash + accounting.netCashProceeds - projectedDebt).toFixed(2));
+      const totalFeeFriction = Number((accounting.totalCommissions + marginFee).toFixed(2));
+      return { ...s, gross, sellFee, carry, marginFee, totalFeeFriction, net, netProceeds: accounting.netCashProceeds, projectedDebt, resultingAccountBalance };
+    });
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
     const dayLabel = (days: number) => days === 0 ? 'Today' : days + ' Days';
     const presets = rows.slice(0, -1).map((row, index) => ({
