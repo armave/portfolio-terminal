@@ -17,6 +17,14 @@ describe('Margin Market Tools placement', () => {
     expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
   });
 
+  it('wires the Market Tools launcher to the lazy, account-scoped exit comparison modal', () => {
+    expect(appSource).toContain("addUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest)");
+    expect(appSource).toContain("removeUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest)");
+    expect(appSource).toContain('<ExitComparisonModal');
+    expect(appSource).toContain('initialTicker={exitComparisonRequest.ticker}');
+    expect(appSource).toContain('portfolio-terminal:exit-comparison:v1:');
+  });
+
   it('keeps the analyst target beside the ticker title in one wrapping header row', () => {
     const titleRowStart = appSource.indexOf('id="boardTitleRow"');
     const title = appSource.indexOf('id="boardTitle"', titleRowStart);
@@ -37,6 +45,8 @@ describe('Margin Market Tools placement', () => {
     expect(appSource).toContain('boardAnalystConsensus');
     expect(quickActionsSource).not.toContain('News + Review');
     expect(quickActionsSource).not.toContain('Portfolio Review');
-    expect(quickActionsSource).toContain('Compare Exits…');
+    expect(quickActionsSource).not.toContain('Compare Exits…');
+    expect(summarySource).toContain("translateText('Compare Exits', language)");
+    expect(summarySource).toContain("emitUiEvent('terminal:exit-comparison-request', ticker ? { ticker } : {})");
   });
 });

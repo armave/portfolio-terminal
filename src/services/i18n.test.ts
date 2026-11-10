@@ -69,6 +69,29 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes the Market Tools two-period exit comparison experience', () => {
+    const exitComparisonCopy = [
+      'In {days} days', 'In {duration}', 'Choose a valid date', 'Period A', 'Period B', 'BEST RESULT',
+      'Exit date', 'Expected exit price',
+      'Use the latest available quote, or average entry if no quote is available',
+      'Use reference', 'Exit date presets', 'shares', 'Reference price unavailable',
+      'Reference', 'No open position selected', 'Compare Exits',
+      'Compare two hypothetical exit periods by date and price.',
+      'Compare two hypothetical exit periods by date and price. Results update as you edit.',
+      'Close exit comparison', 'Position', 'Swap periods', 'Reset defaults',
+      'There are no open positions with shares available to compare.',
+      'Comparison results', 'All open shares · estimated after fees and financing',
+      'Period B vs. Period A', 'Enter a valid positive price and exit date for both periods to calculate the comparison.',
+      'This is the last saved estimate. Current inputs or portfolio data do not support a fresh calculation.',
+      'Inputs and latest results are saved automatically in this browser for this account.',
+      'Last saved',
+      'Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.'
+    ];
+    for (const copy of exitComparisonCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes the complete margin intelligence evidence and stale-state copy', () => {
     const copy = [
       'This saved review may no longer match the current portfolio or news. Refresh it before relying on its conclusions.',

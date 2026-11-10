@@ -34,8 +34,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
   const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
-  const comparisonPrice =
-    currentPrice === null ? '[target_price]' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
   // Portfolio-level quick actions when on COMBINED or BALANCE tab
   if (!position) {
     const globalActions: QuickActionItem[] = [
@@ -83,13 +81,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       instant: true,
       color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
       title: `Immediately pull latest quote for ${position.ticker}`
-    },
-    {
-      text: '⇄ Compare Exits…',
-      command: `sell ${position.ticker} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`,
-      selectText: comparisonPrice,
-      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
-      title: 'Compare exit scenarios without placing a trade'
     },
     {
       text: '⇧ Buy More Scenario…',

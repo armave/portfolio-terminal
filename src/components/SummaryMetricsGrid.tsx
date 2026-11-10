@@ -94,7 +94,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           <div class="margin-risk-gauge-heading">
             <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">—</strong></div>
             <button
-              type="button"
+              type="button" class="margin-risk-overview-trigger"
               onClick={openOverview}
               aria-haspopup="dialog"
               aria-label={translateText('Open margin risk overview', language)}
@@ -142,7 +142,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div class="margin-risk-gauge-heading">
           <div><span class="margin-risk-label">{translateText('ACCOUNT EQUITY HEALTH', language)}</span><strong class="margin-risk-equity">{equityText}</strong></div>
           <button
-            type="button"
+            type="button" class="margin-risk-overview-trigger"
             onClick={openOverview}
             aria-haspopup="dialog"
             aria-label={translateText('Open margin risk overview', language)}
@@ -423,6 +423,15 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
     <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
       <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
       <div class="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          title={translateText('Compare two hypothetical exit periods by date and price.', language)}
+          aria-label={translateText('Compare Exits', language)}
+          onClick={() => emitUiEvent('terminal:exit-comparison-request', ticker ? { ticker } : {})}
+          class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+        >
+          ⇄ {translateText('Compare Exits', language)}
+        </button>
         <button
           type="button"
           title={translateText(reviewTitle, language)}

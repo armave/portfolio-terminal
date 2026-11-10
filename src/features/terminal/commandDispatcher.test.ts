@@ -4,6 +4,7 @@ import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from '../../store
 
 describe('terminal command validation and cash routing', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -304,6 +305,105 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain(firstDate);
     expect(result.text).toContain(secondDate);
     expect(result.text).toContain('BEST:');
+  });
+
+  it('exposes the same deterministic engine for a read-only two-period Market Tools preview', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock');
+    const updateTargetPrice = vi.spyOn(portfolioStore, 'updateTargetPrice');
+
+    const result = CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.kind).toBe('exit-comparison');
+    expect(result.modal?.columns).toHaveLength(2);
+    expect(result.modal?.rows.map(row => row.label)).toEqual([
+      'Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance'
+    ]);
+    expect(sellStock).not.toHaveBeenCalled();
+    expect(updateTargetPrice).not.toHaveBeenCalled();
+  });
+
+  it('uses sale accounting, position-weighted compounded carry, and signed cash settlement for exit estimates', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-10T08:30:00.000Z'));
+    const state = portfolioStore.getState();
+    const positions = {
+      GOOGL: {
+        ticker: 'GOOGL',
+        shares: 10,
+        currentPrice: 120,
+        pt: 130,
+        commBuy: 10,
+        marginCharged: 7,
+        tranches: [{ qty: 10, price: 100, date: '2026-11-09', buyCommission: 10 }]
+      },
+      AAPL: {
+        ticker: 'AAPL',
+        shares: 10,
+        currentPrice: 100,
+        pt: 110,
+        commBuy: 0,
+        tranches: [{ qty: 10, price: 100, date: '2026-11-09', buyCommission: 0 }]
+      }
+    };
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'GOOGL',
+      balance: -1000,
+      cashBalance: 0,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 200 },
+      brokerAssumptions: {
+        ...state.brokerAssumptions,
+        annualBorrowRate: 3.65,
+        dayCountBasis: 365,
+        commissionPerShare: 0,
+        commissionRatePct: 0,
+        commissionMin: 1
+      },
+      positions
+    } as any);
+
+    const result = CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 120 },
+      { label: 'In 2 days', days: 2, price: 125 }
+    ]);
+    const row = (label: string) => result.modal?.rows.find((candidate) => candidate.label === label)?.values;
+
+    expect(result.type).toBe('res');
+    expect(row('Cost Basis')).toEqual(['$1000.00', '$1000.00']);
+    expect(row('Gross Proceeds')).toEqual(['$1200.00', '$1250.00']);
+    expect(row('Total Fee Friction')).toEqual(['$18.00', '$28.05']);
+    expect(row('Net P&L')).toEqual(['+$182.00', '+$221.95']);
+    expect(row('Resulting Account Balance')).toEqual(['$399.00', '$428.90']);
+  });
+
+  it('rejects invalid Market Tools exit preview inputs', () => {
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: -1, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 0 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0.5, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
   });
 
   it('simulates buying more shares without calling portfolio mutation methods', () => {
