@@ -32,6 +32,7 @@ describe('on-demand application code splitting', () => {
     const app = readSource('../App.tsx');
     const components = [
       ['ScenarioComparisonModal', 'ScenarioComparisonModal'],
+      ['ExitComparisonModal', 'ExitComparisonModal'],
       ['ScenarioReportModal', 'ScenarioReportModal'],
       ['MarginIntelligenceModal', 'MarginIntelligenceModal']
     ] as const;
