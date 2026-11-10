@@ -4,6 +4,7 @@ import { calculateAccruedFees, calculateCommission, calculateMarginInterest, cal
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
+import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
 import type { ScenarioInput, ScenarioModalData } from './scenarioContracts';
 
 type SideEffectAction =
@@ -800,8 +801,7 @@ export class CommandDispatcher {
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance);
-    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance);
-    const additionalDebt = Math.max(0, totalOutlay - freeCash);
+    const freeCash = Number(state.cashCushion?.freeCash ?? 0);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
     }
@@ -814,32 +814,38 @@ export class CommandDispatcher {
         state.brokerAssumptions.stopOutRatio > state.brokerAssumptions.maintenanceEquityRatio) {
       throw new Error('Buy scenario blocked: broker margin limits are unavailable or invalid. Review broker assumptions before comparing.');
     }
-    const portfolioExposure = Object.entries(state.positions || {}).reduce((total, [symbol, position]) => {
-      const shares = Number(position?.shares);
-      const quote = Number(position?.currentPrice);
-      const tranches = Array.isArray(position?.tranches) ? position.tranches : [];
-      const cost = tranches.reduce((sum, tranche) =>
-        sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
-      const fallbackPrice = shares > 0 && cost > 0 ? cost / shares : 0;
-      const mark = Number.isFinite(quote) && quote > 0 ? quote : fallbackPrice;
-      const marketValue = shares * mark;
-      if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(mark) || mark <= 0 ||
-          !Number.isFinite(marketValue) || !Number.isFinite(total + marketValue)) {
-        throw new Error('Buy scenario blocked: market value for ' + symbol + ' is unavailable. Refresh portfolio quotes before comparing.');
-      }
-      return total + marketValue;
-    }, 0);
-    const cashUsed = Math.min(freeCash, totalOutlay);
-    const currentDebtForLimits = Math.max(0, -balance);
-    const projectedDebtForLimits = currentDebtForLimits + additionalDebt;
-    const projectedAssetsForLimits = portfolioExposure + freeCash - cashUsed + qty * quote;
+
+    // Keep the projection on the same account-wide basis as calculateMarginRiskSnapshot:
+    // signed broker cash/debt + free cash + all margin and cash-cushion holdings.
+    const valuation = calculatePortfolioValuation({
+      signedAccountBalance: balance,
+      freeCash,
+      marginPositions: Object.values(state.positions || {}),
+      cashHoldings: state.cashCushion?.holdings || []
+    });
+    if (!valuation.accountBalanceAvailable ||
+        ![valuation.cashBalance, valuation.marginDebt, valuation.totalHoldingsValue].every(Number.isFinite)) {
+      throw new Error('Buy scenario blocked: the account equity inputs are unavailable. Refresh the portfolio balance before comparing.');
+    }
+    if (valuation.unpricedHoldings > 0) {
+      throw new Error('Buy scenario blocked: portfolio market valuation is incomplete. Refresh quotes for all margin and cash-cushion holdings before comparing.');
+    }
+
+    const freeCashUsed = Math.min(freeCash, totalOutlay);
+    const remainingOutlay = totalOutlay - freeCashUsed;
+    // Free cash is consumed first; any remainder changes the signed broker cash
+    // balance, increasing margin debt only after positive broker cash is exhausted.
+    const balanceAfter = balance - remainingOutlay;
+    const cashUsed = Math.min(valuation.cashBalance, totalOutlay);
+    const projectedDebtForLimits = Math.max(0, -balanceAfter);
+    const projectedAssetsForLimits = valuation.totalHoldingsValue + valuation.cashBalance - cashUsed + qty * quote;
     const projectedEquityForLimits = projectedAssetsForLimits - projectedDebtForLimits;
     const projectedEquityRatio = projectedAssetsForLimits > 0
       ? projectedEquityForLimits / projectedAssetsForLimits
       : -Infinity;
     const maintenanceLimit = state.brokerAssumptions.maintenanceEquityRatio;
     const stopOutLimit = state.brokerAssumptions.stopOutRatio;
-    if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio < maintenanceLimit ||
+    if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio <= maintenanceLimit ||
         projectedEquityRatio <= stopOutLimit) {
       throw new Error(
         'Buy scenario blocked: the proposed purchase would exceed your margin limits. ' +
@@ -848,7 +854,6 @@ export class CommandDispatcher {
         '% and stop-out limit of ' + (stopOutLimit * 100).toFixed(1) + '%. Reduce shares or price, or add cash before comparing.'
       );
     }
-    const balanceAfter = balance - additionalDebt;
     const currentDebt = Math.max(0, -balance);
     const dailyMarginBefore = currentDebt * rules.dailyRate;
     const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
