@@ -22,7 +22,8 @@ import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
   hasUnresolvedBrokerPositionIntegrity,
-  type MarginRiskInput
+  type MarginRiskInput,
+  type MarginRiskSnapshot
 } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
@@ -71,6 +72,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const overviewModal = overviewOpen ? (
     <MarginRiskOverviewModal
       onClose={closeOverview}
+      riskSnapshot={risk.snapshot}
       equityText={equityText}
       equityPct={equityPct}
       collateralText={collateralText}
@@ -228,6 +230,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
 interface MarginRiskDisplay {
   status: 'available' | 'provisional' | 'unavailable';
   reason?: string;
+  snapshot: MarginRiskSnapshot | null;
   warnings: string[];
   riskLevel: string;
   summaryText: string;
@@ -252,6 +255,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
     return {
       status: 'unavailable',
       reason: result.reason,
+      snapshot: null,
       warnings: result.warnings,
       riskLevel: 'Unavailable',
       summaryText: translateText('Margin risk estimate unavailable', language),
@@ -283,6 +287,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   const summaryText = `${translateText(riskLevel, language)} · ${equitySummary}`;
   return {
     status: result.status,
+    snapshot: metrics,
     warnings: result.warnings,
     riskLevel,
     summaryText,

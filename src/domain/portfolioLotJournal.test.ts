@@ -369,6 +369,52 @@ describe('lot-aware transaction journal replay', () => {
     expect(replay.issues.map((issue) => issue.eventId)).toEqual(['position-adjustment', 'split-adjustment']);
   });
 
+  it('marks cash-holding buys, sells and adjustments incomplete instead of silently claiming lot parity', () => {
+    const cashBuy = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: Date.parse('2026-11-02'),
+      ticker: 'MSFT',
+      quantity: 5,
+      cashHoldingQuantityDelta: 5,
+      unitPrice: 100,
+      grossAmount: 500,
+      cashDelta: 0,
+      note: 'Cash-holding cost basis is not tracked.'
+    }, { eventId: 'cash-buy', source: 'lot-journal-test' });
+    const cashSell = createPortfolioTransactionEvent({
+      type: 'cash-holding.sell',
+      effectiveAt: Date.parse('2026-11-03'),
+      ticker: 'MSFT',
+      quantity: 2,
+      cashHoldingQuantityDelta: -2,
+      unitPrice: 110,
+      grossAmount: 220,
+      fees: 1,
+      cashDelta: 219,
+      note: 'Cash-holding sale has no lot allocation.'
+    }, { eventId: 'cash-sell', source: 'lot-journal-test' });
+    const cashAdjustment = createPortfolioTransactionEvent({
+      type: 'cash-holding.adjustment',
+      effectiveAt: Date.parse('2026-11-04'),
+      ticker: 'MSFT',
+      cashHoldingQuantityDelta: -3,
+      note: 'Holding removed from tracking.'
+    }, { eventId: 'cash-adjustment', source: 'lot-journal-test' });
+
+    const replay = replayPortfolioTransactionLots([buyOne, cashBuy, cashSell, cashAdjustment]);
+    expect(replay.status).toBe('incomplete');
+    expect(replay.openLots).toMatchObject([{ lotId: 'lot-one', openQuantity: 2 }]);
+    expect(replay.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ eventId: 'cash-buy', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') }),
+      expect.objectContaining({ eventId: 'cash-sell', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') }),
+      expect.objectContaining({ eventId: 'cash-adjustment', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') })
+    ]));
+    expect(verifyPortfolioTransactionLotParity([buyOne, cashBuy], {
+      positions: { AAPL: { shares: 2, commBuy: 2, tranches: [{ lotId: 'lot-one', qty: 2, price: 100, date: '2026-11-01', buyCommission: 2 }] } },
+      closedTrades: []
+    }).status).toBe('incomplete');
+  });
+
   it('rejects invalid replay tolerances', () => {
     expect(() => verifyPortfolioTransactionLotParity([], { positions: {} }, -1))
       .toThrow('Lot parity tolerance must be finite and non-negative');

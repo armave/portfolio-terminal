@@ -6,6 +6,20 @@ import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourc
 afterEach(() => setAppLanguage('en'));
 
 describe('app localization', () => {
+  it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
+    const marginRiskCopy = [
+      'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit',
+      'Eligible collateral', 'Initial margin requirement', 'Broker maintenance requirement',
+      'Concentration add-on', 'Total maintenance requirement', 'Estimated annual financing',
+      'Estimated daily financing', 'Input freshness', 'Source observation', 'Broker reported',
+      'Configured assumption', 'Not reported', 'Source unknown', 'Fresh', 'Stale', 'Delayed',
+      'Indicative', 'Unknown', 'Configured maintenance threshold', 'Configured stop-out buffer'
+    ];
+    for (const copy of marginRiskCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('keeps authentication modal copy localized in Russian', () => {
     const authenticationCopy = [
       'Create administrator account',
