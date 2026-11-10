@@ -138,6 +138,13 @@ export function replayPortfolioTransactionLots(
       continue;
     }
 
+    if (event.type === 'cash-holding.buy' ||
+      event.type === 'cash-holding.sell' ||
+      event.type === 'cash-holding.adjustment') {
+      addIssue(event, 'incomplete', 'Cash-holding transactions do not yet contain acquisition-lot cost-basis allocations; cash-holding lot replay is not supported.');
+      continue;
+    }
+
     if (event.type === 'trade.buy') {
       const ticker = cleanTicker(event.ticker);
       const quantity = optionalNumber(event.quantity);

@@ -58,6 +58,10 @@ interface MarginRequirementValue {
 export interface MarginRiskSnapshot {
   currency: string;
   calculatedAt: number;
+  /** Earliest source observation used by this calculation; null means unavailable. */
+  observedAt: number | null;
+  /** Freshness classification from the supplied quote/account inputs. */
+  freshness: MarginRiskQuoteFreshness;
   longExposure: number;
   shortExposure: number;
   grossExposure: number;
@@ -379,6 +383,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     : stopOutBuffer <= 0 ? 'stop-out-breach' : 'above-stop-out';
   const value: MarginRiskSnapshot = {
     currency, calculatedAt: input.calculatedAt,
+    observedAt: input.observedAt, freshness: input.freshness,
     longExposure: input.longExposure, shortExposure: input.shortExposure, grossExposure, netExposure,
     cashBalance: input.cashBalance, marginDebt: input.marginDebt, assets, equity, equityRatio,
     eligibleCollateral, eligibleCollateralSource: input.eligibleCollateralSource,

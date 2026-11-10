@@ -3,7 +3,7 @@
 **Parent contract:** `docs/plans/2026-11-08-portfolio-integrity-reliability-implementation-plan.md`  
 **Branch:** `impl/margin-risk-engine`  
 **Target:** plan branch  
-**Status:** implementation scaffold
+**Status:** partially implemented; calculation kernel and risk consumers exist, with source-provenance detail surfaced by the Stage 1 financial-integrity PR
 
 ## Mission
 
@@ -32,6 +32,15 @@ Make every margin-risk surface use the same transparent, timestamped inputs. The
 - `src/components/SummaryMetricsGrid.tsx`, margin gauge and other risk consumers.
 - Broker assumptions/settings and AI risk context.
 - Shared portfolio valuation only where an adapter is required; avoid changing position normalization.
+
+## Stage 1 implementation note — 2026-11-11
+
+- The pure `calculateMarginRiskSnapshot` kernel remains the calculation authority for the dashboard and Margin Intelligence context.
+- The returned snapshot now preserves source observation time and quote/account freshness so downstream views do not have to reconstruct or guess provenance.
+- Margin Risk Overview now exposes long/short exposure, cash, margin debit, eligible collateral with its source, initial/maintenance requirements and concentration add-on with provenance, total maintenance requirement, estimated financing costs, input freshness and source observation time.
+- Missing broker requirements remain explicitly “Not reported”; cash-based eligible collateral continues to be labeled as a configured assumption.
+- The current Freedom/TradeNet client snapshot still does not provide a verified eligible-collateral or margin-requirement field. This PR does not invent one or claim broker-confirmed maintenance/buying power.
+- Remaining integration work: add a verified broker margin-requirement adapter only after its endpoint contract and field semantics are documented; centralize the assembly of account-risk inputs across consumers; complete authenticated live broker QA and cross-account/multi-currency wiring.
 
 ## Required tests
 

@@ -272,6 +272,9 @@ function buildMarginReviewContext(
     } : {
       status: marginRisk.status,
       quality: marginRisk.quality,
+      observedAt: marginRisk.value.observedAt,
+      freshness: marginRisk.value.freshness,
+      calculatedAt: marginRisk.value.calculatedAt,
       equityRatioPct: marginRisk.value.equityRatio === null ? null : marginRisk.value.equityRatio * 100,
       maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
       stopOutRatioPct: assumptions.stopOutRatio * 100,

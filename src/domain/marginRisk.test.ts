@@ -38,6 +38,18 @@ function riskInput(overrides: Partial<Parameters<typeof calculateMarginRiskSnaps
 }
 
 describe('calculateMarginRiskSnapshot', () => {
+  it('retains source observation time and quote freshness for downstream risk explanations', () => {
+    const observedAt = Date.UTC(2026, 10, 8, 6, 55);
+    const result = calculateMarginRiskSnapshot(riskInput({
+      observedAt,
+      freshness: 'delayed'
+    }));
+    expect(result.status).toBe('provisional');
+    if (result.status === 'unavailable') return;
+    expect(result.value.observedAt).toBe(observedAt);
+    expect(result.value.freshness).toBe('delayed');
+  });
+
   it('keeps long assets, short liabilities, cash and margin debt separate', () => {
     const result = calculateMarginRiskSnapshot(riskInput({
       longExposure: 1_000, shortExposure: 300, cashBalance: 400, marginDebt: 200,
