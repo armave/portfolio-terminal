@@ -49,6 +49,20 @@ function isValidIsoDate(value: unknown): value is string {
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
+/** Display-only conversion: keep the real date offset in days; use 30-day month units for compact labels. */
+export interface ExitDurationParts {
+  months: number;
+  days: number;
+}
+
+export function getExitDurationParts(totalDays: number): ExitDurationParts | null {
+  if (!Number.isInteger(totalDays) || totalDays < 0) return null;
+  return {
+    months: Math.floor(totalDays / 30),
+    days: totalDays % 30
+  };
+}
+
 export function addCalendarDays(isoDate: string, days: number): string {
   if (!isValidIsoDate(isoDate) || !Number.isInteger(days)) return '';
   const [year, month, day] = isoDate.split('-').map(Number);
