@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { ModalFrame } from './ModalFrame';
 import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
 import {
   formatMarginCoverageStatus,
@@ -142,9 +143,14 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
   }, []);
 
   return (
-    <div class="margin-intelligence-overlay fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section ref={dialogRef} class="margin-intelligence-dialog flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="marginIntelligenceTitle" tabIndex={-1}>
-        <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
+    <ModalFrame
+      backdropClassName="margin-intelligence-overlay fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-4"
+      dialogClassName="margin-intelligence-dialog flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl"
+      dialogRef={dialogRef}
+      ariaLabelledBy="marginIntelligenceTitle"
+      onBackdropClick={onClose}
+    >
+        <header        <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
           <div class="min-w-0">
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">{translateText('Gemini · Margin Intelligence', getAppLanguage())}</div>
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
@@ -197,7 +203,6 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
           </section>}
         </div>
         <footer class="border-t border-slate-800 px-4 py-3 text-[10px] leading-4 text-slate-500">{translateText('AI-generated analysis can be wrong or incomplete. Verify material facts from original sources. This is not personalized financial advice; use your own judgment before changing a position.', getAppLanguage())}</footer>
-      </section>
-    </div>
+      </ModalFrame>
   );
 }
