@@ -90,9 +90,8 @@ describe('Stage 10 accessibility wiring', () => {
   it('provides accessible, keyboard-managed controls in the Market Tools exit comparison dialog', () => {
     const exit = readSource('../components/ExitComparisonModal.tsx');
     expect(exit).toContain('useDialogFocus(dialogRef');
-    expect(exit).toContain('role="dialog"');
-    expect(exit).toContain('aria-modal="true"');
-    expect(exit).toContain('aria-labelledby="exitComparisonTitle"');
+    expect(exit).toContain('<ModalFrame');
+    expect(exit).toContain('ariaLabelledBy="exitComparisonTitle"');
     expect(exit).toContain('initialFocusRef: closeButtonRef');
     expect(exit).toContain('type="date"');
     expect(exit).toContain('type="number"');
