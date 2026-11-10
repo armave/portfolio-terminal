@@ -286,7 +286,7 @@ describe('accessible Margin Health overview action', () => {
     expect(source).not.toContain('onKeyDown={cardKeyDown}');
     expect(modal).toContain('<ModalFrame');
     expect(modal).toContain('ariaLabelledBy="marginRiskOverviewTitle"');
-    expect(modal).toContain('onEscape: onClose');
+    expect(modal).toContain('onEscape: requestClose');
     expect(modal).not.toContain('role="tablist"');
     expect(modal).not.toContain('MarginRiskModalTab');
   });
