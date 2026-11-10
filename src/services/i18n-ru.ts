@@ -1060,6 +1060,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Enter a positive share amount and purchase price to calculate this scenario.": "Для расчёта сценария укажите положительное количество акций и цену покупки.",
   "Use market quote": "Использовать рыночную котировку",
   "Use average entry": "Использовать среднюю цену входа",
+  "Use maximum safe quantity": "Использовать максимально допустимое количество",
   "Buy More results": "Результаты дополнительной покупки",
   "Close Buy More": "Закрыть сценарий дополнительной покупки",
   "Projection price": "Цена для прогноза",
