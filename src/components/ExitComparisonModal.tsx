@@ -12,7 +12,7 @@ import {
   type ExitComparisonSavedResult
 } from '../features/terminal/exitComparisonPreferences';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD } from '../utils/formatters';
+import { formatUSD, formatUSDDisplayValue } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { scheduleDialogClose } from '../ui/dialogClose';
@@ -223,14 +223,6 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
       if (!closingRef.current) setIsOpen(true);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
   }, []);
 
   useEffect(() => {
@@ -462,7 +454,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
                       'border-b border-slate-800/70 text-slate-300'
                     }>
                       <th scope="row" class="px-3 py-3 text-left font-medium">{translateText(row.label, language)}</th>
-                      {row.values.slice(0, 2).map((value, index) => <td key={index} class={'px-3 py-3 text-right font-mono whitespace-nowrap ' + (row.kind === 'result' ? 'font-bold' : '')}>{value}</td>)}
+                      {row.values.slice(0, 2).map((value, index) => <td key={index} class={'px-3 py-3 text-right font-mono whitespace-nowrap ' + (row.kind === 'result' ? 'font-bold' : '')}>{formatUSDDisplayValue(value)}</td>)}
                     </tr>)}
                   </tbody>
                 </table>
