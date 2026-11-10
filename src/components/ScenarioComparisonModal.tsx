@@ -68,10 +68,10 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   return (
     <ModalFrame
       backdropId="scenarioComparisonModal"
-      backdropClassName="scenario-modal-backdrop fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4"
+      backdropClassName="scenario-modal-backdrop fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto overscroll-contain p-2 sm:items-center sm:p-4"
       backdropStyle={{ background: 'rgba(10, 15, 25, 0.78)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
       dialogId="scenarioComparisonDialog"
-      dialogClassName="scenario-modal-dialog w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col"
+      dialogClassName="scenario-modal-dialog flex min-h-0 w-full min-w-0 max-w-5xl max-h-[calc(100vh-1rem)] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-xl sm:max-h-[calc(100vh-2rem)] sm:max-h-[calc(100dvh-2rem)]"
       dialogStyle={{ background: '#0b0f17', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)' }}
       dialogRef={dialogRef}
       ariaLabelledBy="scenarioComparisonTitle"
@@ -94,11 +94,11 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
               {data.rows.map((row, rowIndex) => <div key={row.label+rowIndex} class="flex items-start justify-between gap-3 border-b border-slate-800/70 py-2 last:border-0"><span class="text-[11px] text-slate-400">{row.label}</span><span class={'text-right font-mono text-xs font-semibold ' + (row.kind === 'result' ? 'text-emerald-300' : row.kind === 'balance' ? 'text-cyan-200' : 'text-slate-200')} style={{ fontVariantNumeric: 'tabular-nums' }}>{formatNumberGroups(row.values[columnIndex] ?? '—')}{row.deltas?.[columnIndex] && <span class={'mt-1 ml-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' + (row.deltas[columnIndex]!.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400')}>{formatNumberGroups(row.deltas[columnIndex]!)}</span>}</span></div>)}
             </section>)}</div>
           ) : (
-            <table class="w-full border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <div class="min-w-0 overflow-x-auto overscroll-x-contain"><table class="w-full min-w-[42rem] border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
               <caption class="sr-only">{data.title}</caption>
               <thead><tr class="border-b border-slate-700 text-slate-300"><th scope="col" class="px-2 py-2 text-left font-semibold">{translateText(isBuyMore ? 'Projection Date' : 'Metric', getAppLanguage())}</th>{shownColumns.map(index => <th key={index} scope="col" class="min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap" style={isBuyMore && index % 2 === 1 ? { color: '#6ee7b7' } : {}}>{data.columns[index]}</th>)}</tr></thead>
               <tbody>{data.rows.map((row, rowIndex) => <tr key={row.label+rowIndex} class={rowClass(row.kind)}><th scope="row" class="px-2 py-2 text-left font-medium whitespace-nowrap">{row.label}</th>{shownColumns.map(index => <td key={index} class={'px-2 py-2 text-right font-mono whitespace-nowrap ' + (isBuyMore ? (index % 2 === 0 ? 'text-slate-400 bg-slate-950/30' : 'text-emerald-200 bg-emerald-950/20 border-l border-emerald-900/40') : '')} style={{ fontVariantNumeric: 'tabular-nums' }}><span>{formatNumberGroups(row.values[index] ?? '—')}</span>{row.deltas?.[index] && <span class={'ml-1.5 inline-flex rounded px-1.5 py-0.5 align-middle text-[9px] font-semibold ' + (row.deltas[index]!.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400')}>{formatNumberGroups(row.deltas[index]!)}</span>}</td>)}</tr>)}</tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </ModalFrame>

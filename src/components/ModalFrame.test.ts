@@ -92,6 +92,16 @@ describe('shared modal frame', () => {
     }
   });
 
+  it('keeps scenario comparison dialogs inside the viewport and scrolls wide tables independently', () => {
+    const comparison = readSource('./ScenarioComparisonModal.tsx');
+
+    expect(comparison).toContain('overflow-y-auto overscroll-contain');
+    expect(comparison).toContain('max-h-[calc(100dvh-1rem)]');
+    expect(comparison).toContain('min-h-0 w-full min-w-0');
+    expect(comparison).toContain('overflow-x-auto overscroll-x-contain');
+    expect(comparison).toContain('min-w-[42rem]');
+  });
+
   it('preserves caller-owned backgrounds and custom dialog styling while the frame animates', () => {
     const comparison = readSource('./ScenarioComparisonModal.tsx');
     const report = readSource('./ScenarioReportModal.tsx');

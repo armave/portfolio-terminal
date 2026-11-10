@@ -406,6 +406,48 @@ describe('terminal command validation and cash routing', () => {
     ]).type).toBe('err');
   });
 
+  it('blocks buy-more comparisons when the proposed purchase breaches maintenance or stop-out limits', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -9_000,
+      cashCushion: { ...state.cashCushion, freeCash: 0 },
+      brokerAssumptions: { ...state.brokerAssumptions, maintenanceEquityRatio: 0.25, stopOutRatio: 0.1 },
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 0,
+          tranches: [{ qty: 10, price: 100 }]
+        }
+      }
+    } as any);
+
+    const result = CommandDispatcher.execute('buy scenario 100 AAPL at 100');
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.text).toContain('would exceed your margin limits');
+    expect(result.text).toContain('maintenance limit');
+  });
+
+  it('blocks buy-more comparisons when portfolio market-value inputs are unavailable', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: 0,
+      cashCushion: { ...state.cashCushion, freeCash: 1_000 },
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 0, pt: 120, commBuy: 0, tranches: [] }
+      }
+    } as any);
+
+    const result = CommandDispatcher.execute('buy scenario 1 AAPL at 100');
+
+    expect(result.type).toBe('err');
+    expect(result.modal).toBeUndefined();
+    expect(result.text).toContain('market value for AAPL is unavailable');
+  });
+
   it('simulates buying more shares without calling portfolio mutation methods', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
