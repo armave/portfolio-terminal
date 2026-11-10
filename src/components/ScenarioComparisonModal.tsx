@@ -89,7 +89,7 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
       ariaLabelledBy="scenarioComparisonTitle"
       onBackdropClick={requestClose}
     >
-        <header        <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+        <header class="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4" style={{ background: 'rgba(11,15,23,0.94)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
           <div class="min-w-0"><h2 id="scenarioComparisonTitle" class="text-base sm:text-lg font-bold text-white">{translateText(data.title, getAppLanguage())}</h2><p class="mt-1 text-[11px] font-medium text-slate-400">{translateText(data.subtitle, getAppLanguage())}</p></div>
           <button ref={closeButtonRef} id="scenarioComparisonClose" type="button" class="shrink-0 min-h-11 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" aria-label={translateText('Close scenario comparison', getAppLanguage())} onClick={requestClose}>{translateText('Close · Esc', getAppLanguage())}</button>
         </header>
