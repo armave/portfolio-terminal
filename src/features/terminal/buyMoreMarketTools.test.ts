@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CommandDispatcher } from './commandDispatcher';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
+
+afterEach(() => vi.restoreAllMocks());
 
 function createStorage() {
   const values = new Map<string, string>();
