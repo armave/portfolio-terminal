@@ -3,7 +3,7 @@ export interface ExitComparisonPeriodInput {
   price: string;
 }
 
-export interface ExitComparisonSavedRow {
+interface ExitComparisonSavedRow {
   label: string;
   values: [string, string];
   kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
