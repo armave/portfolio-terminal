@@ -306,6 +306,47 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('BEST:');
   });
 
+  it('exposes the same deterministic engine for a read-only two-period Market Tools preview', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock');
+    const updateTargetPrice = vi.spyOn(portfolioStore, 'updateTargetPrice');
+
+    const result = CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.kind).toBe('exit-comparison');
+    expect(result.modal?.columns).toHaveLength(2);
+    expect(result.modal?.rows.map(row => row.label)).toEqual([
+      'Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance'
+    ]);
+    expect(sellStock).not.toHaveBeenCalled();
+    expect(updateTargetPrice).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid Market Tools exit preview inputs', () => {
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: -1, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 0 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ]).type).toBe('err');
+    expect(CommandDispatcher.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 }
+    ]).type).toBe('err');
+  });
+
   it('simulates buying more shares without calling portfolio mutation methods', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
