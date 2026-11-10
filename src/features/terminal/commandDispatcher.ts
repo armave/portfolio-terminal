@@ -818,10 +818,6 @@ export class CommandDispatcher {
         state.brokerAssumptions.stopOutRatio > state.brokerAssumptions.maintenanceEquityRatio) {
       throw new Error('Buy scenario blocked: broker margin limits are unavailable or invalid. Review broker assumptions before comparing.');
     }
-    if (!Number.isFinite(quote) || quote <= 0) {
-      throw new Error('Buy scenario blocked: a current market quote or valid entry price is required to estimate account equity.');
-    }
-
     // Keep the projection on the same account-wide basis as calculateMarginRiskSnapshot:
     // signed broker cash/debt + free cash + all margin and cash-cushion holdings.
     const valuation = calculatePortfolioValuation({
