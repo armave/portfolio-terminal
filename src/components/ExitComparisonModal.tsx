@@ -379,7 +379,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
       ariaLabelledBy="exitComparisonTitle"
       onBackdropClick={requestClose}
     >
-        <header        <header class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/30 px-4 py-4 sm:px-6">
+        <header class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/30 px-4 py-4 sm:px-6">
           <div class="min-w-0">
             <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">{translateText('MARKET TOOLS', language)}</span>
             <h2 id="exitComparisonTitle" class="mt-1 text-lg font-bold text-white sm:text-xl">{translateText('Compare Exits', language)}</h2>
