@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-const quickActionsSource = readFileSync(new URL('../components/ConsoleQuickActions.tsx', import.meta.url), 'utf8');
 
 describe('Margin Market Tools placement', () => {
   it('provides news review and external research in the fourth metrics column', () => {

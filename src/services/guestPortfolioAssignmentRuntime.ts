@@ -25,7 +25,7 @@ export interface GuestPortfolioAssignmentRuntimeDependencies {
   renderBoard: () => void;
   showToast: (message: string, tone?: 'error') => void;
   logError: (message: string, error: unknown) => void;
-  logTerminal: (message: string) => void;
+  logAppMessage: (message: string) => void;
   now?: () => number;
   getActiveTranches?: typeof getActiveTranchesFromTrades;
 }
@@ -373,7 +373,7 @@ const publishGuestPortfolioSnapshots = (): Promise<void> => {
   });
   guestPortfolioPublishQueue = operation.catch((error) => {
     dependencies.logError('Unable to publish guest portfolio projections:', error);
-    dependencies.logTerminal('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.');
+    dependencies.logAppMessage('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.');
   });
   return guestPortfolioPublishQueue;
 };

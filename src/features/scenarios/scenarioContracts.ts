@@ -35,9 +35,6 @@ interface ScenarioModalBase {
   subtitle: string;
   columns: string[];
   rows: ScenarioModalRow[];
-  presets?: Array<{ label: string; columnIndexes: number[] }>;
-  quickActions?: Array<{ label: string; command?: string; columnIndexes?: number[]; invert?: boolean }>;
-  action?: { label: string; command: string };
   note: string;
 }
 

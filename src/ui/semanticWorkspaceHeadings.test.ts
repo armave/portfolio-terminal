@@ -18,7 +18,4 @@ describe('semantic workspace headings', () => {
     expect(readSource('../components/GuestTrancheHistory.tsx')).toContain('<h1 id="guestTrancheHistoryHeading"');
   });
 
-  it('uses a subordinate heading for the Trading Console section', () => {
-    expect(readSource('../components/TradingConsole.tsx')).toContain('<h2 class="text-xs font-bold text-slate-200');
-  });
 });

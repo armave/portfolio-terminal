@@ -32,9 +32,6 @@ It is **not** a broker connection, order-entry system, source of official accoun
 * **Freedom Broker Account Reconciliation:** When the authenticated read-only Freedom TradeNet account API returns a valid snapshot, the app prioritizes the broker's USD balance, aggregate share quantities, and available broker-reported prices. App-owned trade lots and cost basis remain separate; quantity mismatches are surfaced instead of silently rewriting lots.
 
 
-* **Conversational Trading Console:** Evaluates natural-language portfolio entries and exit scenario modeling using Google Gemini with an explicit confirmation safeguard.
-
-
 * **Account Roles & Cloud Sync:** Uses Worker-backed accounts with `admin` and `guest` roles, password-hashed credentials, role-specific session lifetimes, and server-enforced read-only guest access. Portfolio state remains encrypted before cloud synchronization.
 
 
@@ -90,7 +87,7 @@ npm run build
 1. **Configure Broker Rules:** Open **Broker assumptions & quote symbols**. Configure your annual margin borrowing rate, day-count convention (360 vs. 365), daily rollover cutoff (Armenia Time), maintenance equity ratio, stop-out threshold, and commission minimums/rates.
 
 
-2. **Set Cash Balance & Holdings:** Enter your signed cash balance in the Cash panel (positive denotes available cash; negative denotes broker debt). Log holdings either via inline table rows or the Trading Console.
+2. **Set Cash Balance & Holdings:** Enter your signed cash balance in the Cash panel (positive denotes available cash; negative denotes broker debt). Log holdings via inline table rows.
 
 
 3. **Monitor Active Positions:** Use ticker tabs to inspect tranches, unrealized profit/loss, daily carry costs, and breakeven horizons.
@@ -99,7 +96,7 @@ npm run build
 4. **Automatic Portfolio Sync:** Each signed-in admin or guest has a mandatory 15s, 30s, or 60s refresh cadence in Settings. The selected interval refreshes that role's important data; **Sync portfolio** remains available for immediate manual sync.
 
 
-5. **Run Scenarios in Terminal:** Use plain-language prompts in the Trading Console to simulate staged exits, compare multiple price targets across dates, or log trades.
+5. **Review Market Tools:** Use Compare Exits and Buy More to model hypothetical prices, fees, average entry, and margin exposure without changing portfolio state.
 
 
 6. **Backup State:** Export a JSON snapshot periodically, or configure GitHub Gist sync for cross-device continuity.
@@ -108,39 +105,6 @@ npm run build
 
 ---
 
-## Trading Console
-
-The console supports deterministic commands and natural-language queries. When viewing an active holding, command suggestions contextually adapt to that ticker.
-
-### Direct / Utility Commands (No API Key Required)
-
-```text
-quote AAPL
-pull
-quote symbol 7203 finnhub=TSE:7203 stooq=7203.jp
-quote symbol 7203 finnhub=default stooq=default
-
-```
-
-### Natural Language Examples (Requires Gemini Key)
-
-```text
-bought 10 AAPL for 180, pt 205
-sell 4 AAPL for 195
-sold all AAPL for 195
-add cash stock 5 MSFT
-remove cash stock MSFT
-balance 5000
-balance -5000
-set AAPL target to 210
-compare selling AAPL today for 195 vs 14 days later for 200
-sell 5 AAPL today for 195 and 5 in 7 days for 205
-
-```
-
-*Note:* All AI-interpreted portfolio mutations require user confirmation before committing state. Margin sales exceeding open tranche quantities are blocked.
-
----
 
 ## Freedom Broker data priority
 
@@ -164,7 +128,7 @@ If TradeNet requires an additional SMS or verification challenge during password
 
 Provider keys are optional. Without API keys, the calculator, scenario engine, backup system, and manual tracking remain functional.
 
-Keys are configured directly in the terminal toolbar:
+Keys are configured in Settings:
 
 | Provider | Purpose | Fallback Order & Details |
 | --- | --- | --- |
@@ -223,7 +187,7 @@ portfolio-terminal/
 │   ├── features/
 │   │   ├── ai/            # Gemini client, intent handling, prompts
 │   │   ├── quotes/        # Market insight and sentiment helpers
-│   │   └── terminal/      # Command dispatch and scenario evaluation
+│   │   └── scenarios/     # Read-only scenario calculations and preferences
 │   ├── services/          # Provider APIs, polling, persistence, backup
 │   ├── store/             # Canonical portfolio state and mutations
 │   ├── types/             # Shared portfolio and broker types

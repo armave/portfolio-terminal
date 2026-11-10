@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CommandDispatcher } from './commandDispatcher';
+import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
 
@@ -68,7 +68,7 @@ describe('Market Tools Buy More preview', () => {
     } as any);
     const buyStock = vi.spyOn(portfolioStore, 'buyStock');
     const sellStock = vi.spyOn(portfolioStore, 'sellStock');
-    const result = CommandDispatcher.previewBuyMoreScenario('aapl', 5, 105);
+    const result = ScenarioCalculator.previewBuyMoreScenario('aapl', 5, 105);
     expect(result.type).toBe('res');
     expect(result.modal?.kind).toBe('buy-more');
     expect(result.modal?.columns).toHaveLength(8);
@@ -76,8 +76,8 @@ describe('Market Tools Buy More preview', () => {
     expect(result.modal?.rows.every(row => row.values.length === 8)).toBe(true);
     expect(buyStock).not.toHaveBeenCalled();
     expect(sellStock).not.toHaveBeenCalled();
-    expect(CommandDispatcher.previewBuyMoreScenario('AAPL', 0, 105).type).toBe('err');
-    expect(CommandDispatcher.previewBuyMoreScenario('AAPL', 5, 0).type).toBe('err');
-    expect(CommandDispatcher.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
+    expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 0, 105).type).toBe('err');
+    expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 0).type).toBe('err');
+    expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
   });
 });

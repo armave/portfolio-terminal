@@ -35,7 +35,7 @@ export interface SyncOptions {
   pullCloudAndRewriteLocal?: (state: CloudStateRecord) => void;
   getState?: () => CloudStateInput;
   showToast?: (msg: string, type: string) => void;
-  logTerminal?: (msg: string) => void;
+  logAppMessage?: (msg: string) => void;
   onStatusChange?: (status: 'synced' | 'error') => void;
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
@@ -165,7 +165,7 @@ async function pullCloudState(
     state,
     pullCloudAndRewriteLocal,
     showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`),
-    logTerminal = (msg: string) => console.log(msg)
+    logAppMessage = (msg: string) => console.log(msg)
   } = handlers;
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
@@ -204,7 +204,7 @@ async function pullCloudState(
         revisionCoordinator.recordPulledRevision(pulledRevision);
       }
       reportResult?.(false);
-      logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
+      logAppMessage('[KV Cloud]: State not found (404). Falling back to local storage.');
       return loadSavedState(toCloudStateRecord(state));
     }
 
@@ -345,7 +345,7 @@ async function pullCloudState(
           getAppLanguage()
         );
         showToast(notice, 'error');
-        logTerminal(`[Cloud Security]: Encryption upgrade remains pending: ${migrationError instanceof Error ? migrationError.message : 'unknown error'}`);
+        logAppMessage(`[Cloud Security]: Encryption upgrade remains pending: ${migrationError instanceof Error ? migrationError.message : 'unknown error'}`);
       }
     } else if (handlers.allowCloudWrites !== false && (wasUpdated || mergedLocalData)) {
       pushCloudState(parsedState, {
@@ -371,7 +371,7 @@ async function pullCloudState(
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${message}`, 'error');
-    logTerminal(`[KV Cloud Error]: ${message}. Retaining local state.`);
+    logAppMessage(`[KV Cloud Error]: ${message}. Retaining local state.`);
     return loadSavedState(toCloudStateRecord(state));
   }
 }
@@ -583,7 +583,7 @@ async function performPushCloudState(
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
-    logTerminal = (msg: string) => console.log(msg),
+    logAppMessage = (msg: string) => console.log(msg),
     showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`)
   } = handlers;
   const isCurrentSession = handlers.isCurrentSession || (() => true);
@@ -674,7 +674,7 @@ async function performPushCloudState(
         );
         handlers.onStatusChange?.('error');
         showToast(conflictMessage, 'error');
-        logTerminal(`[Cloud Conflict]: ${await responseError(res)}`);
+        logAppMessage(`[Cloud Conflict]: ${await responseError(res)}`);
         return false;
       }
       throw new Error(await responseError(res));

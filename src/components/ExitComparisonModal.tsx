@@ -1,6 +1,6 @@
 import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CommandDispatcher } from '../features/terminal/commandDispatcher';
+import { ScenarioCalculator } from '../features/scenarios/scenarioCalculator';
 import {
   addCalendarDays,
   getExitDayOffset,
@@ -10,7 +10,7 @@ import {
   toLocalIsoDate,
   type ExitComparisonPeriodInput,
   type ExitComparisonSavedResult
-} from '../features/terminal/exitComparisonPreferences';
+} from '../features/scenarios/exitComparisonPreferences';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatUSDDisplayValue } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';

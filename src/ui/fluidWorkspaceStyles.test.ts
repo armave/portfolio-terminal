@@ -26,7 +26,7 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
-  it('keeps detailed tables scrollable and terminal height responsive', () => {
+  it('keeps detailed portfolio tables scrollable', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*34rem\)/s);
     expect(fluidStyles).toMatch(/#terminalLog\s*\{[^}]*height:\s*clamp\(/s);

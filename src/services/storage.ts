@@ -541,7 +541,7 @@ export function loadGatewaySecret(): string {
 export interface SaveApiKeysOptions {
   secret?: string;
   showToast?: (message: string, type?: string) => void;
-  logTerminal?: (message: string) => void;
+  logAppMessage?: (message: string) => void;
   [key: string]: unknown;
 }
 
@@ -549,7 +549,7 @@ export interface SaveApiKeysOptions {
  * Validates, saves, and confirms Gateway credentials.
  */
 export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean> {
-  const { secret, showToast, logTerminal } = options || {};
+  const { secret, showToast, logAppMessage } = options || {};
   if (!secret || !secret.trim()) {
     if (typeof showToast === 'function') {
       showToast('Please enter a valid Gateway Secret', 'error');
@@ -563,13 +563,13 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
 
   if (!persisted) {
     const message = 'Gateway Secret is available for this session, but secure device storage failed. It may need to be entered again after refresh.';
-    if (typeof logTerminal === 'function') logTerminal(message);
+    if (typeof logAppMessage === 'function') logAppMessage(message);
     if (typeof showToast === 'function') showToast(message, 'error');
     return false;
   }
 
-  if (typeof logTerminal === 'function') {
-    logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
+  if (typeof logAppMessage === 'function') {
+    logAppMessage('Gateway Secret saved. Remote access has not been verified yet.');
   }
   if (typeof showToast === 'function') {
     showToast('Gateway Secret saved. Remote access has not been verified yet.', 'success');

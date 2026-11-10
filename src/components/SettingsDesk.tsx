@@ -300,7 +300,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </p>
       </div>
 
-      <div class="terminal-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
+      <div class="settings-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
         <div class="settings-toolbar__card settings-account-card flex flex-col gap-3" role="group" aria-label={translateText('Account actions')}>
           <div class="settings-account-summary flex flex-wrap items-center justify-between gap-3">
             <div class="settings-account-identity flex min-w-0 flex-wrap items-center gap-2">

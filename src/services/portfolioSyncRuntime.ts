@@ -16,7 +16,7 @@ export interface PortfolioSyncRuntimeDependencies {
   pullGuestSnapshot: ManualPortfolioSyncOperations['pullGuestSnapshot'];
   translateText: (message: string) => string;
   showToast: (message: string, tone: 'success' | 'warning' | 'error') => void;
-  logTerminal: (message: string) => void;
+  logAppMessage: (message: string) => void;
 }
 
 type ManualSyncRequestEvent = UiEvent<{
@@ -33,19 +33,19 @@ function notifySyncResult(
 
   if (result.success) {
     dependencies.showToast(dependencies.translateText('Portfolio sync completed.'), 'success');
-    dependencies.logTerminal('[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.');
+    dependencies.logAppMessage('[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.');
   } else if (anySourceSucceeded) {
     dependencies.showToast(
       dependencies.translateText('Portfolio sync completed with issues. Check the activity log.'),
       'warning'
     );
-    dependencies.logTerminal('[Sync Warning]: One or more portfolio data sources could not be refreshed.');
+    dependencies.logAppMessage('[Sync Warning]: One or more portfolio data sources could not be refreshed.');
   } else {
     dependencies.showToast(
       dependencies.translateText('Could not sync portfolio. Check your connection and try again.'),
       'error'
     );
-    dependencies.logTerminal('[Sync Error]: No portfolio data source completed successfully.');
+    dependencies.logAppMessage('[Sync Error]: No portfolio data source completed successfully.');
   }
 }
 
@@ -75,7 +75,7 @@ export function bindPortfolioSyncRuntime(
         event.detail.resolve(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        dependencies.logTerminal(`[Sync Error]: ${message}`);
+        dependencies.logAppMessage(`[Sync Error]: ${message}`);
         dependencies.showToast(
           dependencies.translateText('Could not sync portfolio. Check your connection and try again.'),
           'error'

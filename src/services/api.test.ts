@@ -377,13 +377,13 @@ describe('cloud state sync', () => {
       })
     });
     const showToast = vi.fn();
-    const logTerminal = vi.fn();
+    const logAppMessage = vi.fn();
     const onStatusChange = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(pushCloudState(
       { activeView: 'CONFLICT-RECOVERY-TEST', balance: 42 },
-      { secret: 'cloud-conflict-test-secret', showToast, logTerminal, onStatusChange }
+      { secret: 'cloud-conflict-test-secret', showToast, logAppMessage, onStatusChange }
     )).resolves.toBe(false);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -391,7 +391,7 @@ describe('cloud state sync', () => {
       'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
       'error'
     );
-    expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('[Cloud Conflict]'));
+    expect(logAppMessage).toHaveBeenCalledWith(expect.stringContaining('[Cloud Conflict]'));
     expect(onStatusChange).toHaveBeenCalledWith('error');
   });
 
@@ -470,7 +470,7 @@ describe('cloud state sync', () => {
       allowCloudWrites: false,
       pullCloudAndRewriteLocal: onRestored,
       showToast: vi.fn(),
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     expect(restored.transactionEvents).toEqual(expectedEvents);
@@ -525,7 +525,7 @@ describe('cloud state sync', () => {
       isCurrentSession: () => isCurrent,
       pullCloudAndRewriteLocal: rewriteLocal,
       showToast: vi.fn(),
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     }, reportResult);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -589,7 +589,7 @@ describe('cloud state sync', () => {
     const rewriteLocal = vi.fn();
     const reportResult = vi.fn();
     const showToast = vi.fn();
-    const logTerminal = vi.fn();
+    const logAppMessage = vi.fn();
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
 
     const result = await pullCloudState({
@@ -598,7 +598,7 @@ describe('cloud state sync', () => {
       allowCloudWrites: false,
       pullCloudAndRewriteLocal: rewriteLocal,
       showToast,
-      logTerminal
+      logAppMessage
     }, reportResult);
 
     expect(showToast).not.toHaveBeenCalled();
@@ -618,7 +618,7 @@ describe('cloud state sync', () => {
       state: localState,
       secret: 'cloud-encryption-secret',
       showToast: vi.fn(),
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     expect(result).toBe(false);
@@ -801,7 +801,7 @@ describe('cloud pull persistence failures', () => {
       secret,
       pullCloudAndRewriteLocal: rewriteLocal,
       showToast,
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     }, reportResult);
 
     expect(reportResult).toHaveBeenCalledWith(false);
@@ -841,7 +841,7 @@ describe('versioned cloud encryption', () => {
       state: { activeView: 'LOCAL', balance: 1000 },
       secret,
       showToast,
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     }, reportResult);
 
     expect(saveSpy).not.toHaveBeenCalled();
@@ -869,7 +869,7 @@ describe('versioned cloud encryption', () => {
       secret,
       allowCloudWrites: false,
       showToast,
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     expect(saveSpy).not.toHaveBeenCalled();
@@ -907,7 +907,7 @@ describe('versioned cloud encryption', () => {
       state: { activeView: 'LOCAL', balance: 0 },
       secret,
       showToast,
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     expect(result.activeView).toBe('AAPL');
@@ -941,7 +941,7 @@ describe('versioned cloud encryption', () => {
       state: { activeView: 'LOCAL', balance: 0 },
       secret,
       showToast,
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     expect(result.activeView).toBe('AAPL');
@@ -1168,7 +1168,7 @@ describe('cloud pull revision safety', () => {
       state: { activeView: 'LOCAL', balance: 1000 },
       secret: 'cloud-encryption-secret',
       showToast: vi.fn(),
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     await pushCloudState({ activeView: 'LOCAL', balance: 1000 }, {
@@ -1234,7 +1234,7 @@ describe('queued writes during concurrent cloud pulls', () => {
       state: { activeView: 'LOCAL', balance: 0 },
       secret,
       showToast: vi.fn(),
-      logTerminal: vi.fn()
+      logAppMessage: vi.fn()
     });
 
     resolveFirstPush({
@@ -1512,12 +1512,12 @@ describe('Gateway validation response reuse', () => {
     await expect(validateGatewaySecret(secret)).resolves.toBe(true);
     const reportResult = vi.fn();
     const showToast = vi.fn();
-    const logTerminal = vi.fn();
+    const logAppMessage = vi.fn();
     await pullCloudState({
       state: { activeView: 'LOCAL', balance: 100 },
       secret,
       showToast,
-      logTerminal
+      logAppMessage
     }, reportResult);
 
     expect(showToast).not.toHaveBeenCalled();
