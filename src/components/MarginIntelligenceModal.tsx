@@ -150,7 +150,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
       ariaLabelledBy="marginIntelligenceTitle"
       onBackdropClick={onClose}
     >
-        <header        <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
+        <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
           <div class="min-w-0">
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">{translateText('Gemini · Margin Intelligence', getAppLanguage())}</div>
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
