@@ -282,7 +282,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
             <p class="mt-1 text-[11px] text-rose-200/80">{translateText('The planning floor is a conservative app-side buffer, not the broker’s official buying-power limit.', language)}</p>
           </> : <p>{translateText(resultError, language)}</p>}
           {marginLimitError && preview.maxSafeShares! > 0 && <div class="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setSharesInput(String(preview.maxSafeShares))}
+            <button type="button" onClick={() => setSharesInput(String(preview.maxSafeShares!))}
               class="min-h-10 rounded-lg border border-rose-700/70 bg-rose-950/40 px-3 py-1.5 text-[11px] font-semibold text-rose-100 hover:bg-rose-900/50"
             >{translateText('Use maximum safe quantity', language)} · {formatQuantity(preview.maxSafeShares!, language)}</button>
           </div>}
