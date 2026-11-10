@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addCalendarDays,
   getExitDayOffset,
+  getExitDurationParts,
   loadExitComparisonPreferences,
   saveExitComparisonPreferences,
   toLocalIsoDate,
@@ -62,6 +63,17 @@ describe('exit comparison preferences', () => {
     }));
     expect(loadExitComparisonPreferences('invalid-date', storage)).toBeNull();
     expect(loadExitComparisonPreferences('invalid-price', storage)).toBeNull();
+  });
+
+  it('formats long exit horizons as exact 30-day month and residual-day units', () => {
+    expect(getExitDurationParts(31)).toEqual({ months: 1, days: 1 });
+    expect(getExitDurationParts(32)).toEqual({ months: 1, days: 2 });
+    expect(getExitDurationParts(60)).toEqual({ months: 2, days: 0 });
+    expect(getExitDurationParts(90)).toEqual({ months: 3, days: 0 });
+    expect(getExitDurationParts(180)).toEqual({ months: 6, days: 0 });
+    expect(getExitDurationParts(3650)).toEqual({ months: 121, days: 20 });
+    expect(getExitDurationParts(-1)).toBeNull();
+    expect(getExitDurationParts(1.5)).toBeNull();
   });
 
   it('calculates local calendar-day offsets and enforces the supported 10-year horizon', () => {
