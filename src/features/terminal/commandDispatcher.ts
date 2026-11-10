@@ -777,6 +777,7 @@ export class CommandDispatcher {
       (sum, tranche) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
     );
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
+    const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
     const purchaseValue = qty * price;
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
@@ -811,8 +812,8 @@ export class CommandDispatcher {
       return total + marketValue;
     }, 0);
     const cashUsed = Math.min(freeCash, totalOutlay);
-    const currentDebt = Math.max(0, -balance);
-    const projectedDebtForLimits = currentDebt + additionalDebt;
+    const currentDebtForLimits = Math.max(0, -balance);
+    const projectedDebtForLimits = currentDebtForLimits + additionalDebt;
     const projectedAssetsForLimits = portfolioExposure + freeCash - cashUsed + qty * quote;
     const projectedEquityForLimits = projectedAssetsForLimits - projectedDebtForLimits;
     const projectedEquityRatio = projectedAssetsForLimits > 0
@@ -837,7 +838,6 @@ export class CommandDispatcher {
     const newShares = oldShares + qty;
     const newCost = oldCost + purchaseValue;
     const newBuyFee = oldBuyFee + purchaseFee;
-    const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
     const oldAverage = oldCost / oldShares;
     const newAverage = newCost / newShares;
     const target = Number(pos.pt);
