@@ -57,7 +57,7 @@ export function formatUSD(val: unknown): string {
 
 /** Formats an already-currency-labelled table value with locale grouping and consistent signs. */
 export function formatUSDDisplayValue(value: string): string {
-  const match = value.trim().match(/^([+\\-−]?)\\s*\\$\\s*([\\d,]+(?:\\.\\d+)?)$/);
+  const match = value.trim().match(/^([+\-−]?)\s*\$\s*([\d,]+(?:\.\d+)?)$/);
   if (!match) return value;
 
   const amount = Number(match[2].replace(/,/g, ''));
