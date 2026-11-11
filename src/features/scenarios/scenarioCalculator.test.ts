@@ -129,9 +129,11 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[4]).toBe('-$300.00');
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
     expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(-300 - cashNeeded, 2);
-    const later = custom.modal?.rows.find(row => row.label.includes('+2D'));
-    expect(Number(later?.values[4].replace(/[$,]/g, ''))).toBeLessThan(-300);
-    expect(Number(later?.values[5].replace(/[$,]/g, ''))).toBeLessThan(-300 - cashNeeded);
+    const later = custom.modal?.rows.find(row => row.kind === 'fee' && row.values[4] !== '—');
+    const parseSignedMoney = (value: string | undefined) =>
+      Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
+    expect(parseSignedMoney(later?.values[4])).toBeLessThan(-300);
+    expect(parseSignedMoney(later?.values[5])).toBeLessThan(-300 - cashNeeded);
   });
 });
 
