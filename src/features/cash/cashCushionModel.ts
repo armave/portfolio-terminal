@@ -203,16 +203,6 @@ export function summarizeCashHoldings<T extends { shares: unknown; currentPrice?
 
 type CashHoldingLike = CashStockHolding | GuestCashHolding;
 
-type CashHoldingGroup<T extends { ticker: string }> = {
-  key: string;
-  label: string;
-  holdings: T[];
-};
-
-type CashHoldingTableRow<T extends { ticker: string }> =
-  | { type: 'group'; key: string; label: string }
-  | { type: 'holding'; key: string; holding: T };
-
 interface CashHoldingDisplayGroupsInput {
   isAdmin: boolean;
   guestNames: ReadonlyMap<string, string>;
@@ -224,22 +214,6 @@ interface CashHoldingDisplayGroupsInput {
   activeTrancheMixes: Record<string, ActiveTrancheMix>;
   cashHoldings: CashStockHolding[];
   holdings: CashHoldingLike[];
-}
-
-function buildCashHoldingTableRows<T extends { ticker: string }>(
-  groups: CashHoldingGroup<T>[],
-  isAdmin: boolean
-): CashHoldingTableRow<T>[] {
-  return groups.flatMap((group) => [
-    ...(isAdmin
-      ? [{ type: 'group' as const, key: `group-${group.key}`, label: group.label }]
-      : []),
-    ...group.holdings.map((holding) => ({
-      type: 'holding' as const,
-      key: `holding-${group.key}-${holding.ticker}`,
-      holding
-    }))
-  ]);
 }
 
 /** Build the admin guest-assignment groups and the exact display rows for Balance. */

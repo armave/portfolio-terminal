@@ -357,7 +357,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   };
 
   const { unpricedHoldingCount, pricedHoldingCount, stocksTotal } = useMemo(
-    () => summarizeCashHoldings(holdings),
+    () => summarizeCashHoldings([...holdings]),
     [holdings]
   );
 
