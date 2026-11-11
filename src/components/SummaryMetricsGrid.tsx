@@ -101,7 +101,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
               aria-haspopup="dialog"
               aria-label={translateText('Open margin risk overview', language)}
               title={translateText('Click to view margin risk overview', language)}
-              >
+            >
               <span class="margin-risk-status elevated">
                 {translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}
               </span>
@@ -149,7 +149,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             aria-haspopup="dialog"
             aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
-            >
+          >
             <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
               {risk.summaryText.split(' · ')[0]}
             </span>
@@ -427,7 +427,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
   return (
     <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
       <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
-      <div class="flex flex-wrap items-center gap-1.5">
+      <div class="modal-tools-group">
         <button
           type="button"
           title={translateText('Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.', language)}
@@ -435,7 +435,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
           class="min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
         >
-          ⇧ {translateText('Compare Buying', language)}
+          ⇧<br />{translateText('Compare Buying', language)}
         </button>
         <button
           type="button"
@@ -444,7 +444,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
           class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
         >
-          ⇄ {translateText('Compare Exits', language)}
+          ⇄<br />{translateText('Compare Exits', language)}
         </button>
         <button
           type="button"
@@ -453,7 +453,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('margin:intelligence-request', ticker ? { ticker } : {})}
           class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50"
         >
-          ✦ {translateText(reviewLabel, language)}
+          ✦<br />{translateText(reviewLabel, language)}
         </button>
         {ticker && isAdmin && marketDepthAvailable && <button
           type="button"
@@ -466,7 +466,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
         </button>}
       </div>
       {ticker && (
-        <div class="flex flex-wrap items-center gap-1.5" aria-label={translateText('External market research links', language)}>
+        <div class="flex flex-wrap items-center gap-1.5 market-links-group" aria-label={translateText('External market research links', language)}>
           <BoardExternalLinks />
         </div>
       )}

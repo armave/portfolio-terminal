@@ -9,19 +9,19 @@ const PROVIDERS = [
     getUrl: (symbol: string) => `https://finviz.com/stock?t=${symbol}`
   },
   {
-    name: 'Stocktwits',
+    name: 'Twits',
     id: 'stocktwitsLink',
     brandClass: 'stock-link-stocktwits',
     getUrl: (symbol: string) => `https://stocktwits.com/symbol/${symbol}`
   },
   {
-    name: 'TV Chart',
+    name: 'Chart',
     id: 'tvChartLink',
     brandClass: 'stock-link-tv-chart',
     getUrl: (symbol: string) => `https://tradingview.com/chart/?symbol=${symbol}`
   },
   {
-    name: 'TV Ideas',
+    name: 'Ideas',
     id: 'tvIdeasLink',
     brandClass: 'stock-link-tv-ideas',
     getUrl: (symbol: string) => `https://tradingview.com/symbols/${symbol}/ideas/?sort=recent`

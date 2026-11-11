@@ -621,11 +621,11 @@ summary:hover {
 @media (max-width: 768px) {
 
   input,
-input[type="text"],
-input[type="number"],
-input[type="password"],
-input[type="time"],
-select {
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="time"],
+  select {
     /* 16px prevents iOS Safari from zooming the page on form focus. */
     font-size: 16px !important;
   }
@@ -639,7 +639,7 @@ select {
   }
 
   td,
-th {
+  th {
     padding: 6px 8px;
   }
 
@@ -662,7 +662,7 @@ th {
   }
 
   #tickerTabs button,
-#tickerTabs>* {
+  #tickerTabs>* {
     flex-shrink: 0;
     padding: 0.3rem 0.65rem;
     font-size: 0.85rem;
@@ -712,15 +712,15 @@ th {
 @media (pointer: coarse) {
 
   button,
-[role="button"],
-input,
-select,
-textarea {
+  [role="button"],
+  input,
+  select,
+  textarea {
     min-height: 44px;
   }
 
   button,
-[role="button"] {
+  [role="button"] {
     touch-action: manipulation;
   }
 }
@@ -731,7 +731,7 @@ textarea {
   }
 
   .table-scroll-wrapper,
-#projectionTableContainer {
+  #projectionTableContainer {
     max-width: 100%;
     overscroll-behavior-x: contain;
   }
@@ -810,7 +810,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-#projectionTableContainer table td {
+  #projectionTableContainer table td {
     padding: 0.25rem 0.3rem;
   }
 
@@ -897,7 +897,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-#projectionTableContainer table td {
+  #projectionTableContainer table td {
     padding: 0.45rem 0.5rem;
   }
 }
@@ -959,8 +959,7 @@ textarea {
   }
 }
 
-@media (max-width: 640px) {
-}
+@media (max-width: 640px) {}
 
 
 
@@ -995,8 +994,7 @@ textarea {
   }
 }
 
-@media (max-width: 767px) {
-}
+@media (max-width: 767px) {}
 
 
 
@@ -1023,7 +1021,7 @@ textarea {
   }
 
   #projectionTableContainer,
-.table-scroll-wrapper {
+  .table-scroll-wrapper {
     max-width: 100%;
     width: 100%;
   }
@@ -1031,8 +1029,7 @@ textarea {
 
 /* Prefer sticky positioning over fixed positioning so the console never covers
    portfolio content or the mobile keyboard. */
-@media (min-width: 64rem) {
-}
+@media (min-width: 64rem) {}
 
 
 
@@ -1387,12 +1384,12 @@ textarea {
   }
 
   .portfolio-micro-market,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
   .portfolio-micro-costs,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     grid-column: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding-top: 0.75rem;
@@ -1418,7 +1415,7 @@ textarea {
   }
 
   .portfolio-micro-market,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     border-left: 0 !important;
   }
 
@@ -1427,7 +1424,7 @@ textarea {
   }
 
   .portfolio-micro-costs,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -1597,7 +1594,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-#projectionTableContainer table td {
+  #projectionTableContainer table td {
     padding: 0.5rem;
   }
 }
@@ -1700,7 +1697,7 @@ textarea {
   }
 
   #projectionTableContainer table th,
-#projectionTableContainer table td {
+  #projectionTableContainer table td {
     padding: 0.5rem;
   }
 
@@ -1719,9 +1716,9 @@ textarea {
   }
 
   .border-card,
-.portfolio-metric,
-#projectionTableContainer,
-.table-scroll-wrapper {
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
     border-color: var(--border-card);
   }
 
@@ -1736,9 +1733,9 @@ textarea {
   }
 
   .border-card,
-.portfolio-metric,
-#projectionTableContainer,
-.table-scroll-wrapper {
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
     border: 1px solid CanvasText;
   }
 }
@@ -2037,8 +2034,7 @@ summary:focus-visible {
   min-width: 0;
 }
 
-@media (min-width: 65rem) {
-}
+@media (min-width: 65rem) {}
 
 /* Tables keep their full desktop detail; on phones each holding becomes a compact card. */
 .cash-holdings-table {
@@ -2063,7 +2059,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table,
-.active-tranches-table {
+  .active-tranches-table {
     display: block;
     width: 100%;
     min-width: 0 !important;
@@ -2071,7 +2067,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table>thead,
-.active-tranches-table>thead {
+  .active-tranches-table>thead {
     position: absolute !important;
     width: 1px;
     height: 1px;
@@ -2084,14 +2080,14 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holdings-body,
-.active-tranches-table .active-tranches-body {
+  .active-tranches-table .active-tranches-body {
     display: grid;
     gap: 0.7rem;
     padding: 0.625rem;
   }
 
   .cash-holdings-table .cash-holding-row,
-.active-tranches-table .active-tranche-row {
+  .active-tranches-table .active-tranche-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     min-width: 0;
@@ -2103,7 +2099,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td,
-.active-tranches-table .active-tranche-row td {
+  .active-tranches-table .active-tranche-row td {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -2118,7 +2114,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td::before,
-.active-tranches-table .active-tranche-row td::before {
+  .active-tranches-table .active-tranche-row td::before {
     content: attr(data-label);
     color: #94a3b8;
     font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
@@ -2130,7 +2126,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td:first-child,
-.active-tranches-table .active-tranche-row td:first-child {
+  .active-tranches-table .active-tranche-row td:first-child {
     grid-column: 1 / -1;
     flex-direction: row;
     align-items: center;
@@ -2140,7 +2136,7 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-row td:first-child::before,
-.active-tranches-table .active-tranche-row td:first-child::before {
+  .active-tranches-table .active-tranche-row td:first-child::before {
     margin-right: 0.75rem;
   }
 
@@ -2153,14 +2149,14 @@ summary:focus-visible {
   }
 
   .cash-holdings-table .cash-holding-group-row,
-.cash-holdings-table .cash-holding-empty-row,
-.active-tranches-table .active-tranche-empty-row {
+  .cash-holdings-table .cash-holding-empty-row,
+  .active-tranches-table .active-tranche-empty-row {
     display: block;
   }
 
   .cash-holdings-table .cash-holding-group-row td,
-.cash-holdings-table .cash-holding-empty-row td,
-.active-tranches-table .active-tranche-empty-row td {
+  .cash-holdings-table .cash-holding-empty-row td,
+  .active-tranches-table .active-tranche-empty-row td {
     display: block;
     width: 100%;
     padding: 0.75rem !important;
@@ -2206,8 +2202,8 @@ summary:focus-visible {
   }
 
   .active-tranches-table .active-tranche-row td:nth-child(2),
-.active-tranches-table .active-tranche-row td:nth-child(6),
-.active-tranches-table .active-tranche-row td:nth-child(7) {
+  .active-tranches-table .active-tranche-row td:nth-child(6),
+  .active-tranches-table .active-tranche-row td:nth-child(7) {
     grid-column: 1 / -1;
   }
 
@@ -2233,7 +2229,7 @@ summary:focus-visible {
   }
 
   #activeTranches .table-scroll-wrapper,
-#cashCushionContainer .table-scroll-wrapper {
+  #cashCushionContainer .table-scroll-wrapper {
     overflow-x: visible;
   }
 }
@@ -2470,8 +2466,7 @@ summary:focus-visible {
   width: 100%;
 }
 
-@container portfolio-workspace (min-width: 72rem) {
-}
+@container portfolio-workspace (min-width: 72rem) {}
 
 #portfolioMetricsGrid {
   min-width: 0;
@@ -2545,12 +2540,12 @@ summary:focus-visible {
   }
 
   .portfolio-micro-column.portfolio-micro-market,
-.portfolio-micro-column.portfolio-micro-actions {
+  .portfolio-micro-column.portfolio-micro-actions {
     border-left: 1px solid rgba(148, 163, 184, 0.12);
   }
 
   .portfolio-micro-costs,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     grid-column: auto;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
@@ -2563,13 +2558,13 @@ summary:focus-visible {
   }
 
   .portfolio-micro-column+.portfolio-micro-column,
-.portfolio-micro-market {
+  .portfolio-micro-market {
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
   .portfolio-micro-costs,
-.portfolio-micro-actions {
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -2635,8 +2630,8 @@ table tbody tr:hover {
 @media (hover: hover) and (pointer: fine) {
 
   .portfolio-metric:hover,
-.portfolio-micro-summary:hover,
-.margin-risk-gauge-card:hover {
+  .portfolio-micro-summary:hover,
+  .margin-risk-gauge-card:hover {
     border-color: rgba(148, 163, 184, 0.22);
     box-shadow: var(--surface-shadow-hover);
   }
@@ -2888,7 +2883,7 @@ table tbody tr:hover {
   }
 
   #boardTitleRow>div,
-#daysToBreakeven {
+  #daysToBreakeven {
     text-align: center;
   }
 }
@@ -3257,8 +3252,9 @@ table tbody tr:hover {
 }
 
 @media (hover: hover) {
+
   .cloud-sync-indicator:hover .cloud-sync-indicator__timestamp,
-.cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
+  .cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
     display: block;
   }
 }
@@ -3321,40 +3317,40 @@ table tbody tr:hover {
 @media (prefers-reduced-motion: reduce) {
 
   *,
-*::before,
-*::after {
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     animation: none !important;
     transition: none !important;
   }
 
   .ui-view-enter,
-.ui-toast-enter,
-.ui-toast-exit,
-#marketInsightsContent,
-#auth-container,
-#auth-container .auth-card,
-.quote-flash-up,
-.quote-flash-down,
-.desk-view-transition:not(.hidden),
-table tbody tr,
-#auth-container.auth-overlay,
-#auth-container.auth-overlay .auth-card,
-.news-feed-enter,
-.stocktwits-feed-enter,
-.news-feed-item,
-.stocktwits-feed-item,
-.news-modal-enter,
-.news-dialog-enter,
-.expandable-motion,
-.expandable-motion__inner,
-.credentials-motion,
-.desk-section-loading,
-.desk-section-loading__bar,
-#settingsDesk .settings-broker-rules[open]>div,
-#auth-container .auth-feedback,
-.desk-content-reveal,
-.closed-history-page-transition {
+  .ui-toast-enter,
+  .ui-toast-exit,
+  #marketInsightsContent,
+  #auth-container,
+  #auth-container .auth-card,
+  .quote-flash-up,
+  .quote-flash-down,
+  .desk-view-transition:not(.hidden),
+  table tbody tr,
+  #auth-container.auth-overlay,
+  #auth-container.auth-overlay .auth-card,
+  .news-feed-enter,
+  .stocktwits-feed-enter,
+  .news-feed-item,
+  .stocktwits-feed-item,
+  .news-modal-enter,
+  .news-dialog-enter,
+  .expandable-motion,
+  .expandable-motion__inner,
+  .credentials-motion,
+  .desk-section-loading,
+  .desk-section-loading__bar,
+  #settingsDesk .settings-broker-rules[open]>div,
+  #auth-container .auth-feedback,
+  .desk-content-reveal,
+  .closed-history-page-transition {
     transform: none !important;
   }
 }
@@ -3516,10 +3512,7 @@ table tbody tr,
   overflow-y: auto;
   overscroll-behavior: contain;
   padding:
-    max(0.5rem, env(safe-area-inset-top))
-    max(0.5rem, env(safe-area-inset-right))
-    max(0.5rem, env(safe-area-inset-bottom))
-    max(0.5rem, env(safe-area-inset-left));
+    max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -3527,11 +3520,7 @@ table tbody tr,
   box-sizing: border-box;
   width: min(100%, 64rem);
   max-width: 64rem;
-  max-height: calc(
-    100dvh
-    - max(0.5rem, env(safe-area-inset-top))
-    - max(0.5rem, env(safe-area-inset-bottom))
-  );
+  max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom)));
   min-width: 0;
   min-height: 0;
   flex: 0 1 auto;
@@ -3719,10 +3708,7 @@ table tbody tr,
   overflow-x: hidden;
   overflow-y: auto;
   padding:
-    max(22px, env(safe-area-inset-top))
-    max(22px, env(safe-area-inset-right))
-    max(22px, env(safe-area-inset-bottom))
-    max(22px, env(safe-area-inset-left));
+    max(22px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
 }
 
 .margin-risk-overview-dialog {
@@ -3749,18 +3735,12 @@ table tbody tr,
 
   .margin-risk-overview-header {
     padding:
-      max(14px, env(safe-area-inset-top))
-      max(15px, env(safe-area-inset-right))
-      12px
-      max(15px, env(safe-area-inset-left));
+      max(14px, env(safe-area-inset-top)) max(15px, env(safe-area-inset-right)) 12px max(15px, env(safe-area-inset-left));
   }
 
   .margin-risk-overview-content {
     padding:
-      13px
-      max(15px, env(safe-area-inset-right))
-      max(13px, env(safe-area-inset-bottom))
-      max(15px, env(safe-area-inset-left));
+      13px max(15px, env(safe-area-inset-right)) max(13px, env(safe-area-inset-bottom)) max(15px, env(safe-area-inset-left));
   }
 }
 
@@ -3863,5 +3843,36 @@ table tbody tr,
 
   .margin-risk-buffer-stat strong {
     font-size: 0.8125rem;
+  }
+}
+
+.modal-tools-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+
+  button {
+    min-height: 2.25rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.625rem;
+    line-height: 1.4;
+    width: 30%;
+  }
+}
+
+.market-links-group {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+
+  button {
+    min-height: 2.25rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.625rem;
+    line-height: 1.4;
+    width: 30%;
   }
 }
