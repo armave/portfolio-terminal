@@ -3850,12 +3850,12 @@ table tbody tr:hover {
   margin: 0.5rem auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.4rem;
   justify-content: center;
 
   button {
     min-height: 2.25rem;
-    padding: 0.4rem 0.55rem;
+    padding: 0.4rem;
     border-radius: 0.625rem;
     line-height: 1.4;
     width: 30%;
@@ -3863,9 +3863,11 @@ table tbody tr:hover {
 
   >.four-market-tools {
     width: 48%;
+    min-width: 40%;
   }
 }
 
 .market-links-group {
   justify-content: center;
+  gap: .3rem;
 }
