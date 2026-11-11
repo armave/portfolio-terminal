@@ -728,7 +728,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
             </div>
             <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Total Commissions', getAppLanguage())}</span>
+              <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
               <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
             </div>
             <div class="portfolio-micro-row">
