@@ -11,7 +11,10 @@
     "knip": "npx --yes knip",
     "validate:dead-code": "npm run knip",
     "audit:dependencies": "npm audit --audit-level=high",
-    "audit:production": "npm audit --omit=dev --audit-level=high"
+    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "setup:browser-tests": "node scripts/setup-browser-tests.mjs",
+    "setup:git-hooks": "git config core.hooksPath .githooks",
+    "ci:local": "node scripts/ci-local.mjs"
   },
   "overrides": {
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",

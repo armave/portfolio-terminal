@@ -38,7 +38,7 @@ function createFixture(overrides: Partial<GuestPortfolioAssignmentRuntimeDepende
     renderBoard: vi.fn(),
     showToast: vi.fn(),
     logError: vi.fn(),
-    logTerminal: vi.fn(),
+    logAppMessage: vi.fn(),
     now: () => 1_000,
     getActiveTranches: vi.fn(() => activeTrancheResults),
     ...overrides

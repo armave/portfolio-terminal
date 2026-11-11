@@ -16,7 +16,7 @@ function createDependencies(
     pullGuestSnapshot: vi.fn(async () => true),
     translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
-    logTerminal: vi.fn(),
+    logAppMessage: vi.fn(),
     ...overrides
   };
 }
@@ -60,7 +60,7 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed.',
       'success'
     );
-    expect(dependencies.logTerminal).toHaveBeenCalledWith(
+    expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
     );
   });
@@ -117,7 +117,7 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed with issues. Check the activity log.',
       'warning'
     );
-    expect(dependencies.logTerminal).toHaveBeenCalledWith(
+    expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync Warning]: One or more portfolio data sources could not be refreshed.'
     );
   });

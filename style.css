@@ -81,7 +81,6 @@ body::before {
   padding-top: 1.5%;
 }
 
-#terminalLog,
 input,
 select,
 button {
@@ -102,38 +101,6 @@ button {
 .portfolio-risk-summary {
   padding-top: 10px !important;
   justify-content: center;
-}
-
-#terminalLog {
-  height: 10rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-  word-break: break-word;
-  background: #090c13;
-  border: 1px solid rgba(30, 41, 59, 0.85);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(71, 85, 105, 0.6) rgba(15, 23, 42, 0.7);
-}
-
-#terminalLog::-webkit-scrollbar {
-  width: 8px;
-}
-
-#terminalLog::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.7);
-  border-radius: 4px;
-}
-
-#terminalLog::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.6);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-#terminalLog::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.85);
 }
 
 #tickerTabs::-webkit-scrollbar {
@@ -208,10 +175,10 @@ select {
   min-height: 2.5rem;
 }
 
-.terminal-toolbar input,
-.terminal-toolbar select,
-.terminal-toolbar button,
-.terminal-toolbar label.cursor-pointer {
+.settings-toolbar input,
+.settings-toolbar select,
+.settings-toolbar button,
+.settings-toolbar label.cursor-pointer {
   min-height: 0;
 }
 
@@ -419,9 +386,7 @@ summary:hover {
   overflow-wrap: anywhere;
 }
 
-#marketInsightsContent,
-#terminalLog,
-#cmdInput {
+#marketInsightsContent {
   font-family: var(--font-mono);
 }
 
@@ -531,12 +496,6 @@ summary:hover {
   min-width: 0;
 }
 
-.trading-workspace-grid .trading-console-card {
-  width: 100%;
-  max-width: none;
-  margin-inline: 0;
-}
-
 @media (min-width: 48rem) {
   .trading-workspace-grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
@@ -571,11 +530,6 @@ summary:hover {
     width: 100%;
     max-width: 100%;
     margin: 0;
-  }
-
-  .desktop-workspace-grid .trading-console-card {
-    width: 100%;
-    min-width: 0;
   }
 }
 
@@ -742,13 +696,6 @@ summary:hover {
     gap: 0.5rem;
   }
 
-  #terminalLogs,
-  #terminalLog {
-    height: 10rem;
-    font-size: 0.7rem;
-    overflow-y: auto;
-  }
-
   #cashCushionContainer>.bg-slate-900\/60 {
     align-items: stretch;
     flex-direction: column;
@@ -788,27 +735,6 @@ summary:hover {
     max-width: 100%;
     overscroll-behavior-x: contain;
   }
-
-  #terminalLog {
-    overflow-wrap: anywhere;
-  }
-}
-
-
-
-
-
-/* Market Insights and terminal form one grid item so they always stack together. */
-.trading-workspace-grid>.trading-terminal-column {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.trading-terminal-column>.market-insights-workspace {
-  width: 100%;
-  min-width: 0;
 }
 
 
@@ -874,15 +800,6 @@ summary:hover {
   height: auto;
 }
 
-#tradingTerminalColumn {
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-#tradingTerminalColumn>* {
-  min-width: 0;
-}
-
 @media (max-width: 639px) {
   #mainTerminalView {
     padding: 0.625rem;
@@ -926,11 +843,11 @@ summary:hover {
   outline-offset: 2px;
 }
 
-#settings .terminal-toolbar {
+#settings .settings-toolbar {
   align-items: stretch;
 }
 
-#settings .terminal-toolbar>div {
+#settings .settings-toolbar>div {
   min-width: 0;
 }
 
@@ -955,7 +872,7 @@ summary:hover {
 }
 
 @media (max-width: 639px) {
-  #settings .terminal-toolbar {
+  #settings .settings-toolbar {
     gap: 0.75rem;
   }
 
@@ -985,45 +902,10 @@ summary:hover {
   }
 }
 
-.scenario-report-content {
-  text-wrap: pretty;
-}
-
-/* Modal polish: shared motion, safer viewport sizing, and consistent keyboard focus. */
-#scenarioComparisonModal {
-  padding:
-    max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
-  overscroll-behavior: contain;
-  animation: modal-overlay-enter 160ms ease-out both;
-}
-
-#scenarioComparisonModal>[role="dialog"] {
-  width: min(100%, 72rem);
-  max-height: min(90dvh, 56rem);
-  min-height: 0;
-  border-radius: 1rem;
-  overflow: hidden;
-  isolation: isolate;
-  animation: modal-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-#scenarioComparisonModal [role="dialog"]>div:nth-child(3) {
-  min-height: 0;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
-}
-
-#scenarioComparisonModal [role="dialog"] button:focus-visible,
 #auth-container button:focus-visible,
 #auth-container input:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 3px;
-}
-
-#scenarioComparisonModal h2,
-#scenarioComparisonModal p {
-  overflow-wrap: anywhere;
 }
 
 #auth-container {
@@ -1077,20 +959,7 @@ summary:hover {
   }
 }
 
-@media (max-width: 640px) {
-  #scenarioComparisonModal>[role="dialog"] {
-    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
-    border-radius: 0.875rem;
-  }
-
-  #scenarioComparisonModal [role="dialog"]>div:first-child {
-    padding: 0.875rem;
-  }
-
-  #scenarioComparisonModal [role="dialog"]>div:nth-child(2) {
-    padding: 0.625rem 0.75rem;
-  }
-}
+@media (max-width: 640px) {}
 
 
 
@@ -1125,101 +994,7 @@ summary:hover {
   }
 }
 
-
-
-/* Modal financial figures: prioritize legibility over compact density. */
-#scenarioComparisonModal table {
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-}
-
-#scenarioComparisonModal table th {
-  font-size: 0.75rem;
-  line-height: 1.35;
-  letter-spacing: 0.025em;
-  color: #cbd5e1;
-}
-
-#scenarioComparisonModal table td {
-  font-size: 0.875rem;
-  line-height: 1.55;
-  font-weight: 550;
-  color: #e2e8f0;
-  padding-top: 0.65rem;
-  padding-bottom: 0.65rem;
-  font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-}
-
-#scenarioComparisonModal table tbody th {
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  color: #cbd5e1;
-  white-space: normal;
-  min-width: 7.5rem;
-}
-
-#scenarioComparisonModal table tbody tr {
-  border-bottom-color: rgb(71 85 105 / 0.65);
-}
-
-#scenarioComparisonModal table tbody tr:nth-child(even) {
-  background-color: rgb(30 41 59 / 0.28);
-}
-
-#scenarioComparisonModal table tbody tr:has(td span) td span:first-child {
-  letter-spacing: -0.015em;
-}
-
-#scenarioComparisonModal .font-mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-}
-
-#scenarioComparisonModal .text-emerald-300,
-#scenarioComparisonModal .text-emerald-200 {
-  color: #6ee7b7;
-}
-
-#scenarioComparisonModal .text-cyan-200 {
-  color: #a5f3fc;
-}
-
-#scenarioComparisonModal .text-rose-300 {
-  color: #fda4af;
-}
-
-#scenarioComparisonModal .text-slate-400 {
-  color: #cbd5e1;
-}
-
-#scenarioComparisonModal .text-\[9px\] {
-  font-size: 0.6875rem;
-  line-height: 1.4;
-}
-
-@media (max-width: 767px) {
-  #scenarioComparisonModal table {
-    min-width: 38rem;
-  }
-
-  #scenarioComparisonModal table th,
-  #scenarioComparisonModal table td {
-    padding: 0.65rem 0.75rem;
-  }
-
-  #scenarioComparisonModal .text-right.font-mono.text-xs {
-    font-size: 0.875rem;
-    line-height: 1.55;
-  }
-
-  #scenarioComparisonModal .text-\[11px\] {
-    font-size: 0.75rem;
-    line-height: 1.45;
-  }
-}
+@media (max-width: 767px) {}
 
 
 
@@ -1228,9 +1003,7 @@ summary:hover {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.trading-workspace-grid>*,
-.trading-terminal-column,
-.trading-console-card {
+.trading-workspace-grid>* {
   min-width: 0;
 }
 
@@ -1239,56 +1012,12 @@ summary:hover {
     grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 1fr);
     align-items: start;
   }
-
-  .trading-terminal-column {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
 }
 
 /* Keep quick actions in a touch-friendly horizontal rail on small screens. */
 @media (max-width: 767px) {
   #mainTerminalView {
     padding: 0.75rem;
-  }
-
-  #tradingConsoleCard {
-    padding: 0.875rem;
-  }
-
-  #tradingConsoleCard button,
-  #tradingConsoleCard input,
-  #tradingConsoleCard textarea,
-  #tradingConsoleCard select {
-    min-height: 44px;
-  }
-
-  #tradingConsoleCard textarea,
-  #tradingConsoleCard input {
-    font-size: 13px !important;
-  }
-
-  #tradingConsoleCard #consoleQuickActions,
-  #tradingConsoleCard .console-quick-actions,
-  #tradingConsoleCard [data-console-quick-actions] {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0.25rem 0.125rem 0.625rem;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-  }
-
-  #tradingConsoleCard #consoleQuickActions>*,
-  #tradingConsoleCard .console-quick-actions>*,
-  #tradingConsoleCard [data-console-quick-actions]>* {
-    flex: 0 0 auto;
   }
 
   #projectionTableContainer,
@@ -1300,12 +1029,7 @@ summary:hover {
 
 /* Prefer sticky positioning over fixed positioning so the console never covers
    portfolio content or the mobile keyboard. */
-@media (min-width: 64rem) {
-  #tradingConsoleCard {
-    position: sticky;
-    top: 1rem;
-  }
-}
+@media (min-width: 64rem) {}
 
 
 
@@ -1818,19 +1542,9 @@ table td {
   font-size: 0.6875rem;
 }
 
-#tradingConsoleCard,
 #marketInsightsPanel {
   min-width: 0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-
-#terminalLog {
-  overscroll-behavior: contain;
-  line-height: 1.65;
-}
-
-#cmdInput {
-  line-height: 1.5;
 }
 
 button:focus-visible,
@@ -1882,15 +1596,6 @@ textarea {
   #projectionTableContainer table th,
   #projectionTableContainer table td {
     padding: 0.5rem;
-  }
-
-  #terminalLog {
-    height: 10rem;
-    font-size: 0.75rem;
-  }
-
-  #tradingConsoleCard {
-    padding: 0.875rem;
   }
 }
 
@@ -1948,7 +1653,6 @@ textarea {
 #mainTerminalView,
 #mainDeskContainer,
 #tradingWorkspaceGrid,
-.trading-terminal-column,
 #projectionTableContainer,
 .table-scroll-wrapper {
   min-width: 0;
@@ -2237,7 +1941,6 @@ table tbody tr:hover {
 
 
 
-/* Scenario comparison modal: transitions are owned by the shared ModalFrame. */
 
 
 
@@ -2302,10 +2005,6 @@ summary:focus-visible {
   outline-offset: 2px;
 }
 
-#cmdInput {
-  scroll-margin-block: 1rem;
-}
-
 @media (max-width: 640px) {
   .portfolio-micro-summary {
     gap: 8px;
@@ -2325,28 +2024,17 @@ summary:focus-visible {
 
 
 
-/* Responsive portfolio desk: give the data area priority without crowding the console. */
+/* Responsive portfolio workspace layout. */
 #tradingWorkspaceGrid.trading-workspace-grid {
   grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 
-#tradingWorkspaceGrid>#cashCushionContainer,
-#tradingWorkspaceGrid>#tradingTerminalColumn {
+#tradingWorkspaceGrid>#cashCushionContainer {
   min-width: 0;
 }
 
-#tradingConsoleCard {
-  width: 100%;
-  max-width: none;
-}
-
-@media (min-width: 65rem) {
-  #tradingWorkspaceGrid.trading-workspace-grid {
-    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
-    gap: 1rem;
-  }
-}
+@media (min-width: 65rem) {}
 
 /* Tables keep their full desktop detail; on phones each holding becomes a compact card. */
 .cash-holdings-table {
@@ -2704,7 +2392,6 @@ summary:focus-visible {
 #mainDeskContainer,
 #tradingWorkspaceGrid,
 #tradingWorkspaceGrid>*,
-#tradingTerminalColumn,
 #cashCushionContainer {
   min-width: 0;
 }
@@ -2779,12 +2466,7 @@ summary:focus-visible {
   width: 100%;
 }
 
-@container portfolio-workspace (min-width: 72rem) {
-  #tradingWorkspaceGrid.trading-workspace-grid {
-    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
-    gap: clamp(1rem, 1.5cqw, 1.5rem);
-  }
-}
+@container portfolio-workspace (min-width: 72rem) {}
 
 #portfolioMetricsGrid {
   min-width: 0;
@@ -2923,14 +2605,6 @@ table tbody tr:hover {
   transform: none;
 }
 
-#terminalLog {
-  height: clamp(12rem, 20vh, 20rem);
-  max-height: min(60vh, 32rem);
-  border-radius: var(--surface-radius);
-  line-height: 1.6;
-}
-
-#tradingConsoleCard,
 #marketInsightsPanel {
   min-width: 0;
   border-radius: var(--surface-radius);
@@ -2951,11 +2625,6 @@ table tbody tr:hover {
   #portfolioMetricsGrid {
     gap: 0.75rem;
   }
-
-  #terminalLog {
-    height: clamp(12rem, 20vh, 16rem);
-    max-height: 45vh;
-  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2966,14 +2635,6 @@ table tbody tr:hover {
     border-color: rgba(148, 163, 184, 0.22);
     box-shadow: var(--surface-shadow-hover);
   }
-}
-
-
-
-
-/* Margin desk: align the projection table and market insights as a single data row. */
-#tradingWorkspaceGrid.margin-workspace-layout {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 #mainDeskContainer {
@@ -3591,6 +3252,7 @@ table tbody tr:hover {
 }
 
 @media (hover: hover) {
+
   .cloud-sync-indicator:hover .cloud-sync-indicator__timestamp,
   .cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
     display: block;
@@ -3850,10 +3512,7 @@ table tbody tr:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding:
-    max(0.5rem, env(safe-area-inset-top))
-    max(0.5rem, env(safe-area-inset-right))
-    max(0.5rem, env(safe-area-inset-bottom))
-    max(0.5rem, env(safe-area-inset-left));
+    max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -3861,11 +3520,7 @@ table tbody tr:hover {
   box-sizing: border-box;
   width: min(100%, 64rem);
   max-width: 64rem;
-  max-height: calc(
-    100dvh
-    - max(0.5rem, env(safe-area-inset-top))
-    - max(0.5rem, env(safe-area-inset-bottom))
-  );
+  max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top)) - max(0.5rem, env(safe-area-inset-bottom)));
   min-width: 0;
   min-height: 0;
   flex: 0 1 auto;
@@ -4053,10 +3708,7 @@ table tbody tr:hover {
   overflow-x: hidden;
   overflow-y: auto;
   padding:
-    max(22px, env(safe-area-inset-top))
-    max(22px, env(safe-area-inset-right))
-    max(22px, env(safe-area-inset-bottom))
-    max(22px, env(safe-area-inset-left));
+    max(22px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
 }
 
 .margin-risk-overview-dialog {
@@ -4083,18 +3735,12 @@ table tbody tr:hover {
 
   .margin-risk-overview-header {
     padding:
-      max(14px, env(safe-area-inset-top))
-      max(15px, env(safe-area-inset-right))
-      12px
-      max(15px, env(safe-area-inset-left));
+      max(14px, env(safe-area-inset-top)) max(15px, env(safe-area-inset-right)) 12px max(15px, env(safe-area-inset-left));
   }
 
   .margin-risk-overview-content {
     padding:
-      13px
-      max(15px, env(safe-area-inset-right))
-      max(13px, env(safe-area-inset-bottom))
-      max(15px, env(safe-area-inset-left));
+      13px max(15px, env(safe-area-inset-right)) max(13px, env(safe-area-inset-bottom)) max(15px, env(safe-area-inset-left));
   }
 }
 
@@ -4197,5 +3843,36 @@ table tbody tr:hover {
 
   .margin-risk-buffer-stat strong {
     font-size: 0.8125rem;
+  }
+}
+
+.modal-tools-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+
+  button {
+    min-height: 2.25rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.625rem;
+    line-height: 1.4;
+    width: 30%;
+  }
+}
+
+.market-links-group {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+
+  button {
+    min-height: 2.25rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 0.625rem;
+    line-height: 1.4;
+    width: 30%;
   }
 }

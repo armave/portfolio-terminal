@@ -186,15 +186,15 @@ describe('cash holdings quote context', () => {
 
   it('shows administrator Market Depth controls only during an open US equity session', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
-    const marketDepthAction = deskSource.indexOf("emitUiEvent('terminal:market-depth-request'");
+    const marketDepthAction = deskSource.indexOf("emitUiEvent('market:depth-request'");
     const guestCards = deskSource.indexOf('guestHoldings.map((holding)');
 
     expect(marketDepthAction).toBeGreaterThan(-1);
-    expect(deskSource).toMatch(/\{isAdmin && marketDepthAvailable && <button[\s\S]{0,500}emitUiEvent\('terminal:market-depth-request'/);
+    expect(deskSource).toMatch(/\{isAdmin && marketDepthAvailable && <button[\s\S]{0,500}emitUiEvent\('market:depth-request'/);
     expect(deskSource).toContain("window.setInterval(refreshMarketSession, 30_000)");
     expect(deskSource).toContain("window.addEventListener('focus', refreshMarketSession)");
     expect(guestCards).toBeGreaterThan(-1);
-    expect(deskSource.slice(guestCards, marketDepthAction)).not.toContain("emitUiEvent('terminal:market-depth-request'");
+    expect(deskSource.slice(guestCards, marketDepthAction)).not.toContain("emitUiEvent('market:depth-request'");
   });
 
   it('keeps the row-level depth control hidden during closed sessions, weekends and holidays', () => {

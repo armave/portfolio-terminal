@@ -6,11 +6,10 @@ const marker = '/* Fluid workspace layout: adapt to the space each desk actually
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
 
 describe('fluid workspace styles', () => {
-  it('switches the trading workspace based on available container width', () => {
+  it('keeps the main portfolio workspace single-column without a command console', () => {
     expect(fluidStyles).toMatch(/container-name:\s*portfolio-workspace;/);
-    expect(fluidStyles).toMatch(/container-type:\s*inline-size;/);
-    expect(fluidStyles).toMatch(/@container\s+portfolio-workspace\s*\(min-width:\s*72rem\)/);
-    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\.trading-workspace-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.72fr\)\s+minmax\(20rem,\s*0\.88fr\)/s);
+    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\.trading-workspace-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+    expect(fluidStyles).not.toMatch(/grid-template-columns:\s*minmax\(0,\s*1\.72fr\)\s+minmax\(20rem,\s*0\.88fr\)/s);
   });
 
   it('adapts financial summary columns to their own available width', () => {
@@ -26,10 +25,10 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
-  it('keeps detailed tables scrollable and terminal height responsive', () => {
+  it('keeps detailed portfolio tables scrollable', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*34rem\)/s);
-    expect(fluidStyles).toMatch(/#terminalLog\s*\{[^}]*height:\s*clamp\(/s);
+    expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
   });
 });
 
@@ -46,7 +45,7 @@ describe('Margin projection and insights layout', () => {
     expect(projection).toBeGreaterThan(workspaceStart);
     expect(insights).toBeGreaterThan(projection);
     expect(workspaceEnd).toBeGreaterThan(insights);
-    expect(appSource).toContain('margin-workspace-layout');
+    expect(appSource).toContain('id="tradingWorkspaceGrid" class="trading-workspace-grid"');
   });
 
   it('animates Margin projection page rows and keeps pagination controls accessible and fluid', () => {
@@ -60,8 +59,8 @@ describe('Margin projection and insights layout', () => {
     expect(fluidStyles).toContain('flex-wrap: wrap;');
   });
 
-  it('uses two columns only when the Margin desk has enough room and stacks on smaller screens', () => {
-    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\.margin-workspace-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  it('keeps the Margin data workspace responsive within the desk width', () => {
+    expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
     expect(fluidStyles).toMatch(/container-name:\s*margin-desk;/);
     expect(fluidStyles).toMatch(/@container\s+margin-desk\s*\(min-width:\s*56rem\)/);
     expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(18rem,\s*0\.85fr\)/s);

@@ -1,6 +1,6 @@
 import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CommandDispatcher } from '../features/terminal/commandDispatcher';
+import { ScenarioCalculator } from '../features/scenarios/scenarioCalculator';
 import {
   addCalendarDays,
   getExitDayOffset,
@@ -10,7 +10,7 @@ import {
   toLocalIsoDate,
   type ExitComparisonPeriodInput,
   type ExitComparisonSavedResult
-} from '../features/terminal/exitComparisonPreferences';
+} from '../features/scenarios/exitComparisonPreferences';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatUSDDisplayValue } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
@@ -188,7 +188,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
       days: days as number,
       price: prices[index]
     }));
-    return CommandDispatcher.previewExitComparison(ticker, scenarios);
+    return ScenarioCalculator.previewExitComparison(ticker, scenarios);
   }, [state, ticker, periods[0].date, periods[0].price, periods[1].date, periods[1].price, inputsValid, language]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'exit-comparison' ? preview.modal : null;
   const displayedResult = resultData ?? (!inputsValid ? savedResult : null);

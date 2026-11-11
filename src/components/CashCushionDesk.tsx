@@ -852,7 +852,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                 type="button"
                                 title={`View live market depth for ${h.ticker}`}
                                 aria-label={`Market Depth for ${h.ticker}`}
-                                onClick={() => emitUiEvent('terminal:market-depth-request', { ticker: h.ticker })}
+                                onClick={() => emitUiEvent('market:depth-request', { ticker: h.ticker })}
                                 class="rounded border border-emerald-800/70 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300 hover:bg-emerald-950/40"
                               >Depth</button>}
                             </div>

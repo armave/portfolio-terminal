@@ -64,8 +64,8 @@ export function createPortfolioStartupLifecycleRuntime(
     if (isBound) return () => undefined;
     isBound = true;
     const removeVisibilityListener = dependencies.addVisibilityChangeListener(handleVisibilityChange);
-    addUiEventListener('terminal:startup-retry', handleStartupRetry);
-    addUiEventListener('terminal:startup-offline', handleStartupOffline);
+    addUiEventListener('app:startup-retry', handleStartupRetry);
+    addUiEventListener('app:startup-offline', handleStartupOffline);
 
     let disposed = false;
     return () => {
@@ -73,8 +73,8 @@ export function createPortfolioStartupLifecycleRuntime(
       disposed = true;
       isBound = false;
       removeVisibilityListener();
-      removeUiEventListener('terminal:startup-retry', handleStartupRetry);
-      removeUiEventListener('terminal:startup-offline', handleStartupOffline);
+      removeUiEventListener('app:startup-retry', handleStartupRetry);
+      removeUiEventListener('app:startup-offline', handleStartupOffline);
       configureAdminRollover(false);
     };
   };

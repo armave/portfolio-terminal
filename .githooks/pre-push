@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "Running Portfolio Terminal local CI before push..."
+npm run ci:local -- --skip-install

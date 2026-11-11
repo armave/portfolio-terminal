@@ -59,7 +59,7 @@ import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domai
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
-export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
+const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -68,9 +68,9 @@ Wave 3 therefore prioritizes PT-02, PT-04, PT-05, PT-06 and PT-07. Projections a
 
 ### Existing scenario experience
 
-- ScenarioComparisonModal.tsx and ScenarioReportModal.tsx are existing presentation components.
-- src/features/terminal/scenarioContracts.ts defines terminal scenario payloads.
-- These serve narrow hypothetical trade/exit comparison flows. They are not evidence of a reusable whole-portfolio projection engine covering multi-period equity, deposits/withdrawals, fees/dividends, financing and scenario ranges.
+- The in-app command console and its general-purpose command dispatcher have been removed.
+- The independent Compare Exits and Buy More Market Tools remain as read-only scenario calculators in `src/features/scenarios/`.
+- These narrow hypothetical trade/exit comparisons are not a whole-portfolio projection engine covering multi-period equity, deposits/withdrawals, fees/dividends, financing and scenario ranges.
 
 ### Reliability
 

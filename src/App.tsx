@@ -5,24 +5,21 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
-import type { QuoteProvenanceHolding } from './components/QuoteProvenance';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
-import { TradingConsole } from './components/TradingConsole';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState } from './components/MarginIntelligenceModal';
 import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
-import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
-import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
-import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
+import { calculatePortfolioValuation } from './domain/portfolioValuation';
+import { addToast, useToasts } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
-import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
+import { getQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
@@ -57,7 +54,6 @@ const PortfolioPerformancePanel = lazy(() =>
   }))
 );
 const MemoProjectionsTable = memo(ProjectionsTable);
-const MemoTradingConsole = memo(TradingConsole);
 
 const ClosedHistoryDesk = lazy(() =>
   import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: memo(ClosedHistoryDesk) }))
@@ -74,17 +70,11 @@ const SettingsDesk = lazy(() =>
 const MarketInsightsPanel = lazy(() =>
   import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: memo(MarketInsightsPanel) }))
 );
-const ScenarioComparisonModal = lazy(() =>
-  import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
-);
 const ExitComparisonModal = lazy(() =>
   import('./components/ExitComparisonModal').then(({ ExitComparisonModal }) => ({ default: ExitComparisonModal }))
 );
 const BuyMoreModal = lazy(() =>
   import('./components/BuyMoreModal').then(({ BuyMoreModal }) => ({ default: BuyMoreModal }))
-);
-const ScenarioReportModal = lazy(() =>
-  import('./components/ScenarioReportModal').then(({ ScenarioReportModal }) => ({ default: ScenarioReportModal }))
 );
 const MarginIntelligenceModal = lazy(() =>
   import('./components/MarginIntelligenceModal').then(({ MarginIntelligenceModal }) => ({ default: MarginIntelligenceModal }))
@@ -333,74 +323,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   );
   const activeDeskView = useActiveView();
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
-  const scenarioValuationSnapshot = usePortfolioSelector(
-    (state) => ({
-      positions: state.positions || {},
-      cashHoldings: state.cashCushion?.holdings || [],
-      balance: state.balance,
-      freeCash: state.cashCushion?.freeCash,
-      brokerAccountInfo: state.brokerAccountInfo
-    }),
-    (previous, next) =>
-      previous.positions === next.positions &&
-      previous.cashHoldings === next.cashHoldings &&
-      previous.balance === next.balance &&
-      previous.freeCash === next.freeCash &&
-      previous.brokerAccountInfo === next.brokerAccountInfo
-  );
   const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
     DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     currentUser?.role === 'guest' ? 'guest' : 'admin'
   );
-  const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
-    ...Object.values(scenarioValuationSnapshot.positions)
-      .filter((position) => Number(position.shares) > 0)
-      .map((position) => ({ ...position, kind: 'Margin position' as const })),
-    ...scenarioValuationSnapshot.cashHoldings
-      .filter((holding) => Number(holding.shares) > 0)
-      .map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-  ];
-  const scenarioQuoteHoldings = scenarioQuoteProvenanceHoldings.map((holding) => {
-    const price = holding.kind === 'Margin position'
-      ? Number(holding.currentPrice)
-      : Number(holding.currentPrice ?? holding.price);
-    return Number.isFinite(price) && price > 0
-      ? holding
-      : { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined };
-  });
-  const scenarioQuoteSummary = summarizeQuoteFreshness(
-    scenarioQuoteHoldings,
-    Date.now(),
-    scenarioRefreshIntervalMs
-  );
-  const scenarioValuation = calculatePortfolioValuation({
-    signedAccountBalance: scenarioValuationSnapshot.balance,
-    freeCash: scenarioValuationSnapshot.freeCash,
-    marginPositions: Object.values(scenarioValuationSnapshot.positions),
-    cashHoldings: scenarioValuationSnapshot.cashHoldings
-  });
-  const scenarioHasCurrentBrokerBalance = scenarioValuationSnapshot.brokerAccountInfo?.loaded === true &&
-    Array.isArray(scenarioValuationSnapshot.brokerAccountInfo.balances) &&
-    scenarioValuationSnapshot.brokerAccountInfo.balances.some((balance) =>
-      String(balance.currency ?? '').toUpperCase() === 'USD' &&
-      balance.amount !== null && balance.amount !== undefined &&
-      Number.isFinite(Number(balance.amount))
-    );
-  const scenarioValuationStatus = getPortfolioValuationReliability({
-    accountBalanceAvailable: scenarioValuation.accountBalanceAvailable,
-    accountBalanceStale: scenarioValuationSnapshot.brokerAccountInfo?.status === 'stale' ||
-      (scenarioValuationSnapshot.brokerAccountInfo?.loaded === true && !scenarioHasCurrentBrokerBalance),
-    unpricedHoldings: scenarioValuation.unpricedHoldings,
-    staleQuotes: scenarioQuoteSummary.stale,
-    delayedQuotes: scenarioQuoteSummary.delayed,
-    unknownQuotes: scenarioQuoteSummary.unknown,
-    unavailableQuotes: scenarioQuoteSummary.unavailable
-  });
-  const scenarioDataQualityWarning = scenarioValuationStatus === 'incomplete'
-    ? translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', getAppLanguage())
-    : scenarioValuationStatus === 'provisional'
-      ? translateText('Scenario interpretation is provisional because one or more account balances or quotes are stale, delayed, or lack a verified observation time.', getAppLanguage())
-      : null;
   const guestHistorySnapshot = usePortfolioSelector(
     (state) => ({
       guestTrancheLedger: state.guestTrancheLedger || [],
@@ -431,21 +357,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
-  const scenarioReport = useScenarioReport();
-  const errorToasts = useErrorToasts();
+  const toasts = useToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
-  const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
   const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const [marketDepthTicker, setMarketDepthTicker] = useState<string | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
-  const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
   const closeExitComparison = useCallback(() => setExitComparisonRequest(null), []);
   const closeBuyMore = useCallback(() => setBuyMoreRequest(null), []);
 
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
-    addErrorToast(translateText(message, getAppLanguage()));
+    addToast(translateText(message, getAppLanguage()), 'error');
   }), []);
 
   useEffect(() => {
@@ -658,10 +581,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         });
       }
     };
-    addUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+    addUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     return () => {
       requestGuard.invalidate();
-      removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+      removeUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     };
   }, [permissions.canViewMarginDesk, scenarioRefreshIntervalMs]);
 
@@ -671,7 +594,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleAuthVisibility = (event: UiEvent<{ isOpen: boolean }>) => {
       setAuthOpen(event.detail.isOpen);
     };
-    const handleScenarioModal = (event: UiEvent<ScenarioModalData>) => setScenarioModalData(event.detail);
     const handleExitComparisonRequest = (event: UiEvent<{ ticker?: string }>) => {
       setExitComparisonRequest(event.detail);
     };
@@ -701,26 +623,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         mainWorkspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
       });
     };
-    addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
-    addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
-    addUiEventListener('terminal:scenario-modal', handleScenarioModal);
-    addUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
-    addUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
-    addUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
-    addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+    addUiEventListener('settings:backup-import-request', handleBackupImportRequest);
+    addUiEventListener('app:scroll-workspace', handleScrollWorkspace);
+    addUiEventListener('scenario:exit-comparison-request', handleExitComparisonRequest);
+    addUiEventListener('scenario:buy-more-request', handleBuyMoreRequest);
+    addUiEventListener('market:depth-request', handleMarketDepthRequest);
+    addUiEventListener('auth:visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
     const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
-    addUiEventListener('terminal:startup-state', handleStartupState);
+    addUiEventListener('app:startup-state', handleStartupState);
     return () => {
-      removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
-      removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
-      removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
-      removeUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
-      removeUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
-      removeUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
-      removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+      removeUiEventListener('settings:backup-import-request', handleBackupImportRequest);
+      removeUiEventListener('app:scroll-workspace', handleScrollWorkspace);
+      removeUiEventListener('scenario:exit-comparison-request', handleExitComparisonRequest);
+      removeUiEventListener('scenario:buy-more-request', handleBuyMoreRequest);
+      removeUiEventListener('market:depth-request', handleMarketDepthRequest);
+      removeUiEventListener('auth:visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
-      removeUiEventListener('terminal:startup-state', handleStartupState);
+      removeUiEventListener('app:startup-state', handleStartupState);
       unsubscribeLanguage();
     };
   }, [permissions.canManageBackups, permissions.isAdmin]);
@@ -799,9 +719,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class={["BALANCE", "GUEST_HISTORY"].includes(activeDeskView)
-          ? ""
-          : "trading-workspace-grid " + (permissions.canViewMarginDesk && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "margin-workspace-layout " : "") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+        <div id="tradingWorkspaceGrid" class="trading-workspace-grid">
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div class="desk-content-reveal">
@@ -923,13 +841,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
-          {/* Keep the command console available on both Margin and Cash desks. */}
-          {permissions.canUseTerminal && !["CASH_CUSHION", "BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
-            <div
-              id="tradingConsoleCard"
-              class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            ><MemoTradingConsole /></div>
-          </div>}
+          {/* Desk-specific content stays within the responsive portfolio workspace. */}
+          
 
         </div>
       </main>
@@ -964,7 +877,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
-      {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
       {exitComparisonRequest && <Suspense fallback={null}>
         <ExitComparisonModal
           key={`${currentUser?.id || 'local'}:${exitComparisonRequest.ticker || 'portfolio'}`}
@@ -981,11 +893,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           onClose={closeBuyMore}
         />
       </Suspense>}
-      {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
-      {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
+      {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('margin:intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
-      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
-        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
+      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="polite">
+        {toasts.map((toast) => <div key={toast.id} role={toast.variant === 'error' ? 'alert' : 'status'} class={'pointer-events-auto rounded-lg border bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold shadow-lg backdrop-blur transition-all ' +
+          (toast.variant === 'error' ? 'border-rose-800 text-rose-200' :
+            toast.variant === 'warning' ? 'border-amber-800 text-amber-200' :
+              toast.variant === 'success' ? 'border-emerald-800 text-emerald-200' : 'border-slate-700 text-slate-200') +
+          (toast.isClosing ? ' opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>
       {permissions.canManageBackups && <input
         ref={backupImportInputRef}
@@ -997,7 +912,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           const input = event.currentTarget as HTMLInputElement;
           const file = input.files?.[0];
           input.value = '';
-          if (file && permissions.canManageBackups) emitUiEvent('terminal:backup-import-file', { file });
+          if (file && permissions.canManageBackups) emitUiEvent('settings:backup-import-file', { file });
         }}
       />}
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
@@ -1008,8 +923,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
           <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
           {startupState.failed && <div class="startup-loading__actions">
-            <button type="button" onClick={() => emitUiEvent('terminal:startup-retry', undefined)}>Retry</button>
-            <button type="button" onClick={() => emitUiEvent('terminal:startup-offline', undefined)}>Continue offline</button>
+            <button type="button" onClick={() => emitUiEvent('app:startup-retry', undefined)}>Retry</button>
+            <button type="button" onClick={() => emitUiEvent('app:startup-offline', undefined)}>Continue offline</button>
           </div>}
         </div>
       </div>}

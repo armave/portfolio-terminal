@@ -1,10 +1,10 @@
 import { createPortal } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { CommandDispatcher } from '../features/terminal/commandDispatcher';
+import { ScenarioCalculator } from '../features/scenarios/scenarioCalculator';
 import {
   loadBuyMorePreferences, saveBuyMorePreferences, type BuyMoreSavedResult
-} from '../features/terminal/buyMorePreferences';
-import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
+} from '../features/scenarios/buyMorePreferences';
+import type { ScenarioModalData } from '../features/scenarios/scenarioContracts';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
@@ -122,7 +122,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
     Number.isFinite(shares * purchasePrice));
   const preview = useMemo(() => {
     if (!ticker || !position || !inputsValid) return null;
-    return CommandDispatcher.previewBuyMoreScenario(ticker, shares, purchasePrice);
+    return ScenarioCalculator.previewBuyMoreScenario(ticker, shares, purchasePrice);
   }, [state, ticker, sharesInput, priceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;

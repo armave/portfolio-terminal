@@ -29,7 +29,7 @@ describe('stylesheet architecture and shared policies', () => {
 
   it('defines the mounted auth overlay transition in one canonical rule set', () => {
     const start = stylesheet.indexOf('/* Keep the auth overlay mounted so its exit transition can finish cleanly. */');
-    const end = stylesheet.indexOf('/* Scenario comparison modal:', start);
+    const end = stylesheet.indexOf('/* Responsive portfolio workspace layout. */', start);
     const transitionRules = stylesheet.slice(start, end);
 
     expect(transitionRules.match(/#auth-container\.auth-overlay\s*\{/g) ?? []).toHaveLength(1);
