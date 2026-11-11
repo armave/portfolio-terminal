@@ -106,6 +106,10 @@ describe('Market Tools Buy More preview', () => {
           ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
           startDate: '2026-11-10',
           tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
+        },
+        MSFT: {
+          ticker: 'MSFT', shares: 20, currentPrice: 100, pt: 100, commBuy: 0,
+          tranches: [{ qty: 20, price: 100 }]
         }
       }
     } as any);
