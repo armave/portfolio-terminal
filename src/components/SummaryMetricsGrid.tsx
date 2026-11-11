@@ -435,7 +435,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
           class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable && 'four-market-tools'}`}
         >
-          ⇧<br />{translateText('Compare Buying', language)}
+          ⇧<br />{translateText('Add Calc', language)}
         </button>
         <button
           type="button"
@@ -444,7 +444,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
           class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable && 'four-market-tools'}`}
         >
-          ⇄<br />{translateText('Compare Exits', language)}
+          ⇄<br />{translateText('Exit Calc', language)}
         </button>
         <button
           type="button"
@@ -995,7 +995,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
           </div>
           <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Total Commissions', getAppLanguage())}</span>
+            <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
             <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
           </div>
           <div class="portfolio-micro-row">
