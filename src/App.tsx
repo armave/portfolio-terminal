@@ -11,6 +11,7 @@ import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
+import type { AuthUser } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { addToast, useToasts } from './ui/notificationStore';
@@ -23,7 +24,6 @@ import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerReq
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
-import { buildMarginReviewContext } from './features/ai/marginIntelligenceContext';
 
 
 const MemoTickerTabs = memo(TickerTabs);

@@ -3,7 +3,6 @@ import {
   loadSyncedMarginDigest,
   proxyFetch,
   saveSyncedMarginDigest,
-  type LoadedSyncedMarginDigest,
   type SyncedMarginDigest
 } from '../../services/api';
 import type { BoardState } from '../../types/portfolio';
@@ -34,8 +33,6 @@ type MarginIntelligenceStateUpdate =
   | ((current: MarginIntelligenceState | null) => MarginIntelligenceState | null);
 
 type MarginIntelligenceStateSetter = (next: MarginIntelligenceStateUpdate) => void;
-
-type MarginReviewContext = ReturnType<typeof buildMarginReviewContext>;
 
 export interface MarginIntelligenceRuntimeDependencies {
   canViewMarginDesk: () => boolean;
