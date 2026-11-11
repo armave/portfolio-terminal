@@ -1,0 +1,14 @@
+{
+  "name": "Portfolio Terminal",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [5173],
+  "postCreateCommand": "npm ci && npm run setup:browser-tests && node node_modules/playwright/cli.js install --with-deps chromium && npm run setup:git-hooks",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.eol": "\n"
+      }
+    }
+  }
+}

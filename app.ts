@@ -2,7 +2,7 @@ import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
-import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
+import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -12,18 +12,12 @@ import {
   collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
-  resolveSaleQuantity,
 } from './src/domain/portfolio';
-import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
-import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
-import { buildAiIntentCommand } from './src/features/ai/intentCommand';
-import { aiIntentRequiresFreshPortfolioContext, createAiRequestLifecycle, fingerprintAiPortfolioContext } from './src/features/ai/requestLifecycle';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
-import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
 } from './src/features/quotes/sentiment';
-import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
+import { nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
 import { resolveFreedomAccountRefreshMode } from './src/services/freedomAccountStreamHealth';
@@ -59,7 +53,6 @@ import {
   clearFreedomCashflowCache,
   pullCloudHistory,
   pushCloudHistory,
-  proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
   validateGatewaySecret,
@@ -93,8 +86,7 @@ import {
   saveState,
 } from './src/services/storage';
 import {
-  clearTerminalLog,
-  logTerminal,
+  logAppMessage,
   showToast
 } from './src/ui/notifications';
 import {
@@ -104,7 +96,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
-import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
+import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import {
   applyCashflowAllocationsToBrokerExecutions,
@@ -124,11 +116,8 @@ import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTranc
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
-import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import { CommandExecutionGuard } from './src/features/terminal/commandExecutionGuard';
-import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
-import type { PortfolioTransactionContext } from './src/types/portfolioTransaction';
+import { addToast } from './src/ui/notificationStore';
 
 // ==========================================
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -171,13 +160,12 @@ const guestPortfolioAssignmentRuntime = createGuestPortfolioAssignmentRuntime({
   renderBoard,
   showToast,
   logError: (message, error) => console.error(message, error),
-  logTerminal
+  logAppMessage
 });
 guestPortfolioAssignmentRuntime.bind();
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let guestCloudRefreshInFlight: Promise<unknown> | null = null;
 let lastRenderedDeskView: string | null = null;
-const livePriceRequests = new Map<string, Promise<any>>();
 let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
@@ -261,7 +249,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
       holdings: brokerCashHoldings
     }
   });
-  logTerminal('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
+  logAppMessage('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
   renderBoard();
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
 });
@@ -452,7 +440,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   pushStateToGist();
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const ticker = operationId.split(':')[0];
-  logTerminal(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
+  logAppMessage(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
   renderBoard();
 });
 
@@ -484,7 +472,7 @@ addBrokerEventListener('broker:active-orders', (orders) => {
    const targetDiagnostics = Object.entries(activeLimitSellTargets)
     .map(([ticker, price]) => ticker + '=$' + price.toFixed(2))
     .join(', ');
-   logTerminal('[Freedom] Active sell target sync: ' + (targetDiagnostics || 'no target selected') +
+   logAppMessage('[Freedom] Active sell target sync: ' + (targetDiagnostics || 'no target selected') +
     '; tracked quantities=' + JSON.stringify(marginQuantities) +
     '; orders=' + (orderDiagnostics || 'none') + '.'); */
   const current = portfolioStore.getState();
@@ -501,7 +489,7 @@ addBrokerEventListener('broker:active-orders', (orders) => {
   portfolioStore.setState({ positions });
   saveState(state, pushStateToGist);
   for (const update of updates) {
-    logTerminal(`[Freedom] Updated ${update.ticker} target from active limit sell: ${update.price.toFixed(2)}.`);
+    logAppMessage(`[Freedom] Updated ${update.ticker} target from active limit sell: ${update.price.toFixed(2)}.`);
   }
   renderBoard();
 });
@@ -511,7 +499,7 @@ addBrokerEventListener('broker:active-orders-error', () => {
   // Keep the last known targets on failure and avoid repeating a warning on every poll.
   activeOrdersRefreshWarned = true;
   showToast(translateText('Freedom active orders are unavailable — existing position targets are unchanged.'), 'warning');
-  logTerminal(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.'));
+  logAppMessage(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.'));
 });
 
 addBrokerEventListener('broker:account-info-error', (issue) => {
@@ -531,10 +519,10 @@ addBrokerEventListener('broker:account-info-error', (issue) => {
   });
   showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
   if (issue?.quality === 'partial' && issue.warnings.length > 0) {
-    logTerminal(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
+    logAppMessage(`[Freedom Warning] Rejected partial broker snapshot from ${issue.provider}; retained local data and marked the previous snapshot stale. ${issue.warnings.join(' ')}`);
     return;
   }
-  logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
+  logAppMessage('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
 });
 
 const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
@@ -686,7 +674,7 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
       setCloudStatus('error', 'FAIL');
       return false;
     } catch (err: any) {
-      logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
+      logAppMessage(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus('error', 'FAIL');
       return false;
     }
@@ -725,7 +713,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
   state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
-  emitUiEvent('terminal:scroll-workspace');
+  emitUiEvent('app:scroll-workspace');
 }
 
 async function syncCloudState(mode = 'push') {
@@ -744,7 +732,7 @@ async function syncCloudState(mode = 'push') {
     allowCloudWrites: canWriteCloudState,
     pullCloudAndRewriteLocal,
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
-    logTerminal,
+    logAppMessage,
     onStatusChange: (status) => {
       const synced = status === 'synced';
       setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : 'UNAVAILABLE');
@@ -802,14 +790,14 @@ async function resetToBlankState(): Promise<void> {
       "Portfolio reset was cancelled because the complete local snapshot could not be saved. Your previous portfolio and history have been retained.",
       "error"
     );
-    logTerminal("[System]: Portfolio reset cancelled; local storage could not commit the portfolio and history together.");
+    logAppMessage("[System]: Portfolio reset cancelled; local storage could not commit the portfolio and history together.");
     return;
   }
 
   // Only enqueue remote writes after the complete local reset is durable.
   pushStateToGist(true);
   renderBoard();
-  logTerminal("[System]: Portfolio reset to a clean blank slate.");
+  logAppMessage("[System]: Portfolio reset to a clean blank slate.");
 
   try {
     const historyCleared = await clearCloudHistory(resetSecret, { isCurrentSession: isResetSessionCurrent });
@@ -817,7 +805,7 @@ async function resetToBlankState(): Promise<void> {
     if (!historyCleared) {
       throw new Error("The cloud history reset was not confirmed. Verify cloud access and retry.");
     }
-    logTerminal("[System]: Closed trade history cleared from KV cloud.");
+    logAppMessage("[System]: Closed trade history cleared from KV cloud.");
   } catch (error) {
     if (!isResetSessionCurrent()) return;
     const detail = error instanceof Error ? error.message : "Unknown cloud history error.";
@@ -826,7 +814,7 @@ async function resetToBlankState(): Promise<void> {
       "The portfolio was reset locally, but cloud closed history could not be cleared. Restore cloud access and retry the reset.",
       "error"
     );
-    logTerminal(`[KV Cloud Error]: Closed history reset failed: ${detail}`);
+    logAppMessage(`[KV Cloud Error]: Closed history reset failed: ${detail}`);
   }
 }
 
@@ -897,7 +885,7 @@ function verifyTradernetRulesOnload() {
   const saveMsg =
     `Broker model: ${ratePct}% p.a. (${dailyPct}%/d, /${TRADERNET_RULES.dayCountBasis}) | ${rolloverTime} Armenia time compounding | Maintenance equity ${maintenancePct}%`;
 
-  logTerminal(saveMsg);
+  logAppMessage(saveMsg);
 }
 
 function applyOvernightRollover(): boolean {
@@ -933,8 +921,8 @@ function applyOvernightRollover(): boolean {
     const recordAsRealized = tickers.length === 0 || totalInvested === 0;
 
     if (!portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized)) return false;
-    saveState(state, pushStateToGist);
-    logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
+    const msg = `Applied ${elapsedCycles} rollover cycle${elapsedCycles > 1 ? 's' : ''}: accrued interest $${interestAccrued.toFixed(2)}, new margin debt $${compoundedDebt.toFixed(2)}.`;
+    addToast(msg, 'info');
   } else if (elapsedCycles > 0) {
     if (!portfolioStore.setLastRolloverTimestamp(now.getTime())) return false;
     saveState(state, pushStateToGist);
@@ -1164,9 +1152,9 @@ function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> 
         getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
         onStatus: (status, message) => {
           if (status === 'connected') {
-            logTerminal('[System]: Live TradeNet portfolio and orders streams connected.');
+            logAppMessage('[System]: Live TradeNet portfolio and orders streams connected.');
           } else if (status === 'reconnecting') {
-            logTerminal(message
+            logAppMessage(message
               ? `[Warning]: TradeNet account stream reconnecting (${message}).`
               : '[Warning]: TradeNet account stream reconnecting.');
           }
@@ -1186,7 +1174,6 @@ function stopFreedomAccountStreamRuntime(): void {
 }
 
 let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
-let freedomQuoteStreamRuntime: FreedomQuoteStreamRuntime | null = null;
 
 function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
   if (!freedomQuoteStreamRuntimePromise) {
@@ -1210,19 +1197,17 @@ function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
           },
           onStatus: (status, message) => {
             if (status === 'connected') {
-              logTerminal('[System]: Live TradeNet quote stream connected.');
+              logAppMessage('[System]: Live TradeNet quote stream connected.');
             } else if (status === 'reconnecting') {
-              logTerminal(message
+              logAppMessage(message
                 ? `[Warning]: Live TradeNet quote stream reconnecting (${message}).`
                 : '[Warning]: Live TradeNet quote stream reconnecting; the browser socket remains open.');
             }
           }
         });
-        freedomQuoteStreamRuntime = runtime;
         return runtime;
       }).catch((error) => {
         freedomQuoteStreamRuntimePromise = null;
-        freedomQuoteStreamRuntime = null;
         throw error;
       });
   }
@@ -1236,122 +1221,6 @@ function stopFreedomQuoteStreamRuntime(): void {
 }
 
 
-
-function addCashHolding(ticker: string, shares: number, givenPrice = 0, context?: PortfolioTransactionContext) {
-  const symbol = ticker.trim().toUpperCase();
-  const quantity = Number(shares);
-  const manualPrice = Number(givenPrice);
-  if (!symbol || !Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('Ticker and a positive share quantity are required.');
-  }
-
-  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice, context);
-  if (!added) {
-    throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
-  }
-
-  if (Number.isFinite(manualPrice) && manualPrice > 0) {
-    recordTrackedPrice(symbol, manualPrice, 'Manual');
-  }
-  return added;
-}
-
-function removeCashHolding(ticker: string, context?: PortfolioTransactionContext) {
-  const symbol = ticker.trim().toUpperCase();
-  const holdings = state.cashCushion?.holdings;
-  if (!symbol || !Array.isArray(holdings)) return null;
-
-  const removed = holdings.find((holding: any) => holding.ticker === symbol);
-
-  // Let the store resolve an already-committed idempotent retry even when the
-  // first attempt removed the holding from the current snapshot.
-  if (!removed) {
-    return portfolioStore.removeCashStock(symbol, context) ? { ticker: symbol } : null;
-  }
-
-  // Let the store own this state transition; its subscriber updates the runtime
-  // state reference after the canonical mutation has been committed.
-  if (!portfolioStore.removeCashStock(symbol, context)) return null;
-  return removed;
-}
-
-function setCurrentBalance(value: number, context?: PortfolioTransactionContext): { balance: number; debt: number } | null {
-  if (!portfolioStore.setCashBalance(value, context)) return null;
-
-  const current: any = portfolioStore.getState();
-  return {
-    balance: current.cashCushion?.freeCash || 0,
-    debt: Math.abs(current.balance || 0)
-  };
-}
-
-async function requestLivePrice(symbol: string, force = false) {
-  const existingRequest = livePriceRequests.get(symbol);
-  if (existingRequest && !force) return existingRequest;
-
-  const requestStartedAt = Date.now();
-  const request = fetchLivePriceFromProviders(symbol, requestStartedAt, force).then(result => ({
-    ...result,
-    matched: result.price !== null
-      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails, requestStartedAt)
-      : false
-  }));
-  livePriceRequests.set(symbol, request);
-  try {
-    return await request;
-  } finally {
-    if (livePriceRequests.get(symbol) === request) livePriceRequests.delete(symbol);
-  }
-}
-
-
-async function fetchLivePrice(ticker: string, silent = false, force = false) {
-  const symbol = ticker.toUpperCase();
-  const sessionKey = currentAccountRole && currentAccountId
-    ? `${currentAccountRole}:${currentAccountId}`
-    : '';
-  const hasActiveQuoteSocket = Boolean(
-    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
-    freedomQuoteStreamRuntime.isSocketOpen()
-  );
-  if (hasActiveQuoteSocket && !freedomQuoteStreamRuntime?.isSubscribed(symbol)) {
-    await refreshAllLivePrices(force);
-  }
-  const quoteSocketIsOpenForSession = Boolean(
-    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
-    freedomQuoteStreamRuntime.isSocketOpen()
-  );
-  if (quoteSocketIsOpenForSession) {
-    const trackedPrice = Number(state.positions[symbol]?.currentPrice ||
-      state.cashCushion?.holdings?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.price ||
-      state.cashStocks?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.currentPrice ||
-      0);
-    if (!silent) {
-      logTerminal(freedomQuoteStreamRuntime?.isSubscribed(symbol)
-        ? `[System]: ${symbol} is subscribed to the live quote socket; the REST quote backup was skipped.`
-        : `[System]: ${symbol} is awaiting live quote socket subscription; the REST quote backup was skipped.`);
-    }
-    return Number.isFinite(trackedPrice) && trackedPrice > 0 ? trackedPrice : null;
-  }
-  const result = await requestLivePrice(symbol, force);
-
-  if (result.price !== null) {
-    // Quote refreshes are transient market data; persist locally without
-    // uploading the full portfolio to cloud on every manual quote lookup.
-    saveState(state);
-    renderBoard();
-    if (!silent) {
-      logTerminal(`[${result.sourceName}]: ${symbol} updated to ${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
-    }
-    return result.price;
-  }
-
-  const tracked = state.positions[symbol]?.currentPrice || (state.cashCushion?.holdings?.find((h: any) => h.ticker === symbol)?.price) || 0;
-  if (!silent) {
-    logTerminal(`[Market Data Error]: Could not fetch ${symbol}. ${result.error}. Retained tracked price: ${formatUSD(tracked)}. Set manually via: price ${symbol} <number>.`);
-  }
-  return null;
-}
 
 const liveQuoteRefreshCoordinator = createQuoteRefreshCoordinator(performRefreshAllLivePrices);
 
@@ -1432,14 +1301,14 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
       state = portfolioStore.getState();
       saveState(state);
       renderBoard();
-      logTerminal('[System]: Initial market quote snapshot refreshed ' + refreshResult.updatedCount + ' assets; the live socket is connecting in the background.');
+      logAppMessage('[System]: Initial market quote snapshot refreshed ' + refreshResult.updatedCount + ' assets; the live socket is connecting in the background.');
       return true;
     }
-    logTerminal('[Warning]: The live quote socket is connecting; the initial REST quote snapshot returned no usable prices.');
+    logAppMessage('[Warning]: The live quote socket is connecting; the initial REST quote snapshot returned no usable prices.');
     return false;
   } catch (err: any) {
     console.error('Initial REST quote fallback failed:', err);
-    logTerminal('[Error]: Initial quote snapshot failed - ' + err.message);
+    logAppMessage('[Error]: Initial quote snapshot failed - ' + err.message);
     return false;
   }
 }
@@ -1494,7 +1363,7 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
-        logTerminal(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+        logAppMessage(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
         return false;
       })
       .finally(() => {
@@ -1547,7 +1416,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     ];
     const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
       ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
-        getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
+      getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
       : undefined;
 
     // Bypass the brief quote-side cache: every 60-second checkpoint and manual
@@ -1622,7 +1491,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     if (!persisted) {
       portfolioStore.update(() => previousState, false);
       state = portfolioStore.getState();
-      logTerminal('[Closed History Sync Error]: Could not persist the local portfolio snapshot; cloud history was not changed.');
+      logAppMessage('[Closed History Sync Error]: Could not persist the local portfolio snapshot; cloud history was not changed.');
       return false;
     }
     state = portfolioStore.getState();
@@ -1634,7 +1503,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     };
     const localHistorySaved = await saveSavedHistory(mergedHistory);
     if (!localHistorySaved) {
-      logTerminal('[Closed History Cache Warning]: Local IndexedDB history cache could not be updated; the encrypted cloud-history checkpoint will still be attempted.');
+      logAppMessage('[Closed History Cache Warning]: Local IndexedDB history cache could not be updated; the encrypted cloud-history checkpoint will still be attempted.');
     }
     const normalizedCloudHistory = cloudHistory ? {
       brokerExecutedTrades: cloudExecutions,
@@ -1650,21 +1519,21 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       });
       if (!isCurrentSession()) return false;
       if (!pushed) {
-        logTerminal('[Closed History Sync Warning]: Local cashflows and trades are saved, but the cloud history checkpoint was not confirmed.');
+        logAppMessage('[Closed History Sync Warning]: Local cashflows and trades are saved, but the cloud history checkpoint was not confirmed.');
         return false;
       }
     }
 
     if (!hasFreedomCashflowHistoryBaseline(accountId) &&
-        !markFreedomCashflowHistoryBaseline(accountId)) {
-      logTerminal('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
+      !markFreedomCashflowHistoryBaseline(accountId)) {
+      logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
       return false;
     }
     return true;
   } catch (error) {
     if (isCurrentSession()) {
       const message = error instanceof Error ? error.message : String(error);
-      logTerminal(`[Closed History Sync Warning]: Freedom cashflow or cloud history refresh failed (${message}).`);
+      logAppMessage(`[Closed History Sync Warning]: Freedom cashflow or cloud history refresh failed (${message}).`);
     }
     return false;
   }
@@ -1679,7 +1548,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
-    logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
+    logAppMessage(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
   }
 });
 
@@ -1688,7 +1557,7 @@ const portfolioStartupLifecycleRuntime = createPortfolioStartupLifecycleRuntime(
   isDocumentVisible: () => !document.hidden,
   applyOvernightRollover,
   refreshOnVisibilityChange: () => portfolioAutoRefresh.onVisibilityChange(),
-  setStartupState: (visible, failed) => emitUiEvent('terminal:startup-state', { visible, failed }),
+  setStartupState: (visible, failed) => emitUiEvent('app:startup-state', { visible, failed }),
   retryStartup: () => initApp(),
   continueStartupOffline: () => continueStartupOffline(),
   addVisibilityChangeListener: (listener) => {
@@ -1724,7 +1593,7 @@ function exportBackupJSON() {
   downloadAnchor.click();
   downloadAnchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-  logTerminal(`[Backup]: Exported state to ${filename}.`);
+  logAppMessage(`[Backup]: Exported state to ${filename}.`);
 }
 
 async function importBackupFile(file: File) {
@@ -1744,7 +1613,7 @@ async function importBackupFile(file: File) {
       `This replaces this browser's portfolio and, if cloud sync is available, the shared administrator workspace. ` +
       `Export a current backup first if you may need the existing data.`
     )) {
-      logTerminal('[Backup Import]: Import cancelled; the current portfolio was not changed.');
+      logAppMessage('[Backup Import]: Import cancelled; the current portfolio was not changed.');
       return;
     }
 
@@ -1763,607 +1632,18 @@ async function importBackupFile(file: File) {
     );
     await pushStateToGist(true);
     renderBoard();
-    logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
+    logAppMessage(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logTerminal(`[Backup Error]: Could not import backup (${message}).`);
+    logAppMessage(`[Backup Error]: Could not import backup (${message}).`);
     showToast(`Backup import failed: ${message}`, 'error');
-  }
-}
-
-// ==========================================
-// PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
-// ==========================================
-async function applyPortfolioActions(action: PortfolioActionIntent, transactionContext: PortfolioTransactionContext) {
-  if ((action.action === 'buy' || action.action === 'sell') && !applyOvernightRollover()) {
-    logTerminal('[Error]: Could not save the margin rollover. The portfolio action was not applied.');
-    return;
-  }
-  if (action.action === "buy") {
-    const ticker = String(action.ticker || '').trim().toUpperCase();
-    const shares = Number(action.shares);
-    const price = Number(action.price);
-    if (!ticker || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) {
-      logTerminal('[AI Action Error]: Buy requires a valid ticker, positive share count, and positive price.');
-      showToast('Invalid buy details.', 'error');
-      return;
-    }
-
-    const priorState = portfolioStore.getState();
-    const targetPrice = Number(action.pt) > 0
-      ? Number(action.pt)
-      : priorState.positions[ticker]
-        ? undefined
-        : Number((price * 1.05).toFixed(2));
-    const priorFreeCash = Math.max(0, Number(priorState.cashCushion?.freeCash) || 0);
-    const priorDebt = Math.abs(Number(priorState.balance) || 0);
-    const rules = priorState.brokerAssumptions || TRADERNET_RULES;
-    const buyComm = calculateCommission(shares, shares * price, resolveCommissionConfig(rules));
-    const totalOutlay = shares * price + buyComm;
-    const cashUsed = Math.min(priorFreeCash, totalOutlay);
-    const debtAdded = totalOutlay - cashUsed;
-
-    const committed = portfolioStore.buyStock(
-      ticker,
-      shares,
-      price,
-      action.date || new Date().toISOString().split('T')[0],
-      targetPrice,
-      transactionContext
-    );
-    if (!committed) {
-      logTerminal('[Error]: Could not save portfolio changes. Previous saved data is unchanged.');
-      return;
-    }
-    const committedState = portfolioStore.getState();
-
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))} (was -${formatUSD(priorDebt)}).`);
-    await fetchLivePrice(ticker, false, true);
-  }
-  else if (action.action === "sell") {
-    const ticker = action.ticker.toUpperCase();
-    let pos: { ticker: string; shares: number | string } | undefined = state.positions[ticker];
-    let isCashHolding = false;
-    let cashHoldingIdx = -1;
-
-    if (!pos && state.cashCushion && state.cashCushion.holdings) {
-      cashHoldingIdx = state.cashCushion.holdings.findIndex((h: any) => h.ticker === ticker);
-      if (cashHoldingIdx !== -1) {
-        isCashHolding = true;
-        pos = state.cashCushion.holdings[cashHoldingIdx];
-      }
-    }
-
-    if (!pos) {
-      const priorEvent = transactionContext.idempotencyKey
-        ? state.transactionEvents?.find((event) => event.idempotencyKey === transactionContext.idempotencyKey)
-        : undefined;
-      const requestedPrice = Number(action.price);
-      if (priorEvent) {
-        const priorQuantity = Number(priorEvent.quantity);
-        const requestedQuantityMatches = action.shares === null ||
-          Math.abs(priorQuantity - Number(action.shares)) <= 1e-8;
-        const matchingPriorSale = (priorEvent.type === 'trade.sell' || priorEvent.type === 'cash-holding.sell') &&
-          priorEvent.ticker === ticker &&
-          Number(priorEvent.unitPrice) === requestedPrice &&
-          Number.isFinite(priorQuantity) && priorQuantity > 0 &&
-          requestedQuantityMatches;
-        if (matchingPriorSale) {
-          const repeatedResult = priorEvent.type === 'cash-holding.sell'
-            ? portfolioStore.sellCashHolding(ticker, priorQuantity, requestedPrice, transactionContext)
-            : portfolioStore.sellMarginPosition(ticker, priorQuantity, requestedPrice, priorEvent.effectiveAt, transactionContext);
-          if (repeatedResult) {
-            logTerminal('[AI Action]: This confirmed sale request was already committed; no additional sale was applied.');
-            return;
-          }
-        }
-        logTerminal('[AI Action Error]: This request idempotency key is already associated with a different transaction. No changes were made.');
-        showToast('This confirmed action was already used for a different portfolio change.', 'error');
-        return;
-      }
-      logTerminal(`[Error]: Position ${ticker} not found to close.`);
-      return;
-    }
-
-    const hasRequestedShares = action.shares !== null && action.shares !== undefined;
-    let sharesToSell: number;
-    try {
-      sharesToSell = resolveSaleQuantity(
-        Number(pos.shares),
-        hasRequestedShares ? Number(action.shares) : null
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logTerminal(`[Sell Error]: ${message}`);
-      showToast(message, 'error');
-      return;
-    }
-
-    const sellPrice = Number(action.price);
-    if (!Number.isFinite(sellPrice) || sellPrice <= 0) {
-      logTerminal(`[Sell Error]: Enter a valid sale price greater than zero for ${ticker}.`);
-      showToast('Sale price must be greater than zero.', 'error');
-      return;
-    }
-    if (isCashHolding) {
-      const result = portfolioStore.sellCashHolding(ticker, sharesToSell, sellPrice, transactionContext);
-      if (!result) {
-        logTerminal(`[Sell Error]: Could not sell cash holding ${ticker}.`);
-        showToast('Cash holding sale failed.', 'error');
-        return;
-      }
-
-      saveState(state, pushStateToGist);
-      if (result.remainingShares <= 1e-8) {
-        logTerminal(`[Cash Holding Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
-      } else {
-        logTerminal(`[Cash Holding Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${result.remainingShares} shares. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
-      }
-      renderBoard();
-      return;
-    }
-
-    let result: ReturnType<typeof portfolioStore.sellMarginPosition>;
-    try {
-      result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice, Date.now(), transactionContext);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      logTerminal(`[Sell Error]: ${detail}`);
-      showToast(translateText(
-        'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
-        getAppLanguage()
-      ), 'error');
-      return;
-    }
-    if (!result) {
-      logTerminal(`[Sell Error]: Could not sell margin position ${ticker}.`);
-      showToast('Margin position sale failed.', 'error');
-      return;
-    }
-
-    saveState(state, pushStateToGist);
-    if (result.remainingShares <= 1e-8) {
-      logTerminal(`[Position Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
-    } else {
-      logTerminal(`[Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining: ${result.remainingShares} shares.`);
-    }
-  }
-  else if (action.action === "set_pt") {
-    const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
-    if (state.positions[ticker] && Number(action.pt) > 0) {
-      if (!portfolioStore.updateTargetPrice(ticker, Number(action.pt))) {
-        logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
-        return;
-      }
-      saveState(state, pushStateToGist);
-      logTerminal(`[Target Updated]: ${ticker} PT updated to ${formatUSD(action.pt)}.`);
-    }
-  }
-  else if (action.action === "set_price") {
-    const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
-    const newP = Number(action.price);
-
-    if (!newP || isNaN(newP) || newP <= 0) {
-      logTerminal(`[Price Unchanged]: No valid price amount supplied. Enter: price ${ticker} <number>.`);
-      return;
-    }
-
-    const updated = recordTrackedPrice(ticker, newP, 'Manual');
-    if (updated) {
-      saveState(state, pushStateToGist);
-      logTerminal(`[Price Updated]: ${ticker} market price set to ${formatUSD(newP)}.`);
-    }
-  }
-  else if (action.action === "set_balance") {
-    const debt = Math.abs(Number(action.balance));
-    if (!Number.isFinite(debt)) {
-      logTerminal('[Margin Sync Error]: Enter a valid finite debt amount.');
-      showToast('Invalid margin debt amount.', 'error');
-      return;
-    }
-    if (!portfolioStore.setMarginDebt(debt, transactionContext)) {
-      logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
-      return;
-    }
-    saveState(state, pushStateToGist);
-    logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
-  }
-  else if (action.action === "set_free_cash") {
-    const committedBalance = setCurrentBalance(action.amount, transactionContext);
-    if (!committedBalance) {
-      logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
-      return;
-    }
-    const { balance, debt } = committedBalance;
-    saveState(state, pushStateToGist);
-    logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
-  }
-  else if (action.action === "add_cash_stock") {
-    const ticker = action.ticker.toUpperCase();
-    const shares = Number(action.shares);
-    const givenPrice = Number(action.price) || 0;
-
-    try {
-      addCashHolding(ticker, shares, givenPrice, transactionContext);
-    } catch (error) {
-      logTerminal(`[Error]: ${error instanceof Error ? error.message : PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
-      return;
-    }
-    saveState(state, pushStateToGist);
-    logTerminal(`[Balance]: Added ${shares} ${ticker} to balance holdings. Syncing online quote...`);
-    renderBoard();
-    await fetchLivePrice(ticker);
-    return;
-  }
-  else if (action.action === "remove_cash_stock") {
-    const ticker = action.ticker.toUpperCase();
-    const removed = removeCashHolding(ticker, transactionContext);
-    if (removed) {
-      saveState(state, pushStateToGist);
-      logTerminal(`[Balance]: Removed ${removed.ticker} from balance holdings.`);
-    }
-  }
-
-  renderBoard();
-}
-
-function assertNeverAiAction(action: never): never {
-  throw new Error(`Unsupported AI portfolio action: ${String(action)}`);
-}
-
-function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
-  const currentState = portfolioStore.getState();
-  let ticker = 'ticker' in action && typeof action.ticker === 'string'
-    ? action.ticker.trim().toUpperCase()
-    : '';
-  if (!ticker && (action.action === 'set_pt' || action.action === 'set_price')) {
-    ticker = currentState.positions[currentState.activeView] ? currentState.activeView : Object.keys(currentState.positions)[0] || '';
-  }
-  const validTicker = /^[A-Z0-9._:-]+$/.test(ticker);
-  const isPositiveFinite = (value: number) => Number.isFinite(value) && value > 0;
-  const isFiniteNumber = (value: number) => Number.isFinite(value);
-  const actionRequiresTicker = action.action !== 'set_balance' && action.action !== 'set_free_cash';
-  if (actionRequiresTicker && !validTicker) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid ticker. No changes were made.');
-    return false;
-  }
-
-  if (action.action === 'buy' && (!isPositiveFinite(action.shares) || !isPositiveFinite(action.price))) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid buy quantity or price. No changes were made.');
-    return false;
-  }
-  if (action.action === 'sell' &&
-    ((action.shares !== null && !isPositiveFinite(action.shares)) || !isPositiveFinite(action.price))) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid sale quantity or price. No changes were made.');
-    return false;
-  }
-  if ((action.action === 'set_pt' && !isPositiveFinite(action.pt)) ||
-    (action.action === 'set_price' && !isPositiveFinite(action.price))) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid price. No changes were made.');
-    return false;
-  }
-  if (action.action === 'add_cash_stock' &&
-    (!isPositiveFinite(action.shares) ||
-      (action.price !== null && (!Number.isFinite(action.price) || action.price < 0)))) {
-    logTerminal('[AI Action Error]: Gemini returned invalid cash holding details. No changes were made.');
-    return false;
-  }
-  if (action.action === 'set_balance' && !isFiniteNumber(action.balance)) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid margin balance. No changes were made.');
-    return false;
-  }
-  if (action.action === 'set_free_cash' && !isFiniteNumber(action.amount)) {
-    logTerminal('[AI Action Error]: Gemini returned an invalid account balance. No changes were made.');
-    return false;
-  }
-
-  const message = (() => {
-    switch (action.action) {
-      case 'buy': return `Buy ${action.shares} ${ticker} at ${action.price}?`;
-      case 'sell': return `Sell ${action.shares === null ? 'all' : action.shares} ${ticker} at ${action.price}?`;
-      case 'set_pt': return `Set ${ticker}'s target price to ${action.pt}?`;
-      case 'set_price': return `Set ${ticker}'s tracked market price to ${action.price}?`;
-      case 'set_balance': return `Set signed margin balance to ${action.balance}?`;
-      case 'set_free_cash': return `Set free cash to ${action.amount}?`;
-      case 'add_cash_stock': return `Add ${action.shares} shares of ${ticker} to cash holdings?`;
-      case 'remove_cash_stock': return `Remove ${ticker} from cash holdings?`;
-      default: return assertNeverAiAction(action);
-    }
-  })();
-
-  const confirmationLines = [
-    translateText('Review this portfolio change:', getAppLanguage()),
-    '',
-    message
-  ];
-  const currentPosition = currentState.positions[ticker] ||
-    currentState.cashCushion?.holdings?.find((holding) => holding.ticker === ticker);
-  const currentShares = action.action === 'buy'
-    ? Number(currentState.positions[ticker]?.shares) || 0
-    : Number(currentPosition?.shares) || 0;
-  const rules = currentState.brokerAssumptions || TRADERNET_RULES;
-
-  if (action.action === 'buy') {
-    const shares = action.shares;
-    const price = action.price;
-    const gross = shares * price;
-    const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
-    const totalOutlay = gross + commission;
-    const availableCash = Math.max(0, Number(currentState.cashCushion?.freeCash) || 0);
-    const cashUsed = Math.min(availableCash, totalOutlay);
-    const debtAdded = totalOutlay - cashUsed;
-    confirmationLines.push(
-      '',
-      `Estimated purchase value: ${formatUSD(gross)}`,
-      `Estimated commission: ${formatUSD(commission)}`,
-      `Estimated total outlay: ${formatUSD(totalOutlay)}`,
-      `Estimated free cash used: ${formatUSD(cashUsed)}`,
-      `Estimated additional margin debt: ${formatUSD(debtAdded)}`,
-      `Tracked shares: ${currentShares} → ${currentShares + shares}`
-    );
-  } else if (action.action === 'sell') {
-    const shares = action.shares === null ? currentShares : action.shares;
-    const price = action.price;
-    const gross = shares * price;
-    const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
-    confirmationLines.push(
-      '',
-      `Tracked shares available: ${currentShares}`,
-      `Estimated gross proceeds: ${formatUSD(gross)}`,
-      `Estimated commission: ${formatUSD(commission)}`,
-      `Estimated proceeds after commission: ${formatUSD(gross - commission)}`
-    );
-    if (shares > currentShares) {
-      confirmationLines.push('Warning: requested sale exceeds tracked shares and will be rejected.');
-    } else {
-      confirmationLines.push(`Tracked shares after sale: ${Math.max(0, currentShares - shares)}`);
-    }
-  } else if (action.action === 'set_balance') {
-    confirmationLines.push('Sign convention: positive means available cash; negative means margin debt.');
-  } else if (action.action === 'set_free_cash') {
-    confirmationLines.push('This changes the free-cash cushion; it does not directly change the margin balance.');
-  } else if (action.action === 'set_price') {
-    confirmationLines.push('This sets a manually tracked price; it is not a live quote refresh.');
-  }
-
-  confirmationLines.push(
-    '',
-    translateText('These are portfolio-model estimates only. No broker order is submitted.', getAppLanguage()),
-    translateText('Verify quantities, prices, and fees before applying this change.', getAppLanguage()),
-    '',
-    translateText('Apply this change?', getAppLanguage())
-  );
-  return confirm(confirmationLines.join('\n'));
-}
-
-function showScenarioModal(data: ScenarioModalData): void {
-  emitUiEvent('terminal:scenario-modal', data);
-}
-
-function createAiActionIdempotencyKey(requestId: number): string {
-  let uniqueId: string;
-  try {
-    const randomUUID = globalThis.crypto?.randomUUID;
-    uniqueId = typeof randomUUID === 'function'
-      ? randomUUID.call(globalThis.crypto)
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  } catch {
-    uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  }
-  return `ai-action:${requestId}:${uniqueId}`;
-}
-
-const aiRequestLifecycle = createAiRequestLifecycle();
-
-const terminalCommandExecutionGuard = new CommandExecutionGuard();
-
-async function executeCommand(commandText: string, preserveAiRequest = false) {
-  const text = commandText.trim();
-  if (!text) return;
-
-  const outcome = await terminalCommandExecutionGuard.run(
-    text,
-    () => executeCommandOnce(text, preserveAiRequest)
-  );
-  if (outcome.status === 'duplicate') {
-    logTerminal(translateText(
-      'Duplicate terminal command ignored while the first submission is running.',
-      getAppLanguage()
-    ));
-  }
-}
-
-async function executeCommandOnce(text: string, preserveAiRequest = false) {
-  if (!preserveAiRequest && !/^(?:ai|ask)\b/i.test(text)) {
-    aiRequestLifecycle.invalidate();
-    setAiStatus('READY');
-  }
-
-  logTerminal(text, true);
-
-  // Parse and confirm a trade before any rollover or portfolio mutation.
-  const tradePreview = CommandDispatcher.previewTradeAction(text);
-  if (tradePreview) {
-    const action: PortfolioActionIntent = tradePreview.action === 'buy'
-      ? {
-        intent: 'action',
-        action: 'buy',
-        ticker: tradePreview.ticker,
-        shares: tradePreview.shares,
-        price: tradePreview.price,
-        pt: tradePreview.pt,
-        date: tradePreview.date
-      }
-      : {
-        intent: 'action',
-        action: 'sell',
-        ticker: tradePreview.ticker,
-        shares: tradePreview.shares,
-        price: tradePreview.price
-      };
-
-    if (!confirmAiPortfolioAction(action)) {
-      logTerminal(translateText('Trade cancelled. The portfolio was not changed.', getAppLanguage()));
-      return;
-    }
-
-    if (!applyOvernightRollover()) {
-      logTerminal('[CLI Error]: Could not save the margin rollover. The trade was not applied.');
-      return;
-    }
-  }
-
-  // 1. Execute via the deterministic dispatcher
-  const localResult = CommandDispatcher.execute(text);
-
-  // 2. Surface dispatcher validation errors directly; never send them to the AI fallback.
-  if (localResult.type === 'err') {
-    if (localResult.text) {
-      const errorText = translateText(localResult.text, getAppLanguage());
-      logTerminal(`[CLI Error]: ${errorText}`);
-      showToast(errorText, 'error');
-    }
-    return;
-  }
-
-  // Scenario commands return structured data for a decision modal, not a terminal dump.
-  if (localResult.modal) {
-    showScenarioModal(localResult.modal);
-    return;
-  }
-
-  // 3. Run command side effects without hiding an already-applied local mutation
-  // if quote refresh or cloud synchronization fails.
-  let sideEffectError: string | undefined;
-  if (localResult.sideEffect) {
-    const effect = localResult.sideEffect;
-    try {
-      if (effect.type === 'SYNC_CLOUD') {
-        renderBoard();
-        await pushStateToGist();
-      } else if (effect.type === 'FETCH_QUOTE') {
-        renderBoard();
-        await fetchLivePrice(effect.ticker, false, true); // Start quote request after the trade.
-        await pushStateToGist();
-      } else if (effect.type === 'REFRESH_ALL') {
-        await refreshAllLivePrices(true);
-      } else if (effect.type === 'SWITCH_VIEW') {
-        setActiveView(effect.view);
-      } else if (effect.type === 'CLEAR_TERMINAL') {
-        clearTerminalLog();
-      }
-    } catch (error) {
-      console.error('Terminal command side effect failed:', error);
-      sideEffectError = effect.type === 'SYNC_CLOUD' || effect.type === 'FETCH_QUOTE'
-        ? 'Command applied locally, but quote refresh or cloud sync failed. Check your connection and retry sync.'
-        : effect.type === 'REFRESH_ALL'
-          ? 'Quote refresh failed. Please retry.'
-          : 'The command completed locally, but its follow-up action failed.';
-    }
-  }
-
-  // 4. Return if a command was matched and executed locally.
-  if (localResult.type === 'res' || localResult.type === 'cmd') {
-    if (localResult.text) logTerminal(`[CLI]: ${localResult.text}`);
-    if (sideEffectError) {
-      logTerminal(`[CLI Error]: ${sideEffectError}`);
-      showToast(sideEffectError, 'error');
-    }
-    return;
-  }
-
-  // Explicitly invalid local commands stay local errors. Natural-language input that
-  // the deterministic dispatcher cannot recognize is routed to the AI advisor.
-  const isAiPrefixed = /^(?:ai|ask)\b/i.test(text);
-  if (localResult.type !== 'unrecognized' && !isAiPrefixed) {
-    logTerminal(`[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.`);
-    return;
-  }
-
-  const aiQuery = text.replace(/^(?:ai|ask)\s*:?\s*/i, '');
-  setAiStatus('CONNECTING...');
-
-  const requestId = aiRequestLifecycle.begin();
-  try {
-    const targetState = portfolioStore.getState();
-    const contextFingerprint = fingerprintAiPortfolioContext({
-      positions: targetState.positions,
-      activeView: targetState.activeView || '',
-      balance: targetState.balance,
-      cashCushion: targetState.cashCushion,
-      brokerAssumptions: targetState.brokerAssumptions
-    });
-    const prompt = buildIntentPrompt({
-      text: aiQuery,
-      state: {
-        positions: targetState.positions,
-        activeView: targetState.activeView || ''
-      },
-      activeTickers: Object.keys(targetState.positions || {}),
-      activeView: targetState.activeView || '',
-      today: new Date().toISOString().split("T")[0]
-    });
-
-    const data: unknown = await proxyFetch('gemini', {}, { method: "POST", body: JSON.stringify({ prompt }) });
-    if (!aiRequestLifecycle.isCurrent(requestId)) return;
-
-    const rawText = extractGeminiResponseText(data);
-    const parsed = parseAiIntent(rawText);
-    if (!aiRequestLifecycle.isCurrent(requestId)) return;
-
-    const latestState = portfolioStore.getState();
-    const latestContextFingerprint = fingerprintAiPortfolioContext({
-      positions: latestState.positions,
-      activeView: latestState.activeView || '',
-      balance: latestState.balance,
-      cashCushion: latestState.cashCushion,
-      brokerAssumptions: latestState.brokerAssumptions
-    });
-    if (
-      aiIntentRequiresFreshPortfolioContext(parsed.intent, 'ticker' in parsed ? parsed.ticker : null) &&
-      latestContextFingerprint !== contextFingerprint
-    ) {
-      logTerminal(`[AI Advisor]: ${translateText('Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.', getAppLanguage())}`);
-      setAiStatus('READY');
-      return;
-    }
-
-    if (parsed.intent === "action") {
-      const applied = await applyAiPortfolioActionAfterConfirmation(
-        parsed,
-        confirmAiPortfolioAction,
-        applyPortfolioActions,
-        createAiActionIdempotencyKey(requestId)
-      );
-      if (!applied) logTerminal("[AI Action]: Cancelled.");
-    } else if (parsed.intent === 'chat') {
-      logTerminal(`[AI Advisor]: ${parsed.response}`);
-    } else {
-      const activeView = String(targetState.activeView || '').toUpperCase();
-      const activeTicker = Object.prototype.hasOwnProperty.call(targetState.positions || {}, activeView)
-        ? activeView
-        : null;
-      const command = buildAiIntentCommand(parsed, activeTicker);
-      if (!command) {
-        logTerminal(`[AI Advisor]: ${translateText('Select or mention an active stock before requesting an AI simulation, comparison, or quote.', getAppLanguage())}`);
-      } else {
-        await executeCommand(command, true);
-      }
-    }
-
-    if (aiRequestLifecycle.isCurrent(requestId)) setAiStatus('READY');
-  } catch (err: unknown) {
-    if (!aiRequestLifecycle.isCurrent(requestId)) return;
-    const message = err instanceof Error ? err.message : 'Unknown AI request error.';
-    logTerminal(`[Error]: ${message}`);
-    setAiStatus('READY');
   }
 }
 
 let appInitialized = false;
 
 function hideStartupLoading() {
-  emitUiEvent('terminal:startup-state', { visible: false, failed: false });
+  emitUiEvent('app:startup-state', { visible: false, failed: false });
 }
 
 setSecretGetter(() => getGatewaySecret());
@@ -2440,7 +1720,7 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
 function renderAuthModal(isOpen: boolean) {
   // App owns the auth overlay inside the main Preact tree. Communicate visibility
   // as state rather than mounting a second Preact root into a sibling container.
-  emitUiEvent('terminal:auth-visibility', { isOpen });
+  emitUiEvent('auth:visibility', { isOpen });
 }
 
 function showAuthContainer() {
@@ -2482,7 +1762,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   beginInitialQuoteRefresh: () => { initialQuoteRefreshPending = true; },
   showGuestBalanceView: () => setActiveView('BALANCE'),
   showSavedAdminView: () => switchView(state.activeView),
-  scrollWorkspace: () => emitUiEvent('terminal:scroll-workspace'),
+  scrollWorkspace: () => emitUiEvent('app:scroll-workspace'),
   refreshLivePrices: () => {
     // Show the restored workspace promptly; provider snapshots are independent
     // background refreshes and can take several seconds across fallback sources.
@@ -2543,7 +1823,7 @@ export async function initApp() {
 }
 
 function showStartupFailure() {
-  emitUiEvent('terminal:startup-state', { visible: true, failed: true });
+  emitUiEvent('app:startup-state', { visible: true, failed: true });
 }
 
 function bindStartupActions() {
@@ -2571,13 +1851,7 @@ function bindStartupActions() {
     },
     translateText,
     showToast,
-    logTerminal
-  });
-  addUiEventListener('terminal:execute-command', (event) => {
-    void (async () => {
-      if (!(await requireAdmin('use the trading terminal'))) return;
-      await executeCommand(event.detail.command);
-    })();
+    logAppMessage
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
     void requireAdmin('change broker rules').then((allowed) => {
@@ -2596,7 +1870,7 @@ function bindStartupActions() {
         saved = await saveApiKeys({
           secret: event.detail.secret,
           showToast: (message, type) => showToast(message, type as any),
-          logTerminal
+          logAppMessage
         });
         if (saved) {
           portfolioStore.setState({ gatewaySecret: event.detail.secret.trim() });
@@ -2632,7 +1906,7 @@ function bindStartupActions() {
       if (allowed) resetToBlankState();
     });
   });
-  addUiEventListener('terminal:backup-import-file', (event) => {
+  addUiEventListener('settings:backup-import-file', (event) => {
     void requireAdmin('import portfolio backups').then((allowed) => {
       if (allowed) void importBackupFile(event.detail.file);
     });

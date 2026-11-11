@@ -36,8 +36,6 @@ describe('shared modal frame', () => {
 
   it('routes all migrated modal close controls through the shared frame lifecycle', () => {
     const modalPaths = [
-      './ScenarioComparisonModal.tsx',
-      './ScenarioReportModal.tsx',
       './ExitComparisonModal.tsx',
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',
@@ -61,8 +59,6 @@ describe('shared modal frame', () => {
 
   it('keeps focus management and content in their owning modules', () => {
     const modalPaths = [
-      './ScenarioComparisonModal.tsx',
-      './ScenarioReportModal.tsx',
       './ExitComparisonModal.tsx',
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',
@@ -92,25 +88,10 @@ describe('shared modal frame', () => {
     }
   });
 
-  it('keeps scenario comparison dialogs inside the viewport and scrolls wide tables independently', () => {
-    const comparison = readSource('./ScenarioComparisonModal.tsx');
-
-    expect(comparison).toContain('overflow-y-auto overscroll-contain');
-    expect(comparison).toContain('max-h-[calc(100dvh-1rem)]');
-    expect(comparison).toContain('min-h-0 w-full min-w-0');
-    expect(comparison).toContain('overflow-x-auto overscroll-x-contain');
-    expect(comparison).toContain('min-w-[42rem]');
-  });
-
   it('preserves caller-owned backgrounds and custom dialog styling while the frame animates', () => {
-    const comparison = readSource('./ScenarioComparisonModal.tsx');
-    const report = readSource('./ScenarioReportModal.tsx');
     const exit = readSource('./ExitComparisonModal.tsx');
     const frame = readSource('./ModalFrame.tsx');
 
-    expect(comparison).toContain('backdropStyle=');
-    expect(comparison).toContain('dialogStyle=');
-    expect(report).toContain('scenario-modal-dialog');
     expect(exit).toContain('exit-comparison-dialog');
     expect(frame).toContain("typeof backdropStyle === 'object' && backdropStyle !== null");
     expect(frame).toContain("typeof dialogStyle === 'object' && dialogStyle !== null");

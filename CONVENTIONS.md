@@ -31,4 +31,8 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
     - `npm run audit:production`
     - `npm run build`
 
+    Use `npm run ci:local` to reproduce the complete GitHub Actions validation locally, including the production browser smoke test, desktop/mobile performance baseline, and Operations browser journey. It starts with `npm ci`; pass `-- --skip-install` only when the current lockfile dependencies are already installed.
+
+    The checked-in devcontainer provisions Node.js 22, Playwright/Chromium, and the Git pre-push hook. In an existing checkout, run `npm ci` and then `npm run setup:browser-tests`, install Chromium with `node node_modules/playwright/cli.js install chromium`, and activate the hook with `npm run setup:git-hooks`. The hook runs the same local CI suite while reusing installed dependencies.
+
     Inspect the final diff for unintended financial, persisted-data, broker, security, and deployment changes. Report unavailable checks honestly; never claim a test or build passed without evidence. Resolve failures at their source rather than weakening assertions or skipping checks.

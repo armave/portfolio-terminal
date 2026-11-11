@@ -6,6 +6,20 @@ import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourc
 afterEach(() => setAppLanguage('en'));
 
 describe('app localization', () => {
+  it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
+    const marginRiskCopy = [
+      'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit',
+      'Eligible collateral', 'Initial margin requirement', 'Broker maintenance requirement',
+      'Concentration add-on', 'Total maintenance requirement', 'Estimated annual financing',
+      'Estimated daily financing', 'Input freshness', 'Source observation', 'Broker reported',
+      'Configured assumption', 'Not reported', 'Source unknown', 'Fresh', 'Fresh input', 'Stale', 'Delayed',
+      'Indicative', 'Unknown', 'Configured maintenance threshold', 'Configured stop-out buffer'
+    ];
+    for (const copy of marginRiskCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('keeps authentication modal copy localized in Russian', () => {
     const authenticationCopy = [
       'Create administrator account',
@@ -27,44 +41,6 @@ describe('app localization', () => {
     ];
 
     for (const copy of authenticationCopy) {
-      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
-    }
-  });
-
-  it('keeps scenario modal and market-status copy localized in Russian', () => {
-    const scenarioAndMarketCopy = [
-      'Close · Esc',
-      'Close scenario comparison',
-      'Compare',
-      'BEST',
-      'What-if analysis',
-      'Close',
-      'Close scenario report',
-      'Scenario report',
-      'Estimates only · actual results may differ.',
-      'Done',
-      'Current position vs. proposed purchase · profit, downside, exposure and fees',
-      'Sell now vs. future exits · estimated net results after costs',
-      'Before vs. after · estimated values',
-      'Portfolio market',
-      'Your market',
-      'Premarket',
-      'Market',
-      'Postmarket',
-      'Closed',
-      'Premarket in {time}',
-      'Opens in {time}',
-      'Closes in {time}',
-      '{minutes}m',
-      '{hours}h',
-      '{hours}h {minutes}m',
-      '{days}d',
-      '{days}d {hours}h',
-      '{days}d {hours}h {minutes}m',
-      'Unavailable'
-    ];
-
-    for (const copy of scenarioAndMarketCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
     }
   });
@@ -96,20 +72,20 @@ describe('app localization', () => {
     const buyMoreCopy = [
       'Buy More',
       'Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.',
-      'Buy More Scenario', 'Additional shares', 'Purchase price', 'Current position', 'After purchase',
+      'Buy More Scenario', 'Additional shares', 'Purchase price', 'Projected target price', 'Current position', 'After purchase',
       'Current shares', 'Average entry', 'Market quote', 'Target price',
       'Purchase value · excl fees', 'Projected shares', 'Projected average entry',
-      'Net P&L', 'Fees & commissions', 'Margin fee', 'Balance', 'Date',
+      'Net P&L', 'Fees & comm.', 'Balance', 'Date',
       'Choose a position',
       'There are no open positions available for a buy-more preview.',
-      'Enter a positive share amount and purchase price to calculate this scenario.',
+      'Enter positive shares, purchase price and projected target price to calculate this scenario.',
       'Use market quote', 'Use average entry', 'Reset defaults', 'Buy More results',
       'Inputs and latest results are saved automatically in this browser for this account.',
       'Last saved',
       'This is the last saved estimate. Current inputs or portfolio data do not support a fresh calculation.',
       'Close Buy More', 'Projection price', 'Scenario summary', 'Updated live',
       'Current position and after purchase projection amounts by date.',
-      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.',
+      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows account cash after selling the position, net of sell commission and projected margin interest. No portfolio mutation or order placement occurs.',
       'Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.'
     ];
     for (const copy of buyMoreCopy) {
@@ -130,7 +106,7 @@ describe('app localization', () => {
       'No articles were available from the connected news feeds. News-dependent conclusions are limited.',
       'No server-synced digest yet', 'Portfolio snapshot',
       'Refresh margin intelligence', 'Close margin intelligence',
-      'Switch to 7d', 'Lock 14d Best', 'Invert Comparison', 'Stage target command',
+      'Switch to 7d', 'Lock 14d Best', 'Invert Comparison',
       'Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.',
       'Select or mention an active stock before requesting an AI simulation, comparison, or quote.'
     ];
@@ -330,21 +306,6 @@ describe('app localization', () => {
     expect(translateText('Quote sources and observation times', 'ru')).toBe('Источники котировок и время наблюдения');
   });
 
-  it('localizes terminal trade confirmation and dynamic oversized-sale feedback', () => {
-    expect(translateText('Review this portfolio change:', 'ru')).toBe('Проверьте это изменение портфеля:');
-    expect(translateText('These are portfolio-model estimates only. No broker order is submitted.', 'ru'))
-      .toBe('Это оценка модели портфеля. Заявка брокеру не отправляется.');
-    expect(translateText('Verify quantities, prices, and fees before applying this change.', 'ru'))
-      .toBe('Перед применением проверьте количество, цены и комиссии.');
-    expect(translateText('Apply this change?', 'ru')).toBe('Применить это изменение?');
-    expect(translateText('Trade cancelled. The portfolio was not changed.', 'ru'))
-      .toBe('Сделка отменена. Портфель не изменён.');
-    expect(translateText('Duplicate terminal command ignored while the first submission is running.', 'ru'))
-      .toBe('Повторная команда проигнорирована: предыдущая ещё выполняется.');
-    expect(translateText('Cannot sell 6 AAPL; only 5 shares are available.', 'ru'))
-      .toBe('Нельзя продать 6 AAPL: доступно только 5 акций.');
-  });
-
   it('localizes cost-basis sale rejection messaging into Russian', () => {
     expect(translateText(
       'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
@@ -501,14 +462,10 @@ describe('app localization', () => {
     expect(translateText('Known net P&L', 'ru')).toBe('Чистая прибыль/убыток по известным сделкам');
   });
 
-  it('localizes dynamic position-review and scenario-report labels', () => {
+  it('localizes dynamic margin position-review labels', () => {
     expect(translateText('AAPL · Position Review', 'ru')).toBe('AAPL · Анализ маржинальной позиции');
     expect(translateText('No active margin position was found for NVDA. Select an active margin ticker and try again.', 'ru'))
       .toBe('Не найдена активная маржинальная позиция NVDA. Выберите активный маржинальный тикер и повторите попытку.');
-    expect(translateText('HYPOTHETICAL BUY: NVDA', 'ru')).toBe('ПОКУПКА В СЦЕНАРИИ: NVDA');
-    expect(translateText('MULTI-DATE EXIT COMPARISON: TSLA', 'ru'))
-      .toBe('СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ: TSLA');
-    expect(translateText('Scenario report', 'ru')).toBe('Отчёт по сценарию');
   });
 
   it('localizes active-order refresh warnings', () => {
@@ -537,11 +494,9 @@ describe('app localization', () => {
     expect(translateText('Untitled news item', 'ru')).toBe('Новость без заголовка');
   });
 
-  it('localizes terminal badges, external links, and portfolio valuation summaries', () => {
+  it('localizes market-status badges, external links, and portfolio valuation summaries', () => {
     expect(translateText('ERROR', 'ru')).toBe('ОШИБКА');
     expect(translateText('INFO', 'ru')).toBe('ИНФО');
-    expect(translateText('SIM', 'ru')).toBe('СИМУЛЯЦИЯ');
-    expect(translateText('COMPARISON', 'ru')).toBe('СРАВНЕНИЕ');
     expect(translateText('BROKER', 'ru')).toBe('БРОКЕР');
     expect(translateText('BALANCE', 'ru')).toBe('БАЛАНС');
     expect(translateText('TV Chart', 'ru')).toBe('График TradingView');
@@ -567,15 +522,7 @@ describe('app localization', () => {
       .toBe('Повышенный риск · 32.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
   });
 
-  it('localizes terminal and CLI feedback while preserving command values', () => {
-    expect(translateText('Please replace [shares] with a value before running this command.', 'ru'))
-      .toBe('Замените [shares] на значение перед выполнением команды.');
-    expect(translateText('Switched view to CASH_CUSHION.', 'ru'))
-      .toBe('Выполнено переключение на раздел Баланс.');
-    expect(translateText('Sold 2 AAPL @ $190.00', 'ru'))
-      .toBe('Продано 2 акций AAPL по цене $190.00.');
-    expect(translateText('Added 5 MSFT to cash holdings @ $420.00.', 'ru'))
-      .toBe('В денежные активы добавлено 5 акций MSFT по цене $420.00.');
+  it('localizes application status and backup feedback while preserving file names', () => {
     expect(translateText('Only administrators can reset the portfolio.', 'ru'))
       .toBe('Только администраторы могут сбрасывать портфель.');
     expect(translateText('[System]: Live market quotes refreshed for 4 assets.', 'ru'))
@@ -588,11 +535,6 @@ describe('app localization', () => {
       .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
   });
 
-  it('localizes multiline terminal outputs line by line', () => {
-    expect(translateText('Terminal cleared.\nRefreshing all live quotes...', 'ru'))
-      .toBe('Терминал очищен.\nОбновление всех актуальных котировок…');
-  });
-
   it('localizes detailed portfolio execution and synchronization logs', () => {
     expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
       .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
@@ -600,28 +542,9 @@ describe('app localization', () => {
       .toBe('[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.');
     expect(translateText('[Settings Error]: Could not load saved broker assumptions (network). Using defaults.', 'ru'))
       .toBe('[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (network). Используются значения по умолчанию.');
-    expect(translateText('[Executed Buy]: Added 10 AAPL @ $180.00. Outlay: $1,802.00 (Comm: $2.00). Funded: $1,000.00 cash | +$802.00 margin debt. Free Cash remaining: $0.00. Total Margin Debt: -$1,000.00 (was -$198.00).', 'ru'))
-      .toBe('[Покупка выполнена]: Добавлено 10 AAPL @ $180.00. Сумма: $1,802.00 (комиссия: $2.00). Оплачено денежными средствами: $1,000.00 | +маржинальный долг: $802.00. Остаток свободных средств: $0.00. Общий маржинальный долг: -$1,000.00 (до операции: -$198.00).');
-    expect(translateText('[Cash Holding Closed]: Sold 5 MSFT @ $420.00. Net credited: +$2,098.00 (Debt paid: $1,000.00, Free Cash added: $1,098.00).', 'ru'))
-      .toBe('[Денежная позиция закрыта]: Продано 5 акций MSFT @ $420.00. Зачислено чистыми: +$2,098.00 (погашение долга: $1,000.00, добавлено свободных средств: $1,098.00).');
-    expect(translateText('[Balance]: Removed AAPL from balance holdings.', 'ru'))
-      .toBe('[Баланс]: AAPL удалён из активов баланса.');
   });
 
-  it('localizes broker errors and scenario-independent price updates', () => {
-    expect(translateText('[Market Data Error]: Could not fetch AAPL. Timeout. Retained tracked price: $180.00. Set manually via: price AAPL <number>.', 'ru'))
-      .toBe('[Ошибка рыночных данных]: Не удалось получить котировку AAPL. Timeout. Сохранена отслеживаемая цена: $180.00. Установить вручную: price AAPL <number>.');
-    expect(translateText('[Target Updated]: AAPL PT updated to $210.00.', 'ru'))
-      .toBe('[Целевая цена обновлена]: Целевая цена AAPL установлена на $210.00.');
-    expect(translateText('[Price Updated]: MSFT market price set to $420.00.', 'ru'))
-      .toBe('[Цена обновлена]: Рыночная цена MSFT установлена на $420.00.');
-    expect(translateText('[Margin Synced]: Total margin balance explicitly set to -$1,500.00.', 'ru'))
-      .toBe('[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -$1,500.00.');
-    expect(translateText('[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.', 'ru'))
-      .toBe('[Команда]: Неизвестная команда. Введите "help" для локальных команд или добавьте префикс "ask ..." для обращения к ИИ-советнику.');
-  });
-
-  it('localizes multiline scenario reports and their dynamic labels', () => {
+  it('localizes retained Market Tools calculation summaries', () => {
     expect(translateText('[EXIT COMPARISON: AAPL]', 'ru'))
       .toBe('[СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА: AAPL]');
     expect(translateText('[BUY MORE: MSFT]', 'ru')).toBe('[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: MSFT]');
@@ -638,17 +561,6 @@ describe('app localization', () => {
     expect(translateText('Total Fee Friction', 'ru')).toBe('Общие комиссии и расходы');
     expect(translateText('Estimate only · no portfolio changes.', 'ru'))
       .toBe('Только оценка · портфель не изменяется.');
-  });
-
-  it('localizes command help examples and simulation output', () => {
-    expect(translateText('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200', 'ru'))
-      .toBe('Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200');
-    expect(translateText('Select a ticker tab or specify a ticker (e.g., "sell AAPL today for $180 vs sell 14 days later for $185").', 'ru'))
-      .toBe('Выберите вкладку тикера или укажите тикер (например, "sell AAPL today for $180 vs sell 14 days later for $185").');
-    expect(translateText('• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)', 'ru'))
-      .toBe('• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)');
-    expect(translateText('[Sim AAPL @ $205.00 in 14d]: Gross $200.00 | Comms -$4.00 | Margin -$3.00 → Net P&L: +$193.00', 'ru'))
-      .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
   it('localizes Guest LOTS mixed status and valuation explanation', () => {

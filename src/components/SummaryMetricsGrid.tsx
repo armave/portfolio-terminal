@@ -22,7 +22,8 @@ import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskSnapshot,
   hasUnresolvedBrokerPositionIntegrity,
-  type MarginRiskInput
+  type MarginRiskInput,
+  type MarginRiskSnapshot
 } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
@@ -71,6 +72,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const overviewModal = overviewOpen ? (
     <MarginRiskOverviewModal
       onClose={closeOverview}
+      riskSnapshot={risk.snapshot}
       equityText={equityText}
       equityPct={equityPct}
       collateralText={collateralText}
@@ -99,7 +101,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
               aria-haspopup="dialog"
               aria-label={translateText('Open margin risk overview', language)}
               title={translateText('Click to view margin risk overview', language)}
-              >
+            >
               <span class="margin-risk-status elevated">
                 {translateText(valuationStatus === 'incomplete' ? 'Market valuation incomplete' : 'Margin inputs unavailable', language)}
               </span>
@@ -147,7 +149,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             aria-haspopup="dialog"
             aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
-            >
+          >
             <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
               {risk.summaryText.split(' · ')[0]}
             </span>
@@ -228,6 +230,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
 interface MarginRiskDisplay {
   status: 'available' | 'provisional' | 'unavailable';
   reason?: string;
+  snapshot: MarginRiskSnapshot | null;
   warnings: string[];
   riskLevel: string;
   summaryText: string;
@@ -252,6 +255,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
     return {
       status: 'unavailable',
       reason: result.reason,
+      snapshot: null,
       warnings: result.warnings,
       riskLevel: 'Unavailable',
       summaryText: translateText('Margin risk estimate unavailable', language),
@@ -283,6 +287,7 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   const summaryText = `${translateText(riskLevel, language)} · ${equitySummary}`;
   return {
     status: result.status,
+    snapshot: metrics,
     warnings: result.warnings,
     riskLevel,
     summaryText,
@@ -422,46 +427,46 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
   return (
     <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
       <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
-      <div class="flex flex-wrap items-center gap-1.5">
+      <div class="modal-tools-group">
         <button
           type="button"
           title={translateText('Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.', language)}
           aria-label={translateText('Buy More', language)}
-          onClick={() => emitUiEvent('terminal:buy-more-request', ticker ? { ticker } : {})}
-          class="min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+          onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
+          class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable && 'four-market-tools'}`}
         >
-          ⇧ {translateText('Compare Buying', language)}
+          ⇧<br />{translateText('Compare Buying', language)}
         </button>
         <button
           type="button"
           title={translateText('Compare two hypothetical exit periods by date and price.', language)}
           aria-label={translateText('Compare Exits', language)}
-          onClick={() => emitUiEvent('terminal:exit-comparison-request', ticker ? { ticker } : {})}
-          class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
+          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable && 'four-market-tools'}`}
         >
-          ⇄ {translateText('Compare Exits', language)}
+          ⇄<br />{translateText('Compare Exits', language)}
         </button>
         <button
           type="button"
           title={translateText(reviewTitle, language)}
           aria-label={translateText(reviewLabel, language)}
-          onClick={() => emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})}
-          class="min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50"
+          onClick={() => emitUiEvent('margin:intelligence-request', ticker ? { ticker } : {})}
+          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 ${marketDepthAvailable && 'four-market-tools'}`}
         >
-          ✦ {translateText(reviewLabel, language)}
+          ✦<br />{translateText(reviewLabel, language)}
         </button>
         {ticker && isAdmin && marketDepthAvailable && <button
           type="button"
           title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
           aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
-          onClick={() => emitUiEvent('terminal:market-depth-request', { ticker })}
-          class="min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50"
+          onClick={() => emitUiEvent('market:depth-request', { ticker })}
+          class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50 ${marketDepthAvailable && 'four-market-tools'}`}
         >
           ▤ {translateText('Depth', language)}
         </button>}
       </div>
       {ticker && (
-        <div class="flex flex-wrap items-center gap-1.5" aria-label={translateText('External market research links', language)}>
+        <div class="flex flex-wrap items-center gap-1.5 market-links-group" aria-label={translateText('External market research links', language)}>
           <BoardExternalLinks />
         </div>
       )}

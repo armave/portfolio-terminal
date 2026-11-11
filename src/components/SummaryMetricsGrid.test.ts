@@ -211,6 +211,20 @@ describe('canonical margin risk integration', () => {
     expect(source).not.toContain('calculateMarginRiskMetrics(');
   });
 
+  it('passes the complete risk snapshot into the overview instead of dropping source details', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('snapshot: metrics');
+    expect(source).toContain('riskSnapshot={risk.snapshot}');
+    expect(modal).toContain('riskSnapshot.observedAt');
+    expect(modal).toContain('riskSnapshot.freshness');
+    expect(modal).toContain('riskSnapshot.eligibleCollateralSource');
+    expect(modal).toContain('riskSnapshot.initialMarginRequirement.source');
+    expect(modal).toContain('riskSnapshot.maintenanceMarginRequirement.source');
+    expect(modal).toContain("translateText('Configured maintenance threshold', language)");
+    expect(modal).toContain("translateText('Configured stop-out buffer', language)");
+  });
+
   it('keeps cash-cushion securities out of assumed cash collateral', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("eligibleCollateralSource: 'configured-assumption'");
@@ -232,11 +246,13 @@ describe('canonical margin risk integration', () => {
 
 describe('Margin Intelligence risk context integration', () => {
   it('uses the canonical risk calculation and carries its provenance into the AI snapshot', () => {
-    const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../features/ai/marginIntelligenceContext.ts', import.meta.url), 'utf8');
     expect(source).toContain('calculateMarginRiskSnapshot');
     expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo)');
     expect(source).toContain('positionIntegrityComplete');
     expect(source).toContain('eligibleCollateralSource: \'configured-assumption\'');
+    expect(source).toContain('observedAt: marginRisk.value.observedAt');
+    expect(source).toContain('freshness: marginRisk.value.freshness');
     expect(source).toContain('initialMarginRequirement: marginRisk.value.initialMarginRequirement');
     expect(source).not.toContain('calculateMarginRiskMetrics(');
   });

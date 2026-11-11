@@ -4,7 +4,6 @@ export interface AccountPermissions {
   isAdmin: boolean;
   canManageBackups: boolean;
   canViewKvStatus: boolean;
-  canUseTerminal: boolean;
   canViewMarginDesk: boolean;
   canViewClosedHistory: boolean;
   canViewActiveTranches: boolean;
@@ -19,7 +18,6 @@ export function getAccountPermissions(role: AccountRole | null | undefined): Acc
     isAdmin,
     canManageBackups: isAdmin,
     canViewKvStatus: isAdmin,
-    canUseTerminal: isAdmin,
     canViewMarginDesk: isAdmin,
     canViewClosedHistory: isAdmin,
     canViewActiveTranches: isAdmin,

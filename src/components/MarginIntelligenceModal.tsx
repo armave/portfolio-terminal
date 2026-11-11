@@ -4,28 +4,12 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
-import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
+import type { MarginIntelligenceState } from '../features/ai/marginIntelligenceState';
 import {
   formatMarginCoverageStatus,
   formatMarginFetchedLabel,
   formatMarginSourcesHeading
 } from '../features/ai/marginIntelligenceCopy';
-
-export interface MarginIntelligenceState {
-  title: string;
-  scope: 'position' | 'portfolio';
-  ticker?: string;
-  loading: boolean;
-  analysis: string;
-  articles: MarginIntelligenceArticle[];
-  coverage?: MarginNewsCoverage[];
-  stale?: boolean;
-  staleReasons?: string[];
-  error?: string;
-  syncedAt?: string;
-  snapshotAsOf?: string;
-  digestRevision?: number;
-}
 
 interface MarginIntelligenceModalProps {
   data: MarginIntelligenceState;

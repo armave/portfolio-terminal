@@ -5,44 +5,25 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
-import type { QuoteProvenanceHolding } from './components/QuoteProvenance';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
-import { TradingConsole } from './components/TradingConsole';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import type { MarginIntelligenceState } from './components/MarginIntelligenceModal';
-import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
-import type { ScenarioModalData } from './features/terminal/scenarioContracts';
-import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
+import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
+import type { AuthUser } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
-import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
-import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
+import { addToast, useToasts } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
-import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
-import { createLatestRequestGuard } from './utils/requestGeneration';
-import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
-import {
-  buildMarginReviewPrompt,
-  fingerprintMarginReviewSnapshot,
-  getMarginDigestFreshness,
-  MARGIN_REVIEW_PROMPT_VERSION,
-  selectMarginReviewNews,
-  normalizeMarginReviewTicker,
-  reconcileMarginReviewShares,
-  sumMarginReviewCashShares
-} from './features/ai/marginIntelligence';
-import { calculateMarginRiskSnapshot, hasUnresolvedBrokerPositionIntegrity } from './domain/marginRisk';
-import type { BoardState, PositionRecord } from './types/portfolio';
+import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
 
 
 const MemoTickerTabs = memo(TickerTabs);
@@ -57,7 +38,6 @@ const PortfolioPerformancePanel = lazy(() =>
   }))
 );
 const MemoProjectionsTable = memo(ProjectionsTable);
-const MemoTradingConsole = memo(TradingConsole);
 
 const ClosedHistoryDesk = lazy(() =>
   import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: memo(ClosedHistoryDesk) }))
@@ -74,17 +54,11 @@ const SettingsDesk = lazy(() =>
 const MarketInsightsPanel = lazy(() =>
   import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: memo(MarketInsightsPanel) }))
 );
-const ScenarioComparisonModal = lazy(() =>
-  import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
-);
 const ExitComparisonModal = lazy(() =>
   import('./components/ExitComparisonModal').then(({ ExitComparisonModal }) => ({ default: ExitComparisonModal }))
 );
 const BuyMoreModal = lazy(() =>
   import('./components/BuyMoreModal').then(({ BuyMoreModal }) => ({ default: BuyMoreModal }))
-);
-const ScenarioReportModal = lazy(() =>
-  import('./components/ScenarioReportModal').then(({ ScenarioReportModal }) => ({ default: ScenarioReportModal }))
 );
 const MarginIntelligenceModal = lazy(() =>
   import('./components/MarginIntelligenceModal').then(({ MarginIntelligenceModal }) => ({ default: MarginIntelligenceModal }))
@@ -96,222 +70,6 @@ const MarketDepthModal = lazy(() =>
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
 }
-
-function finiteReviewNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function buildMarginReviewContext(
-  snapshot: BoardState,
-  requestedTicker: string | null,
-  now = Date.now(),
-  refreshIntervalMs = DEFAULT_ADMIN_REFRESH_INTERVAL_MS
-) {
-  const allPositions = Object.values(snapshot.positions || {}).filter(
-    (position): position is PositionRecord => Boolean(position && Number(position.shares) > 0)
-  ).sort((a, b) => a.ticker.localeCompare(b.ticker));
-  const focusPosition = requestedTicker
-    ? allPositions.find(position => normalizeMarginReviewTicker(position.ticker) === normalizeMarginReviewTicker(requestedTicker))
-    : null;
-  const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
-  const cashHoldings = snapshot.cashCushion?.holdings || [];
-  const summarizePosition = (position: PositionRecord) => {
-    const tranches = (position.tranches || []).filter(tranche =>
-      Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
-      Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
-    );
-    const lotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty), 0);
-    const entryCost = tranches.reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0);
-    const averageEntryPrice = lotShares > 0 ? entryCost / lotShares : null;
-    const observedPrice = finiteReviewNumber(position.currentPrice);
-    const marketPrice = observedPrice !== null && observedPrice > 0 ? observedPrice : null;
-    const appShares = Number(position.shares);
-    const normalizedTicker = normalizeMarginReviewTicker(position.ticker);
-    const matchingBrokerPositions = brokerPositions.filter(item =>
-      normalizeMarginReviewTicker(item.ticker) === normalizedTicker
-    );
-    const brokerShares = matchingBrokerPositions.length
-      ? matchingBrokerPositions.reduce((total, item) => total + Math.max(0, finiteReviewNumber(item.quantity) ?? 0), 0)
-      : null;
-    const appCashShares = sumMarginReviewCashShares(normalizedTicker, cashHoldings);
-    const shareReconciliation = reconcileMarginReviewShares({
-      appMarginShares: appShares,
-      appCashShares,
-      brokerReportedShares: brokerShares,
-      entryLotShares: lotShares
-    });
-    const targetPrice = finiteReviewNumber(position.pt);
-    const lotBasedPnl = marketPrice !== null && tranches.length > 0
-      ? tranches.reduce((total, tranche) => total + (marketPrice - Number(tranche.price)) * Number(tranche.qty), 0)
-      : null;
-    return {
-      ticker: position.ticker,
-      appMarginShares: appShares,
-      appCashShares,
-      appTotalShares: shareReconciliation.appTotalShares,
-      brokerReportedShares: brokerShares,
-      entryLotShares: lotShares,
-      quantityReconciliation: {
-        appMarginSharesMatchEntryLots: shareReconciliation.appMarginSharesMatchEntryLots,
-        appTotalSharesMatchBroker: shareReconciliation.appTotalSharesMatchBroker,
-        status: shareReconciliation.status
-      },
-      marketPrice,
-      quoteSource: position.quoteSource || null,
-      quoteUpdatedAt: position.quoteUpdatedAt || null,
-      quoteFreshness: getQuoteFreshness(position, now, refreshIntervalMs),
-      quoteSourceTimestamp: position.quoteDetails?.sourceTimestamp || null,
-      targetOrActiveSellLimit: targetPrice !== null && targetPrice > 0 ? targetPrice : null,
-      marketValue: marketPrice === null ? null : appShares * marketPrice,
-      entryLots: tranches.slice(-8).map(tranche => ({
-        shares: Number(tranche.qty),
-        entryPrice: Number(tranche.price),
-        purchaseDate: tranche.date || null,
-        buyCommission: Number(tranche.buyCommission || 0)
-      })),
-      averageEntryPrice,
-      unrealizedGrossPnl: lotBasedPnl,
-      unrealizedGrossPnlBasis: lotBasedPnl === null
-        ? 'unavailable: valid entry lots or market price missing'
-        : 'sum of open-lot P&L; excludes commissions, fees, and interest',
-      holdingStartDate: position.startDate || null,
-      recordedBuyCommission: Number(position.commBuy || 0)
-    };
-  };
-  const summarizedPositions = allPositions.map(summarizePosition);
-  const totalMarginMarketValue = summarizedPositions.reduce((sum, position) => sum + (position.marketValue || 0), 0);
-  const positionsWithWeight = summarizedPositions.map(position => ({
-    ...position,
-    marginMarketValueWeightPct: totalMarginMarketValue > 0 && position.marketValue !== null
-      ? position.marketValue / totalMarginMarketValue * 100
-      : null
-  }));
-  const positionsByTicker = new Map(positionsWithWeight.map(position => [normalizeMarginReviewTicker(position.ticker), position]));
-  const marginPositions = allPositions.map(position => ({
-    ...position,
-    currentPrice: finiteReviewNumber(position.currentPrice),
-    shares: Number(position.shares)
-  }));
-  const valuation = calculatePortfolioValuation({
-    signedAccountBalance: snapshot.balance,
-    freeCash: snapshot.cashCushion?.freeCash,
-    marginPositions,
-    cashHoldings
-  });
-  const grossAssets = valuation.totalHoldingsValue + valuation.cashBalance;
-  const equityPct = valuation.accountBalanceAvailable && grossAssets > 0
-    ? valuation.equity / grossAssets * 100
-    : null;
-  const assumptions = snapshot.brokerAssumptions;
-  const positionIntegrityComplete = !hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo);
-  const brokerSnapshotStatus = snapshot.brokerAccountInfo?.status ||
-    (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded');
-  const riskHoldings = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)];
-  const riskQuoteStatuses = riskHoldings.map(position => getQuoteFreshness(position, now, refreshIntervalMs));
-  const quotesProvisional = riskQuoteStatuses.some(status => status !== 'fresh');
-  const riskFreshness = riskQuoteStatuses.includes('stale') ? 'stale'
-    : riskQuoteStatuses.includes('delayed') ? 'delayed'
-      : quotesProvisional ? 'unknown' : 'fresh';
-  const valuationReliability = !valuation.accountBalanceAvailable || valuation.unpricedHoldings > 0
-    ? 'incomplete'
-    : brokerSnapshotStatus !== 'current' || quotesProvisional ? 'provisional' : 'current';
-  const riskObservationValues: unknown[] = [
-    snapshot.brokerAccountInfo?.observedAt,
-    ...riskHoldings.map(position => position.quoteDetails?.sourceTimestamp)
-  ];
-  const riskObservedAt = riskObservationValues.length > 0 &&
-    riskObservationValues.every(value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
-    ? Math.min(...riskObservationValues as number[])
-    : null;
-  const marginRisk = assumptions
-    ? calculateMarginRiskSnapshot({
-      currency: 'USD',
-      positionIntegrityComplete,
-      longExposure: valuation.totalHoldingsValue,
-      shortExposure: 0,
-      cashBalance: valuation.cashBalance,
-      marginDebt: valuation.marginDebt,
-      // The current client snapshot has no broker-confirmed eligible-collateral field.
-      // Account cash is used only as a configured assumption and remains provisional.
-      eligibleCollateral: valuation.cashBalance,
-      eligibleCollateralSource: 'configured-assumption',
-      assumptions,
-      quality: valuationReliability,
-      freshness: riskFreshness,
-      observedAt: riskObservedAt,
-      calculatedAt: now
-    })
-    : null;
-  const account = {
-    reportingCurrency: 'USD',
-    brokerSnapshotStatus,
-    brokerSnapshotReceivedAt: snapshot.brokerAccountInfo?.receivedAt || null,
-    positionIntegrityComplete,
-    balance: finiteReviewNumber(snapshot.balance),
-    cashBalance: finiteReviewNumber(snapshot.cashBalance),
-    freeCash: finiteReviewNumber(snapshot.cashCushion?.freeCash),
-    realizedMarginCharged: finiteReviewNumber(snapshot.realizedMarginCharged),
-    brokerAssumptions: assumptions || null,
-    valuation: {
-      accountBalanceAvailable: valuation.accountBalanceAvailable,
-      equity: valuation.accountBalanceAvailable ? valuation.equity : null,
-      grossAssets: valuation.accountBalanceAvailable ? grossAssets : null,
-      equityPct,
-      marginDebt: valuation.marginDebt,
-      marginHoldingsValue: valuation.marginHoldingsValue,
-      cashHoldingsValue: valuation.cashHoldingsValue,
-      unpricedHoldings: valuation.unpricedHoldings,
-      reliability: valuationReliability
-    },
-    marginRisk: marginRisk && assumptions ? marginRisk.status === 'unavailable' ? {
-      status: 'unavailable',
-      reason: marginRisk.reason,
-      warnings: marginRisk.warnings
-    } : {
-      status: marginRisk.status,
-      quality: marginRisk.quality,
-      equityRatioPct: marginRisk.value.equityRatio === null ? null : marginRisk.value.equityRatio * 100,
-      maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
-      stopOutRatioPct: assumptions.stopOutRatio * 100,
-      eligibleCollateral: marginRisk.value.eligibleCollateral,
-      eligibleCollateralSource: marginRisk.value.eligibleCollateralSource,
-      initialMarginRequirement: marginRisk.value.initialMarginRequirement,
-      maintenanceMarginRequirement: marginRisk.value.maintenanceMarginRequirement,
-      concentrationAddOn: marginRisk.value.concentrationAddOn,
-      maintenanceBuffer: marginRisk.value.maintenanceBuffer,
-      maintenanceState: marginRisk.value.maintenanceState,
-      stopOutBuffer: marginRisk.value.stopOutBuffer,
-      marginCallBufferPct: marginRisk.value.marginCallBufferPct,
-      stopOutBufferPct: marginRisk.value.stopOutBufferPctOfLongExposure,
-      dailyBorrowCostEstimate: marginRisk.value.dailyInterestCost,
-      annualBorrowCostEstimate: marginRisk.value.annualInterestCost,
-      annualBorrowRatePct: assumptions.annualBorrowRate * 100,
-      dayCountBasis: assumptions.dayCountBasis,
-      warnings: marginRisk.warnings,
-      qualification: marginRisk.value.disclaimer
-    } : null
-  };
-  const identity = {
-    focusTicker: requestedTicker,
-    account,
-    focusPosition: focusPosition ? positionsByTicker.get(normalizeMarginReviewTicker(focusPosition.ticker)) : null,
-    otherOpenPositions: positionsWithWeight.filter(position =>
-      !requestedTicker || normalizeMarginReviewTicker(position.ticker) !== normalizeMarginReviewTicker(requestedTicker)
-    )
-  };
-  const portfolioContext = {
-    asOf: new Date(now).toISOString(),
-    ...identity
-  };
-  const priorityTickers = [...positionsWithWeight]
-    .sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0) || a.ticker.localeCompare(b.ticker))
-    .map(position => position.ticker);
-
-  return { allPositions, focusPosition, portfolioContext, snapshotIdentity: identity, priorityTickers };
-}
-
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
@@ -330,74 +88,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   );
   const activeDeskView = useActiveView();
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
-  const scenarioValuationSnapshot = usePortfolioSelector(
-    (state) => ({
-      positions: state.positions || {},
-      cashHoldings: state.cashCushion?.holdings || [],
-      balance: state.balance,
-      freeCash: state.cashCushion?.freeCash,
-      brokerAccountInfo: state.brokerAccountInfo
-    }),
-    (previous, next) =>
-      previous.positions === next.positions &&
-      previous.cashHoldings === next.cashHoldings &&
-      previous.balance === next.balance &&
-      previous.freeCash === next.freeCash &&
-      previous.brokerAccountInfo === next.brokerAccountInfo
-  );
   const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
     DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     currentUser?.role === 'guest' ? 'guest' : 'admin'
   );
-  const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
-    ...Object.values(scenarioValuationSnapshot.positions)
-      .filter((position) => Number(position.shares) > 0)
-      .map((position) => ({ ...position, kind: 'Margin position' as const })),
-    ...scenarioValuationSnapshot.cashHoldings
-      .filter((holding) => Number(holding.shares) > 0)
-      .map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-  ];
-  const scenarioQuoteHoldings = scenarioQuoteProvenanceHoldings.map((holding) => {
-    const price = holding.kind === 'Margin position'
-      ? Number(holding.currentPrice)
-      : Number(holding.currentPrice ?? holding.price);
-    return Number.isFinite(price) && price > 0
-      ? holding
-      : { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined };
-  });
-  const scenarioQuoteSummary = summarizeQuoteFreshness(
-    scenarioQuoteHoldings,
-    Date.now(),
-    scenarioRefreshIntervalMs
-  );
-  const scenarioValuation = calculatePortfolioValuation({
-    signedAccountBalance: scenarioValuationSnapshot.balance,
-    freeCash: scenarioValuationSnapshot.freeCash,
-    marginPositions: Object.values(scenarioValuationSnapshot.positions),
-    cashHoldings: scenarioValuationSnapshot.cashHoldings
-  });
-  const scenarioHasCurrentBrokerBalance = scenarioValuationSnapshot.brokerAccountInfo?.loaded === true &&
-    Array.isArray(scenarioValuationSnapshot.brokerAccountInfo.balances) &&
-    scenarioValuationSnapshot.brokerAccountInfo.balances.some((balance) =>
-      String(balance.currency ?? '').toUpperCase() === 'USD' &&
-      balance.amount !== null && balance.amount !== undefined &&
-      Number.isFinite(Number(balance.amount))
-    );
-  const scenarioValuationStatus = getPortfolioValuationReliability({
-    accountBalanceAvailable: scenarioValuation.accountBalanceAvailable,
-    accountBalanceStale: scenarioValuationSnapshot.brokerAccountInfo?.status === 'stale' ||
-      (scenarioValuationSnapshot.brokerAccountInfo?.loaded === true && !scenarioHasCurrentBrokerBalance),
-    unpricedHoldings: scenarioValuation.unpricedHoldings,
-    staleQuotes: scenarioQuoteSummary.stale,
-    delayedQuotes: scenarioQuoteSummary.delayed,
-    unknownQuotes: scenarioQuoteSummary.unknown,
-    unavailableQuotes: scenarioQuoteSummary.unavailable
-  });
-  const scenarioDataQualityWarning = scenarioValuationStatus === 'incomplete'
-    ? translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', getAppLanguage())
-    : scenarioValuationStatus === 'provisional'
-      ? translateText('Scenario interpretation is provisional because one or more account balances or quotes are stale, delayed, or lack a verified observation time.', getAppLanguage())
-      : null;
   const guestHistorySnapshot = usePortfolioSelector(
     (state) => ({
       guestTrancheLedger: state.guestTrancheLedger || [],
@@ -428,21 +122,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
-  const scenarioReport = useScenarioReport();
-  const errorToasts = useErrorToasts();
+  const toasts = useToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
-  const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
   const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const [marketDepthTicker, setMarketDepthTicker] = useState<string | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
-  const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
   const closeExitComparison = useCallback(() => setExitComparisonRequest(null), []);
   const closeBuyMore = useCallback(() => setBuyMoreRequest(null), []);
 
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
-    addErrorToast(translateText(message, getAppLanguage()));
+    addToast(translateText(message, getAppLanguage()), 'error');
   }), []);
 
   useEffect(() => {
@@ -450,215 +141,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setMarginIntelligence(null);
       return;
     }
-    const requestGuard = createLatestRequestGuard();
-    const handleMarginIntelligence = async (
-      event: UiEvent<{ ticker?: string; refresh?: boolean }>,
-      snapshotRetry = 0
-    ) => {
-      if (!permissions.canViewMarginDesk) return;
-      // Every request supersedes older work, including a ticker that fails validation.
-      const requestId = requestGuard.begin();
-      const detail = event.detail;
-      const requestedTicker = normalizeMarginReviewTicker(detail?.ticker);
-      const snapshot = portfolioStore.getState();
-      const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-      const { allPositions, focusPosition } = reviewInput;
 
-      if (requestedTicker && !focusPosition) {
-        setMarginIntelligence({
-          title: requestedTicker + ' · Position Review',
-          scope: 'position',
-          ticker: requestedTicker,
-          loading: false,
-          analysis: '',
-          articles: [],
-          error: 'No active margin position was found for ' + requestedTicker + '. Select an active margin ticker and try again.'
-        });
-        return;
-      }
-
-      const isPortfolio = !requestedTicker;
-      const scope: 'portfolio' | 'position' = isPortfolio ? 'portfolio' : 'position';
-      const requestIdentity = { scope, ...(requestedTicker ? { ticker: requestedTicker } : {}) };
-      const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
-      const digestKey = isPortfolio ? 'portfolio' : 'position:' + requestedTicker;
-      setMarginIntelligence((current) => {
-        const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
-        return {
-          title,
-          scope,
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          loading: true,
-          analysis: previous?.analysis || '',
-          articles: previous?.articles || [],
-          ...(previous?.coverage ? { coverage: previous.coverage } : {}),
-          ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
-          ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
-          ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
-          ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
-          ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {})
-        };
-      });
-
-      try {
-        const snapshotFingerprint = await fingerprintMarginReviewSnapshot(reviewInput.snapshotIdentity);
-        const cached = await loadSyncedMarginDigest(digestKey);
-        if (!requestGuard.isCurrent(requestId)) return;
-        const latestCacheInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const latestCacheFingerprint = await fingerprintMarginReviewSnapshot(latestCacheInput.snapshotIdentity);
-        if (cached && !detail?.refresh) {
-          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
-          setMarginIntelligence({
-            title: cached.digest.title || title,
-            scope: cached.digest.scope,
-            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
-            loading: false,
-            analysis: cached.digest.analysis,
-            articles: cached.digest.articles,
-            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
-            stale: freshness.stale,
-            staleReasons: freshness.reasons,
-            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
-            syncedAt: cached.digest.syncedAt,
-            digestRevision: cached.revision,
-            ...(cached.migrationStatus === 'pending' ? {
-              error: translateText('This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.', getAppLanguage())
-            } : {})
-          });
-          return;
-        }
-        if (cached) {
-          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
-          setMarginIntelligence({
-            title: cached.digest.title || title,
-            scope: cached.digest.scope,
-            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
-            loading: true,
-            analysis: cached.digest.analysis,
-            articles: cached.digest.articles,
-            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
-            stale: freshness.stale,
-            staleReasons: freshness.reasons,
-            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
-            syncedAt: cached.digest.syncedAt,
-            digestRevision: cached.revision
-          });
-        }
-        const newsPositions = isPortfolio ? allPositions : focusPosition ? [focusPosition] : [];
-        const newsResults: MarginNewsFetchResult[] = await Promise.all(newsPositions.map(async position => {
-          try {
-            const items = await fetchMarketNews(position.ticker, true);
-            return {
-              ticker: position.ticker,
-              fetchedAt: new Date().toISOString(),
-              items: Array.isArray(items) ? items : []
-            };
-          } catch (error) {
-            return {
-              ticker: position.ticker,
-              fetchedAt: new Date().toISOString(),
-              items: [],
-              error: error instanceof Error ? error.message : 'News provider request failed.'
-            };
-          }
-        }));
-        const { articles, coverage } = selectMarginReviewNews(newsResults, reviewInput.priorityTickers);
-        const prompt = buildMarginReviewPrompt(reviewInput.portfolioContext, coverage, articles);
-        const response = await proxyFetch('gemini', {}, {
-          method: 'POST',
-          body: JSON.stringify({ prompt, model: 'gemini-3.8-flash' }),
-          cache: 'no-store'
-        });
-        const analysis = response?.candidates?.[0]?.content?.parts
-          ?.map((part: { text?: string }) => String(part.text || ''))
-          .filter(Boolean).join('\n\n');
-        if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
-        if (!requestGuard.isCurrent(requestId)) return;
-        const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const latestFingerprint = await fingerprintMarginReviewSnapshot(latestInput.snapshotIdentity);
-        if (!requestGuard.isCurrent(requestId)) return;
-        if (latestFingerprint !== snapshotFingerprint) {
-          if (snapshotRetry < 1) {
-            await handleMarginIntelligence({
-              type: event.type,
-              detail: { ...detail, refresh: true }
-            }, snapshotRetry + 1);
-            return;
-          }
-          setMarginIntelligence({
-            title,
-            scope,
-            ...(requestedTicker ? { ticker: requestedTicker } : {}),
-            loading: false,
-            analysis,
-            articles,
-            coverage,
-            snapshotAsOf: reviewInput.portfolioContext.asOf,
-            error: 'The portfolio changed while this review was being generated. Refresh to review the current snapshot.'
-          });
-          return;
-        }
-        const syncedAt = new Date().toISOString();
-        const digest = {
-          key: digestKey,
-          title,
-          scope: (isPortfolio ? 'portfolio' : 'position') as 'portfolio' | 'position',
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          analysis,
-          articles,
-          coverage,
-          snapshotFingerprint,
-          snapshotAsOf: reviewInput.portfolioContext.asOf,
-          promptVersion: MARGIN_REVIEW_PROMPT_VERSION,
-          syncedAt
-        };
-        const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
-        if (!requestGuard.isCurrent(requestId)) return;
-        const postSaveInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const postSaveFingerprint = await fingerprintMarginReviewSnapshot(postSaveInput.snapshotIdentity);
-        const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
-        setMarginIntelligence({
-          title,
-          scope: isPortfolio ? 'portfolio' : 'position',
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          loading: false,
-          analysis,
-          articles,
-          coverage,
-          snapshotAsOf: reviewInput.portfolioContext.asOf,
-          stale: freshness.stale,
-          staleReasons: freshness.reasons,
-          ...(freshness.stale ? { error: 'The portfolio changed while the review was being saved. Refresh to review the current snapshot.' } : {}),
-          syncedAt,
-          digestRevision: nextRevision
-        });
-      } catch (error) {
-        if (!requestGuard.isCurrent(requestId)) return;
-        const message = error instanceof Error ? error.message : 'Could not load or save the synced Gemini margin review.';
-        setMarginIntelligence((current) => {
-          const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
-          return {
-            title,
-            scope,
-            ...(requestedTicker ? { ticker: requestedTicker } : {}),
-            loading: false,
-            analysis: previous?.analysis || '',
-            articles: previous?.articles || [],
-            ...(previous?.coverage ? { coverage: previous.coverage } : {}),
-            ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
-            ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
-            ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
-            ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
-            ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {}),
-            error: message
-          };
-        });
-      }
+    const marginIntelligenceRuntime = createMarginIntelligenceRuntime({
+      canViewMarginDesk: () => permissions.canViewMarginDesk,
+      getPortfolioState: () => portfolioStore.getState(),
+      refreshIntervalMs: scenarioRefreshIntervalMs,
+      setState: setMarginIntelligence,
+      translate: (message) => translateText(message, getAppLanguage())
+    });
+    const handleMarginIntelligence = (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
+      void marginIntelligenceRuntime.handleRequest(event.detail);
     };
-    addUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+
+    addUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     return () => {
-      requestGuard.invalidate();
-      removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+      marginIntelligenceRuntime.dispose();
+      removeUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     };
   }, [permissions.canViewMarginDesk, scenarioRefreshIntervalMs]);
 
@@ -668,7 +166,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleAuthVisibility = (event: UiEvent<{ isOpen: boolean }>) => {
       setAuthOpen(event.detail.isOpen);
     };
-    const handleScenarioModal = (event: UiEvent<ScenarioModalData>) => setScenarioModalData(event.detail);
     const handleExitComparisonRequest = (event: UiEvent<{ ticker?: string }>) => {
       setExitComparisonRequest(event.detail);
     };
@@ -698,26 +195,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         mainWorkspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
       });
     };
-    addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
-    addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
-    addUiEventListener('terminal:scenario-modal', handleScenarioModal);
-    addUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
-    addUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
-    addUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
-    addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+    addUiEventListener('settings:backup-import-request', handleBackupImportRequest);
+    addUiEventListener('app:scroll-workspace', handleScrollWorkspace);
+    addUiEventListener('scenario:exit-comparison-request', handleExitComparisonRequest);
+    addUiEventListener('scenario:buy-more-request', handleBuyMoreRequest);
+    addUiEventListener('market:depth-request', handleMarketDepthRequest);
+    addUiEventListener('auth:visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
     const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
-    addUiEventListener('terminal:startup-state', handleStartupState);
+    addUiEventListener('app:startup-state', handleStartupState);
     return () => {
-      removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
-      removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
-      removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
-      removeUiEventListener('terminal:exit-comparison-request', handleExitComparisonRequest);
-      removeUiEventListener('terminal:buy-more-request', handleBuyMoreRequest);
-      removeUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
-      removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+      removeUiEventListener('settings:backup-import-request', handleBackupImportRequest);
+      removeUiEventListener('app:scroll-workspace', handleScrollWorkspace);
+      removeUiEventListener('scenario:exit-comparison-request', handleExitComparisonRequest);
+      removeUiEventListener('scenario:buy-more-request', handleBuyMoreRequest);
+      removeUiEventListener('market:depth-request', handleMarketDepthRequest);
+      removeUiEventListener('auth:visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
-      removeUiEventListener('terminal:startup-state', handleStartupState);
+      removeUiEventListener('app:startup-state', handleStartupState);
       unsubscribeLanguage();
     };
   }, [permissions.canManageBackups, permissions.isAdmin]);
@@ -796,9 +291,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class={["BALANCE", "GUEST_HISTORY"].includes(activeDeskView)
-          ? ""
-          : "trading-workspace-grid " + (permissions.canViewMarginDesk && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "margin-workspace-layout " : "") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+        <div id="tradingWorkspaceGrid" class="trading-workspace-grid">
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div class="desk-content-reveal">
@@ -920,13 +413,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
-          {/* Keep the command console available on both Margin and Cash desks. */}
-          {permissions.canUseTerminal && !["CASH_CUSHION", "BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
-            <div
-              id="tradingConsoleCard"
-              class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            ><MemoTradingConsole /></div>
-          </div>}
+          {/* Desk-specific content stays within the responsive portfolio workspace. */}
+          
 
         </div>
       </main>
@@ -961,7 +449,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
-      {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
       {exitComparisonRequest && <Suspense fallback={null}>
         <ExitComparisonModal
           key={`${currentUser?.id || 'local'}:${exitComparisonRequest.ticker || 'portfolio'}`}
@@ -978,11 +465,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           onClose={closeBuyMore}
         />
       </Suspense>}
-      {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
-      {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
+      {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('margin:intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
-      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
-        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
+      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="polite">
+        {toasts.map((toast) => <div key={toast.id} role={toast.variant === 'error' ? 'alert' : 'status'} class={'pointer-events-auto rounded-lg border bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold shadow-lg backdrop-blur transition-all ' +
+          (toast.variant === 'error' ? 'border-rose-800 text-rose-200' :
+            toast.variant === 'warning' ? 'border-amber-800 text-amber-200' :
+              toast.variant === 'success' ? 'border-emerald-800 text-emerald-200' : 'border-slate-700 text-slate-200') +
+          (toast.isClosing ? ' opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>
       {permissions.canManageBackups && <input
         ref={backupImportInputRef}
@@ -994,7 +484,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           const input = event.currentTarget as HTMLInputElement;
           const file = input.files?.[0];
           input.value = '';
-          if (file && permissions.canManageBackups) emitUiEvent('terminal:backup-import-file', { file });
+          if (file && permissions.canManageBackups) emitUiEvent('settings:backup-import-file', { file });
         }}
       />}
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
@@ -1005,8 +495,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
           <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
           {startupState.failed && <div class="startup-loading__actions">
-            <button type="button" onClick={() => emitUiEvent('terminal:startup-retry', undefined)}>Retry</button>
-            <button type="button" onClick={() => emitUiEvent('terminal:startup-offline', undefined)}>Continue offline</button>
+            <button type="button" onClick={() => emitUiEvent('app:startup-retry', undefined)}>Retry</button>
+            <button type="button" onClick={() => emitUiEvent('app:startup-offline', undefined)}>Continue offline</button>
           </div>}
         </div>
       </div>}

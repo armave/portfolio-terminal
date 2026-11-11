@@ -18,10 +18,25 @@ import {
   applyMarketHistoryCorrectionsToResult,
   createMarketHistoryCorrectionEvent
 } from '../services/marketHistoryCorrections';
-import { getAppLanguage, translateText } from '../services/i18n';
+import { getAppLanguage } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
+import {
+  formatMarketEventDate,
+  marketEventLabel,
+  marketEventTimingLabel
+} from '../features/quotes/marketEventPresentation';
+import {
+  formatNewsRelativeTime,
+  getClosestDatedMarketEvents,
+  getStocktwitsSentiment,
+  getVisibleStocktwitsMessages
+} from '../features/quotes/marketInsightsContent';
 
 type InsightSection = MarketInsightsSection;
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
 
 const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsightsTicker({
   activeView: state.activeView,
@@ -29,187 +44,12 @@ const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsig
   selectedTicker: state.activeView
 });
 
-export function formatNewsRelativeTime(datetime: unknown, now = Date.now()): string {
-  if ((typeof datetime !== 'number' && typeof datetime !== 'string') ||
-      (typeof datetime === 'string' && !datetime.trim())) {
-    return formatRelativeTime(Number.NaN, now);
-  }
-
-  const seconds = Number(datetime);
-  if (!Number.isFinite(seconds) || seconds <= 0) return formatRelativeTime(Number.NaN, now);
-  return formatRelativeTime(seconds * 1000, now);
-}
-
 const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> = [
   { id: 'news', domId: 'insightTabNews', label: 'News' },
   { id: 'fundamentals', domId: 'insightTabFundamentals', label: 'Fundamentals' },
   { id: 'earnings', domId: 'insightTabEarnings', label: 'Earnings' },
   { id: 'analysts', domId: 'insightTabAnalysts', label: 'Analysts' }
 ];
-
-const MARKET_EVENT_RU_COPY: Record<string, string> = {
-  'Upcoming and recent events': 'Предстоящие и недавние события',
-  'Earnings': 'Отчётность',
-  'Dividends': 'Дивиденды',
-  'Daily price history': 'Дневная история цен',
-  'Load daily history': 'Загрузить дневную историю',
-  'Refresh history': 'Обновить историю',
-  'Loading events…': 'Загрузка событий…',
-  'Loading history…': 'Загрузка истории…',
-  'Partial provider coverage': 'Неполные данные провайдера',
-  'Events unavailable': 'События недоступны',
-  'No earnings events in this period.': 'Нет событий отчётности за этот период.',
-  'Earnings unavailable': 'Данные об отчётности недоступны',
-  'No dividend events in this period.': 'Нет дивидендных событий за этот период.',
-  'Dividends unavailable': 'Данные о дивидендах недоступны',
-  'Daily history unavailable': 'Дневная история недоступна',
-  'Finnhub history unavailable; daily candles were loaded from Freedom TradeNet.': 'История Finnhub недоступна; дневные свечи загружены из Freedom TradeNet.',
-  'No historical prices loaded.': 'Исторические цены не загружены.',
-  'Observed time unavailable': 'Время наблюдения недоступно',
-  'Received': 'Получено',
-  'Estimate': 'Оценка',
-  'Actual': 'Факт',
-  'Ex-date': 'Дата отсечки',
-  'Amount unavailable': 'Сумма недоступна',
-  'Before market': 'До открытия рынка',
-  'After market': 'После закрытия рынка',
-  'During market': 'Во время торгов',
-  'Timing unavailable': 'Время неизвестно',
-  'Currency unknown; no conversion applied.': 'Валюта неизвестна; пересчёт не выполнялся.',
-  'Exchange coverage is incomplete; freshness remains unknown.': 'Календарь биржи неполный; свежесть данных неизвестна.',
-  'Corporate actions': 'Корпоративные действия',
-  'Stock splits and reverse splits': 'Дробления и обратные дробления акций',
-  'Corporate-action data unavailable': 'Данные о корпоративных действиях недоступны',
-  'No verified split events in this period.': 'В этом периоде нет подтверждённых событий дробления.',
-  'Apply split to open position': 'Применить дробление к открытой позиции',
-  'Split already applied': 'Дробление уже применено',
-  'Review required': 'Требуется проверка',
-  'Split applied; cost basis preserved.': 'Дробление применено; себестоимость сохранена.',
-  'Split evidence saved for review. No position or cash was changed.': 'Данные о дроблении сохранены для проверки. Позиция и денежные средства не изменены.',
-  'Could not save this corporate action.': 'Не удалось сохранить это корпоративное действие.',
-  'Apply the verified share ratio to every eligible pre-action lot? Total acquisition cost will remain unchanged. No cash receipt or investment profit will be created.': 'Применить подтверждённое соотношение ко всем подходящим лотам до даты действия? Общая себестоимость останется неизменной. Денежное поступление или инвестиционная прибыль не создаются.',
-  'Dividend events are evidence only; cash is recorded when broker settlement is confirmed.': 'Дивиденды являются подтверждающими данными; денежное поступление учитывается после подтверждения расчёта брокером.',
-  'Effective date': 'Дата вступления в силу',
-  'Share ratio': 'Соотношение акций',
-  'Action status': 'Статус действия',
-  'Cash dividend': 'Денежный дивиденд',
-  'Record dividend evidence': 'Сохранить сведения о дивиденде',
-  'Dividend evidence saved': 'Сведения о дивиденде сохранены',
-  'No adjustment needed': 'Корректировка не требуется',
-  'Split data unavailable': 'Данные о дроблении недоступны',
-  'Split': 'Дробление',
-  'Reverse split': 'Обратное дробление',
-  'Correct close': 'Исправить закрытие',
-  'Save correction': 'Сохранить исправление',
-  'Cancel': 'Отмена',
-  'Corrected': 'Исправлено',
-  'Reason for correction': 'Причина исправления',
-  'New close price': 'Новая цена закрытия',
-  'Enter a corrected close and a reason.': 'Укажите исправленную цену закрытия и причину.',
-  'Correction saved to history.': 'Исправление сохранено в истории.',
-  'Could not save history correction.': 'Не удалось сохранить исправление истории.',
-  'History correction needs review; provider prices are shown unchanged.': 'Исправление истории требует проверки; показаны исходные цены провайдера.',
-  'Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.': 'Ручные исправления влияют только на этот список истории; сохранённые оценки портфеля и P&L не изменяются.',
-  'Manual correction': 'Ручное исправление'
-};
-
-function marketEventLabel(value: string): string {
-  return getAppLanguage() === 'ru' ? MARKET_EVENT_RU_COPY[value] || translateText(value, 'ru') : value;
-}
-
-function formatMarketEventDate(value: string): string {
-  const date = new Date(value + 'T00:00:00.000Z');
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
-    : value;
-}
-
-function marketEventTimingLabel(value: string): string {
-  switch (value) {
-    case 'before_market': return marketEventLabel('Before market');
-    case 'after_market': return marketEventLabel('After market');
-    case 'during_market': return marketEventLabel('During market');
-    default: return marketEventLabel('Timing unavailable');
-  }
-}
-
-/** Selects events closest to today, then returns them in chronological display order. */
-export function getClosestDatedMarketEvents<T>(
-  events: readonly T[],
-  getDate: (event: T) => string,
-  now = Date.now(),
-  limit = 5
-): T[] {
-  const today = new Date(now);
-  const todayAtUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const ranked = events.flatMap((event, index) => {
-    const value = getDate(event);
-    const parsed = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-      ? Date.parse(value + 'T00:00:00.000Z')
-      : Number.NaN;
-    return Number.isFinite(parsed)
-      ? [{ event, index, date: parsed, distance: Math.abs(parsed - todayAtUtc) }]
-      : [];
-  }).sort((a, b) => a.distance - b.distance || a.date - b.date || a.index - b.index);
-
-  return ranked.slice(0, Math.max(0, Math.floor(limit)))
-    .sort((a, b) => a.date - b.date || a.index - b.index)
-    .map(item => item.event);
-}
-
-const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
-
-function isAbortError(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
-}
-
-export function isStandaloneStocktwitsMessage(message: unknown): boolean {
-  if (!message || typeof message !== 'object') return false;
-  const value = message as {
-    conversation?: { parent_message_id?: number | string | null } | null;
-    in_reply_to?: unknown;
-    reply_to?: unknown;
-  };
-  return value.conversation?.parent_message_id == null &&
-    value.in_reply_to == null &&
-    value.reply_to == null;
-}
-
-function getStocktwitsSentiment(message: unknown): string | null {
-  if (!message || typeof message !== 'object') return null;
-  const value = message as {
-    sentiment?: { basic?: string | null } | null;
-    entities?: { sentiment?: { basic?: string | null } | null } | null;
-  };
-  const sentiment = value.sentiment?.basic ?? value.entities?.sentiment?.basic;
-  return typeof sentiment === 'string' ? sentiment.trim() : null;
-}
-
-export function isBearishStocktwitsMessage(message: unknown): boolean {
-  return getStocktwitsSentiment(message)?.toLowerCase() === 'bearish';
-}
-
-export function getStocktwitsCashtags(body: unknown): string[] {
-  if (typeof body !== 'string') return [];
-  return Array.from(new Set(
-    Array.from(body.matchAll(STOCKTWITS_CASHTAG_PATTERN), (match) => match[1].toUpperCase())
-  ));
-}
-
-export function hasStocktwitsCommentary(body: unknown): boolean {
-  if (typeof body !== 'string') return false;
-  return body
-    .replace(STOCKTWITS_CASHTAG_PATTERN, '')
-    .replace(/[\s.,!?;:\(\)\[\]{}|\/\\-]+/g, '')
-    .length > 0;
-}
-
-export function getVisibleStocktwitsMessages<T>(messages: T[], limit = 10): T[] {
-  return messages
-    .filter(isStandaloneStocktwitsMessage)
-    .filter((message) => !isBearishStocktwitsMessage(message))
-    .slice(0, Math.max(0, Math.floor(limit)));
-}
 
 function renderStocktwitsBody(body: string) {
   const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
@@ -1053,7 +893,7 @@ function MarketInsightsPanelView() {
               <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')}</p>
             )}
             {currentHistory?.quality === 'partial' && (
-              <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map(marketEventLabel).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
+              <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map((issue) => marketEventLabel(issue)).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
             )}
             {currentHistory && (
               <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">

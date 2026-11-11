@@ -31,9 +31,8 @@ describe('on-demand application code splitting', () => {
   it('defers modal-only code until the corresponding dialog is opened', () => {
     const app = readSource('../App.tsx');
     const components = [
-      ['ScenarioComparisonModal', 'ScenarioComparisonModal'],
       ['ExitComparisonModal', 'ExitComparisonModal'],
-      ['ScenarioReportModal', 'ScenarioReportModal'],
+      ['BuyMoreModal', 'BuyMoreModal'],
       ['MarginIntelligenceModal', 'MarginIntelligenceModal']
     ] as const;
 

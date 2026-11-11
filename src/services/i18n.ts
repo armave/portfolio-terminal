@@ -117,24 +117,6 @@ function translateDynamicText(normalized: string): string | undefined {
   if (targetUpdate) return '[Целевая цена обновлена]: Целевая цена ' + targetUpdate[1] + ' установлена на ' + targetUpdate[2] + '.';
   const priceUnchanged = normalized.match(/^\[Price Unchanged\]: No valid price amount supplied\. Enter: price (.+) <number>\.$/i);
   if (priceUnchanged) return '[Цена не изменена]: Не указана корректная цена. Введите: price ' + priceUnchanged[1] + ' <number>.';
-  const priceUpdated = normalized.match(/^\[Price Updated\]: (.+) market price set to (.+)\.$/i);
-  if (priceUpdated) return '[Цена обновлена]: Рыночная цена ' + priceUpdated[1] + ' установлена на ' + priceUpdated[2] + '.';
-  const marginSynced = normalized.match(/^\[Margin Synced\]: Total margin balance explicitly set to -(.+)\.$/i);
-  if (marginSynced) return '[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -' + marginSynced[1] + '.';
-
-  const cashAdded = normalized.match(/^Added ([\d,.]+) ([A-Z0-9.-]+) to cash holdings(?: @ \$(.+))?\.$/i);
-  if (cashAdded) return 'В денежные активы добавлено ' + cashAdded[1] + ' акций ' + cashAdded[2] +
-    (cashAdded[3] ? ' по цене $' + cashAdded[3] : '') + '.';
-  const cashRemoved = normalized.match(/^Removed ([A-Z0-9.-]+) from cash holdings\.$/i);
-  if (cashRemoved) return 'Акции ' + cashRemoved[1] + ' удалены из денежных активов.';
-
-  const balanceUpdated = normalized.match(/^\[Balance\]: Current balance\/debt updated\. Balance: (.+) \| Margin debt: -(.+)\.$/i);
-  if (balanceUpdated) return '[Баланс]: Баланс и долг обновлены. Баланс: ' + balanceUpdated[1] + ' | Маржинальный долг: -' + balanceUpdated[2] + '.';
-  const balanceAdded = normalized.match(/^\[Balance\]: Added (.+) (.+) to balance holdings\. Syncing online quote\.\.\.$/i);
-  if (balanceAdded) return '[Баланс]: В активы баланса добавлено ' + balanceAdded[1] + ' ' + balanceAdded[2] + '. Синхронизация онлайн-котировки…';
-  const balanceRemoved = normalized.match(/^\[Balance\]: Removed (.+) from balance holdings\.$/i);
-  if (balanceRemoved) return '[Баланс]: ' + balanceRemoved[1] + ' удалён из активов баланса.';
-
   const hypotheticalSubtitle = normalized.match(/^Hypothetical projection after buying \+(.+) shares at (.+) · no order placed$/i);
   if (hypotheticalSubtitle) return 'Гипотетический прогноз после покупки +' + hypotheticalSubtitle[1] + ' акций по цене ' + hypotheticalSubtitle[2] + ' · ордер не отправляется.';
 
@@ -144,12 +126,10 @@ function translateDynamicText(normalized: string): string | undefined {
     return day(exitPreset[1]) + ' и ' + day(exitPreset[2]);
   }
 
-  const exitReportHeader = normalized.match(/^\[(EXIT COMPARISON|MULTI-DATE EXIT COMPARISON|STAGED EXIT):\s*(.+)\]$/i);
+  const exitReportHeader = normalized.match(/^\[(EXIT COMPARISON):\s*(.+)\]$/i);
   if (exitReportHeader) {
     const labels: Record<string, string> = {
-      'EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА',
-      'MULTI-DATE EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ',
-      'STAGED EXIT': 'ПОЭТАПНЫЙ ВЫХОД'
+      'EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА'
     };
     return '[' + labels[exitReportHeader[1].toUpperCase()] + ': ' + exitReportHeader[2] + ']';
   }
@@ -216,13 +196,6 @@ function translateDynamicText(normalized: string): string | undefined {
   const backupToast = normalized.match(/^Backup import failed: (.+)$/i);
   if (backupToast) return 'Не удалось импортировать резервную копию: ' + backupToast[1];
 
-  const simulationResult = normalized.match(/^\[Sim (.+) @ \$(.+) in (\d+)d\]: Gross \$(.+) \| Comms -\$(.+) \| Margin -\$(.+) → Net P&L: ([+-])\$(.+)$/i);
-  if (simulationResult) {
-    return '[Симуляция ' + simulationResult[1] + ' @ $' + simulationResult[2] + ' через ' + simulationResult[3] +
-      ' дн.]: Валовая прибыль: $' + simulationResult[4] + ' | Комиссии: -$' + simulationResult[5] +
-      ' | Маржинальные проценты: -$' + simulationResult[6] + ' → Чистая прибыль/убыток: ' + simulationResult[7] + '$' + simulationResult[8];
-  }
-
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
@@ -241,11 +214,8 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Assigned stock value: ', 'Assigned stock value', ': '],
     ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
     ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
-    ['[AI Action Error]: ', '[AI Action Error]', ': '],
     ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
     ['Cloud pull failed: ', 'Cloud pull failed', ': '],
-    ['[Market Data Error]: ', '[Market Data Error]', ': '],
-    ['[Sell Error]: ', 'Sell Error', ': '],
     ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
     ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
@@ -260,8 +230,6 @@ function translateDynamicText(normalized: string): string | undefined {
     ['[Backup]: ', '[Backup]', ': '],
     ['[Backup Import]: ', '[Backup Import]', ': '],
     ['[Backup Error]: ', '[Backup Error]', ': '],
-    ['[CLI Error]: ', '[CLI Error]', ': '],
-    ['[CLI]: ', '[CLI]', ': '],
     ['[AI Advisor]: ', '[AI Advisor]', ': '],
     ['[System]: ', '[System]', ': '],
   ];
@@ -307,9 +275,7 @@ function translateDynamicText(normalized: string): string | undefined {
 
   const reportTitles: Array<[string, string]> = [
     ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
-    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
     ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
-    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
   ];
   for (const [prefix, translatedPrefix] of reportTitles) {
     if (normalized.toUpperCase().startsWith(prefix)) {

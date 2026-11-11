@@ -122,8 +122,8 @@ describe('portfolio startup lifecycle runtime', () => {
     const runtime = createPortfolioStartupLifecycleRuntime(fixture.dependencies);
     const unbind = runtime.bind();
 
-    emitUiEvent('terminal:startup-retry');
-    emitUiEvent('terminal:startup-offline');
+    emitUiEvent('app:startup-retry');
+    emitUiEvent('app:startup-offline');
 
     await vi.waitFor(() => {
       expect(fixture.dependencies.retryStartup).toHaveBeenCalledTimes(1);
@@ -145,8 +145,8 @@ describe('portfolio startup lifecycle runtime', () => {
     expect(fixture.calls).toContain('remove-visibility');
     expect(fixture.dependencies.clearScheduledInterval).toHaveBeenCalledWith(expect.anything());
 
-    emitUiEvent('terminal:startup-retry');
-    emitUiEvent('terminal:startup-offline');
+    emitUiEvent('app:startup-retry');
+    emitUiEvent('app:startup-offline');
 
     expect(fixture.dependencies.retryStartup).not.toHaveBeenCalled();
     expect(fixture.dependencies.continueStartupOffline).not.toHaveBeenCalled();

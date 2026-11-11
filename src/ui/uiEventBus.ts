@@ -1,24 +1,20 @@
-import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'auth:logout': undefined;
   'auth:user-changed': { user: { id: string; name: string; role: "guest" | "admin"; language: "en" | "ru"; createdAt: string } | null };
-  'terminal:auth-visibility': { isOpen: boolean };
-  'terminal:backup-import-request': undefined;
-  'terminal:backup-import-file': { file: File };
-  'terminal:command-prefill': { command: string; selectText?: string | null; cursorAtEnd?: boolean };
-  'terminal:market-depth-request': { ticker: string };
-  'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
-  'terminal:scenario-modal': ScenarioModalData;
-  'terminal:exit-comparison-request': { ticker?: string };
-  'terminal:buy-more-request': { ticker?: string };
-  'terminal:startup-offline': undefined;
-  'terminal:startup-retry': undefined;
-  'terminal:startup-state': { visible: boolean; failed: boolean };
-  'terminal:scroll-workspace': undefined;
-  'terminal:execute-command': { command: string };
+  'auth:visibility': { isOpen: boolean };
+  'settings:backup-import-request': undefined;
+  'settings:backup-import-file': { file: File };
+  'market:depth-request': { ticker: string };
+  'margin:intelligence-request': { ticker?: string; refresh?: boolean };
+  'scenario:exit-comparison-request': { ticker?: string };
+  'scenario:buy-more-request': { ticker?: string };
+  'app:startup-offline': undefined;
+  'app:startup-retry': undefined;
+  'app:startup-state': { visible: boolean; failed: boolean };
+  'app:scroll-workspace': undefined;
   'portfolio:set-active-view': { view: string };
   'portfolio:refresh-live-prices': { resolve: () => void };
   'portfolio:sync-request': { resolve: (result: ManualPortfolioSyncResult) => void };

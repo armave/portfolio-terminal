@@ -53,15 +53,6 @@ describe('Stage 10 accessibility wiring', () => {
     expect(styles).toContain('.margin-risk-overview-dialog');
   });
 
-  it('keeps the terminal log keyboard-scrollable and avoids forcing readers back to the latest line', () => {
-    const source = readSource('../components/TerminalLog.tsx');
-
-    expect(source).toContain('shouldFollowLatestRef.current) viewport.scrollTop = viewport.scrollHeight');
-    expect(source).toContain('shouldFollowLatestRef.current = isTerminalLogAtBottom(viewport)');
-    expect(source).toContain('role="region" aria-label="Terminal activity log" tabIndex={0}');
-    expect(source).toContain('onScroll={handleViewportScroll}');
-  });
-
   it('makes News and Stocktwits feeds keyboard-scrollable named regions', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
 
@@ -69,16 +60,10 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('role="region" aria-label="Stocktwits messages" tabIndex={0}');
   });
 
-  it('wires translations and focusable controls through scenario and margin dialogs', () => {
-    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
-    const report = readSource('../components/ScenarioReportModal.tsx');
+  it('wires translated, focusable controls through the Margin Intelligence dialog', () => {
     const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
     const coverageCopy = readSource('../features/ai/marginIntelligenceCopy.ts');
 
-    expect(comparison).toContain("translateText('Close · Esc', getAppLanguage())");
-    expect(comparison).toContain("translateText('Compare', getAppLanguage())");
-    expect(report).toContain("translateText('What-if analysis', getAppLanguage())");
-    expect(report).toContain("translateText('Estimates only · actual results may differ.', getAppLanguage())");
     expect(intelligence).toContain('formatMarginCoverageStatus(item, getAppLanguage())');
     expect(intelligence).toContain("translateText('News coverage by position', getAppLanguage())");
     expect(intelligence).toContain('min-h-11');
@@ -140,14 +125,12 @@ describe('Stage 10 accessibility wiring', () => {
     expect(frame).toContain('transform: isVisible');
   });
 
-  it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
-    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
-    const report = readSource('../components/ScenarioReportModal.tsx');
+  it('keeps empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
     const auth = readSource('../components/AuthModal.tsx');
     const emptyState = readSource('../components/EmptyStatePanel.tsx');
     const externalLinks = readSource('../components/BoardExternalLinks.tsx');
 
-    for (const source of [comparison, report, emptyState, externalLinks]) {
+    for (const source of [emptyState, externalLinks]) {
       expect(source).toContain('min-h-11');
       expect(source).toContain('focus-visible:ring-2');
     }
@@ -155,25 +138,15 @@ describe('Stage 10 accessibility wiring', () => {
     expect(externalLinks).toContain('inline-flex min-h-11 min-w-11 items-center justify-center');
   });
 
-  it('makes long modal content keyboard-scrollable and labelled by its dialog title', () => {
+  it('makes long Market Insights and Margin Intelligence content keyboard-scrollable', () => {
     const news = readSource('../components/MarketInsightsPanel.tsx');
-    const report = readSource('../components/ScenarioReportModal.tsx');
-    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
     const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
 
     expect(news).toContain('role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}');
-    expect(report).toContain('role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}');
-    expect(comparison).toContain('role="region" aria-labelledby="scenarioComparisonTitle" tabIndex={0}');
     expect(intelligence).toContain('role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}');
   });
 
-  it('provides scoped row and column headings for scenario comparison tables', () => {
-    const source = readSource('../components/ScenarioComparisonModal.tsx');
 
-    expect(source).toContain('<caption class="sr-only">{data.title}</caption>');
-    expect(source).toContain('<th scope="col"');
-    expect(source).toContain('<th scope="row"');
-  });
 
   it('keeps Market Insights news controls touch-sized and visibly keyboard-focused', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
@@ -194,8 +167,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
-    expect(summary).toContain('class="min-h-11 rounded border border-cyan-800/70');
-    expect(summary).toContain('class="min-h-11 rounded border border-emerald-800/70');
+    expect(summary).toContain('class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90');
+    expect(summary).toContain('class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90');
     expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
   });
 
@@ -236,19 +209,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).not.toContain('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times.');
   });
 
-  it('surfaces current valuation quality and quote provenance in scenario reports', () => {
-    const app = readSource('../App.tsx');
-    const report = readSource('../components/ScenarioReportModal.tsx');
-    const provenance = readSource('../components/QuoteProvenance.tsx');
 
-    expect(app).toContain('scenarioDataQualityWarning');
-    expect(app).toContain('quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings}');
-    expect(report).toContain('role="status"');
-    expect(report).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
-    expect(provenance).toContain('quoteDetails?.sourceTimestamp');
-    expect(provenance).toContain('quoteDetails?.receivedAt');
-    expect(provenance).toContain('Observation time unavailable');
-  });
 
   it('marks the compact admin Balance equity badge as partial when holdings are unpriced', () => {
     const source = readSource('../components/TickerTab.tsx');
@@ -284,11 +245,11 @@ describe('Stage 10 accessibility wiring', () => {
 
   it('uses the same positive-price fallback across broker cash refresh and tranche valuation', () => {
     const app = readSource('../../app.ts');
-    const cash = readSource('../components/CashCushionDesk.tsx');
+    const cashModel = readSource('../features/cash/cashCushionModel.ts');
     expect(app).toContain('getPositiveMarketPrice(holding.currentPrice, holding.price)');
     expect(app.split('const brokerCashHoldings = classified.cashStocks.map((holding) => {').length - 1).toBe(3);
-    expect(cash).toContain('getCashHoldingMarketPrice(cashHolding || {}) ??');
-    expect(cash).toContain('getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice })');
+    expect(cashModel).toContain('getCashHoldingMarketPrice(cashHolding || {}) ??');
+    expect(cashModel).toContain('getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice })');
   });
 
   it('warns before a manual cloud pull can replace local portfolio changes', () => {

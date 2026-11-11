@@ -583,6 +583,46 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
   throw new Error('Timed out waiting for ' + label + '.');
 }
 
+async function seedSyntheticPortfolio(page) {
+  await page.evaluate(() => {
+    const key = 'margin_portfolio_state_dynamic_v2';
+    const previous = localStorage.getItem(key);
+    const state = previous ? JSON.parse(previous) : {};
+    const now = Date.now();
+    const today = new Date(now).toISOString().slice(0, 10);
+    state.positions = {
+      ...(state.positions || {}),
+      AAPL: {
+        ticker: 'AAPL',
+        shares: 5,
+        currentPrice: 11,
+        pt: 12,
+        commBuy: 0.1,
+        startDate: today,
+        tranches: [{ qty: 5, price: 10, date: today, buyCommission: 0.1 }]
+      }
+    };
+    state.activeView = 'AAPL';
+    state.lastUpdated = now;
+    localStorage.setItem(key, JSON.stringify(state));
+  });
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForAuthOverlay(page, false);
+  await page.waitForFunction(() => {
+    try {
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+      const saved = raw ? JSON.parse(raw) : null;
+      return Number(saved?.positions?.AAPL?.shares) >= 5;
+    } catch {
+      return false;
+    }
+  }, null, { timeout: 15_000 });
+  if (await page.locator('#cmdInput').count()) {
+    throw new Error('The removed command console is still present in the application.');
+  }
+}
+
 async function captureAuthenticatedPortfolioPerformance(browser) {
   const viewports = [
     { name: 'desktop', width: 1440, height: 900 },
@@ -642,40 +682,7 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
         const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
         if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
-        const emptyState = page.locator('#emptyStatePanel');
-        await emptyState.getByRole('button', { name: 'Quick Buy' }).waitFor({ state: 'visible', timeout: 10_000 });
-        await emptyState.getByRole('button', { name: 'Quick Buy' }).click();
-        const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
-        await terminalCommand.fill('bought 5 AAPL for 10');
-        let tradeConfirmationMessage = '';
-        page.once('dialog', async (dialog) => {
-          tradeConfirmationMessage = dialog.message();
-          await dialog.accept();
-        });
-        await terminalCommand.press('Enter');
-
-        const positionSaved = await page.waitForFunction(() => {
-          try {
-            const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
-            const saved = raw ? JSON.parse(raw) : null;
-            return Number(saved?.positions?.AAPL?.shares) >= 5;
-          } catch {
-            return false;
-          }
-        }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
-        if (!positionSaved) {
-          const terminalOutput = await page.locator('#terminalLog').innerText().catch(() => '');
-          const persistedSnapshot = await page.evaluate(() => localStorage.getItem('margin_portfolio_state_dynamic_v2'));
-          throw new Error('Authenticated performance fixture failed to seed its local-only AAPL paper position.' +
-            ' | Terminal: ' + terminalOutput.slice(-1200) +
-            ' | Confirmation: ' + tradeConfirmationMessage.slice(0, 500) +
-            ' | Snapshot: ' + String(persistedSnapshot).slice(0, 1200) +
-            ' | Page errors: ' + pageErrors.join('; '));
-        }
-        if (!/apply this change\?/i.test(tradeConfirmationMessage) ||
-            !/no broker order is submitted/i.test(tradeConfirmationMessage)) {
-          throw new Error('Performance seed command did not show the expected local-only confirmation.');
-        }
+        await seedSyntheticPortfolio(page);
 
         await waitForCondition(
           () => worker.findCalls('GET', '/').some((call) => call.action === 'freedom-positions' && call.responseStatus === 200),
@@ -727,7 +734,7 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
     schemaVersion: 1,
     fixture: {
       authentication: 'Application bootstrap flow with a deterministic mocked Worker API',
-      portfolioSeed: 'Application Quick Buy terminal command; local-only paper trade, no broker order',
+      portfolioSeed: 'Direct local-only synthetic portfolio fixture; no order is placed',
       brokerSnapshot: 'Deterministic mocked Freedom positions response',
       liveBrokerVerification: false
     },
@@ -767,39 +774,8 @@ try {
   const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
   if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
-  // The isolated browser starts with an empty local portfolio. Add a deterministic
-  // paper-trade lot through the app's own Quick Buy terminal command so the
-  // Market Insights ticker is backed by real board state; this does not place an order.
-  const emptyState = page.locator('#emptyStatePanel');
-  await emptyState.getByRole('button', { name: 'Quick Buy' }).waitFor({ state: 'visible', timeout: 10_000 });
-  await emptyState.getByRole('button', { name: 'Quick Buy' }).click();
-  const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
-  await terminalCommand.fill('bought 5 AAPL for 10');
-  let tradeConfirmationMessage = '';
-  page.once('dialog', async (dialog) => {
-    tradeConfirmationMessage = dialog.message();
-    await dialog.accept();
-  });
-  await terminalCommand.press('Enter');
-  // Wait for the synchronous portfolio-store mutation to persist. The command's
-  // quote/cloud follow-up and the broker snapshot are independent of this local write.
-  const positionSaved = await page.waitForFunction(() => {
-    try {
-      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
-      const saved = raw ? JSON.parse(raw) : null;
-      return Number(saved?.positions?.AAPL?.shares) > 0;
-    } catch {
-      return false;
-    }
-  }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
-  if (!positionSaved) {
-    const terminalOutput = await page.locator('#terminalLog').innerText();
-    throw new Error('Quick Buy seed command did not persist AAPL: ' + terminalOutput.slice(-1200) +
-      (tradeConfirmationMessage ? ' | Confirmation: ' + tradeConfirmationMessage.slice(0, 500) : ' | No trade confirmation dialog was shown.'));
-  }
-  if (!/apply this change\?/i.test(tradeConfirmationMessage) || !/no broker order is submitted/i.test(tradeConfirmationMessage)) {
-    throw new Error('Quick Buy did not show the expected local-only trade confirmation: ' + tradeConfirmationMessage.slice(0, 700));
-  }
+  // Seed a deterministic local-only portfolio fixture without a command surface or broker order.
+  await seedSyntheticPortfolio(page);
 
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.

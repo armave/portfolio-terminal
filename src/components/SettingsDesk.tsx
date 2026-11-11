@@ -300,7 +300,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </p>
       </div>
 
-      <div class="terminal-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
+      <div class="settings-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
         <div class="settings-toolbar__card settings-account-card flex flex-col gap-3" role="group" aria-label={translateText('Account actions')}>
           <div class="settings-account-summary flex flex-wrap items-center justify-between gap-3">
             <div class="settings-account-identity flex min-w-0 flex-wrap items-center gap-2">
@@ -366,7 +366,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             >{translateText('Export')}</button>
             <button
               type="button"
-              onClick={() => emitUiEvent('terminal:backup-import-request')}
+              onClick={() => emitUiEvent('settings:backup-import-request')}
               title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
               aria-label="Import portfolio backup from JSON"
               class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
