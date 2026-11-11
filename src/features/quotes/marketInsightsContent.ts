@@ -49,7 +49,7 @@ export function isStandaloneStocktwitsMessage(message: unknown): boolean {
     value.reply_to == null;
 }
 
-function getStocktwitsSentiment(message: unknown): string | null {
+export function getStocktwitsSentiment(message: unknown): string | null {
   if (!message || typeof message !== 'object') return null;
   const value = message as {
     sentiment?: { basic?: string | null } | null;

@@ -23,14 +23,15 @@ import { useDialogFocus } from '../ui/dialogFocus';
 import {
   formatNewsRelativeTime,
   getClosestDatedMarketEvents,
-  getStocktwitsCashtags,
-  getVisibleStocktwitsMessages,
-  hasStocktwitsCommentary,
-  isBearishStocktwitsMessage,
-  isStandaloneStocktwitsMessage
+  getStocktwitsSentiment,
+  getVisibleStocktwitsMessages
 } from '../features/quotes/marketInsightsContent';
 
 type InsightSection = MarketInsightsSection;
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
 
 const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsightsTicker({
   activeView: state.activeView,
@@ -130,8 +131,6 @@ function marketEventTimingLabel(value: string): string {
     default: return marketEventLabel('Timing unavailable');
   }
 }
-
-const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
 
 function renderStocktwitsBody(body: string) {
   const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
