@@ -15,6 +15,7 @@ import {
   resolveTradeDateTimestamp,
   calculateProjectedDebt,
   calculateProjectedAccountBalance,
+  calculateProjectedAccountBalanceAfterSale,
   calculateAccruedFees,
   calculateBreakevenDays,
   findProjectionBreakevenDay,
@@ -691,6 +692,13 @@ describe('portfolio domain', () => {
     expect(calculateProjectedAccountBalance(0, 0.01, 5)).toBe(0);
     expect(calculateProjectedAccountBalance(-1_000, 0.01, 0)).toBe(-1_000);
     expect(calculateProjectedAccountBalance(Number.NaN, 0.01, 5)).toBe(0);
+  });
+
+  it('calculates account balance after liquidation, sell fees and projected margin accrual', () => {
+    expect(calculateProjectedAccountBalanceAfterSale(-1_000, 200, 1_200, 0.01, 5)).toBe(348.99);
+    expect(calculateProjectedAccountBalanceAfterSale(-1_000, 200, 500, 0.01, 5)).toBe(-351.01);
+    expect(calculateProjectedAccountBalanceAfterSale(500, 200, 1_200, 0.01, 5)).toBe(1_900);
+    expect(calculateProjectedAccountBalanceAfterSale(-1_000, 200, 1_200, 0, 0)).toBe(400);
   });
 
   it('matches live rollover cent rounding in projected debt', () => {

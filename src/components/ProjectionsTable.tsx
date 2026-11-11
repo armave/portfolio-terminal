@@ -2,7 +2,7 @@ import { memo } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 import {
   calculateAccruedFees,
-  calculateProjectedAccountBalance,
+  calculateProjectedAccountBalanceAfterSale,
   calculateProjectedDebt,
   findProjectionBreakevenDay
 } from '../domain/portfolio';
@@ -10,6 +10,7 @@ import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
+import { calculateSaleCommission } from '../domain/portfolioTransactions';
 import { getAppLanguage, translateText } from '../services/i18n';
 
 const ROWS_PER_PAGE = 10;
@@ -22,6 +23,23 @@ function ProjectionsTableView() {
   const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
     getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
   const [page, setPage] = useState(0);
+  const tickers = Object.keys(projectionState.positions || {});
+  const isCombined = projectionState.activeView === 'COMBINED' ||
+    (tickers.length !== 1 && !projectionState.positions?.[projectionState.activeView || '']);
+  const liquidatedTickers = isCombined
+    ? tickers
+    : [projectionState.positions?.[projectionState.activeView || ''] ? projectionState.activeView : tickers[0]]
+      .filter((ticker): ticker is string => Boolean(ticker));
+  const netSaleProceeds = liquidatedTickers.reduce((total, ticker) => {
+    const position = projectionState.positions?.[ticker];
+    if (!position) return total;
+    const shares = Number(position.shares);
+    const exitPrice = Number(position.pt);
+    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return total;
+    const grossProceeds = shares * exitPrice;
+    return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, state.brokerAssumptions);
+  }, 0);
+  const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
 
   useEffect(() => {
     setPage(0);
@@ -84,8 +102,8 @@ function ProjectionsTableView() {
         const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
         const net = kind === 'breakeven' ? 0 : projectedNet;
         const dailyFee = projectedDebt * dailyRate;
-        const projectedAccountBalance = calculateProjectedAccountBalance(
-          Number(state.balance ?? 0), dailyRate, daysFromToday
+        const projectedAccountBalance = calculateProjectedAccountBalanceAfterSale(
+          Number(state.balance ?? 0), freeCash, netSaleProceeds, dailyRate, daysFromToday
         );
 
         const rowClass = kind === 'today'

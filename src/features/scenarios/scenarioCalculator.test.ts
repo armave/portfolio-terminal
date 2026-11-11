@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
+import { calculateSaleCommission } from '../../domain/portfolioTransactions';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -128,17 +129,22 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
     expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
-    // Balance is the signed broker ledger. Cash Cushion free cash funds the order first;
-    // only the shortfall reduces the broker balance, and daily interest compounds debt.
-    expect(today?.values[4]).toBe('-$1000.00');
-    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
-    const balanceAfter = -1_000 - Math.max(0, cashNeeded - 100);
-    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(balanceAfter, 2);
-    const later = custom.modal?.rows.find(row => row.kind === 'fee' && row.values[4] !== '—');
+    // Balance is the resulting cash after selling all shares at the projected target.
+    const scenarioRules = { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 };
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
-    expect(parseSignedMoney(later?.values[4])).toBeLessThan(-1_000);
-    expect(parseSignedMoney(later?.values[5])).toBeLessThan(balanceAfter);
+    const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
+      calculateSaleCommission(10, 10 * 150, scenarioRules);
+    expect(parseSignedMoney(today?.values[4])).toBeCloseTo(expectedCurrentBalance, 2);
+    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
+    const remainingFreeCash = Math.max(0, 100 - cashNeeded);
+    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
+    const expectedAfterBalance = remainingFreeCash + brokerBalanceAfterPurchase + 15 * 150 -
+      calculateSaleCommission(15, 15 * 150, scenarioRules);
+    expect(parseSignedMoney(today?.values[5])).toBeCloseTo(expectedAfterBalance, 2);
+    const later = custom.modal?.rows.find(row => row.kind === 'fee' && row.values[4] !== '—');
+    expect(parseSignedMoney(later?.values[4])).toBeLessThan(expectedCurrentBalance);
+    expect(parseSignedMoney(later?.values[5])).toBeLessThan(expectedAfterBalance);
   });
 });
 

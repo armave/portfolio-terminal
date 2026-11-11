@@ -460,6 +460,22 @@ export function calculateProjectedAccountBalance(
   return Number(balance.toFixed(2));
 }
 
+/** Calculate account cash after selling the selected position and settling margin debt. */
+export function calculateProjectedAccountBalanceAfterSale(
+  signedBalance: number,
+  freeCash: number,
+  netSaleProceeds: number,
+  dailyRate: number,
+  days: number
+): number {
+  const inputs = [signedBalance, freeCash, netSaleProceeds, dailyRate, days].map(Number);
+  if (!inputs.every(Number.isFinite)) return 0;
+  const [balance, cash, proceeds, rate, elapsedDays] = inputs;
+  return Number((
+    calculateProjectedAccountBalance(balance, rate, elapsedDays) + cash + proceeds
+  ).toFixed(2));
+}
+
 export function calculateAccruedFees(
   totalComms: number,
   marginCharged: number,

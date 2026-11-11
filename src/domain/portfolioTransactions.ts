@@ -443,7 +443,7 @@ export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccount
     : 1;
   requireNonNegativeNumber(weight, 'Position investment weight');
 
-  const totalDebt = Math.abs(balance);
+  const totalDebt = Math.max(0, -balance);
   const allocatedDebt = requireNonNegativeNumber(totalDebt * weight, 'Allocated margin debt');
   if (now !== undefined && (!(now instanceof Date) || !Number.isFinite(now.getTime()))) {
     throw new RangeError('Sale accounting clock must be a valid date.');

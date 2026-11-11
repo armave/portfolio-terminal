@@ -1,6 +1,6 @@
 import { portfolioStore } from '../../store/portfolioStore';
 import { getAppLanguage } from '../../services/i18n';
-import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalance, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
@@ -99,7 +99,7 @@ export class ScenarioCalculator {
     const buyCommission = validatedCostBasis.aggregateBuyCommission;
     const signedBalance = Number(state.balance ?? 0);
     if (!Number.isFinite(signedBalance)) throw new Error('The account margin balance is unavailable for this estimate.');
-    const debt = Math.abs(signedBalance);
+    const debt = Math.max(0, -signedBalance);
     const rawFreeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
     if (!Number.isFinite(rawFreeCash) || rawFreeCash < 0) throw new Error('The available cash balance is invalid.');
     const startingCash = rawFreeCash;
@@ -170,7 +170,9 @@ export class ScenarioCalculator {
       const net = Number((accounting.netProfit - carry).toFixed(2));
       // Current accrued interest is already reflected in the signed account balance.
       // Only future interest changes projected debt; do not deduct historical charges twice.
-      const resultingAccountBalance = Number((startingCash + accounting.netCashProceeds - projectedDebt).toFixed(2));
+      const resultingAccountBalance = calculateProjectedAccountBalanceAfterSale(
+        signedBalance, startingCash, accounting.netCashProceeds, rules.dailyRate, s.days
+      );
       const totalFeeFriction = Number((accounting.totalCommissions + marginFee).toFixed(2));
       return { ...s, gross, sellFee, carry, marginFee, totalFeeFriction, net, netProceeds: accounting.netCashProceeds, projectedDebt, resultingAccountBalance };
     });
@@ -317,6 +319,8 @@ export class ScenarioCalculator {
       };
     }
     const balanceAfter = projected.projectedBalance;
+    const freeCashUsedForPurchase = Math.min(freeCash, totalOutlay);
+    const remainingFreeCashAfterPurchase = Math.max(0, freeCash - freeCashUsedForPurchase);
     const currentDebt = Math.max(0, -balance);
     const dailyMarginBefore = currentDebt * rules.dailyRate;
     const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
@@ -347,6 +351,10 @@ export class ScenarioCalculator {
         const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
+        const currentSaleGross = oldShares * projectionPrice;
+        const afterSaleGross = newShares * projectionPrice;
+        const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
+        const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
@@ -376,14 +384,18 @@ export class ScenarioCalculator {
               signed(afterNet),
               feesWithDailyMargin(currentFees, currentDebtAtDate * rules.dailyRate),
               feesWithDailyMargin(afterFees, afterDebtAtDate * rules.dailyRate),
-              money(calculateProjectedAccountBalance(balance, rules.dailyRate, item.daysFromToday)),
-              money(calculateProjectedAccountBalance(balanceAfter, rules.dailyRate, item.daysFromToday))
+              money(calculateProjectedAccountBalanceAfterSale(
+                balance, freeCash, currentNetSaleProceeds, rules.dailyRate, item.daysFromToday
+              )),
+              money(calculateProjectedAccountBalanceAfterSale(
+                balanceAfter, remainingFreeCashAfterPurchase, afterNetSaleProceeds, rules.dailyRate, item.daysFromToday
+              ))
             ],
             kind: item.kind === 'today' ? 'result' as const : 'fee' as const
           };
         });
       })(),
-      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows the signed broker account balance before and after the purchase. No portfolio mutation or order placement occurs.'
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows account cash after selling the position, net of sell commission and projected margin interest. No portfolio mutation or order placement occurs.'
     };
     const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice);
     const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice);

@@ -85,7 +85,7 @@ describe('app localization', () => {
       'This is the last saved estimate. Current inputs or portfolio data do not support a fresh calculation.',
       'Close Buy More', 'Projection price', 'Scenario summary', 'Updated live',
       'Current position and after purchase projection amounts by date.',
-      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows the signed broker account balance before and after the purchase. No portfolio mutation or order placement occurs.',
+      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows account cash after selling the position, net of sell commission and projected margin interest. No portfolio mutation or order placement occurs.',
       'Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.'
     ];
     for (const copy of buyMoreCopy) {
