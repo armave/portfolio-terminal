@@ -102,6 +102,7 @@ export function buildClosedHistoryRows({
       const previousTime = previous ? Date.parse(String((previous.trade as any).exitDate ?? '')) : NaN;
       if (previous && ticker && ticker === previousTicker &&
           Number.isFinite(time) && Number.isFinite(previousTime) && time - previousTime <= 60 * 60 * 1000) {
+        // The grouped display ID expands, but saved allocation identity stays anchored to its first execution.
         const oldQty = Number((previous.trade as any).shares ?? 0);
         const newQty = Number((row.trade as any).shares ?? 0);
         const oldProfit = previous.profit;

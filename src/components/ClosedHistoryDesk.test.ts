@@ -245,7 +245,7 @@ describe('closed history row model', () => {
       trancheAttributions: attributions,
       appTrades: [],
       closedTradeAllocations: {
-        'broker:sell-1+sell-2': { fundingType: 'cash', cashQuantity: 5, marginQuantity: 0 }
+        'broker:sell-1': { fundingType: 'cash', cashQuantity: 5, marginQuantity: 0 }
       }
     });
 
@@ -260,7 +260,7 @@ describe('closed history row model', () => {
       commissions: 3,
       feesTotal: 5,
       profit: 45,
-      allocationKey: 'broker:sell-1+sell-2'
+      allocationKey: 'broker:sell-1'
     });
     expect(rows[0].trade).toMatchObject({
       id: 'sell-1+sell-2',
