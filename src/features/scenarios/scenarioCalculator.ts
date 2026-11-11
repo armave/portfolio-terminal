@@ -388,7 +388,7 @@ export class ScenarioCalculator {
           };
         });
       })(),
-      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Cash shows the amount available before and after the purchase. No portfolio mutation or order placement occurs.'
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Cash shows the signed broker cash/debt plus app free cash before and after the purchase. No portfolio mutation or order placement occurs.'
     };
     const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice);
     const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice);
