@@ -11,6 +11,13 @@ describe('Buy More blocked preview presentation', () => {
     expect(source).toContain('setSharesInput(String(preview.maxSafeShares!))');
     expect(source).toContain("const displayedSummary = resultError ? ''");
     expect(source).toContain('const isSavedFallback = !resultError && !resultData && Boolean(savedResult);');
+    expect(source).toContain("translateText('Projected target price', language)");
+    expect(source).toContain('projectionPrice: projectionPriceInput');
+    expect(source).toContain('previewBuyMoreScenario(ticker, shares, purchasePrice, projectionPrice)');
+    expect(source).toContain("['Net P&L', 'Fees & comm.', 'Balance', 'Net P&L', 'Fees & comm.', 'Balance']");
+    expect(source).not.toContain('Remaining cash');
+    expect(source).toContain('colSpan={3}');
+    expect(source).not.toContain("translateText('Margin fee', language)");
   });
 });
 
@@ -29,6 +36,7 @@ describe('Buy More table amount formatting', () => {
   it('preserves dates, smaller values, and already grouped balances', () => {
     expect(formatBuyMoreTableAmount('2026-11-10', 'en')).toBe('2026-11-10');
     expect(formatBuyMoreTableAmount('169.77 (9.19)', 'en')).toBe('169.77 (9.19)');
+    expect(formatBuyMoreTableAmount('$12345.67 {$12.34/day}', 'en')).toBe('$12,345.67 {$12.34/day}');
     expect(formatBuyMoreTableAmount('-$22,363.64', 'en')).toBe('-$22,363.64');
   });
 });

@@ -3847,6 +3847,7 @@ table tbody tr:hover {
 }
 
 .modal-tools-group {
+  margin: 0.5rem auto;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -3854,25 +3855,17 @@ table tbody tr:hover {
 
   button {
     min-height: 2.25rem;
-    padding: 0.4rem 0.75rem;
+    padding: 0.4rem 0.65rem;
     border-radius: 0.625rem;
     line-height: 1.4;
     width: 30%;
+  }
+
+  >.four-market-tools {
+    width: 48%;
   }
 }
 
 .market-links-group {
-  margin-top: 0.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
   justify-content: center;
-
-  button {
-    min-height: 2.25rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: 0.625rem;
-    line-height: 1.4;
-    width: 30%;
-  }
 }

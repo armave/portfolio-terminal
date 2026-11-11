@@ -30,12 +30,18 @@ function getReferencePrice(position?: BuyMorePositionReference): number | null {
   const quote = Number(position.currentPrice);
   return Number.isFinite(quote) && quote > 0 ? quote : getAverageEntry(position);
 }
+function getDefaultProjectionPrice(position?: BuyMorePositionReference): number | null {
+  const target = Number(position?.pt);
+  return Number.isFinite(target) && target > 0 ? target : getReferencePrice(position);
+}
 function makeDefaultInputs(ticker: string, position?: BuyMorePositionReference) {
   const reference = getReferencePrice(position);
+  const projectionPrice = getDefaultProjectionPrice(position);
   return {
     ticker,
     shares: String(Math.max(1, Math.floor((Number(position?.shares) || 0) / 2))),
-    price: reference === null ? '' : reference.toFixed(2)
+    price: reference === null ? '' : reference.toFixed(2),
+    projectionPrice: projectionPrice === null ? '' : projectionPrice.toFixed(2)
   };
 }
 function formatQuantity(value: number, language: 'en' | 'ru'): string {
@@ -104,6 +110,11 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   const [priceInput, setPriceInput] = useState(() =>
     restoredPreferences?.price ?? makeDefaultInputs(defaultTicker, state.positions[defaultTicker]).price
   );
+  const [projectionPriceInput, setProjectionPriceInput] = useState(() =>
+    typeof restoredPreferences?.projectionPrice === 'string'
+      ? restoredPreferences.projectionPrice
+      : makeDefaultInputs(defaultTicker, state.positions[defaultTicker]).projectionPrice
+  );
   const [savedResult, setSavedResult] = useState<BuyMoreSavedResult | null>(() => restoredPreferences?.lastResult ?? null);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -117,13 +128,15 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   const targetPrice = Number(position?.pt) > 0 ? Number(position?.pt) : null;
   const shares = Number(sharesInput.trim());
   const purchasePrice = Number(priceInput.trim());
+  const projectionPrice = Number(projectionPriceInput.trim());
   const inputsValid = Boolean(position && currentShares > 0 &&
     Number.isFinite(shares) && shares > 0 && Number.isFinite(purchasePrice) && purchasePrice > 0 &&
+    Number.isFinite(projectionPrice) && projectionPrice > 0 &&
     Number.isFinite(shares * purchasePrice));
   const preview = useMemo(() => {
     if (!ticker || !position || !inputsValid) return null;
-    return ScenarioCalculator.previewBuyMoreScenario(ticker, shares, purchasePrice);
-  }, [state, ticker, sharesInput, priceInput, inputsValid]);
+    return ScenarioCalculator.previewBuyMoreScenario(ticker, shares, purchasePrice, projectionPrice);
+  }, [state, ticker, sharesInput, priceInput, projectionPriceInput, inputsValid]);
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'buy-more' ? preview.modal : null;
   const resultError = preview?.type === 'err' ? preview.text : null;
   const marginLimitError = typeof preview?.maxSafeShares === 'number' &&
@@ -145,25 +158,29 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
       if (resultsMatch(savedResult, candidate)) nextResult = savedResult;
       else { nextResult = candidate; setSavedResult(candidate); }
     }
-    saveBuyMorePreferences(storageKey, { version: 1, ticker, shares: sharesInput, price: priceInput, lastResult: nextResult });
-  }, [storageKey, ticker, sharesInput, priceInput, resultData, preview?.text, savedResult]);
+    saveBuyMorePreferences(storageKey, {
+      version: 1, ticker, shares: sharesInput, price: priceInput,
+      projectionPrice: projectionPriceInput, lastResult: nextResult
+    });
+  }, [storageKey, ticker, sharesInput, priceInput, projectionPriceInput, resultData, preview?.text, savedResult]);
 
   const changeTicker = (nextTicker: string) => {
     setTicker(nextTicker);
     const defaults = makeDefaultInputs(nextTicker, state.positions[nextTicker]);
     setSharesInput(defaults.shares);
     setPriceInput(defaults.price);
+    setProjectionPriceInput(defaults.projectionPrice);
     setSavedResult(null);
   };
   const resetDefaults = () => {
     const defaults = makeDefaultInputs(ticker, position);
     setSharesInput(defaults.shares);
     setPriceInput(defaults.price);
+    setProjectionPriceInput(defaults.projectionPrice);
     setSavedResult(null);
   };
   const useMarketQuote = () => { if (marketQuote !== null) setPriceInput(marketQuote.toFixed(2)); };
 
-  const projectionPrice = targetPrice ?? marketQuote ?? averageEntry;
   const purchaseValue = inputsValid ? shares * purchasePrice : null;
   const projectedShares = inputsValid ? currentShares + shares : null;
   const projectedAverage = inputsValid && averageEntry !== null
@@ -208,7 +225,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
             </p>
           ) : (
             <>
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <label class="block min-w-0">
                   <span class="mb-1.5 block text-[11px] font-semibold text-slate-400">{translateText('Position', language)}</span>
                   <select value={ticker} onChange={event => changeTicker((event.currentTarget as HTMLSelectElement).value)}
@@ -235,6 +252,17 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
                     <input type="number" inputMode="decimal" min="0.000001" step="any" value={priceInput}
                       onInput={event => setPriceInput((event.currentTarget as HTMLInputElement).value)}
                       disabled={!position} aria-label={translateText('Purchase price', language)}
+                      class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-sm font-mono text-white tabular-nums disabled:opacity-50"
+                    />
+                  </div>
+                </label>
+                <label class="block min-w-0">
+                  <span class="mb-1.5 block text-[11px] font-semibold text-slate-400">{translateText('Projected target price', language)}</span>
+                  <div class="relative">
+                    <span aria-hidden="true" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                    <input type="number" inputMode="decimal" min="0.000001" step="any" value={projectionPriceInput}
+                      onInput={event => setProjectionPriceInput((event.currentTarget as HTMLInputElement).value)}
+                      disabled={!position} aria-label={translateText('Projected target price', language)}
                       class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-sm font-mono text-white tabular-nums disabled:opacity-50"
                     />
                   </div>
@@ -278,7 +306,7 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
         </section>}
 
         {position && !inputsValid && <p role="status" class="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2.5 text-xs text-amber-200">
-          {translateText('Enter a positive share amount and purchase price to calculate this scenario.', language)}
+          {translateText('Enter positive shares, purchase price and projected target price to calculate this scenario.', language)}
         </p>}
         {resultError && !resultData && <div role="alert" class="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2.5 text-xs text-rose-200">
           {marginLimitError ? <>
@@ -305,25 +333,25 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
             {resultData && <span class="rounded-full border border-emerald-800/60 bg-emerald-950/20 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">{translateText('Updated live', language)}</span>}
           </div>
           <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/60">
-            <table class="w-full min-w-[900px] border-collapse text-xs tabular-nums">
+            <table class="w-full min-w-[760px] border-collapse text-xs tabular-nums">
               <caption class="sr-only">{translateText('Current position and after purchase projection amounts by date.', language)}</caption>
               <thead>
                 <tr class="border-b border-slate-700 bg-slate-900/90 text-[11px]">
                   <th scope="col" rowSpan={2} class="sticky left-0 z-20 min-w-32 bg-slate-900 px-3 py-3 text-left font-semibold text-slate-300">{translateText('Date', language)}</th>
-                  <th scope="colgroup" colSpan={4} class="border-l border-slate-700 bg-slate-900/80 px-3 py-3 text-center font-bold text-cyan-200">{translateText('Current position', language)}</th>
-                  <th scope="colgroup" colSpan={4} class="border-l border-slate-700 bg-purple-950/30 px-3 py-3 text-center font-bold text-purple-200">{translateText('After purchase', language)}</th>
+                  <th scope="colgroup" colSpan={3} class="border-l border-slate-700 bg-slate-900/80 px-3 py-3 text-center font-bold text-cyan-200">{translateText('Current position', language)}</th>
+                  <th scope="colgroup" colSpan={3} class="border-l border-slate-700 bg-purple-950/30 px-3 py-3 text-center font-bold text-purple-200">{translateText('After purchase', language)}</th>
                 </tr>
                 <tr class="border-b border-slate-700 bg-slate-900/70 text-[10px] font-semibold text-slate-400">
-                  {['Net P&L', 'Fees & commissions', 'Margin fee', 'Balance', 'Net P&L', 'Fees & commissions', 'Margin fee', 'Balance'].map((heading,index) =>
-                    <th key={heading + index} scope="col" class={(index === 0 || index === 4 ? 'border-l border-slate-700 ' : '') + 'whitespace-nowrap px-3 py-2 text-right'}>
+                  {['Net P&L', 'Fees & comm.', 'Balance', 'Net P&L', 'Fees & comm.', 'Balance'].map((heading,index) =>
+                    <th key={heading + index} scope="col" class={(index === 0 || index === 3 ? 'border-l border-slate-700 ' : '') + 'whitespace-nowrap px-3 py-2 text-right'}>
                       {translateText(heading, language)}
                     </th>)}
                 </tr>
               </thead>
               <tbody>
                 {tableRows.map((row,index) => {
-                  const current = [row.values[0],row.values[2],row.values[4],row.values[6]];
-                  const projected = [row.values[1],row.values[3],row.values[5],row.values[7]];
+                  const current = [row.values[0],row.values[2],row.values[4]];
+                  const projected = [row.values[1],row.values[3],row.values[5]];
                   const rowClass = row.kind === 'result' ? 'border-b border-cyan-900/60 bg-cyan-950/20'
                     : index % 2 === 0 ? 'border-b border-slate-800/70 bg-slate-900/20' : 'border-b border-slate-800/70';
                   return <tr key={row.label + '-' + index} class={rowClass}>

@@ -158,6 +158,21 @@ describe('portfolio transaction calculations', () => {
     });
   });
 
+  it('does not allocate margin interest when the signed account balance is positive cash', () => {
+    const position: PositionRecord = {
+      ticker: 'AAPL', shares: 2, currentPrice: 100, pt: 110, commBuy: 0,
+      tranches: [{ qty: 2, price: 100, date: '2026-10-15' }]
+    };
+    const result = calculateSaleAccounting({
+      tranches: position.tranches || [], positions: { AAPL: position },
+      positionShares: 2, sharesSold: 2, balance: 500,
+      brokerAssumptions: { ...brokerRules, annualBorrowRate: 0.365 },
+      sellProceeds: 220, soldCostBasis: 200, buyCommissionAllocated: 0, sellCommission: 1.2
+    });
+    expect(result.marginInterestAllocated).toBe(0);
+    expect(result.netCashProceeds).toBe(218.8);
+  });
+
   it('uses the remaining one-shot position charge as a floor and rounds the sold allocation to cents', () => {
     const position: PositionRecord = {
       ticker: 'AAPL',

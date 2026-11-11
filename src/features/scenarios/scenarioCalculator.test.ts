@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
+import { calculateSaleCommission } from '../../domain/portfolioTransactions';
+import { calculateAccruedFees, calculateMarginInterest } from '../../domain/portfolio';
+import { calculatePositionMetrics } from '../../domain/portfolioSelectors';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -17,13 +20,13 @@ function createStorage() {
   };
 }
 const validPreferences: BuyMorePreferences = {
-  version: 1, ticker: 'AAPL', shares: '5', price: '105.25',
+  version: 1, ticker: 'AAPL', shares: '5', price: '105.25', projectionPrice: '130.00',
   lastResult: {
     savedAt: 100,
-    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
+    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'],
     rows: [{
       label: 'Tue, Nov 10 · TODAY',
-      values: ['+$10.00', '+$12.00', '$1.00', '$1.50', '$0.10', '$0.12', '−$100.00', '−$200.00'],
+      values: ['+$10.00', '+$12.00', '$1.00 {$0.10/day}', '$1.50 {$0.12/day}', '-$1,000.00', '-$1,000.00'],
       kind: 'result'
     }],
     note: 'Estimate only.',
@@ -36,6 +39,13 @@ describe('Buy More preferences', () => {
     expect(saveBuyMorePreferences('buy-more:user-a', validPreferences, storage)).toBe(true);
     expect(loadBuyMorePreferences('buy-more:user-a', storage)).toEqual(validPreferences);
     expect(loadBuyMorePreferences('buy-more:user-b', storage)).toBeNull();
+  });
+  it('restores older version-1 preferences without a projection price', () => {
+    const storage = createStorage();
+    const legacy = { ...validPreferences } as Partial<BuyMorePreferences>;
+    delete legacy.projectionPrice;
+    storage.setItem('legacy', JSON.stringify(legacy));
+    expect(loadBuyMorePreferences('legacy', storage)?.projectionPrice).toBeUndefined();
   });
   it('normalizes ticker casing and rejects malformed snapshots', () => {
     const storage = createStorage();
@@ -74,14 +84,103 @@ describe('Market Tools Buy More preview', () => {
     const result = ScenarioCalculator.previewBuyMoreScenario('aapl', 5, 105);
     expect(result.type).toBe('res');
     expect(result.modal?.kind).toBe('buy-more');
-    expect(result.modal?.columns).toHaveLength(8);
+    expect(result.modal?.columns).toHaveLength(6);
     expect(result.modal?.rows.length).toBeGreaterThan(0);
-    expect(result.modal?.rows.every(row => row.values.length === 8)).toBe(true);
+    expect(result.modal?.rows.every(row => row.values.length === 6)).toBe(true);
     expect(buyStock).not.toHaveBeenCalled();
     expect(sellStock).not.toHaveBeenCalled();
     expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 0, 105).type).toBe('err');
     expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 0).type).toBe('err');
+    expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 0).type).toBe('err');
     expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
+  });
+
+  it('uses a supplied projected target price for P&L and the compact cash/fee columns', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-11T12:00:00.000Z'));
+    const state = portfolioStore.getState();
+    const scenarioState = {
+      ...state,
+      activeView: 'AAPL',
+      balance: -1_000,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 100 },
+      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
+          startDate: '2026-11-10',
+          tranches: [{ qty: 10, price: 100, date: '2026-11-10', buyCommission: 2 }]
+        },
+        MSFT: {
+          ticker: 'MSFT', shares: 20, currentPrice: 100, pt: 100, commBuy: 0,
+          tranches: [{ qty: 20, price: 100 }]
+        }
+      }
+    } as any;
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue(scenarioState);
+
+    const baseline = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
+    const custom = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 150);
+    const today = custom.modal?.rows.find(row => row.kind === 'result');
+
+    expect(baseline.type).toBe('res');
+    expect(custom.type).toBe('res');
+    expect(custom.modal?.columns).toEqual([
+      'NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'
+    ]);
+    expect(custom.text).toContain('Net P&L at projection price ($150.00):');
+    expect(today?.values).toHaveLength(6);
+    expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
+    expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
+    expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
+    // Buy More's current Net must match the single-position Projection Table,
+    // including its cost-weighted allocation of whole-account margin debt.
+    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
+    const positionMetrics = calculatePositionMetrics(
+      scenarioState, scenarioState.positions.AAPL, scenarioRules, 36.5 / 365
+    );
+    const parseSignedMoney = (value: string | undefined) =>
+      Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
+    const expectedBaselineNet = 10 * 120 - 1_000 - calculateAccruedFees(
+      2 + calculateSaleCommission(10, 10 * 120, scenarioRules), positionMetrics.posMarginCharged, 0
+    );
+    const baselineToday = baseline.modal?.rows.find(row => row.kind === 'result');
+    expect(parseSignedMoney(baselineToday?.values[0])).toBeCloseTo(expectedBaselineNet, 2);
+    const expectedCurrentNet = 10 * 150 - 1_000 - calculateAccruedFees(
+      2 + calculateSaleCommission(10, 10 * 150, scenarioRules), positionMetrics.posMarginCharged, 0
+    );
+    expect(parseSignedMoney(today?.values[0])).toBeCloseTo(expectedCurrentNet, 2);
+
+    // AFTER Net recalculates the selected position's debt share and accrued interest
+    // after the hypothetical position is added to total invested capital.
+    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
+    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
+    const afterPositionCost = 1_000 + 5 * 105;
+    const portfolioInvestedAfter = 3_000 + 5 * 105;
+    const afterAllocatedDebt = Math.abs(brokerBalanceAfterPurchase) * afterPositionCost / portfolioInvestedAfter;
+    const afterMargin = calculateMarginInterest(
+      [{ qty: 10, price: 100, date: '2026-11-10' }],
+      { dailyRate: 36.5 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
+    );
+    const expectedAfterNet = 15 * 150 - afterPositionCost - calculateAccruedFees(
+      2 + calculateSaleCommission(5, 5 * 105, scenarioRules) +
+        calculateSaleCommission(15, 15 * 150, scenarioRules),
+      afterMargin,
+      0
+    );
+    expect(parseSignedMoney(today?.values[1])).toBeCloseTo(expectedAfterNet, 2);
+
+    // Balance is the resulting cash after selling all shares at the projected target.
+    const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
+      calculateSaleCommission(10, 10 * 150, scenarioRules);
+    expect(parseSignedMoney(today?.values[4])).toBeCloseTo(expectedCurrentBalance, 2);
+    const remainingFreeCash = Math.max(0, 100 - cashNeeded);
+    const expectedAfterBalance = remainingFreeCash + brokerBalanceAfterPurchase + 15 * 150 -
+      calculateSaleCommission(15, 15 * 150, scenarioRules);
+    expect(parseSignedMoney(today?.values[5])).toBeCloseTo(expectedAfterBalance, 2);
+    const later = custom.modal?.rows.find(row => row.kind === 'fee' && row.values[4] !== '—');
+    expect(parseSignedMoney(later?.values[4])).toBeLessThan(expectedCurrentBalance);
+    expect(parseSignedMoney(later?.values[5])).toBeLessThan(expectedAfterBalance);
   });
 });
 
