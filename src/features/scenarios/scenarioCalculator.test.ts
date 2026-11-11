@@ -3,6 +3,8 @@ import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateSaleCommission } from '../../domain/portfolioTransactions';
+import { calculateAccruedFees, calculateMarginInterest } from '../../domain/portfolio';
+import { calculatePositionMetrics } from '../../domain/portfolioSelectors';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -95,10 +97,11 @@ describe('Market Tools Buy More preview', () => {
 
   it('uses a supplied projected target price for P&L and the compact cash/fee columns', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-11-11T08:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-11-11T12:00:00.000Z'));
     const state = portfolioStore.getState();
-    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+    const scenarioState = {
       ...state,
+      activeView: 'AAPL',
       balance: -1_000,
       cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 100 },
       brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
@@ -113,7 +116,8 @@ describe('Market Tools Buy More preview', () => {
           tranches: [{ qty: 20, price: 100 }]
         }
       }
-    } as any);
+    } as any;
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue(scenarioState);
 
     const baseline = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
     const custom = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 150);
@@ -129,16 +133,48 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
     expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
-    // Balance is the resulting cash after selling all shares at the projected target.
-    const scenarioRules = { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
+    // Buy More's current Net must match the single-position Projection Table,
+    // including its cost-weighted allocation of whole-account margin debt.
+    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
+    const positionMetrics = calculatePositionMetrics(
+      scenarioState, scenarioState.positions.AAPL, scenarioRules, 36.5 / 365
+    );
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
+    const expectedBaselineNet = 10 * 120 - 1_000 - calculateAccruedFees(
+      2 + calculateSaleCommission(10, 10 * 120, scenarioRules), positionMetrics.posMarginCharged, 0
+    );
+    const baselineToday = baseline.modal?.rows.find(row => row.kind === 'result');
+    expect(parseSignedMoney(baselineToday?.values[0])).toBeCloseTo(expectedBaselineNet, 2);
+    const expectedCurrentNet = 10 * 150 - 1_000 - calculateAccruedFees(
+      2 + calculateSaleCommission(10, 10 * 150, scenarioRules), positionMetrics.posMarginCharged, 0
+    );
+    expect(parseSignedMoney(today?.values[0])).toBeCloseTo(expectedCurrentNet, 2);
+
+    // AFTER Net recalculates the selected position's debt share and accrued interest
+    // after the hypothetical position is added to total invested capital.
+    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
+    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
+    const afterPositionCost = 1_000 + 5 * 105;
+    const portfolioInvestedAfter = 3_000 + 5 * 105;
+    const afterAllocatedDebt = Math.abs(brokerBalanceAfterPurchase) * afterPositionCost / portfolioInvestedAfter;
+    const afterMargin = calculateMarginInterest(
+      [{ qty: 10, price: 100, date: '2026-11-10' }],
+      { dailyRate: 36.5 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
+    );
+    const expectedAfterNet = 15 * 150 - afterPositionCost - calculateAccruedFees(
+      2 + calculateSaleCommission(5, 5 * 105, scenarioRules) +
+        calculateSaleCommission(15, 15 * 150, scenarioRules),
+      afterMargin,
+      0
+    );
+    expect(parseSignedMoney(today?.values[1])).toBeCloseTo(expectedAfterNet, 2);
+
+    // Balance is the resulting cash after selling all shares at the projected target.
     const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
       calculateSaleCommission(10, 10 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[4])).toBeCloseTo(expectedCurrentBalance, 2);
-    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
     const remainingFreeCash = Math.max(0, 100 - cashNeeded);
-    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
     const expectedAfterBalance = remainingFreeCash + brokerBalanceAfterPurchase + 15 * 150 -
       calculateSaleCommission(15, 15 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[5])).toBeCloseTo(expectedAfterBalance, 2);

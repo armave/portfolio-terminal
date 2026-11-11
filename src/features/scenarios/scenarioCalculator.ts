@@ -371,8 +371,8 @@ export class ScenarioCalculator {
           }
           const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
           const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
-          const currentAccrual = currentDebtAtDate - currentDebt;
-          const afterAccrual = afterDebtAtDate - projectedDebt;
+          const currentAccrual = currentDebtAtDate - currentAllocatedDebt;
+          const afterAccrual = afterDebtAtDate - afterAllocatedDebt;
           const currentFees = calculateAccruedFees(currentComms, currentMargin, currentAccrual);
           const afterFees = calculateAccruedFees(projectedComms, currentMargin, afterAccrual);
           const currentNet = oldShares * projectionPrice - oldCost - currentFees;
