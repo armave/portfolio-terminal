@@ -245,7 +245,7 @@ describe('Stage 10 accessibility wiring', () => {
 
   it('uses the same positive-price fallback across broker cash refresh and tranche valuation', () => {
     const app = readSource('../../app.ts');
-    const cash = readSource('../components/CashCushionDesk.tsx');
+    const cashModel = readSource('../features/cash/cashCushionModel.ts');
     expect(app).toContain('getPositiveMarketPrice(holding.currentPrice, holding.price)');
     expect(app.split('const brokerCashHoldings = classified.cashStocks.map((holding) => {').length - 1).toBe(3);
     expect(cashModel).toContain('getCashHoldingMarketPrice(cashHolding || {}) ??');

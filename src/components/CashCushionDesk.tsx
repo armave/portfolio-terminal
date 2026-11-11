@@ -23,7 +23,6 @@ import {
   buildCashHoldingDisplayGroups,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
-  getAssignedGuestIds,
   getCashHoldingMarketPrice,
   getReversibleBalanceAdjustmentEvents,
   selectCashCushionPortfolioState,

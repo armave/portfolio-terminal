@@ -8,7 +8,8 @@ import {
   getAssignedGuestIds,
   getCashHoldingMarketPrice,
   shouldShowCashHoldingMarketDepth,
-  summarizeCashHoldings
+  summarizeCashHoldings,
+  buildCashHoldingDisplayGroups
 } from '../features/cash/cashCushionModel';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
