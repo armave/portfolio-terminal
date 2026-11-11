@@ -18,7 +18,7 @@ import {
   applyMarketHistoryCorrectionsToResult,
   createMarketHistoryCorrectionEvent
 } from '../services/marketHistoryCorrections';
-import { getAppLanguage, translateText } from '../services/i18n';
+import { getAppLanguage } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import {
   formatMarketEventDate,
@@ -893,7 +893,7 @@ function MarketInsightsPanelView() {
               <p class="mt-2 text-[9px] text-amber-300">{marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')}</p>
             )}
             {currentHistory?.quality === 'partial' && (
-              <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map(marketEventLabel).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
+              <p class="mt-2 text-[9px] text-amber-300">{currentHistory.issues.map((issue) => marketEventLabel(issue)).join(' · ') || marketEventLabel('Currency unknown; no conversion applied.')}</p>
             )}
             {currentHistory && (
               <p class="mt-2 border-t border-slate-800 pt-2 text-[9px] leading-4 text-slate-500">
