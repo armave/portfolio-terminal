@@ -10,9 +10,7 @@ import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import type { MarginIntelligenceState } from './components/MarginIntelligenceModal';
-import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
-import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
+import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { addToast, useToasts } from './ui/notificationStore';
@@ -23,17 +21,8 @@ import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefre
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
-import { createLatestRequestGuard } from './utils/requestGeneration';
-import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
-import {
-  buildMarginReviewPrompt,
-  fingerprintMarginReviewSnapshot,
-  getMarginDigestFreshness,
-  MARGIN_REVIEW_PROMPT_VERSION,
-  selectMarginReviewNews,
-  normalizeMarginReviewTicker
-} from './features/ai/marginIntelligence';
+import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
 import { buildMarginReviewContext } from './features/ai/marginIntelligenceContext';
 
 
@@ -152,214 +141,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setMarginIntelligence(null);
       return;
     }
-    const requestGuard = createLatestRequestGuard();
-    const handleMarginIntelligence = async (
-      event: UiEvent<{ ticker?: string; refresh?: boolean }>,
-      snapshotRetry = 0
-    ) => {
-      if (!permissions.canViewMarginDesk) return;
-      // Every request supersedes older work, including a ticker that fails validation.
-      const requestId = requestGuard.begin();
-      const detail = event.detail;
-      const requestedTicker = normalizeMarginReviewTicker(detail?.ticker);
-      const snapshot = portfolioStore.getState();
-      const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-      const { allPositions, focusPosition } = reviewInput;
 
-      if (requestedTicker && !focusPosition) {
-        setMarginIntelligence({
-          title: requestedTicker + ' · Position Review',
-          scope: 'position',
-          ticker: requestedTicker,
-          loading: false,
-          analysis: '',
-          articles: [],
-          error: 'No active margin position was found for ' + requestedTicker + '. Select an active margin ticker and try again.'
-        });
-        return;
-      }
-
-      const isPortfolio = !requestedTicker;
-      const scope: 'portfolio' | 'position' = isPortfolio ? 'portfolio' : 'position';
-      const requestIdentity = { scope, ...(requestedTicker ? { ticker: requestedTicker } : {}) };
-      const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
-      const digestKey = isPortfolio ? 'portfolio' : 'position:' + requestedTicker;
-      setMarginIntelligence((current) => {
-        const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
-        return {
-          title,
-          scope,
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          loading: true,
-          analysis: previous?.analysis || '',
-          articles: previous?.articles || [],
-          ...(previous?.coverage ? { coverage: previous.coverage } : {}),
-          ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
-          ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
-          ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
-          ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
-          ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {})
-        };
-      });
-
-      try {
-        const snapshotFingerprint = await fingerprintMarginReviewSnapshot(reviewInput.snapshotIdentity);
-        const cached = await loadSyncedMarginDigest(digestKey);
-        if (!requestGuard.isCurrent(requestId)) return;
-        const latestCacheInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const latestCacheFingerprint = await fingerprintMarginReviewSnapshot(latestCacheInput.snapshotIdentity);
-        if (cached && !detail?.refresh) {
-          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
-          setMarginIntelligence({
-            title: cached.digest.title || title,
-            scope: cached.digest.scope,
-            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
-            loading: false,
-            analysis: cached.digest.analysis,
-            articles: cached.digest.articles,
-            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
-            stale: freshness.stale,
-            staleReasons: freshness.reasons,
-            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
-            syncedAt: cached.digest.syncedAt,
-            digestRevision: cached.revision,
-            ...(cached.migrationStatus === 'pending' ? {
-              error: translateText('This saved Margin Intelligence review still needs an encryption upgrade. Retry the migration from Settings.', getAppLanguage())
-            } : {})
-          });
-          return;
-        }
-        if (cached) {
-          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
-          setMarginIntelligence({
-            title: cached.digest.title || title,
-            scope: cached.digest.scope,
-            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
-            loading: true,
-            analysis: cached.digest.analysis,
-            articles: cached.digest.articles,
-            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
-            stale: freshness.stale,
-            staleReasons: freshness.reasons,
-            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
-            syncedAt: cached.digest.syncedAt,
-            digestRevision: cached.revision
-          });
-        }
-        const newsPositions = isPortfolio ? allPositions : focusPosition ? [focusPosition] : [];
-        const newsResults: MarginNewsFetchResult[] = await Promise.all(newsPositions.map(async position => {
-          try {
-            const items = await fetchMarketNews(position.ticker, true);
-            return {
-              ticker: position.ticker,
-              fetchedAt: new Date().toISOString(),
-              items: Array.isArray(items) ? items : []
-            };
-          } catch (error) {
-            return {
-              ticker: position.ticker,
-              fetchedAt: new Date().toISOString(),
-              items: [],
-              error: error instanceof Error ? error.message : 'News provider request failed.'
-            };
-          }
-        }));
-        const { articles, coverage } = selectMarginReviewNews(newsResults, reviewInput.priorityTickers);
-        const prompt = buildMarginReviewPrompt(reviewInput.portfolioContext, coverage, articles);
-        const response = await proxyFetch('gemini', {}, {
-          method: 'POST',
-          body: JSON.stringify({ prompt, model: 'gemini-3.8-flash' }),
-          cache: 'no-store'
-        });
-        const analysis = response?.candidates?.[0]?.content?.parts
-          ?.map((part: { text?: string }) => String(part.text || ''))
-          .filter(Boolean).join('\n\n');
-        if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
-        if (!requestGuard.isCurrent(requestId)) return;
-        const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const latestFingerprint = await fingerprintMarginReviewSnapshot(latestInput.snapshotIdentity);
-        if (!requestGuard.isCurrent(requestId)) return;
-        if (latestFingerprint !== snapshotFingerprint) {
-          if (snapshotRetry < 1) {
-            await handleMarginIntelligence({
-              type: event.type,
-              detail: { ...detail, refresh: true }
-            }, snapshotRetry + 1);
-            return;
-          }
-          setMarginIntelligence({
-            title,
-            scope,
-            ...(requestedTicker ? { ticker: requestedTicker } : {}),
-            loading: false,
-            analysis,
-            articles,
-            coverage,
-            snapshotAsOf: reviewInput.portfolioContext.asOf,
-            error: 'The portfolio changed while this review was being generated. Refresh to review the current snapshot.'
-          });
-          return;
-        }
-        const syncedAt = new Date().toISOString();
-        const digest = {
-          key: digestKey,
-          title,
-          scope: (isPortfolio ? 'portfolio' : 'position') as 'portfolio' | 'position',
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          analysis,
-          articles,
-          coverage,
-          snapshotFingerprint,
-          snapshotAsOf: reviewInput.portfolioContext.asOf,
-          promptVersion: MARGIN_REVIEW_PROMPT_VERSION,
-          syncedAt
-        };
-        const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
-        if (!requestGuard.isCurrent(requestId)) return;
-        const postSaveInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
-        const postSaveFingerprint = await fingerprintMarginReviewSnapshot(postSaveInput.snapshotIdentity);
-        const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
-        setMarginIntelligence({
-          title,
-          scope: isPortfolio ? 'portfolio' : 'position',
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          loading: false,
-          analysis,
-          articles,
-          coverage,
-          snapshotAsOf: reviewInput.portfolioContext.asOf,
-          stale: freshness.stale,
-          staleReasons: freshness.reasons,
-          ...(freshness.stale ? { error: 'The portfolio changed while the review was being saved. Refresh to review the current snapshot.' } : {}),
-          syncedAt,
-          digestRevision: nextRevision
-        });
-      } catch (error) {
-        if (!requestGuard.isCurrent(requestId)) return;
-        const message = error instanceof Error ? error.message : 'Could not load or save the synced Gemini margin review.';
-        setMarginIntelligence((current) => {
-          const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
-          return {
-            title,
-            scope,
-            ...(requestedTicker ? { ticker: requestedTicker } : {}),
-            loading: false,
-            analysis: previous?.analysis || '',
-            articles: previous?.articles || [],
-            ...(previous?.coverage ? { coverage: previous.coverage } : {}),
-            ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
-            ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
-            ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
-            ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
-            ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {}),
-            error: message
-          };
-        });
-      }
+    const marginIntelligenceRuntime = createMarginIntelligenceRuntime({
+      canViewMarginDesk: () => permissions.canViewMarginDesk,
+      getPortfolioState: () => portfolioStore.getState(),
+      refreshIntervalMs: scenarioRefreshIntervalMs,
+      setState: setMarginIntelligence,
+      translate: (message) => translateText(message, getAppLanguage())
+    });
+    const handleMarginIntelligence = (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
+      void marginIntelligenceRuntime.handleRequest(event.detail);
     };
+
     addUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     return () => {
-      requestGuard.invalidate();
+      marginIntelligenceRuntime.dispose();
       removeUiEventListener('margin:intelligence-request', handleMarginIntelligence);
     };
   }, [permissions.canViewMarginDesk, scenarioRefreshIntervalMs]);
