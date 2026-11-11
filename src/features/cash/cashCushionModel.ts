@@ -16,10 +16,36 @@ export function shouldShowCashHoldingMarketDepth(date = new Date()): boolean {
   return getUsEquityMarketSession(date) !== 'CLOSED';
 }
 
+type CashHoldingGroup<T extends { ticker: string }> = {
+  key: string;
+  label: string;
+  holdings: T[];
+};
+
+type CashHoldingTableRow<T extends { ticker: string }> =
+  | { type: 'group'; key: string; label: string }
+  | { type: 'holding'; key: string; holding: T };
+
 /**
  * Build table rows at group granularity. Group headings have their own stable
  * keyed sibling rows, instead of being nested inside the first holding fragment.
  */
+export function buildCashHoldingTableRows<T extends { ticker: string }>(
+  groups: CashHoldingGroup<T>[],
+  isAdmin: boolean
+): CashHoldingTableRow<T>[] {
+  return groups.flatMap((group) => [
+    ...(isAdmin
+      ? [{ type: 'group' as const, key: `group-${group.key}`, label: group.label }]
+      : []),
+    ...group.holdings.map((holding) => ({
+      type: 'holding' as const,
+      key: `holding-${group.key}-${holding.ticker}`,
+      holding
+    }))
+  ]);
+}
+
 export function selectCashCushionPortfolioState(state: PortfolioState) {
   return {
     brokerAccountInfo: state.brokerAccountInfo,
