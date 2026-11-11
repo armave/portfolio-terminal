@@ -117,6 +117,8 @@ import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfo
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
+import { addToast } from './src/ui/notificationStore';
+import { info } from 'console';
 
 // ==========================================
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -920,8 +922,8 @@ function applyOvernightRollover(): boolean {
     const recordAsRealized = tickers.length === 0 || totalInvested === 0;
 
     if (!portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized)) return false;
-    saveState(state, pushStateToGist);
-    logAppMessage(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
+    const msg = `Applied ${elapsedCycles} rollover cycle${elapsedCycles > 1 ? 's' : ''}: accrued interest $${interestAccrued.toFixed(2)}, new margin debt $${compoundedDebt.toFixed(2)}.`;
+    addToast(msg, 'info');
   } else if (elapsedCycles > 0) {
     if (!portfolioStore.setLastRolloverTimestamp(now.getTime())) return false;
     saveState(state, pushStateToGist);
@@ -1415,7 +1417,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     ];
     const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
       ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
-        getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
+      getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
       : undefined;
 
     // Bypass the brief quote-side cache: every 60-second checkpoint and manual
@@ -1524,7 +1526,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     }
 
     if (!hasFreedomCashflowHistoryBaseline(accountId) &&
-        !markFreedomCashflowHistoryBaseline(accountId)) {
+      !markFreedomCashflowHistoryBaseline(accountId)) {
       logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
       return false;
     }
