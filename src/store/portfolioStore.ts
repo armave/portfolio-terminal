@@ -12,6 +12,8 @@ import {
   PositionRecord,
   Holding,
   TrancheItem,
+  CashStockLot,
+  CashStockHolding,
   PendingMutation
 } from '../types/portfolio';
 import type { PortfolioTransactionContext, PortfolioTransactionDraft, PortfolioTransactionEvent } from '../types/portfolioTransaction';
@@ -1854,6 +1856,14 @@ export class PortfolioStore {
 
     const manualPrice = Number(price);
     const hasManualPrice = Number.isFinite(manualPrice) && manualPrice > 0;
+    const effectiveAt = context?.effectiveAt ?? Date.now();
+    if (!Number.isSafeInteger(effectiveAt) || effectiveAt <= 0 ||
+      (hasManualPrice && !Number.isFinite(shares * manualPrice))) return null;
+    const acquisitionDateValue = new Date(effectiveAt);
+    if (!Number.isFinite(acquisitionDateValue.getTime())) return null;
+    const acquisitionDate = acquisitionDateValue.toISOString().slice(0, 10);
+    const eventId = context?.eventId?.trim() || createPortfolioTransactionId();
+    const lotId = hasManualPrice ? `cash-lot-${eventId}` : undefined;
     const currentHoldings = this.state.cashCushion?.holdings || [];
     const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
     const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
@@ -1866,31 +1876,61 @@ export class PortfolioStore {
 
     const committed = this.updateFinancialMutation({
       ...context,
+      eventId,
       requestFingerprint,
       source: context?.source ?? 'manual-cash-holding',
       actor: context?.actor ?? { type: 'user' },
-      effectiveAt: context?.effectiveAt ?? Date.now()
+      effectiveAt
     }, (state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const existingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
       );
 
-      if (existingIndex >= 0) {
-        const previous = holdings[existingIndex];
-        holdings[existingIndex] = {
-          ...previous,
-          shares: (Number(previous.shares) || 0) + shares,
-          ...(hasManualPrice ? { price: manualPrice, currentPrice: manualPrice } : {})
-        };
-      } else {
-        holdings.push({
-          ticker: clean,
-          shares,
-          price: resolvedPrice,
-          ...(hasManualPrice ? { currentPrice: manualPrice } : {})
-        });
-      }
+      const previous = existingIndex >= 0 ? holdings[existingIndex] : undefined;
+      const previousShares = Number(previous?.shares) || 0;
+      const nextShares = previousShares + shares;
+      if (!Number.isFinite(nextShares) || nextShares <= 0) return null;
+      const rawPreviousLots = Array.isArray(previous?.lots) ? previous.lots : [];
+      const previousLotsAreValid = rawPreviousLots.every((lot) =>
+        typeof lot?.lotId === 'string' && Boolean(lot.lotId.trim()) &&
+        Number.isFinite(lot.qty) && lot.qty > 0 &&
+        Number.isFinite(lot.price) && lot.price > 0 &&
+        typeof lot.date === 'string' && Boolean(lot.date.trim()) &&
+        Number.isFinite(lot.acquiredAt) && lot.acquiredAt > 0 &&
+        Number.isFinite(lot.buyCommission) && lot.buyCommission >= 0
+      );
+      const previousLots = previousLotsAreValid ? rawPreviousLots : [];
+      const nextLot: CashStockLot | undefined = hasManualPrice && lotId ? {
+        lotId,
+        qty: shares,
+        price: manualPrice,
+        date: acquisitionDate,
+        acquiredAt: effectiveAt,
+        // This manual command does not charge a buy-side commission.
+        buyCommission: 0
+      } : undefined;
+      const nextLots = nextLot ? [...previousLots, nextLot] : [...previousLots];
+      const knownLotQuantity = nextLots.reduce((sum, lot) => sum + lot.qty, 0);
+      const lotsCoverHolding = nextLots.length > 0 &&
+        Math.abs(knownLotQuantity - nextShares) <= 1e-8;
+      const averagePrice = lotsCoverHolding
+        ? Number((nextLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0) / nextShares).toFixed(8))
+        : null;
+      const nextHolding: CashStockHolding = {
+        ...(previous || {}),
+        ticker: clean,
+        shares: nextShares,
+        ...(nextLots.length ? { lots: nextLots } : { lots: undefined }),
+        averagePrice,
+        ...(hasManualPrice
+          ? { price: manualPrice, currentPrice: manualPrice }
+          : existingIndex >= 0
+            ? {}
+            : { price: resolvedPrice })
+      };
+      if (existingIndex >= 0) holdings[existingIndex] = nextHolding;
+      else holdings.push(nextHolding);
 
       return {
         state: {
@@ -1902,18 +1942,21 @@ export class PortfolioStore {
         },
         event: {
           type: 'cash-holding.buy',
-          effectiveAt: context?.effectiveAt ?? Date.now(),
+          effectiveAt,
           ticker: clean,
           quantity: shares,
           cashHoldingQuantityDelta: shares,
           ...(hasManualPrice ? {
+            lotId,
+            acquisitionDate,
             unitPrice: manualPrice,
-            grossAmount: shares * manualPrice
+            grossAmount: shares * manualPrice,
+            fees: 0
           } : {}),
           cashDelta: 0,
           note: hasManualPrice
-            ? 'Cash-cushion holding quantity added at manually supplied price; no free-cash settlement is modeled.'
-            : 'Cash-cushion holding quantity added; no execution price was supplied and no cost basis is inferred.'
+            ? 'App-recorded cash-holding acquisition lot created from a manually supplied entry price. No buy-side commission or free-cash settlement is modeled.'
+            : 'Cash-cushion holding quantity added without an execution price; no acquisition lot or cost basis is inferred.'
         }
       };
     });
@@ -2058,6 +2101,63 @@ export class PortfolioStore {
       const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
       if (!Number.isFinite(netProceeds) || netProceeds < 0) return null;
 
+      let lotAllocations: ReturnType<typeof buildSaleLotJournalAllocations> | undefined;
+      let realizedPnl: number | undefined;
+      let remainingLots: CashStockLot[] | undefined;
+      const sourceLots: CashStockLot[] = Array.isArray(holding.lots) ? holding.lots : [];
+      const sourceLotQuantity = sourceLots.reduce((sum, lot) =>
+        sum + (Number.isFinite(Number(lot?.qty)) ? Number(lot.qty) : 0), 0);
+      const hasCompleteLots = sourceLots.length > 0 &&
+        Math.abs(sourceLotQuantity - availableShares) <= Math.max(1e-8, availableShares * 1e-8) &&
+        sourceLots.every((lot) => typeof lot?.lotId === 'string' && Boolean(lot.lotId.trim()) &&
+          Number.isFinite(lot.qty) && lot.qty > 0 &&
+          Number.isFinite(lot.price) && lot.price > 0 &&
+          typeof lot.date === 'string' && Boolean(lot.date.trim()) &&
+          Number.isFinite(lot.acquiredAt) && lot.acquiredAt > 0 &&
+          Number.isFinite(lot.buyCommission) && lot.buyCommission >= 0);
+      if (hasCompleteLots) {
+        try {
+          const fifo = allocateFifoSaleTranches(
+            sourceLots.map((lot) => ({
+              lotId: lot.lotId,
+              qty: lot.qty,
+              price: lot.price,
+              date: lot.date,
+              acquiredAt: lot.acquiredAt,
+              buyCommission: lot.buyCommission
+            })),
+            actualSold,
+            availableShares,
+            sourceLots.reduce((sum, lot) => sum + lot.buyCommission, 0)
+          );
+          realizedPnl = Number((
+            grossProceeds - fifo.soldCostBasis -
+            fifo.buyCommissionAllocated - sellCommission
+          ).toFixed(2));
+          lotAllocations = buildSaleLotJournalAllocations({
+            soldLots: fifo.soldLots,
+            sellPrice,
+            sellCommission,
+            financingCost: 0,
+            totalRealizedPnl: realizedPnl
+          });
+          remainingLots = fifo.remainingTranches.map((lot) => ({
+            lotId: String(lot.lotId),
+            qty: lot.qty,
+            price: lot.price,
+            date: String(lot.date),
+            acquiredAt: Number(lot.acquiredAt),
+            buyCommission: Number(lot.buyCommission) || 0
+          }));
+        } catch {
+          // A sale of a legacy/incomplete holding remains possible, but a
+          // cost basis is never inferred when the recorded lots fail validation.
+          lotAllocations = undefined;
+          realizedPnl = undefined;
+          remainingLots = undefined;
+        }
+      }
+
       const previousDebt = Math.abs(Number(state.balance) || 0);
       const previousFreeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       const settlement = settleSaleProceeds(previousDebt, previousFreeCash, netProceeds);
@@ -2069,8 +2169,21 @@ export class PortfolioStore {
 
       if (remainingShares <= 1e-8) {
         holdings.splice(holdingIndex, 1);
+      } else if (remainingLots !== undefined) {
+        const remainingLotQuantity = remainingLots.reduce((sum, lot) => sum + lot.qty, 0);
+        const lotsCoverRemainder = Math.abs(remainingLotQuantity - remainingShares) <= 1e-8;
+        holdings[holdingIndex] = {
+          ...holding,
+          shares: remainingShares,
+          lots: remainingLots,
+          averagePrice: lotsCoverRemainder && remainingLots.length
+            ? Number((remainingLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0) / remainingShares).toFixed(8))
+            : null
+        };
       } else {
-        holdings[holdingIndex] = { ...holding, shares: remainingShares };
+        // If acquisition lots do not cover the entire holding, a partial sale
+        // cannot safely identify which known/unknown shares were disposed.
+        holdings[holdingIndex] = { ...holding, shares: remainingShares, lots: undefined, averagePrice: null };
       }
 
       result = {
@@ -2101,11 +2214,17 @@ export class PortfolioStore {
           cashHoldingQuantityDelta: -actualSold,
           unitPrice: sellPrice,
           grossAmount: grossProceeds,
-          fees: sellCommission,
+          fees: lotAllocations
+            ? Number((lotAllocations.reduce((sum, allocation) => sum + allocation.buyCommissionAllocated, 0) + sellCommission).toFixed(2))
+            : sellCommission,
+          financingCost: 0,
           netAmount: netProceeds,
           cashDelta: freeCash - previousFreeCash,
           marginDebtDelta: nextDebt - previousDebt,
-          note: 'Cash-cushion holding sold; cost basis and realized P&L are not tracked for this holding type.'
+          ...(lotAllocations && realizedPnl !== undefined ? { lotAllocations, realizedPnl } : {}),
+          note: lotAllocations
+            ? 'Cash-cushion holding sold with exact FIFO acquisition-lot cost basis and realized P&L.'
+            : 'Cash-cushion holding sold without complete app-recorded acquisition lots; proceeds are recorded but cost basis and realized P&L remain unavailable.'
         }
       };
     });

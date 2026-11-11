@@ -52,7 +52,8 @@ This work must not reimplement those mechanisms or claim that all financial path
 - [x] Add a read-only replay-coverage inspector for the existing positions/cash-holdings/free-cash/margin-debt projection.
 - [x] Classify app-owned state deltas, external broker/import evidence, audit-only history changes, incomplete events and unsupported/malformed schemas.
 - [x] Add shadow replay and parity for stable acquisition lots, FIFO sale allocations, remaining buy fees, linked closed history and recorded realized P&L.
-- [ ] Extend the replay contract to cash-holding acquisition lots, realized charges outside recorded sale allocations and supported corporate-action lot adjustments.
+- [x] Extend shadow replay to app-recorded cash-holding acquisition lots, exact FIFO sales, realized P&L and remaining-lot parity. Broker-only averages and unpriced legacy additions remain unmapped.
+- [ ] Extend other replay paths to realized charges outside recorded sale allocations and supported corporate-action lot adjustments.
 - [ ] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
 - [ ] Keep canonical-state migration out of scope; any cutover requires a separate approved design, migration and rollback.
 
@@ -87,6 +88,7 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 ## Required validation
 
 - [x] Vitest fixtures for balance-adjustment reversal, coverage classification, event append and existing replay/parity paths.
+- [x] Cash-holding lifecycle fixtures for multiple priced acquisitions, FIFO partial sale across lots, realized P&L, remaining-lot parity, unpriced additions, legacy broker averages and tracking-only removals.
 - [ ] Complete the remaining mutation inventory and add any missing event/replay fixtures discovered by that review.
 - [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
 - [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
@@ -102,7 +104,8 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [ ] Every supported financial mutation is either journaled with complete semantics or explicitly listed as unsupported.
 - [x] Supported balance-adjustment reversals are immutable, reviewable, idempotent and balance-verified.
 - [x] Replay coverage is explicit for the current quantity/cash/debt projection and fails closed on malformed/unknown events.
-- [ ] Trade/lot/corporate-action reversals and replay of cost basis, closed history, realized P&L and realized charges remain open.
+- [x] Replay of app-recorded cash-holding acquisition cost basis, FIFO sales, realized P&L and remaining-lot parity is covered by the follow-on cash-holding slice.
+- [ ] Trade/lot/corporate-action reversals, full margin closed-history corrections and realized charges outside recorded sale allocations remain open.
 - Existing positions-as-canonical compatibility and cloud receipt behavior remain intact.
 - No canonical-ledger cutover or new financial write path is enabled by this work alone.
 
@@ -148,3 +151,25 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [x] Add a regression at the backup-import commit boundary proving malformed closed-history data is rejected before live state replacement or persistence.
 - [x] Keep the change limited to backup validation: no transaction-event schema, canonical portfolio ownership, financial calculation, or localization key changes.
 - [ ] Run exact-head typecheck, full Vitest, build/bundle, dead-code and dependency audits plus browser journeys.
+
+
+### Cash-holding acquisition lots and FIFO replay — implementation slice 4
+
+**Branch:** `feat/pt02-cash-holding-lot-accounting`  
+**Target:** `dev`; client/domain only. No Worker or Cloudflare changes.
+
+- [x] Add an optional, additive `CashStockLot` array to cash holdings; existing snapshots without the field remain valid.
+- [x] Create stable acquisition lots only for app-recorded manual cash-holding additions with an explicit positive entry price and exact event date.
+- [x] Keep unpriced additions as quantity-only events; do not infer cost from a quote.
+- [x] Preserve app lots through Freedom portfolio classification and prefer a complete app-owned lot set over a broker-derived average price. If app lots cover only part of the holding, clear the aggregate average price rather than blend cost sources.
+- [x] Extend event validation and replay coverage to cash-holding buy events with stable lot metadata and cash-holding sale events with exact stable FIFO allocations.
+- [x] Reuse the existing FIFO sale allocator for cash-holding sales; persist sold lot slices, allocated buy/sell commissions, zero financing cost, realized P&L and remaining lots atomically with the sale.
+- [x] Extend shadow replay and optional canonical parity to cash-holding open lots and sale outcomes.
+- [x] Keep broker-only average prices, legacy/unpriced buys, imported quantity changes and tracking-only removals explicitly incomplete. No synthetic lot IDs or cost basis are created.
+- [x] Add Vitest coverage for weighted average price, FIFO partial sale across multiple lots, realized P&L, event coverage, remaining lots after reload, Freedom refresh preservation and legacy broker-average safety.
+- [x] Preserve existing cash/debt settlement and no-cash-settlement behavior for manual acquisition additions. No canonical-ledger cutover or broker writeback.
+
+**Accounting boundaries:** manual cash-holding additions still do not debit free cash and do not claim a broker execution. The app records zero buy-side commission for this manual tracking command because it does not charge one. Cash-holding removals remain tracking corrections, not sales. Unpriced/broker-only holdings remain saleable for proceeds and debt-first cash settlement, but their sale events do not contain realized P&L or lot allocations unless the full app-recorded lot set covers the holding. Margin trade, cash-lot reversal and corporate-action reversal semantics remain separate open work.
+
+**Manual validation still required:** authenticated Freedom/TradeNet activity comparison, backup/export/import and encrypted restore, and real multi-device concurrency. Automated fixtures do not certify live broker or cross-device behavior.
+

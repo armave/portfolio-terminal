@@ -118,26 +118,35 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (value.lotId !== undefined &&
     (typeof value.lotId !== 'string' || !value.lotId.trim() || value.lotId.length > 200)) return false;
   if (value.acquisitionDate !== undefined &&
-    (value.type !== 'trade.buy' || typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
+    ((value.type !== 'trade.buy' && value.type !== 'cash-holding.buy') ||
+      typeof value.acquisitionDate !== 'string' || !value.acquisitionDate.trim())) return false;
   if (value.lotId !== undefined) {
-    if (value.type !== 'trade.buy' || !value.ticker ||
+    const isCashHoldingBuy = value.type === 'cash-holding.buy';
+    if ((!isCashHoldingBuy && value.type !== 'trade.buy') || !value.ticker ||
       typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
       typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
       typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
-      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
-      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) return false;
+      (isCashHoldingBuy
+        ? typeof value.cashHoldingQuantityDelta !== 'number' || !Number.isFinite(value.cashHoldingQuantityDelta)
+        : typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) ||
+      typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0) return false;
     const closeEnough = (left: number, right: number) => Math.abs(left - right) <= 0.011;
+    const quantityDelta = isCashHoldingBuy
+      ? value.cashHoldingQuantityDelta as number
+      : value.positionQuantityDelta as number;
     if (!closeEnough(value.quantity * value.unitPrice, value.grossAmount) ||
-      !closeEnough(value.positionQuantityDelta, value.quantity)) return false;
+      !closeEnough(quantityDelta, value.quantity)) return false;
   }
   if (value.lotAllocations !== undefined) {
-    if (value.type !== 'trade.sell' || !Array.isArray(value.lotAllocations) ||
+    if ((value.type !== 'trade.sell' && value.type !== 'cash-holding.sell') || !Array.isArray(value.lotAllocations) ||
       value.lotAllocations.length === 0 || value.lotAllocations.length > 500 ||
       !value.ticker ||
       typeof value.quantity !== 'number' || !Number.isFinite(value.quantity) || value.quantity <= 0 ||
       typeof value.unitPrice !== 'number' || !Number.isFinite(value.unitPrice) || value.unitPrice <= 0 ||
       typeof value.grossAmount !== 'number' || !Number.isFinite(value.grossAmount) || value.grossAmount < 0 ||
-      typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta) ||
+      (value.type === 'cash-holding.sell'
+        ? typeof value.cashHoldingQuantityDelta !== 'number' || !Number.isFinite(value.cashHoldingQuantityDelta)
+        : typeof value.positionQuantityDelta !== 'number' || !Number.isFinite(value.positionQuantityDelta)) ||
       typeof value.fees !== 'number' || !Number.isFinite(value.fees) || value.fees < 0 ||
       typeof value.financingCost !== 'number' || !Number.isFinite(value.financingCost) || value.financingCost < 0 ||
       typeof value.realizedPnl !== 'number' || !Number.isFinite(value.realizedPnl)) return false;
@@ -152,6 +161,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
       if (!isPlainRecord(rawAllocation)) return false;
       const allocation = rawAllocation;
       if (allocation.identity !== 'stable' && allocation.identity !== 'legacy-unmapped') return false;
+      if (value.type === 'cash-holding.sell' && allocation.identity !== 'stable') return false;
       if (allocation.identity === 'stable') {
         if (typeof allocation.lotId !== 'string' || !allocation.lotId.trim() || allocation.lotId.length > 200 ||
           stableLotIds.has(allocation.lotId)) return false;
@@ -180,7 +190,10 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
       allocatedPnl += allocation.realizedPnl;
     }
     if (value.quantity === undefined || !closeEnough(allocatedQuantity, value.quantity)) return false;
-    if (!closeEnough(value.positionQuantityDelta, -value.quantity)) return false;
+    const saleQuantityDelta = value.type === 'cash-holding.sell'
+      ? value.cashHoldingQuantityDelta as number
+      : value.positionQuantityDelta as number;
+    if (!closeEnough(saleQuantityDelta, -value.quantity)) return false;
     if (!closeEnough(allocatedGross, value.grossAmount)) return false;
     if (value.fees === undefined || !closeEnough(allocatedFees, value.fees)) return false;
     if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
@@ -642,22 +655,46 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
         break;
       }
 
-      case 'cash-holding.buy':
-      case 'cash-holding.sell':
-      case 'cash-holding.adjustment': {
+      case 'cash-holding.buy': {
         const validDelta = event.cashHoldingQuantityDelta !== undefined &&
-          (event.type === 'cash-holding.adjustment' ||
-            (event.type === 'cash-holding.buy' && event.cashHoldingQuantityDelta > 0) ||
-            (event.type === 'cash-holding.sell' && event.cashHoldingQuantityDelta < 0));
+          event.cashHoldingQuantityDelta > 0 &&
+          event.quantity !== undefined &&
+          Math.abs(event.cashHoldingQuantityDelta - event.quantity) <= 1e-8;
+        const hasLotCostBasis = Boolean(event.lotId && event.acquisitionDate &&
+          event.unitPrice !== undefined && event.grossAmount !== undefined && event.fees !== undefined);
         findings.push({
           ...base,
-          disposition: event.ticker && validDelta ? 'replayable' : 'incomplete',
-          reason: event.ticker && validDelta
-            ? 'Cash-holding event contains an explicit signed quantity delta.'
-            : 'Cash-holding event requires an instrument and a correctly signed quantity delta.'
+          disposition: event.ticker && validDelta && hasLotCostBasis ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta && hasLotCostBasis
+            ? 'Cash-holding buy contains a stable acquisition lot and explicit quantity delta.'
+            : 'Cash-holding buy is missing a stable lot ID, acquisition date, price, fee evidence or matching quantity delta.'
         });
         break;
       }
+
+      case 'cash-holding.sell': {
+        const validDelta = event.cashHoldingQuantityDelta !== undefined &&
+          event.cashHoldingQuantityDelta < 0 &&
+          event.quantity !== undefined &&
+          Math.abs(Math.abs(event.cashHoldingQuantityDelta) - event.quantity) <= 1e-8;
+        const hasLotAllocations = Array.isArray(event.lotAllocations) && event.lotAllocations.length > 0;
+        findings.push({
+          ...base,
+          disposition: event.ticker && validDelta && hasLotAllocations ? 'replayable' : 'incomplete',
+          reason: event.ticker && validDelta && hasLotAllocations
+            ? 'Cash-holding sale contains exact FIFO acquisition-lot allocations.'
+            : 'Cash-holding sale is missing exact FIFO lot allocations or a matching negative quantity delta.'
+        });
+        break;
+      }
+
+      case 'cash-holding.adjustment':
+        findings.push({
+          ...base,
+          disposition: 'incomplete',
+          reason: 'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics.'
+        });
+        break;
 
       case 'position.adjustment':
         findings.push({

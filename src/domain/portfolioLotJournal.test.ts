@@ -369,50 +369,142 @@ describe('lot-aware transaction journal replay', () => {
     expect(replay.issues.map((issue) => issue.eventId)).toEqual(['position-adjustment', 'split-adjustment']);
   });
 
-  it('marks cash-holding buys, sells and adjustments incomplete instead of silently claiming lot parity', () => {
-    const cashBuy = createPortfolioTransactionEvent({
+  it('replays cash-holding acquisition lots and FIFO sale allocations against the canonical holding', () => {
+    const acquiredAtOne = Date.parse('2026-11-01T09:00:00.000Z');
+    const acquiredAtTwo = Date.parse('2026-11-02T09:00:00.000Z');
+    const cashBuyOne = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: acquiredAtOne,
+      ticker: 'MSFT',
+      quantity: 2,
+      cashHoldingQuantityDelta: 2,
+      lotId: 'cash-lot-one',
+      acquisitionDate: '2026-11-01',
+      unitPrice: 100,
+      grossAmount: 200,
+      fees: 0,
+      cashDelta: 0
+    }, { eventId: 'cash-buy-one', source: 'lot-journal-test' });
+    const cashBuyTwo = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: acquiredAtTwo,
+      ticker: 'MSFT',
+      quantity: 3,
+      cashHoldingQuantityDelta: 3,
+      lotId: 'cash-lot-two',
+      acquisitionDate: '2026-11-02',
+      unitPrice: 120,
+      grossAmount: 360,
+      fees: 0,
+      cashDelta: 0
+    }, { eventId: 'cash-buy-two', source: 'lot-journal-test' });
+    const cashSale = createPortfolioTransactionEvent({
+      type: 'cash-holding.sell',
+      effectiveAt: Date.parse('2026-11-03T09:00:00.000Z'),
+      ticker: 'MSFT',
+      quantity: 3,
+      cashHoldingQuantityDelta: -3,
+      unitPrice: 110,
+      grossAmount: 330,
+      fees: 1.1,
+      financingCost: 0,
+      netAmount: 328.9,
+      cashDelta: 328.9,
+      marginDebtDelta: 0,
+      realizedPnl: 8.9,
+      lotAllocations: [
+        {
+          lotId: 'cash-lot-one', identity: 'stable', quantity: 2,
+          acquisitionPrice: 100, acquisitionDate: '2026-11-01', acquiredAt: acquiredAtOne,
+          buyCommissionAllocated: 0, sellPrice: 110, sellCommissionAllocated: 0.73,
+          financingCostAllocated: 0, realizedPnl: 19.27
+        },
+        {
+          lotId: 'cash-lot-two', identity: 'stable', quantity: 1,
+          acquisitionPrice: 120, acquisitionDate: '2026-11-02', acquiredAt: acquiredAtTwo,
+          buyCommissionAllocated: 0, sellPrice: 110, sellCommissionAllocated: 0.37,
+          financingCostAllocated: 0, realizedPnl: -10.37
+        }
+      ]
+    }, { eventId: 'cash-sale', source: 'lot-journal-test' });
+
+    const replay = replayPortfolioTransactionLots([cashBuyOne, cashBuyTwo, cashSale]);
+    expect(replay.status).toBe('complete');
+    expect(replay.openLots).toEqual([]);
+    expect(replay.sales).toEqual([]);
+    expect(replay.cashHoldingOpenLots).toMatchObject([{
+      lotId: 'cash-lot-two',
+      ticker: 'MSFT',
+      acquiredQuantity: 3,
+      openQuantity: 2,
+      acquisitionPrice: 120,
+      openBuyCommission: 0
+    }]);
+    expect(replay.cashHoldingSales).toMatchObject([{
+      eventId: 'cash-sale',
+      ticker: 'MSFT',
+      quantity: 3,
+      soldCostBasis: 320,
+      grossProceeds: 330,
+      grossProfit: 10,
+      commissions: 1.1,
+      financingCost: 0,
+      realizedPnl: 8.9
+    }]);
+
+    const parity = verifyPortfolioTransactionLotParity([cashBuyOne, cashBuyTwo, cashSale], {
+      positions: {},
+      closedTrades: [],
+      cashHoldings: [{
+        ticker: 'MSFT',
+        shares: 2,
+        lots: [{
+          lotId: 'cash-lot-two',
+          qty: 2,
+          price: 120,
+          date: '2026-11-02',
+          acquiredAt: acquiredAtTwo,
+          buyCommission: 0
+        }]
+      }]
+    });
+    expect(parity).toMatchObject({ status: 'complete', matches: true, discrepancies: [], issues: [] });
+  });
+
+  it('keeps broker-only, unpriced and tracking-removal cash quantities explicitly incomplete', () => {
+    const unpricedBuy = createPortfolioTransactionEvent({
       type: 'cash-holding.buy',
       effectiveAt: Date.parse('2026-11-02'),
       ticker: 'MSFT',
       quantity: 5,
       cashHoldingQuantityDelta: 5,
-      unitPrice: 100,
-      grossAmount: 500,
       cashDelta: 0,
-      note: 'Cash-holding cost basis is not tracked.'
-    }, { eventId: 'cash-buy', source: 'lot-journal-test' });
-    const cashSell = createPortfolioTransactionEvent({
-      type: 'cash-holding.sell',
-      effectiveAt: Date.parse('2026-11-03'),
-      ticker: 'MSFT',
-      quantity: 2,
-      cashHoldingQuantityDelta: -2,
-      unitPrice: 110,
-      grossAmount: 220,
-      fees: 1,
-      cashDelta: 219,
-      note: 'Cash-holding sale has no lot allocation.'
-    }, { eventId: 'cash-sell', source: 'lot-journal-test' });
+      note: 'No execution price was supplied.'
+    }, { eventId: 'unpriced-cash-buy', source: 'legacy-import' });
     const cashAdjustment = createPortfolioTransactionEvent({
       type: 'cash-holding.adjustment',
       effectiveAt: Date.parse('2026-11-04'),
       ticker: 'MSFT',
-      cashHoldingQuantityDelta: -3,
+      cashHoldingQuantityDelta: -5,
       note: 'Holding removed from tracking.'
     }, { eventId: 'cash-adjustment', source: 'lot-journal-test' });
 
-    const replay = replayPortfolioTransactionLots([buyOne, cashBuy, cashSell, cashAdjustment]);
+    const replay = replayPortfolioTransactionLots([unpricedBuy, cashAdjustment]);
     expect(replay.status).toBe('incomplete');
-    expect(replay.openLots).toMatchObject([{ lotId: 'lot-one', openQuantity: 2 }]);
+    expect(replay.cashHoldingOpenLots).toEqual([]);
+    expect(replay.cashHoldingSales).toEqual([]);
     expect(replay.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ eventId: 'cash-buy', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') }),
-      expect.objectContaining({ eventId: 'cash-sell', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') }),
-      expect.objectContaining({ eventId: 'cash-adjustment', disposition: 'incomplete', reason: expect.stringContaining('cash-holding lot replay') })
+      expect.objectContaining({ eventId: 'unpriced-cash-buy', disposition: 'incomplete' }),
+      expect.objectContaining({ eventId: 'cash-adjustment', disposition: 'incomplete' })
     ]));
-    expect(verifyPortfolioTransactionLotParity([buyOne, cashBuy], {
-      positions: { AAPL: { shares: 2, commBuy: 2, tranches: [{ lotId: 'lot-one', qty: 2, price: 100, date: '2026-11-01', buyCommission: 2 }] } },
-      closedTrades: []
-    }).status).toBe('incomplete');
+
+    const parity = verifyPortfolioTransactionLotParity([unpricedBuy], {
+      cashHoldings: [{ ticker: 'MSFT', shares: 5 }]
+    });
+    expect(parity.status).toBe('incomplete');
+    expect(parity.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: expect.stringContaining('no app-recorded acquisition lots') })
+    ]));
   });
 
   it('rejects invalid replay tolerances', () => {
