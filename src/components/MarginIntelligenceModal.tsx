@@ -4,7 +4,6 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
-import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
 import type { MarginIntelligenceState } from '../features/ai/marginIntelligenceState';
 export type { MarginIntelligenceState } from '../features/ai/marginIntelligenceState';
 import {
