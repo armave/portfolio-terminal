@@ -1,6 +1,6 @@
 import { portfolioStore } from '../../store/portfolioStore';
 import { getAppLanguage } from '../../services/i18n';
-import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalance, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
@@ -342,18 +342,13 @@ export class ScenarioCalculator {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
-      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'],
+      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'],
       rows: (() => {
         const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
-        // Remaining cash is the signed broker cash/debt plus app-tracked free cash.
-        // valuation.cashBalance intentionally clamps debt to zero for collateral/risk;
-        // do not use it here or margin-funded accounts will incorrectly show $0.
-        const freeCashUsedByPurchase = Math.min(freeCash, totalOutlay);
-        const remainingFreeCashAfterPurchase = Math.max(0, freeCash - freeCashUsedByPurchase);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
           money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {
@@ -381,14 +376,14 @@ export class ScenarioCalculator {
               signed(afterNet),
               feesWithDailyMargin(currentFees, currentDebtAtDate * rules.dailyRate),
               feesWithDailyMargin(afterFees, afterDebtAtDate * rules.dailyRate),
-              money(balance + freeCash - (currentDebtAtDate - currentDebt)),
-              money(balanceAfter + remainingFreeCashAfterPurchase - (afterDebtAtDate - projectedDebt))
+              money(calculateProjectedAccountBalance(balance, rules.dailyRate, item.daysFromToday)),
+              money(calculateProjectedAccountBalance(balanceAfter, rules.dailyRate, item.daysFromToday))
             ],
             kind: item.kind === 'today' ? 'result' as const : 'fee' as const
           };
         });
       })(),
-      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Cash shows the signed broker cash/debt plus app free cash before and after the purchase. No portfolio mutation or order placement occurs.'
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows the signed broker account balance before and after the purchase. No portfolio mutation or order placement occurs.'
     };
     const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice);
     const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice);

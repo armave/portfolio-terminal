@@ -14,7 +14,8 @@ describe('Buy More blocked preview presentation', () => {
     expect(source).toContain("translateText('Projected target price', language)");
     expect(source).toContain('projectionPrice: projectionPriceInput');
     expect(source).toContain('previewBuyMoreScenario(ticker, shares, purchasePrice, projectionPrice)');
-    expect(source).toContain("['Net P&L', 'Fees & comm.', 'Remaining cash', 'Net P&L', 'Fees & comm.', 'Remaining cash']");
+    expect(source).toContain("['Net P&L', 'Fees & comm.', 'Balance', 'Net P&L', 'Fees & comm.', 'Balance']");
+    expect(source).not.toContain('Remaining cash');
     expect(source).toContain('colSpan={3}');
     expect(source).not.toContain("translateText('Margin fee', language)");
   });

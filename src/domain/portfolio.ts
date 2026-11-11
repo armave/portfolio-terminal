@@ -450,6 +450,16 @@ export function calculateProjectedDebt(principal: number, dailyRate: number, day
   return Number.isFinite(projected) ? Number(projected.toFixed(2)) : 0;
 }
 
+/** Project the signed broker account balance, compounding only negative margin debt. */
+export function calculateProjectedAccountBalance(
+  signedBalance: number, dailyRate: number, days: number
+): number {
+  if (![signedBalance, dailyRate, days].every(Number.isFinite)) return 0;
+  const balance = Number(signedBalance);
+  if (balance < 0) return -calculateProjectedDebt(Math.abs(balance), dailyRate, days);
+  return Number(balance.toFixed(2));
+}
+
 export function calculateAccruedFees(
   totalComms: number,
   marginCharged: number,

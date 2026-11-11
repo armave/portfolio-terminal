@@ -20,10 +20,10 @@ const validPreferences: BuyMorePreferences = {
   version: 1, ticker: 'AAPL', shares: '5', price: '105.25', projectionPrice: '130.00',
   lastResult: {
     savedAt: 100,
-    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'],
+    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'],
     rows: [{
       label: 'Tue, Nov 10 · TODAY',
-      values: ['+$10.00', '+$12.00', '$1.00 {$0.10/day}', '$1.50 {$0.12/day}', '$500.00', '$300.00'],
+      values: ['+$10.00', '+$12.00', '$1.00 {$0.10/day}', '$1.50 {$0.12/day}', '-$1,000.00', '-$1,000.00'],
       kind: 'result'
     }],
     note: 'Estimate only.',
@@ -99,7 +99,7 @@ describe('Market Tools Buy More preview', () => {
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
       ...state,
       balance: -1_000,
-      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 700 },
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 100 },
       brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
       positions: {
         AAPL: {
@@ -117,23 +117,24 @@ describe('Market Tools Buy More preview', () => {
     expect(baseline.type).toBe('res');
     expect(custom.type).toBe('res');
     expect(custom.modal?.columns).toEqual([
-      'NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'
+      'NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'
     ]);
     expect(custom.text).toContain('Net P&L at projection price ($150.00):');
     expect(today?.values).toHaveLength(6);
     expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
     expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
-    // Signed remaining cash includes the broker balance/debt and app free cash.
-    // The hypothetical order consumes free cash first, then adds any remainder to debt.
-    expect(today?.values[4]).toBe('-$300.00');
+    // Balance is the signed broker ledger. Cash Cushion free cash funds the order first;
+    // only the shortfall reduces the broker balance, and daily interest compounds debt.
+    expect(today?.values[4]).toBe('-$1,000.00');
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
-    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(-300 - cashNeeded, 2);
+    const balanceAfter = -1_000 - Math.max(0, cashNeeded - 100);
+    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(balanceAfter, 2);
     const later = custom.modal?.rows.find(row => row.kind === 'fee' && row.values[4] !== '—');
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
-    expect(parseSignedMoney(later?.values[4])).toBeLessThan(-300);
-    expect(parseSignedMoney(later?.values[5])).toBeLessThan(-300 - cashNeeded);
+    expect(parseSignedMoney(later?.values[4])).toBeLessThan(-1_000);
+    expect(parseSignedMoney(later?.values[5])).toBeLessThan(balanceAfter);
   });
 });
 

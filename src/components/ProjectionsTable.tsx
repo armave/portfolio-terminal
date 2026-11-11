@@ -2,6 +2,7 @@ import { memo } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 import {
   calculateAccruedFees,
+  calculateProjectedAccountBalance,
   calculateProjectedDebt,
   findProjectionBreakevenDay
 } from '../domain/portfolio';
@@ -83,6 +84,9 @@ function ProjectionsTableView() {
         const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
         const net = kind === 'breakeven' ? 0 : projectedNet;
         const dailyFee = projectedDebt * dailyRate;
+        const projectedAccountBalance = calculateProjectedAccountBalance(
+          Number(state.balance ?? 0), dailyRate, daysFromToday
+        );
 
         const rowClass = kind === 'today'
           ? 'bg-slate-900/80 font-bold'
@@ -122,7 +126,9 @@ function ProjectionsTableView() {
             <td class="py-1 px-2 text-slate-400">
               {formatUSD(marginFee)} ({formatUSD(dailyFee)})
             </td>
-            <td class="py-1 px-2 text-rose-400">-{formatUSD(projectedDebt)}</td>
+            <td class={`py-1 px-2 ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
+              {formatUSD(projectedAccountBalance)}
+            </td>
           </tr>
         );
       })}
