@@ -81,9 +81,10 @@ describe('broker history adapter boundary', () => {
 describe('Balance guest grouping', () => {
   it('keeps guest group headings as stable keyed table sibling rows', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    const modelSource = readFileSync(new URL('../features/cash/cashCushionModel.ts', import.meta.url), 'utf8');
 
-    expect(deskSource).toContain("type: 'group'");
-    expect(deskSource).toContain("type: 'holding'");
+    expect(modelSource).toContain("type: 'group'");
+    expect(modelSource).toContain("type: 'holding'");
     expect(deskSource).toContain('<tr key={row.key} class="cash-holding-group-row');
     expect(deskSource).toContain('text-center');
     expect(deskSource).not.toContain('h.isGroupStart');
@@ -232,7 +233,9 @@ describe('cash holdings quote context', () => {
 
   it('does not nest the group heading inside a conditional holding fragment', () => {
     const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
-    expect(deskSource).toContain('buildCashHoldingTableRows<');
+    const modelSource = readFileSync(new URL('../features/cash/cashCushionModel.ts', import.meta.url), 'utf8');
+    expect(modelSource).toContain('buildCashHoldingTableRows');
+    expect(deskSource).toContain('buildCashHoldingDisplayGroups');
     expect(deskSource).toContain("if (row.type === 'group')");
     expect(deskSource).not.toContain('<Fragment key={`${h.groupKey}-${h.ticker}`}>');
     expect(deskSource).not.toContain('h.isGroupStart');
@@ -322,12 +325,13 @@ describe('Balance cache-first rendering wiring', () => {
   });
 
   it('keeps guest group rows stable without exposing raw IDs while names resolve', () => {
+    const modelSource = readFileSync(new URL('../features/cash/cashCushionModel.ts', import.meta.url), 'utf8');
     expect(deskSource).toContain('getCachedUsers()');
     expect(deskSource).toContain('guestDirectoryPending');
-    expect(deskSource).toContain("label: guestNames.get(guestId) || (guestDirectoryPending ? '' : translateText('Guest unavailable'");
+    expect(modelSource).toContain("label: input.guestNames.get(guestId) ||");
     expect(deskSource).toContain("translateText('Loading guest name', getAppLanguage())");
-    expect(deskSource).not.toContain('guestNames.get(guestId) || guestId');
-    expect(deskSource).toContain("...(isAdmin\n      ? [{ type: 'group' as const");
+    expect(modelSource).not.toContain('guestNames.get(guestId) || guestId');
+    expect(modelSource).toContain("...(unassignedHoldings.length");
   });
 
   it('uses the shared role-specific quote refresh defaults', () => {
