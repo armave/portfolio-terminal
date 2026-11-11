@@ -16,21 +16,11 @@ export function shouldShowCashHoldingMarketDepth(date = new Date()): boolean {
   return getUsEquityMarketSession(date) !== 'CLOSED';
 }
 
-type CashHoldingGroup<T extends { ticker: string }> = {
-  key: string;
-  label: string;
-  holdings: T[];
-};
-
-type CashHoldingTableRow<T extends { ticker: string }> =
-  | { type: 'group'; key: string; label: string }
-  | { type: 'holding'; key: string; holding: T };
-
 /**
  * Build table rows at group granularity. Group headings have their own stable
  * keyed sibling rows, instead of being nested inside the first holding fragment.
  */
-export export function selectCashCushionPortfolioState(state: PortfolioState) {
+export function selectCashCushionPortfolioState(state: PortfolioState) {
   return {
     brokerAccountInfo: state.brokerAccountInfo,
     brokerExecutedTrades: state.brokerExecutedTrades,
@@ -164,8 +154,8 @@ export function getActiveTrancheMarketPrice(
  * Summarize only positive-share holdings with verifiable positive market prices.
  * Missing prices remain visible as unpriced rather than being valued at zero.
  */
-export function summarizeCashHoldings(
-  holdings: ReadonlyArray<{ shares: unknown; currentPrice?: unknown; price?: unknown }>
+export function summarizeCashHoldings<T extends { shares: unknown; currentPrice?: unknown; price?: unknown }>(
+  holdings: ReadonlyArray<T>
 ): { unpricedHoldingCount: number; pricedHoldingCount: number; stocksTotal: number } {
   let unpricedHoldingCount = 0;
   let pricedHoldingCount = 0;
