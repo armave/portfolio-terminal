@@ -72,20 +72,20 @@ describe('app localization', () => {
     const buyMoreCopy = [
       'Buy More',
       'Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.',
-      'Buy More Scenario', 'Additional shares', 'Purchase price', 'Current position', 'After purchase',
+      'Buy More Scenario', 'Additional shares', 'Purchase price', 'Projected target price', 'Current position', 'After purchase',
       'Current shares', 'Average entry', 'Market quote', 'Target price',
       'Purchase value · excl fees', 'Projected shares', 'Projected average entry',
-      'Net P&L', 'Fees & commissions', 'Margin fee', 'Balance', 'Date',
+      'Net P&L', 'Fees & comm.', 'Remaining cash', 'Date',
       'Choose a position',
       'There are no open positions available for a buy-more preview.',
-      'Enter a positive share amount and purchase price to calculate this scenario.',
+      'Enter positive shares, purchase price and projected target price to calculate this scenario.',
       'Use market quote', 'Use average entry', 'Reset defaults', 'Buy More results',
       'Inputs and latest results are saved automatically in this browser for this account.',
       'Last saved',
       'This is the last saved estimate. Current inputs or portfolio data do not support a fresh calculation.',
       'Close Buy More', 'Projection price', 'Scenario summary', 'Updated live',
       'Current position and after purchase projection amounts by date.',
-      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.',
+      'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Cash shows the signed broker cash/debt plus app free cash before and after the purchase. No portfolio mutation or order placement occurs.',
       'Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.'
     ];
     for (const copy of buyMoreCopy) {
