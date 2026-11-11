@@ -38,7 +38,7 @@ describe('Margin Intelligence runtime', () => {
     vi.clearAllMocks();
   });
 
-  it('loads a matching cached review without refetching news or regenerating analysis', async () => {
+  it('loads a saved review without refetching news and preserves its stale/migration warnings', async () => {
     const recorder = createStateRecorder();
     const snapshot = createSnapshot();
     const loadDigest = vi.fn().mockResolvedValue({
@@ -49,6 +49,7 @@ describe('Margin Intelligence runtime', () => {
         ticker: 'AAPL',
         analysis: 'Saved analysis',
         articles: [],
+        coverage: [],
         snapshotFingerprint: 'cached-fingerprint',
         snapshotAsOf: nowIso(),
         promptVersion: 4,
@@ -137,11 +138,12 @@ describe('Margin Intelligence runtime', () => {
     runtime.dispose();
   });
 
-  it('does not let a slower valid request overwrite a newer invalid ticker request', async () => {
+  it('does not let a slower valid request overwrite a newer invalid ticker request or spend an AI call', async () => {
     const recorder = createStateRecorder();
     const snapshot = createSnapshot();
-    let resolveLoad: ((value: null) => void) | undefined;
-    const loadDigest = vi.fn(() => new Promise<null>((resolve) => { resolveLoad = resolve; }));
+    let resolveLoad!: (value: null) => void;
+    const pendingLoad = new Promise<null>((resolve) => { resolveLoad = resolve; });
+    const loadDigest = vi.fn(() => pendingLoad);
     const runtime = createMarginIntelligenceRuntime({
       canViewMarginDesk: () => true,
       getPortfolioState: () => snapshot,
@@ -154,11 +156,11 @@ describe('Margin Intelligence runtime', () => {
     });
 
     const firstRequest = runtime.handleRequest({ ticker: 'AAPL' });
-    await Promise.resolve();
     await runtime.handleRequest({ ticker: 'MISSING' });
-    resolveLoad?.(null);
+    resolveLoad(null);
     await firstRequest;
 
+    expect(generateAnalysis).not.toHaveBeenCalled();
     expect(recorder.getState()).toMatchObject({
       scope: 'position',
       ticker: 'MISSING',

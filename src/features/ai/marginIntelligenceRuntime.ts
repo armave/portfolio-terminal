@@ -151,6 +151,7 @@ export function createMarginIntelligenceRuntime(
         dependencies.refreshIntervalMs
       );
       const latestCacheFingerprint = await fingerprint(latestCacheInput.snapshotIdentity);
+      if (!requestGuard.isCurrent(requestId)) return;
 
       if (cached && !detail?.refresh) {
         const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
@@ -210,6 +211,7 @@ export function createMarginIntelligenceRuntime(
           };
         }
       }));
+      if (!requestGuard.isCurrent(requestId)) return;
 
       const { articles, coverage } = selectMarginReviewNews(newsResults, reviewInput.priorityTickers);
       const prompt = buildMarginReviewPrompt(reviewInput.portfolioContext, coverage, articles);
@@ -269,6 +271,7 @@ export function createMarginIntelligenceRuntime(
         dependencies.refreshIntervalMs
       );
       const postSaveFingerprint = await fingerprint(postSaveInput.snapshotIdentity);
+      if (!requestGuard.isCurrent(requestId)) return;
       const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
       dependencies.setState({
         title,
