@@ -130,7 +130,7 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
     // Balance is the resulting cash after selling all shares at the projected target.
-    const scenarioRules = { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 };
+    const scenarioRules = { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
     const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
