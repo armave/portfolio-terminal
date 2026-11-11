@@ -246,7 +246,7 @@ describe('canonical margin risk integration', () => {
 
 describe('Margin Intelligence risk context integration', () => {
   it('uses the canonical risk calculation and carries its provenance into the AI snapshot', () => {
-    const source = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../features/ai/marginIntelligenceContext.ts', import.meta.url), 'utf8');
     expect(source).toContain('calculateMarginRiskSnapshot');
     expect(source).toContain('hasUnresolvedBrokerPositionIntegrity(snapshot.brokerAccountInfo)');
     expect(source).toContain('positionIntegrityComplete');
