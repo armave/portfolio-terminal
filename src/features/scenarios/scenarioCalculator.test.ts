@@ -17,13 +17,13 @@ function createStorage() {
   };
 }
 const validPreferences: BuyMorePreferences = {
-  version: 1, ticker: 'AAPL', shares: '5', price: '105.25',
+  version: 1, ticker: 'AAPL', shares: '5', price: '105.25', projectionPrice: '130.00',
   lastResult: {
     savedAt: 100,
-    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
+    columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'],
     rows: [{
       label: 'Tue, Nov 10 · TODAY',
-      values: ['+$10.00', '+$12.00', '$1.00', '$1.50', '$0.10', '$0.12', '−$100.00', '−$200.00'],
+      values: ['+$10.00', '+$12.00', '$1.00 {$0.10/day}', '$1.50 {$0.12/day}', '$500.00', '$300.00'],
       kind: 'result'
     }],
     note: 'Estimate only.',
@@ -36,6 +36,13 @@ describe('Buy More preferences', () => {
     expect(saveBuyMorePreferences('buy-more:user-a', validPreferences, storage)).toBe(true);
     expect(loadBuyMorePreferences('buy-more:user-a', storage)).toEqual(validPreferences);
     expect(loadBuyMorePreferences('buy-more:user-b', storage)).toBeNull();
+  });
+  it('restores older version-1 preferences without a projection price', () => {
+    const storage = createStorage();
+    const legacy = { ...validPreferences } as Partial<BuyMorePreferences>;
+    delete legacy.projectionPrice;
+    storage.setItem('legacy', JSON.stringify(legacy));
+    expect(loadBuyMorePreferences('legacy', storage)?.projectionPrice).toBeUndefined();
   });
   it('normalizes ticker casing and rejects malformed snapshots', () => {
     const storage = createStorage();
@@ -74,14 +81,52 @@ describe('Market Tools Buy More preview', () => {
     const result = ScenarioCalculator.previewBuyMoreScenario('aapl', 5, 105);
     expect(result.type).toBe('res');
     expect(result.modal?.kind).toBe('buy-more');
-    expect(result.modal?.columns).toHaveLength(8);
+    expect(result.modal?.columns).toHaveLength(6);
     expect(result.modal?.rows.length).toBeGreaterThan(0);
-    expect(result.modal?.rows.every(row => row.values.length === 8)).toBe(true);
+    expect(result.modal?.rows.every(row => row.values.length === 6)).toBe(true);
     expect(buyStock).not.toHaveBeenCalled();
     expect(sellStock).not.toHaveBeenCalled();
     expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 0, 105).type).toBe('err');
     expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 0).type).toBe('err');
+    expect(ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 0).type).toBe('err');
     expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
+  });
+
+  it('uses a supplied projected target price for P&L and the compact cash/fee columns', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-11T08:00:00.000Z'));
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      balance: -1_000,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 700 },
+      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
+          startDate: '2026-11-10',
+          tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
+        }
+      }
+    } as any);
+
+    const baseline = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
+    const custom = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 150);
+    const today = custom.modal?.rows.find(row => row.kind === 'result');
+
+    expect(baseline.type).toBe('res');
+    expect(custom.type).toBe('res');
+    expect(custom.modal?.columns).toEqual([
+      'NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'
+    ]);
+    expect(custom.text).toContain('Net P&L at projection price ($150.00):');
+    expect(today?.values).toHaveLength(6);
+    expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
+    expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
+    expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
+    expect(today?.values[4]).toBe('$700.00');
+    const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
+    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(700 - cashNeeded, 2);
   });
 });
 

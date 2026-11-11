@@ -41,15 +41,18 @@ export class ScenarioCalculator {
 
   /** Read-only entry point for the Market Tools buy-more calculator. */
 
-  static previewBuyMoreScenario(tickerArg: string, shares: number, price: number): ScenarioCalculationOutput {
+  static previewBuyMoreScenario(
+    tickerArg: string, shares: number, price: number, projectionPrice?: number
+  ): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) ||
       !Number.isFinite(shares) || shares <= 0 ||
       !Number.isFinite(price) || price <= 0 ||
-      !Number.isFinite(shares * price)) {
+      !Number.isFinite(shares * price) ||
+      (projectionPrice !== undefined && (!Number.isFinite(projectionPrice) || projectionPrice <= 0))) {
       return { type: 'err', text: 'Enter a valid position, positive share amount and purchase price.' };
     }
     try {
-      return this.evaluateBuyScenario(shares, tickerArg.toUpperCase(), price);
+      return this.evaluateBuyScenario(shares, tickerArg.toUpperCase(), price, projectionPrice);
     } catch (error) {
       return {
         type: 'err',
@@ -202,7 +205,9 @@ export class ScenarioCalculator {
     return { type: 'res', text, modal };
   }
 
-  private static evaluateBuyScenario(qty: number, ticker: string, price: number): ScenarioCalculationOutput {
+  private static evaluateBuyScenario(
+    qty: number, ticker: string, price: number, projectionPriceOverride?: number
+  ): ScenarioCalculationOutput {
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
       throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
     }
@@ -323,6 +328,7 @@ export class ScenarioCalculator {
     const newAverage = newCost / newShares;
     const target = Number(pos.pt);
     const hasTarget = Number.isFinite(target) && target > 0;
+    const projectionPrice = projectionPriceOverride ?? (hasTarget ? target : quote);
     const downsidePrice = quote * 0.9;
     const currentMargin = calculateMarginInterest(pos.tranches || [], {
       dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
@@ -336,14 +342,17 @@ export class ScenarioCalculator {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
-      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
+      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Cash', 'AFTER Cash'],
       rows: (() => {
-        const projectionPrice = hasTarget ? target : quote;
         const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
+        const cashUsedByPurchase = Math.min(valuation.cashBalance, totalOutlay);
+        const remainingCashAfterPurchase = Math.max(0, valuation.cashBalance - cashUsedByPurchase);
+        const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
+          money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {
           const dateLabel = item.date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
             weekday: 'short', month: 'short', day: 'numeric'
@@ -352,7 +361,7 @@ export class ScenarioCalculator {
             ? dateLabel + ' · TODAY'
             : dateLabel + (item.label ? ' · ' + item.label.replace(/^\\(|\\)$/g, '') : '');
           if (item.kind === 'entry') {
-            return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
+            return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
           }
           const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
           const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
@@ -367,21 +376,19 @@ export class ScenarioCalculator {
             values: [
               signed(currentNet),
               signed(afterNet),
-              money(currentFees),
-              money(afterFees),
-              money(currentMargin + currentAccrual) + ' (' + money(currentDebtAtDate * rules.dailyRate) + ')',
-              money(currentMargin + afterAccrual) + ' (' + money(afterDebtAtDate * rules.dailyRate) + ')',
-              '−' + money(currentDebtAtDate),
-              '−' + money(afterDebtAtDate)
+              feesWithDailyMargin(currentFees, currentDebtAtDate * rules.dailyRate),
+              feesWithDailyMargin(afterFees, afterDebtAtDate * rules.dailyRate),
+              money(valuation.cashBalance),
+              money(remainingCashAfterPurchase)
             ],
             kind: item.kind === 'today' ? 'result' as const : 'fee' as const
           };
         });
       })(),
-      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.'
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Cash shows the amount available before and after the purchase. No portfolio mutation or order placement occurs.'
     };
-    const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
-    const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
+    const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice);
+    const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice);
     const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote) - scenarioPnl(oldShares, oldCost, oldBuyFee, quote);
     const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice) - scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice);
     const lines = [
@@ -389,7 +396,7 @@ export class ScenarioCalculator {
       'Cash needed: ' + money(totalOutlay) + ' incl. fee',
       'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
       'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote)),
-      ...(hasTarget ? ['Net P&L at target: ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl)] : []),
+      'Net P&L at projection price (' + money(projectionPrice) + '): ' + signed(projectionOldPnl) + ' → ' + signed(projectionNewPnl),
       'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice)),
       'Final margin balance: ' + money(balance) + ' → ' + money(balanceAfter),
       'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',

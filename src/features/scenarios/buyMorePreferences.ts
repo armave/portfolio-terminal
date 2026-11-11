@@ -15,6 +15,7 @@ export interface BuyMorePreferences {
   ticker: string;
   shares: string;
   price: string;
+  projectionPrice?: string;
   lastResult: BuyMoreSavedResult | null;
 }
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
@@ -29,7 +30,7 @@ function normalizeSavedResult(value: unknown): BuyMoreSavedResult | null {
   if (!value || typeof value !== 'object') return null;
   const result = value as Record<string, unknown>;
   if (!Number.isFinite(Number(result.savedAt)) ||
-    !Array.isArray(result.columns) || result.columns.length !== 8 ||
+    !Array.isArray(result.columns) || result.columns.length !== 6 ||
     !result.columns.every((entry) => typeof entry === 'string') ||
     !Array.isArray(result.rows) || result.rows.length > 3000 ||
     typeof result.note !== 'string' || typeof result.summary !== 'string') return null;
@@ -37,7 +38,7 @@ function normalizeSavedResult(value: unknown): BuyMoreSavedResult | null {
   for (const candidate of result.rows) {
     if (!candidate || typeof candidate !== 'object') return null;
     const row = candidate as Record<string, unknown>;
-    if (typeof row.label !== 'string' || !Array.isArray(row.values) || row.values.length !== 8 ||
+    if (typeof row.label !== 'string' || !Array.isArray(row.values) || row.values.length !== 6 ||
       !row.values.every((entry) => typeof entry === 'string')) return null;
     const kind = ['section', 'fee', 'result', 'risk', 'balance'].includes(String(row.kind))
       ? row.kind as BuyMoreSavedRow['kind'] : undefined;
@@ -68,6 +69,7 @@ export function loadBuyMorePreferences(
     return {
       version: 1, ticker: parsed.ticker.toUpperCase(),
       shares: parsed.shares.slice(0, 32), price: parsed.price.slice(0, 32),
+      ...(typeof parsed.projectionPrice === 'string' ? { projectionPrice: parsed.projectionPrice.slice(0, 32) } : {}),
       lastResult: normalizeSavedResult(parsed.lastResult)
     };
   } catch { return null; }
@@ -76,13 +78,15 @@ export function saveBuyMorePreferences(
   key: string, preferences: BuyMorePreferences, storage: StorageLike | null = getSafeStorage()
 ): boolean {
   if (!storage || !key || preferences.version !== 1 || !validTicker(preferences.ticker) ||
-    typeof preferences.shares !== 'string' || typeof preferences.price !== 'string') return false;
+    typeof preferences.shares !== 'string' || typeof preferences.price !== 'string' ||
+    (preferences.projectionPrice !== undefined && typeof preferences.projectionPrice !== 'string')) return false;
   try {
     const normalized = normalizeSavedResult(preferences.lastResult);
     if (preferences.lastResult !== null && !normalized) return false;
     storage.setItem(key, JSON.stringify({
       version: 1, ticker: preferences.ticker.toUpperCase(),
       shares: preferences.shares.slice(0, 32), price: preferences.price.slice(0, 32),
+      ...(typeof preferences.projectionPrice === 'string' ? { projectionPrice: preferences.projectionPrice.slice(0, 32) } : {}),
       lastResult: normalized
     }));
     return true;

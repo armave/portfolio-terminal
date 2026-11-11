@@ -1024,6 +1024,10 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Buy More results": "Результаты дополнительной покупки",
   "Close Buy More": "Закрыть сценарий дополнительной покупки",
   "Projection price": "Цена для прогноза",
+  "Projected target price": "Целевая цена прогноза",
+  "Remaining cash": "Остаток денежных средств",
+  "Fees & comm.": "Сборы и комиссии",
+  "Enter positive shares, purchase price and projected target price to calculate this scenario.": "Для расчёта сценария укажите положительное количество акций, цену покупки и целевую цену прогноза."
   "Scenario summary": "Сводка сценария",
   "Updated live": "Обновлено в реальном времени",
   "Current position and after purchase projection amounts by date.": "Суммы текущей позиции и прогноза после покупки по датам.",
