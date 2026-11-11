@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime } from '../utils/relativeTime';
-import { getClosestDatedMarketEvents } from './MarketInsightsPanel';
-import { formatNewsRelativeTime, getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
+import {
+  formatNewsRelativeTime,
+  getClosestDatedMarketEvents,
+  getStocktwitsCashtags,
+  getVisibleStocktwitsMessages,
+  hasStocktwitsCommentary,
+  isBearishStocktwitsMessage,
+  isStandaloneStocktwitsMessage
+} from '../features/quotes/marketInsightsContent';
 
 describe('formatNewsRelativeTime', () => {
   it('converts positive provider Unix seconds into relative time', () => {
