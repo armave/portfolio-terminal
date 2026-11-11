@@ -349,8 +349,11 @@ export class ScenarioCalculator {
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
-        const cashUsedByPurchase = Math.min(valuation.cashBalance, totalOutlay);
-        const remainingCashAfterPurchase = Math.max(0, valuation.cashBalance - cashUsedByPurchase);
+        // Remaining cash is the signed broker cash/debt plus app-tracked free cash.
+        // valuation.cashBalance intentionally clamps debt to zero for collateral/risk;
+        // do not use it here or margin-funded accounts will incorrectly show $0.
+        const freeCashUsedByPurchase = Math.min(freeCash, totalOutlay);
+        const remainingFreeCashAfterPurchase = Math.max(0, freeCash - freeCashUsedByPurchase);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
           money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {
@@ -378,8 +381,8 @@ export class ScenarioCalculator {
               signed(afterNet),
               feesWithDailyMargin(currentFees, currentDebtAtDate * rules.dailyRate),
               feesWithDailyMargin(afterFees, afterDebtAtDate * rules.dailyRate),
-              money(valuation.cashBalance),
-              money(remainingCashAfterPurchase)
+              money(balance + freeCash - (currentDebtAtDate - currentDebt)),
+              money(balanceAfter + remainingFreeCashAfterPurchase - (afterDebtAtDate - projectedDebt))
             ],
             kind: item.kind === 'today' ? 'result' as const : 'fee' as const
           };

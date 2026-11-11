@@ -124,9 +124,14 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[0]).not.toBe(baseline.modal?.rows.find(row => row.kind === 'result')?.values[0]);
     expect(today?.values[2]).toMatch(/\{\$[\d.]+\/day\}$/);
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
-    expect(today?.values[4]).toBe('$700.00');
+    // Signed remaining cash includes the broker balance/debt and app free cash.
+    // The hypothetical order consumes free cash first, then adds any remainder to debt.
+    expect(today?.values[4]).toBe('-$300.00');
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
-    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(700 - cashNeeded, 2);
+    expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(-300 - cashNeeded, 2);
+    const later = custom.modal?.rows.find(row => row.label.includes('+2D'));
+    expect(Number(later?.values[4].replace(/[$,]/g, ''))).toBeLessThan(-300);
+    expect(Number(later?.values[5].replace(/[$,]/g, ''))).toBeLessThan(-300 - cashNeeded);
   });
 });
 
