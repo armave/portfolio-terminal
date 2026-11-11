@@ -5,7 +5,6 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
 import type { MarginIntelligenceState } from '../features/ai/marginIntelligenceState';
-export type { MarginIntelligenceState } from '../features/ai/marginIntelligenceState';
 import {
   formatMarginCoverageStatus,
   formatMarginFetchedLabel,

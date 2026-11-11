@@ -22,7 +22,7 @@ import {
   type MarginIntelligenceState
 } from './marginIntelligenceState';
 
-export interface MarginIntelligenceRequestDetail {
+interface MarginIntelligenceRequestDetail {
   ticker?: string;
   refresh?: boolean;
 }
