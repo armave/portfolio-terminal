@@ -5,6 +5,7 @@ import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/p
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
+import { calculatePositionMetrics, getTotalPortfolioInvested } from '../../domain/portfolioSelectors';
 import type { ScenarioModalData } from './scenarioContracts';
 
 const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
@@ -230,7 +231,7 @@ export class ScenarioCalculator {
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance);
-    const freeCash = Number(state.cashCushion?.freeCash ?? 0);
+    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
     }
@@ -322,26 +323,36 @@ export class ScenarioCalculator {
     const freeCashUsedForPurchase = Math.min(freeCash, totalOutlay);
     const remainingFreeCashAfterPurchase = Math.max(0, freeCash - freeCashUsedForPurchase);
     const currentDebt = Math.max(0, -balance);
+    const currentPositionMetrics = calculatePositionMetrics(state, pos, state.brokerAssumptions, rules.dailyRate);
+    const currentAllocatedDebt = currentPositionMetrics.allocatedDebt;
     const dailyMarginBefore = currentDebt * rules.dailyRate;
     const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
     const dailyMarginFeeDifference = dailyMarginAfter - dailyMarginBefore;
     const newShares = oldShares + qty;
     const newCost = oldCost + purchaseValue;
     const newBuyFee = oldBuyFee + purchaseFee;
+    const portfolioInvestedAfter = getTotalPortfolioInvested(state) + purchaseValue;
+    const afterAllocatedDebt = Math.max(0, -balanceAfter) *
+      (portfolioInvestedAfter > 0 ? newCost / portfolioInvestedAfter : 1);
+    // New shares have no accrued holding-period interest yet. Recalculate existing
+    // tranches using the selected position's new share of total portfolio debt.
+    const afterMargin = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginUtilizationRatio: newCost > 0 ? afterAllocatedDebt / newCost : 0
+    });
     const oldAverage = oldCost / oldShares;
     const newAverage = newCost / newShares;
     const target = Number(pos.pt);
     const hasTarget = Number.isFinite(target) && target > 0;
     const projectionPrice = projectionPriceOverride ?? (hasTarget ? target : quote);
     const downsidePrice = quote * 0.9;
-    const currentMargin = calculateMarginInterest(pos.tranches || [], {
-      dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
-    });
+    const currentMargin = currentPositionMetrics.posMarginCharged;
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
-    const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
-      shares * exitPrice - cost - buyFee -
-      calculateCommission(shares, shares * exitPrice, rules) - currentMargin;
+    const scenarioPnl = (
+      shares: number, cost: number, buyFee: number, exitPrice: number, marginCharged: number
+    ) => shares * exitPrice - cost - buyFee -
+      calculateCommission(shares, shares * exitPrice, rules) - marginCharged;
     const modal: ScenarioModalData = {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
@@ -355,8 +366,6 @@ export class ScenarioCalculator {
         const afterSaleGross = newShares * projectionPrice;
         const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
         const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
-        const currentDebt = Math.max(0, -balance);
-        const projectedDebt = Math.max(0, -balanceAfter);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
           money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {
@@ -369,12 +378,12 @@ export class ScenarioCalculator {
           if (item.kind === 'entry') {
             return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
           }
-          const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
-          const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
+          const currentDebtAtDate = calculateProjectedDebt(currentAllocatedDebt, rules.dailyRate, item.daysFromToday);
+          const afterDebtAtDate = calculateProjectedDebt(afterAllocatedDebt, rules.dailyRate, item.daysFromToday);
           const currentAccrual = currentDebtAtDate - currentAllocatedDebt;
           const afterAccrual = afterDebtAtDate - afterAllocatedDebt;
           const currentFees = calculateAccruedFees(currentComms, currentMargin, currentAccrual);
-          const afterFees = calculateAccruedFees(projectedComms, currentMargin, afterAccrual);
+          const afterFees = calculateAccruedFees(projectedComms, afterMargin, afterAccrual);
           const currentNet = oldShares * projectionPrice - oldCost - currentFees;
           const afterNet = newShares * projectionPrice - newCost - afterFees;
           return {
@@ -397,17 +406,19 @@ export class ScenarioCalculator {
       })(),
       note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the selected projection price. Fees include buy/sell commissions and accrued margin interest; daily margin interest is shown in braces. Balance shows account cash after selling the position, net of sell commission and projected margin interest. No portfolio mutation or order placement occurs.'
     };
-    const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice);
-    const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice);
-    const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote) - scenarioPnl(oldShares, oldCost, oldBuyFee, quote);
-    const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice) - scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice);
+    const projectionOldPnl = scenarioPnl(oldShares, oldCost, oldBuyFee, projectionPrice, currentMargin);
+    const projectionNewPnl = scenarioPnl(newShares, newCost, newBuyFee, projectionPrice, afterMargin);
+    const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote, afterMargin) -
+      scenarioPnl(oldShares, oldCost, oldBuyFee, quote, currentMargin);
+    const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice, afterMargin) -
+      scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice, currentMargin);
     const lines = [
       '[BUY MORE: ' + ticker + ']',
       'Cash needed: ' + money(totalOutlay) + ' incl. fee',
       'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
-      'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote)),
+      'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote, currentMargin)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote, afterMargin)),
       'Net P&L at projection price (' + money(projectionPrice) + '): ' + signed(projectionOldPnl) + ' → ' + signed(projectionNewPnl),
-      'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice)),
+      'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice, currentMargin)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice, afterMargin)),
       'Final margin balance: ' + money(balance) + ' → ' + money(balanceAfter),
       'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',
       'Trade-off: quote P&L changes by ' + signed(currentDelta) + '; downside P&L changes by ' + signed(downsideDelta) + '.',
