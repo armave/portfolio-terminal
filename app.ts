@@ -118,7 +118,6 @@ import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortf
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import type { BrokerAssumptions, PortfolioState, QuoteDetails } from './src/types/portfolio';
 import { addToast } from './src/ui/notificationStore';
-import { info } from 'console';
 
 // ==========================================
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
