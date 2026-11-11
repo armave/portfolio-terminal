@@ -7,8 +7,9 @@ import {
   getActiveTrancheMarketPrice,
   getAssignedGuestIds,
   getCashHoldingMarketPrice,
-  shouldShowCashHoldingMarketDepth
-} from './CashCushionDesk';
+  shouldShowCashHoldingMarketDepth,
+  summarizeCashHoldings
+} from '../features/cash/cashCushionModel';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { translateText } from '../services/i18n';
@@ -434,5 +435,91 @@ describe('balance adjustment reversal access', () => {
     for (const value of copy) {
       expect(translateText(value, 'ru'), value).not.toBe(value);
     }
+  });
+});
+
+describe('cash holding model summaries and display groups', () => {
+  it('counts only positive-share holdings and keeps missing prices explicitly unpriced', () => {
+    expect(summarizeCashHoldings([
+      { ticker: 'AAPL', shares: 2, currentPrice: 100 },
+      { ticker: 'MSFT', shares: 3, currentPrice: null, price: undefined },
+      { ticker: 'ZERO', shares: 0, currentPrice: 50 },
+      { ticker: 'INVALID', shares: 'not-shares', currentPrice: 5 }
+    ])).toEqual({
+      unpricedHoldingCount: 1,
+      pricedHoldingCount: 1,
+      stocksTotal: 200
+    });
+  });
+
+  it('splits administrator holdings into guest-assigned and unassigned shares', () => {
+    const cashHoldings = [
+      { ticker: 'AAPL', shares: 10, currentPrice: 100, price: 100 },
+      { ticker: 'MSFT', shares: 5, currentPrice: 200, price: 200 }
+    ];
+    const activeTranches = [{
+      id: 'tranche-aapl',
+      ticker: 'AAPL',
+      name: 'Apple',
+      quantity: 4,
+      marketPrice: 100,
+      averagePrice: 80,
+      marketValue: 400,
+      purchasedAt: 1
+    }];
+
+    const result = buildCashHoldingDisplayGroups({
+      isAdmin: true,
+      guestNames: new Map([['guest-a', 'Guest A']]),
+      guestDirectoryPending: false,
+      guestUnavailableLabel: 'Guest unavailable',
+      activeTranches,
+      activeTrancheGuestAssignments: { 'tranche-aapl': 'guest-a' },
+      activeTrancheTypes: { 'tranche-aapl': 'cash' },
+      activeTrancheMixes: {},
+      cashHoldings,
+      holdings: cashHoldings
+    });
+
+    expect(result.adminHoldingGroups).toMatchObject([{
+      key: 'guest-a',
+      label: 'Guest A',
+      holdings: [{ ticker: 'AAPL', shares: 4 }]
+    }]);
+    expect(result.unassignedHoldings).toMatchObject([
+      { ticker: 'AAPL', shares: 6 },
+      { ticker: 'MSFT', shares: 5 }
+    ]);
+    expect(result.displayTableRows.map((row) => row.type)).toEqual([
+      'group', 'holding', 'group', 'holding', 'holding'
+    ]);
+  });
+
+  it('keeps a guest display ungrouped and does not expose administrator assignment rows', () => {
+    const guestHoldings = [{
+      ticker: 'AAPL',
+      shares: 2,
+      averagePrice: 80,
+      currentPrice: 100,
+      price: 100,
+      marketValue: 200
+    }];
+    const result = buildCashHoldingDisplayGroups({
+      isAdmin: false,
+      guestNames: new Map(),
+      guestDirectoryPending: false,
+      guestUnavailableLabel: 'Guest unavailable',
+      activeTranches: [],
+      activeTrancheGuestAssignments: {},
+      activeTrancheTypes: {},
+      activeTrancheMixes: {},
+      cashHoldings: [],
+      holdings: guestHoldings
+    });
+    expect(result.adminHoldingGroups).toEqual([]);
+    expect(result.unassignedHoldings).toEqual([]);
+    expect(result.displayTableRows).toEqual([
+      { type: 'holding', key: 'holding-guest-AAPL', holding: guestHoldings[0] }
+    ]);
   });
 });
