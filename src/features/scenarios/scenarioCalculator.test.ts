@@ -130,7 +130,7 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
     // Balance is the signed broker ledger. Cash Cushion free cash funds the order first;
     // only the shortfall reduces the broker balance, and daily interest compounds debt.
-    expect(today?.values[4]).toBe('-$1,000.00');
+    expect(today?.values[4]).toBe('-$1000.00');
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
     const balanceAfter = -1_000 - Math.max(0, cashNeeded - 100);
     expect(Number(today?.values[5].replace(/[$,]/g, ''))).toBeCloseTo(balanceAfter, 2);
