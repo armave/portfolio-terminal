@@ -144,6 +144,7 @@ describe('Margin Intelligence runtime', () => {
     let resolveLoad!: (value: null) => void;
     const pendingLoad = new Promise<null>((resolve) => { resolveLoad = resolve; });
     const loadDigest = vi.fn(() => pendingLoad);
+    const generateAnalysis = vi.fn();
     const runtime = createMarginIntelligenceRuntime({
       canViewMarginDesk: () => true,
       getPortfolioState: () => snapshot,
@@ -151,6 +152,7 @@ describe('Margin Intelligence runtime', () => {
       setState: recorder.setState,
       translate: (message) => message,
       loadDigest,
+      generateAnalysis,
       now: () => now,
       nowIso
     });
