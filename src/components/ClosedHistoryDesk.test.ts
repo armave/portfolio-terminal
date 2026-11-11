@@ -34,8 +34,13 @@ describe('Trades cache-first rendering', () => {
     const source = readSource();
     expect(source).toContain('usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual)');
     expect(source).not.toContain('usePortfolio()');
-    expect(source).toContain('const trades = useMemo(() => {');
-    expect(source).toContain('const tradeSummary = useMemo(() => {');
+    expect(source).toContain('const trades = useMemo(');
+    expect(source).toContain('buildClosedHistoryRows({');
+    expect(source).toContain('summarizeClosedHistoryRows(trades)');
+    const model = readFileSync(new URL('../features/trades/closedHistoryRows.ts', import.meta.url), 'utf8');
+    expect(model).toContain('time - previousTime <= 60 * 60 * 1000');
+    expect(model).toContain('deduplicateClosedHistoryRows(appTrades, groupedBrokerRows)');
+    expect(model).toContain('resolveClosedTradeAllocation(');
   });
 
   it('binds the Trades desk to the active account session and remounts after an identity change', () => {
@@ -191,5 +196,154 @@ describe('Trades broker quote reconciliation wiring', () => {
     expect(source).not.toContain('price: holding.currentPrice ?? holding.price,');
     expect(source).toContain('brokerQuoteSnapshot={state.brokerAccountInfo ? {');
     expect(source).toContain('quality ?? state.brokerAccountInfo.snapshotQuality');
+  });
+});
+
+import {
+  buildClosedHistoryRows,
+  summarizeClosedHistoryRows
+} from '../features/trades/closedHistoryRows';
+import type { FreedomExecutedTrade } from '../types/freedomTrade';
+import type { BrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
+import type { ClosedTradeAttribution } from '../domain/closedTradeAttribution';
+
+const createSellExecution = (
+  id: string,
+  quantity: number,
+  price: number,
+  executedAt: string,
+  overrides: Partial<FreedomExecutedTrade> = {}
+): FreedomExecutedTrade => ({
+  id,
+  ticker: 'AAPL',
+  side: 'sell',
+  quantity,
+  price,
+  currency: 'USD',
+  executedAt,
+  tradeValue: quantity * price,
+  profit: 20,
+  marginFee: 1,
+  commission: 1,
+  commissionCurrency: 'USD',
+  raw: {},
+  ...overrides
+});
+
+describe('closed history row model', () => {
+  it('groups adjacent same-ticker sells within one hour and preserves weighted metrics', () => {
+    const first = createSellExecution('sell-1', 2, 100, '2026-11-10T10:00:00.000Z', { profit: 20 });
+    const second = createSellExecution('sell-2', 3, 110, '2026-11-10T11:00:00.000Z', { profit: 30 });
+    const metrics = new Map<FreedomExecutedTrade, BrokerExecutionMetrics>([
+      [first, { buyCommission: 0.5, holdingDays: 10 }],
+      [second, { buyCommission: 0.5, holdingDays: 20 }]
+    ]);
+    const attributions = new Map<FreedomExecutedTrade, ClosedTradeAttribution>();
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [first, second],
+      brokerTradeMetrics: metrics,
+      trancheAttributions: attributions,
+      appTrades: [],
+      closedTradeAllocations: {
+        'broker:sell-1+sell-2': { fundingType: 'cash', cashQuantity: 5, marginQuantity: 0 }
+      }
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      source: 'tradenet',
+      allocationType: 'cash',
+      cashQuantity: 5,
+      marginQuantity: 0,
+      commissionsComplete: true,
+      fees: 2,
+      commissions: 3,
+      feesTotal: 5,
+      profit: 45,
+      allocationKey: 'broker:sell-1+sell-2'
+    });
+    expect(rows[0].trade).toMatchObject({
+      id: 'sell-1+sell-2',
+      ticker: 'AAPL',
+      shares: 5,
+      price: 106,
+      exitDate: '2026-11-10T11:00:00.000Z',
+      holdingDays: 16
+    });
+  });
+
+  it('starts a new row when the gap from the previous same-ticker sell exceeds one hour', () => {
+    const first = createSellExecution('sell-1', 2, 100, '2026-11-10T10:00:00.000Z');
+    const second = createSellExecution('sell-2', 3, 110, '2026-11-10T11:00:00.001Z');
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [first, second],
+      brokerTradeMetrics: new Map(),
+      trancheAttributions: new Map(),
+      appTrades: []
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.trade.id)).toEqual(['sell-2', 'sell-1']);
+  });
+
+  it('prefers a broker row when it duplicates an app-owned sale while retaining other app trades', () => {
+    const broker = createSellExecution('broker-sale', 5, 100, '2026-11-10T10:00:00.000Z');
+    const appTrades = [
+      {
+        trade: { id: 'duplicate-app', ticker: 'AAPL', shares: 5, exitDate: '2026-11-10T10:30:00.000Z' },
+        allocationKey: 'app:duplicate-app',
+        allocationType: 'unclassified',
+        guestAllocations: [],
+        profit: 50
+      },
+      {
+        trade: { id: 'other-app', ticker: 'MSFT', shares: 2, exitDate: '2026-11-09T10:00:00.000Z' },
+        allocationKey: 'app:other-app',
+        allocationType: 'unclassified',
+        guestAllocations: [],
+        profit: 10
+      }
+    ];
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [broker],
+      brokerTradeMetrics: new Map([[broker, { buyCommission: 0.5, holdingDays: 3 }]]),
+      trancheAttributions: new Map(),
+      appTrades
+    });
+
+    expect(rows.map((row) => row.trade.id)).toEqual(['broker-sale', 'other-app']);
+    expect(rows[0].source).toBe('tradenet');
+  });
+});
+
+describe('closed history summary model', () => {
+  it('keeps unknown profits out of win-rate denominators and aggregates fees', () => {
+    expect(summarizeClosedHistoryRows([
+      { profit: 10, feesTotal: 2, commissionsComplete: true, trade: { holdingDays: 2 } },
+      { profit: null, fees: 3, commissions: 1, commissionsComplete: false, trade: { holdingDays: null } },
+      { profit: -5, feesTotal: 4, commissionsComplete: true, trade: { daysHeld: 4 } }
+    ])).toEqual({
+      realizedNet: 5,
+      totalFees: 10,
+      hasIncompleteCommissions: true,
+      hasUnknownProfit: true,
+      knownProfitCount: 2,
+      winningTrades: 1,
+      averageHoldingDays: 3,
+      winRate: 50
+    });
+  });
+
+  it('returns safe empty-history defaults', () => {
+    expect(summarizeClosedHistoryRows([])).toEqual({
+      realizedNet: 0,
+      totalFees: 0,
+      hasIncompleteCommissions: false,
+      hasUnknownProfit: false,
+      knownProfitCount: 0,
+      winningTrades: 0,
+      averageHoldingDays: null,
+      winRate: 0
+    });
   });
 });
