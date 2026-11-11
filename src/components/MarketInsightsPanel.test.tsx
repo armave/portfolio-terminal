@@ -11,6 +11,39 @@ import {
   isStandaloneStocktwitsMessage
 } from '../features/quotes/marketInsightsContent';
 
+import {
+  formatMarketEventDate,
+  marketEventLabel,
+  marketEventTimingLabel
+} from '../features/quotes/marketEventPresentation';
+
+describe('market event presentation', () => {
+  it('uses the source Russian event glossary and English labels without rewriting terms', () => {
+    expect(marketEventLabel('Upcoming and recent events', 'ru')).toBe('Предстоящие и недавние события');
+    expect(marketEventLabel('Corporate actions', 'ru')).toBe('Корпоративные действия');
+    expect(marketEventLabel('Before market', 'en')).toBe('Before market');
+  });
+
+  it('translates market timing labels and safely falls back for unknown timing', () => {
+    expect(marketEventTimingLabel('before_market', 'ru')).toBe('До открытия рынка');
+    expect(marketEventTimingLabel('after_market', 'ru')).toBe('После закрытия рынка');
+    expect(marketEventTimingLabel('during_market', 'ru')).toBe('Во время торгов');
+    expect(marketEventTimingLabel('other', 'ru')).toBe('Время неизвестно');
+  });
+
+  it('formats valid ISO event dates in the selected locale and preserves invalid provider values', () => {
+    const value = '2026-11-11';
+    const expected = new Date(value + 'T00:00:00.000Z').toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC'
+    });
+    expect(formatMarketEventDate(value, 'en')).toBe(expected);
+    expect(formatMarketEventDate('not-a-date', 'ru')).toBe('not-a-date');
+  });
+});
+
 describe('formatNewsRelativeTime', () => {
   it('converts positive provider Unix seconds into relative time', () => {
     const now = 1_800_000_000_000;
