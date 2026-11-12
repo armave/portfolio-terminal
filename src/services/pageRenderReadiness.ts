@@ -44,7 +44,7 @@ function hasActiveFiniteAnimations(root: Element): boolean {
   if (typeof root.getAnimations !== 'function') return false;
 
   return root.getAnimations({ subtree: true }).some((animation) => {
-    if (animation.playState !== 'running' && animation.playState !== 'pending') return false;
+    if (animation.playState !== 'running' && !animation.pending) return false;
     return animation.effect?.getComputedTiming().iterations !== Infinity;
   });
 }
@@ -64,19 +64,20 @@ export function watchPageRenderReadiness(
   if (
     !windowRef ||
     !observeTarget ||
-    typeof windowRef.requestAnimationFrame !== 'function' ||
+    typeof browserWindow.requestAnimationFrame !== 'function' ||
     typeof windowRef.MutationObserver !== 'function'
   ) {
     onReady();
     return () => undefined;
   }
 
+  const browserWindow = windowRef;
   let disposed = false;
   let frameId: number | null = null;
   let stableFrames = 0;
   let currentRoot: Element | null = null;
 
-  const observer = new windowRef.MutationObserver(() => {
+  const observer = new browserWindow.MutationObserver(() => {
     stableFrames = 0;
     scheduleCheck();
   });
@@ -84,7 +85,7 @@ export function watchPageRenderReadiness(
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
-    if (frameId !== null) windowRef.cancelAnimationFrame(frameId);
+    if (frameId !== null) browserWindow.cancelAnimationFrame(frameId);
     frameId = null;
     observer.disconnect();
     observeTarget.removeEventListener('load', scheduleCheck, true);
@@ -124,7 +125,7 @@ export function watchPageRenderReadiness(
 
   function scheduleCheck() {
     if (disposed || frameId !== null) return;
-    frameId = windowRef.requestAnimationFrame(checkReadiness);
+    frameId = browserWindow.requestAnimationFrame(checkReadiness);
   }
 
   observer.observe(observeTarget, {
