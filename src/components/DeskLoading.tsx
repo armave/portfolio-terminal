@@ -16,6 +16,7 @@ export function DeskLoading({ title, message, accent = 'cyan' }: DeskLoadingProp
   return (
     <section
       class="desk-section-loading min-h-[25rem] overflow-hidden rounded-xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-5 sm:p-8"
+      data-page-loading="true"
       role="status"
       aria-live="polite"
       aria-busy="true"

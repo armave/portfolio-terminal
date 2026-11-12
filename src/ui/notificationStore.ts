@@ -10,7 +10,7 @@ export interface AppToast {
 }
 
 const MAX_TOASTS = 4;
-const TOAST_DURATION_MS = 4_500;
+const TOAST_DURATION_MS = 4500;
 const TOAST_EXIT_MS = 180;
 let sequence = 0;
 let toasts: AppToast[] = [];

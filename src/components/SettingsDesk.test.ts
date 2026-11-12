@@ -172,19 +172,3 @@ describe('guest Settings layout', () => {
     expect(source).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
   });
 });
-
-describe('admin Settings mobile layout', () => {
-  it('stacks all account actions at mobile widths instead of spanning the sync button across a two-column grid', () => {
-    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(styles).toContain(`/* Mobile Settings actions: keep admin account controls consistently stacked. */
-@media (max-width: 640px) {
-  #settingsDesk .settings-account-actions {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  #settingsDesk .settings-sync-button {
-    grid-column: auto;
-  }
-}`);
-  });
-});

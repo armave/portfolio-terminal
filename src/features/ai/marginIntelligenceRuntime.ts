@@ -154,7 +154,7 @@ export function createMarginIntelligenceRuntime(
       if (!requestGuard.isCurrent(requestId)) return;
 
       if (cached && !detail?.refresh) {
-        const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
+        const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint, now());
         dependencies.setState({
           title: cached.digest.title || title,
           scope: cached.digest.scope,
@@ -176,7 +176,7 @@ export function createMarginIntelligenceRuntime(
       }
 
       if (cached) {
-        const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
+        const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint, now());
         dependencies.setState({
           title: cached.digest.title || title,
           scope: cached.digest.scope,
@@ -272,7 +272,7 @@ export function createMarginIntelligenceRuntime(
       );
       const postSaveFingerprint = await fingerprint(postSaveInput.snapshotIdentity);
       if (!requestGuard.isCurrent(requestId)) return;
-      const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
+      const freshness = getMarginDigestFreshness(digest, postSaveFingerprint, now());
       dependencies.setState({
         title,
         scope,
