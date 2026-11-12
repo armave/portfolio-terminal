@@ -433,7 +433,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText('Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.', language)}
           aria-label={translateText('Buy More', language)}
           onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable && 'four-market-tools'}`}
+          class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
           ⇧<br />{translateText('Add Calc', language)}
         </button>
@@ -442,7 +442,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText('Compare two hypothetical exit periods by date and price.', language)}
           aria-label={translateText('Compare Exits', language)}
           onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable && 'four-market-tools'}`}
+          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
           ⇄<br />{translateText('Exit Calc', language)}
         </button>
@@ -451,7 +451,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText(reviewTitle, language)}
           aria-label={translateText(reviewLabel, language)}
           onClick={() => emitUiEvent('margin:intelligence-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 ${marketDepthAvailable && 'four-market-tools'}`}
+          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
           ✦<br />{translateText(reviewLabel, language)}
         </button>
@@ -460,7 +460,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
           aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
           onClick={() => emitUiEvent('market:depth-request', { ticker })}
-          class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50 ${marketDepthAvailable && 'four-market-tools'}`}
+          class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
           ▤<br />{translateText('Depth', language)}
         </button>}

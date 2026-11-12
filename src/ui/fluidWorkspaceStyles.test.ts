@@ -87,6 +87,10 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toMatch(/\.closed-history-pagination-controls\s*\{[^}]*flex-wrap:\s*wrap;/s);
   });
 
+  it('gives Settings the same centered bordered workspace shell as the main page', () => {
+    expect(appSource).toContain('class={"border-card p-4 sm:p-6 rounded-xl space-y-4 max-w-6xl mx-auto " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"');
+  });
+
   it('gives Settings a fluid container, responsive panels, and a scrollable user table', () => {
     expect(settingsSource).toContain('id="settingsDesk"');
     expect(settingsSource).toContain('settings-user-form');
