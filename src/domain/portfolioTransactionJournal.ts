@@ -105,6 +105,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     value.positionQuantityDelta,
     value.cashHoldingQuantityDelta,
     value.financingCost,
+    value.realizedMarginChargeDelta,
     value.cashDelta,
     value.marginDebtDelta,
     value.netAmount,
@@ -423,11 +424,12 @@ export interface PortfolioTransactionReplayState {
   cashHoldings: Record<string, number>;
   freeCash: number;
   marginDebt: number;
+  realizedMarginCharged: number;
 }
 export interface PortfolioTransactionParityResult {
   matches: boolean;
   discrepancies: Array<{
-    field: 'position' | 'cash-holding' | 'free-cash' | 'margin-debt';
+    field: 'position' | 'cash-holding' | 'free-cash' | 'margin-debt' | 'realized-margin-charged';
     ticker?: string;
     replayed: number;
     canonical: number;
@@ -439,7 +441,9 @@ export function replayPortfolioTransactionJournal(
   events: readonly PortfolioTransactionEvent[]
 ): PortfolioTransactionReplayState {
   if (!isPortfolioTransactionEventList(events)) throw new TypeError('Portfolio transaction event history is malformed.');
-  const out: PortfolioTransactionReplayState = { positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0 };
+  const out: PortfolioTransactionReplayState = {
+    positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0, realizedMarginCharged: 0
+  };
   const add = (map: Record<string, number>, ticker: string, delta: number) => {
     if (!delta) return;
     const next = (map[ticker] || 0) + delta;
@@ -450,7 +454,7 @@ export function replayPortfolioTransactionJournal(
     if (e.type === 'portfolio.reset') {
       out.positions = {};
       out.cashHoldings = {};
-      out.freeCash = out.marginDebt = 0;
+      out.freeCash = out.marginDebt = out.realizedMarginCharged = 0;
       continue;
     }
     const t = e.ticker?.trim().toUpperCase();
@@ -460,9 +464,11 @@ export function replayPortfolioTransactionJournal(
     }
     out.freeCash += Number(e.cashDelta) || 0;
     out.marginDebt += Number(e.marginDebtDelta) || 0;
+    out.realizedMarginCharged += Number(e.realizedMarginChargeDelta) || 0;
   }
   if (Math.abs(out.freeCash) < 1e-8) out.freeCash = 0;
   if (Math.abs(out.marginDebt) < 1e-8) out.marginDebt = 0;
+  if (Math.abs(out.realizedMarginCharged) < 1e-8) out.realizedMarginCharged = 0;
   return out;
 }
 
@@ -472,6 +478,7 @@ export function verifyPortfolioTransactionParity(
     positions?: Record<string, { shares?: number | string }>;
     cashCushion?: { freeCash?: number | string; holdings?: Array<{ ticker: string; shares: number | string }> };
     balance?: number | string;
+    realizedMarginCharged?: number | string;
   },
   tolerance = 1e-6
 ): PortfolioTransactionParityResult {
@@ -490,6 +497,7 @@ export function verifyPortfolioTransactionParity(
   for (const t of new Set([...Object.keys(r.cashHoldings), ...Object.keys(h)])) compare('cash-holding', t, r.cashHoldings[t] || 0, h[t] || 0);
   compare('free-cash', undefined, r.freeCash, Math.max(0, Number(canonical.cashCushion?.freeCash) || 0));
   compare('margin-debt', undefined, r.marginDebt, Math.abs(Number(canonical.balance) || 0));
+  compare('realized-margin-charged', undefined, r.realizedMarginCharged, Number(canonical.realizedMarginCharged) || 0);
   return { matches: !discrepancies.length, discrepancies };
 }
 
@@ -521,7 +529,8 @@ const JOURNAL_DELTA_FIELDS = [
   'positionQuantityDelta',
   'cashHoldingQuantityDelta',
   'cashDelta',
-  'marginDebtDelta'
+  'marginDebtDelta',
+  'realizedMarginChargeDelta'
 ] as const;
 
 const EXTERNAL_CASHFLOW_TYPES = new Set<PortfolioTransactionEventType>([
@@ -544,9 +553,9 @@ function hasNonZeroJournalDelta(event: PortfolioTransactionEvent): boolean {
 
 /**
  * Inspect which journal events can safely participate in the current shadow
- * replay. This report deliberately covers only active-position quantities,
- * cash-holding quantities, free cash and margin debt; it does not claim to
- * reconstruct cost basis, lot identity, closed-trade P&L or realized charges.
+ * replay. This report covers active-position quantities, cash-holding
+ * quantities, free cash, margin debt and realized margin charges; it does not
+ * claim to reconstruct cost basis, lot identity or closed-trade P&L.
  *
  * Broker rows are evidence-only unless an explicit app-owned posting delta is
  * present. Missing data is never treated as a zero-value financial mutation.
@@ -740,15 +749,27 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
         break;
 
       case 'margin.adjustment':
-      case 'margin.interest':
         findings.push({
           ...base,
           disposition: event.marginDebtDelta !== undefined ? 'replayable' : 'incomplete',
           reason: event.marginDebtDelta !== undefined
-            ? 'Margin event contains an explicit debt delta.'
-            : 'Margin event requires an explicit debt delta or a complete external cashflow evidence reference.'
+            ? 'Margin adjustment contains an explicit debt delta.'
+            : 'Margin adjustment requires an explicit debt delta.'
         });
         break;
+
+      case 'margin.interest': {
+        const hasDebtDelta = event.marginDebtDelta !== undefined;
+        const hasRealizedChargeDelta = event.realizedMarginChargeDelta !== undefined;
+        findings.push({
+          ...base,
+          disposition: hasDebtDelta && hasRealizedChargeDelta ? 'replayable' : 'incomplete',
+          reason: hasDebtDelta && hasRealizedChargeDelta
+            ? 'Margin-interest event explicitly separates debt capitalization from realized margin charges.'
+            : 'Margin-interest event requires explicit debt and realized-charge deltas; legacy events without the realized-charge delta remain incomplete.'
+        });
+        break;
+      }
 
       case 'correction': {
         const original = event.relatedEventId ? knownEvents.get(event.relatedEventId) : undefined;
