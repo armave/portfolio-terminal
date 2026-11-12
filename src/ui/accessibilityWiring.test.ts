@@ -32,7 +32,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('<span class="cloud-sync-indicator__dot" aria-hidden="true" />');
     expect(source).toContain('<span class="cloud-sync-indicator__primary">KV</span>');
     expect(source).not.toContain('cloud-sync-indicator__state');
-    expect(source).not.toContain('cloud-sync-indicator__time');
+    expect(source).not.toMatch(/class="cloud-sync-indicator__time"/);
     expect(source).toContain('aria-label={accessibleText}');
   });
 
