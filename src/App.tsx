@@ -25,6 +25,7 @@ import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerReq
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
+import { resolveActivePageRootId, watchPageRenderReadiness } from './services/pageRenderReadiness';
 
 
 const MemoTickerTabs = memo(TickerTabs);
@@ -124,7 +125,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
   const toasts = useToasts();
-  const [startupState, setStartupState] = useState({ visible: true, failed: false });
+  const [startupState, setStartupState] = useState({ visible: true, failed: false, readyRequested: false });
   const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
   const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -203,7 +204,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('market:depth-request', handleMarketDepthRequest);
     addUiEventListener('auth:visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
-    const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
+    const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => {
+      if (event.detail.visible || event.detail.failed) {
+        setStartupState({ ...event.detail, readyRequested: false });
+      } else {
+        // Startup completion is only a dismissal request. Keep the overlay in
+        // place until the active desk has finished mounting and painting.
+        setStartupState({ visible: true, failed: false, readyRequested: true });
+      }
+    };
     addUiEventListener('app:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('settings:backup-import-request', handleBackupImportRequest);
@@ -217,6 +226,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       unsubscribeLanguage();
     };
   }, [permissions.canManageBackups, permissions.isAdmin]);
+
+  useEffect(() => {
+    if (!startupState.readyRequested || startupState.failed) return;
+
+    return watchPageRenderReadiness({
+      document,
+      getRoot: () =>
+        document.getElementById(resolveActivePageRootId(activeDeskView)) ??
+        document.getElementById('mainTerminalView'),
+      onReady: () => setStartupState({ visible: false, failed: false, readyRequested: false })
+    });
+  }, [activeDeskView, startupState.failed, startupState.readyRequested]);
 
   useEffect(() => {
     const previousUser = previousCurrentUserRef.current;
