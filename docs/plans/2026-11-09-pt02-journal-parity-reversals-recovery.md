@@ -49,11 +49,12 @@ This work must not reimplement those mechanisms or claim that all financial path
 - [ ] Extend correction semantics to trades, acquisition lots, realized P&L and corporate actions only after exact inverse accounting is modeled.
 
 ### C. Verify journal-to-state parity
-- [x] Add a read-only replay-coverage inspector for the existing positions/cash-holdings/free-cash/margin-debt projection.
+- [x] Add a read-only replay-coverage inspector for positions, cash-holding quantities, free cash, margin debt and realized margin charges; cost basis and closed-trade replay remain separate projections.
 - [x] Classify app-owned state deltas, external broker/import evidence, audit-only history changes, incomplete events and unsupported/malformed schemas.
 - [x] Add shadow replay and parity for stable acquisition lots, FIFO sale allocations, remaining buy fees, linked closed history and recorded realized P&L.
 - [x] Extend shadow replay to app-recorded cash-holding acquisition lots, exact FIFO sales, realized P&L and remaining-lot parity. Broker-only averages and unpriced legacy additions remain unmapped.
-- [ ] Extend other replay paths to realized charges outside recorded sale allocations and supported corporate-action lot adjustments.
+- [x] Extend replay/parity to cumulative realized margin charges recorded by app-owned rollover events. Capitalized interest records an explicit zero realized-charge delta; legacy margin-interest events without the delta remain incomplete rather than inferring treatment.
+- [ ] Extend replay to supported corporate-action lot adjustments; split quantity parity does not yet prove full acquisition-lot/cost-basis replay.
 - [x] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
 - [ ] Keep canonical-state migration out of scope; any cutover requires a separate approved design, migration and rollback.
 
@@ -92,6 +93,7 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [ ] Complete the remaining mutation inventory and add any missing event/replay fixtures discovered by that review.
 - [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
 - [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
+- [x] Distinguish realized from capitalized rollover interest in journal replay, verify `realizedMarginCharged` parity, reconcile direct snapshot changes as explicit deltas, and reset the replayed charge total on a portfolio reset.
 - [ ] Duplicate replay, same-key/different-body conflict, stale-revision retry, superseded acknowledgement and cross-tab conflict.
 - [x] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
 
