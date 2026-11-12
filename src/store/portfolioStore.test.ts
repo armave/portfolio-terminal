@@ -9,7 +9,7 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
-import { inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
@@ -2445,6 +2445,84 @@ describe('portfolio transaction journal integration', () => {
   beforeEach(() => {
     sharedTestStorage.clear();
     vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('merges older backup and cloud journals without removing locally committed events', () => {
+    const store = new PortfolioStore();
+    const localEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 2_000,
+      note: 'Local reset'
+    }, { eventId: 'local-reset-event', recordedAt: 2_001 });
+    const olderRestoredEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 1_000,
+      note: 'Earlier backup reset'
+    }, { eventId: 'backup-reset-event', recordedAt: 1_001 });
+
+    expect(store.importState({ balance: -200, transactionEvents: [localEvent] })).toBe(true);
+    expect(store.importState({ balance: -100, transactionEvents: [olderRestoredEvent] })).toBe(true);
+    expect(store.getState().balance).toBe(-100);
+    expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual([
+      'backup-reset-event',
+      'local-reset-event'
+    ]);
+
+    // Legacy backups without a journal may replace the snapshot, but never erase
+    // financial events already committed on this device.
+    expect(store.importState({ balance: -50 })).toBe(true);
+    const expectedIds = ['backup-reset-event', 'local-reset-event'];
+    expect(store.getState().balance).toBe(-50);
+    expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
+
+    const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(persisted.transactionEvents.map((event: { id: string }) => event.id)).toEqual(expectedIds);
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().balance).toBe(-50);
+    expect(reloaded.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
+  });
+
+  it('rejects a conflicting restored event without replacing or persisting local state', () => {
+    const store = new PortfolioStore();
+    const committedEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 3_000,
+      note: 'Original event'
+    }, { eventId: 'shared-reset-event', recordedAt: 3_001 });
+    expect(store.importState({ balance: -200, transactionEvents: [committedEvent] })).toBe(true);
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const conflictingEvent = { ...committedEvent, note: 'Conflicting restored event' };
+    expect(store.importState({
+      balance: -900,
+      transactionEvents: [conflictingEvent]
+    })).toBe(false);
+
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-200);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('retains the append-only transaction journal across reset and browser reload', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-10')).toBe(true);
+    const committedEvents = store.getState().transactionEvents || [];
+    expect(committedEvents).toHaveLength(1);
+
+    expect(store.resetToBlankState(Date.parse('2026-11-11T00:00:00.000Z'))).toBe(true);
+    const resetState = store.getState();
+    expect(resetState.positions).toEqual({});
+    expect(resetState.transactionEvents?.slice(0, committedEvents.length)).toEqual(committedEvents);
+    expect(resetState.transactionEvents?.at(-1)).toMatchObject({ type: 'portfolio.reset' });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().positions).toEqual({});
+    expect(reloaded.getState().transactionEvents).toEqual(resetState.transactionEvents);
   });
 
   it('persists purchase events atomically with canonical positions and deduplicates retries after reload', () => {
