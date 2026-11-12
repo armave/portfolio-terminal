@@ -54,7 +54,7 @@ This work must not reimplement those mechanisms or claim that all financial path
 - [x] Add shadow replay and parity for stable acquisition lots, FIFO sale allocations, remaining buy fees, linked closed history and recorded realized P&L.
 - [x] Extend shadow replay to app-recorded cash-holding acquisition lots, exact FIFO sales, realized P&L and remaining-lot parity. Broker-only averages and unpriced legacy additions remain unmapped.
 - [ ] Extend other replay paths to realized charges outside recorded sale allocations and supported corporate-action lot adjustments.
-- [ ] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
+- [x] Add deterministic restore checks for export/import, encrypted cloud restore, reset and legacy snapshots.
 - [ ] Keep canonical-state migration out of scope; any cutover requires a separate approved design, migration and rollback.
 
 ### D. Verify concurrency and retry boundaries
@@ -93,7 +93,13 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
 - [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
 - [ ] Duplicate replay, same-key/different-body conflict, stale-revision retry, superseded acknowledgement and cross-tab conflict.
-- [ ] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
+- [x] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
+
+  Restore-path regression evidence:
+  - `src/domain/portfolio.test.ts` preserves transaction events and linked closed-trade accounting through backup export/import, rejects malformed journal arrays and accepts legacy snapshots without journal fields.
+  - `src/services/api.test.ts` round-trips the append-only journal through encrypted cloud snapshot restoration and verifies journal-to-snapshot parity.
+  - `src/store/portfolioStore.test.ts` verifies older backup/cloud imports merge with local events, legacy imports cannot erase an existing journal, conflicting event IDs reject atomically, and reset retains the journal after reload.
+  - `src/services/backupImport.test.ts` verifies malformed imports are rejected before replacement and failed persistence restores the previous snapshot.
 - [x] `npm run typecheck`, `npm test`, `npm run validate:dead-code`, full dependency audits and `npm run build` on exact PR head `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`.
 - [ ] Update English/Russian strings and translation parity tests for any newly visible states.
 - [x] Trade Lifecycle and Operations Browser Journeys pass on exact PR head `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`.
