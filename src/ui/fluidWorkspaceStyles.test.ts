@@ -27,7 +27,7 @@ describe('fluid workspace styles', () => {
 
   it('keeps detailed portfolio tables scrollable', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*34rem\)/s);
+    expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
   });
 });
@@ -48,6 +48,15 @@ describe('Margin projection and insights layout', () => {
     expect(appSource).toContain('id="tradingWorkspaceGrid" class="trading-workspace-grid"');
   });
 
+  it('combines the accrued fee total and daily margin interest in the Fee & Comm. column', () => {
+    expect(appSource).toContain("translateText('Fee & Comm.', getAppLanguage())");
+    expect(appSource).not.toContain("translateText('Margin fee', getAppLanguage())");
+    expect(projectionSource).toContain('{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})');
+    expect(projectionSource).not.toContain('marginFee');
+    expect(projectionSource).toContain('colSpan={3}');
+    expect(projectionSource).not.toContain('colSpan={5}');
+  });
+
   it('animates Margin projection page rows and keeps pagination controls accessible and fluid', () => {
     expect(projectionSource).toContain('projection-page-row');
     expect(projectionSource).toContain('projection-pagination-controls');
@@ -63,7 +72,7 @@ describe('Margin projection and insights layout', () => {
     expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
     expect(fluidStyles).toMatch(/container-name:\s*margin-desk;/);
     expect(fluidStyles).toMatch(/@container\s+margin-desk\s*\(min-width:\s*56rem\)/);
-    expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(18rem,\s*0\.85fr\)/s);
+    expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.2fr\)\s+minmax\(18rem,\s*1fr\)/s);
     expect(fluidStyles).toMatch(/@media\s*\(max-width:\s*767px\)\s*\{\s*\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
   });
 });
@@ -138,11 +147,10 @@ describe('Margin desk localization', () => {
       'Preparing portfolio metrics',
       'Loading portfolio metrics…',
       'Portfolio projection by date',
-      'Projected portfolio net value, fees and commissions, margin fee, and balance by date.',
+      'Projected portfolio net value, fees and commissions (including accrued margin interest), daily margin interest, and balance by date.',
       'Date',
       'Net',
-      'Fees & commissions',
-      'Margin fee',
+      'Fee & Comm.',
       'Balance'
     ]) {
       expect(appSource).toContain(`translateText('${label}', getAppLanguage())`);
@@ -180,7 +188,8 @@ describe('Margin desk localization', () => {
     expect(russianSource).toContain("'Page {current} of {total}':");
   });
 
-  it('provides a Russian translation for the full margin-fee label', () => {
-    expect(russianSource).toContain("'Margin fee': 'Проценты по марже'");
+  it('provides Russian translations for the combined fee header and projection description', () => {
+    expect(russianSource).toContain("'Fee & Comm.': 'Комиссии и сборы'");
+    expect(russianSource).toContain("'Projected portfolio net value, fees and commissions (including accrued margin interest), daily margin interest, and balance by date.':");
   });
 });

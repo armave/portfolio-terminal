@@ -116,8 +116,6 @@ export function CloudSyncIndicator({
       >
         <span class="cloud-sync-indicator__dot" aria-hidden="true" />
         <span class="cloud-sync-indicator__primary">KV</span>
-        <span class="cloud-sync-indicator__state">{statusLabel}</span>
-        {relativeTime && <span class="cloud-sync-indicator__time">{relativeTime}</span>}
       </button>
       {detailsText && (
         <span id="cloudStatusExactTime" class="cloud-sync-indicator__timestamp" role="tooltip">

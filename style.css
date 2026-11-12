@@ -553,7 +553,7 @@ summary:hover {
   margin: 0 auto;
 }
 
-/* The projection table has five financial columns; allow the wrapper to scroll
+/* The projection table has four financial columns; allow the wrapper to scroll
    rather than clipping columns to the old 550px table cap. */
 #projectionTableContainer {
   min-width: 0;
@@ -584,20 +584,15 @@ summary:hover {
 
 #projectionTableContainer table th:nth-child(3),
 #projectionTableContainer table td:nth-child(3) {
-  width: 16%;
+  width: 30%;
 }
 
 #projectionTableContainer table th:nth-child(4),
 #projectionTableContainer table td:nth-child(4) {
-  width: 23%;
+  width: 22%;
 }
 
-#projectionTableContainer table th:nth-child(5),
-#projectionTableContainer table td:nth-child(5) {
-  width: 20%;
-}
-
-#projectionTableContainer tbody td[colspan="5"] {
+#projectionTableContainer tbody td[colspan="4"] {
   white-space: normal;
   min-width: 0;
   max-width: 620px;
@@ -891,8 +886,8 @@ summary:hover {
   }
 
   #projectionTableContainer table {
-    min-width: 520px;
-    width: 520px;
+    min-width: 480px;
+    width: 480px;
     table-layout: fixed;
   }
 
@@ -2592,7 +2587,7 @@ summary:focus-visible {
 }
 
 #projectionTableContainer table {
-  min-width: max(100%, 34rem);
+  min-width: max(100%, 30rem);
   table-layout: auto;
 }
 
@@ -2665,7 +2660,7 @@ table tbody tr:hover {
 
 @container margin-desk (min-width: 56rem) {
   .margin-data-workspace {
-    grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.85fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 1fr);
     gap: clamp(1rem, 1.5cqw, 1.5rem);
   }
 }
