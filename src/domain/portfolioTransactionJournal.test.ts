@@ -538,18 +538,27 @@ describe('transaction journal replay coverage inspection', () => {
       effectiveAt: draft.effectiveAt,
       note: 'Closed-history display row removed; financial balances were unchanged.'
     }, { eventId: 'coverage-history-correction' });
+    const rollover = createPortfolioTransactionEvent({
+      type: 'margin.interest',
+      effectiveAt: draft.effectiveAt,
+      grossAmount: 1.25,
+      marginDebtDelta: 1.25,
+      realizedMarginChargeDelta: 1.25,
+      note: 'Recorded as realized margin interest.'
+    }, { eventId: 'coverage-rollover', actor: { type: 'system' }, source: 'rollover' });
 
     const report = inspectPortfolioTransactionJournalReplayCoverage([
       trade,
       execution,
       cashflow,
-      historyCorrection
+      historyCorrection,
+      rollover
     ]);
 
     expect(report).toMatchObject({
       status: 'complete',
-      eventCount: 4,
-      replayableCount: 1,
+      eventCount: 5,
+      replayableCount: 2,
       evidenceOnlyCount: 2,
       auditOnlyCount: 1,
       issues: []
@@ -558,7 +567,8 @@ describe('transaction journal replay coverage inspection', () => {
       'replayable',
       'evidence-only',
       'evidence-only',
-      'audit-only'
+      'audit-only',
+      'replayable'
     ]);
   });
 
@@ -575,17 +585,26 @@ describe('transaction journal replay coverage inspection', () => {
       cashDelta: -10,
       note: 'Correction missing its original event reference.'
     }, { eventId: 'incomplete-correction' });
+    const legacyRollover = createPortfolioTransactionEvent({
+      type: 'margin.interest',
+      effectiveAt: draft.effectiveAt,
+      grossAmount: 1,
+      marginDebtDelta: 1,
+      note: 'Legacy event did not distinguish realized interest from capitalized debt.'
+    }, { eventId: 'legacy-rollover', actor: { type: 'system' }, source: 'rollover' });
 
     const report = inspectPortfolioTransactionJournalReplayCoverage([
       incompleteTrade,
-      incompleteCorrection
+      incompleteCorrection,
+      legacyRollover
     ]);
 
     expect(report.status).toBe('incomplete');
-    expect(report.issues).toHaveLength(2);
+    expect(report.issues).toHaveLength(3);
     expect(report.issues.map(({ eventId, disposition }) => [eventId, disposition])).toEqual([
       ['incomplete-trade', 'incomplete'],
-      ['incomplete-correction', 'incomplete']
+      ['incomplete-correction', 'incomplete'],
+      ['legacy-rollover', 'incomplete']
     ]);
   });
 
@@ -805,7 +824,11 @@ describe('transaction journal replay and parity', () => {
       createPortfolioTransactionEvent({
         type: 'cash.adjustment', effectiveAt: draft.effectiveAt,
         cashDelta: 50
-      }, { eventId: 'cash' })
+      }, { eventId: 'cash' }),
+      createPortfolioTransactionEvent({
+        type: 'margin.interest', effectiveAt: draft.effectiveAt,
+        grossAmount: 1.5, marginDebtDelta: 2, realizedMarginChargeDelta: 1.5
+      }, { eventId: 'realized-rollover', actor: { type: 'system' }, source: 'rollover' })
     ];
     const canonical = {
       positions: { AAPL: { shares: 1 } },
@@ -820,10 +843,28 @@ describe('transaction journal replay and parity', () => {
       positions: { AAPL: 1 },
       cashHoldings: { MSFT: 3 },
       freeCash: 50,
-      marginDebt: 82.25
+      marginDebt: 84.25,
+      realizedMarginCharged: 1.5
     });
-    const parity = verifyPortfolioTransactionParity(events, canonical);
+    const parity = verifyPortfolioTransactionParity(events, {
+      ...canonical,
+      balance: -84.25,
+      realizedMarginCharged: 1.5
+    });
     expect(parity).toEqual({ matches: true, discrepancies: [] });
+    expect(verifyPortfolioTransactionParity(events, {
+      ...canonical,
+      balance: -84.25,
+      realizedMarginCharged: 2
+    })).toMatchObject({
+      matches: false,
+      discrepancies: [{
+        field: 'realized-margin-charged',
+        replayed: 1.5,
+        canonical: 2,
+        delta: 0.5
+      }]
+    });
   });
 
   it('verifies a journal against a matching canonical snapshot', () => {
@@ -840,12 +881,17 @@ describe('transaction journal replay and parity', () => {
       }),
       createPortfolioTransactionEvent({
         type: 'margin.adjustment', effectiveAt: draft.effectiveAt, marginDebtDelta: -190
-      })
+      }),
+      createPortfolioTransactionEvent({
+        type: 'margin.interest', effectiveAt: draft.effectiveAt,
+        grossAmount: 1.5, marginDebtDelta: 3, realizedMarginChargeDelta: 1.5
+      }, { actor: { type: 'system' }, source: 'rollover' })
     ];
     expect(verifyPortfolioTransactionParity(events, {
       positions: { AAPL: { shares: 2 } },
       cashCushion: { freeCash: 35, holdings: [] },
-      balance: -10
+      balance: -13,
+      realizedMarginCharged: 1.5
     })).toEqual({ matches: true, discrepancies: [] });
   });
 
