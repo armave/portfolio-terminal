@@ -2460,9 +2460,11 @@ describe('portfolio transaction journal integration', () => {
       note: 'Earlier backup reset'
     }, { eventId: 'backup-reset-event', recordedAt: 1_001 });
 
-    expect(store.importState({ balance: -200, transactionEvents: [localEvent] })).toBe(true);
-    expect(store.importState({ balance: -100, transactionEvents: [olderRestoredEvent] })).toBe(true);
-    expect(store.getState().balance).toBe(-100);
+    // Keep financial fields unchanged so import normalization does not append
+    // legitimate reconciliation events to this journal-merge-only fixture.
+    expect(store.importState({ activeView: 'SETTINGS', transactionEvents: [localEvent] })).toBe(true);
+    expect(store.importState({ activeView: 'COMBINED', transactionEvents: [olderRestoredEvent] })).toBe(true);
+    expect(store.getState().activeView).toBe('COMBINED');
     expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual([
       'backup-reset-event',
       'local-reset-event'
@@ -2470,9 +2472,9 @@ describe('portfolio transaction journal integration', () => {
 
     // Legacy backups without a journal may replace the snapshot, but never erase
     // financial events already committed on this device.
-    expect(store.importState({ balance: -50 })).toBe(true);
+    expect(store.importState({ activeView: 'SETTINGS' })).toBe(true);
     const expectedIds = ['backup-reset-event', 'local-reset-event'];
-    expect(store.getState().balance).toBe(-50);
+    expect(store.getState().activeView).toBe('SETTINGS');
     expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
 
     const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
