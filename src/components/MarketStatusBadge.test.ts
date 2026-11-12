@@ -52,6 +52,15 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusRoleLabel(false)).toBe('Your market');
   });
 
+  it('uses explicit market-state labels for guest workspaces while preserving admin copy', () => {
+    expect(getMarketStatusLabel('PREMARKET', false)).toBe('Market Pre-market');
+    expect(getMarketStatusLabel('MARKET', false)).toBe('Market Open');
+    expect(getMarketStatusLabel('POSTMARKET', false)).toBe('Market After-hours');
+    expect(getMarketStatusLabel('CLOSED', false)).toBe('Market Closed');
+    expect(getMarketStatusLabel('UNKNOWN', false)).toBe('Market Unavailable');
+    expect(getMarketStatusLabel('MARKET', true)).toBe('Market');
+  });
+
   it.each([
     ['PREV', 'PREMARKET', 'Premarket'],
     ['PRE', 'PREMARKET', 'Premarket'],
