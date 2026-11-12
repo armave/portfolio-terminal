@@ -27,6 +27,15 @@ describe('Stage 10 accessibility wiring', () => {
   });
 
 
+  it('keeps the cloud indicator visually limited to its status dot and KV label', () => {
+    const source = readSource('../components/CloudSyncIndicator.tsx');
+    expect(source).toContain('<span class="cloud-sync-indicator__dot" aria-hidden="true" />');
+    expect(source).toContain('<span class="cloud-sync-indicator__primary">KV</span>');
+    expect(source).not.toContain('cloud-sync-indicator__state');
+    expect(source).not.toContain('cloud-sync-indicator__time');
+    expect(source).toContain('aria-label={accessibleText}');
+  });
+
   it('uses shared modal focus behavior for News and restores focus to the article trigger', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
     expect(source).toContain("import { createPortal, memo } from 'preact/compat';");
