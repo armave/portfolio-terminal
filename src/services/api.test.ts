@@ -423,7 +423,19 @@ describe('cloud state sync', () => {
       actor: { type: 'user' },
       source: 'manual'
     }, now - 30_000);
-    const expectedEvents = [deposit, buy];
+    const rollover = createPortfolioTransactionEvent({
+      type: 'margin.interest',
+      effectiveAt: now - 15_000,
+      grossAmount: 5,
+      marginDebtDelta: 5,
+      realizedMarginChargeDelta: 5,
+      note: 'Recorded as realized margin interest.'
+    }, {
+      eventId: 'cloud-journal-rollover-001',
+      actor: { type: 'system' },
+      source: 'rollover'
+    }, now - 15_000);
+    const expectedEvents = [deposit, buy, rollover];
     const captured: { encryptedSnapshot?: { encryptedPayload: string } } = {};
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'POST') {
@@ -442,8 +454,9 @@ describe('cloud state sync', () => {
 
     const committed = await pushCloudState({
       activeView: 'AAPL',
-      balance: 0,
+      balance: -5,
       cashBalance: 800,
+      realizedMarginCharged: 5,
       cashCushion: { freeCash: 800, holdings: [] },
       positions: {
         AAPL: {
@@ -477,7 +490,9 @@ describe('cloud state sync', () => {
     expect(onRestored).toHaveBeenCalledWith(expect.objectContaining({
       transactionEvents: expectedEvents,
       positions: expect.objectContaining({ AAPL: expect.objectContaining({ shares: 2 }) }),
-      cashCushion: expect.objectContaining({ freeCash: 800 })
+      cashCushion: expect.objectContaining({ freeCash: 800 }),
+      balance: -5,
+      realizedMarginCharged: 5
     }));
     expect(verifyPortfolioTransactionParity(restored.transactionEvents ?? [], restored).matches).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
