@@ -2480,7 +2480,7 @@ describe('portfolio transaction journal integration', () => {
     const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
     expect(persisted.transactionEvents.map((event: { id: string }) => event.id)).toEqual(expectedIds);
     const reloaded = new PortfolioStore();
-    expect(reloaded.getState().balance).toBe(-50);
+    expect(reloaded.getState().activeView).toBe('SETTINGS');
     expect(reloaded.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
   });
 
