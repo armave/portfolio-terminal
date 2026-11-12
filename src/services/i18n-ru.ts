@@ -5,6 +5,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Preparing portfolio metrics': 'Подготовка показателей портфеля',
   'Loading portfolio metrics…': 'Загрузка показателей портфеля…',
   'Margin fee': 'Проценты по марже',
+  'Fee & Comm.': 'Комиссии и сборы',
+  'Projected portfolio net value, fees and commissions (including accrued margin interest), daily margin interest, and balance by date.': 'Прогнозируемая чистая стоимость портфеля, комиссии и сборы с учётом начисленных процентов по марже, дневные проценты по марже и баланс по датам.',
   'Rows {start}–{end} of {total}': 'Строки {start}–{end} из {total}',
   'Page {current} of {total}': 'Страница {current} из {total}',
   'EOW · +{days}d': 'Конец недели · +{days}д',
