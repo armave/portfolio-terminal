@@ -489,7 +489,7 @@ describe('app localization', () => {
     expect(translateText('Something went wrong.', 'ru')).toBe('Что-то пошло не так.');
     expect(translateText('Portfolio-wide Margin Review', 'ru')).toBe('Обзор маржинального портфеля');
     expect(translateText('MARKET TOOLS', 'ru')).toBe('РЫНОЧНЫЕ ИНСТРУМЕНТЫ');
-    expect(translateText('News + Review', 'ru')).toBe('Новости и анализ');
+    expect(translateText('Analyze', 'ru')).toBe('Анализ');
     expect(translateText('Portfolio Review', 'ru')).toBe('Обзор портфеля');
     expect(translateText('Review recent news and risk across all margin positions with Gemini', 'ru'))
       .toBe('Анализ свежих новостей и рисков по всем маржинальным позициям с Gemini');
