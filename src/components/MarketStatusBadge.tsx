@@ -307,13 +307,8 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         class={`h-2 w-2 shrink-0 rounded-full ring-2 ${dotToneClass}`}
         aria-hidden="true"
       />
-      <span class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span class="shrink-0 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">
-          {translateText('US equities')}
-        </span>
-        <span class={`text-[11px] font-bold leading-none tracking-wide ${toneClass}`}>
-          {statusLabel}
-        </span>
+      <span class={`text-[11px] font-bold leading-none tracking-wide ${toneClass}`}>
+        {statusLabel}
       </span>
       {countdown && (
         <span class="inline-flex shrink-0 items-center rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 font-mono text-[10px] font-semibold leading-none tabular-nums text-slate-300">
