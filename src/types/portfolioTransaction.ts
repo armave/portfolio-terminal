@@ -96,6 +96,8 @@ export interface PortfolioTransactionEvent {
   cashHoldingQuantityDelta?: number;
   /** Financing/interest cost allocated to this transaction, separate from commissions. */
   financingCost?: number;
+  /** Signed change to cumulative realized margin-interest charges, distinct from debt capitalization. */
+  realizedMarginChargeDelta?: number;
   /** Signed change in available free cash. */
   cashDelta?: number;
   /** Positive means margin debt increased; negative means it was repaid. */
@@ -128,6 +130,7 @@ export interface PortfolioTransactionDraft {
   positionQuantityDelta?: number;
   cashHoldingQuantityDelta?: number;
   financingCost?: number;
+  realizedMarginChargeDelta?: number;
   cashDelta?: number;
   marginDebtDelta?: number;
   netAmount?: number;

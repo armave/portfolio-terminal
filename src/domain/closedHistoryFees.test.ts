@@ -171,6 +171,37 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(result[0]).toBe(trade);
   });
 
+  it('preserves sale linkage and fee metadata identity across app fee recalculation', () => {
+    const trade = {
+      id: 'closed-sale-1',
+      transactionEventId: 'sale-event-1',
+      ticker: 'AAPL',
+      shares: 2,
+      feesAndCommissions: 8,
+      totalCommissions: 8,
+      marginInterest: 5,
+      marginFee: 5,
+      netProfit: 92,
+      netRealizedGain: 92,
+      brokerNote: 'retained metadata'
+    };
+
+    const recalculated = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]))[0];
+    expect(recalculated).toMatchObject({
+      id: 'closed-sale-1',
+      transactionEventId: 'sale-event-1',
+      ticker: 'AAPL',
+      feesAndCommissions: 5,
+      totalCommissions: 5,
+      marginInterest: 2,
+      marginFee: 2,
+      netProfit: 95,
+      netRealizedGain: 95,
+      brokerNote: 'retained metadata'
+    });
+    expect(applyCashflowAllocationsToClosedTrades([recalculated], new Map([[0, 2]]))[0]).toBe(recalculated);
+  });
+
   it('uses broker rows for overlapping app trades without removing distinct app trades', () => {
     const duplicate = { trade: { ticker: 'AAPL.US', exitDate: '2026-01-10T10:00:00Z', shares: 5 }, source: 'app' };
     const distinct = { trade: { ticker: 'MSFT', exitDate: '2026-01-10T10:00:00Z', shares: 3 }, source: 'app' };

@@ -162,6 +162,45 @@ describe('Freedom quote stream app adapter', () => {
     runtime.stop();
   });
 
+  it('splits larger portfolios into bounded ten-symbol quote sockets', async () => {
+    const sockets: FakeSocket[] = [];
+    const createTicket = vi.fn(async (symbols: string[]) => ({
+      ticket: String(createTicket.mock.calls.length + symbols.length).padStart(64, '0')
+    }));
+    const tickers = Array.from({ length: 12 }, (_, index) => `TICKER${String(index + 1).padStart(2, '0')}`);
+    const runtime = createFreedomQuoteStreamAppRuntime({
+      createTicket,
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      getCurrentSessionKey: () => 'admin:account-12',
+      nextRequestSequence: () => 1,
+      recordQuote: vi.fn().mockReturnValue(true),
+      renderAfterUpdate: vi.fn()
+    });
+
+    const start = runtime.start(tickers, 'admin:account-12');
+    await Promise.resolve();
+    expect(createTicket).toHaveBeenCalledTimes(2);
+    expect(createTicket.mock.calls.map(([symbols]) => symbols.length)).toEqual([10, 2]);
+    expect(sockets).toHaveLength(2);
+
+    sockets.forEach((socket) => {
+      socket.open();
+      socket.receive({ type: 'ready' });
+    });
+    await expect(start).resolves.toBe(true);
+    expect(runtime.isConnected()).toBe(true);
+    expect(runtime.isSubscribed('TICKER12')).toBe(true);
+    expect(runtime.isForSession('admin:account-12')).toBe(true);
+
+    runtime.stop();
+    expect(sockets.every((socket) => socket.readyState === 3)).toBe(true);
+  });
+
   it('does not render a quote rejected by the canonical portfolio store', async () => {
     const recordQuote = vi.fn().mockReturnValue(false);
     const renderAfterUpdate = vi.fn();

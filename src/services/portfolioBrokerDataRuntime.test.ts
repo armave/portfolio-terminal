@@ -108,6 +108,72 @@ describe('portfolio broker data runtime', () => {
     ]);
   });
 
+  it('starts one account socket before parallel startup broker reads', async () => {
+    const startAccountStream = vi.fn(async (sessionKey: string) => {
+      setFreedomAccountStreamStatus(sessionKey, 'connected');
+      return true;
+    });
+    const fixture = createFixture({ startAccountStream });
+
+    await expect(Promise.all([
+      fixture.runtime.loadFreedomAccount(fixture.session),
+      fixture.runtime.loadExecutedTrades(fixture.session),
+      fixture.runtime.loadActiveOrders(fixture.session)
+    ])).resolves.toEqual([true, true, true]);
+
+    expect(startAccountStream).toHaveBeenCalledTimes(1);
+    expect(startAccountStream).toHaveBeenCalledWith('admin:1');
+    expect(fixture.dependencies.restoreGatewaySecret).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
+  });
+
+  it('falls back to broker REST when the persistent account socket cannot connect', async () => {
+    const startAccountStream = vi.fn(async () => {
+      throw new Error('socket unavailable');
+    });
+    const fixture = createFixture({ startAccountStream });
+
+    await expect(fixture.runtime.refreshAccountInfo(fixture.session)).resolves.toBe(true);
+
+    expect(startAccountStream).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.restoreGatewaySecret).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.logError).toHaveBeenCalledWith(
+      'Unable to establish the persistent TradeNet account stream; continuing with REST fallback.',
+      expect.any(Error)
+    );
+  });
+
+  it('does not delay REST fallback for the full WebSocket connect timeout', async () => {
+    const fixture = createFixture({
+      accountStreamStartupGraceMs: 1,
+      startAccountStream: vi.fn(() => new Promise<boolean>(() => undefined))
+    });
+
+    await expect(fixture.runtime.refreshAccountInfo(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('backfills executed-trade history even when the live order stream connects', async () => {
+    const existingTrade = trade('existing-trade');
+    const fixture = createFixture({
+      hasHistoryBaseline: vi.fn(() => false),
+      fetchExecutedTrades: vi.fn(async () => [existingTrade])
+    });
+    fixture.setSaved([existingTrade]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith(undefined);
+    expect(fixture.dependencies.markHistoryBaseline).toHaveBeenCalledWith('admin-1');
+    expect(fixture.getPortfolioExecutions()).toEqual([existingTrade]);
+  });
+
   it('rejects a partial broker snapshot and retains the previous account state', async () => {
     const fixture = createFixture({
       fetchAccountInfo: vi.fn(async () => ({

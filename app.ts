@@ -1222,6 +1222,25 @@ function stopFreedomQuoteStreamRuntime(): void {
 
 
 
+/**
+ * Start the private account stream for the currently authenticated administrator.
+ * Broker startup calls this before attempting the one-shot account/trade/order
+ * reads, allowing the persistent stream to satisfy those initial snapshots.
+ */
+export async function startFreedomAccountStreamForSession(sessionKey: string): Promise<boolean> {
+  const currentSessionKey = () => currentAccountRole && currentAccountId
+    ? `${currentAccountRole}:${currentAccountId}`
+    : '';
+  if (currentAccountRole !== 'admin' || !sessionKey.startsWith('admin:') ||
+      currentSessionKey() !== sessionKey) {
+    return false;
+  }
+
+  const runtime = await getFreedomAccountStreamRuntime();
+  if (currentAccountRole !== 'admin' || currentSessionKey() !== sessionKey) return false;
+  return runtime.start(sessionKey);
+}
+
 const liveQuoteRefreshCoordinator = createQuoteRefreshCoordinator(performRefreshAllLivePrices);
 
 /** Coalesce routine polling while reserving a fresh follow-up for explicit triggers. */
@@ -1248,13 +1267,12 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     // Persistent sockets are best-effort background transports. Do not make
     // first-render readiness wait for a WebSocket ready frame; REST snapshots
     // remain the bounded source for initial portfolio/quote data.
-    launchBackgroundTask(async () => {
-      const accountStreamRuntime = await getFreedomAccountStreamRuntime();
-      if (currentAccountRole + ':' + currentAccountId !== accountStreamSessionKey) return;
-      await accountStreamRuntime.start(accountStreamSessionKey);
-    }, (streamError) => {
-      console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; REST snapshots remain available.', streamError);
-    });
+    launchBackgroundTask(
+      () => startFreedomAccountStreamForSession(accountStreamSessionKey),
+      (streamError) => {
+        console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; REST snapshots remain available.', streamError);
+      }
+    );
   } else {
     stopFreedomAccountStreamRuntime();
   }

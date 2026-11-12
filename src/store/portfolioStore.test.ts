@@ -9,7 +9,7 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
-import { inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
@@ -874,6 +874,14 @@ describe('canonical trade lifecycle and persistence', () => {
     store.applyRollover(102, 1, Date.parse('2026-10-17T00:00:00.000Z'), false);
     expect(store.getState().balance).toBe(-102);
     expect(store.getState().realizedMarginCharged).toBe(1);
+
+    const rolloverEvents = store.getState().transactionEvents?.filter((event) => event.type === 'margin.interest') || [];
+    expect(rolloverEvents).toMatchObject([
+      { grossAmount: 1, marginDebtDelta: 1, realizedMarginChargeDelta: 1 },
+      { grossAmount: 1, marginDebtDelta: 1, realizedMarginChargeDelta: 0 }
+    ]);
+    expect(verifyPortfolioTransactionParity(store.getState().transactionEvents || [], store.getState()).matches).toBe(true);
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || []).status).toBe('complete');
   });
 
   it('sets free cash without changing existing margin debt', () => {
@@ -2447,6 +2455,86 @@ describe('portfolio transaction journal integration', () => {
     vi.stubGlobal('localStorage', sharedLocalStorage);
   });
 
+  it('merges older backup and cloud journals without removing locally committed events', () => {
+    const store = new PortfolioStore();
+    const localEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 2_000,
+      note: 'Local reset'
+    }, { eventId: 'local-reset-event', recordedAt: 2_001 });
+    const olderRestoredEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 1_000,
+      note: 'Earlier backup reset'
+    }, { eventId: 'backup-reset-event', recordedAt: 1_001 });
+
+    // Keep financial fields unchanged so import normalization does not append
+    // legitimate reconciliation events to this journal-merge-only fixture.
+    expect(store.importState({ activeView: 'SETTINGS', transactionEvents: [localEvent] })).toBe(true);
+    expect(store.importState({ activeView: 'COMBINED', transactionEvents: [olderRestoredEvent] })).toBe(true);
+    expect(store.getState().activeView).toBe('COMBINED');
+    expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual([
+      'backup-reset-event',
+      'local-reset-event'
+    ]);
+
+    // Legacy backups without a journal may replace the snapshot, but never erase
+    // financial events already committed on this device.
+    expect(store.importState({ activeView: 'SETTINGS' })).toBe(true);
+    const expectedIds = ['backup-reset-event', 'local-reset-event'];
+    expect(store.getState().activeView).toBe('SETTINGS');
+    expect(store.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
+
+    const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(persisted.transactionEvents.map((event: { id: string }) => event.id)).toEqual(expectedIds);
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().activeView).toBe('SETTINGS');
+    expect(reloaded.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
+  });
+
+  it('rejects a conflicting restored event without replacing or persisting local state', () => {
+    const store = new PortfolioStore();
+    const committedEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 3_000,
+      note: 'Original event'
+    }, { eventId: 'shared-reset-event', recordedAt: 3_001 });
+    expect(store.importState({ balance: -200, transactionEvents: [committedEvent] })).toBe(true);
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const conflictingEvent = { ...committedEvent, note: 'Conflicting restored event' };
+    expect(store.importState({
+      balance: -900,
+      transactionEvents: [conflictingEvent]
+    })).toBe(false);
+
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-200);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('retains the append-only transaction journal across reset and browser reload', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-10')).toBe(true);
+    const committedEvents = store.getState().transactionEvents || [];
+    expect(committedEvents).toHaveLength(1);
+
+    expect(store.resetToBlankState(Date.parse('2026-11-11T00:00:00.000Z'))).toBe(true);
+    const resetState = store.getState();
+    expect(resetState.positions).toEqual({});
+    expect(resetState.transactionEvents?.slice(0, committedEvents.length)).toEqual(committedEvents);
+    expect(resetState.transactionEvents?.at(-1)).toMatchObject({ type: 'portfolio.reset' });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().positions).toEqual({});
+    expect(reloaded.getState().transactionEvents).toEqual(resetState.transactionEvents);
+  });
+
   it('persists purchase events atomically with canonical positions and deduplicates retries after reload', () => {
     const store = new PortfolioStore();
     expect(store.getState().transactionEvents).toEqual([]);
@@ -3074,12 +3162,13 @@ describe('portfolio transaction journal integration', () => {
       cashCushion: {
         freeCash: 45,
         holdings: [{ ticker: 'MSFT', shares: 2, price: 50 }]
-      }
+      },
+      realizedMarginCharged: 7
     })).toBe(true);
 
     const events = store.getState().transactionEvents || [];
     const reconciliations = events.filter((event) => event.type === 'portfolio.reconciliation');
-    expect(reconciliations).toHaveLength(4);
+    expect(reconciliations).toHaveLength(5);
     expect(reconciliations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ticker: 'NVDA',
@@ -3100,6 +3189,11 @@ describe('portfolio transaction journal integration', () => {
       }),
       expect.objectContaining({
         marginDebtDelta: 123,
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        realizedMarginChargeDelta: 7,
         actor: { type: 'system' },
         source: 'canonical-snapshot-reconciliation'
       })

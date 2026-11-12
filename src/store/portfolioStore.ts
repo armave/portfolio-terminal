@@ -490,7 +490,9 @@ export class PortfolioStore {
               ? { cashHoldingQuantityDelta: discrepancy.delta }
               : discrepancy.field === 'free-cash'
                 ? { cashDelta: discrepancy.delta }
-                : { marginDebtDelta: discrepancy.delta }),
+                : discrepancy.field === 'margin-debt'
+                  ? { marginDebtDelta: discrepancy.delta }
+                  : { realizedMarginChargeDelta: discrepancy.delta }),
           note: `Canonical snapshot reconciliation (${discrepancy.field}${discrepancy.ticker ? ` ${discrepancy.ticker}` : ''}): journal ${discrepancy.replayed}, canonical ${discrepancy.canonical}. No execution, cost basis, fee or P&L was inferred.`
         }, {
           actor: { type: 'system' },
@@ -916,6 +918,7 @@ export class PortfolioStore {
           effectiveAt: timestamp,
           grossAmount: interestAccrued,
           marginDebtDelta: compoundedDebt - Math.abs(Number(state.balance) || 0),
+          realizedMarginChargeDelta: recordAsRealized ? interestAccrued : 0,
           note: recordAsRealized ? 'Recorded as realized margin interest.' : 'Capitalized into margin debt.'
         }
       };

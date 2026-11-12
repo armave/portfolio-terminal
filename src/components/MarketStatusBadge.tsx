@@ -54,14 +54,14 @@ export function getMarketStatusRoleLabel(isAdmin: boolean): string {
   return translateText(isAdmin ? 'Portfolio market' : 'Your market');
 }
 
-export function getMarketStatusLabel(status: string | null | undefined): string {
+export function getMarketStatusLabel(status: string | null | undefined, isAdmin = true): string {
   const normalized = normalizeMarketSessionStatus(status);
   switch (normalized) {
-    case 'PREMARKET': return translateText('Premarket');
-    case 'MARKET': return translateText('Market');
-    case 'POSTMARKET': return translateText('Postmarket');
-    case 'CLOSED': return translateText('Closed');
-    default: return translateText('Unavailable');
+    case 'PREMARKET': return translateText(isAdmin ? 'Premarket' : 'Market Pre-market');
+    case 'MARKET': return translateText(isAdmin ? 'Market' : 'Market Open');
+    case 'POSTMARKET': return translateText(isAdmin ? 'Postmarket' : 'Market After-hours');
+    case 'CLOSED': return translateText(isAdmin ? 'Closed' : 'Market Closed');
+    default: return translateText(isAdmin ? 'Unavailable' : 'Market Unavailable');
   }
 }
 
@@ -264,17 +264,26 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
   const countdown = getMarketStatusCountdown(status, now);
   const tone = getMarketStatusTone(status);
   const statusLabel = loading && !snapshot
-    ? translateText('Unavailable')
-    : getMarketStatusLabel(status);
+    ? translateText(isAdmin ? 'Unavailable' : 'Market Unavailable')
+    : getMarketStatusLabel(status, isAdmin);
   const toneClass = tone === 'open'
-    ? 'border-emerald-800/70 bg-emerald-950/40 text-emerald-300'
+    ? 'text-emerald-300'
     : tone === 'premarket'
-      ? 'border-amber-800/70 bg-amber-950/30 text-amber-200'
+      ? 'text-amber-200'
       : tone === 'postmarket'
-        ? 'border-sky-800/70 bg-sky-950/30 text-sky-200'
+        ? 'text-sky-200'
         : tone === 'closed'
-          ? 'border-slate-700 bg-slate-900/80 text-slate-300'
-          : 'border-slate-800 bg-slate-950/70 text-slate-500';
+          ? 'text-slate-300'
+          : 'text-slate-500';
+  const dotToneClass = tone === 'open'
+    ? 'bg-emerald-400 ring-emerald-400/20'
+    : tone === 'premarket'
+      ? 'bg-amber-300 ring-amber-300/20'
+      : tone === 'postmarket'
+        ? 'bg-sky-300 ring-sky-300/20'
+        : tone === 'closed'
+          ? 'bg-slate-400 ring-slate-400/20'
+          : 'bg-slate-600 ring-slate-600/20';
   const updatedAt = snapshot
     ? new Date(snapshot.updatedAt).toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
       hour: '2-digit',
@@ -288,14 +297,24 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div
-      class="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/50 text-[10px] leading-tight"
+      class="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 shadow-sm shadow-black/10"
       role="status"
       aria-label={`${roleLabel}: ${statusLabel}${countdown ? `, ${countdown}` : ''}`}
       data-market-status-role={isAdmin ? 'admin' : 'guest'}
       title={updatedTitle}
     >
-      <span class={`rounded border px-1.5 py-0.5 font-bold ${toneClass}`}>{statusLabel}</span>
-      {countdown && <span class="px-1 text-slate-400">{countdown}</span>}
+      <span
+        class={`h-2 w-2 shrink-0 rounded-full ring-2 ${dotToneClass}`}
+        aria-hidden="true"
+      />
+      <span class={`text-[11px] font-bold leading-none tracking-wide ${toneClass}`}>
+        {statusLabel}
+      </span>
+      {countdown && (
+        <span class="inline-flex shrink-0 items-center rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 font-mono text-[10px] font-semibold leading-none tabular-nums text-slate-300">
+          {countdown}
+        </span>
+      )}
     </div>
   );
 }

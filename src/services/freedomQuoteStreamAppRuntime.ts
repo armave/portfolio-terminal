@@ -36,7 +36,12 @@ export function createFreedomQuoteStreamAppRuntime(
     dependencies.renderAfterUpdate,
     dependencies.scheduleRenderFrame
   );
-  const runtime = createFreedomQuoteStreamRuntime({
+  const MAX_SYMBOLS_PER_STREAM = 10;
+  let streams: FreedomQuoteStreamRuntime[] = [];
+  let activeTickers: string[] = [];
+  let activeSessionKey = '';
+
+  const createStream = (): FreedomQuoteStreamRuntime => createFreedomQuoteStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     createSocket: dependencies.createSocket,
@@ -86,11 +91,60 @@ export function createFreedomQuoteStreamAppRuntime(
     onStatus: dependencies.onStatus
   });
 
-  return {
-    ...runtime,
-    stop: () => {
-      renderScheduler.cancel();
-      runtime.stop();
+  const stop = (): void => {
+    const previousStreams = streams;
+    streams = [];
+    activeTickers = [];
+    activeSessionKey = '';
+    previousStreams.forEach((stream) => stream.stop());
+    renderScheduler.cancel();
+  };
+
+  const start = async (tickers: string[], sessionKey: string): Promise<boolean> => {
+    const normalized = [...new Set(
+      tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean)
+    )].sort();
+    if (normalized.length === 0 || !sessionKey) {
+      stop();
+      return false;
     }
+
+    const unchanged = activeSessionKey === sessionKey &&
+      activeTickers.length === normalized.length &&
+      activeTickers.every((ticker, index) => ticker === normalized[index]) &&
+      streams.length === Math.ceil(normalized.length / MAX_SYMBOLS_PER_STREAM);
+
+    if (!unchanged) {
+      stop();
+      activeSessionKey = sessionKey;
+      activeTickers = normalized;
+      const groups: string[][] = [];
+      for (let index = 0; index < normalized.length; index += MAX_SYMBOLS_PER_STREAM) {
+        groups.push(normalized.slice(index, index + MAX_SYMBOLS_PER_STREAM));
+      }
+      streams = groups.map(() => createStream());
+    }
+
+    const results = await Promise.all(streams.map((stream, index) => {
+      const group = activeTickers.slice(
+        index * MAX_SYMBOLS_PER_STREAM,
+        (index + 1) * MAX_SYMBOLS_PER_STREAM
+      );
+      return stream.start(group, sessionKey).catch(() => false);
+    }));
+    return results.every(Boolean);
+  };
+
+  return {
+    start,
+    stop,
+    isConnected: () => streams.length > 0 && streams.every((stream) => stream.isConnected()),
+    isSocketOpen: () => streams.length > 0 && streams.every((stream) => stream.isSocketOpen()),
+    isSubscribed: (ticker) => streams.some((stream) => stream.isSubscribed(ticker)),
+    isForSession: (sessionKey) => Boolean(
+      streams.length > 0 &&
+      activeSessionKey === sessionKey &&
+      streams.every((stream) => stream.isForSession(sessionKey))
+    )
   };
 }
