@@ -91,6 +91,8 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [x] Vitest fixtures for balance-adjustment reversal, coverage classification, event append and existing replay/parity paths.
 - [x] Cash-holding lifecycle fixtures for multiple priced acquisitions, FIFO partial sale across lots, realized P&L, remaining-lot parity, unpriced additions, legacy broker averages and tracking-only removals.
 - [x] Complete the source-reviewed mutation-path inventory; unresolved financial history and import paths are explicitly listed as incomplete/unsupported rather than treated as audited.
+- [x] Characterize Closed History Sync fee enrichment, stable sale linkage and idempotent fee recalculation in focused Vitest coverage.
+- [ ] Add immutable closed-history fee-allocation corrections only after source cashflow IDs and before/after P&L semantics can be replayed exactly.
 - [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
 - [x] Classify broker-imported deposits/withdrawals/transfers, dividends, commissions, margin interest and corporate-action/cash-in-lieu as source evidence without duplicate local posting.
 - [ ] Add app-owned external cashflow posting commands only after settlement, source, currency and correction semantics are separately specified.
@@ -127,6 +129,22 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 | `resetToBlankState` | `portfolio.reset`; clears portfolio-owned values while retaining the append-only journal | Reset is not an event-history truncation or canonical-ledger migration |
 
 The application-owned aliases `addTranche` and `addCashStock` delegate to their journaled canonical commands. Quote, target-price, navigation, provider-credential and display-state updates are not financial transaction events. The source-reviewed command inventory does not authorize a general manual cashflow-posting API, a generic import actor contract, a silent broker writeback, or a canonical-ledger cutover.
+
+### Closed-history fee-enrichment characterization — 2026-11-12
+
+The source-reviewed `syncAdminClosedHistory` pipeline merges broker cashflow and execution sidecars, calculates financing-fee allocations, then updates the app-owned `closedTrades` snapshot independently from the transaction journal. This is historical fee/P&L metadata enrichment: it does not post cash, margin debt or position quantity.
+
+The exact allocation boundary matters:
+
+- `calculateFreedomMarginFeeAllocations` allocates financing cashflows to broker sell executions whenever broker execution rows are present. Its app-closed-trade allocation branch is used only when the broker execution collection is empty.
+- The broker-execution path retains per-cashflow IDs in `brokerAllocations`. The app-closed-trade path currently returns only an aggregate amount per trade index; it discards the individual cashflow IDs and allocated amounts needed to source a future immutable event.
+- `applyCashflowAllocationsToClosedTrades` removes the prior margin-fee component before applying the current aggregate. It uses `marginInterest || marginFee` as the previous fee, derives the commission base from `feesAndCommissions - previousMargin` when that aggregate exists (otherwise legacy commission aliases), and updates `feesAndCommissions`, `totalCommissions`, `marginInterest`, `marginFee` and known `netProfit` / `netRealizedGain`. Unknown net P&L remains unknown.
+- App-generated closed-trade rows carry `id` and `transactionEventId`, which provide the stable history-row identity and link to the immutable `trade.sell` event. Legacy/unlinked rows cannot be assigned a sale event by ticker/date/quantity inference.
+- Reapplying the same amount is a no-op; changed or removed source allocations are a replacement of the previous fee basis, not an additional fee posting.
+
+The focused regression now verifies that fee recalculation preserves the closed-trade ID, originating sale-event link and unrelated metadata, and that repeating the same allocation retains object identity.
+
+**Requirements before journaling this correction:** preserve each app allocation as a cashflow reference plus allocated amount; record the target closed-trade ID and `relatedEventId` to the originating sale; capture prior and resulting margin fee, aggregate fee and known net-P&L fields; and have shadow replay validate the recorded prior values before applying the replacement. Rows without stable links or known prior values must remain explicitly incomplete. This slice adds no correction event and does not claim closed-history replay parity.
 
 ## Exit criteria and merge gate
 
