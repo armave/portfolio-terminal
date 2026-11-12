@@ -31,6 +31,10 @@ import {
 } from './freedomAccountStreamHealth';
 
 export interface PortfolioBrokerDataRuntimeDependencies {
+  /** Start the app-owned persistent account stream before one-shot REST fallbacks. */
+  startAccountStream?: (sessionKey: string) => Promise<boolean> | boolean;
+  /** Maximum time startup broker reads wait for the persistent socket before using REST. */
+  accountStreamStartupGraceMs?: number;
   /** Current account ID is captured by the caller for the active account session. */
   getAccountId: () => string;
   /** Session-generation guard; all asynchronous boundaries recheck it. */
@@ -77,6 +81,11 @@ export function createPortfolioBrokerDataRuntime(
   const accountRequests = new Map<string, Promise<boolean>>();
   const tradesRequests = new Map<string, Promise<boolean>>();
   const activeOrdersRequests = new Map<string, Promise<boolean>>();
+  const accountStreamStartRequests = new Map<string, Promise<boolean>>();
+  const requestedStreamStartupGraceMs = dependencies.accountStreamStartupGraceMs ?? 1_200;
+  const streamStartupGraceMs = Number.isFinite(requestedStreamStartupGraceMs)
+    ? Math.max(0, Math.min(5_000, requestedStreamStartupGraceMs))
+    : 1_200;
   const emit = dependencies.emit || emitBrokerEvent;
   const refreshOrders = dependencies.refreshOrders || refreshActiveOrders;
   const restoreSecret = dependencies.restoreGatewaySecret || restoreGatewaySecret;
@@ -127,6 +136,44 @@ export function createPortfolioBrokerDataRuntime(
     ((response) => brokerAdapter.normalizeExecutionFills(response).data);
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
+  /**
+   * Share one persistent-stream handshake across all initial broker loaders.
+   * If it cannot connect, callers retain their existing REST fallback behavior.
+   */
+  const ensureAccountStream = (session: SessionIdentityToken): Promise<boolean> => {
+    if (!dependencies.startAccountStream || !dependencies.isSessionCurrent(session)) {
+      return Promise.resolve(false);
+    }
+    if (isFreedomAccountStreamConnected(session.identity)) return Promise.resolve(true);
+
+    const requestKey = getSessionIdentityRequestKey(session);
+    const existing = accountStreamStartRequests.get(requestKey);
+    if (existing) return existing;
+
+    const streamStart = Promise.resolve()
+      .then(() => dependencies.startAccountStream!(session.identity))
+      .then((started) => started === true)
+      .catch((error) => {
+        if (dependencies.isSessionCurrent(session)) {
+          logError('Unable to establish the persistent TradeNet account stream; continuing with REST fallback.', error);
+        }
+        return false;
+      });
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const startupDeadline = new Promise<boolean>((resolve) => {
+      timeoutHandle = setTimeout(() => resolve(false), streamStartupGraceMs);
+    });
+    const request = Promise.race([streamStart, startupDeadline])
+      .finally(() => {
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+        if (accountStreamStartRequests.get(requestKey) === request) {
+          accountStreamStartRequests.delete(requestKey);
+        }
+      });
+    accountStreamStartRequests.set(requestKey, request);
+    return request;
+  };
+
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
     if (isFreedomAccountStreamConnected(session.identity)) {
@@ -147,8 +194,21 @@ export function createPortfolioBrokerDataRuntime(
     if (existing) return existing;
 
     const streamRevisionAtStart = getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio');
+    // Preserve the synchronous refresh-start event for current UI subscribers.
     emit('broker:account-info-refreshing');
     const request = (async () => {
+      await ensureAccountStream(session);
+      if (!dependencies.isSessionCurrent(session)) return false;
+      if (isFreedomAccountStreamConnected(session.identity)) {
+        if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
+          emit('broker:account-info-refresh-complete');
+        }
+        return true;
+      }
+      if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
       const secret = await restoreSecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
       if (!dependencies.isSessionCurrent(session)) return false;
@@ -213,6 +273,13 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    const accountId = dependencies.getAccountId();
+    const hasCompleteBaseline = hasHistoryBaseline(accountId);
+    // A first history backfill is independent of the live order stream. Start
+    // the socket alongside it, but never let a connected socket skip the baseline.
+    const accountStreamStart = ensureAccountStream(session);
+    if (hasCompleteBaseline) await accountStreamStart;
+    if (!dependencies.isSessionCurrent(session)) return false;
     const publishCachedExecutions = (): boolean => {
       if (!dependencies.isSessionCurrent(session)) return false;
       const cachedExecutions = mergeBrokerExecutionHistory(
@@ -222,7 +289,7 @@ export function createPortfolioBrokerDataRuntime(
       emit('broker:executed-trades', cachedExecutions);
       return true;
     };
-    if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
+    if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
@@ -236,12 +303,10 @@ export function createPortfolioBrokerDataRuntime(
           emit('broker:executed-trades-error');
           return false;
         }
-        if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
+        if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
 
-        const accountId = dependencies.getAccountId();
         const savedExecutions = loadSavedBrokerExecutions();
         const currentExecutions = dependencies.getCurrentBrokerExecutions();
-        const hasCompleteBaseline = hasHistoryBaseline(accountId);
         const fromDate = hasCompleteBaseline
           ? getLatestClosedTradeDate(
             [...savedExecutions, ...currentExecutions],
@@ -251,7 +316,7 @@ export function createPortfolioBrokerDataRuntime(
 
         const response = await fetchExecutedTrades(fromDate);
         if (!dependencies.isSessionCurrent(session)) return false;
-        if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
+        if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
 
         const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;
@@ -299,6 +364,8 @@ export function createPortfolioBrokerDataRuntime(
   };
 
   const loadActiveOrders = async (session: SessionIdentityToken): Promise<boolean> => {
+    if (!dependencies.isSessionCurrent(session)) return false;
+    await ensureAccountStream(session);
     if (!dependencies.isSessionCurrent(session)) return false;
     if (isFreedomAccountStreamConnected(session.identity)) return true;
     if (hasFreedomAccountStreamSnapshot(session.identity, 'orders')) return true;
