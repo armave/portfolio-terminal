@@ -136,6 +136,7 @@ describe('portfolio transaction journal', () => {
     expect(isPortfolioTransactionEvent({ ...event, recordedAt: Number.NaN })).toBe(false);
     expect(isPortfolioTransactionEvent({ ...event, quantity: Number.POSITIVE_INFINITY })).toBe(false);
     expect(isPortfolioTransactionEvent({ ...event, currency: 'US' })).toBe(false);
+    expect(isPortfolioTransactionEvent({ ...event, realizedMarginChargeDelta: Number.NaN })).toBe(false);
     expect(isPortfolioTransactionEventList([event])).toBe(true);
     expect(isPortfolioTransactionEventList([event, { ...event, id: '' }])).toBe(false);
   });
@@ -503,7 +504,9 @@ describe('broker history audit events', () => {
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
     const replay = replayPortfolioTransactionJournal(events);
-    expect(replay).toEqual({ positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0 });
+    expect(replay).toEqual({
+      positions: {}, cashHoldings: {}, freeCash: 0, marginDebt: 0, realizedMarginCharged: 0
+    });
   });
 });
 
@@ -836,7 +839,8 @@ describe('transaction journal replay and parity', () => {
         freeCash: 50,
         holdings: [{ ticker: 'MSFT', shares: 3 }]
       },
-      balance: -82.25
+      balance: -84.25,
+      realizedMarginCharged: 1.5
     };
     const replay = replayPortfolioTransactionJournal(events);
     expect(replay).toEqual({
@@ -846,15 +850,10 @@ describe('transaction journal replay and parity', () => {
       marginDebt: 84.25,
       realizedMarginCharged: 1.5
     });
-    const parity = verifyPortfolioTransactionParity(events, {
-      ...canonical,
-      balance: -84.25,
-      realizedMarginCharged: 1.5
-    });
+    const parity = verifyPortfolioTransactionParity(events, canonical);
     expect(parity).toEqual({ matches: true, discrepancies: [] });
     expect(verifyPortfolioTransactionParity(events, {
       ...canonical,
-      balance: -84.25,
       realizedMarginCharged: 2
     })).toMatchObject({
       matches: false,
@@ -865,6 +864,31 @@ describe('transaction journal replay and parity', () => {
         delta: 0.5
       }]
     });
+  });
+
+  it('resets replayed realized margin charges when a portfolio reset marker is present', () => {
+    const events = [
+      createPortfolioTransactionEvent({
+        type: 'margin.interest',
+        effectiveAt: draft.effectiveAt,
+        grossAmount: 4.5,
+        marginDebtDelta: 4.5,
+        realizedMarginChargeDelta: 4.5
+      }, { eventId: 'pre-reset-interest', actor: { type: 'system' }, source: 'rollover' }),
+      createPortfolioTransactionEvent({
+        type: 'portfolio.reset',
+        effectiveAt: draft.effectiveAt + 1,
+        note: 'Reset portfolio-owned state.'
+      }, { eventId: 'interest-reset', actor: { type: 'user' }, source: 'user-reset' })
+    ];
+
+    expect(replayPortfolioTransactionJournal(events).realizedMarginCharged).toBe(0);
+    expect(verifyPortfolioTransactionParity(events, {
+      positions: {},
+      cashCushion: { freeCash: 0, holdings: [] },
+      balance: 0,
+      realizedMarginCharged: 0
+    })).toEqual({ matches: true, discrepancies: [] });
   });
 
   it('verifies a journal against a matching canonical snapshot', () => {
