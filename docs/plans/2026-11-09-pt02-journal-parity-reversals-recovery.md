@@ -34,11 +34,11 @@ This work must not reimplement those mechanisms or claim that all financial path
 ## Implementation plan
 
 ### A. Complete the mutation inventory
-- [ ] Map every quantity, cash, debt, fee, realized-P&L and financial-history mutation to its store command and journal event.
+- [x] Map each quantity, cash, debt, fee, realized-P&L and financial-history mutation to its store command, journal event or explicit incomplete/unsupported boundary.
 - [ ] Cover user, AI-confirmed, import and broker-driven actions with explicit actor/source metadata.
-- [ ] Add event contracts for supported deposits, withdrawals, transfers, dividends, fees, financing adjustments and corporate-action postings.
-- [ ] Keep imported broker activity as source evidence until a reviewed command deliberately posts an app-owned financial mutation.
-- [ ] Document unsupported or not-yet-reconstructable paths.
+- [x] Define typed evidence contracts for broker-imported deposits, withdrawals, transfers, dividends, fees/commissions, margin interest and corporate-action/cash-in-lieu descriptions; they remain evidence-only and do not post a second cash/debt/position delta.
+- [x] Keep imported broker activity as source evidence until a reviewed command deliberately posts an app-owned financial mutation.
+- [x] Document unsupported or not-yet-reconstructable paths, including direct closed-history fee recalculation, generic import attribution, manual external-cashflow posting and incomplete corporate-action lot replay.
 
 ### B. Add explicit correction/reversal semantics
 - [x] Define immutable correction/reversal event relationships for cash/debt balance adjustments, with validation rules.
@@ -90,9 +90,10 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 
 - [x] Vitest fixtures for balance-adjustment reversal, coverage classification, event append and existing replay/parity paths.
 - [x] Cash-holding lifecycle fixtures for multiple priced acquisitions, FIFO partial sale across lots, realized P&L, remaining-lot parity, unpriced additions, legacy broker averages and tracking-only removals.
-- [ ] Complete the remaining mutation inventory and add any missing event/replay fixtures discovered by that review.
+- [x] Complete the source-reviewed mutation-path inventory; unresolved financial history and import paths are explicitly listed as incomplete/unsupported rather than treated as audited.
 - [ ] Buy → add → partial sale → full close → reversal lifecycle with fees, margin interest and debt-first settlement. Trade/lot reversal remains deliberately unsupported in this PR.
-- [ ] Deposits/withdrawals/transfers, dividends, commissions, financing, corporate actions and corrections.
+- [x] Classify broker-imported deposits/withdrawals/transfers, dividends, commissions, margin interest and corporate-action/cash-in-lieu as source evidence without duplicate local posting.
+- [ ] Add app-owned external cashflow posting commands only after settlement, source, currency and correction semantics are separately specified.
 - [x] Distinguish realized from capitalized rollover interest in journal replay, verify `realizedMarginCharged` parity, reconcile direct snapshot changes as explicit deltas, and reset the replayed charge total on a portfolio reset.
 - [ ] Duplicate replay, same-key/different-body conflict, stale-revision retry, superseded acknowledgement and cross-tab conflict.
 - [x] Backup/export/import, cloud restore, reset and legacy snapshot compatibility.
@@ -107,13 +108,33 @@ No user-facing copy was added, so no localization catalog changes were needed. A
 - [x] Trade Lifecycle and Operations Browser Journeys pass on exact PR head `d30daead9ba818d633236bc4fdd59bb6d1ed0e49`.
 - [ ] Authenticated live broker and actual multi-device QA are recorded separately; mocked fixtures do not satisfy these gates.
 
+### Source-reviewed mutation ownership and explicit gaps — 2026-11-12
+
+| Command or path | Journal/source treatment | Boundaries that remain |
+|---|---|---|
+| `buyStock` / compatibility `addTranche` | Atomic `trade.buy`; default actor `user`, source `manual`; stable lot ID, acquisition date, quantity, price, fees and settlement deltas | AI/import callers must pass an explicit transaction context; no broker execution is implied |
+| `sellStock` / `sellMarginPosition` | Atomic `trade.sell`; manual path defaults to user/manual, confirmed AI path defaults to `ai`/`ai-confirmed`; FIFO allocations, fees, financing, settlement and linked closed-trade row are retained | Trade/lot reversal is unsupported until exact inverse cost basis, fees, financing and realized P&L are defined |
+| `setFreeCash`, `setCashBalance`, `setMarginDebt` | Atomic `cash.adjustment` / `margin.adjustment`; default actor user and manual adjustment source | These are balance adjustments, not evidence of an external deposit, withdrawal or broker transfer |
+| `applyRollover` | Atomic `margin.interest`; default actor system/source rollover; debt delta plus explicit `realizedMarginChargeDelta` (zero when capitalized) | Legacy events lacking that delta remain incomplete for realized-charge replay |
+| `removeTranche` / `removeCashStock` | `position.adjustment` / `cash-holding.adjustment`; user tracking corrections | No sale proceeds, cash settlement, fee or realized P&L is inferred |
+| `addCashHolding` / `addCashStock`; `sellCashHolding` | `cash-holding.buy` / `cash-holding.sell`; app-priced acquisitions retain lot identity and date; supported sales retain FIFO allocations and realized P&L | Unpriced additions and broker-only holdings remain unmapped/incomplete; partial lot coverage does not invent cost basis |
+| `deleteClosedTrade` | `history.correction`; audit-only history cleanup | It does not reverse the underlying position, cash, debt or realized P&L |
+| `reverseBalanceAdjustment` / `recordReconciliationReview` | Linked immutable `correction` for supported cash/debt adjustments; audit-only `portfolio.reconciliation` review event | Trade, lot, closed-history accounting and corporate-action reversal are unsupported |
+| `applyCorporateActionSplit` / `recordCorporateActionEvidence` | Sourced corporate-action sidecar; an applied split also appends an idempotent `corporate-action` event with the position quantity delta | Review-required attempts do not mutate positions; split lot/cost-basis replay, cash-in-lieu, dividends, mergers and spin-offs are not fully posted/replayed |
+| Broker history import | Stable-reference `broker.execution` and typed external cashflow evidence with actor broker/source attribution | Broker rows remain evidence-only; they are not posted again to local positions, cash or debt |
+| Backup/cloud/import and generic direct snapshot patches | Validated append-only journal merge; observed supported position, cash-holding, free-cash, debt and realized-charge differences become system `portfolio.reconciliation` deltas | Generic snapshot import uses system/canonical-snapshot-reconciliation attribution rather than an `import` actor; no arbitrary imported execution is posted |
+| Closed History Sync fee enrichment | Recalculates broker/app margin-fee allocations and updates `closedTrades` through the history sidecar | This closed-history fee/P&L rewrite has no dedicated immutable transaction correction event yet; it remains incomplete for full closed-history replay |
+| `resetToBlankState` | `portfolio.reset`; clears portfolio-owned values while retaining the append-only journal | Reset is not an event-history truncation or canonical-ledger migration |
+
+The application-owned aliases `addTranche` and `addCashStock` delegate to their journaled canonical commands. Quote, target-price, navigation, provider-credential and display-state updates are not financial transaction events. The source-reviewed command inventory does not authorize a general manual cashflow-posting API, a generic import actor contract, a silent broker writeback, or a canonical-ledger cutover.
+
 ## Exit criteria and merge gate
 
-- [ ] Every supported financial mutation is either journaled with complete semantics or explicitly listed as unsupported.
+- [x] Every reviewed financial mutation path is journaled with its supported semantics or explicitly listed as incomplete/unsupported; do not imply unsupported paths are replay-complete.
 - [x] Supported balance-adjustment reversals are immutable, reviewable, idempotent and balance-verified.
 - [x] Replay coverage is explicit for the current quantity/cash/debt projection and fails closed on malformed/unknown events.
 - [x] Replay of app-recorded cash-holding acquisition cost basis, FIFO sales, realized P&L and remaining-lot parity is covered by the follow-on cash-holding slice.
-- [ ] Trade/lot/corporate-action reversals, full margin closed-history corrections and realized charges outside recorded sale allocations remain open.
+- [ ] Trade/lot/corporate-action reversals and full margin closed-history corrections remain open; realized margin charges outside recorded sale allocations now have an additive replay delta.
 - Existing positions-as-canonical compatibility and cloud receipt behavior remain intact.
 - No canonical-ledger cutover or new financial write path is enabled by this work alone.
 
