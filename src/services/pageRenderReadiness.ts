@@ -64,7 +64,7 @@ export function watchPageRenderReadiness(
   if (
     !windowRef ||
     !observeTarget ||
-    typeof browserWindow.requestAnimationFrame !== 'function' ||
+    typeof windowRef.requestAnimationFrame !== 'function' ||
     typeof windowRef.MutationObserver !== 'function'
   ) {
     onReady();
