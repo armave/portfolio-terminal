@@ -32,6 +32,20 @@ describe('market data transport runtime', () => {
     expect(proxyFetch).toHaveBeenCalledWith('quote', { symbol: 'AAPL,MSFT' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
+  it('splits large same-turn quote batches into ten-symbol Worker requests', async () => {
+    const symbols = Array.from({ length: 23 }, (_, index) => `T${String(index + 1).padStart(2, '0')}`);
+    const proxyFetch = vi.fn(async (_action: string, params: { symbol: string }) =>
+      params.symbol.split(',').map((symbol) => ({ symbol, price: { current: 100 } }))
+    );
+    const { runtime } = createRuntime(proxyFetch);
+
+    const results = await Promise.all(symbols.map((symbol) => runtime.fetchYahooQuoteData(symbol)));
+
+    expect(proxyFetch).toHaveBeenCalledTimes(3);
+    expect(proxyFetch.mock.calls.map(([, params]) => params.symbol.split(',').length)).toEqual([10, 10, 3]);
+    expect(results.map((result) => result?.symbol)).toEqual(symbols);
+  });
+
   it('retries a transient Yahoo batch transport failure before returning normalized data', async () => {
     const proxyFetch = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))

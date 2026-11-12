@@ -98,87 +98,97 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
   const normalizeYahooSymbol = (symbol: unknown): string =>
     typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
 
+  const MAX_YAHOO_QUOTE_BATCH_SIZE = 10;
+
   const flushYahooQuoteQueue = async (): Promise<void> => {
     yahooQuoteFlushScheduled = false;
     const entries = [...yahooQuoteQueue.entries()];
     yahooQuoteQueue.clear();
     if (!entries.length) return;
-    const symbols = entries.map(([symbol]) => symbol);
-    const force = entries.some(([, pending]) => pending.force);
-    const startedAt = now();
-    try {
-      const response = await retryMarketDataRequest(
-        () => fetchMarketDataWithTimeout(
-          requestSignal => dependencies.proxyFetch(
-            'quote',
-            { symbol: symbols.join(',') },
-            { ...(force ? { cache: 'no-store' } : {}), signal: requestSignal }
+
+    const batches: typeof entries[] = [];
+    for (let index = 0; index < entries.length; index += MAX_YAHOO_QUOTE_BATCH_SIZE) {
+      batches.push(entries.slice(index, index + MAX_YAHOO_QUOTE_BATCH_SIZE));
+    }
+
+    await Promise.all(batches.map(async (batchEntries) => {
+      const symbols = batchEntries.map(([symbol]) => symbol);
+      const force = batchEntries.some(([, pending]) => pending.force);
+      const startedAt = now();
+      try {
+        const response = await retryMarketDataRequest(
+          () => fetchMarketDataWithTimeout(
+            requestSignal => dependencies.proxyFetch(
+              'quote',
+              { symbol: symbols.join(',') },
+              { ...(force ? { cache: 'no-store' as RequestCache } : {}), signal: requestSignal }
+            ),
+            requestTimeoutMs
           ),
-          requestTimeoutMs
-        ),
-        {
-          attempts: 2,
-          baseDelayMs: 250,
-          maxDelayMs: 1_000,
-          ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+          {
+            attempts: 2,
+            baseDelayMs: 250,
+            maxDelayMs: 1_000,
+            ...(dependencies.sleep ? { sleep: dependencies.sleep } : {})
+          }
+        );
+        const results = normalizeYahooBatchResults(response, symbols);
+        const bySymbol = new Map<string, YahooBatchQuoteResult>();
+        results.forEach((item) => {
+          const symbol = normalizeYahooSymbol(item.symbol);
+          if (symbol) bySymbol.set(symbol, item);
+        });
+        dependencies.recordMetric('provider_request', {
+          provider: 'yahoo', operation: 'quote_batch', count: symbols.length,
+          durationMs: now() - startedAt, success: true
+        });
+        for (const [symbol, pending] of batchEntries) {
+          const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
+          let accepted = data;
+          if (!data.error && data.price && typeof data.price === 'object') {
+            const cachedAt = now();
+            accepted = { ...data, cacheStatus: 'network' };
+            setBoundedCache(yahooQuoteCache, symbol, {
+              expiresAt: cachedAt + YAHOO_QUOTE_CACHE_TTL_MS,
+              staleUntil: cachedAt + YAHOO_QUOTE_STALE_RETENTION_MS,
+              data: accepted
+            });
+          } else {
+            const lastKnownGood = yahooQuoteCache.get(symbol);
+            if (lastKnownGood && lastKnownGood.staleUntil > now()) {
+              accepted = { ...lastKnownGood.data, cacheStatus: 'stale-fallback' };
+              dependencies.recordMetric('stale_fallback', {
+                provider: 'yahoo', operation: 'quote_batch', symbol
+              });
+            } else {
+              yahooQuoteCache.delete(symbol);
+            }
+          }
+          if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
+          pending.resolvers.forEach(resolve => resolve(accepted));
         }
-      );
-      const results = normalizeYahooBatchResults(response, symbols);
-      const bySymbol = new Map<string, YahooBatchQuoteResult>();
-      results.forEach((item) => {
-        const symbol = normalizeYahooSymbol(item.symbol);
-        if (symbol) bySymbol.set(symbol, item);
-      });
-      dependencies.recordMetric('provider_request', {
-        provider: 'yahoo', operation: 'quote_batch', count: symbols.length,
-        durationMs: now() - startedAt, success: true
-      });
-      for (const [symbol, pending] of entries) {
-        const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
-        let accepted = data;
-        if (!data.error && data.price && typeof data.price === 'object') {
-          const cachedAt = now();
-          accepted = { ...data, cacheStatus: 'network' };
-          setBoundedCache(yahooQuoteCache, symbol, {
-            expiresAt: cachedAt + YAHOO_QUOTE_CACHE_TTL_MS,
-            staleUntil: cachedAt + YAHOO_QUOTE_STALE_RETENTION_MS,
-            data: accepted
-          });
-        } else {
+      } catch (error) {
+        dependencies.recordMetric('provider_failure', {
+          provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: now() - startedAt
+        });
+        for (const [symbol, pending] of batchEntries) {
+          if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
           const lastKnownGood = yahooQuoteCache.get(symbol);
           if (lastKnownGood && lastKnownGood.staleUntil > now()) {
-            accepted = { ...lastKnownGood.data, cacheStatus: 'stale-fallback' };
             dependencies.recordMetric('stale_fallback', {
               provider: 'yahoo', operation: 'quote_batch', symbol
             });
+            pending.resolvers.forEach(resolve => resolve({
+              ...lastKnownGood.data,
+              cacheStatus: 'stale-fallback'
+            }));
           } else {
             yahooQuoteCache.delete(symbol);
+            pending.rejecters.forEach(reject => reject(error));
           }
         }
-        if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        pending.resolvers.forEach(resolve => resolve(accepted));
       }
-    } catch (error) {
-      dependencies.recordMetric('provider_failure', {
-        provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: now() - startedAt
-      });
-      for (const [symbol, pending] of entries) {
-        if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
-        const lastKnownGood = yahooQuoteCache.get(symbol);
-        if (lastKnownGood && lastKnownGood.staleUntil > now()) {
-          dependencies.recordMetric('stale_fallback', {
-            provider: 'yahoo', operation: 'quote_batch', symbol
-          });
-          pending.resolvers.forEach(resolve => resolve({
-            ...lastKnownGood.data,
-            cacheStatus: 'stale-fallback'
-          }));
-        } else {
-          yahooQuoteCache.delete(symbol);
-          pending.rejecters.forEach(reject => reject(error));
-        }
-      }
-    }
+    }));
   };
 
   const fetchYahooQuoteData = (ticker: string, force = false): Promise<YahooBatchQuoteResult | null> => {

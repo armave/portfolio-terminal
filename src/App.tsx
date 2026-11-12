@@ -12,6 +12,7 @@ import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import type { AuthUser } from './services/api';
+import { startFreedomAccountStreamForSession } from '../app';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { addToast, useToasts } from './ui/notificationStore';
@@ -251,6 +252,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (!session) return;
 
     const brokerDataRuntime = createPortfolioBrokerDataRuntime({
+      startAccountStream: (sessionKey) => startFreedomAccountStreamForSession(sessionKey),
       getAccountId: () => currentUser?.id || '',
       isSessionCurrent: (requestedSession) => brokerSessionIdentityRef.current.isCurrent(requestedSession),
       getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
