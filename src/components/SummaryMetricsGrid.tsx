@@ -419,7 +419,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
     const intervalId = window.setInterval(refreshMarketSession, 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
-  const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review';
+  const reviewLabel = ticker ? 'Analyze' : 'Portfolio Review';
   const reviewTitle = ticker
     ? 'Review recent news and margin-position risks with Gemini'
     : 'Review recent news and risk across all margin positions with Gemini';
