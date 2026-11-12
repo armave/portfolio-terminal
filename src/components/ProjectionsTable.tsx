@@ -48,7 +48,7 @@ function ProjectionsTableView() {
   if (debtToUse <= 0 && gross <= 0) {
     return (
       <tr>
-        <td colSpan={5} class="py-4 text-center text-slate-500 italic">
+        <td colSpan={4} class="py-4 text-center text-slate-500 italic">
           {translateText('No active position to project.', getAppLanguage())}
         </td>
       </tr>
@@ -88,7 +88,7 @@ function ProjectionsTableView() {
                 <span class="text-[10px] font-medium text-slate-400">{translateText('Entry', getAppLanguage())}</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
-              <td colSpan={4} class="py-1 px-2 text-[10px] italic text-center">
+              <td colSpan={3} class="py-1 px-2 text-[10px] italic text-center">
                 {translateText('Position opened · projection values start today', getAppLanguage())}
               </td>
             </tr>
@@ -97,7 +97,6 @@ function ProjectionsTableView() {
 
         const projectedDebt = calculateProjectedDebt(debtToUse, dailyRate, daysFromToday);
         const additionalAccrual = projectedDebt - Math.abs(debtToUse);
-        const marginFee = marginChargedToUse + additionalAccrual;
         const feesAndCommissions = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
         const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
         const net = kind === 'breakeven' ? 0 : projectedNet;
@@ -140,10 +139,7 @@ function ProjectionsTableView() {
             <td class={`py-1 px-2 ${netClass} font-semibold`}>
               {netSign}{formatUSD(net)}
             </td>
-            <td class="py-1 px-2 text-slate-200">{formatUSD(feesAndCommissions)}</td>
-            <td class="py-1 px-2 text-slate-400">
-              {formatUSD(marginFee)} ({formatUSD(dailyFee)})
-            </td>
+            <td class="py-1 px-2 text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
             <td class={`py-1 px-2 ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
               {formatUSD(projectedAccountBalance)}
             </td>
@@ -152,7 +148,7 @@ function ProjectionsTableView() {
       })}
       {pageCount > 1 && (
         <tr class="border-t border-slate-800">
-          <td colSpan={5} class="px-2 py-3">
+          <td colSpan={4} class="px-2 py-3">
             <div class="projection-pagination flex items-center justify-between gap-3 text-xs text-slate-400" aria-label={translateText('Projection table pagination', getAppLanguage())} aria-live="polite">
               <span>
                 {translateText('Rows {start}–{end} of {total}', getAppLanguage()).replace('{start}', String(currentPage * ROWS_PER_PAGE + 1)).replace('{end}', String(Math.min((currentPage + 1) * ROWS_PER_PAGE, projectionItems.length))).replace('{total}', String(projectionItems.length))}
