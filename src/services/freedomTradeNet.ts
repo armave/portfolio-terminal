@@ -7,13 +7,13 @@ interface TradeNetWorkerEnv {
     FREEDOM_PRIVATE_KEY?: string;
 }
 
-export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
+export type TradeNetReadCommand = "getPositionJson" | "getOPQ" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
 
 export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
-    if (!["getPositionJson", "getTradesHistory", "getStockQuotesJson", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
+    if (!["getPositionJson", "getOPQ", "getTradesHistory", "getStockQuotesJson", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
         throw new Error("Unsupported read-only TradeNet command.");
     }
 
