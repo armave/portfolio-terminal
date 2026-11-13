@@ -577,11 +577,6 @@ summary:hover {
   overflow-wrap: anywhere;
 }
 
-#projectionTableContainer table th:nth-child(2),
-#projectionTableContainer table td:nth-child(2) {
-  width: 17%;
-}
-
 #projectionTableContainer table th:nth-child(3),
 #projectionTableContainer table td:nth-child(3) {
   width: 30%;
