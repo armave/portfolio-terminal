@@ -50,6 +50,17 @@ describe('manual sync in Settings', () => {
   });
 });
 
+describe('TradeNet Settings surface', () => {
+  it('does not expose raw OPQ payload or unverified trading-limit diagnostic probes', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toContain('tradeNetOpqTitle');
+    expect(source).not.toContain('Unmapped provider payload (diagnostic)');
+    expect(source).not.toContain('fetchFreedomTradeNetOpq');
+    expect(source).not.toContain('Trading limits schema probe');
+    expect(source).not.toContain('fetchFreedomTradeNetTradingLimitsProbe');
+  });
+});
+
 describe('Device Check placement', () => {
   it('places device diagnostics in Settings instead of the Cash & Non-Margin Holdings desk', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');

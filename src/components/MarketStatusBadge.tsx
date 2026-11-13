@@ -11,7 +11,7 @@ import {
 
 const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 
-export type MarketSessionStatus = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
+export type MarketSessionStatus = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED' | 'MIXED';
 
 /** Prevents a response started under an older session from updating the current UI. */
 export function isCurrentMarketStatusRequest(
@@ -45,6 +45,8 @@ export function normalizeMarketSessionStatus(status: string | null | undefined):
     case 'CLOSE':
     case 'CLOSED':
       return 'CLOSED';
+    case 'MIXED':
+      return 'MIXED';
     default:
       return null;
   }
@@ -61,6 +63,7 @@ export function getMarketStatusLabel(status: string | null | undefined, isAdmin 
     case 'MARKET': return translateText(isAdmin ? 'Market' : 'Market Open');
     case 'POSTMARKET': return translateText(isAdmin ? 'Postmarket' : 'Market After-hours');
     case 'CLOSED': return translateText(isAdmin ? 'Closed' : 'Market Closed');
+    case 'MIXED': return translateText(isAdmin ? 'Mixed exchange status' : 'Exchanges report different states');
     default: return translateText(isAdmin ? 'Unavailable' : 'Market Unavailable');
   }
 }
@@ -93,6 +96,45 @@ export function reconcileMarketStatusWithCalendar(
   return normalized === calendarStatus ? normalized : calendarStatus;
 }
 
+const MARKET_STATUS_MAX_AGE_MS = 15 * 60 * 1000;
+const MARKET_STATUS_FUTURE_TOLERANCE_MS = 60 * 1000;
+
+export function getCalendarMarketStatus(now = new Date()): MarketSessionStatus {
+  const session = getUsEquityMarketSession(now);
+  return session === 'PRE'
+    ? 'PREMARKET'
+    : session === 'REGULAR'
+      ? 'MARKET'
+      : session === 'POST'
+        ? 'POSTMARKET'
+        : 'CLOSED';
+}
+
+/** Prefer a fresh TradeNet exchange state; the local New York calendar is fallback only. */
+export function resolveEffectiveMarketStatus(
+  providerStatus: string | null | undefined,
+  updatedAt: number | null | undefined,
+  now = new Date()
+): MarketSessionStatus {
+  const normalized = normalizeMarketSessionStatus(providerStatus);
+  const age = Number.isFinite(updatedAt) ? now.getTime() - Number(updatedAt) : Number.POSITIVE_INFINITY;
+  if (normalized && age >= -MARKET_STATUS_FUTURE_TOLERANCE_MS && age <= MARKET_STATUS_MAX_AGE_MS) {
+    return normalized;
+  }
+  return getCalendarMarketStatus(now);
+}
+
+/** Do not show a calendar-derived countdown when a fresh broker state disagrees with the local calendar. */
+export function getEffectiveMarketStatusCountdown(
+  providerStatus: string | null | undefined,
+  updatedAt: number | null | undefined,
+  now = new Date()
+): string | null {
+  const effective = resolveEffectiveMarketStatus(providerStatus, updatedAt, now);
+  if (effective === 'MIXED' || effective !== getCalendarMarketStatus(now)) return null;
+  return getMarketStatusCountdown(effective, now);
+}
+
 export function formatMarketCountdown(remainingMs: number): string {
   const totalMinutes = Math.ceil(Math.max(0, remainingMs) / 60_000);
   const minutes = totalMinutes % 60;
@@ -118,7 +160,7 @@ export function formatMarketCountdown(remainingMs: number): string {
 
 export function getMarketStatusTransitionAt(status: string | null | undefined, now = new Date()): Date | null {
   const normalized = normalizeMarketSessionStatus(status);
-  if (!normalized) return null;
+  if (!normalized || normalized === 'MIXED') return null;
 
   const session: UsEquityMarketSession = normalized === 'PREMARKET'
     ? 'PRE'
@@ -150,7 +192,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const status = reconcileMarketStatusWithCalendar(snapshot?.marketStatus.status, now);
+  const status = resolveEffectiveMarketStatus(snapshot?.marketStatus.status, snapshot?.updatedAt, now);
 
   useEffect(() => {
     let active = true;
@@ -165,7 +207,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     const scheduleNextTransition = (providerStatus: string) => {
       if (transitionTimeoutId !== undefined) window.clearTimeout(transitionTimeoutId);
       const currentTime = new Date();
-      const effectiveStatus = reconcileMarketStatusWithCalendar(providerStatus, currentTime);
+      const effectiveStatus = resolveEffectiveMarketStatus(providerStatus, Date.now(), currentTime);
       const transitionAt = getMarketStatusTransitionAt(effectiveStatus, currentTime);
       if (!transitionAt) {
         transitionTimeoutId = undefined;
@@ -261,7 +303,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   if (!hasAuthenticatedSession) return null;
 
-  const countdown = getMarketStatusCountdown(status, now);
+  const countdown = getEffectiveMarketStatusCountdown(snapshot?.marketStatus.status, snapshot?.updatedAt, now);
   const tone = getMarketStatusTone(status);
   const statusLabel = loading && !snapshot
     ? translateText(isAdmin ? 'Unavailable' : 'Market Unavailable')
@@ -291,8 +333,26 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     })
     : '';
   const roleLabel = getMarketStatusRoleLabel(isAdmin);
+  const scheduleTooltip = snapshot?.marketStatus
+    ? [
+        snapshot.marketStatus.source,
+        snapshot.marketStatus.code,
+        snapshot.marketStatus.openTime !== null ? `open: ${snapshot.marketStatus.openTime}` : null,
+        snapshot.marketStatus.closeTime !== null ? `close: ${snapshot.marketStatus.closeTime}` : null,
+        snapshot.marketStatus.timezoneOffset !== null ? `offset: ${snapshot.marketStatus.timezoneOffset}` : null,
+        snapshot.marketStatus.providerTime ? `provider time: ${snapshot.marketStatus.providerTime}` : null,
+        ...(snapshot.marketStatus.exchanges.length > 0
+          ? [snapshot.marketStatus.exchanges.map(exchange => [
+              exchange.code || exchange.name,
+              exchange.providerStatus,
+              exchange.openTime !== null ? `open ${exchange.openTime}` : null,
+              exchange.closeTime !== null ? `close ${exchange.closeTime}` : null
+            ].filter(Boolean).join(' ')).join(' / ')]
+          : [])
+      ].filter(Boolean).join(' · ')
+    : null;
   const updatedTitle = updatedAt
-    ? `${translateText('Updated at')} ${updatedAt}${failed ? ' · ' + translateText('Refresh failed') : ''}`
+    ? `${translateText('Updated at')} ${updatedAt}${scheduleTooltip ? ` · ${scheduleTooltip}` : ''}${failed ? ' · ' + translateText('Refresh failed') : ''}`
     : failed ? translateText('Market status unavailable') : translateText('Loading market status');
 
   return (

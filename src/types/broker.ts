@@ -14,6 +14,7 @@ export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
 export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual' | 'unknown';
 
 export type BrokerPositionIntegrityIssueCode =
+  | 'short_position_unsupported'
   | 'negative_quantity_sign_unverified'
   | 'short_position_side_unverified'
   | 'unrecognized_position_side'
@@ -31,6 +32,11 @@ export interface BrokerPositionIntegrityIssue {
   rawQuantity?: number | null;
   rawSide?: string | number | null;
   instrumentId?: string | null;
+  instrumentIssueNumber?: string | null;
+  instrumentType?: string | number | null;
+  instrumentKind?: string | number | null;
+  marginRequirement?: number | null;
+  variationMargin?: number | null;
   /** Original provider row for review when normalization rejects the position. */
   raw?: Record<string, unknown>;
 }
@@ -69,6 +75,8 @@ export interface BrokerDataQualityIssue {
 export interface BrokerCashBalance {
   currency: string;
   amount: number;
+  /** Provider account-currency exchange rate, when supplied separately from available funds. */
+  exchangeRate?: number | null;
   forecastIn: number;
   forecastOut: number;
   t2In: number;
@@ -89,6 +97,11 @@ export interface BrokerPosition {
   rawQuantity?: number;
   rawSide?: string | number | null;
   instrumentId?: string | null;
+  instrumentIssueNumber?: string | null;
+  instrumentType?: string | number | null;
+  instrumentKind?: string | number | null;
+  marginRequirement?: number | null;
+  variationMargin?: number | null;
   raw?: Record<string, unknown>;
 }
 

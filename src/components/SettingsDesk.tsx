@@ -421,6 +421,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
 
+      
+
       <DeviceCheckSummary />
       {account?.role === 'admin' && <MarginDigestSecurityPanel currentUserId={account.id} />}
       {account?.role === 'admin' && (LoadedTenantDirectoryPanel ? (
