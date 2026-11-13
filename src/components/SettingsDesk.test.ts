@@ -68,7 +68,7 @@ describe('TradeNet OPQ diagnostic panel', () => {
     expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
     expect(source).toContain('opqReceivedAt === null || Date.now() - opqReceivedAt > 5 * 60 * 1000');
     expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
-    expect(source).toContain('providerError');
+    expect(source).toContain('getTradeNetProbeFailureMessage');
     expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
   });
 });
@@ -81,7 +81,7 @@ describe('TradeNet trading limits schema probe', () => {
     expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
     expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
     expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
-    expect(source).toContain('providerError');
+    expect(source).toContain('getTradeNetProbeFailureMessage');
   });
 });
 

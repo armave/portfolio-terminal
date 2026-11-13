@@ -9,7 +9,7 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { fetchFreedomTradeNetOpq, fetchFreedomTradeNetTradingLimitsProbe } from '../services/api';
-import { resolveTradeNetProbeInstrument } from '../domain/freedomTradeNetLimits';
+import { getTradeNetProbeFailureMessage, resolveTradeNetProbeInstrument } from '../domain/freedomTradeNetLimits';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -154,14 +154,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       }
       const probeResponse = response as Record<string, unknown>;
       setTradingLimitsProbe({ ...probeResponse, instrumentTicker: probeInstrument.ticker });
-      if (probeResponse.ok !== true) {
-        const message = probeResponse.providerError;
-        setTradingLimitsProbeError(
-          typeof message === 'string'
-            ? `TradeNet getTradingLimits for ${probeInstrument.ticker}: ${message}`
-            : 'TradeNet did not return verified limits for this instrument.'
-        );
-      }
+      const failureMessage = getTradeNetProbeFailureMessage(probeResponse, probeInstrument.ticker);
+      if (failureMessage) setTradingLimitsProbeError(failureMessage);
     } catch (error) {
       setTradingLimitsProbeError(error instanceof Error ? error.message : 'Could not probe TradeNet trading limits.');
     } finally {

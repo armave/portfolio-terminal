@@ -350,3 +350,18 @@ Until an authenticated `getTradingLimits` response verifies the request and buy/
 ### OPQ data-minimization update
 
 The Worker OPQ sanitizer now drops the account-profile and workspace branches (`userInfo`, `userLists`, `userOptions`, and `cps`) and filters personal identifiers/contact fields from retained objects. It preserves the portfolio positions, account-balance and instrument quote fields needed for the read-only integration. Regression test: `worker.test.js`, “omits OPQ profile and personal workspace data while preserving positions and instrument quote metadata”. The sanitizer source change is included in deployed main commit `1d51d9aec0e2128c4e0e83ca706994c0378ff5a5`; main Pull Request CI and Operations both passed on test commit `21ab0fda32f4c4e6847879f4773c2683e44c6f8e` ([CI](https://github.com/armave/portfolio-terminal/actions/runs/43428627561), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/43428627445)).
+
+ 
+## 17. Authenticated getTradingLimits candidate rejection (2026-11-13)
+
+A subsequent authenticated, administrator-only, read-only probe used a recent held position's `instr_id` as the instrument identifier and sent it under the candidate `instrument_id` request key. TradeNet returned HTTP 400 with the message “Incorrect request parameters.”
+
+This is evidence that the exact candidate request was rejected. It does **not** establish whether the parameter name is wrong, the supplied identifier value is invalid for this method, or another request-contract requirement is missing. No replacement parameter name is evidenced by this response. The ticker, account position and instrument identifier from the live diagnostic are intentionally not copied into this public repository.
+
+- Keep the failed result as an admin-only diagnostic, including the sanitized status and provider message.
+- Do not reinterpret HTTP 400 as a zero limit, unlimited capacity, or a successful response.
+- Do not try guessed alternatives such as `ticker`, `id`, or differently cased parameter keys.
+- Keep buy/sell field normalization and live Buy More / Exit hydration blocked until TradeNet supplies the complete request contract or a successful sanitized authenticated fixture.
+- The UI now explains that HTTP 400 rejects the candidate request but cannot distinguish a bad parameter name from a bad parameter value. Regression tests cover this classification and ensure successful responses are not mislabeled as failures.
+
+The PR remains draft. The candidate `instrument_id` is not a confirmed provider contract, and live broker limits are not applied to scenario calculations.

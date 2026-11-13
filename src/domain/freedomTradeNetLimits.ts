@@ -39,3 +39,24 @@ export function resolveTradeNetProbeInstrument(snapshot: unknown): TradeNetProbe
   }
   return null;
 }
+
+ 
+/**
+ * Classify a failed getTradingLimits diagnostic without turning a rejected
+ * request into a broker limit. HTTP 400 confirms rejection of this request,
+ * but does not distinguish a bad parameter name from a bad parameter value.
+ */
+export function getTradeNetProbeFailureMessage(response: unknown, ticker: string): string | null {
+  const probe = asRecord(response);
+  if (!probe || probe.ok === true) return null;
+  if (probe.source !== 'getTradingLimits') {
+    return 'TradeNet trading-limits probe returned an invalid response.';
+  }
+  if (probe.providerHttpStatus === 400) {
+    return 'TradeNet rejected the candidate getTradingLimits request with HTTP 400. The response does not identify whether the parameter name or value is invalid; broker limits remain unverified.';
+  }
+  const providerError = typeof probe.providerError === 'string' ? probe.providerError : '';
+  return providerError
+    ? `TradeNet getTradingLimits for ${ticker}: ${providerError}`
+    : 'TradeNet did not return verified limits for this instrument.';
+}

@@ -173,6 +173,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Probe trading limits': 'Проверить торговые лимиты',
   'Trading limits probe response (diagnostic)': 'Ответ проверки торговых лимитов (диагностика)',
   'TradeNet trading-limits probe returned an invalid response.': 'Пробная проверка торговых лимитов TradeNet вернула некорректный ответ.',
+  'TradeNet rejected the candidate getTradingLimits request with HTTP 400. The response does not identify whether the parameter name or value is invalid; broker limits remain unverified.': 'TradeNet отклонил пробный запрос getTradingLimits с HTTP 400. Ответ не позволяет определить, неверно ли имя параметра или его значение; лимиты брокера остаются неподтверждёнными.',
   'Could not probe TradeNet trading limits.': 'Не удалось проверить торговые лимиты TradeNet.',
   'Market status unavailable': 'Статус рынка недоступен',
   'Loading market status': 'Загрузка статуса рынка',
