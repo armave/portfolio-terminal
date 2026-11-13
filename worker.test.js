@@ -1338,6 +1338,63 @@ describe('Freedom OPQ read-only endpoint', () => {
   });
 });
 
+describe('Freedom getTradingLimits schema probe', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the fixed read-only method with no guessed parameters and returns a sanitized sample', async () => {
+    const payload = {
+      limits: { buy: 10, sell: 5 },
+      private_key: 'must-not-return',
+      account_login: 'must-not-return'
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trading-limits-probe', {
+      headers: { 'X-App-Auth': 'admin-secret' }
+    }), {
+      GATEWAY_SECRET: 'admin-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true, provider: 'Freedom TradeNet', source: 'getTradingLimits',
+      requestParameters: {}, data: { limits: { buy: 10, sell: 5 } }
+    });
+    expect(JSON.stringify(body)).not.toContain('must-not-return');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://tradernet.com/api/getTradingLimits');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({});
+    const timestamp = init.headers['X-NtApi-Timestamp'];
+    expect(init.headers['X-NtApi-Sig']).toBe(createHmac('sha256', 'private-key').update(init.body + timestamp).digest('hex'));
+  });
+
+  it('returns a bounded provider validation error without guessing an instrument parameter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      errMsg: 'Missing required parameter: instrument_id'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trading-limits-probe', {
+      headers: { 'X-App-Auth': 'admin-secret' }
+    }), {
+      GATEWAY_SECRET: 'admin-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      source: 'getTradingLimits',
+      requestParameters: {},
+      providerError: 'TradeNet API error: Missing required parameter: instrument_id'
+    });
+  });
+});
+
 describe('Freedom quote endpoint', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -3623,6 +3680,11 @@ describe('guest data isolation at the Worker boundary', () => {
       'https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(portfolioResponse.status).toBe(403);
+
+    const limitsProbeResponse = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-trading-limits-probe', { headers }
+    ), { PORTFOLIO_STATE_DO: namespace });
+    expect(limitsProbeResponse.status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(stateStub.fetch.mock.calls.filter(([request]) => {
       const requestUrl = typeof request === 'string' ? request : request.url;
