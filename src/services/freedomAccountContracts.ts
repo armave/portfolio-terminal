@@ -238,10 +238,11 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
     if (amount === null) {
       throw new Error('TradeNet USD balance row is missing a valid balance amount.');
     }
+    const exchangeRate = numberOrNull(row.currval);
     return {
       currency: 'USD',
       amount,
-      exchangeRate: numberOrNull(row.currval),
+      ...(exchangeRate === null ? {} : { exchangeRate }),
       forecastIn: numberOrNull(row.forecast_in) ?? 0,
       forecastOut: numberOrNull(row.forecast_out) ?? 0,
       t2In: numberOrNull(row.t2_in) ?? 0,
