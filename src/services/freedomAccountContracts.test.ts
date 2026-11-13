@@ -50,6 +50,11 @@ describe('normalizeFreedomPortfolio', () => {
           rawQuantity: 2.5,
           rawSide: null,
           instrumentId: null,
+          instrumentIssueNumber: null,
+          instrumentType: null,
+          instrumentKind: null,
+          marginRequirement: null,
+          variationMargin: null,
           raw: { i: 'AAPL.US', name: 'Apple', q: '2.5', mkt_price: '190', market_value: '475', bal_price_a: 180, profit_close: '25', acc_pos_id: '77', curr: 'USD' }
         },
         {
@@ -66,9 +71,31 @@ describe('normalizeFreedomPortfolio', () => {
           rawQuantity: 3,
           rawSide: null,
           instrumentId: null,
+          instrumentIssueNumber: null,
+          instrumentType: null,
+          instrumentKind: null,
+          marginRequirement: null,
+          variationMargin: null,
           raw: { base_contract_code: 'MSFT.US', name2: 'Microsoft', q: 3, mkt_price: true, curr: 'USD' }
         }
       ]
+    });
+  });
+
+  it('preserves documented position instrument and margin fields and classifies negative q as short', () => {
+    const snapshot = normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true, acc: [],
+        pos: [{
+          curr: 'USD', i: 'TSLA.US', q: '-3', instr_id: 'instrument-2',
+          issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+        }]
+      } } }
+    });
+    expect(snapshot.positions[0]).toMatchObject({
+      quantity: -3, direction: 'short', instrumentId: 'instrument-2',
+      instrumentIssueNumber: 'US88160R1014', instrumentType: 'stock',
+      instrumentKind: 'equity', marginRequirement: 120, variationMargin: -12
     });
   });
 
