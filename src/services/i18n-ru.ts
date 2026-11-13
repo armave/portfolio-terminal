@@ -165,6 +165,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   '{days}d {hours}h {minutes}m': '{days} дн {hours} ч {minutes} мин',
   'Closed History and Freedom cashflows refresh and sync every 60 seconds.': 'История закрытых сделок и денежные операции Freedom обновляются и синхронизируются каждые 60 секунд.',
   'Unavailable': 'Недоступно',
+  'Mixed exchange status': 'Разные статусы бирж',
+  'Exchanges report different states': 'Биржи сообщают разные состояния',
   'Updated at': 'Обновлено',
   'Market status unavailable': 'Статус рынка недоступен',
   'Loading market status': 'Загрузка статуса рынка',
