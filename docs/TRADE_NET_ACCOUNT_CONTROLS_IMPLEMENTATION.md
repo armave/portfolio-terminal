@@ -292,7 +292,7 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 - Worker market selector preserves selected-market `n`, `n2`, `s`, `o`, `c`, `dt` and event time `t`; it returns `MIXED` if separate Nasdaq and NYSE states disagree instead of silently choosing one venue.
 - Client market contract and badge preserve/display schedule fields and per-exchange states. A fresh provider phase is authoritative; the New York calendar is fallback only when provider status is missing, stale, or implausibly future-dated. Single-market countdown is suppressed for `MIXED` or a fresh provider/calendar disagreement.
 - Schedule values are shown as received in the diagnostic tooltip. Their exact units/timezone semantics are not verified, so they are not parsed into UTC timestamps or used for countdown arithmetic.
-- Russian localization covers implemented mixed-exchange, position-integrity, and broker-limit diagnostic states.
+- Russian localization covers implemented mixed-exchange, position-integrity, and broker-limit availability states.
 
 ### Worker/server deployment (direct to main)
 - Portfolio snapshot validation, market schedule propagation, and mixed-venue state are deployed on `main` commit `e43e19e7b7ec8b236d3be27cf7ccaf2c77b49978`.
@@ -411,14 +411,14 @@ The 2026 FAQ says market opening/closing times should be obtained from the marke
 
 The current 2026 use-case guide links `getTradingLimits` to the method page slug `get-trading-limits` and confirms the method's purpose (maximum buy and sell quantity per instrument). However, the endpoint-specific page body exposing its HTTP method, required parameter names/types, response field names, units, and lot semantics was not retrievable from the public documentation index during this review. The asset-manager guide explicitly delegates method parameters and responses to the linked pages; its summary is not a substitute for those details.
 
-The authenticated diagnostics recorded in sections 17 and the repeat-probe confirmation still show the candidate request key `instrument_id` returning HTTP 400, “Incorrect request parameters.” That error does not identify whether the name, value, HTTP method, account selector, or another required field is wrong. It is not evidence for any particular replacement key.
+The exact endpoint-specific request contract is not established by the method documentation available for this review. This PR intentionally does not expose a `getTradingLimits` request, probe button, Worker route, or client transport. Do not infer a parameter name, type, response field, unit, or lot convention from unrelated portfolio/security fields.
 
 Therefore:
 
 - Do not switch to `ticker`, `instr_id`, `code_nm`, `id`, `nt_ticker`, or another guessed parameter.
 - Do not assume the method is POST solely because other API-key methods use POST; check the method's own HTTP method declaration.
 - Do not map assumed response names such as `buy` / `sell` into production limits without a documented or authenticated fixture.
-- Keep the diagnostic read-only and admin-only. Keep broker limits unavailable/unverified in Buy More and Exit until an authoritative method contract or successful sanitized live response is available.
+- Keep broker limits unavailable/unverified in Buy More and Exit until an authoritative method contract or successful sanitized live response is available; no speculative request endpoint is shipped.
 - If the broker account is being accessed through an asset-manager key, verify the account selector and granted client-access scope separately; for the current user's own account, omit client-account selectors.
 
 The generic API-key signer and current endpoint path match the published API-key POST specification. The repeated HTTP 400 should not be “fixed” by changing HMAC construction or blindly reverting to API V2; resolve the command-specific request contract first.
