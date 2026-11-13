@@ -520,13 +520,24 @@ export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRun
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
-export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
+export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED' | 'MIXED';
+export type FreedomMarketScheduleValue = string | number | null;
 
-export interface FreedomUsMarketStatus {
+export interface FreedomExchangeMarketState {
+  name: string | null;
+  code: string | null;
+  providerStatus: string | null;
+  openTime: FreedomMarketScheduleValue;
+  closeTime: FreedomMarketScheduleValue;
+  timezoneOffset: FreedomMarketScheduleValue;
+}
+
+export interface FreedomUsMarketStatus extends FreedomExchangeMarketState {
   market: string;
-  code: string;
   status: FreedomMarketPhase;
   source: string;
+  providerTime: string | null;
+  exchanges: FreedomExchangeMarketState[];
 }
 
 export interface FreedomMarketStatusResponse {
@@ -536,23 +547,48 @@ export interface FreedomMarketStatusResponse {
   updatedAt: number;
 }
 
-/** Fetch a compact public US-equities status; no exchange list or private account data is returned. */
+function readMarketScheduleValue(value: unknown): FreedomMarketScheduleValue {
+  if (typeof value === 'string') return value.slice(0, 64);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return null;
+}
+
+function readExchangeMarketState(value: unknown): FreedomExchangeMarketState {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    name: typeof row.name === 'string' ? row.name.slice(0, 64) : null,
+    code: typeof row.code === 'string' ? row.code.slice(0, 32) : null,
+    providerStatus: typeof row.providerStatus === 'string' ? row.providerStatus.slice(0, 32) : null,
+    openTime: readMarketScheduleValue(row.openTime),
+    closeTime: readMarketScheduleValue(row.closeTime),
+    timezoneOffset: readMarketScheduleValue(row.timezoneOffset)
+  };
+}
+
+/** Fetch a compact public market state and its documented exchange schedule fields. */
 export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusResponse> {
   const response = await proxyFetch('freedom-market-status', undefined, { cache: 'no-store' });
   const phase = typeof response?.marketStatus?.status === 'string'
     ? response.marketStatus.status.trim().toUpperCase()
     : '';
-  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED'].includes(phase)) {
+  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED', 'MIXED'].includes(phase)) {
     throw new Error(response?.error || 'US equity market status is unavailable.');
   }
+  const rawMarket = response.marketStatus as Record<string, unknown>;
+  const exchanges = Array.isArray(rawMarket.exchanges)
+    ? rawMarket.exchanges.slice(0, 2).map(readExchangeMarketState)
+    : [];
   return {
     ok: true,
     provider: typeof response.provider === 'string' ? response.provider : 'Freedom TradeNet',
     marketStatus: {
-      market: typeof response.marketStatus.market === 'string' ? response.marketStatus.market : 'US equities',
-      code: typeof response.marketStatus.code === 'string' ? response.marketStatus.code : 'US',
+      market: typeof rawMarket.market === 'string' ? rawMarket.market.slice(0, 64) : 'US equities',
+      code: typeof rawMarket.code === 'string' ? rawMarket.code.slice(0, 32) : 'US',
       status: phase as FreedomMarketPhase,
-      source: typeof response.marketStatus.source === 'string' ? response.marketStatus.source : 'US_EXCHANGES'
+      source: typeof rawMarket.source === 'string' ? rawMarket.source.slice(0, 32) : 'US_EXCHANGES',
+      ...readExchangeMarketState(rawMarket),
+      providerTime: typeof rawMarket.providerTime === 'string' ? rawMarket.providerTime.slice(0, 64) : null,
+      exchanges
     },
     updatedAt: Number.isFinite(Number(response.updatedAt)) && Number(response.updatedAt) > 0
       ? Number(response.updatedAt)
