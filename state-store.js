@@ -1006,33 +1006,50 @@ export class PortfolioStateDO {
     if (!source || typeof source !== "object" || !loaded ||
         !Array.isArray(source.acc) || !Array.isArray(source.pos)) return null;
     const numberOrNull = (value) => {
-      if (value === null || value === undefined || value === "") return null;
+      if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
       const number = Number(value);
       return Number.isFinite(number) ? number : null;
     };
     const usdRows = (rows) => rows.filter((row) =>
-      String(row?.curr ?? row?.base_currency ?? "").toUpperCase() === "USD"
+      row && typeof row === "object" && !Array.isArray(row) &&
+      String(row.curr ?? row.base_currency ?? "").toUpperCase() === "USD"
     );
-    const acc = usdRows(source.acc).map((row) => ({
-      curr: "USD",
-      s: numberOrNull(row.s),
-      currval: numberOrNull(row.currval),
-      forecast_in: numberOrNull(row.forecast_in) ?? 0,
-      forecast_out: numberOrNull(row.forecast_out) ?? 0,
-      t2_in: numberOrNull(row.t2_in) ?? 0,
-      t2_out: numberOrNull(row.t2_out) ?? 0
-    }));
-    const pos = usdRows(source.pos).map((row) => ({
-      i: String(row.i ?? row.base_contract_code ?? ""),
-      name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument"),
-      q: numberOrNull(row.q) ?? 0,
-      curr: "USD",
-      mkt_price: numberOrNull(row.mkt_price),
-      market_value: numberOrNull(row.market_value),
-      bal_price_a: numberOrNull(row.bal_price_a),
-      profit_close: numberOrNull(row.profit_close),
-      acc_pos_id: numberOrNull(row.acc_pos_id)
-    })).filter((row) => row.i);
+    const acc = usdRows(source.acc).map((row) => {
+      const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+      if (amount === null) throw new Error("TradeNet account stream contains a USD balance without a valid amount.");
+      return {
+        curr: "USD",
+        s: amount,
+        currval: numberOrNull(row.currval),
+        forecast_in: numberOrNull(row.forecast_in) ?? 0,
+        forecast_out: numberOrNull(row.forecast_out) ?? 0,
+        t2_in: numberOrNull(row.t2_in) ?? 0,
+        t2_out: numberOrNull(row.t2_out) ?? 0
+      };
+    });
+    const pos = usdRows(source.pos).map((row) => {
+      const quantity = numberOrNull(row.q);
+      if (quantity === null) throw new Error("TradeNet account stream contains a USD position without a valid signed quantity.");
+      const ticker = String(row.i ?? row.base_contract_code ?? "").trim();
+      if (!ticker) throw new Error("TradeNet account stream contains a USD position without an instrument ticker.");
+      return {
+        i: ticker.slice(0, 40),
+        name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument").slice(0, 160),
+        q: quantity,
+        curr: "USD",
+        mkt_price: numberOrNull(row.mkt_price),
+        market_value: numberOrNull(row.market_value),
+        bal_price_a: numberOrNull(row.bal_price_a),
+        profit_close: numberOrNull(row.profit_close),
+        acc_pos_id: numberOrNull(row.acc_pos_id),
+        instr_id: row.instr_id === undefined || row.instr_id === null ? null : String(row.instr_id).slice(0, 120),
+        issue_nb: row.issue_nb === undefined || row.issue_nb === null ? null : String(row.issue_nb).slice(0, 120),
+        t: typeof row.t === "string" || typeof row.t === "number" ? row.t : null,
+        k: typeof row.k === "string" || typeof row.k === "number" ? row.k : null,
+        go: numberOrNull(row.go),
+        vm: numberOrNull(row.vm)
+      };
+    });
     return { data: { result: { ps: { loaded: true, acc, pos } } } };
   }
 
