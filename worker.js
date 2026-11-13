@@ -1292,6 +1292,38 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
     return sanitized;
 }
 
+/**
+ * Keep only the account-overview payload object and JSON-safe bounded content.
+ * Method-specific field mapping is deliberately deferred until a sanitized
+ * authenticated getOPQ fixture confirms the current response schema.
+ */
+export function sanitizeFreedomOpqResponse(response) {
+    if (!response || typeof response !== "object" || Array.isArray(response)) {
+        throw new Error("TradeNet getOPQ returned an invalid response envelope.");
+    }
+    const cloneSafe = (value, depth = 0) => {
+        if (depth > 8) return undefined;
+        if (value === null || typeof value === "string" || typeof value === "boolean") {
+            return typeof value === "string" ? value.slice(0, 500) : value;
+        }
+        if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+        if (Array.isArray(value)) return value.slice(0, 500).map(item => cloneSafe(item, depth + 1));
+        if (typeof value !== "object") return undefined;
+        const output = {};
+        for (const [key, item] of Object.entries(value).slice(0, 300)) {
+            if (/password|secret|token|signature|sid|login|account_number|client_auth_login/i.test(key)) continue;
+            const safe = cloneSafe(item, depth + 1);
+            if (safe !== undefined) output[key.slice(0, 80)] = safe;
+        }
+        return output;
+    };
+    const data = cloneSafe(response);
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("TradeNet getOPQ response could not be sanitized.");
+    }
+    return data;
+}
+
 export function sanitizeFreedomPositions(response) {
     // A portfolio snapshot is a single atomic account+positions envelope.
     // Missing one array is not an empty array: reject it so callers retain the
@@ -2188,6 +2220,34 @@ export default {
                     provider: "Freedom TradeNet",
                     data: data.data
                 }), { headers: corsHeaders });
+            }
+
+            // Read-only TradeNet account overview. Raw OPQ keys are intentionally
+            // passed through only as a bounded object until the method schema is verified.
+            if (action === "freedom-opq") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom OPQ only supports GET.", 405, corsHeaders);
+                }
+                if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
+                    return jsonError("Freedom API-key credentials are not configured in the Worker.", 503, corsHeaders);
+                }
+                try {
+                    const raw = await requestTradeNet(env, "getOPQ", {});
+                    const data = sanitizeFreedomOpqResponse(raw);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "getOPQ",
+                        data,
+                        receivedAt: Date.now()
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    return jsonError(
+                        error instanceof Error ? error.message : "TradeNet account overview is unavailable.",
+                        [401, 403, 429, 503].includes(Number(error?.status)) ? Number(error.status) : 502,
+                        corsHeaders
+                    );
+                }
             }
 
             // Read-only market data. Commands are fixed server-side; callers cannot submit
