@@ -95,6 +95,46 @@ describe('Market Tools Buy More preview', () => {
     expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
   });
 
+  it('blocks Buy More when broker account or instrument limits are not verified', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'AAPL', balance: 0,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 10_000 },
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 0,
+        tranches: [{ qty: 10, price: 100 }]
+      } }
+    } as any);
+    const unavailable = { quantity: null, freshness: 'unavailable' as const, observedAt: null, source: 'getOPQ' as const };
+    const instrument = { quantity: 50, freshness: 'current' as const, observedAt: Date.now(), source: 'getTradingLimits' as const };
+    const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 1, 100, undefined, {
+      accountMaximum: unavailable, instrumentMaximum: instrument
+    });
+    expect(result.type).toBe('err');
+    expect(result.text).toContain('could not both be verified');
+    expect(result.brokerLimitStatus).toBe('unavailable');
+  });
+
+  it('blocks Buy More above a verified broker instrument quantity cap', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'AAPL', balance: 0,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 10_000 },
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 0,
+        tranches: [{ qty: 10, price: 100 }]
+      } }
+    } as any);
+    const now = Date.now();
+    const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 3, 100, undefined, {
+      accountMaximum: { quantity: 20, freshness: 'current', observedAt: now, source: 'getOPQ' },
+      instrumentMaximum: { quantity: 2, freshness: 'current', observedAt: now, source: 'getTradingLimits' }
+    });
+    expect(result.type).toBe('err');
+    expect(result.brokerMaximumShares).toBe(2);
+    expect(result.text).toContain('maximum of 2 shares');
+  });
+
   it('uses a supplied projected target price for P&L and the compact cash/fee columns', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-11T12:00:00.000Z'));
