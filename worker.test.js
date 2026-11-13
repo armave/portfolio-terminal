@@ -945,6 +945,31 @@ describe('sanitizeFreedomPositions', () => {
     expect(JSON.stringify(result)).not.toContain('issue_nb');
   });
 
+  it('preserves signed short quantities and the documented position margin/instrument metadata', () => {
+    const result = sanitizeFreedomPositions({
+      data: { result: { ps: {
+        loaded: true, acc: [],
+        pos: [{
+          i: 'TSLA.US', q: -3, curr: 'USD', instr_id: 'instrument-2',
+          issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+        }]
+      } } }
+    });
+    expect(result.data.result.ps.pos[0]).toMatchObject({
+      i: 'TSLA.US', q: -3, instr_id: 'instrument-2',
+      issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+    });
+  });
+
+  it.each([
+    ['missing acc array', { result: { ps: { loaded: true, pos: [] } } }],
+    ['missing pos array', { result: { ps: { loaded: true, acc: [] } } }],
+    ['malformed q', { result: { ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD', q: true }] } } }],
+    ['missing q', { result: { ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD' }] } } }]
+  ])('rejects incomplete portfolio payloads (%s) instead of fabricating zero exposure', (_label, input) => {
+    expect(() => sanitizeFreedomPositions(input)).toThrow();
+  });
+
   it.each([
     ['result.ps envelope', { result: { ps: { loaded: true, acc: [], pos: [] } } }],
     ['direct ps envelope', { ps: { loaded: 'true', acc: [], pos: [] } }],
