@@ -2303,27 +2303,41 @@ export default {
                 if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
                     return jsonError("Freedom API-key credentials are not configured in the Worker.", 503, corsHeaders);
                 }
+                const rawInstrumentId = new URL(request.url).searchParams.get("instrumentId");
+                const numericInstrumentId = rawInstrumentId === null ? null : Number(rawInstrumentId);
+                if (rawInstrumentId !== null && (
+                    !/^\\d+$/.test(rawInstrumentId) ||
+                    !Number.isSafeInteger(numericInstrumentId) ||
+                    numericInstrumentId <= 0
+                )) {
+                    return jsonError("A positive numeric TradeNet instrument ID is required.", 400, corsHeaders);
+                }
+                // getOPQ position rows contain instr_id (the trading-system instrument ID).
+                // The browser cannot submit arbitrary TradeNet parameters or commands.
+                const requestParameters = numericInstrumentId === null
+                    ? {}
+                    : { instrument_id: numericInstrumentId };
                 try {
-                    const raw = await requestTradeNet(env, "getTradingLimits", {});
+                    const raw = await requestTradeNet(env, "getTradingLimits", requestParameters);
                     return new Response(JSON.stringify({
                         ok: true,
                         provider: "Freedom TradeNet",
                         source: "getTradingLimits",
-                        requestParameters: {},
+                        requestParameters,
                         data: sanitizeFreedomOpqResponse(raw),
                         receivedAt: Date.now()
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
                     const rawMessage = error instanceof Error ? error.message : "TradeNet getTradingLimits probe failed.";
                     const providerError = rawMessage
-                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\s*[:=]\s*)\S+/gi, "$1$2[redacted]")
+                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\\s*[:=]\\s*)\\S+/gi, "$1$2[redacted]")
                         .slice(0, 240);
-                    const statusMatch = rawMessage.match(/HTTP (4\d\d|5\d\d)/i);
+                    const statusMatch = rawMessage.match(/HTTP (4\\d\\d|5\\d\\d)/i);
                     return new Response(JSON.stringify({
                         ok: false,
                         provider: "Freedom TradeNet",
                         source: "getTradingLimits",
-                        requestParameters: {},
+                        requestParameters,
                         providerHttpStatus: statusMatch ? Number(statusMatch[1]) : null,
                         providerError,
                         receivedAt: Date.now()
