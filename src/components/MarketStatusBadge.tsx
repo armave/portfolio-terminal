@@ -340,7 +340,15 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         snapshot.marketStatus.openTime !== null ? `open: ${snapshot.marketStatus.openTime}` : null,
         snapshot.marketStatus.closeTime !== null ? `close: ${snapshot.marketStatus.closeTime}` : null,
         snapshot.marketStatus.timezoneOffset !== null ? `offset: ${snapshot.marketStatus.timezoneOffset}` : null,
-        snapshot.marketStatus.providerTime ? `provider time: ${snapshot.marketStatus.providerTime}` : null
+        snapshot.marketStatus.providerTime ? `provider time: ${snapshot.marketStatus.providerTime}` : null,
+        ...(snapshot.marketStatus.exchanges.length > 0
+          ? [snapshot.marketStatus.exchanges.map(exchange => [
+              exchange.code || exchange.name,
+              exchange.providerStatus,
+              exchange.openTime !== null ? `open ${exchange.openTime}` : null,
+              exchange.closeTime !== null ? `close ${exchange.closeTime}` : null
+            ].filter(Boolean).join(' ')).join(' / ')]
+          : [])
       ].filter(Boolean).join(' · ')
     : null;
   const updatedTitle = updatedAt
