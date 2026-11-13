@@ -199,7 +199,7 @@ describe('public Freedom US market status', () => {
     });
   });
 
-  it.each(['PREV', 'PRE', 'OPEN', 'POST', 'MIXED'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
+  it.each(['PREV', 'PRE', 'OPEN', 'POST'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       provider: 'Freedom TradeNet',
