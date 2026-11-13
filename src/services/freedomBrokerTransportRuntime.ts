@@ -158,7 +158,8 @@ export function createFreedomBrokerTransportRuntime(
   };
 
   // On-demand read-only probe. A supplied ID is the broker position's instr_id,
-  // which is distinct from the quote feed's serial quote number n.
+  // distinct from quote serial n; the instrument_id request key remains a candidate
+  // until a successful provider response verifies the request contract.
   const fetchFreedomTradeNetTradingLimitsProbe = (instrumentId?: number): Promise<unknown> => {
     if (instrumentId === undefined) {
       return dependencies.proxyFetch('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
