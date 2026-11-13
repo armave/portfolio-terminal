@@ -500,7 +500,8 @@ async function performProxyFetch(
   queryParams: Record<string, string | number | boolean | undefined | null> = {},
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
-  const { requestPriority: _requestPriority, ...requestInit } = fetchOptions;
+  const requestInit = { ...fetchOptions };
+  delete requestInit.requestPriority;
   const url = new URL(WORKER_PROXY_URL);
   if (action) {
     if (action.startsWith('/')) {

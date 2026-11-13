@@ -107,13 +107,15 @@ describe('shared request scheduler', () => {
     const scheduler = createRequestScheduler({ concurrency: 1, maxQueued: 1 });
     const activeGate = deferred();
     const active = scheduler.schedule(() => activeGate.promise);
-    const queued = scheduler.schedule(() => 'queued');
+    const queuedTask = vi.fn(() => 'queued');
+    const queued = scheduler.schedule(queuedTask);
     await expect(scheduler.schedule(() => 'overflow')).rejects.toThrow('queue is full');
 
     const reason = new Error('session reset');
     scheduler.cancelAll(reason);
     await expect(active).rejects.toBe(reason);
     await expect(queued).rejects.toBe(reason);
+    expect(queuedTask).not.toHaveBeenCalled();
     expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
     activeGate.resolve(undefined);
   });

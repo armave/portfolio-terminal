@@ -355,7 +355,9 @@ describe('proxy request coalescing', () => {
 
   it('prioritizes core quote requests ahead of queued deep-data reads', async () => {
     const resolvers: Array<(response: Response) => void> = [];
-    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolvers.push(resolve); }));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Promise<Response>((resolve) => { resolvers.push(resolve); })
+    );
     vi.stubGlobal('fetch', fetchMock);
     const response = () => new Response(JSON.stringify({ ok: true }), {
       status: 200,

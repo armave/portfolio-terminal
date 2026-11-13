@@ -127,9 +127,9 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
         }
       });
       const taskResult = Promise.resolve().then(() => {
-      if (entry.controller.signal.aborted) throw readAbortReason(entry.controller.signal);
-      return entry.task(entry.controller.signal);
-    });
+        if (entry.controller.signal.aborted) throw readAbortReason(entry.controller.signal);
+        return entry.task(entry.controller.signal);
+      });
 
       void Promise.race([taskResult, aborted])
         .then(entry.resolve, entry.reject)
