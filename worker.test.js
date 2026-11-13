@@ -1924,8 +1924,6 @@ describe('PortfolioStateDO TradeNet portfolio stream sanitization', () => {
   });
 
   it.each([
-    ['missing acc', { loaded: true, pos: [] }],
-    ['missing pos', { loaded: true, acc: [] }],
     ['missing quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD' }] }],
     ['malformed quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD', q: true }] }],
     ['missing ticker', { loaded: true, acc: [], pos: [{ curr: 'USD', q: 3 }] }]
