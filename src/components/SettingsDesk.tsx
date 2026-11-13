@@ -513,7 +513,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 class="text-[11px] font-semibold text-slate-300">{translateText('Trading limits schema probe')}</h4>
-              <p class="mt-1 text-[10px] text-slate-500">{translateText('Uses a recent OPQ holding instr_id for a read-only getTradingLimits lookup. Refresh the account overview first.')}</p>
+              <p class="mt-1 text-[10px] text-slate-500">{translateText('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.')}</p>
             </div>
             <button type="button" disabled={tradingLimitsProbeLoading} onClick={() => void handleProbeTradingLimits()}
               class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">
