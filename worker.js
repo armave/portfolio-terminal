@@ -2294,7 +2294,8 @@ export default {
 
             // On-demand, admin-only read-only schema probe for getTradingLimits.
             // An empty parameter object is deliberate: do not guess the documented
-            // instrument identifier field. The bounded provider error may identify it.
+            // instrument identifier field. This probes method validation only; it
+            // does not place an order or reserve capacity.
             if (action === "freedom-trading-limits-probe") {
                 if (request.method !== "GET") {
                     return jsonError("TradeNet trading-limits probe only supports GET.", 405, corsHeaders);
