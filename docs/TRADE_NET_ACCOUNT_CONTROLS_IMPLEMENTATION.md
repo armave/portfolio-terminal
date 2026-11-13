@@ -301,8 +301,8 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 - [Main Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43415601669) and [main Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43415601603) also passed on that commit.
 
 ### Exact-head PR validation
-- Current PR head `03736f31b84cd948e612e91a4019991c61673391` passed TypeScript, full Vitest, production build, production browser smoke, desktop/mobile performance baseline, dead-code validation, full dependency audit, and production dependency audit: [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43415959725).
-- The same PR head passed typecheck, unit and Worker tests, production build, account/Settings browser journey, performance upload, dead-code validation, and both dependency audits: [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43415959739).
+- Current PR head `716c17c83dee8ebac4df57e69c6f18b9148990b2` passed TypeScript, full Vitest, production build, production browser smoke, desktop/mobile performance baseline, dead-code validation, full dependency audit, and production dependency audit: [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43416213739).
+- The same PR head passed typecheck, unit and Worker tests, production build, account/Settings browser journey, performance upload, dead-code validation, and both dependency audits: [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43416213670).
 
 ### Outstanding — intentionally not marked complete
 - Exact `getTradingLimits` request method/parameters and response fields; verified fixture; Worker route; client transport; and typed normalizer.
