@@ -8,7 +8,7 @@ import {
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
-import { fetchFreedomTradeNetOpq } from '../services/api';
+import { fetchFreedomTradeNetOpq, fetchFreedomTradeNetTradingLimitsProbe } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -108,6 +108,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [opqError, setOpqError] = useState('');
   const [opqReceivedAt, setOpqReceivedAt] = useState<number | null>(null);
   const [opqSnapshot, setOpqSnapshot] = useState<unknown>(null);
+  const [tradingLimitsProbeLoading, setTradingLimitsProbeLoading] = useState(false);
+  const [tradingLimitsProbe, setTradingLimitsProbe] = useState<unknown>(null);
+  const [tradingLimitsProbeError, setTradingLimitsProbeError] = useState('');
+
 
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
@@ -128,6 +132,27 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       setOpqError(error instanceof Error ? error.message : 'Could not retrieve TradeNet account overview.');
     } finally {
       setOpqLoading(false);
+    }
+  };
+
+  const handleProbeTradingLimits = async () => {
+    if (account?.role !== 'admin' || tradingLimitsProbeLoading) return;
+    setTradingLimitsProbeLoading(true);
+    setTradingLimitsProbeError('');
+    try {
+      const response = await fetchFreedomTradeNetTradingLimitsProbe();
+      if (!response || typeof response !== 'object' || (response as Record<string, unknown>).source !== 'getTradingLimits') {
+        throw new Error('TradeNet trading-limits probe returned an invalid response.');
+      }
+      setTradingLimitsProbe(response);
+      if ((response as Record<string, unknown>).ok !== true) {
+        const message = (response as Record<string, unknown>).providerError;
+        setTradingLimitsProbeError(typeof message === 'string' ? message : 'TradeNet did not accept an empty parameter object.');
+      }
+    } catch (error) {
+      setTradingLimitsProbeError(error instanceof Error ? error.message : 'Could not probe TradeNet trading limits.');
+    } finally {
+      setTradingLimitsProbeLoading(false);
     }
   };
 
@@ -471,6 +496,23 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {opqSnapshot === null && !opqError && <p class="text-xs text-slate-500">
           {translateText('No TradeNet account overview has been loaded in this session.')}
         </p>}
+        <div class="border-t border-slate-800 pt-3 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 class="text-[11px] font-semibold text-slate-300">{translateText('Trading limits schema probe')}</h4>
+              <p class="mt-1 text-[10px] text-slate-500">{translateText('Sends an empty read-only getTradingLimits request to reveal any required parameter. No instrument parameter is guessed.')}</p>
+            </div>
+            <button type="button" disabled={tradingLimitsProbeLoading} onClick={() => void handleProbeTradingLimits()}
+              class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">
+              {tradingLimitsProbeLoading ? translateText('Loading…') : translateText('Probe trading limits')}
+            </button>
+          </div>
+          {tradingLimitsProbeError && <p role="status" class="text-xs text-amber-300">{translateText(tradingLimitsProbeError)}</p>}
+          {tradingLimitsProbe !== null && <details class="rounded border border-slate-800 p-2">
+            <summary class="cursor-pointer text-xs text-slate-300">{translateText('Trading limits probe response (diagnostic)')}</summary>
+            <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[10px] text-slate-400">{JSON.stringify(tradingLimitsProbe, null, 2)}</pre>
+          </details>}
+        </div>
       </section>}
 
       <DeviceCheckSummary />
