@@ -1311,7 +1311,7 @@ export function sanitizeFreedomOpqResponse(response) {
         if (typeof value !== "object") return undefined;
         const output = {};
         for (const [key, item] of Object.entries(value).slice(0, 300)) {
-            if (/password|secret|token|signature|sid|login|account_number|client_auth_login/i.test(key)) continue;
+            if (/password|secret|token|signature|sid|login|account_number|client_auth_login/i/i/i/i.test(key)) continue;
             const safe = cloneSafe(item, depth + 1);
             if (safe !== undefined) output[key.slice(0, 80)] = safe;
         }
@@ -1679,7 +1679,7 @@ export default {
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
-                "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
+                "state", "history", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
                 "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket"
             ].includes(action);
@@ -1696,7 +1696,7 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
