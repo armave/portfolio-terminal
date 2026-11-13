@@ -67,6 +67,19 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch).toHaveBeenCalledWith('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
   });
 
+  it('runs the getTradingLimits empty-parameter schema probe without caching or guessing fields', async () => {
+    const payload = {
+      ok: false, source: 'getTradingLimits', requestParameters: {},
+      providerError: 'TradeNet API error: Missing required parameter: instrument_id'
+    };
+    const { runtime, proxyFetch } = createRuntime({
+      resolve: action => action === 'freedom-trading-limits-probe' ? payload : undefined
+    });
+    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe()).resolves.toEqual(payload);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledWith('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
+  });
+
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {
