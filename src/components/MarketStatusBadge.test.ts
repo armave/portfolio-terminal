@@ -117,6 +117,11 @@ describe('US-equities market status presentation', () => {
     expect(getEffectiveMarketStatusCountdown('MIXED', now.getTime(), now)).toBeNull();
     expect(getEffectiveMarketStatusCountdown('CLOSED', now.getTime(), now)).toBeNull();
     expect(getEffectiveMarketStatusCountdown('MARKET', now.getTime(), now)).toBe(getMarketStatusCountdown('MARKET', now));
+    expect(getMarketStatusTone('MIXED')).toBe('unknown');
+    const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('snapshot.marketStatus.exchanges.map');
+    expect(source).toContain('exchange.openTime');
+    expect(source).toContain('exchange.closeTime');
   });
 
   it('corrects provider phases that conflict with the actual New York market session', () => {
