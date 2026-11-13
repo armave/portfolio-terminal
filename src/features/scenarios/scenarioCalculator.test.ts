@@ -253,6 +253,49 @@ describe('Market Tools Exit Comparison preview', () => {
     expect(updateTargetPrice).not.toHaveBeenCalled();
   });
 
+  it('blocks full Exit when broker sell capacity is below the held long quantity', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const now = Date.now();
+    const result = ScenarioCalculator.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ], {
+      accountMaximum: { quantity: 10, freshness: 'current', observedAt: now, source: 'getOPQ' },
+      instrumentMaximum: { quantity: 4, freshness: 'current', observedAt: now, source: 'getTradingLimits' }
+    });
+    expect(result.type).toBe('err');
+    expect(result.brokerMaximumShares).toBe(4);
+    expect(result.text).toContain('maximum sellable quantity of 4 shares');
+  });
+
+  it('blocks Exit when broker sell capacity is unavailable', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const result = ScenarioCalculator.previewExitComparison('GOOGL', [
+      { label: 'Today', days: 0, price: 330 },
+      { label: 'In 14 days', days: 14, price: 345 }
+    ], {
+      accountMaximum: { quantity: null, freshness: 'unavailable', observedAt: null, source: 'getOPQ' },
+      instrumentMaximum: { quantity: 10, freshness: 'current', observedAt: Date.now(), source: 'getTradingLimits' }
+    });
+    expect(result.type).toBe('err');
+    expect(result.brokerLimitStatus).toBe('unavailable');
+    expect(result.text).toContain('could not both be verified');
+  });
+
   it('uses sale accounting, compounded carry, and signed cash settlement for exit estimates', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-10T08:30:00.000Z'));
