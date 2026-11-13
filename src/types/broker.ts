@@ -14,6 +14,7 @@ export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
 export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual' | 'unknown';
 
 export type BrokerPositionIntegrityIssueCode =
+  | 'short_position_unsupported'
   | 'negative_quantity_sign_unverified'
   | 'short_position_side_unverified'
   | 'unrecognized_position_side'
@@ -89,6 +90,11 @@ export interface BrokerPosition {
   rawQuantity?: number;
   rawSide?: string | number | null;
   instrumentId?: string | null;
+  instrumentIssueNumber?: string | null;
+  instrumentType?: string | number | null;
+  instrumentKind?: string | number | null;
+  marginRequirement?: number | null;
+  variationMargin?: number | null;
   raw?: Record<string, unknown>;
 }
 
@@ -215,4 +221,15 @@ export interface BrokerAdapter {
     context?: BrokerAdapterContext
   ) => BrokerDataSnapshot<BrokerCashflow[]>;
   readonly classifyError: (error: unknown) => BrokerAdapterError;
+}
+
+export interface FreedomBrokerScenarioLimitState {
+  ticker: string;
+  accountMaximumBuy: number | null;
+  instrumentMaximumBuy: number | null;
+  instrumentMaximumSell: number | null;
+  observedAt: number | null;
+  receivedAt: number;
+  freshness: 'current' | 'stale' | 'unavailable' | 'malformed';
+  source: 'getOPQ' | 'getTradingLimits';
 }
