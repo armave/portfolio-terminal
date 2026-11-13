@@ -372,3 +372,101 @@ The PR remains draft. The candidate `instrument_id` is not a confirmed provider 
 A later authenticated read-only attempt repeated the same candidate `getTradingLimits` request and again returned HTTP 400 with “Incorrect request parameters.” The diagnostic showed the same candidate request key and instrument as the earlier attempt. This confirms the rejection is repeatable for this candidate request; it still does not identify whether the key, identifier value, or another required request detail is invalid. No account or instrument identifiers from the screenshot are copied into this document.
 
 This repeat does not justify trying guessed parameter names or mapping any provider fields. Keep the request contract and response schema marked unverified until an authoritative complete example or successful authenticated response is available.
+
+
+## 18. TradeNet API documentation review (2026-11-13)
+
+This section separates facts stated in the public TradeNet documentation from contracts that still require an endpoint-specific fixture. References inspected:
+
+- [API key authentication](https://tradernet.global/tradernet-api/auth-api?site_lang=en)
+- [API FAQ (2026)](https://trade.tfos.com/tradernet-api/faq?site_lang=en)
+- [Asset-manager use case (2026-11)](https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en)
+- [Portfolio response schema](https://tradernet.com/tradernet-api/portfolio-get-changes?site_lang=en)
+- [Securities directory](https://tradernet.com/tradernet-api/securities?site_lang=en)
+
+### 18.1 API-key transport and signing
+
+The API-key reference specifies:
+
+- REST URL: `https://tradernet.com/api/{command}`, with the method name in the path.
+- A public/private key pair; the private key is used locally for signing and is never transmitted.
+- HMAC-SHA256 using the private key and a fresh Unix timestamp in seconds.
+- POST/PUT: JSON parameters in the request body; signature input is the exact serialized JSON body concatenated with the timestamp.
+- GET: parameters in the query string; signature input is the timestamp only.
+- Required headers: `X-NtApi-PublicKey`, `X-NtApi-Sig`, and `X-NtApi-Timestamp`. The timestamp header must match the timestamp used to calculate the signature.
+- Responses are JSON; the API-key reference describes an `error` response key for failures.
+
+The current Worker helper `src/services/freedomTradeNet.ts` uses the documented command URL, POST JSON body, body-plus-timestamp HMAC-SHA256, and all three headers. Its generic API-key transport is therefore consistent with the published POST signing example. This does not prove that POST is the correct method for every individual command: the method-specific `getTradingLimits` page must determine that command's HTTP method and parameters.
+
+The 2026 FAQ explicitly says API-key calls through `/api/v2` are deprecated and directs integrations to the current `/api/{command}` format. Do not replace the current Worker URL with the legacy V2 `{cmd, params}` envelope on the basis of old API V2 method pages.
+
+### 18.2 Permissions, account addressing, and limits
+
+The 2026 asset-manager guide states that `getOPQ`, `getPositionJson`, and `getTradingLimits` are available at every listed account-access level, including `view`. Trade permission is required for order-submission methods, not for these three read methods.
+
+For a manager accessing a client's account, exactly one of `client_trader_systems_id` (alias `ctsi`), `client_auth_login`, or `client_user_id` is added to address that client. Without one of these, the request applies to the API-key owner's own account. The server checks the granted access on every request. These client-account selectors are not automatically required for the current user's own account.
+
+The guide describes `getTradingLimits` as the maximum buy and maximum sell quantity for an instrument before placing an order. It explicitly warns that the values are estimates, do not reserve capacity, and must be considered alongside active orders, price movement and commissions. They must not be represented as execution guarantees.
+
+The FAQ states that rate limits vary by team/key; HTTP 429 means the limit was exceeded and requests should be retried after a pause. The FAQ does not publish a universal requests-per-minute value. The securities-directory endpoint separately documents a 10-requests-per-minute limit; do not apply that number to every API method.
+
+### 18.3 Portfolio field semantics documented by TradeNet
+
+The public `getPositionJson` portfolio page defines the following fields. This is the documented portfolio schema; it is not a substitute for the separate `getOPQ` response contract.
+
+| Field | Documented meaning | Integration implication |
+|---|---|---|
+| `acc[].curr` | Account currency | Preserve currency with every funds value. |
+| `acc[].currval` | Account-currency exchange rate | Preserve separately; do not assume it is USD or an FX rate to a specific base without account context. |
+| `acc[].s` | Available funds | Do not relabel as total cash, equity, net liquidation value, or margin buying power. |
+| `pos[].acc_pos_id` | Unique open-position ID in Tradernet | Position identity, not instrument identity. |
+| `pos[].i` | Open-position ticker | Human-facing ticker/position key. |
+| `pos[].q` | Number of securities in the position | The page's example is positive; it does not define the meaning of a negative sign. Continue preserving signed values without inferring short direction from sign alone. |
+| `pos[].curr` | Open-position currency | Keep position currency distinct from account currency. |
+| `pos[].currval` | Account-currency exchange rate | Preserve separately from the position's native amount. |
+| `pos[].fv` | Coefficient to calculate initial margin | Preserve as a coefficient; do not treat it as a monetary amount. |
+| `pos[].go` | Initial margin per position | A documented per-position margin field; confirm units/currency and aggregation before using it in portfolio margin totals. |
+| `pos[].vm` | Variable margin of a position | Preserve as a distinct margin field; do not conflate with initial margin or cash. |
+| `pos[].mkt_price` | Open-position market value (documentation label) | Retain the provider field name and avoid assuming it is a per-share quote without validating sample behavior. |
+| `pos[].market_value` | Asset value | Keep distinct from `mkt_price`. |
+
+This documentation gives stronger semantics for the position-level `go` and `vm` fields than the earlier field inventory alone. The application already preserves those fields on normalized positions. Before using them in aggregate margin calculations, verify whether the values are native-currency or account-currency amounts and whether they duplicate figures already included in `getOPQ` totals.
+
+The portfolio page is expressly an API V2 example. Reuse its documented response-field meanings cautiously, but do not copy its legacy request envelope into the current API-key transport.
+
+### 18.4 Instrument identifiers and lot/quote fields
+
+The securities directory defines:
+
+- `instr_id`: instrument ID in the Tradernet trading system.
+- `ticker`: internal ticker in the Tradernet system.
+- `code_nm` / `exchange_ticker`: exchange ticker/code.
+- `issue_nb`: ISIN / issue number.
+- `mkt_id`: market ID in Tradernet.
+- `lot_size_q`: lot size in the securities record.
+- Quote `n`: serial quote number; it is not the same identifier as `instr_id`.
+- Quote `x_lot`: minimum lot size.
+- Quote `x_min` and `x_max`: minimum and maximum values for a period, not `getTradingLimits` buy/sell capacity.
+- `istrade` / `x_istrade`: trading-availability indicators; `x_short`: whether shorting is available.
+
+Consequently, retain the existing rule that OPQ position `instr_id` is not interchangeable with quote `n`. Also do not reinterpret `lot_size_q` or `x_lot` as the maximum quantity allowed by `getTradingLimits`, and do not use `x_min` / `x_max` as order-side capacity.
+
+### 18.5 Market schedule
+
+The 2026 FAQ says market opening/closing times should be obtained from the market-status method rather than hardcoded. The times vary by venue, holidays and daylight-saving changes; market status can be subscribed to for changes. The available documentation reviewed here does not establish the exact units/timezone of the OPQ/market schedule fields `o`, `c`, and `dt`. Continue preserving them raw and do not derive UTC timestamps or countdowns until those field semantics are verified.
+
+### 18.6 Exact getTradingLimits contract remains unresolved
+
+The current 2026 use-case guide links `getTradingLimits` to the method page slug `get-trading-limits` and confirms the method's purpose (maximum buy and sell quantity per instrument). However, the endpoint-specific page body exposing its HTTP method, required parameter names/types, response field names, units, and lot semantics was not retrievable from the public documentation index during this review. The asset-manager guide explicitly delegates method parameters and responses to the linked pages; its summary is not a substitute for those details.
+
+The authenticated diagnostics recorded in sections 17 and the repeat-probe confirmation still show the candidate request key `instrument_id` returning HTTP 400, “Incorrect request parameters.” That error does not identify whether the name, value, HTTP method, account selector, or another required field is wrong. It is not evidence for any particular replacement key.
+
+Therefore:
+
+- Do not switch to `ticker`, `instr_id`, `code_nm`, `id`, `nt_ticker`, or another guessed parameter.
+- Do not assume the method is POST solely because other API-key methods use POST; check the method's own HTTP method declaration.
+- Do not map assumed response names such as `buy` / `sell` into production limits without a documented or authenticated fixture.
+- Keep the diagnostic read-only and admin-only. Keep broker limits unavailable/unverified in Buy More and Exit until an authoritative method contract or successful sanitized live response is available.
+- If the broker account is being accessed through an asset-manager key, verify the account selector and granted client-access scope separately; for the current user's own account, omit client-account selectors.
+
+The generic API-key signer and current endpoint path match the published API-key POST specification. The repeated HTTP 400 should not be “fixed” by changing HMAC construction or blindly reverting to API V2; resolve the command-specific request contract first.
