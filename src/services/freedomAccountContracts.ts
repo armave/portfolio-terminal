@@ -261,15 +261,15 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       ? rawSideValue
       : null;
     const normalizedSide = typeof rawSide === 'string' ? rawSide.trim().toLowerCase() : '';
-    // TradeNet documents negative q as a short position. Preserve the signed
-    // quantity and classify it explicitly; the downstream ledger still blocks
-    // unsupported short valuation and P&L. Numeric side codes remain unguessed.
+    // The authenticated position fixture does not establish q's short-sign
+    // convention. Preserve signed q, but never infer position direction from
+    // numeric sign or from t/k. Only explicit textual side data is definitive.
     const direction: BrokerPosition['direction'] = normalizedSide === 'long'
       ? 'long'
       : normalizedSide === 'short'
         ? 'short'
-        : rawSideValue === undefined
-          ? quantity < 0 ? 'short' : 'long'
+        : rawSideValue === undefined && quantity >= 0
+          ? 'long'
           : 'unknown';
     const instrumentIdValue = readFirst(row, [
       'instrument_id', 'instrumentId', 'instr_id', 'security_id', 'isin', 'figi'
