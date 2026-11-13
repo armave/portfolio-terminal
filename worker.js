@@ -2316,6 +2316,8 @@ export default {
                     return jsonError("A positive numeric TradeNet instrument ID is required.", 400, corsHeaders);
                 }
                 // getOPQ position rows contain instr_id (the trading-system instrument ID).
+                // instrument_id is a candidate parameter name; confirm it with a successful
+                // provider response before mapping any returned values into risk calculations.
                 // The browser cannot submit arbitrary TradeNet parameters or commands.
                 const requestParameters = numericInstrumentId === null
                     ? {}
