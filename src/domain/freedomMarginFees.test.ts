@@ -25,6 +25,97 @@ describe('Freedom margin fee allocation', () => {
     expect(result.matchedFeeRows).toBe(1);
   });
 
+  it('splits a daily margin fee between a partial close and the still-open buy lot', () => {
+    const executions = [
+      { id: 'margin-buy', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, executedAt: '2026-11-01T10:00:00Z' },
+      { id: 'partial-sale', ticker: 'AAPL', side: 'sell', quantity: 4, price: 110, executedAt: '2026-11-04T10:00:00Z' }
+    ];
+    const trancheId = `AAPL:${Date.parse('2026-11-01T10:00:00Z')}:margin-buy`;
+    const result = calculateFreedomMarginFeeAllocations(
+      [fee('stage-split', '2026-11-02', -1)],
+      executions,
+      [],
+      { trancheTypes: { [trancheId]: 'margin' } }
+    );
+
+    expect(result.brokerAllocations.get(1)).toEqual({ 'freedom-stage-split': 0.4 });
+    expect(result.brokerOpenAllocations.get(0)).toEqual({ 'freedom-stage-split': 0.6 });
+    expect(result.closedAllocatedAmount).toBe(0.4);
+    expect(result.openAllocatedAmount).toBe(0.6);
+    expect(result.allocatedAmount).toBe(1);
+    expect(result.closedAllocatedAmount + result.openAllocatedAmount).toBe(result.allocatedAmount);
+  });
+
+  it('allocates only the margin-funded portion of a mixed tranche', () => {
+    const executedAt = '2026-11-01T10:00:00Z';
+    const trancheId = `AAPL:${Date.parse(executedAt)}:mixed-buy`;
+    const executions = [
+      { id: 'mixed-buy', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, executedAt },
+      { id: 'mixed-sale', ticker: 'AAPL', side: 'sell', quantity: 4, price: 110, executedAt: '2026-11-04T10:00:00Z' }
+    ];
+    const result = calculateFreedomMarginFeeAllocations(
+      [fee('mixed-stage', '2026-11-02', -1)],
+      executions,
+      [],
+      {
+        trancheTypes: { [trancheId]: 'mix' },
+        trancheMixes: { [trancheId]: { cash: 6, margin: 4 } }
+      }
+    );
+
+    expect(result.brokerAllocations.get(1)).toEqual({ 'freedom-mixed-stage': 0.4 });
+    expect(result.brokerOpenAllocations.get(0)).toEqual({ 'freedom-mixed-stage': 0.6 });
+    expect(result.allocatedAmount).toBe(1);
+  });
+
+  it('does not attach financing cashflows to explicitly cash-funded sales or open lots', () => {
+    const executedAt = '2026-11-01T10:00:00Z';
+    const trancheId = `AAPL:${Date.parse(executedAt)}:cash-buy`;
+    const executions = [
+      { id: 'cash-buy', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, executedAt },
+      { id: 'cash-sale', ticker: 'AAPL', side: 'sell', quantity: 10, price: 110, executedAt: '2026-11-04T10:00:00Z' }
+    ];
+    const result = calculateFreedomMarginFeeAllocations(
+      [fee('cash-only', '2026-11-02', -1)],
+      executions,
+      [],
+      { trancheTypes: { [trancheId]: 'cash' } }
+    );
+
+    expect(result.brokerAllocations.size).toBe(0);
+    expect(result.brokerOpenAllocations.size).toBe(0);
+    expect(result.allocatedAmount).toBe(0);
+    expect(result.matchedFeeRows).toBe(0);
+  });
+
+  it('splits app-only fallback fees between a closed trade and an active margin position', () => {
+    const result = calculateFreedomMarginFeeAllocations(
+      [fee('app-open', '2026-11-02', -1)],
+      [],
+      [{
+        buyDate: '2026-11-01',
+        sellDate: '2026-11-04',
+        shares: 4,
+        entryPrice: 100
+      }],
+      {
+        openAppPositions: {
+          AAPL: {
+            ticker: 'AAPL',
+            shares: 6,
+            tranches: [{ qty: 6, price: 100, date: '2026-11-01' }]
+          }
+        }
+      }
+    );
+
+    expect(result.appAllocations.get(0)).toBe(0.4);
+    expect(result.appOpenAllocations.get('AAPL')).toEqual({ 'freedom-app-open': 0.6 });
+    expect(result.closedAllocatedAmount).toBe(0.4);
+    expect(result.openAllocatedAmount).toBe(0.6);
+    expect(result.allocatedAmount).toBe(1);
+  });
+
   it('uses FIFO partial-close segments and stable original execution indices', () => {
     const executions = [
       { id: 'buy-1', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, executedAt: '2026-02-01T10:00:00Z' },

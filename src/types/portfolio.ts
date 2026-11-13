@@ -60,8 +60,11 @@ export interface PositionRecord {
   currentPrice: number;
   pt: number;
   commBuy: number;
-  /** Unallocated one-shot financing charge retained until the next realized sale. */
+  /** Unallocated one-shot modeled financing charge retained until the next realized sale. */
   marginCharged?: number;
+  /** Actual broker cashflow margin fees attributed to the still-open position, separate from modeled accrual. */
+  brokerMarginFeeAllocations?: Record<string, number>;
+  brokerMarginFee?: number;
   startDate?: string;
   tranches?: TrancheItem[];
   quoteUpdatedAt?: number;

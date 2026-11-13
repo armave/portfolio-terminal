@@ -223,11 +223,15 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 
 - Only rows identified as Freedom API rows (IDs beginning `freedom-`) are eligible.
 - Financing-fee text is matched against the existing financing patterns and excludes trade-commission rows.
-- Current implementation allocates USD financing rows to FIFO-matched buy-to-sell exposure segments.
-- Allocation weights are exposure quantity × buy price and allocations are performed in integer cents using largest-remainder distribution, preserving the input fee's cents.
-- If broker executions exist, the broker-execution allocation path is selected; app closed trades are a fallback only when broker executions are absent.
-- Known non-USD cashflows and known non-USD executions are excluded from USD allocation.
-- **Legacy compatibility:** missing/blank currency is currently treated as USD. This should be made explicit and reviewed before tightening the behavior, because changing it can alter historical fee attribution.
+- USD financing rows are allocated against FIFO exposure segments that were open on the fee date. Exposure weight is margin-funded quantity × buy price; explicitly cash-funded quantity is excluded, and mixed tranches contribute only their margin fraction.
+- Each fee is split in integer cents using largest-remainder distribution, preserving every cent across the closed and still-open portions.
+- The closed portion is stored by cashflow ID on the corresponding broker sell execution as `marginFeeAllocations`. The remaining open portion is stored separately on the originating buy execution as `openMarginFeeAllocations` / `openMarginFee`. These two buckets are mutually exclusive; when an open lot later sells, recalculation transfers its historical fee share from the buy-side open bucket to the sell-side closed bucket.
+- Open buy-lot fees are also aggregated by ticker onto the active Margin position as `brokerMarginFeeAllocations` / `brokerMarginFee` for display. This imported broker amount is separate from the app's modeled `marginCharged` accrual and never mutates it.
+- Without broker execution history, the app fallback splits fees across historical closed app trades and current app-owned Margin-position tranches. The open portion is stored on the position using the same broker-fee fields; it is not copied into `marginCharged`.
+- Active lots without an explicit funding classification use the active portfolio's Cash default. A sale with no explicit or inherited classification retains the established closed-history Margin fallback; explicit tranche/ticker classification is carried across partial closes.
+- Broker-execution history is the primary source; app closed trades and active app Margin positions are a compatibility fallback only when broker execution history is absent.
+- Known non-USD cashflows and known non-USD executions are excluded from USD allocation. The app does not convert EUR/AMD/other currencies; a foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
+- **Legacy compatibility:** missing/blank currency is currently treated as USD. This behavior remains explicit and should be reviewed before tightening because changing it can alter historical fee attribution.
 
 The fee allocator does not convert EUR/AMD/other currencies to USD. A foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
 
