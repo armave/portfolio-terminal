@@ -2232,6 +2232,9 @@ export default {
                 }), { headers: corsHeaders });
             }
 
+            // Standalone raw getOPQ and experimental getTradingLimits diagnostics are intentionally
+            // not exposed as Worker actions. Account portfolio data remains available through the
+            // validated WebSocket snapshot and bounded getPositionJson fallback.
             // Read-only market data. Commands are fixed server-side; callers cannot submit
             // arbitrary TradeNet commands or access trading operations.
             if (["freedom-quote", "freedom-news", "freedom-history"].includes(action)) {
