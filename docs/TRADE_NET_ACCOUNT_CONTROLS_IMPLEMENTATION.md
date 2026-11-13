@@ -286,28 +286,28 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 
 ### Implemented
 - Pure broker Buy/Exit quantity-cap resolver and Vitest coverage for current/stale/unavailable/malformed/zero limits, local/account/instrument cap intersection, lot rounding, and long Exit no-cross-through-zero.
-- Buy More and Exit calculator entry points accept optional normalized broker limits and fail closed if required limits are not verified. Live broker limit hydration into those production panels remains outstanding.
+- Buy More and Exit calculator entry points accept optional normalized broker limits and fail closed if supplied constraints are stale/unavailable/malformed. **Live broker limit hydration into the production panels remains outstanding**, because the required TradeNet schemas are not verified.
 - Position normalization preserves signed quantity and documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm`. A negative `q` without an explicit recognized side remains direction `unknown` with `negative_quantity_sign_unverified`; `t` and `k` are not direction fields.
-- Fixed read-only `freedom-opq` Worker route for `getOPQ`, with bounded credential-redacted raw payload; the client has a secret-scoped 60-second cache and admin-only diagnostic panel. The payload is intentionally not mapped to verified margin or buying-power metrics.
+- Fixed read-only `freedom-opq` Worker route for `getOPQ`, with bounded credential-redacted raw payload; client uses secret-scoped 60-second cache and an admin-only diagnostic panel. The payload remains unmapped and is not presented as verified margin or buying power.
 - REST and persistent account-stream Worker sanitizers validate complete `acc`/`pos` snapshots, reject malformed quantities/tickers rather than changing them to zero, preserve documented metadata, retain last known-good snapshots for invalid stream payloads, and accept legitimate empty arrays.
-- Worker market selector now preserves selected-market schedule fields and provider time, and reports `MIXED` if separate Nasdaq and NYSE statuses disagree rather than silently preferring one venue.
-- Client market contract preserves the schedule metadata and per-exchange states; `MIXED` is localized and visible. A fresh broker phase is authoritative; the New York calendar is a fallback only for missing/stale provider status. No single-market countdown is displayed for `MIXED` or broker/calendar disagreement.
-- Market schedule fields `o`, `c`, `dt`, and event time `t` are preserved and displayed diagnostically. Their units remain unverified, so no timestamp parsing/countdown arithmetic is based on them.
-- English source copy and Russian translations are added for the implemented diagnostic states.
+- Worker market selector preserves the selected market's documented `n`, `n2`, `s`, `o`, `c`, `dt` fields and event time `t`; it reports `MIXED` when separate Nasdaq and NYSE states disagree instead of silently choosing one venue.
+- Client market contract and badge preserve/display selected market schedules and separate venue states. A fresh provider phase is authoritative; the New York calendar is fallback only when provider status is missing/stale/implausibly future-dated. A single-market countdown is suppressed for `MIXED` or fresh provider/calendar disagreement.
+- Schedule values are shown as received in the diagnostic tooltip. Their exact units/timezone semantics are not verified, so they are not parsed into UTC timestamps or used for countdown arithmetic.
+- Russian localization covers the implemented mixed-exchange, short-position diagnostic, and broker-limit diagnostic states.
 
 ### Worker/server deployment (direct to main)
-- Previously deployed Worker includes the read-only `freedom-opq` route and portfolio snapshot validation: [Worker deploy run](https://github.com/armave/portfolio-terminal/actions/runs/43401341771), commit `2a086805bbd9891391586df1a36961034dfac01c`.
-- The current continuation adds market schedule propagation and separate-exchange `MIXED` reporting in `worker.js`, with corresponding Worker tests. **This latest Worker source/test change still needs its own Worker workflow validation and Cloudflare deployment before it is live.**
-- The matching market integration documentation is updated in `docs/FREEDOM_MARKET_DATA.md`.
+- Read-only `freedom-opq` action and portfolio snapshot validation are deployed on `main`.
+- Market schedule propagation and mixed-venue state are deployed on `main` commit `e43e19e7b7ec8b236d3be27cf7ccaf2c77b49978`: [Cloudflare Worker deployment](https://github.com/armave/portfolio-terminal/actions/runs/43415601965) passed dependency audit, Worker tests, and pinned Wrangler deployment.
+- Main CI and Operations browser journey also passed on that commit: [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43415601669), [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43415601603).
 
-### Client PR validation
-- The prior PR head `5db29cc0259d68072985aefae0c45c1150ef1bc5` passed typecheck, full Vitest, production build, browser smoke, performance baseline, dead-code and dependency audits in [CI](https://github.com/armave/portfolio-terminal/actions/runs/43405363751) and [Operations](https://github.com/armave/portfolio-terminal/actions/runs/43405363719).
-- Market-schedule propagation, mixed-state handling, and the new freshness/fallback tests are newer than that validated head. They must pass a fresh complete run before being marked validated.
+### Exact-head PR validation
+- Current PR head `87e07ee657244c93236c47bed1fe184e0d0f23dc` passed typecheck, full Vitest, production build, browser smoke, desktop/mobile performance baseline, dead-code validation, and both dependency audits: [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43415506964).
+- The same head passed the Operations workflow including Worker tests, production build, account/Settings browser journey, performance artifact, dead-code validation, and dependency audits: [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43415506921).
 
 ### Outstanding — intentionally not marked complete
 - Exact `getTradingLimits` request method/parameters and response fields; verified fixture; Worker route; client transport; and typed normalizer.
 - Verified `getOPQ` response field mapping for cash, currency, initial/maintenance margin, collateral, and account-level capacity.
-- Store/UI hydration so live, verified broker account and per-instrument limits materially constrain Buy More and Exit scenarios. The existing cap policy is implemented, but live enforcement in the production panels is not complete.
+- Store/UI hydration so live, verified broker account and per-instrument limits materially constrain Buy More and Exit scenario quantities. The cap policy is implemented, but live enforcement in the production panels is not complete.
 - Conversion of any account-level notional capacity into quantity only after currency, price, lot and commission semantics are verified.
 - Parsing `o`, `c`, and `dt` into precise exchange timestamps only after their units/timezone semantics are verified.
 - Bounded 429/transient backoff, SID/rememberMe cache reconciliation, and authenticated live TradeNet account verification.
