@@ -169,7 +169,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Exchanges report different states': 'Биржи сообщают разные состояния',
   'Updated at': 'Обновлено',
   'Trading limits schema probe': 'Проверка схемы торговых лимитов',
-  'Sends an empty read-only getTradingLimits request to reveal any required parameter. No instrument parameter is guessed.': 'Отправляет пустой запрос getTradingLimits только для чтения, чтобы определить обязательный параметр. Параметр инструмента не угадывается.',
+  'Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.': 'Использует instr_id из актуальной позиции OPQ как кандидатный параметр instrument_id для запроса getTradingLimits только для чтения. Контракт запроса не подтверждён; сначала обновите обзор счёта.',
   'Probe trading limits': 'Проверить торговые лимиты',
   'Trading limits probe response (diagnostic)': 'Ответ проверки торговых лимитов (диагностика)',
   'TradeNet trading-limits probe returned an invalid response.': 'Пробная проверка торговых лимитов TradeNet вернула некорректный ответ.',

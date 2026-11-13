@@ -323,3 +323,25 @@ Keep the PR in draft until live, verified account/instrument limits drive Buy/Ex
 - Existing account normalization: src/services/freedomAccountContracts.ts
 - Existing market-session fallback: src/services/marketSession.ts
 - Existing Worker sanitizers and routing: worker.js, state-store.js
+
+
+## 16. Sanitized OPQ probe evidence (2026-11-13)
+
+The authenticated `getOPQ` sample has been inspected. The unredacted JSON is intentionally excluded from this public repository because it contains account and user-profile data; do not add raw account snapshots to commits, CI artifacts, or issue comments.
+
+Observed response shape (field inventory only; no private values retained):
+
+- `data.OPQ.ps.loaded` was true.
+- `data.OPQ.ps.acc` contained multiple currencies. Balance rows included `curr`, `s`, `currval`, `forecast_in`, `forecast_out`, `t2_in`, and `t2_out`.
+- `data.OPQ.ps.pos` included `i`, signed `q`, `curr`, `market_value`, `mkt_price`, `instr_id`, `issue_nb`, `go`, and `vm`, among other provider fields.
+- `data.OPQ.quotes.q` included ticker `c`, numeric quote identifier `n`, `x_lot`, `x_min_lot_q`, `x_min`, `x_max`, `x_short`, `x_istrade`, and `marketStatus`.
+- The same position ticker's `instr_id` did **not** equal its quote record's `n` in the sample. Those identifiers must not be treated as interchangeable.
+- Top-level numeric fields included `init_margin`, `correctedMargin`, `portfolioValue`, `npr1`, and `npr2`; their exact units and business definitions have not been verified, so they remain unmapped and are not used as app margin or buying-power inputs.
+
+The official [TradeNet securities reference](https://tradernet.com/tradernet-api/securities?site_lang=en) describes `x_lot` as minimum lot size and `x_min` / `x_max` as period extrema. These fields are not the `getTradingLimits` maximum buy/sell quantity. The asset-manager [use-case reference](https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en) states that `getTradingLimits` supplies maximum buy and sell quantities and that those limits are estimates, not reservations.
+
+The empty-parameter `getTradingLimits` call returned HTTP 400 with no provider validation text in the saved fixture. Before the Worker diagnostic fix, the common request helper discarded any HTTP error body and exposed only the status. The Worker now parses only a short JSON error string when the provider returns one, redacts credential/identity-like values and discards the rest of the body. The current deployed Worker includes the diagnostic fix and the instrument-specific candidate route (main commit `93abcf19f467d491513f608577a834114929ef99`).
+
+The Settings diagnostic now selects a recent USD `.US` held position from OPQ and sends that position's `instr_id` as the candidate `instrument_id` parameter. The position `instr_id` is a documented trading-system identifier, but the **request parameter name and getTradingLimits response schema have not yet been confirmed by a real provider response**. Treat this as a read-only contract probe only. Do not map any returned fields to buy/sell limits or apply them to scenario calculations until a successful authenticated response is reviewed and normalized.
+
+Until an authenticated `getTradingLimits` response verifies the request and buy/sell quantity fields, production Buy More and Exit panels remain unhydrated with live broker limits. The pure quantity-cap policy tests remain in place, but the PR must stay draft and must not claim live broker-limit enforcement.
