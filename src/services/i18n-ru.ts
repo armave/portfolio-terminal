@@ -457,6 +457,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Total Commissions': 'Сумма комиссий',
   'Total Comm.': 'Сумма комиссий',
   'Accrued Margin Interest': 'Начисленные проценты по марже',
+  'Open Broker Margin Fees': 'Комиссии брокера по открытой марже',
   'Shares / Tranches': 'Акции / лоты',
   'Invested / Avg. Entry': 'Инвестировано / средний вход',
   'Share Price / Market Value': 'Цена акции / рыночная стоимость',

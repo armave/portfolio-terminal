@@ -390,6 +390,8 @@ describe('portfolio domain', () => {
           shares: 2,
           commBuy: 0,
           marginCharged: 0,
+          brokerMarginFeeAllocations: { 'freedom-fee-open': 0.6 },
+          brokerMarginFee: 0.6,
           tranches: [{ qty: 2, price: 150, buyCommission: 0 }]
         }
       }
@@ -399,6 +401,8 @@ describe('portfolio domain', () => {
       shares: 2,
       commBuy: 0,
       marginCharged: 0,
+      brokerMarginFeeAllocations: { 'freedom-fee-open': 0.6 },
+      brokerMarginFee: 0.6,
       tranches: [{ qty: 2, price: 150, buyCommission: 0 }]
     });
   });

@@ -13,7 +13,7 @@ import {
   markFreedomCashflowTradeCheckpoint,
   savePortfolioSnapshot
 } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
+import { aggregateOpenBrokerMarginFeeAllocationsByTicker, applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, applyCashflowAllocationsToMarginPositions, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
@@ -231,7 +231,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
     // successful allocation changes its own key and triggers another pass.
-    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']);
+    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'openMarginFeeAllocations', 'openMarginFee', 'feesAndCommissions', 'netProfit']);
     const sourceExecutions = executions.map((trade) =>
       Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
     );
@@ -240,7 +240,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         !['marginFee', 'marginInterest', 'feesAndCommissions', 'totalCommissions', 'netProfit', 'netRealizedGain'].includes(field)
       ))
     );
-    const key = JSON.stringify({ cashflows, executions: sourceExecutions, appTrades: sourceAppTrades });
+    const sourceAppPositions = Object.fromEntries(Object.entries(state.positions || {}).map(([key, position]) => [
+      key,
+      Object.fromEntries(Object.entries(position || {}).filter(([field]) =>
+        !['brokerMarginFeeAllocations', 'brokerMarginFee'].includes(field)
+      ))
+    ]));
+    const key = JSON.stringify({
+      cashflows,
+      executions: sourceExecutions,
+      appTrades: sourceAppTrades,
+      appPositions: sourceAppPositions,
+      trancheTypes: state.activeTrancheTypes || {},
+      trancheMixes: state.activeTrancheMixes || {}
+    });
     if (key === lastRecalculationKey.current) {
       setCashflowAllocationReady(true);
       return;
@@ -256,7 +269,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     return () => {
       active = false;
     };
-  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, brokerTrades]);
+  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, state.positions, state.activeTrancheTypes, state.activeTrancheMixes, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false,
@@ -270,20 +283,38 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
 
       // Persist broker-normalized cashflow rows as the source of truth so fee
       // allocations can be recalculated after refresh without another API read.
-      const storedBrokerExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+      const currentPortfolio = portfolioStore.getState();
+      const storedBrokerExecutions = currentPortfolio.brokerExecutedTrades || [];
       // The canonical store may be empty while the broker table has already
       // hydrated. Use the same visible execution set for allocation and display.
       const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)];
-      const appTrades = [...(state.closedTrades || [])];
-      const { brokerAllocations, appAllocations } = calculateFreedomMarginFeeAllocations(
+      const appTrades = [...(currentPortfolio.closedTrades || state.closedTrades || [])];
+      const { brokerAllocations, brokerOpenAllocations, appAllocations, appOpenAllocations } = calculateFreedomMarginFeeAllocations(
         cashflowRows,
         brokerExecutions,
-        appTrades
+        appTrades,
+        {
+          trancheTypes: currentPortfolio.activeTrancheTypes ?? state.activeTrancheTypes,
+          trancheMixes: currentPortfolio.activeTrancheMixes ?? state.activeTrancheMixes,
+          openAppPositions: currentPortfolio.positions || state.positions
+        }
       );
-      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, brokerAllocations);
+      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
+        brokerExecutions,
+        brokerAllocations,
+        brokerOpenAllocations
+      );
       const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+      const openPositionFeeAllocations = brokerExecutions.length
+        ? aggregateOpenBrokerMarginFeeAllocationsByTicker(brokerExecutions, brokerOpenAllocations)
+        : appOpenAllocations;
+      const updatedMarginPositions = applyCashflowAllocationsToMarginPositions(
+        currentPortfolio.positions || state.positions || {},
+        openPositionFeeAllocations
+      );
       const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
+      const changedMarginPositions = JSON.stringify(currentPortfolio.positions || {}) !== JSON.stringify(updatedMarginPositions);
       const updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
@@ -299,6 +330,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
+      if (changedMarginPositions) nextState.positions = updatedMarginPositions;
       if (!isOperationCurrent()) return false;
       const previousPortfolioState = portfolioStore.getState();
       if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
@@ -470,6 +502,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           commission: trade?.commission ?? null,
           commissionCurrency: String(trade?.commissionCurrency ?? ''),
           marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
+          openMarginFeeAllocations: previous?.openMarginFeeAllocations ?? trade?.openMarginFeeAllocations,
+          openMarginFee: previous?.openMarginFee ?? trade?.openMarginFee,
           feesAndCommissions: previous?.feesAndCommissions ?? trade?.feesAndCommissions,
           netProfit: previous?.netProfit ?? trade?.netProfit,
           raw: {}

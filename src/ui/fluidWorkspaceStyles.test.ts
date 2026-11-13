@@ -160,7 +160,7 @@ describe('Margin desk localization', () => {
   });
 
   it('localizes all static Margin summary metric labels', () => {
-    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value']) {
+    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value', 'Open Broker Margin Fees']) {
       expect(summarySource).toContain(`translateText('${label}', getAppLanguage())`);
     }
   });
@@ -190,6 +190,7 @@ describe('Margin desk localization', () => {
 
   it('provides Russian translations for the combined fee header and projection description', () => {
     expect(russianSource).toContain("'Fee & Comm.': 'Комиссии и сборы'");
+    expect(russianSource).toContain("'Open Broker Margin Fees': 'Комиссии брокера по открытой марже'");
     expect(russianSource).toContain("'Projected portfolio net value, fees and commissions (including accrued margin interest), daily margin interest, and balance by date.':");
   });
 });
