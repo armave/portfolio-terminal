@@ -12,6 +12,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetOpq: () => Promise<unknown>;
+  fetchFreedomTradeNetTradingLimitsProbe: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
   fetchFreedomTradeNetQuoteStreamOnce: (symbol: string, fetchOptions?: RequestInit) => Promise<unknown | null>;
@@ -156,6 +157,10 @@ export function createFreedomBrokerTransportRuntime(
     return request;
   };
 
+  // On-demand schema probe only. It sends no guessed instrument parameter.
+  const fetchFreedomTradeNetTradingLimitsProbe = (): Promise<unknown> =>
+    dependencies.proxyFetch('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
+
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
     return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
@@ -237,6 +242,7 @@ export function createFreedomBrokerTransportRuntime(
   return {
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetOpq,
+    fetchFreedomTradeNetTradingLimitsProbe,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
     fetchFreedomTradeNetQuoteStreamOnce,
