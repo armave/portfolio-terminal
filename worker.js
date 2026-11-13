@@ -2305,8 +2305,11 @@ export default {
                 }
                 const rawInstrumentId = new URL(request.url).searchParams.get("instrumentId");
                 const numericInstrumentId = rawInstrumentId === null ? null : Number(rawInstrumentId);
+                const containsOnlyDigits = rawInstrumentId !== null &&
+                    rawInstrumentId.length > 0 &&
+                    Array.from(rawInstrumentId).every(character => character >= "0" && character <= "9");
                 if (rawInstrumentId !== null && (
-                    !/^\\d+$/.test(rawInstrumentId) ||
+                    !containsOnlyDigits ||
                     !Number.isSafeInteger(numericInstrumentId) ||
                     numericInstrumentId <= 0
                 )) {
