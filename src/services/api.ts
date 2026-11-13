@@ -1,4 +1,5 @@
 import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
+import { createRequestScheduler, type RequestPriority, type RequestSchedulerSnapshot } from './requestScheduler';
 import { createCloudStateSecurity } from './cloudStateSecurity';
 import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
@@ -360,6 +361,8 @@ export const logoutAccount = authTransportRuntime.logoutAccount;
 export interface ProxyFetchOptions extends RequestInit {
   secret?: string;
   state?: Record<string, any> | PortfolioState;
+  /** Optional override for the shared read-only request scheduler. */
+  requestPriority?: RequestPriority;
 }
 
 const proxyReadRequests = new Map<string, Promise<any>>();
@@ -368,6 +371,53 @@ const MARKET_DATA_ACTIONS = new Set([
   '', 'quote', 'provider-quote', 'news', 'stocktwits',
   'freedom-quote', 'freedom-news', 'freedom-history', 'provider-history', 'market-events', 'market-calendar'
 ]);
+
+// Only read-only broker / market-data actions enter the priority queue.
+// Cloud state, history records, auth, guest projections, and all writes retain
+// their independent transport and revision semantics.
+const SCHEDULED_READ_ACTIONS = new Set([
+  ...MARKET_DATA_ACTIONS,
+  'freedom-positions',
+  'freedom-trades',
+  'freedom-orders',
+  'freedom-cashflows',
+  'freedom-orders-stream',
+  'freedom-portfolio-snapshot',
+  'freedom-account-stream-ticket',
+  'freedom-quote-stream-ticket',
+  'freedom-market-depth',
+  'freedom-market-depth-stream-ticket',
+  'freedom-market-status'
+]);
+
+const CRITICAL_READ_ACTIONS = new Set([
+  'quote',
+  'provider-quote',
+  'freedom-quote',
+  'freedom-positions',
+  'freedom-orders',
+  'freedom-orders-stream',
+  'freedom-portfolio-snapshot',
+  'freedom-account-stream-ticket',
+  'freedom-quote-stream-ticket'
+]);
+
+const INTERACTIVE_READ_ACTIONS = new Set([
+  'news',
+  'stocktwits',
+  'freedom-news',
+  'freedom-market-depth',
+  'freedom-market-depth-stream-ticket',
+  'freedom-market-status'
+]);
+
+const readRequestScheduler = createRequestScheduler({ concurrency: 4, maxQueued: 128 });
+
+function resolveReadRequestPriority(action: string): RequestPriority {
+  if (CRITICAL_READ_ACTIONS.has(action)) return 'critical';
+  if (INTERACTIVE_READ_ACTIONS.has(action)) return 'interactive';
+  return 'background';
+}
 
 function createMarketRequestIdentity(
   action: string,
@@ -390,7 +440,18 @@ function dispatchProxyFetch(
 ): Promise<any> {
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
-  const request = () => performProxyFetch(action, queryParams, fetchOptions);
+  const shouldSchedule = SCHEDULED_READ_ACTIONS.has(action) ||
+    (action === '' && Boolean(queryParams.symbol));
+  const request = () => shouldSchedule
+    ? readRequestScheduler.schedule(
+      (signal) => performProxyFetch(action, queryParams, { ...fetchOptions, signal }),
+      {
+        priority: fetchOptions.requestPriority ?? resolveReadRequestPriority(action),
+        signal: fetchOptions.signal
+      }
+    )
+    : performProxyFetch(action, queryParams, fetchOptions);
+
   return isMarketData && !fetchOptions.signal && fetchOptions.cache !== 'no-store'
     ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
     : request();
@@ -439,6 +500,7 @@ async function performProxyFetch(
   queryParams: Record<string, string | number | boolean | undefined | null> = {},
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
+  const { requestPriority: _requestPriority, ...requestInit } = fetchOptions;
   const url = new URL(WORKER_PROXY_URL);
   if (action) {
     if (action.startsWith('/')) {
@@ -459,9 +521,9 @@ async function performProxyFetch(
   }
 
   return fetchAndConsumeWithTimeout(fetch, url.toString(), {
-    ...fetchOptions,
+    ...requestInit,
     headers: {
-      ...(fetchOptions.headers || {}),
+      ...(requestInit.headers || {}),
       'Content-Type': 'application/json',
       // Authentication headers are authoritative and cannot be overridden by
       // per-request headers supplied by a caller.
@@ -717,7 +779,13 @@ export function clearGuestPortfolioPublicationCache(): void {
   guestPortfolioPublicationRequests.clear();
 }
 
+export function getApiRequestSchedulerSnapshot(): RequestSchedulerSnapshot {
+  return readRequestScheduler.getSnapshot();
+}
+
 export function clearApiRequestCaches(): void {
+  readRequestScheduler.cancelAll(new Error('API request context was reset.'));
+  proxyReadRequests.clear();
   authTransportRuntime.clearRequestCaches();
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();

@@ -59,11 +59,11 @@ describe('portfolio automatic refresh policy', () => {
     }
   );
 
-  it('pushes one admin portfolio snapshot after quote and supplemental work finish', async () => {
+  it('defers history and workspace checkpoints until both core admin refresh branches finish', async () => {
     const sequence: string[] = [];
     let releaseQuotes: (() => void) | undefined;
-    let notifyHistoryFinished: (() => void) | undefined;
-    const historyFinished = new Promise<void>((resolve) => { notifyHistoryFinished = resolve; });
+    let releaseHistory: (() => void) | undefined;
+    const historyGate = new Promise<void>((resolve) => { releaseHistory = resolve; });
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => true,
@@ -72,22 +72,29 @@ describe('portfolio automatic refresh policy', () => {
         await new Promise<void>((resolve) => { releaseQuotes = resolve; });
         sequence.push('quotes-finished');
       },
-      refreshSupplemental: async () => { sequence.push('supplemental-finished'); },
+      refreshSupplemental: async () => { sequence.push('broker-refresh-finished'); },
       syncHistory: async () => {
+        sequence.push('history-start');
+        await historyGate;
         sequence.push('history-finished');
-        notifyHistoryFinished?.();
       },
       syncState: async () => { sequence.push('state-sync'); }
     });
     scheduler.configure(60_000, 'admin');
     const cycle = scheduler.refreshNow();
-    await historyFinished;
-    expect(sequence).toContain('history-finished');
+
+    await vi.waitFor(() => expect(sequence).toContain('broker-refresh-finished'));
+    expect(sequence).not.toContain('history-start');
     expect(sequence).not.toContain('state-sync');
+
     releaseQuotes?.();
+    await vi.waitFor(() => expect(sequence).toContain('history-start'));
+    expect(sequence).toContain('quotes-finished');
+    expect(sequence).not.toContain('state-sync');
+
+    releaseHistory?.();
     await expect(cycle).resolves.toBe(true);
-    expect(sequence.filter((entry) => entry === 'state-sync')).toHaveLength(1);
-    expect(sequence.indexOf('state-sync')).toBeGreaterThan(sequence.indexOf('quotes-finished'));
+    expect(sequence.indexOf('history-start')).toBeGreaterThan(sequence.indexOf('quotes-finished'));
     expect(sequence.indexOf('state-sync')).toBeGreaterThan(sequence.indexOf('history-finished'));
     scheduler.stop();
   });

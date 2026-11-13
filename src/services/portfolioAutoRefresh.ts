@@ -103,11 +103,24 @@ export function createPortfolioAutoRefreshScheduler(
 
   const refreshQuotes = (): Promise<boolean> => runTask('quotes', options.refreshQuotes);
 
-  const refreshSupplementalAndSyncHistory = async (): Promise<boolean> => {
-    const supplemental = await runTask('supplemental', options.refreshSupplemental);
-    if (activeRole !== 'admin' || !options.syncHistory || !canRefresh()) return supplemental;
-    const history = await runTask('history-sync', options.syncHistory);
-    return supplemental && history;
+  const refreshAdminCycle = async (): Promise<boolean> => {
+    // Quotes and broker catch-up are the core user-facing refresh. Keep optional
+    // history/state persistence behind both branches to avoid competing with them.
+    const [quotes, supplemental] = await Promise.all([
+      refreshQuotes(),
+      runTask('supplemental', options.refreshSupplemental)
+    ]);
+    if (!canRefresh()) return quotes && supplemental;
+
+    const history = options.syncHistory
+      ? await runTask('history-sync', options.syncHistory)
+      : true;
+    if (!canRefresh()) return quotes && supplemental && history;
+
+    const synced = options.syncState
+      ? await runTask('state-sync', options.syncState)
+      : true;
+    return quotes && supplemental && history && synced;
   };
 
   const refreshNow = async (): Promise<boolean> => {
@@ -119,15 +132,7 @@ export function createPortfolioAutoRefreshScheduler(
       // The guest snapshot is fetched first; its newly assigned tickers are then quoted.
       cycle = runTask('supplemental', options.refreshSupplemental);
     } else {
-      // Complete both independent data branches before persisting one coherent snapshot.
-      cycle = Promise.all([
-        refreshQuotes(),
-        refreshSupplementalAndSyncHistory()
-      ]).then(async ([quotes, supplemental]) => {
-        if (!canRefresh() || !options.syncState) return quotes && supplemental;
-        const synced = await runTask('state-sync', options.syncState);
-        return quotes && supplemental && synced;
-      });
+      cycle = refreshAdminCycle();
     }
 
     let wrappedCycle: Promise<boolean>;
