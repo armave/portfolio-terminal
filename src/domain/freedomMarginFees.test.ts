@@ -44,6 +44,23 @@ describe('Freedom margin fee allocation', () => {
     expect(result.openAllocatedAmount).toBe(0.6);
     expect(result.allocatedAmount).toBe(1);
     expect(result.closedAllocatedAmount + result.openAllocatedAmount).toBe(result.allocatedAmount);
+
+    // Recalculate after the remaining six shares close. The previously open
+    // sixty cents must move to the second sale rather than remain on the buy lot.
+    const fullyClosed = calculateFreedomMarginFeeAllocations(
+      [fee('stage-split', '2026-11-02', -1)],
+      [
+        ...executions,
+        { id: 'final-sale', ticker: 'AAPL', side: 'sell', quantity: 6, price: 115, executedAt: '2026-11-06T10:00:00Z' }
+      ],
+      [],
+      { trancheTypes: { [trancheId]: 'margin' } }
+    );
+    expect(fullyClosed.brokerAllocations.get(1)).toEqual({ 'freedom-stage-split': 0.4 });
+    expect(fullyClosed.brokerAllocations.get(2)).toEqual({ 'freedom-stage-split': 0.6 });
+    expect(fullyClosed.brokerOpenAllocations.size).toBe(0);
+    expect(fullyClosed.closedAllocatedAmount).toBe(1);
+    expect(fullyClosed.openAllocatedAmount).toBe(0);
   });
 
   it('allocates only the margin-funded portion of a mixed tranche', () => {
