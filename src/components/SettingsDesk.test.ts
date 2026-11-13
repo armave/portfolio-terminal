@@ -66,8 +66,8 @@ describe('TradeNet OPQ diagnostic panel', () => {
     expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
     expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe()');
     expect(source).toContain('Sends an empty read-only getTradingLimits request');
-    expect(source).toContain('requestParameters');
     expect(source).toContain('providerError');
+    expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
   });
 });
 
