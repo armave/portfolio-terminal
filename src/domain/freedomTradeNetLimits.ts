@@ -24,7 +24,14 @@ export function resolveTradeNetProbeInstrument(snapshot: unknown): TradeNetProbe
     const row = asRecord(value);
     if (!row || String(row.curr ?? row.base_currency ?? '').trim().toUpperCase() !== 'USD') continue;
     const ticker = typeof row.i === 'string' ? row.i.trim().toUpperCase() : '';
-    if (!/^[A-Z0-9.-]{1,16}\\.US$/.test(ticker)) continue;
+    const symbol = ticker.endsWith('.US') ? ticker.slice(0, -3) : '';
+    const validSymbol = symbol.length >= 1 && symbol.length <= 16 &&
+      Array.from(symbol).every(character =>
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') ||
+        character === '.' || character === '-'
+      );
+    if (!validSymbol) continue;
     const rawId = row.instr_id;
     if (!(typeof rawId === 'number' || typeof rawId === 'string') || String(rawId).trim() === '') continue;
     const instrumentId = Number(rawId);
