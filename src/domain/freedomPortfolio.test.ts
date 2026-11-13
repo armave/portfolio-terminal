@@ -108,7 +108,7 @@ describe('reconcileFreedomPortfolio', () => {
       expect.objectContaining({ ticker: 'MSFT', shares: 2 })
     ]);
     expect(result.positionIntegrityIssues).toEqual([
-      expect.objectContaining({ ticker: 'AAPL', code: 'short_position_unsupported' })
+      expect.objectContaining({ ticker: 'AAPL', code: 'negative_quantity_sign_unverified' })
     ]);
   });
 
