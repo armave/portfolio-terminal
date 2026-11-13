@@ -7,7 +7,7 @@ export interface RequestSchedulerOptions {
   maxQueued?: number;
 }
 
-export interface RequestScheduleOptions {
+interface RequestScheduleOptions {
   priority?: RequestPriority;
   signal?: AbortSignal;
 }
