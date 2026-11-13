@@ -118,9 +118,7 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
       entry.started = true;
       active.set(entry.id, entry);
 
-      let rejectAbort!: (reason: unknown) => void;
       const aborted = new Promise<never>((_resolve, reject) => {
-        rejectAbort = reject;
         entry.rejectAbort = reject;
         if (entry.controller.signal.aborted) {
           reject(readAbortReason(entry.controller.signal));

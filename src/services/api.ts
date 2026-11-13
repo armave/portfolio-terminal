@@ -454,7 +454,7 @@ function dispatchProxyFetch(
       (signal) => performProxyFetch(action, queryParams, { ...requestOptions, signal }),
       {
         priority: requestOptions.requestPriority ?? resolveReadRequestPriority(action),
-        signal: requestOptions.signal
+        signal: requestOptions.signal ?? undefined
       }
     )
     : performProxyFetch(action, queryParams, requestOptions);
