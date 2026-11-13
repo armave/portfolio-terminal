@@ -17,7 +17,7 @@ For scheduled administrator refreshes, quote refresh and supplemental broker cat
 A shared scheduler in `src/services/requestScheduler.ts` now coordinates selected read-only broker and market-data actions at the API transport boundary:
 
 - Four requests may execute concurrently.
-- Up to 128 additional requests may wait.
+- Up to 128 additional requests may wait. When full, higher-priority work may displace the newest queued request at a lower priority; same-priority requests retain FIFO and are rejected rather than reordered.
 - Queued work is ordered `critical` → `interactive` → `background`, FIFO within each priority.
 - External `AbortSignal` cancellation removes queued work or aborts active transport.
 - Credentials are captured at dispatch time; a queued request cannot inherit a later session's active credential.

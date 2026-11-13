@@ -93,6 +93,36 @@ describe('shared request scheduler', () => {
     expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
   });
 
+  it('lets higher-priority work displace the newest lower-priority queued request', async () => {
+    const scheduler = createRequestScheduler({ concurrency: 1, maxQueued: 1 });
+    const activeGate = deferred();
+    const sequence: string[] = [];
+    const active = scheduler.schedule(() => activeGate.promise, { priority: 'interactive' });
+    const backgroundTask = vi.fn(() => {
+      sequence.push('background');
+      return 'background';
+    });
+    const background = scheduler.schedule(backgroundTask, { priority: 'background' });
+    const critical = scheduler.schedule(() => {
+      sequence.push('critical');
+      return 'critical';
+    }, { priority: 'critical' });
+
+    await expect(background).rejects.toThrow('displaced by higher-priority work');
+    expect(backgroundTask).not.toHaveBeenCalled();
+    expect(scheduler.getSnapshot()).toMatchObject({
+      active: 1,
+      queued: 1,
+      queuedByPriority: { critical: 1, interactive: 0, background: 0 }
+    });
+
+    activeGate.resolve(undefined);
+    await expect(active).resolves.toBeUndefined();
+    await expect(critical).resolves.toBe('critical');
+    expect(sequence).toEqual(['critical']);
+    expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
+  });
+
   it('continues pumping after a task failure', async () => {
     const scheduler = createRequestScheduler({ concurrency: 1 });
     const failed = scheduler.schedule(() => { throw new Error('provider failed'); });

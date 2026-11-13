@@ -152,15 +152,46 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
       return;
     }
 
+    const priority = scheduleOptions.priority ?? 'interactive';
     if (queue.length >= maxQueued && active.size >= concurrency) {
-      reject(new Error('Request queue is full.'));
-      return;
+      const lowestQueuedPriority = queue.reduce(
+        (lowest, entry) => Math.min(lowest, PRIORITY_WEIGHT[entry.priority]),
+        Number.POSITIVE_INFINITY
+      );
+      if (PRIORITY_WEIGHT[priority] <= lowestQueuedPriority) {
+        reject(new Error('Request queue is full.'));
+        return;
+      }
+
+      // Keep critical work from being blocked by a full queue of background
+      // reads. Evict the newest request at the lowest queued priority so FIFO
+      // ordering is preserved for all work that remains in the queue.
+      let evictionIndex = -1;
+      let newestSequence = -1;
+      queue.forEach((entry, index) => {
+        if (
+          PRIORITY_WEIGHT[entry.priority] === lowestQueuedPriority &&
+          entry.sequence > newestSequence
+        ) {
+          evictionIndex = index;
+          newestSequence = entry.sequence;
+        }
+      });
+      if (evictionIndex < 0) {
+        reject(new Error('Request queue is full.'));
+        return;
+      }
+      const [evicted] = queue.splice(evictionIndex, 1);
+      const evictionError = new Error('Request displaced by higher-priority work.');
+      if (!evicted.controller.signal.aborted) evicted.controller.abort(evictionError);
+      cleanup(evicted);
+      evicted.reject(evictionError);
     }
 
     const entry: RequestQueueEntry = {
       id: nextId++,
       sequence: nextSequence++,
-      priority: scheduleOptions.priority ?? 'interactive',
+      priority,
       task: (signal) => task(signal),
       controller: new AbortController(),
       resolve: (value) => resolve(value as T),
