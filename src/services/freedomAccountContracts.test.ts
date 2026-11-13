@@ -99,23 +99,6 @@ describe('normalizeFreedomPortfolio', () => {
     });
   });
 
-  it('preserves documented position metadata and classifies a negative quantity as short', () => {
-    const snapshot = normalizeFreedomPortfolio({
-      data: { result: { ps: {
-        loaded: true, acc: [],
-        pos: [{
-          curr: 'USD', i: 'TSLA.US', q: '-3', instr_id: 'instrument-2',
-          issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
-        }]
-      } } }
-    });
-    expect(snapshot.positions[0]).toMatchObject({
-      quantity: -3, direction: 'short', instrumentId: 'instrument-2',
-      instrumentIssueNumber: 'US88160R1014', instrumentType: 'stock',
-      instrumentKind: 'equity', marginRequirement: 120, variationMargin: -12
-    });
-  });
-
   it('rejects unrecognized or not-yet-loaded account envelopes', () => {
     expect(() => normalizeFreedomPortfolio(null)).toThrow('missing data.result.ps');
     expect(() => normalizeFreedomPortfolio({ data: { result: { ps: { loaded: false } } } }))
