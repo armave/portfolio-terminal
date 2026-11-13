@@ -1353,7 +1353,12 @@ export function sanitizeFreedomOpqResponse(response) {
         if (typeof value !== "object") return undefined;
         const output = {};
         for (const [key, item] of Object.entries(value).slice(0, 300)) {
-            if (/password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?number|client[_-]?auth[_-]?login/i.test(key)) continue;
+            const normalizedKey = key.toLowerCase();
+            // OPQ can include profile data and personal workspace metadata which
+            // is unrelated to account capacity. Keep the financial/quote payload,
+            // but do not expose profile objects, watchlists, or user preferences.
+            if (["userinfo", "userlists", "useroptions", "cps"].includes(normalizedKey)) continue;
+            if (/password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|email|phone|tel|birthday|first[_-]?name|last[_-]?name|middle[_-]?name|citizenship|country|address|contact|inn|uuid|(^|[_-])ip($|[_-])|user[_-]?id|client[_-]?id|account[_-]?(number|id)|brief[_-]?nm/i.test(key)) continue;
             const safe = cloneSafe(item, depth + 1);
             if (safe !== undefined) output[key.slice(0, 80)] = safe;
         }
