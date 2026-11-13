@@ -96,6 +96,27 @@ export class ScenarioCalculator {
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
     const rules = this.getRules(state);
     const shares = Number(pos.shares);
+    const brokerConstraint = brokerLimits
+      ? resolveLongExitQuantityConstraint({
+          requestedQuantity: shares,
+          localMaximum: shares,
+          accountMaximum: brokerLimits.accountMaximum,
+          instrumentMaximum: brokerLimits.instrumentMaximum,
+          heldLongQuantity: shares
+        })
+      : null;
+    if (brokerConstraint && !brokerConstraint.allowed) {
+      return {
+        type: 'err',
+        brokerMaximumShares: brokerConstraint.effectiveMaximum,
+        brokerLimitStatus: brokerConstraint.freshness,
+        text: brokerConstraint.effectiveMaximum === null
+          ? 'Exit scenario blocked: current broker account and instrument sell limits could not both be verified.'
+          : 'Exit scenario blocked: the broker reports a maximum sellable quantity of ' +
+            brokerConstraint.effectiveMaximum.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
+            ' shares, below the full position of ' + shares.toLocaleString() + '. A full close-out cannot be assumed.'
+      };
+    }
     if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
 
     const validatedCostBasis = validateSaleCostBasisTranches(
