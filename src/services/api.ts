@@ -583,10 +583,10 @@ export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusRes
     provider: typeof response.provider === 'string' ? response.provider : 'Freedom TradeNet',
     marketStatus: {
       market: typeof rawMarket.market === 'string' ? rawMarket.market.slice(0, 64) : 'US equities',
-      code: typeof rawMarket.code === 'string' ? rawMarket.code.slice(0, 32) : 'US',
       status: phase as FreedomMarketPhase,
       source: typeof rawMarket.source === 'string' ? rawMarket.source.slice(0, 32) : 'US_EXCHANGES',
       ...readExchangeMarketState(rawMarket),
+      code: typeof rawMarket.code === 'string' ? rawMarket.code.slice(0, 32) : 'US',
       providerTime: typeof rawMarket.providerTime === 'string' ? rawMarket.providerTime.slice(0, 64) : null,
       exchanges
     },
