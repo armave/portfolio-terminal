@@ -57,26 +57,28 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     });
 
     const data = await response.json().catch(() => null);
-    if (!response.ok) {
-        // Do not return upstream response bodies, which may contain account details.
-        throw new Error(`TradeNet returned HTTP ${response.status}.`);
-    }
-    if (!data || typeof data !== "object") {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+        if (!response.ok) throw new Error(`TradeNet returned HTTP ${response.status}.`);
         throw new Error("TradeNet returned a non-JSON response.");
     }
-    // TradeNet often returns application-level errors with HTTP 200. Surface only
-    // a short, sanitized message so we can diagnose auth/signature/permission issues
-    // without logging or returning the full broker payload.
+
+    // Keep only the provider's short error text, never the raw error body. This
+    // makes HTTP validation failures actionable without exposing account data.
     const errorValue = data.errMsg ?? data.error ?? data.message;
+    const safeProviderMessage = typeof errorValue === "string"
+        ? errorValue
+            .replace(/(public|private)?\\s*key\\s*[:=]\\s*\\S+/gi, "$1 key=[redacted]")
+            .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)\\s*[:=]\\s*\\S+/gi, "$1=[redacted]")
+            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[redacted-email]")
+            .trim()
+            .slice(0, 180)
+        : null;
+
+    if (!response.ok) {
+        throw new Error(`TradeNet returned HTTP ${response.status}${safeProviderMessage ? `: ${safeProviderMessage}` : ""}.`);
+    }
     if (errorValue) {
-        const upstreamMessage = typeof errorValue === "string"
-            ? errorValue
-            : "TradeNet returned an application-level error.";
-        const safeMessage = upstreamMessage
-            .replace(/(public|private)?\s*key\s*[:=]\s*\S+/gi, "$1 key=[redacted]")
-            .replace(/(token|signature|sid|password)\s*[:=]\s*\S+/gi, "$1=[redacted]")
-            .slice(0, 240);
-        throw new Error(`TradeNet API error: ${safeMessage}`);
+        throw new Error(`TradeNet API error: ${safeProviderMessage || "Provider rejected the request."}`);
     }
     return data;
 }
