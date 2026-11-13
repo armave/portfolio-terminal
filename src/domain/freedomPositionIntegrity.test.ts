@@ -7,7 +7,7 @@ describe('collectFreedomPositionIntegrityIssues', () => {
       positions: [{
         ticker: 'AAPL.US',
         quantity: -5,
-        direction: 'unknown',
+        direction: 'short',
         rawQuantity: -5,
         rawSide: null,
         instrumentId: 'instrument-1'
