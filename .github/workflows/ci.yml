@@ -132,20 +132,3 @@ jobs:
             echo
             echo "Browser performance baseline is an unauthenticated app-shell fixture with mocked API responses; it does not certify live broker behavior or authenticated dashboard performance."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Send Email on Main Failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          subject: "❌ CI Failed on main: ${{ github.repository }}"
-          to: armenavetisyan.sa@gmail.com
-          from: GitHub Actions
-          body: |
-            The CI job failed on the main branch.
-
-            Repository: ${{ github.repository }}
-            Commit: ${{ github.sha }}
-            Job: ${{ github.job }}
-            Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
