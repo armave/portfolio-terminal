@@ -50,6 +50,18 @@ describe('manual sync in Settings', () => {
   });
 });
 
+describe('TradeNet OPQ diagnostic panel', () => {
+  it('keeps the read-only account overview diagnostic admin-only and avoids claiming mapped margin metrics', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === 'admin' && <section class=\"settings-panel space-y-3\"");
+    expect(source).toContain("fetchFreedomTradeNetOpq()");
+    expect(source).toContain('Response fields are not yet mapped to verified margin metrics.');
+    expect(source).toContain('Unmapped provider payload (diagnostic)');
+    expect(source).not.toContain('initialMarginRequired: Number(opq');
+    expect(source).not.toContain('maintenanceMarginRequired: Number(opq');
+  });
+});
+
 describe('Device Check placement', () => {
   it('places device diagnostics in Settings instead of the Cash & Non-Margin Holdings desk', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
