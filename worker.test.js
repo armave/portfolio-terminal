@@ -938,11 +938,12 @@ describe('sanitizeFreedomPositions', () => {
     expect(result.data.result.ps.pos).toEqual([{
       i: 'GOOGL.US', name: 'Alphabet', q: 81, curr: 'USD',
       mkt_price: 321.09, market_value: 26001,
-      bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060
+      bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060,
+      instr_id: '123', issue_nb: 'secret', t: null, k: null, go: null, vm: null
     }]);
     expect(JSON.stringify(result)).not.toContain('private-account-key');
-    expect(JSON.stringify(result)).not.toContain('instr_id');
-    expect(JSON.stringify(result)).not.toContain('issue_nb');
+    expect(JSON.stringify(result)).not.toContain('sql_exec_tm');
+    expect(JSON.stringify(result)).not.toContain('secret:');
   });
 
   it('preserves signed short quantities and the documented position margin/instrument metadata', () => {
