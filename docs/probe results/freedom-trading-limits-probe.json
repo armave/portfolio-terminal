@@ -1,9 +1,0 @@
-{
-  "ok": false,
-  "provider": "Freedom TradeNet",
-  "source": "getTradingLimits",
-  "requestParameters": {},
-  "providerHttpStatus": 400,
-  "providerError": "TradeNet returned HTTP 400.",
-  "receivedAt": 1794571498056
-}
