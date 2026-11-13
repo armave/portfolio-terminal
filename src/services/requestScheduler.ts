@@ -41,6 +41,7 @@ interface RequestQueueEntry {
   externalSignal?: AbortSignal;
   externalAbortListener?: () => void;
   rejectAbort?: (reason: unknown) => void;
+  suppressCancellationRejection?: () => void;
   started: boolean;
 }
 
@@ -87,6 +88,7 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
   };
 
   const cancelEntry = (entry: RequestQueueEntry, reason: unknown): void => {
+    entry.suppressCancellationRejection?.();
     if (!entry.controller.signal.aborted) entry.controller.abort(reason);
 
     if (!entry.started) {
@@ -143,7 +145,9 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
   const schedule = <T>(
     task: (signal: AbortSignal) => T | PromiseLike<T>,
     scheduleOptions: RequestScheduleOptions = {}
-  ): Promise<T> => new Promise<T>((resolve, reject) => {
+  ): Promise<T> => {
+    let scheduledEntry: RequestQueueEntry | undefined;
+    const scheduledPromise = new Promise<T>((resolve, reject) => {
     const externalSignal = scheduleOptions.signal;
     if (externalSignal?.aborted) {
       reject(readAbortReason(externalSignal));
@@ -197,6 +201,7 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
       externalSignal,
       started: false
     };
+    scheduledEntry = entry;
 
     if (externalSignal) {
       entry.externalAbortListener = () => cancelEntry(entry, readAbortReason(externalSignal));
@@ -209,18 +214,34 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
 
     queue.push(entry);
     pump();
-  });
+    });
+    if (scheduledEntry) {
+      // Cancellation is an expected lifecycle outcome for requests which may be
+      // fire-and-forget. Keep it from becoming an unhandled rejection while
+      // preserving the original rejected promise for callers that await it.
+      scheduledEntry.suppressCancellationRejection = () => {
+        void scheduledPromise.catch(() => undefined);
+      };
+    }
+    return scheduledPromise;
+  };
 
   const cancelAll = (reason: unknown = new Error('Request context was reset.')): void => {
     // Drain queued entries without pumping between removals; a reset must not
     // briefly start another request that is scheduled to be cancelled as well.
     const queuedEntries = queue.splice(0);
     for (const entry of queuedEntries) {
+      entry.suppressCancellationRejection?.();
       if (!entry.controller.signal.aborted) entry.controller.abort(reason);
       cleanup(entry);
       entry.reject(reason);
     }
-    for (const entry of [...active.values()]) cancelEntry(entry, reason);
+    for (const entry of [...active.values()]) {
+      cancelEntry(entry, reason);
+      // Release slots synchronously so a new account/test context is not held
+      // behind promises that are already being aborted.
+      active.delete(entry.id);
+    }
   };
 
   const getSnapshot = (): RequestSchedulerSnapshot => {

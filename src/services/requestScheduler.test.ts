@@ -143,10 +143,10 @@ describe('shared request scheduler', () => {
 
     const reason = new Error('session reset');
     scheduler.cancelAll(reason);
+    expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
     await expect(active).rejects.toBe(reason);
     await expect(queued).rejects.toBe(reason);
     expect(queuedTask).not.toHaveBeenCalled();
-    expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
     activeGate.resolve(undefined);
   });
 });

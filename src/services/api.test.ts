@@ -1396,7 +1396,7 @@ describe('Yahoo deep-data request deduplication', () => {
 
     const first = fetchYahooDeepStockData('aapl');
     const second = fetchYahooDeepStockData(' AAPL ');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     const payload = { symbol: 'AAPL', analystTargets: { median: 200 }, valuation: { peForward: 20 } };
     const normalizedPayload = normalizeYahooDeepStockData(payload);
@@ -1808,7 +1808,7 @@ describe('Yahoo deep-data forced refresh', () => {
 
     const olderRequest = fetchYahooDeepStockData('AAPL');
     const forcedRequest = fetchYahooDeepStockData('AAPL', true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     resolvers[1](makeResponse(212));
     expect((await forcedRequest).price.current).toBe(212);
