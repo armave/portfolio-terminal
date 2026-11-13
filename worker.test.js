@@ -1449,6 +1449,35 @@ describe('Freedom getTradingLimits schema probe', () => {
     });
   });
 
+  it('returns a safe provider validation message for HTTP 400 responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: 'Validation error: instrument_id is required; account_id=123456789',
+      private_key: 'never-return-this',
+      email: 'account@example.com'
+    }), { status: 400, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trading-limits-probe', {
+      headers: { 'X-App-Auth': 'admin-secret' }
+    }), {
+      GATEWAY_SECRET: 'admin-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: false,
+      source: 'getTradingLimits',
+      requestParameters: {},
+      providerHttpStatus: 400
+    });
+    expect(body.providerError).toContain('Validation error: instrument_id is required');
+    expect(body.providerError).not.toContain('123456789');
+    expect(body.providerError).not.toContain('account@example.com');
+    expect(body.providerError).not.toContain('never-return-this');
+    expect(JSON.stringify(body)).not.toContain('private_key');
+  });
+
   it('rejects non-GET probe requests', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
