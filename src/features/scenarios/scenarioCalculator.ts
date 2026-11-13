@@ -317,6 +317,26 @@ export class ScenarioCalculator {
       const equityRatio = projectedAssets > 0 ? projectedEquity / projectedAssets : -Infinity;
       return { projectedBalance, equityRatio };
     };
+    const projected = projectPurchase(qty);
+    const projectedEquityRatio = projected.equityRatio;
+
+    const calculateMaximumSafeShares = (): number => {
+      if (requiredEquityRatio >= 1 || projectPurchase(0).equityRatio <= requiredEquityRatio) return 0;
+      let low = 0;
+      let high = Math.max(1, qty);
+      while (high < 1_000_000_000 && projectPurchase(high).equityRatio > requiredEquityRatio) {
+        low = high;
+        high *= 2;
+      }
+      for (let iteration = 0; iteration < 56; iteration += 1) {
+        const middle = (low + high) / 2;
+        if (projectPurchase(middle).equityRatio > requiredEquityRatio) low = middle;
+        else high = middle;
+      }
+      return Math.floor(low * 1_000_000) / 1_000_000;
+    };
+
+
     const localMaximumShares = calculateMaximumSafeShares();
     const brokerConstraint = brokerLimits
       ? resolveBuyQuantityConstraint({
@@ -341,24 +361,6 @@ export class ScenarioCalculator {
             ' shares. Broker limits are estimates, not execution guarantees.'
       };
     }
-    const projected = projectPurchase(qty);
-    const projectedEquityRatio = projected.equityRatio;
-
-    const calculateMaximumSafeShares = (): number => {
-      if (requiredEquityRatio >= 1 || projectPurchase(0).equityRatio <= requiredEquityRatio) return 0;
-      let low = 0;
-      let high = Math.max(1, qty);
-      while (high < 1_000_000_000 && projectPurchase(high).equityRatio > requiredEquityRatio) {
-        low = high;
-        high *= 2;
-      }
-      for (let iteration = 0; iteration < 56; iteration += 1) {
-        const middle = (low + high) / 2;
-        if (projectPurchase(middle).equityRatio > requiredEquityRatio) low = middle;
-        else high = middle;
-      }
-      return Math.floor(low * 1_000_000) / 1_000_000;
-    };
 
     if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio <= requiredEquityRatio ||
         projectedEquityRatio <= stopOutLimit) {
