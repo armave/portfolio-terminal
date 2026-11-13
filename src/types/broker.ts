@@ -75,6 +75,8 @@ export interface BrokerDataQualityIssue {
 export interface BrokerCashBalance {
   currency: string;
   amount: number;
+  /** Provider account-currency exchange rate, when supplied separately from available funds. */
+  exchangeRate?: number | null;
   forecastIn: number;
   forecastOut: number;
   t2In: number;
