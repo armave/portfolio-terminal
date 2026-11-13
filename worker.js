@@ -1334,43 +1334,6 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
     return sanitized;
 }
 
-/**
- * Keep only the account-overview payload object and JSON-safe bounded content.
- * Method-specific field mapping is deliberately deferred until a sanitized
- * authenticated getOPQ fixture confirms the current response schema.
- */
-export function sanitizeFreedomOpqResponse(response) {
-    if (!response || typeof response !== "object" || Array.isArray(response)) {
-        throw new Error("TradeNet getOPQ returned an invalid response envelope.");
-    }
-    const cloneSafe = (value, depth = 0) => {
-        if (depth > 8) return undefined;
-        if (value === null || typeof value === "string" || typeof value === "boolean") {
-            return typeof value === "string" ? value.slice(0, 500) : value;
-        }
-        if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
-        if (Array.isArray(value)) return value.slice(0, 500).map(item => cloneSafe(item, depth + 1));
-        if (typeof value !== "object") return undefined;
-        const output = {};
-        for (const [key, item] of Object.entries(value).slice(0, 300)) {
-            const normalizedKey = key.toLowerCase();
-            // OPQ can include profile data and personal workspace metadata which
-            // is unrelated to account capacity. Keep the financial/quote payload,
-            // but do not expose profile objects, watchlists, or user preferences.
-            if (["userinfo", "userlists", "useroptions", "cps"].includes(normalizedKey)) continue;
-            if (/password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|email|phone|tel|birthday|first[_-]?name|last[_-]?name|middle[_-]?name|citizenship|country|address|contact|inn|uuid|(^|[_-])ip($|[_-])|user[_-]?id|client[_-]?id|account[_-]?(number|id)|brief[_-]?nm/i.test(key)) continue;
-            const safe = cloneSafe(item, depth + 1);
-            if (safe !== undefined) output[key.slice(0, 80)] = safe;
-        }
-        return output;
-    };
-    const data = cloneSafe(response);
-    if (!data || typeof data !== "object" || Array.isArray(data)) {
-        throw new Error("TradeNet getOPQ response could not be sanitized.");
-    }
-    return data;
-}
-
 export function sanitizeFreedomPositions(response) {
     // A portfolio snapshot is a single atomic account+positions envelope.
     // Missing one array is not an empty array: reject it so callers retain the
@@ -1726,7 +1689,7 @@ export default {
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
-                "state", "history", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trading-limits-probe", "freedom-trades",
+                "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
                 "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket"
             ].includes(action);
@@ -1743,10 +1706,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trading-limits-probe", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trading-limits-probe", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -2267,93 +2230,6 @@ export default {
                     provider: "Freedom TradeNet",
                     data: data.data
                 }), { headers: corsHeaders });
-            }
-
-            // Read-only TradeNet account overview. Raw OPQ keys are intentionally
-            // passed through only as a bounded object until the method schema is verified.
-            if (action === "freedom-opq") {
-                if (request.method !== "GET") {
-                    return jsonError("Freedom OPQ only supports GET.", 405, corsHeaders);
-                }
-                if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
-                    return jsonError("Freedom API-key credentials are not configured in the Worker.", 503, corsHeaders);
-                }
-                try {
-                    const raw = await requestTradeNet(env, "getOPQ", {});
-                    const data = sanitizeFreedomOpqResponse(raw);
-                    return new Response(JSON.stringify({
-                        ok: true,
-                        provider: "Freedom TradeNet",
-                        source: "getOPQ",
-                        data,
-                        receivedAt: Date.now()
-                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
-                } catch (error) {
-                    return jsonError(
-                        error instanceof Error ? error.message : "TradeNet account overview is unavailable.",
-                        [401, 403, 429, 503].includes(Number(error?.status)) ? Number(error.status) : 502,
-                        corsHeaders
-                    );
-                }
-            }
-
-            // On-demand, admin-only read-only schema probe for getTradingLimits.
-            // An empty parameter object is deliberate: do not guess the documented
-            // instrument identifier field. This probes method validation only; it
-            // does not place an order or reserve capacity.
-            if (action === "freedom-trading-limits-probe") {
-                if (request.method !== "GET") {
-                    return jsonError("TradeNet trading-limits probe only supports GET.", 405, corsHeaders);
-                }
-                if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
-                    return jsonError("Freedom API-key credentials are not configured in the Worker.", 503, corsHeaders);
-                }
-                const rawInstrumentId = new URL(request.url).searchParams.get("instrumentId");
-                const numericInstrumentId = rawInstrumentId === null ? null : Number(rawInstrumentId);
-                const containsOnlyDigits = rawInstrumentId !== null &&
-                    rawInstrumentId.length > 0 &&
-                    Array.from(rawInstrumentId).every(character => character >= "0" && character <= "9");
-                if (rawInstrumentId !== null && (
-                    !containsOnlyDigits ||
-                    !Number.isSafeInteger(numericInstrumentId) ||
-                    numericInstrumentId <= 0
-                )) {
-                    return jsonError("A positive numeric TradeNet instrument ID is required.", 400, corsHeaders);
-                }
-                // getOPQ position rows contain instr_id (the trading-system instrument ID).
-                // instrument_id is a candidate parameter name; confirm it with a successful
-                // provider response before mapping any returned values into risk calculations.
-                // The browser cannot submit arbitrary TradeNet parameters or commands.
-                const requestParameters = numericInstrumentId === null
-                    ? {}
-                    : { instrument_id: numericInstrumentId };
-                try {
-                    const raw = await requestTradeNet(env, "getTradingLimits", requestParameters);
-                    return new Response(JSON.stringify({
-                        ok: true,
-                        provider: "Freedom TradeNet",
-                        source: "getTradingLimits",
-                        requestParameters,
-                        data: sanitizeFreedomOpqResponse(raw),
-                        receivedAt: Date.now()
-                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
-                } catch (error) {
-                    const rawMessage = error instanceof Error ? error.message : "TradeNet getTradingLimits probe failed.";
-                    const providerError = rawMessage
-                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\s*[:=]\s*)\S+/gi, "$1$2[redacted]")
-                        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-                        .slice(0, 240);
-                    const statusMatch = rawMessage.match(/HTTP (4\d\d|5\d\d)/i);
-                    return new Response(JSON.stringify({
-                        ok: false,
-                        provider: "Freedom TradeNet",
-                        source: "getTradingLimits",
-                        requestParameters,
-                        providerHttpStatus: statusMatch ? Number(statusMatch[1]) : null,
-                        providerError,
-                        receivedAt: Date.now()
-                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
-                }
             }
 
             // Read-only market data. Commands are fixed server-side; callers cannot submit
