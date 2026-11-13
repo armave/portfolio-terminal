@@ -3559,6 +3559,8 @@ describe('guest data isolation at the Worker boundary', () => {
     const cashflowsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', { headers }), env);
     const portfolioEventResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }), env);
     const marketDepthResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL', { headers }), env);
+    const opqResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-opq', { headers }), env);
+    const limitsProbeResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trading-limits-probe&instrumentId=40000019798', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
@@ -3569,7 +3571,9 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(cashflowsResponse.status).toBe(403);
     expect(portfolioEventResponse.status).toBe(403);
     expect(marketDepthResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(9);
+    expect(opqResponse.status).toBe(403);
+    expect(limitsProbeResponse.status).toBe(403);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(11);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
