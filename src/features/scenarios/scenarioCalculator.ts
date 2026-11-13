@@ -317,9 +317,6 @@ export class ScenarioCalculator {
       const equityRatio = projectedAssets > 0 ? projectedEquity / projectedAssets : -Infinity;
       return { projectedBalance, equityRatio };
     };
-    const projected = projectPurchase(qty);
-    const projectedEquityRatio = projected.equityRatio;
-
     const calculateMaximumSafeShares = (): number => {
       if (requiredEquityRatio >= 1 || projectPurchase(0).equityRatio <= requiredEquityRatio) return 0;
       let low = 0;
@@ -336,6 +333,8 @@ export class ScenarioCalculator {
       return Math.floor(low * 1_000_000) / 1_000_000;
     };
 
+    const projected = projectPurchase(qty);
+    const projectedEquityRatio = projected.equityRatio;
 
     const localMaximumShares = calculateMaximumSafeShares();
     const brokerConstraint = brokerLimits
