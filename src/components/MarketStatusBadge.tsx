@@ -160,7 +160,7 @@ export function formatMarketCountdown(remainingMs: number): string {
 
 export function getMarketStatusTransitionAt(status: string | null | undefined, now = new Date()): Date | null {
   const normalized = normalizeMarketSessionStatus(status);
-  if (!normalized) return null;
+  if (!normalized || normalized === 'MIXED') return null;
 
   const session: UsEquityMarketSession = normalized === 'PREMARKET'
     ? 'PRE'
