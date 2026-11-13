@@ -2315,9 +2315,9 @@ export default {
                 } catch (error) {
                     const rawMessage = error instanceof Error ? error.message : "TradeNet getTradingLimits probe failed.";
                     const providerError = rawMessage
-                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\\s*[:=]\\s*)\\S+/gi, "$1$2[redacted]")
+                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\s*[:=]\s*)\S+/gi, "$1$2[redacted]")
                         .slice(0, 240);
-                    const statusMatch = rawMessage.match(/HTTP (4\\d\\d|5\\d\\d)/i);
+                    const statusMatch = rawMessage.match(/HTTP (4\d\d|5\d\d)/i);
                     return new Response(JSON.stringify({
                         ok: false,
                         provider: "Freedom TradeNet",
