@@ -289,6 +289,7 @@ export function calculateFreedomMarginFeeAllocations(
     const tradeValue = Math.abs(Number(trade.tradeValue ?? 0));
     const directPrice = Math.abs(Number(trade.price ?? trade.executionPrice ?? 0));
     const side = String(trade.side ?? '').trim().toLowerCase();
+    const normalizedSide: 'buy' | 'sell' = BUY_SIDES.has(side) ? 'buy' : 'sell';
     const time = parseExecutionTimestamp(trade.executedAt ?? trade.date);
     return {
       index,
@@ -296,7 +297,7 @@ export function calculateFreedomMarginFeeAllocations(
       time,
       day: utcDay(time),
       ticker: normalizeTicker(trade.ticker),
-      side: BUY_SIDES.has(side) ? 'buy' : SELL_SIDES.has(side) ? 'sell' : 'buy',
+      side: normalizedSide,
       quantity,
       price: directPrice || (tradeValue > 0 && quantity > 0 ? tradeValue / quantity : 0),
       currency: String(trade.currency ?? '').trim().toUpperCase()

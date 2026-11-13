@@ -91,7 +91,7 @@ describe('closed-history cashflow fee recalculation', () => {
       { side: 'buy', ticker: 'AAPL.US' },
       { side: 'buy', ticker: 'AAPL' },
       { side: 'sell', ticker: 'AAPL' }
-    ], new Map([
+    ], new Map<number, Record<string, number>>([
       [0, { 'fee-1': 0.2 }],
       [1, { 'fee-1': 0.3, 'fee-2': 0.1 }],
       [2, { 'fee-3': 5 }]
