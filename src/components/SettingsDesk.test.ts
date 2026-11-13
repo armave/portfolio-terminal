@@ -60,6 +60,15 @@ describe('TradeNet OPQ diagnostic panel', () => {
     expect(source).not.toContain('initialMarginRequired: Number(opq');
     expect(source).not.toContain('maintenanceMarginRequired: Number(opq');
   });
+
+  it('keeps the getTradingLimits schema probe admin-only and explicitly sends no guessed instrument parameter', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
+    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe()');
+    expect(source).toContain('Sends an empty read-only getTradingLimits request');
+    expect(source).toContain('requestParameters');
+    expect(source).toContain('providerError');
+  });
 });
 
 describe('Device Check placement', () => {
