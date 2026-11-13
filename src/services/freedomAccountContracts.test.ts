@@ -82,7 +82,7 @@ describe('normalizeFreedomPortfolio', () => {
     });
   });
 
-  it('preserves documented position instrument and margin fields and classifies negative q as short', () => {
+  it('preserves documented position instrument and margin fields without guessing negative q direction', () => {
     const snapshot = normalizeFreedomPortfolio({
       data: { result: { ps: {
         loaded: true, acc: [],
@@ -93,7 +93,7 @@ describe('normalizeFreedomPortfolio', () => {
       } } }
     });
     expect(snapshot.positions[0]).toMatchObject({
-      quantity: -3, direction: 'short', instrumentId: 'instrument-2',
+      quantity: -3, direction: 'unknown', instrumentId: 'instrument-2',
       instrumentIssueNumber: 'US88160R1014', instrumentType: 'stock',
       instrumentKind: 'equity', marginRequirement: 120, variationMargin: -12
     });
