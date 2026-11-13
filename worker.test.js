@@ -1881,6 +1881,65 @@ describe("Margin Intelligence encryption migration Worker boundary", () => {
   });
 });
 
+describe('PortfolioStateDO TradeNet portfolio stream sanitization', () => {
+  function makeStore() {
+    const values = new Map();
+    const storage = {
+      get: async key => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async key => values.delete(key),
+      list: async () => new Map(),
+      transaction: async callback => callback({
+        get: async key => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async key => values.delete(key)
+      })
+    };
+    return new PortfolioStateDO({ storage }, {
+      PORTFOLIO_KV: { get: async () => null }
+    });
+  }
+
+  it('accepts a valid empty account and positions snapshot', () => {
+    const store = makeStore();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true, acc: [], pos: []
+    })).toEqual({ data: { result: { ps: { loaded: true, acc: [], pos: [] } } } });
+  });
+
+  it('preserves negative q and documented position margin/instrument fields', () => {
+    const store = makeStore();
+    const result = store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true, acc: [],
+      pos: [{
+        i: 'TSLA.US', q: -3, curr: 'USD', instr_id: 'instrument-2',
+        issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+      }]
+    });
+    expect(result.data.result.ps.pos[0]).toMatchObject({
+      i: 'TSLA.US', q: -3, instr_id: 'instrument-2',
+      issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+    });
+  });
+
+  it.each([
+    ['missing acc', { loaded: true, pos: [] }],
+    ['missing pos', { loaded: true, acc: [] }],
+    ['missing quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD' }] }],
+    ['malformed quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD', q: true }] }],
+    ['missing ticker', { loaded: true, acc: [], pos: [{ curr: 'USD', q: 3 }] }]
+  ])('rejects %s rather than treating it as an empty or zero position', (_label, payload) => {
+    const store = makeStore();
+    expect(() => store.sanitizeFreedomPortfolioStreamPayload(payload)).toThrow();
+  });
+
+  it('returns null for an unloaded or incomplete stream envelope', () => {
+    const store = makeStore();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: false, acc: [], pos: [] })).toBeNull();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: true, acc: [] })).toBeNull();
+  });
+});
+
 describe('PortfolioStateDO optimistic concurrency', () => {
   function makeDurableObject(legacyPayload = null, envOverrides = {}) {
     const values = new Map();
