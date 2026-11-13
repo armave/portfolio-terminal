@@ -140,7 +140,7 @@ export function collectFreedomPositionIntegrityIssues(
     const direction = String(position?.direction ?? '').trim().toLowerCase();
     const rawSideText = typeof rawSide === 'string' ? rawSide.trim().toLowerCase() : '';
     if (quantity < 0 || (rawQuantity !== null && rawQuantity < 0)) {
-      findings.push(issue(ticker, 'negative_quantity_sign_unverified', 'account_snapshot', {
+      findings.push(issue(ticker, 'short_position_unsupported', 'account_snapshot', {
         rawQuantity,
         rawSide,
         instrumentId,
