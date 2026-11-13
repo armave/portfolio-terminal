@@ -261,15 +261,15 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       ? rawSideValue
       : null;
     const normalizedSide = typeof rawSide === 'string' ? rawSide.trim().toLowerCase() : '';
-    // Positive quantities retain the application's established long-only
-    // compatibility behavior. Negative quantities and any supplied but
-    // unrecognized side are explicitly unknown; numeric side codes are not guessed.
+    // TradeNet documents negative q as a short position. Preserve the signed
+    // quantity and classify it explicitly; the downstream ledger still blocks
+    // unsupported short valuation and P&L. Numeric side codes remain unguessed.
     const direction: BrokerPosition['direction'] = normalizedSide === 'long'
       ? 'long'
       : normalizedSide === 'short'
         ? 'short'
         : rawSideValue === undefined
-          ? quantity >= 0 ? 'long' : 'unknown'
+          ? quantity < 0 ? 'short' : 'long'
           : 'unknown';
     const instrumentIdValue = readFirst(row, [
       'instrument_id', 'instrumentId', 'instr_id', 'security_id', 'isin', 'figi'
@@ -289,6 +289,11 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       rawQuantity: quantity,
       rawSide,
       instrumentId,
+      instrumentIssueNumber: row.issue_nb === undefined || row.issue_nb === null ? null : textOr(row.issue_nb),
+      instrumentType: typeof row.t === 'string' || typeof row.t === 'number' ? row.t : null,
+      instrumentKind: typeof row.k === 'string' || typeof row.k === 'number' ? row.k : null,
+      marginRequirement: numberOrNull(row.go),
+      variationMargin: numberOrNull(row.vm),
       raw: row
     };
   });
