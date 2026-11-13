@@ -1293,8 +1293,9 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
 }
 
 export function sanitizeFreedomPositions(response) {
-    // The upstream API response can be wrapped differently depending on the
-    // TradeNet gateway/version. Accept only known position-envelope variants.
+    // A portfolio snapshot is a single atomic account+positions envelope.
+    // Missing one array is not an empty array: reject it so callers retain the
+    // last known-good snapshot rather than accidentally clearing exposure.
     const candidates = [
         response?.data?.result?.ps,
         response?.result?.ps,
@@ -1304,39 +1305,74 @@ export function sanitizeFreedomPositions(response) {
         response?.result
     ];
     const ps = candidates.find(value => value && typeof value === "object"
-        && (Array.isArray(value.acc) || Array.isArray(value.pos)));
+        && Array.isArray(value.acc) && Array.isArray(value.pos));
     const loaded = ps?.loaded === true || ps?.loaded === 1 || ps?.loaded === "1" || ps?.loaded === "true";
     if (!ps || (ps.loaded !== undefined && ps.loaded !== null && !loaded)) {
-        throw new Error("TradeNet returned an invalid or unloaded positions response.");
+        throw new Error("TradeNet returned an invalid or unloaded portfolio snapshot.");
     }
-    const usdRows = (rows) => Array.isArray(rows)
-        ? rows.filter(row => String(row?.curr ?? row?.base_currency ?? "").toUpperCase() === "USD")
-        : [];
+
     const numberOrNull = value => {
-        if (value === null || value === undefined || value === "") return null;
+        if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
         const number = Number(value);
         return Number.isFinite(number) ? number : null;
     };
-    const acc = usdRows(ps.acc).map(row => ({
-        curr: "USD",
-        s: numberOrNull(row.s),
-        currval: numberOrNull(row.currval),
-        forecast_in: numberOrNull(row.forecast_in) ?? 0,
-        forecast_out: numberOrNull(row.forecast_out) ?? 0,
-        t2_in: numberOrNull(row.t2_in) ?? 0,
-        t2_out: numberOrNull(row.t2_out) ?? 0
-    }));
-    const pos = usdRows(ps.pos).map(row => ({
-        i: String(row.i ?? row.base_contract_code ?? ""),
-        name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument"),
-        q: numberOrNull(row.q) ?? 0,
-        curr: "USD",
-        mkt_price: numberOrNull(row.mkt_price),
-        market_value: numberOrNull(row.market_value),
-        bal_price_a: numberOrNull(row.bal_price_a),
-        profit_close: numberOrNull(row.profit_close),
-        acc_pos_id: numberOrNull(row.acc_pos_id)
-    })).filter(row => row.i);
+    const usdRows = rows => rows.filter(row =>
+        row && typeof row === "object" && !Array.isArray(row) &&
+        String(row.curr ?? row.base_currency ?? "").toUpperCase() === "USD"
+    );
+
+    const acc = usdRows(ps.acc).map(row => {
+        const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+        if (amount === null) {
+            throw new Error("TradeNet returned a USD account row without a valid balance amount.");
+        }
+        return {
+            curr: "USD",
+            s: amount,
+            currval: numberOrNull(row.currval),
+            forecast_in: numberOrNull(row.forecast_in) ?? 0,
+            forecast_out: numberOrNull(row.forecast_out) ?? 0,
+            t2_in: numberOrNull(row.t2_in) ?? 0,
+            t2_out: numberOrNull(row.t2_out) ?? 0
+        };
+    });
+
+    const pos = usdRows(ps.pos).map(row => {
+        const quantity = numberOrNull(row.q);
+        if (quantity === null) {
+            throw new Error("TradeNet returned a USD position without a valid signed quantity.");
+        }
+        const ticker = String(row.i ?? row.base_contract_code ?? "").trim();
+        if (!ticker) {
+            throw new Error("TradeNet returned a USD position without an instrument ticker.");
+        }
+        const instrumentId = row.instr_id === undefined || row.instr_id === null
+            ? null
+            : String(row.instr_id).slice(0, 120);
+        const issueNumber = row.issue_nb === undefined || row.issue_nb === null
+            ? null
+            : String(row.issue_nb).slice(0, 120);
+        const type = typeof row.t === "string" || typeof row.t === "number" ? row.t : null;
+        const kind = typeof row.k === "string" || typeof row.k === "number" ? row.k : null;
+        return {
+            i: ticker.slice(0, 40),
+            name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument").slice(0, 160),
+            q: quantity,
+            curr: "USD",
+            mkt_price: numberOrNull(row.mkt_price),
+            market_value: numberOrNull(row.market_value),
+            bal_price_a: numberOrNull(row.bal_price_a),
+            profit_close: numberOrNull(row.profit_close),
+            acc_pos_id: numberOrNull(row.acc_pos_id),
+            instr_id: instrumentId,
+            issue_nb: issueNumber,
+            t: type,
+            k: kind,
+            go: numberOrNull(row.go),
+            vm: numberOrNull(row.vm)
+        };
+    });
+
     return {
         data: {
             result: {
