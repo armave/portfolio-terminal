@@ -811,12 +811,33 @@ export function normalizeFreedomUsMarketPhase(value) {
 export function selectFreedomUsMarketStatus(eventSummary) {
     const rows = Array.isArray(eventSummary?.marketPreview) ? eventSummary.marketPreview : [];
     const normalizedCode = value => String(value || "").trim().toUpperCase();
+    const safeValue = value => typeof value === "string"
+        ? value.slice(0, 64)
+        : typeof value === "number" && Number.isFinite(value) ? value : null;
+    const toMarket = row => ({
+        name: safeValue(row?.n),
+        code: safeValue(row?.n2),
+        providerStatus: safeValue(row?.s),
+        openTime: safeValue(row?.o),
+        closeTime: safeValue(row?.c),
+        timezoneOffset: safeValue(row?.dt)
+    });
+    const providerTime = typeof eventSummary?.serverTime === "string"
+        ? eventSummary.serverTime.slice(0, 40)
+        : null;
     const fixRow = rows.find(row =>
         normalizedCode(row?.n2) === "FIX" || normalizedCode(row?.n) === "FIX"
     );
     const fixStatus = normalizeFreedomUsMarketPhase(fixRow?.s);
     if (fixStatus) {
-        return { market: "US equities", code: "FIX", status: fixStatus, source: "FIX" };
+        return {
+            market: "US equities",
+            code: "FIX",
+            status: fixStatus,
+            source: "FIX",
+            ...toMarket(fixRow),
+            providerTime
+        };
     }
 
     const usRows = rows.filter(row => {
@@ -824,17 +845,37 @@ export function selectFreedomUsMarketStatus(eventSummary) {
         const code = normalizedCode(row?.n2);
         return name === "NASDAQ" || name === "NYSE" || code === "NASDAQ" || code === "NYSE";
     });
-    const preferredRows = [
-        usRows.find(row => normalizedCode(row?.n2) === "NASDAQ" || normalizedCode(row?.n) === "NASDAQ"),
-        usRows.find(row => normalizedCode(row?.n2) === "NYSE" || normalizedCode(row?.n) === "NYSE")
-    ].filter(Boolean);
-    for (const row of preferredRows) {
-        const status = normalizeFreedomUsMarketPhase(row?.s);
-        if (status) {
-            return { market: "US equities", code: "US", status, source: "US_EXCHANGES" };
-        }
+    const nasdaq = usRows.find(row => normalizedCode(row?.n2) === "NASDAQ" || normalizedCode(row?.n) === "NASDAQ");
+    const nyse = usRows.find(row => normalizedCode(row?.n2) === "NYSE" || normalizedCode(row?.n) === "NYSE");
+    const nasdaqStatus = normalizeFreedomUsMarketPhase(nasdaq?.s);
+    const nyseStatus = normalizeFreedomUsMarketPhase(nyse?.s);
+    if (nasdaqStatus && nyseStatus && nasdaqStatus !== nyseStatus) {
+        return {
+            market: "US equities",
+            code: "US",
+            status: "MIXED",
+            source: "US_EXCHANGES",
+            name: "NASDAQ / NYSE",
+            providerStatus: "MIXED",
+            openTime: null,
+            closeTime: null,
+            timezoneOffset: null,
+            providerTime,
+            exchanges: [toMarket(nasdaq), toMarket(nyse)]
+        };
     }
-    return null;
+    const selectedRow = nasdaqStatus ? nasdaq : nyseStatus ? nyse : null;
+    const selectedStatus = nasdaqStatus || nyseStatus;
+    if (!selectedRow || !selectedStatus) return null;
+    return {
+        market: "US equities",
+        code: "US",
+        status: selectedStatus,
+        source: "US_EXCHANGES",
+        ...toMarket(selectedRow),
+        providerTime,
+        exchanges: [nasdaq, nyse].filter(Boolean).map(toMarket)
+    };
 }
 
 function summarizeFreedomStreamEvent(eventName, payload) {
