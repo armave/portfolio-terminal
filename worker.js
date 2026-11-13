@@ -805,8 +805,9 @@ export function normalizeFreedomUsMarketPhase(value) {
 
 /**
  * Resolve one compact US-equities phase from the public markets event.
- * Prefer FIX (the combined US market); if absent, use Nasdaq then NYSE.
- * Provider-specific raw labels never leave the Worker.
+ * Prefer FIX (the combined US market); if absent, compare Nasdaq and NYSE and
+ * report MIXED when their normalized states disagree rather than choosing one.
+ * Preserve only the documented schedule/time fields; provider payloads stay bounded.
  */
 export function selectFreedomUsMarketStatus(eventSummary) {
     const rows = Array.isArray(eventSummary?.marketPreview) ? eventSummary.marketPreview : [];
