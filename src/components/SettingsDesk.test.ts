@@ -71,6 +71,17 @@ describe('TradeNet OPQ diagnostic panel', () => {
   });
 });
 
+describe('TradeNet trading limits schema probe', () => {
+  it('keeps the empty-parameter getTradingLimits diagnostic admin-only and explicit', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
+    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe()');
+    expect(source).toContain('Sends an empty read-only getTradingLimits request');
+    expect(source).toContain('requestParameters');
+    expect(source).toContain('providerError');
+  });
+});
+
 describe('Device Check placement', () => {
   it('places device diagnostics in Settings instead of the Cash & Non-Margin Holdings desk', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
