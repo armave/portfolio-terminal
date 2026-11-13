@@ -141,7 +141,11 @@ describe('public Freedom US market status', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: null, providerStatus: null, openTime: null, closeTime: null,
+        timezoneOffset: null, providerTime: null, exchanges: []
+      },
       updatedAt
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -149,12 +153,50 @@ describe('public Freedom US market status', () => {
     await expect(fetchFreedomMarketStatus()).resolves.toEqual({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: null, providerStatus: null, openTime: null, closeTime: null,
+        timezoneOffset: null, providerTime: null, exchanges: []
+      },
       updatedAt
     });
     const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(new URL(requestUrl).searchParams.get('action')).toBe('freedom-market-status');
     expect(requestInit.cache).toBe('no-store');
+  });
+
+  it('preserves provider opening, closing, timezone, observation-time, and mixed-exchange details', async () => {
+    const payload = {
+      ok: true, provider: 'Freedom TradeNet',
+      marketStatus: {
+        market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES',
+        name: 'NASDAQ / NYSE', providerStatus: 'MIXED',
+        openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00',
+        providerTime: '2026-11-03 09:00:00',
+        exchanges: [
+          { name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' },
+          { name: 'NYSE', code: 'NYSE', providerStatus: 'CLOSE', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' }
+        ]
+      },
+      updatedAt: 1_800_000_000_000
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    })));
+    await expect(fetchFreedomMarketStatus()).resolves.toMatchObject({
+      marketStatus: payload.marketStatus
+    });
+  });
+
+  it('accepts the explicit MIXED state instead of coercing two differing exchanges to a calendar phase', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true, provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES' },
+      updatedAt: 1_800_000_000_000
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).resolves.toMatchObject({
+      marketStatus: { status: 'MIXED' }
+    });
   });
 
   it.each(['PREV', 'PRE', 'OPEN', 'POST', 'MIXED'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
