@@ -1324,6 +1324,27 @@ describe('Freedom OPQ read-only endpoint', () => {
     expect(init.headers['X-NtApi-Sig']).toBe(createHmac('sha256', 'private-key').update(init.body + timestamp).digest('hex'));
   });
 
+  it('omits OPQ profile and personal workspace data while preserving positions and instrument quote metadata', () => {
+    expect(sanitizeFreedomOpqResponse({
+      OPQ: {
+        ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', q: 2, instr_id: 2388 }] },
+        quotes: { q: [{ c: 'AAPL.US', n: 2388, name: 'Apple Inc.', x_lot: 1 }] },
+        main_curr: 'USD',
+        brief_nm: 'private-account-reference',
+        userInfo: { email: 'person@example.com', firstname: 'Private', client_id: 123 },
+        userLists: { userStockLists: [{ name: 'personal watchlist' }] },
+        userOptions: { theme: 'dark' },
+        original_user_id_in_reception: 987
+      }
+    })).toEqual({
+      OPQ: {
+        ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', q: 2, instr_id: 2388 }] },
+        quotes: { q: [{ c: 'AAPL.US', n: 2388, name: 'Apple Inc.', x_lot: 1 }] },
+        main_curr: 'USD'
+      }
+    });
+  });
+
   it('rejects methods other than GET and never accepts a client-supplied TradeNet command', async () => {
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-opq', {
       method: 'POST', headers: { 'X-App-Auth': 'test-secret' }, body: JSON.stringify({ command: 'putTradeOrder' })
