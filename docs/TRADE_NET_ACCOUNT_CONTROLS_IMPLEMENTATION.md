@@ -278,6 +278,32 @@ The current documentation confirms the endpoint purposes and the high-level mean
 
 Before final field mapping, attach sanitized representative responses or an authoritative complete schema. Redact account/login identifiers, balances if not required for the test, and all secrets. Keep zero/unknown semantics intact. If a field cannot be verified, leave it optional/unknown and record the limitation rather than inventing a key.
 
+## 14. Implementation status (updated 2026-11-13)
+
+### Implemented and validated
+- Pure broker Buy/Exit cap resolver and Vitest coverage. Buy More and Exit calculator entry points accept normalized broker limits and conservatively block when broker constraints are not verified. **Live UI/store hydration is still outstanding**, so the production Buy/Exit panels do not yet consume broker limits.
+- Negative TradeNet quantity is normalized as short evidence; the signed value is preserved. The client contract carries documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm` fields. Short valuation/P&L remains unsupported and is not treated as long exposure.
+- Russian copy added for short-position and broker-limit states.
+- Worker REST and persistent account-stream portfolio sanitizers validate complete account/position snapshots, reject malformed signed quantities/tickers rather than converting them to zero, preserve documented metadata, and accept valid empty snapshots.
+- Worker tests cover signed shorts, metadata allowlisting, incomplete/malformed snapshots, and valid empty snapshots.
+
+### Worker deployment and main validation
+- Dedicated Cloudflare Worker validation and pinned Wrangler deployment succeeded on `main` commit `b513f13a2ea6b31c77b968de1381149acb9e3254`: [Deploy Cloudflare Worker run](https://github.com/armave/portfolio-terminal/actions/runs/43398659946).
+- Operations Browser Journey, including typecheck, Worker/unit tests, production build, browser journey, dead-code validation, and dependency audits, passed on the same commit: [Operations run](https://github.com/armave/portfolio-terminal/actions/runs/43398660006).
+
+### PR validation and known baseline failure
+- On PR head `8f05da2571916a448e0756dcc35a993656657397`, typecheck, full Vitest, production build, dead-code validation, and dependency audits passed.
+- Browser smoke fails at an existing authentication dialog focus-trap assertion (Shift+Tab from username does not wrap to Submit). `AuthModal.tsx`, `dialogFocus.ts`, and `scripts/browser-smoke.mjs` are byte-for-byte unchanged from base `dev`; this is a pre-existing base issue, not a TradeNet regression. Kept outside this broker integration scope.
+
+### Outstanding — not marked complete
+- Authenticated Worker/API support for `getOPQ` and `getTradingLimits`, verified response fixtures/schema, normalized account/instrument limits, and Buy/Exit UI/store hydration.
+- Broker-reported account margin integration into the existing `BrokerReportedMarginRequirements` model.
+- Full provider-driven market session schedule ingestion (`o`, `c`, `dt`, provider time) and client-side schedule authority.
+- Rate-limit/backoff and session-cache improvements.
+- Authenticated live TradeNet verification.
+
+The current documentation confirms endpoint purpose but does not establish enough concrete `getOPQ` / `getTradingLimits` response field mappings. Obtain a sanitized response or complete authoritative schema before implementing raw field mappings; do not guess.
+
 ## 14. Reference material
 
 - TradeNet asset-manager use case and endpoint catalogue: https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en
