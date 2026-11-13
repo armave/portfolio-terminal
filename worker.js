@@ -870,10 +870,10 @@ export function selectFreedomUsMarketStatus(eventSummary) {
     if (!selectedRow || !selectedStatus) return null;
     return {
         market: "US equities",
+        ...toMarket(selectedRow),
         code: "US",
         status: selectedStatus,
         source: "US_EXCHANGES",
-        ...toMarket(selectedRow),
         providerTime,
         exchanges: [nasdaq, nyse].filter(Boolean).map(toMarket)
     };
