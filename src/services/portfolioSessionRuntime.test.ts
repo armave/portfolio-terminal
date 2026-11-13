@@ -45,6 +45,7 @@ function createFixture(initialRole: AuthUser['role'] | null = 'admin', initialId
       calls.push(`cloud-write:${allowed}`);
     }),
     setSessionIdentity: vi.fn((identity: string | null) => calls.push(`identity:${identity ?? 'none'}`)),
+    cancelPendingApiReads: vi.fn(() => calls.push('cancel-pending-api-reads')),
     clearCloudEncryptionSecretCache: vi.fn(() => calls.push('clear-encryption-cache')),
     clearPendingCloudWrite: vi.fn(() => calls.push('clear-cloud-write-timer')),
     clearGuestWorkspace: vi.fn(() => calls.push('clear-guest-workspace')),
@@ -88,6 +89,7 @@ describe('portfolio session runtime', () => {
       canWriteCloudState: false
     });
     expect(fixture.calls).toEqual([
+      'cancel-pending-api-reads',
       'clear-encryption-cache',
       'identity:guest:guest-a',
       'role:guest',
@@ -113,6 +115,7 @@ describe('portfolio session runtime', () => {
       canWriteCloudState: true
     });
     expect(fixture.dependencies.clearGuestWorkspace).not.toHaveBeenCalled();
+    expect(fixture.dependencies.cancelPendingApiReads).toHaveBeenCalledTimes(1);
     expect(fixture.calls).toContain('cloud-write:true');
     expect(fixture.calls[fixture.calls.length - 1]).toBe('user:admin:admin-a');
   });
@@ -124,6 +127,7 @@ describe('portfolio session runtime', () => {
     await runtime.publishCurrentUser();
 
     expect(fixture.dependencies.clearCloudEncryptionSecretCache).not.toHaveBeenCalled();
+    expect(fixture.dependencies.cancelPendingApiReads).not.toHaveBeenCalled();
     expect(fixture.dependencies.setSessionIdentity).not.toHaveBeenCalled();
     expect(fixture.dependencies.clearPendingCloudWrite).not.toHaveBeenCalled();
     expect(fixture.dependencies.clearGuestWorkspace).not.toHaveBeenCalled();
@@ -145,6 +149,7 @@ describe('portfolio session runtime', () => {
       canWriteCloudState: false
     });
     expect(fixture.dependencies.setSessionIdentity).toHaveBeenCalledWith(null);
+    expect(fixture.dependencies.cancelPendingApiReads).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(null);
   });
 

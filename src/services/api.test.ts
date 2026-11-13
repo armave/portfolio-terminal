@@ -11,6 +11,7 @@ import {
   saveSyncedMarginDigest,
   syncCloudState,
   proxyFetch,
+  getApiRequestSchedulerSnapshot,
   getCurrentUser,
   listUsers,
   createUser,
@@ -350,6 +351,43 @@ describe('proxy request coalescing', () => {
       proxyFetch('news', { symbol: 'MSFT' })
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('prioritizes core quote requests ahead of queued deep-data reads', async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Promise<Response>((resolve) => { resolvers.push(resolve); })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const response = () => new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const initialQuotes = ['AAPL', 'MSFT', 'GOOGL', 'NVDA'].map((symbol) =>
+      proxyFetch('quote', { symbol }, { cache: 'no-store' })
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+
+    storage.setGatewaySecret('old-session-secret');
+    const backgroundDeepData = proxyFetch('', { symbol: 'META' }, { method: 'POST' });
+    storage.setGatewaySecret('new-session-secret');
+    const nextQuote = proxyFetch('quote', { symbol: 'TSLA' }, { cache: 'no-store' });
+    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 4, queued: 2 });
+
+    resolvers[0](response());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(new URL(fetchMock.mock.calls[4][0] as string).searchParams.get('action')).toBe('quote');
+    expect(new Headers(fetchMock.mock.calls[4][1]?.headers).get('X-App-Auth')).toBe('new-session-secret');
+
+    for (let index = 1; index < 5; index += 1) resolvers[index](response());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.has('action')).toBe(false);
+    expect(new Headers(fetchMock.mock.calls[5][1]?.headers).get('X-App-Auth')).toBe('old-session-secret');
+    resolvers[5](response());
+
+    await Promise.all([...initialQuotes, backgroundDeepData, nextQuote]);
+    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 0, queued: 0 });
   });
 });
 
@@ -1358,7 +1396,7 @@ describe('Yahoo deep-data request deduplication', () => {
 
     const first = fetchYahooDeepStockData('aapl');
     const second = fetchYahooDeepStockData(' AAPL ');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     const payload = { symbol: 'AAPL', analystTargets: { median: 200 }, valuation: { peForward: 20 } };
     const normalizedPayload = normalizeYahooDeepStockData(payload);
@@ -1770,7 +1808,7 @@ describe('Yahoo deep-data forced refresh', () => {
 
     const olderRequest = fetchYahooDeepStockData('AAPL');
     const forcedRequest = fetchYahooDeepStockData('AAPL', true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     resolvers[1](makeResponse(212));
     expect((await forcedRequest).price.current).toBe(212);

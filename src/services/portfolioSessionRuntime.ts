@@ -9,6 +9,8 @@ export interface PortfolioSessionRuntimeDependencies {
   setAccountId: (accountId: string | null) => void;
   setCloudWritePermission: (allowed: boolean) => void;
   setSessionIdentity: (identity: string | null) => void;
+  /** Cancel queued/in-flight API reads before changing account scope. */
+  cancelPendingApiReads: () => void;
   clearCloudEncryptionSecretCache: () => void;
   clearPendingCloudWrite: () => void;
   clearGuestWorkspace: () => void;
@@ -43,6 +45,7 @@ export function createPortfolioSessionRuntime(
         dependencies.getAccountId() !== user.id;
 
       if (identityChanged) {
+        dependencies.cancelPendingApiReads();
         dependencies.clearCloudEncryptionSecretCache();
         dependencies.setSessionIdentity(`${user.role}:${user.id}`);
       }
@@ -64,6 +67,7 @@ export function createPortfolioSessionRuntime(
       dependencies.emitUserChanged(user);
       return user;
     } catch {
+      dependencies.cancelPendingApiReads();
       dependencies.setAccountRole(null);
       dependencies.setAccountId(null);
       dependencies.setCloudWritePermission(false);
