@@ -369,17 +369,21 @@ describe('proxy request coalescing', () => {
     );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
 
+    storage.setGatewaySecret('old-session-secret');
     const backgroundDeepData = proxyFetch('', { symbol: 'META' }, { method: 'POST' });
+    storage.setGatewaySecret('new-session-secret');
     const nextQuote = proxyFetch('quote', { symbol: 'TSLA' }, { cache: 'no-store' });
     expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 4, queued: 2 });
 
     resolvers[0](response());
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(new URL(fetchMock.mock.calls[4][0] as string).searchParams.get('action')).toBe('quote');
+    expect(new Headers(fetchMock.mock.calls[4][1]?.headers).get('X-App-Auth')).toBe('new-session-secret');
 
     for (let index = 1; index < 5; index += 1) resolvers[index](response());
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
     expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.has('action')).toBe(false);
+    expect(new Headers(fetchMock.mock.calls[5][1]?.headers).get('X-App-Auth')).toBe('old-session-secret');
     resolvers[5](response());
 
     await Promise.all([...initialQuotes, backgroundDeepData, nextQuote]);

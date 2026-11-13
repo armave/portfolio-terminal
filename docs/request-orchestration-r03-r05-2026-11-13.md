@@ -20,6 +20,8 @@ A shared scheduler in `src/services/requestScheduler.ts` now coordinates selecte
 - Up to 128 additional requests may wait.
 - Queued work is ordered `critical` → `interactive` → `background`, FIFO within each priority.
 - External `AbortSignal` cancellation removes queued work or aborts active transport.
+- Credentials are captured at dispatch time; a queued request cannot inherit a later session's active credential.
+- Account identity changes cancel queued/in-flight API reads before role and workspace scope changes.
 - `clearApiRequestCaches()` cancels scheduled work and clears in-flight read deduplication when the request context is reset.
 - Existing same-request deduplication, closed-market successful-response gating, provider caches, retry/backoff and request timeouts remain the owners of those behaviors.
 

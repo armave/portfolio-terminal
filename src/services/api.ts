@@ -428,9 +428,10 @@ function createMarketRequestIdentity(
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .sort(([a], [b]) => a.localeCompare(b));
   const method = (fetchOptions.method || 'GET').toUpperCase();
-  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const secret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   const body = typeof fetchOptions.body === 'string' ? fetchOptions.body : '';
-  return JSON.stringify([action, method, normalizedParams, body, secret]);
+  const priority = fetchOptions.requestPriority ?? resolveReadRequestPriority(action);
+  return JSON.stringify([action, method, normalizedParams, body, secret, priority]);
 }
 
 function dispatchProxyFetch(
@@ -442,18 +443,24 @@ function dispatchProxyFetch(
     (action !== '' || Boolean(queryParams.symbol));
   const shouldSchedule = SCHEDULED_READ_ACTIONS.has(action) ||
     (action === '' && Boolean(queryParams.symbol));
+  // Capture the request credential when the caller dispatches. A queued read
+  // must never inherit a different account's active credential when it starts.
+  const requestOptions: ProxyFetchOptions = {
+    ...fetchOptions,
+    secret: fetchOptions.secret ?? getActiveGatewaySecret()
+  };
   const request = () => shouldSchedule
     ? readRequestScheduler.schedule(
-      (signal) => performProxyFetch(action, queryParams, { ...fetchOptions, signal }),
+      (signal) => performProxyFetch(action, queryParams, { ...requestOptions, signal }),
       {
-        priority: fetchOptions.requestPriority ?? resolveReadRequestPriority(action),
-        signal: fetchOptions.signal
+        priority: requestOptions.requestPriority ?? resolveReadRequestPriority(action),
+        signal: requestOptions.signal
       }
     )
-    : performProxyFetch(action, queryParams, fetchOptions);
+    : performProxyFetch(action, queryParams, requestOptions);
 
-  return isMarketData && !fetchOptions.signal && fetchOptions.cache !== 'no-store'
-    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
+  return isMarketData && !requestOptions.signal && requestOptions.cache !== 'no-store'
+    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, requestOptions), request)
     : request();
 }
 
@@ -473,11 +480,12 @@ export function proxyFetch(
     !fetchOptions.body && !fetchOptions.state;
   if (!canCoalesce) return dispatchProxyFetch(action, queryParams, fetchOptions);
 
-  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const secret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   const normalizedParams = Object.entries(queryParams)
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .sort(([a], [b]) => a.localeCompare(b));
-  const key = JSON.stringify([action, method, normalizedParams, secret]);
+  const priority = fetchOptions.requestPriority ?? resolveReadRequestPriority(action);
+  const key = JSON.stringify([action, method, normalizedParams, secret, priority]);
   const existing = proxyReadRequests.get(key);
   if (existing) {
     recordApiMetric('inflight_dedup', { operation: action || 'deep_data' });
@@ -516,7 +524,7 @@ async function performProxyFetch(
     }
   });
 
-  const authSecret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const authSecret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   if (!authSecret) {
     throw new Error('Gateway Secret is not available. Restore or enter the Gateway Secret before requesting broker data.');
   }
@@ -784,15 +792,20 @@ export function getApiRequestSchedulerSnapshot(): RequestSchedulerSnapshot {
   return readRequestScheduler.getSnapshot();
 }
 
-export function clearApiRequestCaches(): void {
-  readRequestScheduler.cancelAll(new Error('API request context was reset.'));
+/** Cancel API reads and deduplication state when the active account identity changes. */
+export function cancelPendingApiReads(reason: unknown = new Error('Active account identity changed.')): void {
+  readRequestScheduler.cancelAll(reason);
   proxyReadRequests.clear();
+  resetMarketRequestGate();
+}
+
+export function clearApiRequestCaches(): void {
+  cancelPendingApiReads(new Error('API request context was reset.'));
   authTransportRuntime.clearRequestCaches();
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();
   clearFreedomCashflowCache();
   clearFreedomTradeNetStreamSnapshotCache();
-  resetMarketRequestGate();
 }
 
 const authRequest = authTransportRuntime.authRequest;
