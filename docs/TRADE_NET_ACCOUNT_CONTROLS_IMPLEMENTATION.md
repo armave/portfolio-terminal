@@ -274,42 +274,45 @@ This work is complete only when all are true:
 
 ## 13. Known evidence gaps (must be closed, not guessed)
 
-The current official endpoint catalogue confirms the purpose of getOPQ (account positions, cash, margin settings and limits) and getTradingLimits (maximum buy and sell quantity for an instrument). It also warns that trading limits are estimates rather than reserved capacity. The material inspected so far does not provide enough retr## 14. Implementation status (updated 2026-11-13)
+The official endpoint catalogue confirms the purpose of `getOPQ` (account positions, cash, margin settings and limits) and `getTradingLimits` (maximum buy and sell quantity for an instrument). It warns that the returned trading limits are estimates, not reserved capacity. The material inspected so far does not establish the exact `getTradingLimits` request parameter names or concrete response keys, nor does it establish the units/currency for every `getOPQ` margin and buying-power value.
 
-### Implemented and validated on the current PR head
-- Pure broker Buy/Exit cap resolver and Vitest coverage. Buy More and Exit calculator entry points accept normalized broker limits and conservatively block when broker constraints are not verified. **Live Buy/Exit UI/store hydration remains outstanding**; production scenario panels do not yet consume live broker limits.
-- Position normalization preserves signed quantity and the documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm` metadata. A negative `q` without an explicit recognized side stays direction `unknown` and produces `negative_quantity_sign_unverified`; `t` and `k` are not used to infer direction.
-- Russian copy added for short-position and broker-limit diagnostic states.
-- Worker REST and persistent account-stream portfolio sanitizers validate complete account/position snapshots, reject malformed signed quantities/tickers rather than converting them to zero, preserve allowlisted metadata, and accept valid empty snapshots.
-- Worker exposes a fixed, read-only `freedom-opq` action for `getOPQ`. Its response is bounded and credential-redacted, and the app exposes it as an admin-only raw diagnostic. **This is not yet a typed margin/account-limit mapping** and does not enable scenario enforcement.
-- Worker tests cover OPQ proxy behavior/redaction, signed quantity preservation, metadata allowlisting, incomplete/malformed snapshots, and valid empty snapshots.
-- The broker-limit policy unit tests cover current/stale/unavailable/malformed limits, account/instrument/local cap intersection, lot rounding, zero limits, and long-exit no-cross-through-zero behavior.
+The existing authenticated portfolio fixture establishes the `q` quantity field but does not establish that a negative `q` alone proves a short. Preserve the signed value and keep direction unknown unless explicit recognized side evidence or a verified provider convention is available.
 
-### Worker deployment and validation
-- Latest Worker deployment is on `main` commit `2a086805bbd9891391586df1a36961034dfac01c`: [Deploy Cloudflare Worker run](https://github.com/armave/portfolio-terminal/actions/runs/43401341771). Dependency audit, Worker tests, and pinned Wrangler deployment all passed.
-- The deployed Worker includes the fixed `freedom-opq` GET-only app action, which invokes the fixed server-side `getOPQ` command; the browser cannot select arbitrary TradeNet commands. The action remains admin-restricted.
+Before final field mapping, obtain a sanitized representative response or a complete authoritative schema for `getOPQ` and `getTradingLimits`. Redact account/login identifiers and credentials. Keep reported zero distinct from missing/null/malformed values. Do not infer shares-versus-lots, currencies, inclusive/exclusive semantics, or request parameter names.
 
-### Exact-head PR validation
-- On PR head `43390c3b4705f310cd2da8939dad7c17c29aad71`, [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43402302255) passed typecheck, full Vitest, production build, production-browser smoke test, desktop/mobile performance baseline capture, dead-code validation, and dependency audits.
-- On the same PR head, [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43402302229) passed typecheck, unit and Worker tests, production build, account/Settings browser journey, performance baseline capture, dead-code validation, and dependency audits.
+For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` and event time `t`. Their exact timestamp/offset units remain unverified. The frontend therefore displays raw bounded schedule details and does not parse them into UTC or use them for countdown arithmetic until the field semantics are verified.
+
+## 14. Implementation status (updated 2026-11-13)
+
+### Implemented
+- Pure broker Buy/Exit quantity-cap resolver and Vitest coverage for current/stale/unavailable/malformed/zero limits, local/account/instrument cap intersection, lot rounding, and long Exit no-cross-through-zero.
+- Buy More and Exit calculator entry points accept optional normalized broker limits and fail closed if required limits are not verified. Live broker limit hydration into those production panels remains outstanding.
+- Position normalization preserves signed quantity and documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm`. A negative `q` without an explicit recognized side remains direction `unknown` with `negative_quantity_sign_unverified`; `t` and `k` are not direction fields.
+- Fixed read-only `freedom-opq` Worker route for `getOPQ`, with bounded credential-redacted raw payload; the client has a secret-scoped 60-second cache and admin-only diagnostic panel. The payload is intentionally not mapped to verified margin or buying-power metrics.
+- REST and persistent account-stream Worker sanitizers validate complete `acc`/`pos` snapshots, reject malformed quantities/tickers rather than changing them to zero, preserve documented metadata, retain last known-good snapshots for invalid stream payloads, and accept legitimate empty arrays.
+- Worker market selector now preserves selected-market schedule fields and provider time, and reports `MIXED` if separate Nasdaq and NYSE statuses disagree rather than silently preferring one venue.
+- Client market contract preserves the schedule metadata and per-exchange states; `MIXED` is localized and visible. A fresh broker phase is authoritative; the New York calendar is a fallback only for missing/stale provider status. No single-market countdown is displayed for `MIXED` or broker/calendar disagreement.
+- Market schedule fields `o`, `c`, `dt`, and event time `t` are preserved and displayed diagnostically. Their units remain unverified, so no timestamp parsing/countdown arithmetic is based on them.
+- English source copy and Russian translations are added for the implemented diagnostic states.
+
+### Worker/server deployment (direct to main)
+- Previously deployed Worker includes the read-only `freedom-opq` route and portfolio snapshot validation: [Worker deploy run](https://github.com/armave/portfolio-terminal/actions/runs/43401341771), commit `2a086805bbd9891391586df1a36961034dfac01c`.
+- The current continuation adds market schedule propagation and separate-exchange `MIXED` reporting in `worker.js`, with corresponding Worker tests. **This latest Worker source/test change still needs its own Worker workflow validation and Cloudflare deployment before it is live.**
+- The matching market integration documentation is updated in `docs/FREEDOM_MARKET_DATA.md`.
+
+### Client PR validation
+- The prior PR head `5db29cc0259d68072985aefae0c45c1150ef1bc5` passed typecheck, full Vitest, production build, browser smoke, performance baseline, dead-code and dependency audits in [CI](https://github.com/armave/portfolio-terminal/actions/runs/43405363751) and [Operations](https://github.com/armave/portfolio-terminal/actions/runs/43405363719).
+- Market-schedule propagation, mixed-state handling, and the new freshness/fallback tests are newer than that validated head. They must pass a fresh complete run before being marked validated.
 
 ### Outstanding — intentionally not marked complete
-- Exact `getTradingLimits` request method/parameters and response fields, verified fixture, Worker route, client transport, and typed normalizer.
-- Verified `getOPQ` field mapping for cash, currency, margin, collateral, and account-level limits; current app support is diagnostic/raw only.
-- Live Buy/Exit store and UI hydration so broker limits materially constrain the scenario quantities shown to users.
-- Provider-driven `getMarketStatus` schedule integration and explicit fallback provenance.
-- Bounded 429/transient backoff and SID/rememberMe cache reconciliation.
-- Authenticated live TradeNet account verification. No live account payload has been captured or mapped in this PR.
+- Exact `getTradingLimits` request method/parameters and response fields; verified fixture; Worker route; client transport; and typed normalizer.
+- Verified `getOPQ` response field mapping for cash, currency, initial/maintenance margin, collateral, and account-level capacity.
+- Store/UI hydration so live, verified broker account and per-instrument limits materially constrain Buy More and Exit scenarios. The existing cap policy is implemented, but live enforcement in the production panels is not complete.
+- Conversion of any account-level notional capacity into quantity only after currency, price, lot and commission semantics are verified.
+- Parsing `o`, `c`, and `dt` into precise exchange timestamps only after their units/timezone semantics are verified.
+- Bounded 429/transient backoff, SID/rememberMe cache reconciliation, and authenticated live TradeNet account verification.
 
-Keep this PR in draft until the verified provider contract is available and live Buy/Exit hydration and enforcement are complete.
-  
-res/schema, normalized account/instrument limits, and Buy/Exit UI/store hydration.
-- Broker-reported account margin integration into the existing `BrokerReportedMarginRequirements` model.
-- Full provider-driven market session schedule ingestion (`o`, `c`, `dt`, provider time) and client-side schedule authority.
-- Rate-limit/backoff and session-cache improvements.
-- Authenticated live TradeNet verification.
-
-The current documentation confirms endpoint purpose but does not establish enough concrete `getOPQ` / `getTradingLimits` response field mappings. Obtain a sanitized response or complete authoritative schema before implementing raw field mappings; do not guess.
+Keep the PR in draft until live, verified account/instrument limits drive Buy/Exit scenario quantities and the remaining acceptance criteria pass.
 
 ## 15. Reference material
 
