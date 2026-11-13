@@ -12,7 +12,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetOpq: () => Promise<unknown>;
-  fetchFreedomTradeNetTradingLimitsProbe: () => Promise<unknown>;
+  fetchFreedomTradeNetTradingLimitsProbe: (instrumentId?: number) => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
   fetchFreedomTradeNetQuoteStreamOnce: (symbol: string, fetchOptions?: RequestInit) => Promise<unknown | null>;
@@ -157,9 +157,21 @@ export function createFreedomBrokerTransportRuntime(
     return request;
   };
 
-  // On-demand schema probe only. It sends no guessed instrument parameter.
-  const fetchFreedomTradeNetTradingLimitsProbe = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
+  // On-demand read-only probe. A supplied ID is the broker position's instr_id,
+  // which is distinct from the quote feed's serial quote number n.
+  const fetchFreedomTradeNetTradingLimitsProbe = (instrumentId?: number): Promise<unknown> => {
+    if (instrumentId === undefined) {
+      return dependencies.proxyFetch('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
+    }
+    if (!Number.isSafeInteger(instrumentId) || instrumentId <= 0) {
+      return Promise.reject(new Error('A positive numeric TradeNet instrument ID is required.'));
+    }
+    return dependencies.proxyFetch(
+      'freedom-trading-limits-probe',
+      { instrumentId },
+      { cache: 'no-store' }
+    );
+  };
 
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;

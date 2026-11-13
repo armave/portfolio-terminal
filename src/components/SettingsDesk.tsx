@@ -9,6 +9,7 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { fetchFreedomTradeNetOpq, fetchFreedomTradeNetTradingLimitsProbe } from '../services/api';
+import { resolveTradeNetProbeInstrument } from '../domain/freedomTradeNetLimits';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -140,14 +141,26 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     setTradingLimitsProbeLoading(true);
     setTradingLimitsProbeError('');
     try {
-      const response = await fetchFreedomTradeNetTradingLimitsProbe();
+      if (opqReceivedAt === null || Date.now() - opqReceivedAt > 5 * 60 * 1000) {
+        throw new Error('Refresh the TradeNet account overview before probing instrument limits.');
+      }
+      const probeInstrument = resolveTradeNetProbeInstrument(opqSnapshot);
+      if (!probeInstrument) {
+        throw new Error('The latest OPQ snapshot has no USD US holding with a valid trading-system instr_id.');
+      }
+      const response = await fetchFreedomTradeNetTradingLimitsProbe(probeInstrument.instrumentId);
       if (!response || typeof response !== 'object' || (response as Record<string, unknown>).source !== 'getTradingLimits') {
         throw new Error('TradeNet trading-limits probe returned an invalid response.');
       }
-      setTradingLimitsProbe(response);
-      if ((response as Record<string, unknown>).ok !== true) {
-        const message = (response as Record<string, unknown>).providerError;
-        setTradingLimitsProbeError(typeof message === 'string' ? message : 'TradeNet did not accept an empty parameter object.');
+      const probeResponse = response as Record<string, unknown>;
+      setTradingLimitsProbe({ ...probeResponse, instrumentTicker: probeInstrument.ticker });
+      if (probeResponse.ok !== true) {
+        const message = probeResponse.providerError;
+        setTradingLimitsProbeError(
+          typeof message === 'string'
+            ? `TradeNet getTradingLimits for ${probeInstrument.ticker}: ${message}`
+            : 'TradeNet did not return verified limits for this instrument.'
+        );
       }
     } catch (error) {
       setTradingLimitsProbeError(error instanceof Error ? error.message : 'Could not probe TradeNet trading limits.');
@@ -500,7 +513,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h4 class="text-[11px] font-semibold text-slate-300">{translateText('Trading limits schema probe')}</h4>
-              <p class="mt-1 text-[10px] text-slate-500">{translateText('Sends an empty read-only getTradingLimits request to reveal any required parameter. No instrument parameter is guessed.')}</p>
+              <p class="mt-1 text-[10px] text-slate-500">{translateText('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.')}</p>
             </div>
             <button type="button" disabled={tradingLimitsProbeLoading} onClick={() => void handleProbeTradingLimits()}
               class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">

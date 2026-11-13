@@ -80,6 +80,26 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch).toHaveBeenCalledWith('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
   });
 
+  it('sends the selected OPQ instrument ID in the read-only limits probe query', async () => {
+    const payload = { ok: true, source: 'getTradingLimits', requestParameters: { instrument_id: 40000019798 } };
+    const { runtime, proxyFetch } = createRuntime({
+      resolve: action => action === 'freedom-trading-limits-probe' ? payload : undefined
+    });
+    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe(40000019798)).resolves.toEqual(payload);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-trading-limits-probe',
+      { instrumentId: 40000019798 },
+      { cache: 'no-store' }
+    );
+  });
+
+  it('rejects an invalid instrument ID before calling the Worker', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe(1.5)).rejects.toThrow('positive numeric TradeNet instrument ID');
+    expect(proxyFetch).not.toHaveBeenCalled();
+  });
+
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {
