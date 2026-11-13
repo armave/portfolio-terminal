@@ -5,7 +5,6 @@ export interface RequestSchedulerOptions {
   concurrency?: number;
   /** Maximum number of requests waiting for an execution slot. */
   maxQueued?: number;
-  now?: () => number;
 }
 
 export interface RequestScheduleOptions {
@@ -31,13 +30,13 @@ export interface RequestScheduler {
   getSnapshot: () => RequestSchedulerSnapshot;
 }
 
-interface RequestQueueEntry<T = unknown> {
+interface RequestQueueEntry {
   id: number;
   sequence: number;
   priority: RequestPriority;
-  task: (signal: AbortSignal) => T | PromiseLike<T>;
+  task: (signal: AbortSignal) => unknown | PromiseLike<unknown>;
   controller: AbortController;
-  resolve: (value: T) => void;
+  resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   externalSignal?: AbortSignal;
   externalAbortListener?: () => void;
@@ -75,8 +74,6 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
   const maxQueued = Number.isInteger(requestedMaxQueued) && requestedMaxQueued >= 0
     ? Math.min(2_048, requestedMaxQueued)
     : 128;
-  const now = options.now ?? Date.now;
-
   const queue: RequestQueueEntry[] = [];
   const active = new Map<number, RequestQueueEntry>();
   let nextId = 1;
@@ -129,7 +126,10 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
           reject(readAbortReason(entry.controller.signal));
         }
       });
-      const taskResult = Promise.resolve().then(() => entry.task(entry.controller.signal));
+      const taskResult = Promise.resolve().then(() => {
+      if (entry.controller.signal.aborted) throw readAbortReason(entry.controller.signal);
+      return entry.task(entry.controller.signal);
+    });
 
       void Promise.race([taskResult, aborted])
         .then(entry.resolve, entry.reject)
@@ -157,13 +157,13 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
       return;
     }
 
-    const entry: RequestQueueEntry<T> = {
+    const entry: RequestQueueEntry = {
       id: nextId++,
       sequence: nextSequence++,
       priority: scheduleOptions.priority ?? 'interactive',
-      task,
+      task: (signal) => task(signal),
       controller: new AbortController(),
-      resolve,
+      resolve: (value) => resolve(value as T),
       reject,
       externalSignal,
       started: false
@@ -183,7 +183,14 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
   });
 
   const cancelAll = (reason: unknown = new Error('Request context was reset.')): void => {
-    for (const entry of [...queue]) cancelEntry(entry, reason);
+    // Drain queued entries without pumping between removals; a reset must not
+    // briefly start another request that is scheduled to be cancelled as well.
+    const queuedEntries = queue.splice(0);
+    for (const entry of queuedEntries) {
+      if (!entry.controller.signal.aborted) entry.controller.abort(reason);
+      cleanup(entry);
+      entry.reject(reason);
+    }
     for (const entry of [...active.values()]) cancelEntry(entry, reason);
   };
 

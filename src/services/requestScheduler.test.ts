@@ -48,11 +48,11 @@ describe('shared request scheduler', () => {
       queuedByPriority: { critical: 1, interactive: 1, background: 2 }
     });
 
-    firstGate.resolve();
+    firstGate.resolve(undefined);
     await expect(first).resolves.toBe('active');
     await vi.waitFor(() => expect(sequence).toEqual(['active', 'critical', 'interactive', 'background-1']));
 
-    backgroundGate.resolve();
+    backgroundGate.resolve(undefined);
     await expect(Promise.all([backgroundOne, backgroundTwo, interactive, critical]))
       .resolves.toEqual(['background-1', 'background-2', 'interactive', 'critical']);
     expect(sequence).toEqual(['active', 'critical', 'interactive', 'background-1', 'background-2']);
@@ -73,7 +73,7 @@ describe('shared request scheduler', () => {
     expect(queuedTask).not.toHaveBeenCalled();
     expect(scheduler.getSnapshot()).toMatchObject({ active: 1, queued: 0 });
 
-    activeGate.resolve();
+    activeGate.resolve(undefined);
     await expect(active).resolves.toBeUndefined();
   });
 
@@ -83,7 +83,7 @@ describe('shared request scheduler', () => {
     const reason = new Error('request no longer needed');
     const started = deferred();
     const running = scheduler.schedule((signal) => new Promise((_resolve, reject) => {
-      started.resolve();
+      started.resolve(undefined);
       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
     }), { signal: controller.signal });
 
@@ -115,6 +115,6 @@ describe('shared request scheduler', () => {
     await expect(active).rejects.toBe(reason);
     await expect(queued).rejects.toBe(reason);
     expect(scheduler.getSnapshot()).toMatchObject({ active: 0, queued: 0 });
-    activeGate.resolve();
+    activeGate.resolve(undefined);
   });
 });
