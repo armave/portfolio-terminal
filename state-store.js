@@ -1003,6 +1003,7 @@ export class PortfolioStateDO {
     const source = payload?.portfolio ?? payload?.ps ?? payload?.data?.result?.ps ?? payload?.data?.ps ?? payload;
     const loaded = source?.loaded === true || source?.loaded === 1 ||
       source?.loaded === "1" || source?.loaded === "true";
+    // A TradeNet portfolio snapshot is atomic: absent arrays are not empty arrays.
     if (!source || typeof source !== "object" || !loaded ||
         !Array.isArray(source.acc) || !Array.isArray(source.pos)) return null;
     const numberOrNull = (value) => {
