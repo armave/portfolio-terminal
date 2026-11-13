@@ -1373,6 +1373,41 @@ describe('Freedom getTradingLimits schema probe', () => {
     expect(init.headers['X-NtApi-Sig']).toBe(createHmac('sha256', 'private-key').update(init.body + timestamp).digest('hex'));
   });
 
+  it('sends the trading-system instrument ID as instrument_id for a targeted read-only lookup', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      buy: 12, sell: 8
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-trading-limits-probe&instrumentId=40000019798',
+      { headers: { 'X-App-Auth': 'admin-secret' } }
+    ), {
+      GATEWAY_SECRET: 'admin-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      source: 'getTradingLimits',
+      requestParameters: { instrument_id: 40000019798 },
+      data: { buy: 12, sell: 8 }
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ instrument_id: 40000019798 });
+  });
+
+  it('rejects malformed instrument IDs without making an upstream request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-trading-limits-probe&instrumentId=12.5',
+      { headers: { 'X-App-Auth': 'admin-secret' } }
+    ), { GATEWAY_SECRET: 'admin-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' });
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('returns a bounded provider validation error without guessing an instrument parameter', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       errMsg: 'Missing required parameter: instrument_id'
