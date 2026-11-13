@@ -1,4 +1,4 @@
-export type BrokerLimitFreshness = 'current' | 'stale' | 'unavailable' | 'malformed';
+type BrokerLimitFreshness = 'current' | 'stale' | 'unavailable' | 'malformed';
 
 export interface BrokerQuantityLimit {
   /** Non-negative quantity confirmed by the broker; zero is a hard zero limit. */
