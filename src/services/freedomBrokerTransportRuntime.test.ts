@@ -37,6 +37,23 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
   });
 
+  it('fetches and caches a separate unknown-safe OPQ account overview', async () => {
+    let current = 1_000;
+    const payload = { ok: true, source: 'getOPQ', data: { opaque: { margin: 123, limit: 99 } } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      now: () => current,
+      resolve: action => action === 'freedom-opq' ? payload : undefined
+    });
+    await expect(runtime.fetchFreedomTradeNetOpq()).resolves.toEqual(payload);
+    await expect(runtime.fetchFreedomTradeNetOpq()).resolves.toEqual(payload);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledWith('freedom-opq', undefined, { cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('cache_hit', { cache: 'freedom_opq' });
+    current += 60_001;
+    await runtime.fetchFreedomTradeNetOpq();
+    expect(proxyFetch).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {
