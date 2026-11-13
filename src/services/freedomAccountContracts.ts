@@ -231,16 +231,17 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
   );
 
   const balances = usdRows(ps.acc).map((row): FreedomCashBalance => {
-    // TradeNet's `s` is the authoritative USD balance field; retain the
-    // documented `currval` fallback, but never manufacture a zero when both
-    // fields are absent or malformed. Zero remains a valid broker value.
-    const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+    // TradeNet documents `s` as available funds and `currval` as an
+    // account-currency exchange rate. They are different measures: never
+    // substitute the rate for missing funds. Zero remains a valid amount.
+    const amount = numberOrNull(row.s);
     if (amount === null) {
       throw new Error('TradeNet USD balance row is missing a valid balance amount.');
     }
     return {
       currency: 'USD',
       amount,
+      exchangeRate: numberOrNull(row.currval),
       forecastIn: numberOrNull(row.forecast_in) ?? 0,
       forecastOut: numberOrNull(row.forecast_out) ?? 0,
       t2In: numberOrNull(row.t2_in) ?? 0,
