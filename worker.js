@@ -1721,7 +1721,7 @@ export default {
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
-                "state", "history", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trades",
+                "state", "history", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trading-limits-probe", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
                 "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket"
             ].includes(action);
@@ -1738,7 +1738,7 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trading-limits-probe", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         const getOnlyActions = new Set(["news", "provider-quote", "provider-history", "market-events", "market-calendar", "stocktwits", "freedom-test", "freedom-positions", "freedom-opq", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
@@ -2289,6 +2289,44 @@ export default {
                         [401, 403, 429, 503].includes(Number(error?.status)) ? Number(error.status) : 502,
                         corsHeaders
                     );
+                }
+            }
+
+            // On-demand, admin-only read-only schema probe for getTradingLimits.
+            // An empty parameter object is deliberate: do not guess the documented
+            // instrument identifier field. The bounded provider error may identify it.
+            if (action === "freedom-trading-limits-probe") {
+                if (request.method !== "GET") {
+                    return jsonError("TradeNet trading-limits probe only supports GET.", 405, corsHeaders);
+                }
+                if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
+                    return jsonError("Freedom API-key credentials are not configured in the Worker.", 503, corsHeaders);
+                }
+                try {
+                    const raw = await requestTradeNet(env, "getTradingLimits", {});
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "getTradingLimits",
+                        requestParameters: {},
+                        data: sanitizeFreedomOpqResponse(raw),
+                        receivedAt: Date.now()
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    const rawMessage = error instanceof Error ? error.message : "TradeNet getTradingLimits probe failed.";
+                    const providerError = rawMessage
+                        .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)(\\s*[:=]\\s*)\\S+/gi, "$1$2[redacted]")
+                        .slice(0, 240);
+                    const statusMatch = rawMessage.match(/HTTP (4\\d\\d|5\\d\\d)/i);
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        provider: "Freedom TradeNet",
+                        source: "getTradingLimits",
+                        requestParameters: {},
+                        providerHttpStatus: statusMatch ? Number(statusMatch[1]) : null,
+                        providerError,
+                        receivedAt: Date.now()
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 
