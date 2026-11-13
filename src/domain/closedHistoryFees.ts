@@ -138,10 +138,7 @@ export function applyCashflowAllocationsToBrokerExecutions<T extends object>(
         .reduce((sum, amount) => sum + (Number(amount) || 0), 0)
         .toFixed(2)
     );
-    const commissionCurrency = String(record.commissionCurrency ?? record.currency ?? '').trim().toUpperCase();
-    const commission = commissionCurrency === '' || commissionCurrency === 'USD'
-      ? Math.abs(Number(record.commission ?? 0)) || 0
-      : 0;
+    const commission = Math.abs(Number(record.commission ?? 0)) || 0;
     const parsedProfit = record.profit == null ? null : Number(record.profit);
     const profit = parsedProfit !== null && Number.isFinite(parsedProfit) ? parsedProfit : null;
 

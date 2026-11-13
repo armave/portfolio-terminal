@@ -67,25 +67,6 @@ describe('closed-history cashflow fee recalculation', () => {
     expect(cleared).toMatchObject({ openMarginFeeAllocations: {}, openMarginFee: 0 });
   });
 
-  it('does not count non-USD commissions in the USD closed-trade fee total', () => {
-    const sell = {
-      id: 'sell-usd',
-      side: 'sell',
-      currency: 'USD',
-      commissionCurrency: 'EUR',
-      commission: 2,
-      profit: 100
-    };
-    expect(applyCashflowAllocationsToBrokerExecutions(
-      [sell],
-      new Map([[0, { 'fee-usd': 1 }]])
-    )[0]).toMatchObject({
-      feesAndCommissions: 1,
-      marginFee: 1,
-      netProfit: 99
-    });
-  });
-
   it('aggregates open broker lot fees to the active position by ticker', () => {
     const allocations = aggregateOpenBrokerMarginFeeAllocationsByTicker([
       { side: 'buy', ticker: 'AAPL.US' },
