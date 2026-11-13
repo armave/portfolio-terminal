@@ -11,8 +11,6 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 
 export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
-  fetchFreedomTradeNetOpq: () => Promise<unknown>;
-  fetchFreedomTradeNetTradingLimitsProbe: (instrumentId?: number) => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
   fetchFreedomTradeNetQuoteStreamOnce: (symbol: string, fetchOptions?: RequestInit) => Promise<unknown | null>;
@@ -131,48 +129,6 @@ export function createFreedomBrokerTransportRuntime(
       'freedom_portfolio'
     );
 
-  // Account overview is a separate read-only snapshot. Keep raw schema unknown
-  // until an authenticated provider fixture verifies the current OPQ field map.
-  let freedomOpqCache: { secret: string; expiresAt: number; data: unknown } | null = null;
-  let freedomOpqRequest: { secret: string; promise: Promise<unknown> } | null = null;
-  const fetchFreedomTradeNetOpq = (): Promise<unknown> => {
-    const secret = dependencies.getActiveGatewaySecret().trim();
-    if (freedomOpqCache && freedomOpqCache.secret === secret && freedomOpqCache.expiresAt > now()) {
-      dependencies.recordMetric?.('cache_hit', { cache: 'freedom_opq' });
-      return Promise.resolve(freedomOpqCache.data);
-    }
-    if (freedomOpqRequest?.secret === secret) {
-      dependencies.recordMetric?.('inflight_dedup', { operation: 'freedom_opq' });
-      return freedomOpqRequest.promise;
-    }
-    const request = dependencies.proxyFetch('freedom-opq', undefined, { cache: 'no-store' })
-      .then((data: unknown) => {
-        freedomOpqCache = { secret, expiresAt: now() + 60_000, data };
-        return data;
-      })
-      .finally(() => {
-        if (freedomOpqRequest?.promise === request) freedomOpqRequest = null;
-      });
-    freedomOpqRequest = { secret, promise: request };
-    return request;
-  };
-
-  // On-demand read-only probe. A supplied ID is the broker position's instr_id,
-  // which is distinct from the quote feed's serial quote number n.
-  const fetchFreedomTradeNetTradingLimitsProbe = (instrumentId?: number): Promise<unknown> => {
-    if (instrumentId === undefined) {
-      return dependencies.proxyFetch('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
-    }
-    if (!Number.isSafeInteger(instrumentId) || instrumentId <= 0) {
-      return Promise.reject(new Error('A positive numeric TradeNet instrument ID is required.'));
-    }
-    return dependencies.proxyFetch(
-      'freedom-trading-limits-probe',
-      { instrumentId },
-      { cache: 'no-store' }
-    );
-  };
-
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
     return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
@@ -253,8 +209,6 @@ export function createFreedomBrokerTransportRuntime(
 
   return {
     fetchFreedomTradeNetPositions,
-    fetchFreedomTradeNetOpq,
-    fetchFreedomTradeNetTradingLimitsProbe,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
     fetchFreedomTradeNetQuoteStreamOnce,

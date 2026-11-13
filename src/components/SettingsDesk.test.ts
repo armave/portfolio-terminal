@@ -50,38 +50,14 @@ describe('manual sync in Settings', () => {
   });
 });
 
-describe('TradeNet OPQ diagnostic panel', () => {
-  it('keeps the read-only account overview diagnostic admin-only and avoids claiming mapped margin metrics', () => {
+describe('TradeNet Settings surface', () => {
+  it('does not expose raw OPQ payload or unverified trading-limit diagnostic probes', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role === 'admin' && <section class=\"settings-panel space-y-3\"");
-    expect(source).toContain("fetchFreedomTradeNetOpq()");
-    expect(source).toContain('Response fields are not yet mapped to verified margin metrics.');
-    expect(source).toContain('Unmapped provider payload (diagnostic)');
-    expect(source).not.toContain('initialMarginRequired: Number(opq');
-    expect(source).not.toContain('maintenanceMarginRequired: Number(opq');
-  });
-
-  it('keeps the getTradingLimits schema probe admin-only and explicitly sends no guessed instrument parameter', () => {
-    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
-    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe(probeInstrument.instrumentId)');
-    expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
-    expect(source).toContain('opqReceivedAt === null || Date.now() - opqReceivedAt > 5 * 60 * 1000');
-    expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
-    expect(source).toContain('getTradeNetProbeFailureMessage');
-    expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
-  });
-});
-
-describe('TradeNet trading limits schema probe', () => {
-  it('keeps the empty-parameter getTradingLimits diagnostic admin-only and explicit', () => {
-    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
-    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe(probeInstrument.instrumentId)');
-    expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
-    expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
-    expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
-    expect(source).toContain('getTradeNetProbeFailureMessage');
+    expect(source).not.toContain('tradeNetOpqTitle');
+    expect(source).not.toContain('Unmapped provider payload (diagnostic)');
+    expect(source).not.toContain('fetchFreedomTradeNetOpq');
+    expect(source).not.toContain('Trading limits schema probe');
+    expect(source).not.toContain('fetchFreedomTradeNetTradingLimitsProbe');
   });
 });
 

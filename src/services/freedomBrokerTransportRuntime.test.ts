@@ -37,69 +37,6 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
   });
 
-  it('fetches and caches a separate unknown-safe OPQ account overview', async () => {
-    let current = 1_000;
-    const payload = { ok: true, source: 'getOPQ', data: { opaque: { margin: 123, limit: 99 } } };
-    const { runtime, proxyFetch, recordMetric } = createRuntime({
-      now: () => current,
-      resolve: action => action === 'freedom-opq' ? payload : undefined
-    });
-    await expect(runtime.fetchFreedomTradeNetOpq()).resolves.toEqual(payload);
-    await expect(runtime.fetchFreedomTradeNetOpq()).resolves.toEqual(payload);
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(proxyFetch).toHaveBeenCalledWith('freedom-opq', undefined, { cache: 'no-store' });
-    expect(recordMetric).toHaveBeenCalledWith('cache_hit', { cache: 'freedom_opq' });
-    current += 60_001;
-    await runtime.fetchFreedomTradeNetOpq();
-    expect(proxyFetch).toHaveBeenCalledTimes(2);
-  });
-
-  it('probes getTradingLimits with an empty parameter object and no guessed instrument key', async () => {
-    const payload = {
-      ok: false, source: 'getTradingLimits',
-      requestParameters: {}, providerError: 'TradeNet API error: Missing required parameter: instrument_id'
-    };
-    const { runtime, proxyFetch } = createRuntime({
-      resolve: action => action === 'freedom-trading-limits-probe' ? payload : undefined
-    });
-    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe()).resolves.toEqual(payload);
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(proxyFetch).toHaveBeenCalledWith('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
-  });
-
-  it('runs the getTradingLimits empty-parameter schema probe without caching or guessing fields', async () => {
-    const payload = {
-      ok: false, source: 'getTradingLimits', requestParameters: {},
-      providerError: 'TradeNet API error: Missing required parameter: instrument_id'
-    };
-    const { runtime, proxyFetch } = createRuntime({
-      resolve: action => action === 'freedom-trading-limits-probe' ? payload : undefined
-    });
-    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe()).resolves.toEqual(payload);
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(proxyFetch).toHaveBeenCalledWith('freedom-trading-limits-probe', undefined, { cache: 'no-store' });
-  });
-
-  it('sends the selected OPQ instrument ID in the read-only limits probe query', async () => {
-    const payload = { ok: true, source: 'getTradingLimits', requestParameters: { instrument_id: 40000019798 } };
-    const { runtime, proxyFetch } = createRuntime({
-      resolve: action => action === 'freedom-trading-limits-probe' ? payload : undefined
-    });
-    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe(40000019798)).resolves.toEqual(payload);
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(proxyFetch).toHaveBeenCalledWith(
-      'freedom-trading-limits-probe',
-      { instrumentId: 40000019798 },
-      { cache: 'no-store' }
-    );
-  });
-
-  it('rejects an invalid instrument ID before calling the Worker', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await expect(runtime.fetchFreedomTradeNetTradingLimitsProbe(1.5)).rejects.toThrow('positive numeric TradeNet instrument ID');
-    expect(proxyFetch).not.toHaveBeenCalled();
-  });
-
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {

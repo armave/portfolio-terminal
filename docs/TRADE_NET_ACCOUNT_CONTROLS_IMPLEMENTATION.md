@@ -288,7 +288,6 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 - Pure broker Buy/Exit quantity-cap resolver and Vitest coverage for current/stale/unavailable/malformed/zero limits, local/account/instrument cap intersection, lot rounding, and long Exit no-cross-through-zero.
 - Buy More and Exit calculator entry points accept optional normalized broker limits and fail closed when supplied limits are stale/unavailable/malformed. **Live broker limit hydration into the production panels remains outstanding** because the raw endpoint schemas are not verified.
 - Position normalization preserves signed quantity and documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm`. A negative `q` without an explicit recognized side remains direction `unknown` with `negative_quantity_sign_unverified`; `t` and `k` are not direction fields.
-- Fixed read-only `freedom-opq` Worker route for `getOPQ`, with bounded credential-redacted raw payload; client uses a secret-scoped 60-second cache and an admin-only diagnostic panel. The payload is not yet mapped to verified margin or buying-power metrics.
 - REST and persistent account-stream Worker sanitizers validate complete `acc`/`pos` snapshots, reject malformed quantities/tickers rather than changing them to zero, preserve documented metadata, retain last-known-good snapshots for invalid stream payloads, and accept legitimate empty arrays.
 - Worker market selector preserves selected-market `n`, `n2`, `s`, `o`, `c`, `dt` and event time `t`; it returns `MIXED` if separate Nasdaq and NYSE states disagree instead of silently choosing one venue.
 - Client market contract and badge preserve/display schedule fields and per-exchange states. A fresh provider phase is authoritative; the New York calendar is fallback only when provider status is missing, stale, or implausibly future-dated. Single-market countdown is suppressed for `MIXED` or a fresh provider/calendar disagreement.
@@ -296,7 +295,7 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 - Russian localization covers implemented mixed-exchange, position-integrity, and broker-limit diagnostic states.
 
 ### Worker/server deployment (direct to main)
-- Read-only `freedom-opq` action, portfolio snapshot validation, market schedule propagation, and mixed-venue state are deployed on `main` commit `e43e19e7b7ec8b236d3be27cf7ccaf2c77b49978`.
+- Portfolio snapshot validation, market schedule propagation, and mixed-venue state are deployed on `main` commit `e43e19e7b7ec8b236d3be27cf7ccaf2c77b49978`.
 - [Cloudflare Worker deployment](https://github.com/armave/portfolio-terminal/actions/runs/43415601965) passed dependency audit, Worker tests, and pinned Wrangler deployment.
 - [Main Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43415601669) and [main Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43415601603) also passed on that commit.
 
@@ -305,7 +304,7 @@ For market schedules, the Worker now preserves `n`, `n2`, `s`, `o`, `c`, `dt` an
 - The same PR head passed typecheck, unit and Worker tests, production build, account/Settings browser journey, performance upload, dead-code validation, and both dependency audits: [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43416213670).
 
 ### Outstanding — intentionally not marked complete
-- Exact `getTradingLimits` request method/parameters and response fields; verified fixture; Worker route; client transport; and typed normalizer.
+- Exact `getTradingLimits` request method/parameters and response fields remain outside this PR; no experimental probe or guessed parameter is shipped.
 - Verified `getOPQ` response mapping for cash, currency, initial/maintenance margin, collateral, and account-level capacity.
 - Store/UI hydration so live, verified broker account and instrument limits materially constrain Buy More and Exit scenario quantities. The cap policy is implemented, but live enforcement in production panels is not complete.
 - Conversion of account-level notional capacity into quantity only after currency, price, lot and commission semantics are verified.
@@ -323,55 +322,6 @@ Keep the PR in draft until live, verified account/instrument limits drive Buy/Ex
 - Existing account normalization: src/services/freedomAccountContracts.ts
 - Existing market-session fallback: src/services/marketSession.ts
 - Existing Worker sanitizers and routing: worker.js, state-store.js
-
-
-## 16. Sanitized OPQ probe evidence (2026-11-13)
-
-The authenticated `getOPQ` sample has been inspected. The unredacted JSON is intentionally excluded from this public repository because it contains account and user-profile data; do not add raw account snapshots to commits, CI artifacts, or issue comments.
-
-Observed response shape (field inventory only; no private values retained):
-
-- `data.OPQ.ps.loaded` was true.
-- `data.OPQ.ps.acc` contained multiple currencies. Balance rows included `curr`, `s`, `currval`, `forecast_in`, `forecast_out`, `t2_in`, and `t2_out`.
-- `data.OPQ.ps.pos` included `i`, signed `q`, `curr`, `market_value`, `mkt_price`, `instr_id`, `issue_nb`, `go`, and `vm`, among other provider fields.
-- `data.OPQ.quotes.q` included ticker `c`, numeric quote identifier `n`, `x_lot`, `x_min_lot_q`, `x_min`, `x_max`, `x_short`, `x_istrade`, and `marketStatus`.
-- The same position ticker's `instr_id` did **not** equal its quote record's `n` in the sample. Those identifiers must not be treated as interchangeable.
-- Top-level numeric fields included `init_margin`, `correctedMargin`, `portfolioValue`, `npr1`, and `npr2`; their exact units and business definitions have not been verified, so they remain unmapped and are not used as app margin or buying-power inputs.
-
-The official [TradeNet securities reference](https://tradernet.com/tradernet-api/securities?site_lang=en) describes `x_lot` as minimum lot size and `x_min` / `x_max` as period extrema. These fields are not the `getTradingLimits` maximum buy/sell quantity. The asset-manager [use-case reference](https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en) states that `getTradingLimits` supplies maximum buy and sell quantities and that those limits are estimates, not reservations.
-
-The empty-parameter `getTradingLimits` call returned HTTP 400 with no provider validation text in the saved fixture. Before the Worker diagnostic fix, the common request helper discarded any HTTP error body and exposed only the status. The Worker now parses only a short JSON error string when the provider returns one, redacts credential/identity-like values and discards the rest of the body. The deployed Worker adds a fixed, read-only candidate instrument route and validates that its ID is a positive numeric value (Worker source commit `1d51d9aec0e2128c4e0e83ca706994c0378ff5a5`; deployment run [43428620443](https://github.com/armave/portfolio-terminal/actions/runs/43428620443) passed).
-
-The Settings diagnostic now selects a recent USD `.US` held position from OPQ and sends that position's `instr_id` as the candidate `instrument_id` parameter. The position `instr_id` is a documented trading-system identifier, but the **request parameter name and getTradingLimits response schema have not yet been confirmed by a real provider response**. Treat this as a read-only contract probe only. Do not map any returned fields to buy/sell limits or apply them to scenario calculations until a successful authenticated response is reviewed and normalized.
-
-Until an authenticated `getTradingLimits` response verifies the request and buy/sell quantity fields, production Buy More and Exit panels remain unhydrated with live broker limits. The pure quantity-cap policy tests remain in place, but the PR must stay draft and must not claim live broker-limit enforcement.
-
-
-### OPQ data-minimization update
-
-The Worker OPQ sanitizer now drops the account-profile and workspace branches (`userInfo`, `userLists`, `userOptions`, and `cps`) and filters personal identifiers/contact fields from retained objects. It preserves the portfolio positions, account-balance and instrument quote fields needed for the read-only integration. Regression test: `worker.test.js`, “omits OPQ profile and personal workspace data while preserving positions and instrument quote metadata”. The sanitizer source change is included in deployed main commit `1d51d9aec0e2128c4e0e83ca706994c0378ff5a5`; main Pull Request CI and Operations both passed on test commit `21ab0fda32f4c4e6847879f4773c2683e44c6f8e` ([CI](https://github.com/armave/portfolio-terminal/actions/runs/43428627561), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/43428627445)).
-
- 
-## 17. Authenticated getTradingLimits candidate rejection (2026-11-13)
-
-A subsequent authenticated, administrator-only, read-only probe used a recent held position's `instr_id` as the instrument identifier and sent it under the candidate `instrument_id` request key. TradeNet returned HTTP 400 with the message “Incorrect request parameters.”
-
-This is evidence that the exact candidate request was rejected. It does **not** establish whether the parameter name is wrong, the supplied identifier value is invalid for this method, or another request-contract requirement is missing. No replacement parameter name is evidenced by this response. The ticker, account position and instrument identifier from the live diagnostic are intentionally not copied into this public repository.
-
-- Keep the failed result as an admin-only diagnostic, including the sanitized status and provider message.
-- Do not reinterpret HTTP 400 as a zero limit, unlimited capacity, or a successful response.
-- Do not try guessed alternatives such as `ticker`, `id`, or differently cased parameter keys.
-- Keep buy/sell field normalization and live Buy More / Exit hydration blocked until TradeNet supplies the complete request contract or a successful sanitized authenticated fixture.
-- The UI now explains that HTTP 400 rejects the candidate request but cannot distinguish a bad parameter name from a bad parameter value. Regression tests cover this classification and ensure successful responses are not mislabeled as failures.
-
-The PR remains draft. The candidate `instrument_id` is not a confirmed provider contract, and live broker limits are not applied to scenario calculations.
-
-
-### Repeat probe confirmation (2026-11-13, 17:23 local)
-
-A later authenticated read-only attempt repeated the same candidate `getTradingLimits` request and again returned HTTP 400 with “Incorrect request parameters.” The diagnostic showed the same candidate request key and instrument as the earlier attempt. This confirms the rejection is repeatable for this candidate request; it still does not identify whether the key, identifier value, or another required request detail is invalid. No account or instrument identifiers from the screenshot are copied into this document.
-
-This repeat does not justify trying guessed parameter names or mapping any provider fields. Keep the request contract and response schema marked unverified until an authoritative complete example or successful authenticated response is available.
 
 
 ## 18. TradeNet API documentation review (2026-11-13)
