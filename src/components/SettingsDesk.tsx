@@ -8,6 +8,7 @@ import {
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
+import { fetchFreedomTradeNetOpq } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -103,9 +104,32 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
+  const [opqLoading, setOpqLoading] = useState(false);
+  const [opqError, setOpqError] = useState('');
+  const [opqReceivedAt, setOpqReceivedAt] = useState<number | null>(null);
+  const [opqSnapshot, setOpqSnapshot] = useState<unknown>(null);
+
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
+
+  const handleRefreshOpq = async () => {
+    if (account?.role !== 'admin' || opqLoading) return;
+    setOpqLoading(true);
+    setOpqError('');
+    try {
+      const response = await fetchFreedomTradeNetOpq();
+      if (!response || typeof response !== 'object' || (response as Record<string, unknown>).ok !== true) {
+        throw new Error('TradeNet account overview returned an invalid response.');
+      }
+      setOpqSnapshot((response as Record<string, unknown>).data ?? null);
+      setOpqReceivedAt(Number((response as Record<string, unknown>).receivedAt) || Date.now());
+    } catch (error) {
+      setOpqError(error instanceof Error ? error.message : 'Could not retrieve TradeNet account overview.');
+    } finally {
+      setOpqLoading(false);
+    }
+  };
 
   const refreshUsers = async () => {
     // The application already owns the verified session identity. Refresh only
@@ -419,6 +443,34 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </table></TableScrollRegion>
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
+      </section>}
+
+      {account?.role === 'admin' && <section class="settings-panel space-y-3" aria-labelledby="tradeNetOpqTitle">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 id="tradeNetOpqTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">
+              {translateText('TradeNet account overview')}
+            </h3>
+            <p class="mt-1 text-[10px] text-slate-500">
+              {translateText('Read-only getOPQ snapshot. Response fields are not yet mapped to verified margin metrics.')}
+            </p>
+          </div>
+          <button type="button" disabled={opqLoading} onClick={() => void handleRefreshOpq()}
+            class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">
+            {opqLoading ? translateText('Loading…') : translateText('Refresh account overview')}
+          </button>
+        </div>
+        {opqError && <p role="alert" class="text-xs text-rose-300">{translateText(opqError)}</p>}
+        {opqReceivedAt !== null && <p class="text-[10px] text-slate-500">
+          {translateText('Received')} {new Date(opqReceivedAt).toLocaleString()}
+        </p>}
+        {opqSnapshot !== null && <details class="rounded border border-slate-800 p-2">
+          <summary class="cursor-pointer text-xs text-slate-300">{translateText('Unmapped provider payload (diagnostic)')}</summary>
+          <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-[10px] text-slate-400">{JSON.stringify(opqSnapshot, null, 2)}</pre>
+        </details>}
+        {opqSnapshot === null && !opqError && <p class="text-xs text-slate-500">
+          {translateText('No TradeNet account overview has been loaded in this session.')}
+        </p>}
       </section>}
 
       <DeviceCheckSummary />
