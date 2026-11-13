@@ -3599,8 +3599,20 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(marketsResponse.status).toBe(200);
     await expect(marketsResponse.json()).resolves.toMatchObject({
       ok: true,
-      marketStatus: { market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES' }
+      marketStatus: {
+        market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES',
+        name: 'NASDAQ', providerStatus: 'OPEN',
+        openTime: '09:30:00', closeTime: '16:00:00',
+        timezoneOffset: -420, providerTime: '2026-11-03T10:00:00',
+        exchanges: [{
+          name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN',
+          openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: -420
+        }]
+      }
     });
+    const marketBody = await marketsResponse.clone().json();
+    expect(JSON.stringify(marketBody)).not.toContain('s'.repeat(48));
+    expect(marketBody).not.toHaveProperty('serverTime');
 
     const diagnosticResponse = await worker.fetch(new Request(
       'https://worker.test/?action=freedom-event-stream&event=markets', { headers }
