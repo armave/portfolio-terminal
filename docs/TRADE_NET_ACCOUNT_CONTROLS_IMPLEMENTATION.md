@@ -365,3 +365,10 @@ This is evidence that the exact candidate request was rejected. It does **not** 
 - The UI now explains that HTTP 400 rejects the candidate request but cannot distinguish a bad parameter name from a bad parameter value. Regression tests cover this classification and ensure successful responses are not mislabeled as failures.
 
 The PR remains draft. The candidate `instrument_id` is not a confirmed provider contract, and live broker limits are not applied to scenario calculations.
+
+
+### Repeat probe confirmation (2026-11-13, 17:23 local)
+
+A later authenticated read-only attempt repeated the same candidate `getTradingLimits` request and again returned HTTP 400 with “Incorrect request parameters.” The diagnostic showed the same candidate request key and instrument as the earlier attempt. This confirms the rejection is repeatable for this candidate request; it still does not identify whether the key, identifier value, or another required request detail is invalid. No account or instrument identifiers from the screenshot are copied into this document.
+
+This repeat does not justify trying guessed parameter names or mapping any provider fields. Keep the request contract and response schema marked unverified until an authoritative complete example or successful authenticated response is available.
