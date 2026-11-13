@@ -30,6 +30,7 @@ describe('normalizeFreedomPortfolio', () => {
       balances: [{
         currency: 'USD',
         amount: -125.5,
+        exchangeRate: 999,
         forecastIn: 10,
         forecastOut: 2,
         t2In: 3,
@@ -80,6 +81,38 @@ describe('normalizeFreedomPortfolio', () => {
         }
       ]
     });
+  });
+
+  it('keeps currval separate from available funds and preserves a real zero balance', () => {
+    const snapshot = normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 0, currval: 1.25 }],
+        pos: []
+      } } }
+    });
+
+    expect(snapshot.balances).toEqual([{
+      currency: 'USD',
+      amount: 0,
+      exchangeRate: 1.25,
+      forecastIn: 0,
+      forecastOut: 0,
+      t2In: 0,
+      t2Out: 0
+    }]);
+  });
+
+  it('does not treat currval as available funds when s is missing or malformed', () => {
+    for (const amount of [undefined, null, 'not-a-number']) {
+      expect(() => normalizeFreedomPortfolio({
+        data: { result: { ps: {
+          loaded: true,
+          acc: [{ curr: 'USD', s: amount, currval: 1.25 }],
+          pos: []
+        } } }
+      })).toThrow('TradeNet USD balance row is missing a valid balance amount.');
+    }
   });
 
   it('preserves documented position instrument and margin fields without guessing negative q direction', () => {
