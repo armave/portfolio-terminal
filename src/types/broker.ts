@@ -15,6 +15,7 @@ export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual' | '
 
 export type BrokerPositionIntegrityIssueCode =
   | 'short_position_unsupported'
+  | 'short_position_unsupported'
   | 'negative_quantity_sign_unverified'
   | 'short_position_side_unverified'
   | 'unrecognized_position_side'
