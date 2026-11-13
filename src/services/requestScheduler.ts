@@ -185,6 +185,7 @@ export function createRequestScheduler(options: RequestSchedulerOptions = {}): R
       }
       const [evicted] = queue.splice(evictionIndex, 1);
       const evictionError = new Error('Request displaced by higher-priority work.');
+      evicted.suppressCancellationRejection?.();
       if (!evicted.controller.signal.aborted) evicted.controller.abort(evictionError);
       cleanup(evicted);
       evicted.reject(evictionError);
