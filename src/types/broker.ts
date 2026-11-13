@@ -227,14 +227,3 @@ export interface BrokerAdapter {
   ) => BrokerDataSnapshot<BrokerCashflow[]>;
   readonly classifyError: (error: unknown) => BrokerAdapterError;
 }
-
-export interface FreedomBrokerScenarioLimitState {
-  ticker: string;
-  accountMaximumBuy: number | null;
-  instrumentMaximumBuy: number | null;
-  instrumentMaximumSell: number | null;
-  observedAt: number | null;
-  receivedAt: number;
-  freshness: 'current' | 'stale' | 'unavailable' | 'malformed';
-  source: 'getOPQ' | 'getTradingLimits';
-}
