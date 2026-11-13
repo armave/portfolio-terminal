@@ -1,4 +1,5 @@
 import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
+import { createRequestScheduler, type RequestPriority, type RequestSchedulerSnapshot } from './requestScheduler';
 import { createCloudStateSecurity } from './cloudStateSecurity';
 import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
@@ -360,6 +361,8 @@ export const logoutAccount = authTransportRuntime.logoutAccount;
 export interface ProxyFetchOptions extends RequestInit {
   secret?: string;
   state?: Record<string, any> | PortfolioState;
+  /** Optional override for the shared read-only request scheduler. */
+  requestPriority?: RequestPriority;
 }
 
 const proxyReadRequests = new Map<string, Promise<any>>();
@@ -368,6 +371,53 @@ const MARKET_DATA_ACTIONS = new Set([
   '', 'quote', 'provider-quote', 'news', 'stocktwits',
   'freedom-quote', 'freedom-news', 'freedom-history', 'provider-history', 'market-events', 'market-calendar'
 ]);
+
+// Only read-only broker / market-data actions enter the priority queue.
+// Cloud state, history records, auth, guest projections, and all writes retain
+// their independent transport and revision semantics.
+const SCHEDULED_READ_ACTIONS = new Set([
+  ...MARKET_DATA_ACTIONS,
+  'freedom-positions',
+  'freedom-trades',
+  'freedom-orders',
+  'freedom-cashflows',
+  'freedom-orders-stream',
+  'freedom-portfolio-snapshot',
+  'freedom-account-stream-ticket',
+  'freedom-quote-stream-ticket',
+  'freedom-market-depth',
+  'freedom-market-depth-stream-ticket',
+  'freedom-market-status'
+]);
+
+const CRITICAL_READ_ACTIONS = new Set([
+  'quote',
+  'provider-quote',
+  'freedom-quote',
+  'freedom-positions',
+  'freedom-orders',
+  'freedom-orders-stream',
+  'freedom-portfolio-snapshot',
+  'freedom-account-stream-ticket',
+  'freedom-quote-stream-ticket'
+]);
+
+const INTERACTIVE_READ_ACTIONS = new Set([
+  'news',
+  'stocktwits',
+  'freedom-news',
+  'freedom-market-depth',
+  'freedom-market-depth-stream-ticket',
+  'freedom-market-status'
+]);
+
+const readRequestScheduler = createRequestScheduler({ concurrency: 4, maxQueued: 128 });
+
+function resolveReadRequestPriority(action: string): RequestPriority {
+  if (CRITICAL_READ_ACTIONS.has(action)) return 'critical';
+  if (INTERACTIVE_READ_ACTIONS.has(action)) return 'interactive';
+  return 'background';
+}
 
 function createMarketRequestIdentity(
   action: string,
@@ -378,9 +428,10 @@ function createMarketRequestIdentity(
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .sort(([a], [b]) => a.localeCompare(b));
   const method = (fetchOptions.method || 'GET').toUpperCase();
-  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const secret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   const body = typeof fetchOptions.body === 'string' ? fetchOptions.body : '';
-  return JSON.stringify([action, method, normalizedParams, body, secret]);
+  const priority = fetchOptions.requestPriority ?? resolveReadRequestPriority(action);
+  return JSON.stringify([action, method, normalizedParams, body, secret, priority]);
 }
 
 function dispatchProxyFetch(
@@ -390,9 +441,26 @@ function dispatchProxyFetch(
 ): Promise<any> {
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
-  const request = () => performProxyFetch(action, queryParams, fetchOptions);
-  return isMarketData && !fetchOptions.signal && fetchOptions.cache !== 'no-store'
-    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
+  const shouldSchedule = SCHEDULED_READ_ACTIONS.has(action) ||
+    (action === '' && Boolean(queryParams.symbol));
+  // Capture the request credential when the caller dispatches. A queued read
+  // must never inherit a different account's active credential when it starts.
+  const requestOptions: ProxyFetchOptions = {
+    ...fetchOptions,
+    secret: fetchOptions.secret ?? getActiveGatewaySecret()
+  };
+  const request = () => shouldSchedule
+    ? readRequestScheduler.schedule(
+      (signal) => performProxyFetch(action, queryParams, { ...requestOptions, signal }),
+      {
+        priority: requestOptions.requestPriority ?? resolveReadRequestPriority(action),
+        signal: requestOptions.signal ?? undefined
+      }
+    )
+    : performProxyFetch(action, queryParams, requestOptions);
+
+  return isMarketData && !requestOptions.signal && requestOptions.cache !== 'no-store'
+    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, requestOptions), request)
     : request();
 }
 
@@ -412,11 +480,12 @@ export function proxyFetch(
     !fetchOptions.body && !fetchOptions.state;
   if (!canCoalesce) return dispatchProxyFetch(action, queryParams, fetchOptions);
 
-  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const secret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   const normalizedParams = Object.entries(queryParams)
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
     .sort(([a], [b]) => a.localeCompare(b));
-  const key = JSON.stringify([action, method, normalizedParams, secret]);
+  const priority = fetchOptions.requestPriority ?? resolveReadRequestPriority(action);
+  const key = JSON.stringify([action, method, normalizedParams, secret, priority]);
   const existing = proxyReadRequests.get(key);
   if (existing) {
     recordApiMetric('inflight_dedup', { operation: action || 'deep_data' });
@@ -439,6 +508,8 @@ async function performProxyFetch(
   queryParams: Record<string, string | number | boolean | undefined | null> = {},
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
+  const requestInit = { ...fetchOptions };
+  delete requestInit.requestPriority;
   const url = new URL(WORKER_PROXY_URL);
   if (action) {
     if (action.startsWith('/')) {
@@ -453,15 +524,15 @@ async function performProxyFetch(
     }
   });
 
-  const authSecret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const authSecret = (fetchOptions.secret ?? getActiveGatewaySecret()).trim();
   if (!authSecret) {
     throw new Error('Gateway Secret is not available. Restore or enter the Gateway Secret before requesting broker data.');
   }
 
   return fetchAndConsumeWithTimeout(fetch, url.toString(), {
-    ...fetchOptions,
+    ...requestInit,
     headers: {
-      ...(fetchOptions.headers || {}),
+      ...(requestInit.headers || {}),
       'Content-Type': 'application/json',
       // Authentication headers are authoritative and cannot be overridden by
       // per-request headers supplied by a caller.
@@ -519,13 +590,24 @@ export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRun
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
-export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
+export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED' | 'MIXED';
+export type FreedomMarketScheduleValue = string | number | null;
 
-export interface FreedomUsMarketStatus {
+export interface FreedomExchangeMarketState {
+  name: string | null;
+  code: string | null;
+  providerStatus: string | null;
+  openTime: FreedomMarketScheduleValue;
+  closeTime: FreedomMarketScheduleValue;
+  timezoneOffset: FreedomMarketScheduleValue;
+}
+
+export interface FreedomUsMarketStatus extends FreedomExchangeMarketState {
   market: string;
-  code: string;
   status: FreedomMarketPhase;
   source: string;
+  providerTime: string | null;
+  exchanges: FreedomExchangeMarketState[];
 }
 
 export interface FreedomMarketStatusResponse {
@@ -535,23 +617,48 @@ export interface FreedomMarketStatusResponse {
   updatedAt: number;
 }
 
-/** Fetch a compact public US-equities status; no exchange list or private account data is returned. */
+function readMarketScheduleValue(value: unknown): FreedomMarketScheduleValue {
+  if (typeof value === 'string') return value.slice(0, 64);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return null;
+}
+
+function readExchangeMarketState(value: unknown): FreedomExchangeMarketState {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return {
+    name: typeof row.name === 'string' ? row.name.slice(0, 64) : null,
+    code: typeof row.code === 'string' ? row.code.slice(0, 32) : null,
+    providerStatus: typeof row.providerStatus === 'string' ? row.providerStatus.slice(0, 32) : null,
+    openTime: readMarketScheduleValue(row.openTime),
+    closeTime: readMarketScheduleValue(row.closeTime),
+    timezoneOffset: readMarketScheduleValue(row.timezoneOffset)
+  };
+}
+
+/** Fetch a compact public market state and its documented exchange schedule fields. */
 export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusResponse> {
   const response = await proxyFetch('freedom-market-status', undefined, { cache: 'no-store' });
   const phase = typeof response?.marketStatus?.status === 'string'
     ? response.marketStatus.status.trim().toUpperCase()
     : '';
-  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED'].includes(phase)) {
+  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED', 'MIXED'].includes(phase)) {
     throw new Error(response?.error || 'US equity market status is unavailable.');
   }
+  const rawMarket = response.marketStatus as Record<string, unknown>;
+  const exchanges = Array.isArray(rawMarket.exchanges)
+    ? rawMarket.exchanges.slice(0, 2).map(readExchangeMarketState)
+    : [];
   return {
     ok: true,
     provider: typeof response.provider === 'string' ? response.provider : 'Freedom TradeNet',
     marketStatus: {
-      market: typeof response.marketStatus.market === 'string' ? response.marketStatus.market : 'US equities',
-      code: typeof response.marketStatus.code === 'string' ? response.marketStatus.code : 'US',
+      market: typeof rawMarket.market === 'string' ? rawMarket.market.slice(0, 64) : 'US equities',
       status: phase as FreedomMarketPhase,
-      source: typeof response.marketStatus.source === 'string' ? response.marketStatus.source : 'US_EXCHANGES'
+      source: typeof rawMarket.source === 'string' ? rawMarket.source.slice(0, 32) : 'US_EXCHANGES',
+      ...readExchangeMarketState(rawMarket),
+      code: typeof rawMarket.code === 'string' ? rawMarket.code.slice(0, 32) : 'US',
+      providerTime: typeof rawMarket.providerTime === 'string' ? rawMarket.providerTime.slice(0, 64) : null,
+      exchanges
     },
     updatedAt: Number.isFinite(Number(response.updatedAt)) && Number(response.updatedAt) > 0
       ? Number(response.updatedAt)
@@ -681,13 +788,24 @@ export function clearGuestPortfolioPublicationCache(): void {
   guestPortfolioPublicationRequests.clear();
 }
 
+export function getApiRequestSchedulerSnapshot(): RequestSchedulerSnapshot {
+  return readRequestScheduler.getSnapshot();
+}
+
+/** Cancel API reads and deduplication state when the active account identity changes. */
+export function cancelPendingApiReads(reason: unknown = new Error('Active account identity changed.')): void {
+  readRequestScheduler.cancelAll(reason);
+  proxyReadRequests.clear();
+  resetMarketRequestGate();
+}
+
 export function clearApiRequestCaches(): void {
+  cancelPendingApiReads(new Error('API request context was reset.'));
   authTransportRuntime.clearRequestCaches();
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();
   clearFreedomCashflowCache();
   clearFreedomTradeNetStreamSnapshotCache();
-  resetMarketRequestGate();
 }
 
 const authRequest = authTransportRuntime.authRequest;

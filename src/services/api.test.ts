@@ -11,6 +11,7 @@ import {
   saveSyncedMarginDigest,
   syncCloudState,
   proxyFetch,
+  getApiRequestSchedulerSnapshot,
   getCurrentUser,
   listUsers,
   createUser,
@@ -141,7 +142,11 @@ describe('public Freedom US market status', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: null, providerStatus: null, openTime: null, closeTime: null,
+        timezoneOffset: null, providerTime: null, exchanges: []
+      },
       updatedAt
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -149,7 +154,11 @@ describe('public Freedom US market status', () => {
     await expect(fetchFreedomMarketStatus()).resolves.toEqual({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: null, providerStatus: null, openTime: null, closeTime: null,
+        timezoneOffset: null, providerTime: null, exchanges: []
+      },
       updatedAt
     });
     const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -157,7 +166,41 @@ describe('public Freedom US market status', () => {
     expect(requestInit.cache).toBe('no-store');
   });
 
-  it.each(['PREV', 'PRE', 'OPEN', 'POST', 'MIXED'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
+  it('preserves provider opening, closing, timezone, observation-time, and mixed-exchange details', async () => {
+    const payload = {
+      ok: true, provider: 'Freedom TradeNet',
+      marketStatus: {
+        market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES',
+        name: 'NASDAQ / NYSE', providerStatus: 'MIXED',
+        openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00',
+        providerTime: '2026-11-03 09:00:00',
+        exchanges: [
+          { name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' },
+          { name: 'NYSE', code: 'NYSE', providerStatus: 'CLOSE', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' }
+        ]
+      },
+      updatedAt: 1_800_000_000_000
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    })));
+    await expect(fetchFreedomMarketStatus()).resolves.toMatchObject({
+      marketStatus: payload.marketStatus
+    });
+  });
+
+  it('accepts the explicit MIXED state instead of coercing two differing exchanges to a calendar phase', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true, provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES' },
+      updatedAt: 1_800_000_000_000
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).resolves.toMatchObject({
+      marketStatus: { status: 'MIXED' }
+    });
+  });
+
+  it.each(['PREV', 'PRE', 'OPEN', 'POST'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       provider: 'Freedom TradeNet',
@@ -308,6 +351,43 @@ describe('proxy request coalescing', () => {
       proxyFetch('news', { symbol: 'MSFT' })
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('prioritizes core quote requests ahead of queued deep-data reads', async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Promise<Response>((resolve) => { resolvers.push(resolve); })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const response = () => new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const initialQuotes = ['AAPL', 'MSFT', 'GOOGL', 'NVDA'].map((symbol) =>
+      proxyFetch('quote', { symbol }, { cache: 'no-store' })
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+
+    storage.setGatewaySecret('old-session-secret');
+    const backgroundDeepData = proxyFetch('', { symbol: 'META' }, { method: 'POST' });
+    storage.setGatewaySecret('new-session-secret');
+    const nextQuote = proxyFetch('quote', { symbol: 'TSLA' }, { cache: 'no-store' });
+    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 4, queued: 2 });
+
+    resolvers[0](response());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(new URL(fetchMock.mock.calls[4][0] as string).searchParams.get('action')).toBe('quote');
+    expect(new Headers(fetchMock.mock.calls[4][1]?.headers).get('X-App-Auth')).toBe('new-session-secret');
+
+    for (let index = 1; index < 5; index += 1) resolvers[index](response());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.has('action')).toBe(false);
+    expect(new Headers(fetchMock.mock.calls[5][1]?.headers).get('X-App-Auth')).toBe('old-session-secret');
+    resolvers[5](response());
+
+    await Promise.all([...initialQuotes, backgroundDeepData, nextQuote]);
+    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 0, queued: 0 });
   });
 });
 
@@ -1316,7 +1396,7 @@ describe('Yahoo deep-data request deduplication', () => {
 
     const first = fetchYahooDeepStockData('aapl');
     const second = fetchYahooDeepStockData(' AAPL ');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     const payload = { symbol: 'AAPL', analystTargets: { median: 200 }, valuation: { peForward: 20 } };
     const normalizedPayload = normalizeYahooDeepStockData(payload);
@@ -1728,7 +1808,7 @@ describe('Yahoo deep-data forced refresh', () => {
 
     const olderRequest = fetchYahooDeepStockData('AAPL');
     const forcedRequest = fetchYahooDeepStockData('AAPL', true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     resolvers[1](makeResponse(212));
     expect((await forcedRequest).price.current).toBe(212);

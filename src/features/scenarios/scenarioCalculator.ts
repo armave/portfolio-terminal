@@ -7,6 +7,11 @@ import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
 import { calculatePositionMetrics, getTotalPortfolioInvested } from '../../domain/portfolioSelectors';
 import type { ScenarioModalData } from './scenarioContracts';
+import {
+  resolveBuyQuantityConstraint,
+  resolveLongExitQuantityConstraint,
+  type BrokerQuantityLimit
+} from '../../domain/brokerScenarioLimits';
 
 const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
 const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
@@ -18,12 +23,15 @@ export interface ScenarioCalculationOutput {
   maxSafeShares?: number;
   requiredEquityRatio?: number;
   projectedEquityRatio?: number;
+  brokerMaximumShares?: number | null;
+  brokerLimitStatus?: 'current' | 'stale' | 'unavailable' | 'malformed';
 }
 
 export class ScenarioCalculator {
   static previewExitComparison(
     tickerArg: string,
-    scenarios: Array<{ label: string; days: number; price: number }>
+    scenarios: Array<{ label: string; days: number; price: number }>,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
   ): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) || scenarios.length !== 2 ||
       scenarios.some((scenario) => !Number.isInteger(scenario.days) || scenario.days < 0 || scenario.days > 3650 ||
@@ -31,7 +39,7 @@ export class ScenarioCalculator {
       return { type: 'err', text: 'Enter a valid positive price and exit date for both periods.' };
     }
     try {
-      return this.evaluateExitScenarios(tickerArg.toUpperCase(), scenarios);
+      return this.evaluateExitScenarios(tickerArg.toUpperCase(), scenarios, brokerLimits);
     } catch (error) {
       return {
         type: 'err',
@@ -43,7 +51,8 @@ export class ScenarioCalculator {
   /** Read-only entry point for the Market Tools buy-more calculator. */
 
   static previewBuyMoreScenario(
-    tickerArg: string, shares: number, price: number, projectionPrice?: number
+    tickerArg: string, shares: number, price: number, projectionPrice?: number,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
   ): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) ||
       !Number.isFinite(shares) || shares <= 0 ||
@@ -53,7 +62,7 @@ export class ScenarioCalculator {
       return { type: 'err', text: 'Enter a valid position, positive share amount and purchase price.' };
     }
     try {
-      return this.evaluateBuyScenario(shares, tickerArg.toUpperCase(), price, projectionPrice);
+      return this.evaluateBuyScenario(shares, tickerArg.toUpperCase(), price, projectionPrice, brokerLimits);
     } catch (error) {
       return {
         type: 'err',
@@ -84,10 +93,35 @@ export class ScenarioCalculator {
     };
   }
 
-  private static evaluateExitScenarios(tickerArg: string | undefined, scenarios: Array<{ label: string; days: number; price: number }>): ScenarioCalculationOutput {
+  private static evaluateExitScenarios(
+    tickerArg: string | undefined,
+    scenarios: Array<{ label: string; days: number; price: number }>,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
+  ): ScenarioCalculationOutput {
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
     const rules = this.getRules(state);
     const shares = Number(pos.shares);
+    const brokerConstraint = brokerLimits
+      ? resolveLongExitQuantityConstraint({
+          requestedQuantity: shares,
+          localMaximum: shares,
+          accountMaximum: brokerLimits.accountMaximum,
+          instrumentMaximum: brokerLimits.instrumentMaximum,
+          heldLongQuantity: shares
+        })
+      : null;
+    if (brokerConstraint && !brokerConstraint.allowed) {
+      return {
+        type: 'err',
+        brokerMaximumShares: brokerConstraint.effectiveMaximum,
+        brokerLimitStatus: brokerConstraint.freshness,
+        text: brokerConstraint.effectiveMaximum === null
+          ? 'Exit scenario blocked: current broker account and instrument sell limits could not both be verified.'
+          : 'Exit scenario blocked: the broker reports a maximum sellable quantity of ' +
+            brokerConstraint.effectiveMaximum.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
+            ' shares, below the full position of ' + shares.toLocaleString() + '. A full close-out cannot be assumed.'
+      };
+    }
     if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
 
     const validatedCostBasis = validateSaleCostBasisTranches(
@@ -209,7 +243,8 @@ export class ScenarioCalculator {
   }
 
   private static evaluateBuyScenario(
-    qty: number, ticker: string, price: number, projectionPriceOverride?: number
+    qty: number, ticker: string, price: number, projectionPriceOverride?: number,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
   ): ScenarioCalculationOutput {
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
       throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
@@ -282,9 +317,6 @@ export class ScenarioCalculator {
       const equityRatio = projectedAssets > 0 ? projectedEquity / projectedAssets : -Infinity;
       return { projectedBalance, equityRatio };
     };
-    const projected = projectPurchase(qty);
-    const projectedEquityRatio = projected.equityRatio;
-
     const calculateMaximumSafeShares = (): number => {
       if (requiredEquityRatio >= 1 || projectPurchase(0).equityRatio <= requiredEquityRatio) return 0;
       let low = 0;
@@ -300,6 +332,34 @@ export class ScenarioCalculator {
       }
       return Math.floor(low * 1_000_000) / 1_000_000;
     };
+
+    const projected = projectPurchase(qty);
+    const projectedEquityRatio = projected.equityRatio;
+
+    const localMaximumShares = calculateMaximumSafeShares();
+    const brokerConstraint = brokerLimits
+      ? resolveBuyQuantityConstraint({
+          requestedQuantity: qty,
+          localMaximum: localMaximumShares,
+          accountMaximum: brokerLimits.accountMaximum,
+          instrumentMaximum: brokerLimits.instrumentMaximum
+        })
+      : null;
+    if (brokerConstraint && !brokerConstraint.allowed) {
+      return {
+        type: 'err',
+        maxSafeShares: brokerConstraint.effectiveMaximum ?? undefined,
+        brokerMaximumShares: brokerConstraint.effectiveMaximum,
+        brokerLimitStatus: brokerConstraint.freshness,
+        requiredEquityRatio,
+        projectedEquityRatio,
+        text: brokerConstraint.effectiveMaximum === null
+          ? 'Buy scenario blocked: current broker account and instrument limits could not both be verified. Refresh broker account limits before using this scenario.'
+          : 'Buy scenario blocked: requested quantity exceeds the broker-constrained maximum of ' +
+            brokerConstraint.effectiveMaximum.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 6 }) +
+            ' shares. Broker limits are estimates, not execution guarantees.'
+      };
+    }
 
     if (!Number.isFinite(projectedEquityRatio) || projectedEquityRatio <= requiredEquityRatio ||
         projectedEquityRatio <= stopOutLimit) {

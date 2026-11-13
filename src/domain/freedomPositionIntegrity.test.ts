@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
 
 describe('collectFreedomPositionIntegrityIssues', () => {
-  it('marks negative broker quantities unknown without converting them into shorts', () => {
+  it('flags negative broker quantities as unverified sign evidence', () => {
     const issues = collectFreedomPositionIntegrityIssues({
       positions: [{
         ticker: 'AAPL.US',

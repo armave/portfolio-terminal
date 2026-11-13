@@ -231,16 +231,18 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
   );
 
   const balances = usdRows(ps.acc).map((row): FreedomCashBalance => {
-    // TradeNet's `s` is the authoritative USD balance field; retain the
-    // documented `currval` fallback, but never manufacture a zero when both
-    // fields are absent or malformed. Zero remains a valid broker value.
-    const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+    // TradeNet documents `s` as available funds and `currval` as an
+    // account-currency exchange rate. They are different measures: never
+    // substitute the rate for missing funds. Zero remains a valid amount.
+    const amount = numberOrNull(row.s);
     if (amount === null) {
       throw new Error('TradeNet USD balance row is missing a valid balance amount.');
     }
+    const exchangeRate = numberOrNull(row.currval);
     return {
       currency: 'USD',
       amount,
+      ...(exchangeRate === null ? {} : { exchangeRate }),
       forecastIn: numberOrNull(row.forecast_in) ?? 0,
       forecastOut: numberOrNull(row.forecast_out) ?? 0,
       t2In: numberOrNull(row.t2_in) ?? 0,
@@ -261,15 +263,15 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       ? rawSideValue
       : null;
     const normalizedSide = typeof rawSide === 'string' ? rawSide.trim().toLowerCase() : '';
-    // Positive quantities retain the application's established long-only
-    // compatibility behavior. Negative quantities and any supplied but
-    // unrecognized side are explicitly unknown; numeric side codes are not guessed.
+    // The authenticated position fixture does not establish q's short-sign
+    // convention. Preserve signed q, but never infer position direction from
+    // numeric sign or from t/k. Only explicit textual side data is definitive.
     const direction: BrokerPosition['direction'] = normalizedSide === 'long'
       ? 'long'
       : normalizedSide === 'short'
         ? 'short'
-        : rawSideValue === undefined
-          ? quantity >= 0 ? 'long' : 'unknown'
+        : rawSideValue === undefined && quantity >= 0
+          ? 'long'
           : 'unknown';
     const instrumentIdValue = readFirst(row, [
       'instrument_id', 'instrumentId', 'instr_id', 'security_id', 'isin', 'figi'
@@ -289,6 +291,11 @@ export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSn
       rawQuantity: quantity,
       rawSide,
       instrumentId,
+      instrumentIssueNumber: row.issue_nb === undefined || row.issue_nb === null ? null : textOr(row.issue_nb),
+      instrumentType: typeof row.t === 'string' || typeof row.t === 'number' ? row.t : null,
+      instrumentKind: typeof row.k === 'string' || typeof row.k === 'number' ? row.k : null,
+      marginRequirement: numberOrNull(row.go),
+      variationMargin: numberOrNull(row.vm),
       raw: row
     };
   });

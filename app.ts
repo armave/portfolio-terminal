@@ -63,6 +63,7 @@ import {
   clearFreedomTradeNetStreamSnapshotCache,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
+  cancelPendingApiReads,
   clearCloudEncryptionSecretCache
 } from './src/services/api';
 import {
@@ -1686,6 +1687,7 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
   },
   setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
   setSessionIdentity: (identity) => currentAccountSessionGuard.setIdentity(identity),
+  cancelPendingApiReads,
   clearCloudEncryptionSecretCache,
   clearPendingCloudWrite: () => {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);

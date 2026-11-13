@@ -24,9 +24,10 @@ describe('normalizeFreedomPortfolio USD cash balance', () => {
     expect(snapshot.balances).toHaveLength(1);
     expect(snapshot.balances[0].currency).toBe('USD');
     expect(snapshot.balances[0].amount).toBe(-17053.5);
+    expect(snapshot.balances[0].exchangeRate).toBe(80.5381);
   });
 
-  it('falls back to currval only when s is absent', () => {
+  it('does not fall back to currval when s is absent', () => {
     const response = {
       data: {
         result: {
@@ -39,6 +40,8 @@ describe('normalizeFreedomPortfolio USD cash balance', () => {
       }
     };
 
-    expect(normalizeFreedomPortfolio(response).balances[0].amount).toBe(80.5381);
+    expect(() => normalizeFreedomPortfolio(response)).toThrow(
+      'TradeNet USD balance row is missing a valid balance amount.'
+    );
   });
 });

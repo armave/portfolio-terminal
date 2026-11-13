@@ -30,6 +30,7 @@ describe('normalizeFreedomPortfolio', () => {
       balances: [{
         currency: 'USD',
         amount: -125.5,
+        exchangeRate: 999,
         forecastIn: 10,
         forecastOut: 2,
         t2In: 3,
@@ -50,6 +51,11 @@ describe('normalizeFreedomPortfolio', () => {
           rawQuantity: 2.5,
           rawSide: null,
           instrumentId: null,
+          instrumentIssueNumber: null,
+          instrumentType: null,
+          instrumentKind: null,
+          marginRequirement: null,
+          variationMargin: null,
           raw: { i: 'AAPL.US', name: 'Apple', q: '2.5', mkt_price: '190', market_value: '475', bal_price_a: 180, profit_close: '25', acc_pos_id: '77', curr: 'USD' }
         },
         {
@@ -66,9 +72,63 @@ describe('normalizeFreedomPortfolio', () => {
           rawQuantity: 3,
           rawSide: null,
           instrumentId: null,
+          instrumentIssueNumber: null,
+          instrumentType: null,
+          instrumentKind: null,
+          marginRequirement: null,
+          variationMargin: null,
           raw: { base_contract_code: 'MSFT.US', name2: 'Microsoft', q: 3, mkt_price: true, curr: 'USD' }
         }
       ]
+    });
+  });
+
+  it('keeps currval separate from available funds and preserves a real zero balance', () => {
+    const snapshot = normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 0, currval: 1.25 }],
+        pos: []
+      } } }
+    });
+
+    expect(snapshot.balances).toEqual([{
+      currency: 'USD',
+      amount: 0,
+      exchangeRate: 1.25,
+      forecastIn: 0,
+      forecastOut: 0,
+      t2In: 0,
+      t2Out: 0
+    }]);
+  });
+
+  it('does not treat currval as available funds when s is missing or malformed', () => {
+    for (const amount of [undefined, null, 'not-a-number']) {
+      expect(() => normalizeFreedomPortfolio({
+        data: { result: { ps: {
+          loaded: true,
+          acc: [{ curr: 'USD', s: amount, currval: 1.25 }],
+          pos: []
+        } } }
+      })).toThrow('TradeNet USD balance row is missing a valid balance amount.');
+    }
+  });
+
+  it('preserves documented position instrument and margin fields without guessing negative q direction', () => {
+    const snapshot = normalizeFreedomPortfolio({
+      data: { result: { ps: {
+        loaded: true, acc: [],
+        pos: [{
+          curr: 'USD', i: 'TSLA.US', q: '-3', instr_id: 'instrument-2',
+          issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+        }]
+      } } }
+    });
+    expect(snapshot.positions[0]).toMatchObject({
+      quantity: -3, direction: 'unknown', instrumentId: 'instrument-2',
+      instrumentIssueNumber: 'US88160R1014', instrumentType: 'stock',
+      instrumentKind: 'equity', marginRequirement: 120, variationMargin: -12
     });
   });
 
