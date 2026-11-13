@@ -1041,8 +1041,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "TradeNet account overview": "Обзор счёта TradeNet",
   "Read-only getOPQ snapshot. Response fields are not yet mapped to verified margin metrics.": "Снимок getOPQ только для чтения. Поля ответа пока не сопоставлены с проверенными показателями маржи.",
   "Refresh account overview": "Обновить обзор счёта",
-  "Loading…": "Загрузка…",
-  "Received": "Получено",
   "Unmapped provider payload (diagnostic)": "Несопоставленные данные провайдера (диагностика)",
   "No TradeNet account overview has been loaded in this session.": "В этой сессии обзор счёта TradeNet ещё не загружался.",
   "Buy More results": "Результаты дополнительной покупки",
