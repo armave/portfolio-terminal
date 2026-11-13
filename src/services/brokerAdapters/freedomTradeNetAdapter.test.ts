@@ -189,7 +189,7 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.positionIntegrityIssues).toEqual([
       expect.objectContaining({
         ticker: 'GOOGL',
-        code: 'negative_quantity_sign_unverified',
+        code: 'short_position_unsupported',
         rawQuantity: -2,
         rawSide: 'S',
         instrumentId: 'security-42'
