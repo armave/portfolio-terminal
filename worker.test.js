@@ -3597,7 +3597,8 @@ describe('guest data isolation at the Worker boundary', () => {
       'https://worker.test/?action=freedom-market-status&event=markets', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(marketsResponse.status).toBe(200);
-    await expect(marketsResponse.json()).resolves.toMatchObject({
+    const marketBody = await marketsResponse.json();
+    expect(marketBody).toMatchObject({
       ok: true,
       marketStatus: {
         market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES',
@@ -3610,7 +3611,6 @@ describe('guest data isolation at the Worker boundary', () => {
         }]
       }
     });
-    const marketBody = await marketsResponse.clone().json();
     expect(JSON.stringify(marketBody)).not.toContain('s'.repeat(48));
     expect(marketBody).not.toHaveProperty('serverTime');
 
