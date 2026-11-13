@@ -64,8 +64,10 @@ describe('TradeNet OPQ diagnostic panel', () => {
   it('keeps the getTradingLimits schema probe admin-only and explicitly sends no guessed instrument parameter', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
-    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe()');
-    expect(source).toContain('Sends an empty read-only getTradingLimits request');
+    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe(probeInstrument.instrumentId)');
+    expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
+    expect(source).toContain('opqReceivedAt === null || Date.now() - opqReceivedAt > 5 * 60 * 1000');
+    expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
     expect(source).toContain('providerError');
     expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
   });
@@ -75,9 +77,10 @@ describe('TradeNet trading limits schema probe', () => {
   it('keeps the empty-parameter getTradingLimits diagnostic admin-only and explicit', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain("account?.role !== 'admin' || tradingLimitsProbeLoading");
-    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe()');
-    expect(source).toContain('Sends an empty read-only getTradingLimits request');
-    expect(source).toContain('requestParameters');
+    expect(source).toContain('fetchFreedomTradeNetTradingLimitsProbe(probeInstrument.instrumentId)');
+    expect(source).toContain('resolveTradeNetProbeInstrument(opqSnapshot)');
+    expect(source).toContain('Uses a recent OPQ holding instr_id in a candidate instrument_id parameter for a read-only getTradingLimits lookup. The request contract is unverified; refresh the account overview first.');
+    expect(source).toContain('JSON.stringify(tradingLimitsProbe, null, 2)');
     expect(source).toContain('providerError');
   });
 });
