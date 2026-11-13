@@ -493,31 +493,63 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(body).toMatchObject({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' }
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: 'US Equities', providerStatus: 'OPEN',
+        openTime: '09:30:00', closeTime: '16:00:00',
+        timezoneOffset: null, providerTime: '2026-11-03 09:00:00'
+      }
     });
     expect(body).not.toHaveProperty('markets');
     expect(body).not.toHaveProperty('marketPreview');
     expect(body).not.toHaveProperty('diagnostics');
     expect(body).not.toHaveProperty('serverTime');
+    expect(body.marketStatus).not.toHaveProperty('sid');
+    expect(body.marketStatus).not.toHaveProperty('account');
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('combines separate Nasdaq and NYSE states without publishing the market list', async () => {
+  it('reports MIXED when Nasdaq and NYSE publish different states instead of selecting one exchange', async () => {
     const { response } = await runEventDiagnostic('markets', {
       t: '2026-11-03 09:00:00',
       m: [
-        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN' },
-        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE' },
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
+        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
         { n: 'LSE', n2: 'LSE', s: 'OPEN' }
       ]
     }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.marketStatus).toEqual({
-      market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES'
+    expect(body.marketStatus).toMatchObject({
+      market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES',
+      name: 'NASDAQ / NYSE', providerStatus: 'MIXED',
+      providerTime: '2026-11-03 09:00:00',
+      exchanges: [
+        { name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' },
+        { name: 'NYSE', code: 'NYSE', providerStatus: 'CLOSE', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' }
+      ]
     });
-    expect(Object.keys(body)).toEqual(['ok', 'provider', 'marketStatus', 'updatedAt']);
+    expect(JSON.stringify(body)).not.toContain('LSE');
+    expect(body).not.toHaveProperty('markets');
+    expect(body).not.toHaveProperty('marketPreview');
+    expect(body).not.toHaveProperty('diagnostics');
+  });
+
+  it('preserves schedule metadata when the two US exchanges agree', () => {
+    const status = selectFreedomUsMarketStatus({
+      serverTime: '2026-11-03 09:00:00',
+      marketPreview: [
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
+        { n: 'NYSE', n2: 'NYSE', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' }
+      ]
+    });
+    expect(status).toMatchObject({
+      status: 'MARKET', source: 'US_EXCHANGES',
+      name: 'NASDAQ', providerStatus: 'OPEN',
+      openTime: '09:30:00', closeTime: '16:00:00',
+      timezoneOffset: '+03:00', providerTime: '2026-11-03 09:00:00'
+    });
   });
 
   it.each([
