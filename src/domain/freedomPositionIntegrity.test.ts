@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
 
 describe('collectFreedomPositionIntegrityIssues', () => {
-  it('marks negative broker quantities unknown without converting them into shorts', () => {
+  it('classifies documented negative broker quantities as short exposure while keeping short accounting unsupported', () => {
     const issues = collectFreedomPositionIntegrityIssues({
       positions: [{
         ticker: 'AAPL.US',
@@ -16,7 +16,7 @@ describe('collectFreedomPositionIntegrityIssues', () => {
 
     expect(issues).toEqual([expect.objectContaining({
       ticker: 'AAPL',
-      code: 'negative_quantity_sign_unverified',
+      code: 'short_position_unsupported',
       source: 'account_snapshot',
       rawQuantity: -5,
       instrumentId: 'instrument-1'
