@@ -67,9 +67,9 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     const errorValue = data.errMsg ?? data.error ?? data.message;
     const safeProviderMessage = typeof errorValue === "string"
         ? errorValue
-            .replace(/(public|private)?\\s*key\\s*[:=]\\s*\\S+/gi, "$1 key=[redacted]")
-            .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)\\s*[:=]\\s*\\S+/gi, "$1=[redacted]")
-            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[redacted-email]")
+            .replace(/(public|private)?\s*key\s*[:=]\s*\S+/gi, "$1 key=[redacted]")
+            .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
             .trim()
             .slice(0, 180)
         : null;
