@@ -30,7 +30,8 @@ export interface ScenarioCalculationOutput {
 export class ScenarioCalculator {
   static previewExitComparison(
     tickerArg: string,
-    scenarios: Array<{ label: string; days: number; price: number }>
+    scenarios: Array<{ label: string; days: number; price: number }>,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
   ): ScenarioCalculationOutput {
     if (!tickerArg || !/^[A-Z0-9.-]{1,16}$/i.test(tickerArg) || scenarios.length !== 2 ||
       scenarios.some((scenario) => !Number.isInteger(scenario.days) || scenario.days < 0 || scenario.days > 3650 ||
@@ -38,7 +39,7 @@ export class ScenarioCalculator {
       return { type: 'err', text: 'Enter a valid positive price and exit date for both periods.' };
     }
     try {
-      return this.evaluateExitScenarios(tickerArg.toUpperCase(), scenarios);
+      return this.evaluateExitScenarios(tickerArg.toUpperCase(), scenarios, brokerLimits);
     } catch (error) {
       return {
         type: 'err',
@@ -92,7 +93,11 @@ export class ScenarioCalculator {
     };
   }
 
-  private static evaluateExitScenarios(tickerArg: string | undefined, scenarios: Array<{ label: string; days: number; price: number }>): ScenarioCalculationOutput {
+  private static evaluateExitScenarios(
+    tickerArg: string | undefined,
+    scenarios: Array<{ label: string; days: number; price: number }>,
+    brokerLimits?: { accountMaximum: BrokerQuantityLimit; instrumentMaximum: BrokerQuantityLimit }
+  ): ScenarioCalculationOutput {
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
     const rules = this.getRules(state);
     const shares = Number(pos.shares);
