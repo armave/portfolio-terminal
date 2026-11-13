@@ -381,6 +381,8 @@ This section separates facts stated in the public TradeNet documentation from co
 - [API key authentication](https://tradernet.global/tradernet-api/auth-api?site_lang=en)
 - [API FAQ (2026)](https://trade.tfos.com/tradernet-api/faq?site_lang=en)
 - [Asset-manager use case (2026-11)](https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en)
+- [getOPQ method page](https://tradernet.com/tradernet-api/auth-get-opq?site_lang=en)
+- [getTradingLimits method page](https://tradernet.com/tradernet-api/get-trading-limits?site_lang=en)
 - [Portfolio response schema](https://tradernet.com/tradernet-api/portfolio-get-changes?site_lang=en)
 - [Securities directory](https://tradernet.com/tradernet-api/securities?site_lang=en)
 
