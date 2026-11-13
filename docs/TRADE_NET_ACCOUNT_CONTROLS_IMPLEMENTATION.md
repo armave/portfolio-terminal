@@ -158,14 +158,14 @@ The portfolio stream documentation identifies optional position fields go (margi
 
 ## 7. Position quantity sign and metadata integrity
 
-The documented portfolio contract defines negative pos[].q as a short position. Update normalizers and integrity checks accordingly:
+The available implementation brief identifies pos[].q as the quantity field, but the evidence currently checked into this project does not verify that a negative q value alone establishes short direction. Do not convert this uncertainty into a long or short classification:
 
-- Preserve signed quantity without taking an absolute value or coercing negative to zero.
-- Classify a negative quantity as short evidence, not as an unverified sign anomaly.
-- Keep the existing limitation explicit: short valuation and short P&L remain unsupported until their calculation, currency, borrow, and margin treatment are implemented.
-- Do not feed short quantities into long market value or long exposure.
-- Preserve documented metadata when present: instr_id, issue_nb, t, k, go, and vm, in addition to existing identifiers and prices.
+- Preserve the signed quantity exactly; never take its absolute value or coerce a negative value to zero.
+- A negative q without an explicit, recognized side/direction value remains direction "unknown" and emits the negative-quantity sign diagnostic.
+- A recognized explicit long/short side may be retained as side evidence, but unsupported short valuation, P&L, borrow, and margin treatment must remain explicit.
+- Never feed unknown-direction or short exposure into long market value or long exposure.
 - Do not infer long/short direction from t or k.
+- Preserve documented metadata when present: instr_id, issue_nb, t, k, go, and vm, in addition to existing identifiers and prices.
 - Distinguish a legitimate empty positions array from a missing/malformed positions array.
 
 Server sanitizers must not convert missing or invalid q into zero. Reject malformed snapshots (or preserve the last known-good snapshot according to the established store contract) and emit a safe diagnostic. A valid empty positions array must still be accepted as an actual empty account snapshot.
@@ -265,7 +265,7 @@ This work is complete only when all are true:
 4. The effective long Exit quantity never exceeds the verified position and applicable broker sell capacity, and cannot cross zero.
 5. Unknown/stale limits are visible and never treated as unlimited or as a confirmed zero.
 6. Broker margin requirements supersede local configured assumptions when verified; assumptions remain explicitly labeled otherwise.
-7. Negative portfolio quantity is preserved and classified as short; long valuation and short P&L are not conflated.
+7. Signed portfolio quantity is preserved; direction is classified only from verified sign semantics or an explicit recognized side field. Unknown-direction exposure is not treated as long, and unsupported short valuation/P&L is not fabricated.
 8. Market-session status uses current provider data when available and labels calendar fallback.
 9. Malformed snapshots cannot erase last known-good data.
 10. Worker/server changes are deployed to main separately and their contract is documented here.
@@ -274,29 +274,36 @@ This work is complete only when all are true:
 
 ## 13. Known evidence gaps (must be closed, not guessed)
 
-The current documentation confirms the endpoint purposes and the high-level meaning of getOPQ, getTradingLimits, getMarketStatus, negative position quantity, and the market fields. It does not provide enough verified response-field detail in the indexed material to safely hard-code every getOPQ and getTradingLimits property in this client.
+The current official endpoint catalogue confirms the purpose of getOPQ (account positions, cash, margin settings and limits) and getTradingLimits (maximum buy and sell quantity for an instrument). It also warns that trading limits are estimates rather than reserved capacity. The material inspected so far does not provide enough retr## 14. Implementation status (updated 2026-11-13)
 
-Before final field mapping, attach sanitized representative responses or an authoritative complete schema. Redact account/login identifiers, balances if not required for the test, and all secrets. Keep zero/unknown semantics intact. If a field cannot be verified, leave it optional/unknown and record the limitation rather than inventing a key.
+### Implemented and validated on the current PR head
+- Pure broker Buy/Exit cap resolver and Vitest coverage. Buy More and Exit calculator entry points accept normalized broker limits and conservatively block when broker constraints are not verified. **Live Buy/Exit UI/store hydration remains outstanding**; production scenario panels do not yet consume live broker limits.
+- Position normalization preserves signed quantity and the documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm` metadata. A negative `q` without an explicit recognized side stays direction `unknown` and produces `negative_quantity_sign_unverified`; `t` and `k` are not used to infer direction.
+- Russian copy added for short-position and broker-limit diagnostic states.
+- Worker REST and persistent account-stream portfolio sanitizers validate complete account/position snapshots, reject malformed signed quantities/tickers rather than converting them to zero, preserve allowlisted metadata, and accept valid empty snapshots.
+- Worker exposes a fixed, read-only `freedom-opq` action for `getOPQ`. Its response is bounded and credential-redacted, and the app exposes it as an admin-only raw diagnostic. **This is not yet a typed margin/account-limit mapping** and does not enable scenario enforcement.
+- Worker tests cover OPQ proxy behavior/redaction, signed quantity preservation, metadata allowlisting, incomplete/malformed snapshots, and valid empty snapshots.
+- The broker-limit policy unit tests cover current/stale/unavailable/malformed limits, account/instrument/local cap intersection, lot rounding, zero limits, and long-exit no-cross-through-zero behavior.
 
-## 14. Implementation status (updated 2026-11-13)
+### Worker deployment and validation
+- Latest Worker deployment is on `main` commit `2a086805bbd9891391586df1a36961034dfac01c`: [Deploy Cloudflare Worker run](https://github.com/armave/portfolio-terminal/actions/runs/43401341771). Dependency audit, Worker tests, and pinned Wrangler deployment all passed.
+- The deployed Worker includes the fixed `freedom-opq` GET-only app action, which invokes the fixed server-side `getOPQ` command; the browser cannot select arbitrary TradeNet commands. The action remains admin-restricted.
 
-### Implemented and validated
-- Pure broker Buy/Exit cap resolver and Vitest coverage. Buy More and Exit calculator entry points accept normalized broker limits and conservatively block when broker constraints are not verified. **Live UI/store hydration is still outstanding**, so the production Buy/Exit panels do not yet consume broker limits.
-- Negative TradeNet quantity is normalized as short evidence; the signed value is preserved. The client contract carries documented `instr_id`, `issue_nb`, `t`, `k`, `go`, and `vm` fields. Short valuation/P&L remains unsupported and is not treated as long exposure.
-- Russian copy added for short-position and broker-limit states.
-- Worker REST and persistent account-stream portfolio sanitizers validate complete account/position snapshots, reject malformed signed quantities/tickers rather than converting them to zero, preserve documented metadata, and accept valid empty snapshots.
-- Worker tests cover signed shorts, metadata allowlisting, incomplete/malformed snapshots, and valid empty snapshots.
+### Exact-head PR validation
+- On PR head `43390c3b4705f310cd2da8939dad7c17c29aad71`, [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/43402302255) passed typecheck, full Vitest, production build, production-browser smoke test, desktop/mobile performance baseline capture, dead-code validation, and dependency audits.
+- On the same PR head, [Operations Browser Journey](https://github.com/armave/portfolio-terminal/actions/runs/43402302229) passed typecheck, unit and Worker tests, production build, account/Settings browser journey, performance baseline capture, dead-code validation, and dependency audits.
 
-### Worker deployment and main validation
-- Dedicated Cloudflare Worker validation and pinned Wrangler deployment succeeded on `main` commit `b513f13a2ea6b31c77b968de1381149acb9e3254`: [Deploy Cloudflare Worker run](https://github.com/armave/portfolio-terminal/actions/runs/43398659946).
-- Operations Browser Journey, including typecheck, Worker/unit tests, production build, browser journey, dead-code validation, and dependency audits, passed on the same commit: [Operations run](https://github.com/armave/portfolio-terminal/actions/runs/43398660006).
+### Outstanding — intentionally not marked complete
+- Exact `getTradingLimits` request method/parameters and response fields, verified fixture, Worker route, client transport, and typed normalizer.
+- Verified `getOPQ` field mapping for cash, currency, margin, collateral, and account-level limits; current app support is diagnostic/raw only.
+- Live Buy/Exit store and UI hydration so broker limits materially constrain the scenario quantities shown to users.
+- Provider-driven `getMarketStatus` schedule integration and explicit fallback provenance.
+- Bounded 429/transient backoff and SID/rememberMe cache reconciliation.
+- Authenticated live TradeNet account verification. No live account payload has been captured or mapped in this PR.
 
-### PR validation and known baseline failure
-- On PR head `8f05da2571916a448e0756dcc35a993656657397`, typecheck, full Vitest, production build, dead-code validation, and dependency audits passed.
-- Browser smoke fails at an existing authentication dialog focus-trap assertion (Shift+Tab from username does not wrap to Submit). `AuthModal.tsx`, `dialogFocus.ts`, and `scripts/browser-smoke.mjs` are byte-for-byte unchanged from base `dev`; this is a pre-existing base issue, not a TradeNet regression. Kept outside this broker integration scope.
-
-### Outstanding — not marked complete
-- Authenticated Worker/API support for `getOPQ` and `getTradingLimits`, verified response fixtures/schema, normalized account/instrument limits, and Buy/Exit UI/store hydration.
+Keep this PR in draft until the verified provider contract is available and live Buy/Exit hydration and enforcement are complete.
+  
+res/schema, normalized account/instrument limits, and Buy/Exit UI/store hydration.
 - Broker-reported account margin integration into the existing `BrokerReportedMarginRequirements` model.
 - Full provider-driven market session schedule ingestion (`o`, `c`, `dt`, provider time) and client-side schedule authority.
 - Rate-limit/backoff and session-cache improvements.
@@ -304,7 +311,7 @@ Before final field mapping, attach sanitized representative responses or an auth
 
 The current documentation confirms endpoint purpose but does not establish enough concrete `getOPQ` / `getTradingLimits` response field mappings. Obtain a sanitized response or complete authoritative schema before implementing raw field mappings; do not guess.
 
-## 14. Reference material
+## 15. Reference material
 
 - TradeNet asset-manager use case and endpoint catalogue: https://freedombroker.global/tradernet-api/use-case-assets-managers?site_lang=en
 - Existing market-data integration notes: docs/FREEDOM_MARKET_DATA.md
