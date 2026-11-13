@@ -512,6 +512,7 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
 });
 
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
+export const fetchFreedomTradeNetOpq = freedomBrokerTransportRuntime.fetchFreedomTradeNetOpq;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
 export const fetchFreedomTradeNetQuoteStreamOnce = freedomBrokerTransportRuntime.fetchFreedomTradeNetQuoteStreamOnce;
