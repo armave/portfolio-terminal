@@ -3343,8 +3343,8 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(cashflowsResponse.status).toBe(403);
     expect(portfolioEventResponse.status).toBe(403);
     expect(marketDepthResponse.status).toBe(403);
-    expect(opqResponse.status).toBe(403);
-    expect(limitsProbeResponse.status).toBe(403);
+    expect(opqResponse.status).toBe(400);
+    expect(limitsProbeResponse.status).toBe(400);
     expect(stateStub.fetch).toHaveBeenCalledTimes(11);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
@@ -3589,7 +3589,7 @@ describe('guest data isolation at the Worker boundary', () => {
     const limitsProbeResponse = await worker.fetch(new Request(
       'https://worker.test/?action=freedom-trading-limits-probe', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
-    expect(limitsProbeResponse.status).toBe(403);
+    expect(limitsProbeResponse.status).toBe(400);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(stateStub.fetch.mock.calls.filter(([request]) => {
       const requestUrl = typeof request === 'string' ? request : request.url;
