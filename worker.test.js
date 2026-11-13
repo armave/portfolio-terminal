@@ -30,7 +30,7 @@ function tamperAesGcmV2Tag(payload) {
   return parts[0] + ":" + parts[1] + ":" + parts[2] + ":" + btoa(output);
 }
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomOpqResponse, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
 
@@ -1263,6 +1263,48 @@ describe('stocktwits proxy', () => {
   });
 });
 
+
+describe('Freedom OPQ read-only endpoint', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('requests getOPQ through the fixed signed API-key command without exposing caller parameters', async () => {
+    const payload = { account: { equity: 10 }, margin: { initial: 2 }, private_key: 'do-not-return' };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-opq', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ ok: true, provider: 'Freedom TradeNet', source: 'getOPQ' });
+    expect(body.data).toEqual({ account: { equity: 10 }, margin: { initial: 2 } });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('https://tradernet.com/api/getOPQ');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({});
+    const timestamp = init.headers['X-NtApi-Timestamp'];
+    expect(init.headers['X-NtApi-Sig']).toBe(createHmac('sha256', 'private-key').update(init.body + timestamp).digest('hex'));
+  });
+
+  it('rejects methods other than GET and never accepts a client-supplied TradeNet command', async () => {
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-opq', {
+      method: 'POST', headers: { 'X-App-Auth': 'test-secret' }, body: JSON.stringify({ command: 'putTradeOrder' })
+    }), { GATEWAY_SECRET: 'test-secret' });
+    expect(response.status).toBe(405);
+  });
+
+  it('removes credential-like keys and caps deeply nested or oversized values', () => {
+    expect(sanitizeFreedomOpqResponse({
+      account: { equity: 1 }, private_key: 'x', nested: { sid: 'x', okay: true }
+    })).toEqual({ account: { equity: 1 }, nested: { okay: true } });
+  });
+});
 
 describe('Freedom quote endpoint', () => {
   afterEach(() => {
