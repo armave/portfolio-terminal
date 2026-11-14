@@ -393,17 +393,43 @@ async function assertResponsiveLayout(page, width) {
           tickerStripDisplay: tickerStrip ? getComputedStyle(tickerStrip).display : ''
         };
       });
+    const overflowCandidates = Array.from(document.body.querySelectorAll('*'))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName.toLowerCase(),
+          id: element.id,
+          className: typeof element.className === 'string' ? element.className.slice(0, 120) : '',
+          left: Math.round(bounds.left * 10) / 10,
+          right: Math.round(bounds.right * 10) / 10,
+          width: Math.round(bounds.width * 10) / 10,
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+          overflowX: style.overflowX,
+          whiteSpace: style.whiteSpace
+        };
+      })
+      .filter((item) => item.right > viewportWidth + 1 || item.left < -1)
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 16);
     return {
       viewportWidth,
       documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      bodyClientWidth: document.body.clientWidth,
+      rootWidth: document.querySelector('#root')?.getBoundingClientRect().width ?? null,
+      rootScrollWidth: document.querySelector('#root')?.scrollWidth ?? null,
       mainBounds: mainBounds ? { left: mainBounds.left, right: mainBounds.right } : null,
       navBounds: navBounds ? { left: navBounds.left, right: navBounds.right } : null,
-      navControls
+      navControls,
+      overflowCandidates
     };
   });
 
   if (layout.documentWidth > layout.viewportWidth + 1) {
-    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport. Diagnostics: ${JSON.stringify(layout)}`);
   }
   if (!layout.mainBounds || layout.mainBounds.left < -1 || layout.mainBounds.right > layout.viewportWidth + 1) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
