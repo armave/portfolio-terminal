@@ -199,7 +199,9 @@ For the read-only broker Closed History table:
 - Prefer a finite TradeNet-reported gross `profit` value when present.
 - When it is absent, derive gross realized P&L as `(sell execution price − FIFO-weighted acquisition price) × sold quantity`. The sell price must be a positive execution price or a positive `tradeValue / quantity` fallback.
 - Derive this value only when the FIFO attribution covers every sold share and every matched acquisition lot has a known positive recorded price. Unmatched quantity or missing cost/price evidence keeps P&L unavailable; do not use a current quote or broker aggregate average as a substitute.
-- Subtract fees and commissions only when both buy- and sell-side commission inputs are complete. Otherwise net P&L remains unavailable.
+- Subtract all known fees and commission components. When one or more commission inputs are missing but gross P&L and FIFO cost basis are complete, show the resulting value as an **upper bound** (actual net P&L may be lower); do not present it as exact.
+- Keep bounded rows out of the exact Known Net P&L aggregate and win-rate denominator. Mark the row with a `≤` prefix and an explanatory tooltip.
+- If gross P&L or FIFO cost evidence is incomplete, net P&L remains unavailable.
 - This calculation is display-only. It does not write to the portfolio snapshot, closed-history record, or transaction journal.
 
 ### Debt-first settlement
