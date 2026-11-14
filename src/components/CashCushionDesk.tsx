@@ -48,7 +48,10 @@ const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
 
 type MixInputDraft = {
   value: string;
+  editedSide: 'cash' | 'margin';
   quantity: number;
+  baseCash: number;
+  baseMargin: number;
   cash: number;
   margin: number;
 };
@@ -958,45 +961,71 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       );
                       const cashQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
                       const assignedGuestId = activeTrancheGuestAssignments[tranche.id] || '';
-                      const cashInputDraft = mixInputDrafts[tranche.id + ':cash'];
-                      const marginInputDraft = mixInputDrafts[tranche.id + ':margin'];
-                      const currentCashInputDraft = cashInputDraft &&
-                        cashInputDraft.quantity === tranche.quantity &&
-                        cashInputDraft.cash === mix.cash && cashInputDraft.margin === mix.margin
-                        ? cashInputDraft : null;
-                      const currentMarginInputDraft = marginInputDraft &&
-                        marginInputDraft.quantity === tranche.quantity &&
-                        marginInputDraft.cash === mix.cash && marginInputDraft.margin === mix.margin
-                        ? marginInputDraft : null;
-                      // Keep the focused field's raw text, but derive the opposite side
-                      // on every keystroke so the displayed split always totals the entry.
-                      const cashDraftMix = currentCashInputDraft
-                        ? resolveActiveTrancheMixEdit(currentCashInputDraft.value, 'cash', tranche.quantity, mix)
-                        : null;
-                      const marginDraftMix = currentMarginInputDraft
-                        ? resolveActiveTrancheMixEdit(currentMarginInputDraft.value, 'margin', tranche.quantity, mix)
-                        : null;
-                      const cashInputValue = currentCashInputDraft
-                        ? currentCashInputDraft.value
-                        : marginDraftMix?.cash ?? mix.cash;
-                      const marginInputValue = currentMarginInputDraft
-                        ? currentMarginInputDraft.value
-                        : cashDraftMix?.margin ?? mix.margin;
-                      const updateMixCash = (value: string) => {
-                        const { cash, margin } = resolveActiveTrancheMixEdit(value, 'cash', tranche.quantity, mix);
-                        setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                      const mixInputDraft = mixInputDrafts[tranche.id];
+                      const currentMixInputDraft = mixInputDraft &&
+                        mixInputDraft.quantity === tranche.quantity &&
+                        mixInputDraft.baseCash === mix.cash &&
+                        mixInputDraft.baseMargin === mix.margin
+                        ? mixInputDraft : null;
+                      // One draft follows the whole Cash/Margin editor. Switching fields
+                      // keeps the current preview; each edited side derives the remainder.
+                      const cashInputValue = currentMixInputDraft
+                        ? currentMixInputDraft.editedSide === 'cash'
+                          ? currentMixInputDraft.value
+                          : currentMixInputDraft.cash
+                        : mix.cash;
+                      const marginInputValue = currentMixInputDraft
+                        ? currentMixInputDraft.editedSide === 'margin'
+                          ? currentMixInputDraft.value
+                          : currentMixInputDraft.margin
+                        : mix.margin;
+                      const updateMixInputDraft = (value: string, editedSide: 'cash' | 'margin') => {
                         setMixInputDrafts((current) => {
-                          const next = { ...current };
-                          delete next[tranche.id + ':cash'];
-                          return next;
+                          const previous = current[tranche.id];
+                          const previousIsCurrent = previous &&
+                            previous.quantity === tranche.quantity &&
+                            previous.baseCash === mix.cash &&
+                            previous.baseMargin === mix.margin;
+                          const baseMix = previousIsCurrent
+                            ? { cash: previous.cash, margin: previous.margin }
+                            : mix;
+                          const nextMix = resolveActiveTrancheMixEdit(
+                            value,
+                            editedSide,
+                            tranche.quantity,
+                            baseMix
+                          );
+                          return {
+                            ...current,
+                            [tranche.id]: {
+                              value,
+                              editedSide,
+                              quantity: tranche.quantity,
+                              baseCash: previousIsCurrent ? previous.baseCash : mix.cash,
+                              baseMargin: previousIsCurrent ? previous.baseMargin : mix.margin,
+                              ...nextMix
+                            }
+                          };
                         });
                       };
-                      const updateMixMargin = (value: string) => {
-                        const { cash, margin } = resolveActiveTrancheMixEdit(value, 'margin', tranche.quantity, mix);
-                        setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                      const commitMixInput = (
+                        value: string,
+                        editedSide: 'cash' | 'margin',
+                        relatedTarget: EventTarget | null
+                      ) => {
+                        const nextElement = relatedTarget as HTMLElement | null;
+                        const nextEditor = nextElement && typeof nextElement.closest === 'function'
+                          ? nextElement.closest('[data-mix-editor-tranche]')
+                          : null;
+                        if (nextEditor?.getAttribute('data-mix-editor-tranche') === tranche.id) return;
+
+                        const allocation = currentMixInputDraft
+                          ? { cash: currentMixInputDraft.cash, margin: currentMixInputDraft.margin }
+                          : resolveActiveTrancheMixEdit(value, editedSide, tranche.quantity, mix);
+                        setActiveTrancheType(tranche.id, 'mix', allocation);
                         setMixInputDrafts((current) => {
                           const next = { ...current };
-                          delete next[tranche.id + ':margin'];
+                          delete next[tranche.id];
                           return next;
                         });
                       };
@@ -1048,7 +1077,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             >
                               <div>
                                 {type === 'mix' && (
-                                  <div class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
+                                  <div data-mix-editor-tranche={tranche.id} class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
                                       Cash
                                       <input
@@ -1060,17 +1089,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         value={cashInputValue}
                                         onInput={(inputEvent) => {
                                           const value = (inputEvent.currentTarget as HTMLInputElement).value;
-                                          setMixInputDrafts((current) => ({
-                                            ...current,
-                                            [tranche.id + ':cash']: {
-                                              value,
-                                              quantity: tranche.quantity,
-                                              cash: mix.cash,
-                                              margin: mix.margin
-                                            }
-                                          }));
+                                          updateMixInputDraft(value, 'cash');
                                         }}
-                                        onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
+                                        onBlur={(event) => commitMixInput(
+                                          (event.currentTarget as HTMLInputElement).value,
+                                          'cash',
+                                          event.relatedTarget
+                                        )}
                                         class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
                                       />
                                     </label>
@@ -1085,17 +1110,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         value={marginInputValue}
                                         onInput={(inputEvent) => {
                                           const value = (inputEvent.currentTarget as HTMLInputElement).value;
-                                          setMixInputDrafts((current) => ({
-                                            ...current,
-                                            [tranche.id + ':margin']: {
-                                              value,
-                                              quantity: tranche.quantity,
-                                              cash: mix.cash,
-                                              margin: mix.margin
-                                            }
-                                          }));
+                                          updateMixInputDraft(value, 'margin');
                                         }}
-                                        onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
+                                        onBlur={(event) => commitMixInput(
+                                          (event.currentTarget as HTMLInputElement).value,
+                                          'margin',
+                                          event.relatedTarget
+                                        )}
                                         class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
                                       />
                                     </label>
