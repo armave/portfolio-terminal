@@ -2,6 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { ActiveBrokerTranche, GuestTrancheLedgerRecord, GuestTrancheLedgerStatus } from '../types/portfolio';
 import { filterGuestTrancheLedger, groupGuestTrancheLedgerOperations, summarizeGuestTrancheLedger } from '../domain/guestPortfolio';
 import { formatUSD } from '../utils/formatters';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
