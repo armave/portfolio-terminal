@@ -97,14 +97,13 @@ describe('portfolio metric quote updates', () => {
     expect(source).not.toContain('previousPricesRef');
   });
 
-  it('exposes source timestamps and provisional valuation warnings for all holdings', () => {
+  it('keeps quote freshness compact without the expandable source and timestamp disclosure', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    const provenance = readFileSync(new URL('./QuoteProvenance.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
-    expect(provenance).toContain('quoteDetails?.sourceTimestamp');
-    expect(provenance).toContain('Observation time unavailable');
-    expect(source).toContain('kind: \'Cash holding\'');
+    expect(source).not.toContain('QuoteProvenanceList');
+    expect(source).not.toContain('Quote sources and observation times');
+    expect(source).toContain('formatQuoteFreshnessSummary(quoteSummary)');
+    expect(source).toContain('quoteMetaText');
   });
 
   it('shows available per-ticker volume and quote metadata in both margin views', () => {

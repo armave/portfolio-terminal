@@ -30,7 +30,6 @@ import { loadSavedHistory } from '../services/storage';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
-import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -574,11 +573,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     const quoteCoverageClass = unpricedMarginPositionCount > 0 || quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
       ? 'text-amber-300'
       : quoteSummary.delayed > 0 ? 'text-sky-300' : 'text-emerald-400';
-    const quoteProvenanceHoldings: QuoteProvenanceHolding[] = [
-      ...tickers.map((ticker) => ({ ...state.positions![ticker], kind: 'Margin position' as const })),
-      ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-    ];
-
     const valuation = calculatePortfolioValuation({
       signedAccountBalance: state.balance,
       freeCash: state.cashCushion?.freeCash,
@@ -731,7 +725,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
               <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
             </span>
-            <QuoteProvenanceList holdings={quoteProvenanceHoldings} />
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
             <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
