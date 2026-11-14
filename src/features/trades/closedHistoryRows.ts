@@ -194,7 +194,12 @@ export function buildClosedHistoryRows({
     return groups;
   })();
 
-  const uniqueAppTrades = deduplicateClosedHistoryRows(appTrades, groupedBrokerRows);
+  // Match app-owned records to individual broker fills before comparing with
+  // grouped broker rows. A grouped 5-share sale may contain the same 2-share
+  // execution as an app row; matching only against the 5-share aggregate would
+  // leave that duplicate in the table and double-count its P&L and fees.
+  const appTradesWithoutFillDuplicates = deduplicateClosedHistoryRows(appTrades, brokerRows);
+  const uniqueAppTrades = deduplicateClosedHistoryRows(appTradesWithoutFillDuplicates, groupedBrokerRows);
   const getExitTimestamp = (row: any): number => {
     const raw = row.trade?.exitDate ?? row.trade?.sellDate ?? row.trade?.closedAt ?? row.trade?.date;
     if (typeof raw === 'number' && Number.isFinite(raw)) {
