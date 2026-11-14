@@ -31,6 +31,8 @@ import {
 } from '../features/cash/cashCushionModel';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -315,6 +317,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     if (latestPrice === null || latestPrice === tranche.marketPrice) return tranche;
     return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
   }), [activeTrancheSource, cashHoldings, positions]);
+  const activeTranchePagination = useTablePagination('active-tranches', activeTranches.length, 10);
+  const visibleActiveTranches = sliceTablePage(
+    activeTranches,
+    activeTranchePagination.currentPage,
+    activeTranchePagination.pageSize
+  );
   const guestHoldings = useMemo(() => guestUserId
     ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
@@ -367,7 +375,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     () => new Map(guestUsers.map((guest) => [guest.id, guest.name || ''])),
     [guestUsers]
   );
-  const { displayTableRows } = useMemo(
+  const { displayHoldingGroups } = useMemo(
     () => buildCashHoldingDisplayGroups({
       isAdmin,
       guestNames,
@@ -383,7 +391,29 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     [isAdmin, guestNames, guestDirectoryPending, activeTranches, activeTrancheGuestAssignments,
       activeTrancheTypes, activeTrancheMixes, cashHoldings, holdings]
   );
-
+  const displayHoldingRows = useMemo(
+    () => displayHoldingGroups.flatMap((group) =>
+      group.holdings.map((holding) => ({ group, holding }))
+    ),
+    [displayHoldingGroups]
+  );
+  const cashHoldingsPagination = useTablePagination('cash-holdings', displayHoldingRows.length, 10);
+  const visibleDisplayTableRows = useMemo(() => {
+    const pageRows = sliceTablePage(
+      displayHoldingRows,
+      cashHoldingsPagination.currentPage,
+      cashHoldingsPagination.pageSize
+    );
+    return pageRows.flatMap((item, index) => {
+      const previous = pageRows[index - 1];
+      return [
+        ...(isAdmin && (!previous || previous.group.key !== item.group.key)
+          ? [{ type: 'group' as const, key: 'group-' + item.group.key, label: item.group.label }]
+          : []),
+        { type: 'holding' as const, key: 'holding-' + item.group.key + '-' + item.holding.ticker, holding: item.holding }
+      ];
+    });
+  }, [displayHoldingRows, cashHoldingsPagination.currentPage, cashHoldingsPagination.pageSize, isAdmin]);
 
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
     return <DeskLoading
@@ -584,14 +614,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 </tr>
               </thead>
               <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
-                {displayTableRows.length === 0 ? (
+                {displayHoldingRows.length === 0 ? (
                   <tr class="cash-holding-empty-row">
                     <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                       {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                     </td>
                   </tr>
                 ) : (
-                  displayTableRows.map((row) => {
+                  visibleDisplayTableRows.map((row) => {
                     if (row.type === 'group') {
                       return (
                         <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
@@ -734,6 +764,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </tfoot>
             </table>
           </TableScrollRegion>
+          <TablePagination
+            tableLabel="Cash-funded stock holdings"
+            page={cashHoldingsPagination.currentPage}
+            pageCount={cashHoldingsPagination.pageCount}
+            pageSize={cashHoldingsPagination.pageSize}
+            start={cashHoldingsPagination.start}
+            end={cashHoldingsPagination.end}
+            total={displayHoldingRows.length}
+            onPageChange={cashHoldingsPagination.setPage}
+            onPageSizeChange={cashHoldingsPagination.setPageSize}
+            controlsId="cashStocksTableBody"
+          />
         )}
 
         {isAdmin && !guestUserId && (reversibleBalanceAdjustments.length > 0 || balanceAdjustmentNotice) && (
@@ -892,12 +934,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       <th scope="col" class="py-2 px-2 text-center">Guest · cash shares</th>
                     </tr>
                   </thead>
-                  <tbody class="active-tranches-body divide-y divide-slate-800/60 font-mono">
+                  <tbody id="activeTranchesTableBody" class="active-tranches-body divide-y divide-slate-800/60 font-mono">
                     {activeTranches.length === 0 ? (
                       <tr class="active-tranche-empty-row"><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
-                    ) : activeTranches.map((tranche) => {
+                    ) : visibleActiveTranches.map((tranche) => {
                       const type = activeTrancheTypes[tranche.id] || activeTrancheTypes[tranche.ticker] || 'cash';
                       const mix = normalizeActiveTrancheMix(
                         tranche.quantity,
@@ -1031,6 +1073,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   </tr></tfoot>}
                 </table>
               </TableScrollRegion>
+              <TablePagination
+                tableLabel="Active tranches and guest assignments"
+                page={activeTranchePagination.currentPage}
+                pageCount={activeTranchePagination.pageCount}
+                pageSize={activeTranchePagination.pageSize}
+                start={activeTranchePagination.start}
+                end={activeTranchePagination.end}
+                total={activeTranches.length}
+                onPageChange={activeTranchePagination.setPage}
+                onPageSizeChange={activeTranchePagination.setPageSize}
+                controlsId="activeTranchesTableBody"
+              />
             </div>
           </div>
         </section>}
