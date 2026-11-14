@@ -2223,9 +2223,10 @@ summary:focus-visible {
     padding: 0.875rem;
   }
 
+  /* Mobile tables are rendered as cards; contain hidden header/empty-row overflow. */
   #activeTranches .table-scroll-wrapper,
   #cashCushionContainer .table-scroll-wrapper {
-    overflow-x: visible;
+    overflow-x: hidden;
   }
 }
 
