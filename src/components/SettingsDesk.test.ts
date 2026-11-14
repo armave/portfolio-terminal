@@ -205,7 +205,7 @@ describe('Settings information architecture', () => {
       expect(source).toContain(section);
     }
     expect(source).toContain("translateText('Sync portfolio now')");
-    expect(source).toContain("translateText('Last successful cloud sync')");
+    expect(source).toContain("account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync'");
     expect(source).toContain("'Assigned data refresh confirmed'");
     expect(source).toContain("'Last successful assigned-data refresh'");
     expect(source).toContain("account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization'");
