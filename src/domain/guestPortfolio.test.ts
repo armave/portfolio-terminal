@@ -140,6 +140,23 @@ describe('guest holding valuation', () => {
       unrealizedPnlPercent: 100 / 600 * 100
     });
   });
+
+  it('does not treat booleans as guest share or market-price values', async () => {
+    const { getGuestHoldingValuation } = await import('./guestPortfolio');
+    expect(getGuestHoldingValuation({
+      shares: true as unknown as number,
+      averagePrice: 150,
+      currentPrice: true as unknown as number,
+      price: null
+    })).toEqual({
+      shares: 0, currentPrice: null, marketValue: null, averagePrice: 150,
+      costBasis: 0, unrealizedPnl: null, unrealizedPnlPercent: null
+    });
+    expect(calculateGuestPersonalEquity([{
+      ticker: 'AAPL', shares: true as unknown as number, averagePrice: 100,
+      currentPrice: 110, price: 110, marketValue: 110
+    }])).toBe(0);
+  });
 });
 
 
