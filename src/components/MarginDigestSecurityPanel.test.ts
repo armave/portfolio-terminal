@@ -19,7 +19,11 @@ describe('MarginDigestSecurityPanel', () => {
     expect(source).toContain('min-w-0 rounded-lg bg-slate-900/70 px-3 py-2');
     expect(source).toContain("const refresh = async () => {");
     expect(source).toContain("onClick={() => void refresh()}");
-    expect(source).not.toContain("useEffect(");
+    expect(source).toContain("}, [currentUserId]);");
+    expect(source).toContain("setInventory(null);");
+    expect(source).toContain("setMigrationCursor(null);");
+    expect(source).toContain("const sessionGeneration = useRef(0);");
+    expect(source).toContain("if (!isCurrentSession()) return;");
     expect(source).toContain('result.conflicts');
     expect(source).toContain('if (totalConflicts > 0) cursor = null;');
     expect(source).toContain('// records are skipped idempotently.');
