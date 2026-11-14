@@ -31,7 +31,7 @@ describe('automatic update settings', () => {
     expect(source).toContain('refreshNow: true');
     expect(source).toContain('Your assigned holdings, LOTS history and their market quotes refresh at the selected interval.');
     expect(source).toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
-    expect(source).toContain('Mandatory Sync Interval');
+    expect(source).toContain('Automatic refresh interval');
     expect(source).not.toContain('<option value="0">');
     expect(source).not.toContain('Automatic updates are paused. Manual Sync remains available.');
     expect(source).toContain('<option value="15000">');
@@ -82,7 +82,8 @@ describe('multi-portfolio ownership Settings surface', () => {
     expect(settingsSource).toContain("void import('./TenantDirectoryPanel')");
     expect(settingsSource).toContain("if (currentUser?.role !== 'admin')");
     expect(settingsSource).toContain('}, [currentUser?.id, currentUser?.role]);');
-    expect(settingsSource).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
+    expect(settingsSource).toContain("tenantDirectoryOpen && (LoadedTenantDirectoryPanel");
+    expect(settingsSource).toContain("onToggle={(event) => setTenantDirectoryOpen");
     expect(settingsSource).toContain("useState<typeof import('./TenantDirectoryPanel') | null>(null)");
     expect(settingsSource).toContain('const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;');
     expect(settingsSource).toContain('<LoadedTenantDirectoryPanel currentUser={account} />');
@@ -158,11 +159,13 @@ describe('Margin Intelligence encryption migration controls', () => {
   it('exposes the inventory and migration tool only to administrators', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const panel = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role === 'admin' && <MarginDigestSecurityPanel");
+    expect(source).toContain("advancedMaintenanceOpen && <MarginDigestSecurityPanel />");
+    expect(source).toContain("onToggle={(event) => setAdvancedMaintenanceOpen");
     expect(panel).toContain('fetchMarginDigestMigrationInventory');
     expect(panel).toContain('const MIGRATION_BATCH_SIZE = 25;');
     expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
     expect(panel).toContain('inventory.plaintextRecords === 0');
+    expect(panel).not.toContain('useEffect(() => {');
     expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
   });
 });
@@ -181,5 +184,25 @@ describe('guest Settings layout', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain("if (currentUser?.role !== 'admin')");
     expect(source).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
+  });
+});
+
+
+describe('Settings information architecture', () => {
+  it('provides role-aware section navigation and separates high-risk maintenance', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    for (const section of [
+      'settings-account-section',
+      'settings-data-section',
+      'settings-access-section',
+      'settings-broker-section',
+      'settings-maintenance-section',
+      'settings-help-section'
+    ]) {
+      expect(source).toContain(section);
+    }
+    expect(source).toContain("translateText('Sync portfolio now')");
+    expect(source).toContain("translateText('Last successful cloud sync')");
+    expect(source).toContain("translateText('Technical details')");
   });
 });
