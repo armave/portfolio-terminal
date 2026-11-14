@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import {
   fetchMarginDigestMigrationInventory,
   migrateMarginDigestBatch,
@@ -6,14 +6,10 @@ import {
 } from '../services/api';
 import { translateText } from '../services/i18n';
 
-interface MarginDigestSecurityPanelProps {
-  currentUserId: string;
-}
-
 const MIGRATION_BATCH_SIZE = 25;
 const MAX_MIGRATION_BATCHES_PER_RUN = 20;
 
-export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurityPanelProps) {
+export function MarginDigestSecurityPanel() {
   const [inventory, setInventory] = useState<MarginDigestMigrationInventory | null>(null);
   const [loading, setLoading] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -37,26 +33,6 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    setInventory(null);
-    setMigrationCursor(null);
-    setMigratedCount(0);
-    setLoading(true);
-    setError('');
-    void fetchMarginDigestMigrationInventory().then((next) => {
-      if (!cancelled) {
-        setInventory(next);
-        setStatus(translateText('Inventory scan complete.'));
-      }
-    }).catch(() => {
-      if (!cancelled) setError(translateText('Encryption migration failed. No source records were deleted.'));
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [currentUserId]);
 
   const migrate = async () => {
     if (migrating || !inventory || inventory.plaintextRecords === 0) return;
