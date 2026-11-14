@@ -162,13 +162,17 @@ describe('Margin Intelligence encryption migration controls', () => {
   it('exposes the inventory and migration tool only to administrators', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const panel = readFileSync(new URL('./MarginDigestSecurityPanel.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("advancedMaintenanceOpen && <MarginDigestSecurityPanel />");
+    expect(source).toContain("advancedMaintenanceOpen && <MarginDigestSecurityPanel currentUserId={account.id} />");
     expect(source).toContain("onToggle={(event) => setAdvancedMaintenanceOpen");
     expect(panel).toContain('fetchMarginDigestMigrationInventory');
     expect(panel).toContain('const MIGRATION_BATCH_SIZE = 25;');
     expect(panel).toContain('migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE })');
     expect(panel).toContain('inventory.plaintextRecords === 0');
-    expect(panel).not.toContain('useEffect(() => {');
+    expect(panel).toContain("}, [currentUserId]);");
+    expect(panel).toContain("setInventory(null);");
+    expect(panel).toContain("setMigrationCursor(null);");
+    expect(panel).toContain("if (!isCurrentSession()) return;");
+    expect(panel).not.toContain("void refresh();");
     expect(panel).toContain('This report does not prove that every active client has stopped sending legacy writes.');
   });
 });

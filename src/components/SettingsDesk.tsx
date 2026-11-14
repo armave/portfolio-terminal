@@ -554,7 +554,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         >
           <summary>{translateText('Advanced maintenance')}</summary>
           <div class="pt-3">
-            {advancedMaintenanceOpen && <MarginDigestSecurityPanel />}
+            {advancedMaintenanceOpen && <MarginDigestSecurityPanel currentUserId={account.id} />}
           </div>
         </details>}
       </section>
