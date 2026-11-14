@@ -218,6 +218,9 @@ describe('Margin Intelligence runtime', () => {
 
 
 describe('Margin Intelligence timeout recovery', () => {
+  const now = Date.UTC(2026, 10, 11, 8, 0, 0);
+  const nowIso = () => new Date(now).toISOString();
+
   it('keeps the last saved review visibly stale and reports a retryable refresh timeout', async () => {
     const recorder = createStateRecorder();
     const snapshot = createSnapshot();
