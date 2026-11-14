@@ -663,7 +663,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
                     const hasChange = typeof h.quoteDetails?.change === 'number' && Number.isFinite(h.quoteDetails.change);
                     const hasChangePercent = typeof h.quoteDetails?.changePercent === 'number' &&
-                      Number.isFinite(h.quoteDetails.changePercent);
+                      Number.isFinite(h.quoteDetails?.changePercent);
                     const direction: SentimentDirection = hasChange
                       ? h.quoteDetails!.change! > 0
                         ? 'bullish'
