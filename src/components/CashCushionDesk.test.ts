@@ -48,10 +48,15 @@ describe('cash/margin mix inputs', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
   it('keeps normalized split values and retains in-progress edits across rerenders', () => {
-    expect(deskSource).toContain("value={mixInputDrafts[tranche.id + ':cash'] ?? mix.cash}");
-    expect(deskSource).toContain("value={mixInputDrafts[tranche.id + ':margin'] ?? mix.margin}");
-    expect(deskSource).toContain("[tranche.id + ':cash']: (inputEvent.currentTarget as HTMLInputElement).value");
-    expect(deskSource).toContain("[tranche.id + ':margin']: (inputEvent.currentTarget as HTMLInputElement).value");
+    expect(deskSource).toContain('value={cashInputValue}');
+    expect(deskSource).toContain('value={marginInputValue}');
+    expect(deskSource).toContain("cashInputDraft.quantity === tranche.quantity");
+    expect(deskSource).toContain("cashInputDraft.cash === mix.cash");
+    expect(deskSource).toContain("marginInputDraft.margin === mix.margin");
+    expect(deskSource).toContain("value: (inputEvent.currentTarget as HTMLInputElement).value");
+    expect(deskSource).toContain("quantity: tranche.quantity");
+    expect(deskSource).toContain("cash: mix.cash");
+    expect(deskSource).toContain("margin: mix.margin");
     expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash)');
     expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin)');
     expect(deskSource).not.toContain('defaultValue={mix.cash}');
