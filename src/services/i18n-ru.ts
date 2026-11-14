@@ -426,6 +426,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Closed trade performance summary': 'Сводка результатов закрытых сделок',
   'Rows': 'Строки',
   'Rows per page for {table}': 'Строк на странице: {table}',
+  'Pagination for {table}': 'Страницы: {table}',
   'Previous page': 'Предыдущая страница',
   'Next page': 'Следующая страница',
   'Closed history pagination': 'Страницы истории закрытых сделок',
