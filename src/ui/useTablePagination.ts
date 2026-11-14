@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
-export const TABLE_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+export const TABLE_PAGE_SIZE_OPTIONS = [5, 8, 10, 25, 50, 100] as const;
 export type TablePageSize = typeof TABLE_PAGE_SIZE_OPTIONS[number];
 
 const STORAGE_PREFIX = 'portfolio-table-page-size:v1:';
