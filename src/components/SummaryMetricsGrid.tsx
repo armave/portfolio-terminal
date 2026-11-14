@@ -164,7 +164,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           >
             <span class={riskStatusClass}>
               {risk.summaryText.split(' · ')[0]}
-              {isProvisionalEstimate ? ` · ${translateText('Provisional estimate', language)}` : ''}
             </span>
           </button>
         </div>
@@ -838,7 +837,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const commsText = `${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} ${translateText('buy', getAppLanguage())} / ${formatUSD(
     commSell
   )} ${translateText('sell', getAppLanguage())})`;
-  const marginChargedText = `${formatUSD(posMarginCharged)} (${translateText('Position to date', getAppLanguage())})`;
+  const marginChargedText = formatUSD(posMarginCharged);
   const quoteMetaText = usableMarketPrice === null
     ? translateText('Quote unavailable', getAppLanguage())
     : formatQuoteMetadata(pos, refreshIntervalMs);

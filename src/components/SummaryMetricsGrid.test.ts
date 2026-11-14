@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin risk confidence and scope disclosures', () => {
-  it('marks provisional estimates clearly and distinguishes account from allocated-ticker scope', () => {
+  it('keeps provisional risk styling while avoiding redundant status and period labels', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
     expect(source).toContain("const isProvisionalEstimate = risk.status === 'provisional' || valuationStatus === 'provisional';");
-    expect(source).toContain("translateText('Provisional estimate', language)");
+    expect(source).not.toContain("translateText('Provisional estimate', language)");
+    expect(source).not.toContain("translateText('Position to date', getAppLanguage())");
+    expect(source).toContain("const marginChargedText = formatUSD(posMarginCharged);");
     expect(source).toContain('scope="account"');
     expect(source).toContain('scope="allocated-ticker"');
     expect(source).not.toContain('margin-risk-scope-note');
