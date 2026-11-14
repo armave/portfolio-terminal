@@ -4,6 +4,7 @@ import {
   ACCOUNT_EQUITY_HEALTH_REFERENCE,
   calculateMarginRiskMetrics,
   calculateMarginRiskSnapshot,
+  calculateMarginRiskStressScenarios,
   hasUnresolvedBrokerPositionIntegrity,
   getMarginRiskLevel
 } from './marginRisk';
@@ -348,5 +349,54 @@ describe('account equity health status', () => {
     expect(getMarginRiskLevel(0.1, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Margin-call level');
     expect(getMarginRiskLevel(0, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Stop-out level');
     expect(getMarginRiskLevel(-0.05, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Stop-out level');
+  });
+});
+
+
+describe('margin risk price shock sensitivity', () => {
+  it('recalculates equity and configured buffers after uniform long-exposure shocks', () => {
+    const input = riskInput({ longExposure: 1_000, cashBalance: 100, marginDebt: 500 });
+    const snapshot = calculateMarginRiskSnapshot(input);
+    expect(snapshot.status).toBe('available');
+    if (snapshot.status === 'unavailable') return;
+
+    const rules = assumptions({ maintenanceEquityRatio: 0.25, stopOutRatio: 0.1 });
+    const result = calculateMarginRiskStressScenarios(snapshot.value, rules, [0.1, 0.5]);
+    expect(result.status).toBe('available');
+    if (result.status !== 'available') return;
+
+    expect(result.scenarios[0]).toEqual({
+      declinePct: 0.1,
+      assets: 1_000,
+      equity: 500,
+      equityRatio: 0.5,
+      maintenanceBuffer: 250,
+      stopOutBuffer: 400,
+      riskLevel: 'Healthy'
+    });
+    expect(result.scenarios[1].assets).toBe(600);
+    expect(result.scenarios[1].equity).toBe(100);
+    expect(result.scenarios[1].equityRatio).toBeCloseTo(1 / 6);
+    expect(result.scenarios[1].maintenanceBuffer).toBe(-50);
+    expect(result.scenarios[1].stopOutBuffer).toBe(40);
+    expect(result.scenarios[1].riskLevel).toBe('Margin-call level');
+  });
+
+  it('does not apply long-only shock assumptions when short exposure is present', () => {
+    const snapshot = calculateMarginRiskSnapshot(riskInput({ shortExposure: 100 }));
+    expect(snapshot.status).toBe('provisional');
+    if (snapshot.status === 'unavailable') return;
+    const result = calculateMarginRiskStressScenarios(snapshot.value, DEFAULT_BROKER_ASSUMPTIONS);
+    expect(result.status).toBe('unavailable');
+    if (result.status === 'unavailable') expect(result.reason).toContain('short exposure');
+  });
+
+  it('rejects invalid shock ranges rather than returning misleading scenarios', () => {
+    const snapshot = calculateMarginRiskSnapshot(riskInput());
+    expect(snapshot.status).toBe('available');
+    if (snapshot.status === 'unavailable') return;
+    expect(calculateMarginRiskStressScenarios(snapshot.value, DEFAULT_BROKER_ASSUMPTIONS, [-0.1])).toMatchObject({ status: 'unavailable' });
+    expect(calculateMarginRiskStressScenarios(snapshot.value, DEFAULT_BROKER_ASSUMPTIONS, [1])).toMatchObject({ status: 'unavailable' });
+    expect(calculateMarginRiskStressScenarios(snapshot.value, DEFAULT_BROKER_ASSUMPTIONS, [Number.NaN])).toMatchObject({ status: 'unavailable' });
   });
 });

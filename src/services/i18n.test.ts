@@ -8,14 +8,37 @@ afterEach(() => setAppLanguage('en'));
 describe('app localization', () => {
   it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
     const marginRiskCopy = [
-      'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit',
+      'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit', 'Equity ratio',
       'Eligible collateral', 'Initial margin requirement', 'Broker maintenance requirement',
       'Concentration add-on', 'Total maintenance requirement', 'Estimated annual financing',
       'Estimated daily financing', 'Input freshness', 'Source observation', 'Broker reported',
       'Configured assumption', 'Not reported', 'Source unknown', 'Fresh', 'Fresh input', 'Stale', 'Delayed',
-      'Indicative', 'Unknown', 'Configured maintenance threshold', 'Configured stop-out buffer'
+      'Indicative', 'Unknown', 'Configured maintenance threshold', 'Configured stop-out buffer',
+      'Base maintenance buffer (before concentration add-on)', 'Total maintenance buffer', 'Configured stop-out cushion'
     ];
     for (const copy of marginRiskCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
+  it('localizes margin-risk confidence, allocation and shock-sensitivity disclosures', () => {
+    const marginEstimateCopy = [
+      'Provisional estimate',
+      'Provisional estimate: at least one input or margin requirement is assumption-based, stale or unavailable.',
+      'Single-ticker figures allocate account-level cash and debt by invested-cost weight. They are estimates, not broker-reported per-position margin.',
+      'Price shock sensitivity',
+      'Price decline',
+      'Estimated equity',
+      'Risk level',
+      'Uniform declines across tracked long holdings; cash and margin debt stay constant. Uses configured maintenance and stop-out equity ratios; excludes FX changes, short exposure, changing broker requirements and liquidation rules.',
+      'This sensitivity is illustrative, not a broker call price or liquidation forecast.',
+      'Stress sensitivity is unavailable while short exposure is present because no broker-specific short-margin model is configured.',
+      'Stress sensitivity inputs are invalid.',
+      'Stress sensitivity requires valid configured maintenance and stop-out ratios.',
+      'Stress shocks must be finite declines from zero up to, but not including, 100%.',
+      'Stress sensitivity exceeds the finite calculation range.'
+    ];
+    for (const copy of marginEstimateCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
     }
   });

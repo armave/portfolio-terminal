@@ -2,6 +2,27 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
+describe('Margin risk confidence and scope disclosures', () => {
+  it('marks provisional estimates clearly and distinguishes account from allocated-ticker scope', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("const isProvisionalEstimate = risk.status === 'provisional' || valuationStatus === 'provisional';");
+    expect(source).toContain("translateText('Provisional estimate', language)");
+    expect(source).toContain('scope="account"');
+    expect(source).toContain('scope="allocated-ticker"');
+    expect(source).toContain('invested-cost weight');
+  });
+
+  it('connects the overview to explicit dollar buffers and bounded stress sensitivity', () => {
+    const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
+    expect(modal).toContain('riskSnapshot.baseMaintenanceBuffer');
+    expect(modal).toContain('riskSnapshot.maintenanceBuffer');
+    expect(modal).toContain('riskSnapshot.stopOutBuffer');
+    expect(modal).toContain('calculateMarginRiskStressScenarios(riskSnapshot, assumptions)');
+    expect(modal).toContain("translateText('Price shock sensitivity', language)");
+    expect(modal).toContain('broker call price or liquidation forecast');
+  });
+});
+
 describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');

@@ -18,6 +18,12 @@ describe('financial readability styles', () => {
     expect(readabilityStyles).toMatch(/\.margin-risk-buffer-stat strong\s*\{[^}]*font-size:\s*0\.875rem/s);
   });
 
+  it('styles margin stress disclosures and keeps the scenario table scrollable', () => {
+    expect(readabilityStyles).toContain('.margin-risk-scope-note');
+    expect(readabilityStyles).toContain('.margin-risk-stress-table-wrap');
+    expect(readabilityStyles).toContain('.margin-risk-stress-table');
+  });
+
   it('retains a deliberate compact scale on phone-sized screens', () => {
     expect(readabilityStyles).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.portfolio-micro-row \.portfolio-metric-value\s*\{[^}]*font-size:\s*0\.8125rem/s);
     expect(readabilityStyles).toMatch(/\.portfolio-micro-market-primary \.portfolio-metric-value\s*\{[^}]*font-size:\s*0\.9375rem/s);

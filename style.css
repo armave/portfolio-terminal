@@ -3897,3 +3897,66 @@ table tbody tr:hover {
     box-sizing: border-box;
   }
 }
+
+
+/* Margin-risk confidence and scenario readability. */
+.margin-risk-scope-note {
+  margin: 0 0 10px;
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.margin-risk-gauge-heading .margin-risk-status {
+  max-width: min(100%, 18rem);
+  white-space: normal;
+  text-align: right;
+}
+
+.margin-risk-stress {
+  min-width: 0;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, .16);
+}
+
+.margin-risk-stress-note {
+  margin: 6px 0 10px;
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.margin-risk-stress-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.margin-risk-stress-table {
+  width: 100%;
+  min-width: 440px;
+  border-collapse: collapse;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.margin-risk-stress-table th,
+.margin-risk-stress-table td {
+  padding: 8px 7px;
+  border-bottom: 1px solid rgba(148, 163, 184, .12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.margin-risk-stress-table thead th {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.margin-risk-stress-table tbody th {
+  color: #f8fafc;
+  font-weight: 700;
+}

@@ -4,7 +4,8 @@ import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
 import type { AppLanguage } from '../services/i18n';
-import type { MarginRiskSnapshot } from '../domain/marginRisk';
+import { calculateMarginRiskStressScenarios, type MarginRiskSnapshot } from '../domain/marginRisk';
+import type { BrokerAssumptions } from '../types/portfolio';
 
 function formatPercentage(value: number): string {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—';
@@ -69,6 +70,8 @@ function OverviewItem({ label, value, tone = 'normal' }: {
 
 export function MarginRiskOverviewModal({
   onClose,
+  assumptions,
+  scope,
   riskSnapshot,
   equityText,
   equityPct,
@@ -83,6 +86,8 @@ export function MarginRiskOverviewModal({
   riskReason
 }: {
   onClose: () => void;
+  assumptions: BrokerAssumptions;
+  scope: 'account' | 'allocated-ticker';
   riskSnapshot?: MarginRiskSnapshot | null;
   equityText: string;
   equityPct: number;
@@ -108,6 +113,14 @@ export function MarginRiskOverviewModal({
     : riskStatus === 'provisional' || valuationStatus === 'provisional'
       ? 'Provisional'
       : 'Current';
+  const stressResult = riskSnapshot
+    ? calculateMarginRiskStressScenarios(riskSnapshot, assumptions)
+    : null;
+  const totalMaintenanceSource = !riskSnapshot || riskSnapshot.totalMaintenanceRequirement === null
+    ? 'unavailable'
+    : riskSnapshot.maintenanceMarginRequirement.source === 'broker' && riskSnapshot.concentrationAddOn.source === 'broker'
+      ? 'broker'
+      : 'configured-assumption';
 
   return createPortal(
     <ModalFrame
@@ -133,9 +146,12 @@ export function MarginRiskOverviewModal({
         </header>
 
         <div class="margin-risk-overview-content">
+          {scope === 'allocated-ticker' && (
+            <p class="margin-risk-overview-warning">{translateText('Single-ticker figures allocate account-level cash and debt by invested-cost weight. They are estimates, not broker-reported per-position margin.', language)}</p>
+          )}
           <div class="margin-risk-overview-grid">
             <OverviewItem label={translateText('Account equity', language)} value={equityText} />
-            <OverviewItem label={translateText('Risk status', language)} value={translateText(riskLabel, language)} tone={riskStatus === 'available' ? 'positive' : 'warning'} />
+            <OverviewItem label={translateText('Risk status', language)} value={translateText(riskLabel, language)} tone={dataQuality === 'Current' ? 'positive' : 'warning'} />
             <OverviewItem label={translateText('Equity ratio', language)} value={formatPercentage(equityPct)} />
             <OverviewItem label={translateText('Cash / collateral', language)} value={collateralText} />
             <OverviewItem label={translateText('Configured maintenance threshold', language)} value={formatPercentage(maintenanceThresholdPct)} />
@@ -157,11 +173,47 @@ export function MarginRiskOverviewModal({
                 <OverviewItem label={translateText('Broker maintenance requirement', language)} value={sourcedMoneyText(riskSnapshot.maintenanceMarginRequirement.amount, riskSnapshot.maintenanceMarginRequirement.source, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Concentration add-on', language)} value={sourcedMoneyText(riskSnapshot.concentrationAddOn.amount, riskSnapshot.concentrationAddOn.source, riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Total maintenance requirement', language)} value={formatMoney(riskSnapshot.totalMaintenanceRequirement, riskSnapshot.currency, language)} />
+                <OverviewItem label={translateText('Base maintenance buffer (before concentration add-on)', language)} value={sourcedMoneyText(riskSnapshot.baseMaintenanceBuffer, riskSnapshot.maintenanceMarginRequirement.source, riskSnapshot.currency, language)} tone={riskSnapshot.baseMaintenanceBuffer !== null && riskSnapshot.baseMaintenanceBuffer <= 0 ? 'warning' : 'normal'} />
+                <OverviewItem label={translateText('Total maintenance buffer', language)} value={sourcedMoneyText(riskSnapshot.maintenanceBuffer, totalMaintenanceSource, riskSnapshot.currency, language)} tone={riskSnapshot.maintenanceBuffer !== null && riskSnapshot.maintenanceBuffer <= 0 ? 'warning' : 'normal'} />
+                <OverviewItem label={translateText('Configured stop-out cushion', language)} value={sourcedMoneyText(riskSnapshot.stopOutBuffer, 'configured-assumption', riskSnapshot.currency, language)} tone={riskSnapshot.stopOutBuffer !== null && riskSnapshot.stopOutBuffer <= 0 ? 'warning' : 'normal'} />
                 <OverviewItem label={translateText('Estimated annual financing', language)} value={sourcedMoneyText(riskSnapshot.annualInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Estimated daily financing', language)} value={sourcedMoneyText(riskSnapshot.dailyInterestCost, 'configured-assumption', riskSnapshot.currency, language)} />
                 <OverviewItem label={translateText('Input freshness', language)} value={translateText(({ fresh: 'Fresh input', stale: 'Stale', delayed: 'Delayed', indicative: 'Indicative', unknown: 'Unknown' } as const)[riskSnapshot.freshness], language)} />
                 <OverviewItem label={translateText('Source observation', language)} value={observedAtText(riskSnapshot.observedAt, language)} />
               </div>
+            </section>
+          )}
+          {riskSnapshot && (
+            <section class="margin-risk-stress" aria-label={translateText('Price shock sensitivity', language)}>
+              <h3 class="margin-risk-label mb-2">{translateText('Price shock sensitivity', language)}</h3>
+              <p class="margin-risk-stress-note">{translateText('Uniform declines across tracked long holdings; cash and margin debt stay constant. Uses configured maintenance and stop-out equity ratios; excludes FX changes, short exposure, changing broker requirements and liquidation rules.', language)}</p>
+              {stressResult?.status === 'available' ? (
+                <div class="margin-risk-stress-table-wrap">
+                  <table class="margin-risk-stress-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{translateText('Price decline', language)}</th>
+                        <th scope="col">{translateText('Estimated equity', language)}</th>
+                        <th scope="col">{translateText('Equity ratio', language)}</th>
+                        <th scope="col">{translateText('Risk level', language)}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stressResult.scenarios.map(scenario => (
+                        <tr key={scenario.declinePct}>
+                          <th scope="row">−{formatPercentage(scenario.declinePct * 100)}</th>
+                          <td>{formatMoney(scenario.equity, riskSnapshot.currency, language)}</td>
+                          <td>{formatPercentage(scenario.equityRatio === null ? Number.NaN : scenario.equityRatio * 100)}</td>
+                          <td>{translateText(scenario.riskLevel, language)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p class="margin-risk-stress-note">{translateText(stressResult?.reason || 'Stress sensitivity is unavailable.', language)}</p>
+              )}
+              <p class="margin-risk-stress-note">{translateText('This sensitivity is illustrative, not a broker call price or liquidation forecast.', language)}</p>
             </section>
           )}
           {riskReason && <p class="margin-risk-overview-warning">{translateText(riskReason, language)}</p>}
