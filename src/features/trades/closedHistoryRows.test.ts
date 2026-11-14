@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BrokerExecutionMetrics } from '../../domain/brokerExecutionMetrics';
 import type { ClosedTradeAttribution } from '../../domain/closedTradeAttribution';
 import type { FreedomExecutedTrade } from '../../types/freedomTrade';
-import { buildClosedHistoryRows } from './closedHistoryRows';
+import { buildClosedHistoryRows, summarizeClosedHistoryRows } from './closedHistoryRows';
 
 function createSell(overrides: Partial<FreedomExecutedTrade> = {}): FreedomExecutedTrade {
   return {
@@ -77,19 +77,61 @@ describe('broker closed-history net profit fallback', () => {
     expect(row.trade.netProfit).toBeNull();
   });
 
-  it('keeps net P&L unavailable when the FIFO cost or commission inputs are incomplete', () => {
+  it('keeps net P&L unavailable when FIFO cost evidence is incomplete', () => {
     const missingCost = buildRows(
       createSell(),
       createAttribution({ averagePrice: null })
     )[0];
-    const missingCommission = buildRows(
+
+    expect(missingCost.profit).toBeNull();
+    expect(missingCost.profitIsUpperBound).toBeFalsy();
+  });
+
+  it('shows a net P&L upper bound when buy-side commission is missing', () => {
+    const [row] = buildRows(
       createSell(),
       createAttribution(),
       { holdingDays: 49.7, buyCommission: null }
-    )[0];
+    );
 
-    expect(missingCost.profit).toBeNull();
-    expect(missingCommission.profit).toBeNull();
+    // Gross P&L is 100. Known costs are 2 financing + 1 sell commission.
+    // The missing buy commission can only reduce actual net P&L from this bound.
+    expect(row).toMatchObject({
+      profit: 97,
+      profitIsUpperBound: true,
+      commissionsComplete: false,
+      feesTotal: 3
+    });
+  });
+
+  it('shows a net P&L upper bound when sell-side commission is missing', () => {
+    const [row] = buildRows(
+      createSell({ commission: null }),
+      createAttribution(),
+      { holdingDays: 49.7, buyCommission: 0.5 }
+    );
+
+    expect(row).toMatchObject({
+      profit: 97.5,
+      profitIsUpperBound: true,
+      commissionsComplete: false,
+      feesTotal: 2.5
+    });
+  });
+
+  it('keeps upper-bound rows out of exact Known Net P&L and win-rate totals', () => {
+    expect(summarizeClosedHistoryRows([
+      { profit: 10, profitIsUpperBound: false, feesTotal: 2, commissionsComplete: true, trade: { holdingDays: 2 } },
+      { profit: 97, profitIsUpperBound: true, feesTotal: 3, commissionsComplete: false, trade: { holdingDays: 49.7 } },
+      { profit: -5, profitIsUpperBound: false, feesTotal: 4, commissionsComplete: true, trade: { holdingDays: 4 } }
+    ])).toMatchObject({
+      realizedNet: 5,
+      hasIncompleteCommissions: true,
+      hasUnknownProfit: true,
+      knownProfitCount: 2,
+      winningTrades: 1,
+      winRate: 50
+    });
   });
 
   it('continues to prefer a finite broker-reported profit over a derived FIFO result', () => {
