@@ -193,6 +193,15 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 - Net realized profit = gross realized profit − total commissions − allocated margin interest, rounded to cents.
 - Net cash proceeds = sale proceeds − sell commission, rounded to cents. Margin rollover interest is already reflected in signed balance and is not deducted from cash proceeds again.
 
+### Broker Trades display fallback
+
+For the read-only broker Closed History table:
+- Prefer a finite TradeNet-reported gross `profit` value when present.
+- When it is absent, derive gross realized P&L as `(sell execution price − FIFO-weighted acquisition price) × sold quantity`. The sell price must be a positive execution price or a positive `tradeValue / quantity` fallback.
+- Derive this value only when the FIFO attribution covers every sold share and every matched acquisition lot has a known positive recorded price. Unmatched quantity or missing cost/price evidence keeps P&L unavailable; do not use a current quote or broker aggregate average as a substitute.
+- Subtract fees and commissions only when both buy- and sell-side commission inputs are complete. Otherwise net P&L remains unavailable.
+- This calculation is display-only. It does not write to the portfolio snapshot, closed-history record, or transaction journal.
+
 ### Debt-first settlement
 
 `settleSaleProceeds(debt, freeCash, netProceeds)` clamps negative legacy debt/cash/proceeds to zero, but rejects non-finite inputs. It repays debt first; any remainder increases free cash. Existing free cash is unchanged when proceeds do not exceed debt. It does not itself impose a new currency conversion or interest calculation.
