@@ -12,6 +12,7 @@ describe('getPositiveMarketPrice', () => {
     expect(getPositiveMarketPrice('invalid', '100')).toBe(100);
     expect(getPositiveMarketPrice(null, undefined, 75)).toBe(75);
     expect(getPositiveMarketPrice(-1, Number.NaN, 0)).toBeNull();
+    expect(getPositiveMarketPrice(true, '   ', [], {})).toBeNull();
   });
 });
 
@@ -89,6 +90,20 @@ describe('calculatePortfolioValuation', () => {
     expect(result.accountBalanceAvailable).toBe(false);
     expect(result.cashBalance).toBe(100);
     expect(result.equity).toBe(100);
+  });
+
+  it('does not coerce booleans or blank strings into balances, prices, or share quantities', () => {
+    const result = calculatePortfolioValuation({
+      signedAccountBalance: true,
+      freeCash: '   ',
+      marginPositions: [{ shares: true, currentPrice: true }],
+      cashHoldings: [{ shares: 2, currentPrice: '   ', price: false }]
+    });
+    expect(result).toEqual({
+      accountBalanceAvailable: false, cashBalance: 0, marginDebt: 0,
+      marginHoldingsValue: 0, cashHoldingsValue: 0, totalHoldingsValue: 0,
+      equity: 0, pricedHoldings: 0, unpricedHoldings: 1
+    });
   });
 });
 
