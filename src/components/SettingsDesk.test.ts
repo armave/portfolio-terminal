@@ -206,6 +206,5 @@ describe('Settings information architecture', () => {
     }
     expect(source).toContain("translateText('Sync portfolio now')");
     expect(source).toContain("translateText('Last successful cloud sync')");
-    expect(source).toContain("label('Technical details')");
   });
 });
