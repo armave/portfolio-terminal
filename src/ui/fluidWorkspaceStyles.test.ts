@@ -141,6 +141,7 @@ describe('Margin desk localization', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
+  const paginationSource = readFileSync(new URL('../components/TablePagination.tsx', import.meta.url), 'utf8');
   const russianSource = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
 
   it('routes projection table labels and its accessible description through i18n', () => {
