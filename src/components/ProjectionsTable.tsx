@@ -1,5 +1,7 @@
 import { memo } from 'preact/compat';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import {
   calculateAccruedFees,
   calculateProjectedAccountBalanceAfterSale,
@@ -13,7 +15,6 @@ import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { calculateSaleCommission } from '../domain/portfolioTransactions';
 import { getAppLanguage, translateText } from '../services/i18n';
 
-const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
 function ProjectionsTableView() {
@@ -22,7 +23,6 @@ function ProjectionsTableView() {
   const projectionState = state.activeView === activeView ? state : { ...state, activeView };
   const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
     getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
-  const [page, setPage] = useState(0);
   const tickers = Object.keys(projectionState.positions || {});
   const isCombined = projectionState.activeView === 'COMBINED' ||
     (tickers.length !== 1 && !projectionState.positions?.[projectionState.activeView || '']);
@@ -41,11 +41,30 @@ function ProjectionsTableView() {
   }, 0);
   const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
 
+  const hasProjection = debtToUse > 0 || gross > 0;
+  // Find the first day projected net reaches or crosses zero. That day is the
+  // breakeven milestone; display its net as $0.00 and stop before any negative day.
+  const breakevenDays = hasProjection
+    ? findProjectionBreakevenDay(
+      gross,
+      totalComms,
+      marginChargedToUse,
+      debtToUse,
+      dailyRate,
+      MAX_BREAKEVEN_SEARCH_DAYS
+    )
+    : 0;
+  const projectionItems = hasProjection
+    ? getUsEquityProjectionDates(new Date(), entryDate, breakevenDays)
+    : [];
+  const pagination = useTablePagination('portfolio-projection', projectionItems.length, 10);
+  const visibleItems = sliceTablePage(projectionItems, pagination.currentPage, pagination.pageSize);
+
   useEffect(() => {
-    setPage(0);
+    pagination.setPage(1);
   }, [gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate]);
 
-  if (debtToUse <= 0 && gross <= 0) {
+  if (!hasProjection) {
     return (
       <tr>
         <td colSpan={4} class="py-4 text-center text-slate-500 italic">
@@ -54,22 +73,6 @@ function ProjectionsTableView() {
       </tr>
     );
   }
-
-  // Find the first day projected net reaches or crosses zero. That day is the
-  // breakeven milestone; display its net as $0.00 and stop before any negative day.
-  const breakevenDays = findProjectionBreakevenDay(
-    gross,
-    totalComms,
-    marginChargedToUse,
-    debtToUse,
-    dailyRate,
-    MAX_BREAKEVEN_SEARCH_DAYS
-  );
-
-  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays);
-  const pageCount = Math.max(1, Math.ceil(projectionItems.length / ROWS_PER_PAGE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const visibleItems = projectionItems.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE);
 
   return (
     <>
@@ -146,38 +149,23 @@ function ProjectionsTableView() {
           </tr>
         );
       })}
-      {pageCount > 1 && (
-        <tr class="border-t border-slate-800">
-          <td colSpan={4} class="px-2 py-3">
-            <div class="projection-pagination flex items-center justify-between gap-3 text-xs text-slate-400" aria-label={translateText('Projection table pagination', getAppLanguage())} aria-live="polite">
-              <span>
-                {translateText('Rows {start}–{end} of {total}', getAppLanguage()).replace('{start}', String(currentPage * ROWS_PER_PAGE + 1)).replace('{end}', String(Math.min((currentPage + 1) * ROWS_PER_PAGE, projectionItems.length))).replace('{total}', String(projectionItems.length))}
-              </span>
-              <div class="projection-pagination-controls flex items-center gap-2">
-                <button
-                  type="button"
-                  class="projection-pagination-button rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
-                  aria-label={translateText('Previous projection page', getAppLanguage())}
-                  disabled={currentPage === 0}
-                  onClick={() => setPage(Math.max(0, currentPage - 1))}
-                >
-                  {translateText('Previous', getAppLanguage())}
-                </button>
-                <span class="whitespace-nowrap">{translateText('Page {current} of {total}', getAppLanguage()).replace('{current}', String(currentPage + 1)).replace('{total}', String(pageCount))}</span>
-                <button
-                  type="button"
-                  class="rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
-                  aria-label={translateText('Next projection page', getAppLanguage())}
-                  disabled={currentPage >= pageCount - 1}
-                  onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
-                >
-                  {translateText('Next', getAppLanguage())}
-                </button>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
+      <tr class="border-t border-slate-800">
+        <td colSpan={4} class="px-2 py-1.5">
+          <TablePagination
+            tableLabel={translateText('Portfolio projection by date', getAppLanguage())}
+            page={pagination.currentPage}
+            pageCount={pagination.pageCount}
+            pageSize={pagination.pageSize}
+            start={pagination.start}
+            end={pagination.end}
+            total={projectionItems.length}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.setPageSize}
+            className="border-0 px-0 py-1"
+            controlsId="projectionTableBody"
+          />
+        </td>
+      </tr>
     </>
   );
 }
