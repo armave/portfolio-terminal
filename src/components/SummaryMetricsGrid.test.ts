@@ -9,7 +9,8 @@ describe('Margin risk confidence and scope disclosures', () => {
     expect(source).toContain("translateText('Provisional estimate', language)");
     expect(source).toContain('scope="account"');
     expect(source).toContain('scope="allocated-ticker"');
-    expect(source).toContain('invested-cost weight');
+    expect(source).not.toContain('margin-risk-scope-note');
+    expect(source).toContain("risk.summaryText.split(' · ')[0]");
   });
 
   it('connects the overview to explicit dollar buffers and bounded stress sensitivity', () => {

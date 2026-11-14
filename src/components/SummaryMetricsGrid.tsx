@@ -112,9 +112,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
               </span>
             </button>
           </div>
-          {scope === 'allocated-ticker' && (
-            <p class="margin-risk-scope-note">{translateText('Single-ticker figures allocate account-level cash and debt by invested-cost weight. They are estimates, not broker-reported per-position margin.', language)}</p>
-          )}
           <p class="mt-2 text-xs leading-relaxed text-amber-200">
             {risk.reason?.includes('position integrity')
               ? translateText('Margin risk is unavailable because broker position direction or execution history needs review.', language)
@@ -171,12 +168,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             </span>
           </button>
         </div>
-        {scope === 'allocated-ticker' && (
-          <p class="margin-risk-scope-note">{translateText('Single-ticker figures allocate account-level cash and debt by invested-cost weight. They are estimates, not broker-reported per-position margin.', language)}</p>
-        )}
-        {isProvisionalEstimate && (
-          <p class="margin-risk-scope-note">{translateText('Provisional estimate: at least one input or margin requirement is assumption-based, stale or unavailable.', language)}</p>
-        )}
         <div class="margin-risk-meter" role="progressbar" aria-label={translateText('Account equity percentage', language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', language)}>
           <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, ACCOUNT_EQUITY_HEALTH_REFERENCE * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
           <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
