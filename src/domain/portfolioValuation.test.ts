@@ -96,13 +96,13 @@ describe('calculatePortfolioValuation', () => {
     const result = calculatePortfolioValuation({
       signedAccountBalance: true,
       freeCash: '   ',
-      marginPositions: [{ shares: true, currentPrice: true }],
+      marginPositions: [{ shares: true, currentPrice: true }, { shares: 1e308, currentPrice: 1e308 }],
       cashHoldings: [{ shares: 2, currentPrice: '   ', price: false }]
     });
     expect(result).toEqual({
       accountBalanceAvailable: false, cashBalance: 0, marginDebt: 0,
       marginHoldingsValue: 0, cashHoldingsValue: 0, totalHoldingsValue: 0,
-      equity: 0, pricedHoldings: 0, unpricedHoldings: 1
+      equity: 0, pricedHoldings: 0, unpricedHoldings: 2
     });
   });
 });
