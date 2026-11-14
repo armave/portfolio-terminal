@@ -85,6 +85,7 @@ const publishGuestPortfolioSnapshots = (): Promise<void> => {
     for (const tranche of activeTranches) {
       const guestId = assignments[tranche.id];
       if (!guestId) continue;
+      // Existing guest links represent legacy/explicit cash-backed allocations.
       const type = current.activeTrancheTypes?.[tranche.id] ||
         current.activeTrancheTypes?.[tranche.ticker] || 'cash';
       const mix = normalizeActiveTrancheMix(
