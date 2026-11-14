@@ -44,12 +44,14 @@ export function TablePagination({
     .replace('{total}', String(total));
   const sizeLabel = translateText('Rows per page for {table}', language)
     .replace('{table}', tableLabel);
+  const paginationLabel = translateText('Pagination for {table}', language)
+    .replace('{table}', tableLabel);
 
   return (
     <div
       class={`flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/70 px-1 py-2 text-[10px] text-slate-400 ${className}`.trim()}
       role="group"
-      aria-label={tableLabel + ' pagination'}
+      aria-label={paginationLabel}
       aria-controls={controlsId}
     >
       <span class="whitespace-nowrap tabular-nums" aria-live="polite">{rangeLabel}</span>
