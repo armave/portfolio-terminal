@@ -1074,7 +1074,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 </table>
               </TableScrollRegion>
               <TablePagination
-                tableLabel="Active tranches and guest assignments"
+                tableLabel={translateText('Active tranches and guest assignments', getAppLanguage())}
                 page={activeTranchePagination.currentPage}
                 pageCount={activeTranchePagination.pageCount}
                 pageSize={activeTranchePagination.pageSize}
