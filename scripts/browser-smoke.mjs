@@ -854,6 +854,35 @@ try {
   if (await aaplRow.locator('select').count() !== 0) {
     throw new Error('A new unclassified AAPL tranche must default to Margin and must not expose a cash-funded guest assignment.');
   }
+  await aaplRow.getByRole('button', { name: 'Mix', exact: true }).click();
+  const cashSharesInput = aaplRow.locator('input[aria-label^="Cash shares:"]');
+  const marginSharesInput = aaplRow.locator('input[aria-label^="Margin shares:"]');
+  await cashSharesInput.waitFor({ state: 'visible', timeout: 10_000 });
+  await marginSharesInput.waitFor({ state: 'visible', timeout: 10_000 });
+  const trancheTotal = Number((await aaplRow.locator('[data-label="Shares"]').textContent() || '').replace(/,/g, ''));
+  if (!Number.isFinite(trancheTotal) || trancheTotal <= 0) {
+    throw new Error('The AAPL test tranche must have a positive total share quantity.');
+  }
+  const cashEdit = Number((trancheTotal * 0.35).toFixed(4));
+  await cashSharesInput.fill(String(cashEdit));
+  await page.waitForFunction(({ rowSelector, expectedMargin }) => {
+    const row = document.querySelector(rowSelector);
+    const input = row?.querySelector('input[aria-label^="Margin shares:"]');
+    return Boolean(input && Math.abs(Number(input.value) - expectedMargin) < 1e-8);
+  }, { rowSelector: '#activeTranchesTable .active-tranche-row', expectedMargin: trancheTotal - cashEdit }, { timeout: 10_000 });
+  const marginEdit = Number((trancheTotal * 0.2).toFixed(4));
+  await marginSharesInput.fill(String(marginEdit));
+  await page.waitForFunction(({ expectedCash, expectedMargin }) => {
+    const row = Array.from(document.querySelectorAll('#activeTranchesTable .active-tranche-row'))
+      .find((item) => item.querySelector('[data-label="Ticker"]')?.textContent?.trim() === 'AAPL');
+    const cash = row?.querySelector('input[aria-label^="Cash shares:"]');
+    const margin = row?.querySelector('input[aria-label^="Margin shares:"]');
+    return Boolean(cash && margin &&
+      Math.abs(Number(cash.value) - expectedCash) < 1e-8 &&
+      Math.abs(Number(margin.value) - expectedMargin) < 1e-8);
+  }, { expectedCash: trancheTotal - marginEdit, expectedMargin: marginEdit }, { timeout: 10_000 });
+  // Guest assignment is cash-funded: switch from Mix to Cash only after verifying
+  // that both Mix sub-inputs recalculate the complementary quantity live.
   await aaplRow.getByRole('button', { name: 'Cash', exact: true }).click();
   const guestAssignment = aaplRow.locator('select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
