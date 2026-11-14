@@ -805,6 +805,24 @@ try {
   const visibleSettingsDesk = () => page.locator('#settingsDesk').filter({ visible: true }).first();
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
+  const settingsNavigation = visibleSettingsDesk().getByRole('navigation', { name: 'Settings sections' });
+  for (const target of [
+    '#settings-account-section',
+    '#settings-data-section',
+    '#settings-access-section',
+    '#settings-broker-section',
+    '#settings-maintenance-section',
+    '#settings-help-section'
+  ]) {
+    if (await visibleSettingsDesk().locator(target).count() !== 1 ||
+        await settingsNavigation.locator(`a[href="${target}"]`).count() !== 1) {
+      throw new Error('Settings navigation is missing a section target: ' + target);
+    }
+  }
+  if (await visibleSettingsDesk().locator('.settings-device-details[open]').count() !== 0 ||
+      await visibleSettingsDesk().locator('.settings-maintenance-advanced[open]').count() !== 0) {
+    throw new Error('Technical diagnostics or advanced maintenance should be collapsed by default.');
+  }
   if (await page.locator('#settingsDesk').filter({ visible: true }).count() !== 1) {
     throw new Error('Expected exactly one visible Settings desk after navigation.');
   }
@@ -1114,7 +1132,7 @@ try {
     }));
     return { cardWidth, buttons };
   });
-  if (guestActionLayout.buttons.length !== 2 ||
+  if (guestActionLayout.buttons.length !== 1 ||
       guestActionLayout.buttons.some((button) => Math.abs(button.width - guestActionLayout.cardWidth) > 2)) {
     throw new Error('Guest account actions are not arranged as full-width stacked buttons: ' + JSON.stringify(guestActionLayout));
   }
@@ -1125,7 +1143,7 @@ try {
   if (await page.getByRole('button', { name: /Экспорт/ }).count()) {
     throw new Error('Guest Settings exposed the administrator backup action.');
   }
-  if (!(await visibleSettingsDesk().getByRole('button', { name: 'Синхронизировать портфель' }).count())) {
+  if (!(await visibleSettingsDesk().getByRole('button', { name: 'Синхронизировать портфель сейчас' }).count())) {
     throw new Error('Guest Settings lost the manual portfolio sync control.');
   }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
