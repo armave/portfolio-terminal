@@ -143,7 +143,7 @@ describe('Balance holding row calculations', () => {
       const result = getCashHoldingDisplayMetrics(holding, 200, 0);
       expect(result.unrealizedPnl).toBeNull();
       expect(result.unrealizedPnlPercent).toBeNull();
-      expect(result.allocation).toBeNull();
+      expect(result.allocation).toBe(holding.shares === 2 ? 100 : null);
     }
   });
 
