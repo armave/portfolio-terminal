@@ -865,11 +865,12 @@ try {
   }
   const cashEdit = Number((trancheTotal * 0.35).toFixed(4));
   await cashSharesInput.fill(String(cashEdit));
-  await page.waitForFunction(({ rowSelector, expectedMargin }) => {
-    const row = document.querySelector(rowSelector);
+  await page.waitForFunction(({ expectedMargin }) => {
+    const row = Array.from(document.querySelectorAll('#activeTranchesTable .active-tranche-row'))
+      .find((item) => item.querySelector('[data-label="Ticker"]')?.textContent?.trim() === 'AAPL');
     const input = row?.querySelector('input[aria-label^="Margin shares:"]');
     return Boolean(input && Math.abs(Number(input.value) - expectedMargin) < 1e-8);
-  }, { rowSelector: '#activeTranchesTable .active-tranche-row', expectedMargin: trancheTotal - cashEdit }, { timeout: 10_000 });
+  }, { expectedMargin: trancheTotal - cashEdit }, { timeout: 10_000 });
   const marginEdit = Number((trancheTotal * 0.2).toFixed(4));
   await marginSharesInput.fill(String(marginEdit));
   await page.waitForFunction(({ expectedCash, expectedMargin }) => {
