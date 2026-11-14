@@ -970,11 +970,21 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
                         const margin = tranche.quantity - cash;
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                        setMixInputDrafts((current) => {
+                          const next = { ...current };
+                          delete next[tranche.id + ':cash'];
+                          return next;
+                        });
                       };
                       const updateMixMargin = (value: string) => {
                         const margin = resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin);
                         const cash = tranche.quantity - margin;
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                        setMixInputDrafts((current) => {
+                          const next = { ...current };
+                          delete next[tranche.id + ':margin'];
+                          return next;
+                        });
                       };
                       const mixExpanded = expandedMixTranches.has(tranche.id);
                       const selectMix = () => {
