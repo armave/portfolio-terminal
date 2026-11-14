@@ -40,7 +40,7 @@ describe('TablePagination', () => {
     expect(select.props.value).toBe('25');
     expect(select.props['aria-label']).toBe('Rows per page for Closed history');
     expect(nodes.filter((node) => node.type === 'option').map((node) => node.props.value))
-      .toEqual(['10', '25', '50', '100']);
+      .toEqual(['5', '8', '10', '25', '50', '100']);
   });
 
   it('wires page-size and previous/next actions to their supplied callbacks', () => {
