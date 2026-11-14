@@ -55,9 +55,11 @@ function marketValue(
   const price = isCashHolding
     ? getPositiveMarketPrice(holding.currentPrice, (holding as ValuationCashHoldingLike).price)
     : getPositiveMarketPrice(holding.currentPrice);
+  const calculatedValue = price === null ? null : shares * price;
+  const priced = calculatedValue !== null && Number.isFinite(calculatedValue);
   return {
-    value: price === null ? 0 : shares * price,
-    priced: price !== null,
+    value: priced ? calculatedValue : 0,
+    priced,
     hasShares: true
   };
 }
