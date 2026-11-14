@@ -246,6 +246,16 @@ For the read-only broker Closed History table:
 
 The fee allocator does not convert EUR/AMD/other currencies to USD. A foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
 
+### Cashflow sync identity and correction semantics
+
+- Cashflow history is merged from the encrypted cloud record, local history sidecar, portfolio snapshot and the latest broker response. `mergeFreedomCashflowRows` deduplicates both persisted and incoming copies by stable row ID; later source copies override the earlier row's facts, and the incoming broker row is applied last.
+- A broker correction carrying the same stable operation ID replaces that row's amount/date/details. The fee allocator then rebuilds per-execution and open-lot allocations from the merged history; it does not add the corrected allocation on top of a stale allocation.
+- Different provider operation IDs remain separate even when date, amount, description and currency are identical. Do not deduplicate broker rows by visible amount/date alone.
+- The current provider adapter has no verified deletion/tombstone contract. A row missing from an incremental page is not evidence that an older operation was deleted, so saved history is retained. A cancellation or refund must arrive as an explicit provider correction/reversal row; absence must never silently erase an allocation.
+- When TradeNet omits an operation ID, the normalizer creates a synthetic ID from date, type, amount, currency and description. That identity preserves separate same-day rows conservatively, but an amount correction cannot be proven to refer to the same source operation and may appear as a second row. Do not claim correction reconciliation for such rows without a provider ID or another stable source reference.
+- Incremental reads use the latest persisted cashflow date with a one-calendar-day overlap. This catches nearby late updates, not arbitrarily old corrections. A full baseline is performed when the account baseline is absent; the current adapter does not prove that every older source correction will be rediscovered after the baseline.
+- The sync must persist the canonical portfolio snapshot before checkpointing the separate encrypted history record. A failed canonical save aborts the history write; an unconfirmed cloud write is reported as partial and remains retryable. The account/session guard must be checked after every asynchronous boundary.
+
 ## 9. Funding classification contract
 
 **Sources:** `normalizeActiveTrancheMix` and `resolveActiveTrancheMixInput` in `src/domain/freedomPortfolio.ts`; `resolveClosedTradeAllocation` in `src/domain/closedTradeAllocation.ts`.
