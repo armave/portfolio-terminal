@@ -1,6 +1,7 @@
 import type { ClosedTrade } from '../types/portfolio';
 import type {
   PortfolioTransactionEvent,
+  PortfolioTransactionHistoryFeeCorrection,
   PortfolioTransactionHistoryFeeAllocation,
   PortfolioTransactionHistoryFeeSnapshot
 } from '../types/portfolioTransaction';
@@ -209,8 +210,8 @@ export function buildClosedHistoryFeeAuditUpdate(
       }
     }
 
-    const correction = {
-      kind: 'closed-trade-margin-fee' as const,
+    const correction: PortfolioTransactionHistoryFeeCorrection = {
+      kind: 'closed-trade-margin-fee',
       closedTradeId: id,
       saleEventId: saleEvent.id,
       ...(priorCorrection ? { revisionOfEventId: priorCorrection.id } : {}),
