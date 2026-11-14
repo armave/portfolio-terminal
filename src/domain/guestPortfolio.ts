@@ -67,6 +67,7 @@ export function getGuestAssignedCashHoldings(input: {
     const ticker = String(tranche.ticker || '').trim().toUpperCase();
     if (!ticker) continue;
 
+    // A persisted guest assignment is legacy/explicit evidence of cash funding.
     const type = input.types?.[tranche.id] || input.types?.[ticker] || 'cash';
     const mix = normalizeActiveTrancheMix(
       tranche.quantity,
