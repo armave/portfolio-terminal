@@ -20,7 +20,7 @@ describe('financial readability styles', () => {
 
   it('styles margin stress disclosures and keeps the scenario table scrollable', () => {
     expect(readabilityStyles).toContain('.margin-risk-scope-note');
-    expect(readabilityStyles).toContain('.margin-risk-overview-item strong.danger');
+    expect(stylesheet).toContain('.margin-risk-overview-item strong.danger');
     expect(readabilityStyles).toContain('.margin-risk-stress-table-wrap');
     expect(readabilityStyles).toContain('.margin-risk-stress-table');
   });
