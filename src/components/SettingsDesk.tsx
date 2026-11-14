@@ -422,7 +422,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               </tr>)}</tbody>
           </table></TableScrollRegion>
           <TablePagination
-            tableLabel="User management"
+            tableLabel={translateText('User management table')}
             page={usersPagination.currentPage}
             pageCount={usersPagination.pageCount}
             pageSize={usersPagination.pageSize}
