@@ -944,9 +944,13 @@ try {
   );
   await waitForUserSaveReady('Browser Guest Updated');
 
-  // Tenant directory: owner metadata creation, least-privilege guest grant,
-  // and guest projection-only view without an owner membership roster.
+  // Tenant directory is lazy-mounted only after its advanced ownership disclosure opens.
+  // Exercise owner metadata creation, least-privilege guest grant, and guest projection-only view.
+  const ownershipDisclosure = visibleSettingsDesk().locator('details.settings-subsection')
+    .filter({ hasText: 'Portfolio ownership' }).first();
+  await ownershipDisclosure.locator('summary').click();
   const tenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
+  await tenantPanel.waitFor({ state: 'visible', timeout: 10_000 });
   await tenantPanel.locator('details').filter({ hasText: 'Create tenant metadata' }).locator('summary').click();
   await tenantPanel.getByLabel('Tenant name').fill('Operations Family');
   await tenantPanel.getByLabel('Workspace name').fill('Family workspace');
