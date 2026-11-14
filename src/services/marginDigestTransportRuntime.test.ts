@@ -162,7 +162,10 @@ describe('Margin Intelligence digest transport', () => {
   });
 
   it('rejects malformed inventory and batch settings before making requests', async () => {
-    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('null', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })) as unknown as typeof fetch;
     const { runtime } = createRuntime(fetchImpl);
 
     await expect(runtime.fetchMarginDigestMigrationInventory()).rejects.toThrow('inventory response was invalid');
