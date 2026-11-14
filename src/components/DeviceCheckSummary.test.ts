@@ -64,6 +64,7 @@ describe('Device Check summary diagnostics', () => {
     expect(getCloudStorageLabel({ status: 'error', text: 'FAIL' })).toBe('Unavailable');
     expect(getPortfolioSyncLabel({ status: 'synced', text: 'Synced' })).toBe('Synced');
     expect(getPortfolioSyncLabel({ status: 'error', text: 'Sync failed' })).toBe('Failed');
+    expect(getPortfolioSyncLabel({ status: 'synced', text: 'Assigned data refreshed' })).toBe('Synced');
   });
 
   it('shows checking while device diagnostics have not loaded', () => {

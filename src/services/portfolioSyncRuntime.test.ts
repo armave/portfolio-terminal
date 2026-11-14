@@ -17,6 +17,7 @@ function createDependencies(
     translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
     logAppMessage: vi.fn(),
+    setSyncStatus: vi.fn(),
     ...overrides
   };
 }
@@ -60,6 +61,100 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed.',
       'success'
     );
+    expect(dependencies.setSyncStatus).toHaveBeenNthCalledWith(1, { status: 'syncing', text: 'Portfolio sync in progress' });
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({ status: 'synced', text: 'Synced' });
+    expect(dependencies.logAppMessage).toHaveBeenCalledWith(
+      '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
+    );
+  });
+
+  it('keeps guest sync limited to the guest snapshot and quotes', async () => {
+    const dependencies = createDependencies({ getAccountRole: () => 'guest' });
+    const resolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve });
+
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(resolve).toHaveBeenCalledWith({
+      role: 'guest',
+      guestSnapshot: true,
+      quotes: true,
+      success: true
+    });
+    expect(dependencies.pullGuestSnapshot).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshBrokerAccount).not.toHaveBeenCalled();
+    expect(dependencies.refreshExecutedTrades).not.toHaveBeenCalled();
+    expect(dependencies.refreshActiveOrders).not.toHaveBeenCalled();
+    expect(dependencies.pushCloud).not.toHaveBeenCalled();
+    expect(dependencies.syncClosedHistory).not.toHaveBeenCalled();
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { emitUiEvent } from '../ui/uiEventBus';
+import { bindPortfolioSyncRuntime, type PortfolioSyncRuntimeDependencies } from './portfolioSyncRuntime';
+
+function createDependencies(
+  overrides: Partial<PortfolioSyncRuntimeDependencies> = {}
+): PortfolioSyncRuntimeDependencies {
+  return {
+    getAccountRole: () => 'admin',
+    refreshQuotes: vi.fn(async () => true),
+    refreshBrokerAccount: vi.fn(async () => true),
+    refreshExecutedTrades: vi.fn(async () => true),
+    refreshActiveOrders: vi.fn(async () => true),
+    pushCloud: vi.fn(async () => true),
+    syncClosedHistory: vi.fn(async () => true),
+    pullGuestSnapshot: vi.fn(async () => true),
+    translateText: vi.fn((message: string) => `translated:${message}`),
+    showToast: vi.fn(),
+    logAppMessage: vi.fn(),
+    setSyncStatus: vi.fn(),
+    ...overrides
+  };
+}
+
+describe('portfolio sync runtime bindings', () => {
+  let unbind: (() => void) | undefined;
+
+  afterEach(() => {
+    unbind?.();
+    unbind = undefined;
+  });
+
+  it('runs the admin sync and reports the successful result', async () => {
+    const dependencies = createDependencies();
+    const resolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve });
+
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(resolve).toHaveBeenCalledWith({
+      role: 'admin',
+      brokerAccount: true,
+      executedTrades: true,
+      activeOrders: true,
+      quotes: true,
+      cloud: true,
+      cloudHistory: true,
+      success: true
+    });
+    expect(dependencies.refreshBrokerAccount).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshActiveOrders).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(dependencies.pushCloud).toHaveBeenCalledTimes(1);
+    expect(dependencies.syncClosedHistory).toHaveBeenCalledTimes(1);
+    expect(dependencies.pullGuestSnapshot).not.toHaveBeenCalled();
+    expect(dependencies.translateText).toHaveBeenCalledWith('Portfolio sync completed.');
+    expect(dependencies.showToast).toHaveBeenCalledWith(
+      'translated:Portfolio sync completed.',
+      'success'
+    );
+    expect(dependencies.setSyncStatus).toHaveBeenNthCalledWith(1, { status: 'syncing', text: 'Portfolio sync in progress' });
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({ status: 'synced', text: 'Synced' });
     expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
     );
@@ -91,6 +186,7 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed.',
       'success'
     );
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({ status: 'synced', text: 'Assigned data refreshed' });
   });
 
   it('reports partial admin syncs as warnings', async () => {

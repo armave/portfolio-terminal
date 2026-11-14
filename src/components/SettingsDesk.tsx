@@ -408,10 +408,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <div class="settings-sync-status flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2" role="status" aria-live="polite">
               <span class="text-[11px] font-semibold text-slate-300">{translateText('Cloud synchronization')}</span>
               <span class={cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
-                {translateText(cloudSyncStatus.status === 'synced' ? 'Cloud sync confirmed' : cloudSyncStatus.status === 'syncing' ? 'Cloud sync in progress' : cloudSyncStatus.status === 'error' ? 'Cloud sync failed' : 'Cloud sync status not checked')}
+                {translateText(account?.role === 'guest'
+                  ? cloudSyncStatus.status === 'synced' ? 'Assigned data refresh confirmed' : cloudSyncStatus.status === 'syncing' ? 'Assigned data refresh in progress' : cloudSyncStatus.status === 'error' ? 'Assigned data refresh failed' : 'Assigned data refresh status not checked'
+                  : cloudSyncStatus.status === 'synced' ? 'Cloud sync confirmed' : cloudSyncStatus.status === 'syncing' ? 'Cloud sync in progress' : cloudSyncStatus.status === 'error' ? 'Cloud sync failed' : 'Cloud sync status not checked')}
               </span>
               <span class="w-full text-[10px] text-slate-500">
-                {translateText('Last successful cloud sync')}: {formatSettingsTimestamp(cloudSyncStatus.lastSyncedAt)}
+                {translateText(account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync')}: {formatSettingsTimestamp(cloudSyncStatus.lastSyncedAt)}
               </span>
             </div>
             <div class="settings-data-actions flex flex-wrap items-center gap-2">
