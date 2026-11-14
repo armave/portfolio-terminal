@@ -7,6 +7,8 @@ import {
   getMarketStatusTone,
   formatMarketCountdown,
   getMarketStatusCountdown,
+  getMarketStatusCountdownParts,
+  getEffectiveMarketStatusCountdownParts,
   reconcileMarketStatusWithCalendar,
   resolveEffectiveMarketStatus,
   getEffectiveMarketStatusCountdown,
@@ -163,8 +165,24 @@ describe('US-equities market status presentation', () => {
     expect(formatMarketCountdown(45 * 60_000)).toBe('45m');
     expect(formatMarketCountdown((60 + 30) * 60_000)).toBe('1h 30m');
     expect(formatMarketCountdown(24 * 60 * 60_000)).toBe('24h');
-    expect(formatMarketCountdown((24 * 60 + 20) * 60_000)).toBe('1d 0h 20m');
-    expect(formatMarketCountdown(25 * 60 * 60_000 + 20 * 60_000)).toBe('1d 1h 20m');
+    expect(formatMarketCountdown((24 * 60 + 20) * 60_000)).toBe('1d');
+    expect(formatMarketCountdown(25 * 60 * 60_000 + 20 * 60_000)).toBe('1d 1h');
+    expect(formatMarketCountdown(49 * 60 * 60_000 + 59 * 60_000)).toBe('2d 1h');
+  });
+
+  it('separates the countdown label from its time value for brighter time styling', () => {
+    const now = new Date('2026-11-07T22:00:00.000Z');
+    expect(getMarketStatusCountdownParts('CLOSED', now)).toEqual({
+      label: 'Premarket in ',
+      time: '1d 11h'
+    });
+    expect(getEffectiveMarketStatusCountdownParts('CLOSED', now.getTime(), now)).toEqual({
+      label: 'Premarket in ',
+      time: '1d 11h'
+    });
+    const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('text-slate-100');
+    expect(source).toContain('{countdownParts?.time}');
   });
 
   it('localizes countdown labels and duration units in Russian', () => {
