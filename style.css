@@ -3649,6 +3649,10 @@ table tbody tr:hover {
   color: #4ade80;
 }
 
+.margin-risk-overview-item strong.danger {
+  color: #f87171;
+}
+
 .margin-risk-overview-note,
 .margin-risk-overview-warning {
   color: #94a3b8;

@@ -20,6 +20,7 @@ describe('Margin risk confidence and scope disclosures', () => {
     expect(modal).toContain('calculateMarginRiskStressScenarios(riskSnapshot, assumptions)');
     expect(modal).toContain("translateText('Price shock sensitivity', language)");
     expect(modal).toContain('broker call price or liquidation forecast');
+    expect(modal).toContain("riskLabel === 'Stop-out level' || riskLabel === 'Margin-call level'");
   });
 });
 

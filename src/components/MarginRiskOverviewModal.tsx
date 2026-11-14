@@ -58,12 +58,12 @@ function observedAtText(timestamp: number | null, language: AppLanguage): string
 function OverviewItem({ label, value, tone = 'normal' }: {
   label: string;
   value: string;
-  tone?: 'normal' | 'warning' | 'positive';
+  tone?: 'normal' | 'warning' | 'positive' | 'danger';
 }) {
   return (
     <div class="margin-risk-overview-item">
       <span>{label}</span>
-      <strong class={tone === 'warning' ? 'warning' : tone === 'positive' ? 'positive' : ''}>{value}</strong>
+      <strong class={tone === 'warning' ? 'warning' : tone === 'positive' ? 'positive' : tone === 'danger' ? 'danger' : ''}>{value}</strong>
     </div>
   );
 }
@@ -152,7 +152,7 @@ export function MarginRiskOverviewModal({
           )}
           <div class="margin-risk-overview-grid">
             <OverviewItem label={translateText('Account equity', language)} value={equityText} />
-            <OverviewItem label={translateText('Risk status', language)} value={translateText(riskLabel, language)} tone={dataQuality === 'Current' ? 'positive' : 'warning'} />
+            <OverviewItem label={translateText('Risk status', language)} value={translateText(riskLabel, language)} tone={riskLabel === 'Stop-out level' || riskLabel === 'Margin-call level' ? 'danger' : dataQuality === 'Current' ? 'positive' : 'warning'} />
             <OverviewItem label={translateText('Equity ratio', language)} value={formatPercentage(equityPct)} />
             <OverviewItem label={translateText('Cash / collateral', language)} value={collateralText} />
             <OverviewItem label={translateText('Configured maintenance threshold', language)} value={formatPercentage(maintenanceThresholdPct)} />
