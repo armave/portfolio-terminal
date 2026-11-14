@@ -12,6 +12,7 @@ interface TablePaginationProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   className?: string;
+  controlsClassName?: string;
   controlsId?: string;
 }
 
@@ -27,6 +28,7 @@ export function TablePagination({
   onPageChange,
   onPageSizeChange,
   className = '',
+  controlsClassName = '',
   controlsId
 }: TablePaginationProps) {
   if (total <= 0) return null;
@@ -51,7 +53,7 @@ export function TablePagination({
       aria-controls={controlsId}
     >
       <span class="whitespace-nowrap tabular-nums" aria-live="polite">{rangeLabel}</span>
-      <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+      <div class={`ml-auto flex flex-wrap items-center justify-end gap-1.5 ${controlsClassName}`.trim()}>
         <label class="inline-flex items-center gap-1 whitespace-nowrap">
           <span>{translateText('Rows', language)}</span>
           <select
