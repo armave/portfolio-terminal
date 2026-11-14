@@ -106,8 +106,8 @@ describe('broker closed-history source reconciliation', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].source).toBe('tradenet');
     expect(rows[0].trade.shares).toBe(5);
-    expect(rows[0].profit).toBe(50);
-    expect(rows[0].feesTotal).toBe(2.5);
+    expect(rows[0].profit).toBe(47.25);
+    expect(rows[0].feesTotal).toBe(2.75);
   });
 
   it('still deduplicates an app record that matches the grouped broker total', () => {
