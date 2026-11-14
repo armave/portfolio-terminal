@@ -6,7 +6,7 @@ import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrit
 import type { BrokerPositionIntegrityIssue } from '../types/broker';
 
 /** Newly observed active purchases are margin-funded unless the user chose otherwise. */
-export const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
+const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
 
 export function getActiveTrancheType(
   classifications: Record<string, ActiveTrancheType> | null | undefined,
