@@ -1048,6 +1048,7 @@ try {
     });
     throw new Error('Broker Rules values did not persist after a valid submission: ' + JSON.stringify(brokerRulesState));
   }
+  await visibleSettingsDesk().getByText('All broker assumptions saved.').waitFor({ state: 'visible', timeout: 10_000 });
 
   // Per-account language is server-backed and is restored after a browser reload.
   await visibleSettingsDesk().getByLabel('Account language').selectOption('ru');
