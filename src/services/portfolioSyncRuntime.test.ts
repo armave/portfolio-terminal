@@ -17,6 +17,7 @@ function createDependencies(
     translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
     logAppMessage: vi.fn(),
+    setSyncStatus: vi.fn(),
     ...overrides
   };
 }
@@ -60,6 +61,8 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed.',
       'success'
     );
+    expect(dependencies.setSyncStatus).toHaveBeenNthCalledWith(1, { status: 'syncing', text: 'Portfolio sync in progress' });
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({ status: 'synced', text: 'Synced' });
     expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
     );
@@ -91,6 +94,7 @@ describe('portfolio sync runtime bindings', () => {
       'translated:Portfolio sync completed.',
       'success'
     );
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({ status: 'synced', text: 'Assigned data refreshed' });
   });
 
   it('reports partial admin syncs as warnings', async () => {
@@ -120,6 +124,25 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync Warning]: One or more portfolio data sources could not be refreshed.'
     );
+  });
+
+  it('marks a guest refresh with source failures as failed', async () => {
+    const dependencies = createDependencies({
+      getAccountRole: () => 'guest',
+      refreshQuotes: vi.fn(async () => false)
+    });
+    const resolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve });
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(resolve.mock.calls[0][0]).toMatchObject({
+      role: 'guest', guestSnapshot: true, quotes: false, success: false
+    });
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({
+      status: 'error', text: 'Assigned data refresh failed'
+    });
   });
 
   it('does not run sync operations when no account role is active', async () => {

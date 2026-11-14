@@ -103,7 +103,7 @@ describe('desk transitions and supporting layouts', () => {
   });
 
   it('gives Settings the same centered bordered workspace shell as the main page', () => {
-    expect(appSource).toContain('class={"border-card p-4 sm:p-6 rounded-xl space-y-4 max-w-6xl mx-auto " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"');
+    expect(appSource).toContain('class={"border-card p-4 sm:p-6 rounded-xl space-y-4 max-w-6xl md:text-left text-center mx-auto " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"');
   });
 
   it('gives Settings a fluid container, responsive panels, and a scrollable user table', () => {
@@ -112,6 +112,8 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('settings-user-panel');
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
+    expect(fluidStyles).toContain('#settingsDesk .settings-subsection > summary');
     expect(fluidStyles).toMatch(/@container\s+settings-workspace\s*\(min-width:\s*54rem\)/);
     expect(fluidStyles).toMatch(/#settingsDesk \.settings-table-scroll table\s*\{[^}]*min-width:\s*49rem/s);
   });

@@ -554,9 +554,24 @@ const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
 });
 
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
+async function refreshGuestPortfolioSnapshot(): Promise<boolean> {
+  setCloudStatus('syncing', 'CONNECTING');
+  setCloudSyncStatus({ text: 'Assigned data refresh in progress', status: 'syncing' });
+  try {
+    const refreshed = await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
+    if (!refreshed) return false;
+    setCloudStatus('synced', 'READY');
+    setCloudSyncStatus({ text: 'Assigned data refreshed', status: 'synced', lastSyncedAt: Date.now() });
+    return true;
+  } catch (error) {
+    setCloudStatus('error', 'UNAVAILABLE');
+    setCloudSyncStatus({ text: 'Assigned data refresh failed', status: 'error' });
+    throw error;
+  }
+}
+
 async function pullGuestPortfolioSnapshot(): Promise<void> {
-  await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
-  setCloudStatus('synced', 'READY');
+  await refreshGuestPortfolioSnapshot();
 }
 
 let startupCloudWritesSuppressed = true;
@@ -1890,13 +1905,11 @@ function bindStartupActions() {
       return pushStateToCloud(true);
     },
     syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : Promise.resolve(false),
-    pullGuestSnapshot: async () => {
-      await pullGuestPortfolioSnapshot();
-      return true;
-    },
+    pullGuestSnapshot: refreshGuestPortfolioSnapshot,
     translateText,
     showToast,
-    logAppMessage
+    logAppMessage,
+    setSyncStatus: setCloudSyncStatus
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
     void requireAdmin('change broker rules').then((allowed) => {

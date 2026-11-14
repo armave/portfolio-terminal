@@ -30,7 +30,6 @@ import { loadSavedHistory } from '../services/storage';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
-import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -55,7 +54,7 @@ function getCashCushionValueFromState(state: BoardState): number {
   }, 0);
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope }: {
   equityPct: number;
   risk: MarginRiskDisplay;
   equityText: string;
@@ -64,6 +63,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   valuationStatus?: 'current' | 'provisional' | 'incomplete';
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
+  scope: 'account' | 'allocated-ticker';
 }) {
   const language = getAppLanguage();
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -72,6 +72,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const overviewModal = overviewOpen ? (
     <MarginRiskOverviewModal
       onClose={closeOverview}
+      assumptions={rules}
+      scope={scope}
       riskSnapshot={risk.snapshot}
       equityText={equityText}
       equityPct={equityPct}
@@ -88,6 +90,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       riskReason={risk.reason}
     />
   ) : null;
+
+  const isProvisionalEstimate = risk.status === 'provisional' || valuationStatus === 'provisional';
 
   if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
@@ -131,6 +135,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     );
   }
 
+  const riskStatusClass = risk.riskLevel === 'Margin-call level' || risk.riskLevel === 'Stop-out level'
+    ? 'margin-risk-status danger'
+    : isProvisionalEstimate
+      ? 'margin-risk-status elevated'
+      : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
+        ? 'margin-risk-status healthy'
+        : 'margin-risk-status elevated';
   const stopOutTitle = translateText(
     'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language
@@ -150,7 +161,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
           >
-            <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
+            <span class={riskStatusClass}>
               {risk.summaryText.split(' · ')[0]}
             </span>
           </button>
@@ -223,7 +234,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
 
   return {
     text: `Day: ${parts.join(' · ')}`,
-    className: `mt-0.5 block text-[9px] font-normal tabular-nums ${colorClass}`
+    className: `mt-0.5 block text-[9px] font-normal tabular-nums text-right ${colorClass}`
   };
 }
 
@@ -562,11 +573,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     const quoteCoverageClass = unpricedMarginPositionCount > 0 || quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
       ? 'text-amber-300'
       : quoteSummary.delayed > 0 ? 'text-sky-300' : 'text-emerald-400';
-    const quoteProvenanceHoldings: QuoteProvenanceHolding[] = [
-      ...tickers.map((ticker) => ({ ...state.positions![ticker], kind: 'Margin position' as const })),
-      ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-    ];
-
     const valuation = calculatePortfolioValuation({
       signedAccountBalance: state.balance,
       freeCash: state.cashCushion?.freeCash,
@@ -719,7 +725,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
               <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
             </span>
-            <QuoteProvenanceList holdings={quoteProvenanceHoldings} />
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
             <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
@@ -740,6 +745,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         </section>
 
         <MarginRiskGaugeCard
+          scope="account"
           equityPct={equityPct}
           risk={risk}
           equityText={equityText}
@@ -824,7 +830,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const commsText = `${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} ${translateText('buy', getAppLanguage())} / ${formatUSD(
     commSell
   )} ${translateText('sell', getAppLanguage())})`;
-  const marginChargedText = `${formatUSD(posMarginCharged)} (${translateText('Position to date', getAppLanguage())})`;
+  const marginChargedText = formatUSD(posMarginCharged);
   const quoteMetaText = usableMarketPrice === null
     ? translateText('Quote unavailable', getAppLanguage())
     : formatQuoteMetadata(pos, refreshIntervalMs);
@@ -980,13 +986,9 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
           </span>
-          <span class="mt-0.5 block text-[10px] text-slate-500" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
+          <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
             {translateText('Volume', getAppLanguage())} {volume ?? '—'}
           </span>
-          <QuoteProvenanceList holdings={[
-            { ...pos, kind: 'Margin position' },
-            ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-          ]} />
         </div>
         <div class="portfolio-micro-column portfolio-micro-costs">
           <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
@@ -1007,6 +1009,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       </section>
 
       <MarginRiskGaugeCard
+        scope="allocated-ticker"
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
