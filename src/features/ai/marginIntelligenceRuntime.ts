@@ -22,7 +22,7 @@ import {
   type MarginIntelligenceState
 } from './marginIntelligenceState';
 
-export const MARGIN_INTELLIGENCE_GEMINI_TIMEOUT_MS = 40_000;
+const MARGIN_INTELLIGENCE_GEMINI_TIMEOUT_MS = 40_000;
 
 interface MarginIntelligenceRequestDetail {
   ticker?: string;
