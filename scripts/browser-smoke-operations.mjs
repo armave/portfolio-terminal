@@ -1148,7 +1148,7 @@ try {
   if (await page.getByRole('button', { name: /Экспорт/ }).count()) {
     throw new Error('Guest Settings exposed the administrator backup action.');
   }
-  if (!(await visibleSettingsDesk().getByRole('button', { name: 'Синхронизировать портфель сейчас' }).count())) {
+  if (!(await visibleSettingsDesk().getByRole('button', { name: 'Синхронизировать портфель' }).count())) {
     throw new Error('Guest Settings lost the manual portfolio sync control.');
   }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
