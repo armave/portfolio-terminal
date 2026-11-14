@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateFreedomMarginFeeAllocations } from './freedomMarginFees';
+import { mergeFreedomCashflowRows } from './freedomCashflows';
+import { applyCashflowAllocationsToBrokerExecutions } from './closedHistoryFees';
 
 const fee = (id: string, date: string, amount: number, currency = 'USD') => ({
   id: `freedom-${id}`,
@@ -214,4 +216,53 @@ it('does not mix known foreign-currency executions into USD financing-fee weight
   const result = calculateFreedomMarginFeeAllocations([fee('usd-only', '2026-07-02', -1)], executions);
   expect(result.brokerAllocations.get(2)).toEqual({ 'freedom-usd-only': 1 });
   expect(result.brokerAllocations.has(3)).toBe(false);
+});
+
+describe('Freedom cashflow correction propagation', () => {
+  it('replaces a corrected operation amount in Closed History without accumulating the prior fee', () => {
+    const executions = [
+      { id: 'margin-buy', ticker: 'AAPL', side: 'buy', quantity: 1, price: 100, currency: 'USD', executedAt: '2026-11-01T10:00:00Z' },
+      { id: 'margin-sell', ticker: 'AAPL', side: 'sell', quantity: 1, price: 110, currency: 'USD', commission: 1.25, profit: 10, executedAt: '2026-11-04T10:00:00Z' }
+    ];
+    const trancheId = `AAPL:${Date.parse('2026-11-01T10:00:00Z')}:margin-buy`;
+    const fundingOptions = { trancheTypes: { [trancheId]: 'margin' as const } };
+    const original = fee('corrected-operation', '2026-11-02', -1);
+    const initialHistory = mergeFreedomCashflowRows([], [original]);
+    const initialAllocations = calculateFreedomMarginFeeAllocations(initialHistory, executions, [], fundingOptions);
+    const initialExecution = applyCashflowAllocationsToBrokerExecutions(
+      executions,
+      initialAllocations.brokerAllocations,
+      initialAllocations.brokerOpenAllocations
+    );
+
+    expect(initialExecution[1]).toMatchObject({
+      marginFeeAllocations: { 'freedom-corrected-operation': 1 },
+      marginFee: 1,
+      feesAndCommissions: 2.25,
+      netProfit: 7.75
+    });
+
+    const corrected = { ...original, amount: -1.75, raw: { ...original.raw, corrected: 'true' } };
+    const correctedHistory = mergeFreedomCashflowRows(initialHistory, [corrected]);
+    const correctedAllocations = calculateFreedomMarginFeeAllocations(
+      correctedHistory,
+      executions,
+      [],
+      fundingOptions
+    );
+    const correctedExecution = applyCashflowAllocationsToBrokerExecutions(
+      initialExecution,
+      correctedAllocations.brokerAllocations,
+      correctedAllocations.brokerOpenAllocations
+    );
+
+    expect(correctedHistory).toHaveLength(1);
+    expect(correctedAllocations.allocatedAmount).toBe(1.75);
+    expect(correctedExecution[1]).toMatchObject({
+      marginFeeAllocations: { 'freedom-corrected-operation': 1.75 },
+      marginFee: 1.75,
+      feesAndCommissions: 3,
+      netProfit: 7
+    });
+  });
 });

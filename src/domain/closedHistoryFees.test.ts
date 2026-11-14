@@ -295,6 +295,29 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(deduplicateClosedHistoryRows([duplicate, distinct], [broker])).toEqual([distinct]);
   });
 
+  it('preserves a distinct same-day sale with the same quantity but a different exit price', () => {
+    const appSale = {
+      trade: {
+        ticker: 'AAPL',
+        exitDate: '2026-01-10T10:00:00Z',
+        shares: 5,
+        sellPrice: 121
+      },
+      source: 'app'
+    };
+    const brokerSale = {
+      trade: {
+        ticker: 'AAPL',
+        exitDate: '2026-01-10T10:00:00Z',
+        shares: 5,
+        price: 120
+      },
+      source: 'tradenet'
+    };
+
+    expect(deduplicateClosedHistoryRows([appSale], [brokerSale])).toEqual([appSale]);
+  });
+
   it('deduplicates one-to-one so repeated partial closes are not all discarded', () => {
     const make = (id: string, source: string) => ({
       trade: { id, ticker: 'AAPL', exitDate: '2026-01-10T10:00:00Z', shares: 5 },

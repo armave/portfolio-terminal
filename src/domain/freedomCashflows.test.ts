@@ -168,3 +168,62 @@ describe("Freedom cashflow incremental merge", () => {
     expect(mergeFreedomCashflowRows(existing, [])).toEqual(existing);
   });
 });
+
+describe("Freedom cashflow source reconciliation", () => {
+  it("deduplicates repeated IDs already present in persisted history", () => {
+    const original: NormalizedFreedomCashflow = {
+      id: "freedom-700",
+      date: "2026-11-01",
+      type: "Margin Fee",
+      amount: -1,
+      currency: "USD",
+      description: "Initial fee",
+      raw: { operation_id: "700", revision: "1" }
+    };
+    const correctedPersistedCopy: NormalizedFreedomCashflow = {
+      ...original,
+      amount: -1.5,
+      description: "Corrected fee",
+      raw: { operation_id: "700", revision: "2" }
+    };
+
+    const merged = mergeFreedomCashflowRows([original, correctedPersistedCopy], []);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      id: "freedom-700",
+      amount: -1.5,
+      description: "Corrected fee",
+      raw: { operation_id: "700", revision: "2" }
+    });
+  });
+
+  it("replaces a broker operation's corrected amount while retaining other operation IDs", () => {
+    const original: NormalizedFreedomCashflow = {
+      id: "freedom-701",
+      date: "2026-11-02",
+      type: "Margin Fee",
+      amount: -1.25,
+      currency: "USD",
+      description: "Daily margin fee",
+      raw: { operation_id: "701" }
+    };
+    const correction: NormalizedFreedomCashflow = {
+      ...original,
+      amount: -2.75,
+      raw: { operation_id: "701", corrected: "true" }
+    };
+    const distinct: NormalizedFreedomCashflow = {
+      ...original,
+      id: "freedom-702",
+      amount: -1.25,
+      raw: { operation_id: "702" }
+    };
+
+    const merged = mergeFreedomCashflowRows([original], [correction, distinct]);
+
+    expect(merged).toHaveLength(2);
+    expect(merged.find(row => row.id === "freedom-701")?.amount).toBe(-2.75);
+    expect(merged.find(row => row.id === "freedom-702")?.amount).toBe(-1.25);
+  });
+});

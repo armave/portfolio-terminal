@@ -323,10 +323,17 @@ export function deduplicateClosedHistoryRows<
     const rawDate = record.exitDate ?? record.sellDate ?? record.closedAt ?? record.date;
     const timestamp = typeof rawDate === 'number' ? rawDate : Date.parse(String(rawDate ?? ''));
     const shares = Math.abs(Number(record.shares ?? record.quantity ?? 0));
+    const rawSellPrice = record.sellPrice ?? record.exitPrice ?? record.price;
+    const sellPrice = rawSellPrice === null || rawSellPrice === undefined || rawSellPrice === ''
+      ? NaN : Math.abs(Number(rawSellPrice));
     if (!ticker || !Number.isFinite(timestamp) || !Number.isFinite(shares) || shares <= 0) return null;
     const date = new Date(timestamp);
     const day = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-    return `${ticker}|${day}|${shares.toFixed(6)}`;
+    // A same-day, same-quantity execution is not enough to prove two records
+    // describe the same sale. Compare the available per-share exit price too;
+    // retain the legacy unknown-price fallback only when both sides lack it.
+    const priceKey = Number.isFinite(sellPrice) && sellPrice > 0 ? sellPrice.toFixed(4) : 'unknown';
+    return `${ticker}|${day}|${shares.toFixed(6)}|${priceKey}`;
   };
   const available = new Map<string, number>();
   for (const row of brokerRows) {

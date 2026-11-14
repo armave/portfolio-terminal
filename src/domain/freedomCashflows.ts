@@ -281,16 +281,14 @@ export function mergeFreedomCashflowRows(
   existing: CashflowMergeInput[],
   incoming: CashflowMergeInput[]
 ): NormalizedFreedomCashflow[] {
-  const merged: NormalizedFreedomCashflow[] = existing.map(row => ({
-    ...row,
-    raw: { ...(row.raw || {}) }
-  }));
+  const merged: NormalizedFreedomCashflow[] = [];
   const byId = new Map<string, number>();
-  merged.forEach((row, index) => {
-    if (!byId.has(row.id)) byId.set(row.id, index);
-  });
 
-  for (const row of incoming) {
+  // Normalize every source through the same ID-indexed path. Cloud history,
+  // the local sidecar and the portfolio snapshot can contain overlapping
+  // copies, and duplicate IDs already present in one source must not be counted
+  // twice by the financing allocator.
+  const mergeRow = (row: CashflowMergeInput) => {
     const matchedIndex = byId.get(row.id);
     if (matchedIndex !== undefined) {
       const previous = merged[matchedIndex];
@@ -302,11 +300,18 @@ export function mergeFreedomCashflowRows(
         description: row.description || previous.description,
         raw: { ...(previous.raw || {}), ...(row.raw || {}) }
       };
-    } else {
-      const index = merged.length;
-      merged.push({ ...row, raw: { ...(row.raw || {}) } });
-      byId.set(row.id, index);
+      return;
     }
-  }
+
+    const index = merged.length;
+    merged.push({ ...row, raw: { ...(row.raw || {}) } });
+    byId.set(row.id, index);
+  };
+
+  // Later copies within a source and later sources take precedence. Incoming
+  // broker rows are processed last, so a same-ID broker correction replaces
+  // the persisted amount/date/facts instead of being added to the old row.
+  existing.forEach(mergeRow);
+  incoming.forEach(mergeRow);
   return merged;
 }
