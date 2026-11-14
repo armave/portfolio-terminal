@@ -765,7 +765,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             </table>
           </TableScrollRegion>
           <TablePagination
-            tableLabel="Cash-funded stock holdings"
+            tableLabel={translateText('Cash-funded stock holdings', getAppLanguage())}
             page={cashHoldingsPagination.currentPage}
             pageCount={cashHoldingsPagination.pageCount}
             pageSize={cashHoldingsPagination.pageSize}
