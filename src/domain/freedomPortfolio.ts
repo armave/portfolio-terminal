@@ -67,6 +67,29 @@ export function normalizeActiveTrancheMix(
   return { cash: cashQuantity, margin: totalQuantity - cashQuantity };
 }
 
+/**
+ * Resolve a live edit to one side of a tranche split. The edited side is clamped
+ * to the tranche quantity and the opposite side is always the exact remainder.
+ * Blank or invalid edits retain the previous allocation until a valid value is entered.
+ */
+export function resolveActiveTrancheMixEdit(
+  value: unknown,
+  editedSide: 'cash' | 'margin',
+  totalQuantity: number,
+  allocation?: Partial<ActiveTrancheMix> | null
+): ActiveTrancheMix {
+  const total = Number(totalQuantity);
+  if (!Number.isFinite(total) || total <= 0) return { cash: 0, margin: 0 };
+
+  const current = normalizeActiveTrancheMix(total, allocation);
+  const editedQuantity = resolveActiveTrancheMixInput(value, total, current[editedSide]);
+  const remainingQuantity = total - editedQuantity;
+
+  return editedSide === 'cash'
+    ? { cash: editedQuantity, margin: remainingQuantity }
+    : { cash: remainingQuantity, margin: editedQuantity };
+}
+
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
   balances: Array<{ currency: string; amount: number }>;
