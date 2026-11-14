@@ -492,7 +492,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     let totalCommBuy = 0;
     let totalCommSell = 0;
     let totalMarginCharged = state.realizedMarginCharged || 0;
-    let totalBrokerMarginFees = 0;
     let pricedMarginPositionCount = 0;
     let unpricedMarginPositionCount = 0;
 
@@ -508,7 +507,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         totalMarketValue += pos.shares * marketPrice;
       }
       totalCommBuy += pos.commBuy;
-      totalBrokerMarginFees += Math.max(0, Number(pos.brokerMarginFee) || 0);
       const valSell = pos.shares * pos.pt;
       totalCommSell += calculateCommission(pos.shares, valSell, resolveCommissionConfig(rules));
     });
@@ -546,7 +544,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       totalCommSell
     )} ${translateText('sell', getAppLanguage())})`;
     const marginChargedText = `${formatUSD(totalMarginCharged)}`;
-    const brokerMarginFeeText = formatUSD(totalBrokerMarginFees);
 
     const quoteSummary = summarizeQuoteFreshness(
       tickers.map((ticker) => {
@@ -738,10 +735,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
               <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
             </div>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Open Broker Margin Fees', getAppLanguage())}</span>
-              <span id="boardBrokerMarginFee" class="portfolio-metric-value text-xs sm:text-sm">{brokerMarginFeeText}</span>
-            </div>
           </div>
           <MarginMarketTools isAdmin={isAdmin} />
         </section>
@@ -832,7 +825,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     commSell
   )} ${translateText('sell', getAppLanguage())})`;
   const marginChargedText = `${formatUSD(posMarginCharged)} (${translateText('Position to date', getAppLanguage())})`;
-  const brokerMarginFeeText = formatUSD(Math.max(0, Number(pos.brokerMarginFee) || 0));
   const quoteMetaText = usableMarketPrice === null
     ? translateText('Quote unavailable', getAppLanguage())
     : formatQuoteMetadata(pos, refreshIntervalMs);
@@ -1009,10 +1001,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <div class="portfolio-micro-row">
             <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
             <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-          </div>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Open Broker Margin Fees', getAppLanguage())}</span>
-            <span id="boardBrokerMarginFee" class="portfolio-metric-value text-xs sm:text-sm">{brokerMarginFeeText}</span>
           </div>
         </div>
         <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
