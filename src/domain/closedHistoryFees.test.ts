@@ -238,6 +238,34 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(result.netRealizedGain).toBeNull();
   });
 
+  it('persists source cashflow allocations with recalculated closed-trade fee metadata', () => {
+    const trade = {
+      feesAndCommissions: 3,
+      totalCommissions: 3,
+      marginInterest: 2,
+      marginFee: 2,
+      marginFeeAllocations: { oldFee: 2 },
+      netProfit: 97
+    };
+    const updated = applyCashflowAllocationsToClosedTrades(
+      [trade],
+      new Map([[0, 1.5]]),
+      new Map([[0, { newFeeA: 1, newFeeB: 0.5 }]])
+    )[0];
+    expect(updated).toMatchObject({
+      marginFeeAllocations: { newFeeA: 1, newFeeB: 0.5 },
+      marginFee: 1.5,
+      marginInterest: 1.5,
+      feesAndCommissions: 2.5,
+      netProfit: 97.5
+    });
+    expect(applyCashflowAllocationsToClosedTrades(
+      [updated],
+      new Map([[0, 1.5]]),
+      new Map([[0, { newFeeA: 1, newFeeB: 0.5 }]])
+    )[0]).toBe(updated);
+  });
+
   it('uses the non-zero margin fee when legacy margin fields disagree', () => {
     const trade = { feesAndCommissions: 7, totalCommissions: 7, marginInterest: 0, marginFee: 5, netProfit: 93, netRealizedGain: 93 };
     const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]))[0];

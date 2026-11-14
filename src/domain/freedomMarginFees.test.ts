@@ -27,6 +27,21 @@ describe('Freedom margin fee allocation', () => {
     expect(result.matchedFeeRows).toBe(1);
   });
 
+  it('retains source cashflow IDs for app closed-trade fallback allocations', () => {
+    const result = calculateFreedomMarginFeeAllocations(
+      [fee('app-close', '2026-01-02', -1)],
+      [],
+      [{
+        buyDate: '2026-01-01',
+        sellDate: '2026-01-03',
+        shares: 10,
+        entryPrice: 100
+      }]
+    );
+    expect(result.appAllocations.get(0)).toBe(1);
+    expect(result.appAllocationDetails.get(0)).toEqual({ 'freedom-app-close': 1 });
+  });
+
   it('splits a daily margin fee between a partial close and the still-open buy lot', () => {
     const executions = [
       { id: 'margin-buy', ticker: 'AAPL', side: 'buy', quantity: 10, price: 100, executedAt: '2026-11-01T10:00:00Z' },

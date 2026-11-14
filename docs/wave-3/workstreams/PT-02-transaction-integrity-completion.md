@@ -143,3 +143,19 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 - [x] Validate TypeScript, 2,054 Vitest tests, production build/bundle budget, dead-code validation, dependency audits, Operations Browser Journey and Trade Lifecycle Browser Smoke. Exact runs: [CI](https://github.com/armave/portfolio-terminal/actions/runs/42561609030), [Operations](https://github.com/armave/portfolio-terminal/actions/runs/42561608991), [Trade Lifecycle](https://github.com/armave/portfolio-terminal/actions/runs/42561608981).
 
 **Not closed by this slice:** trade/lot/corporate-action reversal, cost-basis and closed-history replay, full mutation inventory, backup/cloud restore and cross-device/manual broker QA. The portfolio snapshot remains canonical and the additive journal remains evidence/replay support; no ledger cutover is authorized.
+
+
+## Implementation slice 3 — linked Closed History fee corrections
+
+**Client PR:** pending review from branch `feat/pt02-closed-history-fee-audit-2026-11-14`.
+
+- [x] Preserve exact broker cashflow IDs and per-trade allocated amounts in app-owned closed-trade fee metadata.
+- [x] Add a typed immutable `history.correction` payload linked to the original `trade.sell` event, capturing before/after margin fee, aggregate fees, known net P&L and source cashflow allocations.
+- [x] Chain later fee revisions to the prior correction and reject forks or unexpected prior-state changes.
+- [x] Keep corrections history-only: no cash, debt, position, cost-basis or realized-margin deltas.
+- [x] Commit closed-trade fee updates and journal evidence through an explicit PortfolioStore commit boundary.
+- [x] Fail closed for legacy/unlinked sale rows or missing source cashflows; retain prior fee projections and report a non-identifying sync warning.
+- [ ] Exact-head Vitest, typecheck, production build/bundle budget, browser journeys, dead-code and dependency audits.
+- [ ] Authenticated live-account and multi-device restore verification remains open.
+
+The additive event schema remains version 1. Existing events without the optional structured payload remain readable; `PortfolioState.positions` remains canonical. This is a closed-history audit slice, not PT-02 completion or a ledger cutover.

@@ -212,7 +212,8 @@ export function applyCashflowAllocationsToMarginPositions<T extends object>(
 
 export function applyCashflowAllocationsToClosedTrades<T extends object>(
   trades: T[],
-  allocationsByTrade: ReadonlyMap<number, number>
+  allocationsByTrade: ReadonlyMap<number, number>,
+  allocationDetailsByTrade?: ReadonlyMap<number, Record<string, number>>
 ): T[] {
   return trades.map((trade, index) => {
     const record = asFeeRecord(trade) ?? {};
@@ -225,7 +226,16 @@ export function applyCashflowAllocationsToClosedTrades<T extends object>(
       Math.abs(Number(record.marginInterest) || 0),
       Math.abs(Number(record.marginFee) || 0)
     );
-    if (addedFee <= 0 && previousMargin <= 0) return trade;
+    const hasAllocationDetails = allocationDetailsByTrade !== undefined;
+    const marginFeeAllocations = hasAllocationDetails
+      ? Object.fromEntries(Object.entries(allocationDetailsByTrade.get(index) ?? {})
+          .map(([cashflowId, amount]) => [cashflowId, Number(amount.toFixed(2))])
+          .sort(([left], [right]) => String(left).localeCompare(String(right))))
+      : undefined;
+    const previousAllocations = asFeeRecord(record.marginFeeAllocations);
+    const allocationsChanged = hasAllocationDetails &&
+      JSON.stringify(previousAllocations ?? {}) !== JSON.stringify(marginFeeAllocations ?? {});
+    if (addedFee <= 0 && previousMargin <= 0 && !allocationsChanged) return trade;
 
     // Undo the previous cashflow allocation before applying the current one.
     // feesAndCommissions is the aggregate field written by this allocator;
@@ -245,6 +255,7 @@ export function applyCashflowAllocationsToClosedTrades<T extends object>(
       Number(record.totalCommissions ?? fees) === fees &&
       Number(record.marginInterest ?? 0) === addedFee &&
       Number(record.marginFee ?? 0) === addedFee &&
+      (!hasAllocationDetails || JSON.stringify(previousAllocations ?? {}) === JSON.stringify(marginFeeAllocations ?? {})) &&
       (!hasKnownNet || (
         Number(record.netProfit ?? record.netRealizedGain) === netAfterFee &&
         Number(record.netRealizedGain ?? netAfterFee) === netAfterFee
@@ -256,6 +267,7 @@ export function applyCashflowAllocationsToClosedTrades<T extends object>(
       totalCommissions: fees,
       marginInterest: addedFee,
       marginFee: addedFee,
+      ...(hasAllocationDetails ? { marginFeeAllocations } : {}),
       ...(hasKnownNet ? { netProfit: netAfterFee, netRealizedGain: netAfterFee } : {})
     } as T;
   });
