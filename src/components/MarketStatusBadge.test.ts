@@ -171,14 +171,14 @@ describe('US-equities market status presentation', () => {
   });
 
   it('separates the countdown label from its time value for brighter time styling', () => {
-    const now = new Date('2026-11-06T22:00:00.000Z');
+    const now = new Date('2026-11-07T22:00:00.000Z');
     expect(getMarketStatusCountdownParts('CLOSED', now)).toEqual({
       label: 'Premarket in ',
-      time: '2d 11h'
+      time: '1d 11h'
     });
     expect(getEffectiveMarketStatusCountdownParts('CLOSED', now.getTime(), now)).toEqual({
       label: 'Premarket in ',
-      time: '2d 11h'
+      time: '1d 11h'
     });
     const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
     expect(source).toContain('text-slate-100');
