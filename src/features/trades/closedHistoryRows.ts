@@ -65,6 +65,7 @@ export function buildClosedHistoryRows({
         Number.isFinite(attribution.unmatchedQuantity) &&
         attribution.unmatchedQuantity <= 1e-8 &&
         averageBuyPrice !== null &&
+        averageBuyPrice !== undefined &&
         Number.isFinite(averageBuyPrice) &&
         averageBuyPrice > 0 &&
         sellPrice !== null &&
