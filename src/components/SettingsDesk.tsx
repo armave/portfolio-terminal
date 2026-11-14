@@ -117,6 +117,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const [tenantDirectoryOpen, setTenantDirectoryOpen] = useState(false);
+  const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
   const [manualSyncResult, setManualSyncResult] = useState<ManualPortfolioSyncResult | null>(null);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
@@ -311,9 +312,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           {translateText('Settings')}
         </h1>
         <p class="text-xs text-slate-400">
-          {account?.role === 'guest'
-            ? 'Manage your account and mandatory portfolio sync preferences.'
-            : 'Configure broker assumptions, mandatory portfolio synchronization, and account access.'}
+          {translateText('Manage account, data, and application preferences.')}
         </p>
       </div>
 
@@ -347,7 +346,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               </label>}
             </div>
             {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-            <div class={'settings-account-actions grid grid-cols-2 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
+            <div class={'settings-account-actions grid grid-cols-1 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
               <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
             </div>
           </div>
@@ -453,7 +452,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <h2 id="settingsAccessTitle">{translateText('Access management')}</h2>
           <p>{translateText('Manage administrator and guest accounts, roles, and portfolio access.')}</p>
         </div>
-              {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+              <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="settings-user-heading flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
             <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
@@ -497,7 +496,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           />
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
-      </section>}
+      </section>
               {account?.role === 'admin' && <details
         class="settings-subsection"
         open={tenantDirectoryOpen}
@@ -522,10 +521,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <p>{translateText('Check this device and open advanced security maintenance when needed.')}</p>
         </div>
         <DeviceCheckSummary />
-        {account?.role === 'admin' && <details class="settings-subsection settings-maintenance-advanced">
+        {account?.role === 'admin' && <details
+          class="settings-subsection settings-maintenance-advanced"
+          open={advancedMaintenanceOpen}
+          onToggle={(event) => setAdvancedMaintenanceOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary>{translateText('Advanced maintenance')}</summary>
           <div class="pt-3">
-            <MarginDigestSecurityPanel currentUserId={account.id} />
+            {advancedMaintenanceOpen && <MarginDigestSecurityPanel currentUserId={account.id} />}
           </div>
         </details>}
       </section>
@@ -535,7 +538,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <h2 id="settingsBrokerSectionTitle">{translateText('Broker & Trading Model')}</h2>
           <p>{translateText('These assumptions affect modeled financing, margin thresholds, and commissions. Confirm values with your broker.')}</p>
         </div>
-              {permissions.canEditBrokerRules && <details
+              <details
         class="settings-panel settings-broker-rules space-y-3"
         open={brokerRulesOpen}
         onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}
@@ -696,7 +699,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </div>
           </form>
         </div>
-      </details>}
+      </details>
       </section>}
 
       <section id="settings-help-section" class="settings-section" aria-labelledby="settingsHelpTitle">
