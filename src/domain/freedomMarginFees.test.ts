@@ -32,7 +32,6 @@ describe('Freedom margin fee allocation', () => {
       [fee('app-close', '2026-01-02', -1)],
       [],
       [{
-        id: 'app-close-1',
         buyDate: '2026-01-01',
         sellDate: '2026-01-03',
         shares: 10,

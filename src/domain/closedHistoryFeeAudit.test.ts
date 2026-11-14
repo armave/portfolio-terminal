@@ -48,7 +48,7 @@ describe('Closed History fee correction audit', () => {
     });
     expect(correction.positionQuantityDelta).toBeUndefined();
     expect(correction.cashDelta).toBeUndefined();
-    expect(inspectPortfolioTransactionJournalReplayCoverage(result.transactionEvents).find(f => f.eventId === correction.id))
+    expect(inspectPortfolioTransactionJournalReplayCoverage(result.transactionEvents).findings.find(f => f.eventId === correction.id))
       .toMatchObject({ disposition: 'audit-only' });
     expect(verifyClosedHistoryFeeCorrectionParity(result.transactionEvents, result.closedTrades, cashflows).matches).toBe(true);
     expect(Object.isFrozen(correction.historyFeeCorrection?.after.cashflowAllocations)).toBe(true);
