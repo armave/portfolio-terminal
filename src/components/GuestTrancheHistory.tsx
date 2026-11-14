@@ -3,6 +3,8 @@ import type { ActiveBrokerTranche, GuestTrancheLedgerRecord, GuestTrancheLedgerS
 import { filterGuestTrancheLedger, groupGuestTrancheLedgerOperations, summarizeGuestTrancheLedger } from '../domain/guestPortfolio';
 import { formatUSD } from '../utils/formatters';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 interface GuestTrancheHistoryProps {
   records: GuestTrancheLedgerRecord[];
@@ -35,6 +37,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     operationDateTo: toDate ? new Date(toDate + 'T23:59:59.999').getTime() : undefined
   }), [records, tickerFilter, statusFilter, fromDate, toDate]);
   const groupedRecords = useMemo(() => groupGuestTrancheLedgerOperations(filteredRecords), [filteredRecords]);
+  const pagination = useTablePagination('guest-tranche-history', groupedRecords.length, 10);
+  const visibleGroupedRecords = sliceTablePage(groupedRecords, pagination.currentPage, pagination.pageSize);
   const summary = useMemo(
     () => summarizeGuestTrancheLedger(filteredRecords, activeTranches),
     [filteredRecords, activeTranches]
@@ -125,8 +129,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                 <th scope="col" class="px-2 py-2 text-right">Status</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800/70 font-mono">
-              {groupedRecords.map((group) => {
+            <tbody id="guestTrancheHistoryTableBody" class="divide-y divide-slate-800/70 font-mono">
+              {visibleGroupedRecords.map((group) => {
                 const grouped = group.records;
                 const record = grouped[0];
                 const isClosedTrade = record.trancheId.startsWith('closed-trade:');
@@ -194,6 +198,18 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             </tfoot>
           </table>
         </TableScrollRegion>
+        <TablePagination
+          tableLabel="Guest assignment history"
+          page={pagination.currentPage}
+          pageCount={pagination.pageCount}
+          pageSize={pagination.pageSize}
+          start={pagination.start}
+          end={pagination.end}
+          total={groupedRecords.length}
+          onPageChange={pagination.setPage}
+          onPageSizeChange={pagination.setPageSize}
+          controlsId="guestTrancheHistoryTableBody"
+        />
       )}
       <p class="text-[9px] text-slate-600">Value shows current market value for open tranches and sale proceeds for closed trades. Net P&amp;L appears only when the closed trade's net result is available.</p>
     </section>
