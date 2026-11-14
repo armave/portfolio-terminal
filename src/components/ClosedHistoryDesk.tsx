@@ -966,7 +966,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         total={trades.length}
         onPageChange={pagination.setPage}
         onPageSizeChange={pagination.setPageSize}
-        className="pt-2"
+        className="closed-history-pagination pt-2"
+        controlsClassName="closed-history-pagination-controls"
         controlsId="closedTradesTableBody"
       />
     </section>
