@@ -186,7 +186,7 @@ describe('guest Settings layout', () => {
   it('does not mount or load portfolio ownership for guests', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     expect(source).toContain("if (currentUser?.role !== 'admin')");
-    expect(source).toContain("account?.role === 'admin' && (LoadedTenantDirectoryPanel");
+    expect(source).toContain("tenantDirectoryOpen && (LoadedTenantDirectoryPanel");
   });
 });
 
@@ -206,6 +206,6 @@ describe('Settings information architecture', () => {
     }
     expect(source).toContain("translateText('Sync portfolio now')");
     expect(source).toContain("translateText('Last successful cloud sync')");
-    expect(source).toContain("translateText('Technical details')");
+    expect(source).toContain("label('Technical details')");
   });
 });
