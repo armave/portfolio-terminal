@@ -107,6 +107,9 @@ describe('broker rules disclosure state', () => {
     expect(source).toContain('getStopOutValidationMessage(stopOutInput.value, maintenanceInput.value)');
     expect(source).toContain('stopOutInput.setCustomValidity(');
     expect(source).toContain('value={ruleValues.annualRate}');
+    expect(source).toContain('brokerRulesDirty');
+    expect(source).toContain('All broker assumptions saved.');
+    expect(source).toContain('Rollover time (Asia/Yerevan)');
   });
 });
 
