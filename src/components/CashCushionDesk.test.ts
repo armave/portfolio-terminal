@@ -61,7 +61,9 @@ describe('cash/margin mix inputs', () => {
     expect(deskSource).toContain("delete next[tranche.id]");
     expect(deskSource.match(/const value = \(inputEvent\.currentTarget as HTMLInputElement\)\.value;/g)).toHaveLength(2);
     expect(deskSource).toContain("const updateMixInputDraft = (value: string, editedSide: 'cash' | 'margin')");
-    expect(deskSource).toContain("previousIsCurrent ? { cash: previous.cash, margin: previous.margin } : mix");
+    expect(deskSource).toContain("const baseMix = previousIsCurrent");
+    expect(deskSource).toContain("previous.cash, margin: previous.margin");
+    expect(deskSource).toContain("resolveActiveTrancheMixEdit(value, editedSide, tranche.quantity, baseMix)");
     expect(deskSource).toContain("baseCash: previousIsCurrent ? previous.baseCash : mix.cash");
     expect(deskSource).toContain("baseMargin: previousIsCurrent ? previous.baseMargin : mix.margin");
     expect(deskSource).toContain("currentMixInputDraft.editedSide === 'cash'");
