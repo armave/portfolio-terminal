@@ -1074,4 +1074,5 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Stress sensitivity requires valid configured maintenance and stop-out ratios.": "Для сценарного анализа нужны корректные заданные коэффициенты поддерживающей маржи и стоп-аута.",
   "Stress shocks must be finite declines from zero up to, but not including, 100%.": "Сценарные снижения должны быть конечными значениями от 0% до менее чем 100%.",
   "Stress sensitivity exceeds the finite calculation range.": "Результат сценарного анализа выходит за допустимый числовой диапазон.",
+  "Stress sensitivity is unavailable.": "Сценарный анализ недоступен.",
 };

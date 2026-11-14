@@ -139,13 +139,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     );
   }
 
-  const riskStatusClass = isProvisionalEstimate
-    ? 'margin-risk-status elevated'
-    : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
-      ? 'margin-risk-status healthy'
-      : risk.riskLevel === 'Elevated'
-        ? 'margin-risk-status elevated'
-        : 'margin-risk-status danger';
+  const riskStatusClass = risk.riskLevel === 'Margin-call level' || risk.riskLevel === 'Stop-out level'
+    ? 'margin-risk-status danger'
+    : isProvisionalEstimate
+      ? 'margin-risk-status elevated'
+      : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
+        ? 'margin-risk-status healthy'
+        : 'margin-risk-status elevated';
   const stopOutTitle = translateText(
     'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language

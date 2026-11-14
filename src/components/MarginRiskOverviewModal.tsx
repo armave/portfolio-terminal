@@ -121,6 +121,7 @@ export function MarginRiskOverviewModal({
     : riskSnapshot.maintenanceMarginRequirement.source === 'broker' && riskSnapshot.concentrationAddOn.source === 'broker'
       ? 'broker'
       : 'configured-assumption';
+  const stressUnavailableReason = stressResult?.status === 'unavailable' ? stressResult.reason : null;
 
   return createPortal(
     <ModalFrame
@@ -211,7 +212,7 @@ export function MarginRiskOverviewModal({
                   </table>
                 </div>
               ) : (
-                <p class="margin-risk-stress-note">{translateText(stressResult?.reason || 'Stress sensitivity is unavailable.', language)}</p>
+                <p class="margin-risk-stress-note">{translateText(stressUnavailableReason || 'Stress sensitivity is unavailable.', language)}</p>
               )}
               <p class="margin-risk-stress-note">{translateText('This sensitivity is illustrative, not a broker call price or liquidation forecast.', language)}</p>
             </section>

@@ -32,6 +32,7 @@ describe('app localization', () => {
       'Risk level',
       'Uniform declines across tracked long holdings; cash and margin debt stay constant. Uses configured maintenance and stop-out equity ratios; excludes FX changes, short exposure, changing broker requirements and liquidation rules.',
       'This sensitivity is illustrative, not a broker call price or liquidation forecast.',
+      'Stress sensitivity is unavailable.',
       'Stress sensitivity is unavailable while short exposure is present because no broker-specific short-margin model is configured.',
       'Stress sensitivity inputs are invalid.',
       'Stress sensitivity requires valid configured maintenance and stop-out ratios.',
