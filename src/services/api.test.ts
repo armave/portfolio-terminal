@@ -2546,3 +2546,30 @@ describe('encrypted synced margin intelligence digests', () => {
     await expect(loadSyncedMarginDigest(digest.key)).resolves.toBeNull();
   });
 });
+
+
+describe('proxy request-specific timeout', () => {
+  it('honors a longer bounded timeout for Margin Intelligence Gemini requests', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = proxyFetch('gemini', {}, {
+      method: 'POST',
+      body: JSON.stringify({ prompt: 'position review' }),
+      cache: 'no-store',
+      timeoutMs: 40_000
+    });
+    const rejected = expect(request).rejects.toThrow('Request timed out after 40 seconds.');
+    await vi.advanceTimersByTimeAsync(39_999);
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty('timeoutMs');
+  });
+});

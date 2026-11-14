@@ -22,6 +22,8 @@ import {
   type MarginIntelligenceState
 } from './marginIntelligenceState';
 
+export const MARGIN_INTELLIGENCE_GEMINI_TIMEOUT_MS = 40_000;
+
 interface MarginIntelligenceRequestDetail {
   ticker?: string;
   refresh?: boolean;
@@ -59,7 +61,8 @@ async function generateGeminiAnalysis(prompt: string): Promise<string> {
   const response = await proxyFetch('gemini', {}, {
     method: 'POST',
     body: JSON.stringify({ prompt, model: 'gemini-3.8-flash' }),
-    cache: 'no-store'
+    cache: 'no-store',
+    timeoutMs: MARGIN_INTELLIGENCE_GEMINI_TIMEOUT_MS
   });
   const analysis = response?.candidates?.[0]?.content?.parts
     ?.map((part: { text?: string }) => String(part.text || ''))
