@@ -51,11 +51,39 @@ export function buildClosedHistoryRows({
       const commissions = Number(((sellCommission ?? 0) + (buyCommission ?? 0)).toFixed(2));
       const fees = Number(Math.abs(marginFee).toFixed(2));
       const totalFees = Number((commissions + fees).toFixed(2));
-      const profit = broker.profit == null || !commissionsComplete
-        ? null
-        : Number((Number(broker.profit) - totalFees).toFixed(2));
       const ticker = normalizeExecutionTicker(broker.ticker);
       const attribution = trancheAttributions.get(broker);
+      const quantity = Math.abs(Number(broker.quantity ?? 0));
+      const directSellPrice = Number(broker.price);
+      const tradeValue = Math.abs(Number(broker.tradeValue ?? 0));
+      const sellPrice = Number.isFinite(directSellPrice) && directSellPrice > 0
+        ? directSellPrice
+        : tradeValue > 0 && quantity > 0 ? tradeValue / quantity : null;
+      const averageBuyPrice = attribution?.averagePrice;
+      const hasCompleteFifoCostBasis = Boolean(
+        attribution &&
+        Number.isFinite(attribution.unmatchedQuantity) &&
+        attribution.unmatchedQuantity <= 1e-8 &&
+        averageBuyPrice !== null &&
+        Number.isFinite(averageBuyPrice) &&
+        averageBuyPrice > 0 &&
+        sellPrice !== null &&
+        Number.isFinite(sellPrice) &&
+        sellPrice > 0 &&
+        quantity > 0
+      );
+      // Prefer TradeNet's reported gross result. If it is absent, derive gross
+      // P&L only from a complete FIFO match with a known acquisition cost and
+      // a usable sell execution price; never price unmatched shares by guesswork.
+      const fifoGrossProfit = hasCompleteFifoCostBasis
+        ? Number(((sellPrice! - averageBuyPrice!) * quantity).toFixed(2))
+        : null;
+      const grossProfit = broker.profit !== null && broker.profit !== undefined && Number.isFinite(broker.profit)
+        ? broker.profit
+        : fifoGrossProfit;
+      const profit = grossProfit === null || !commissionsComplete
+        ? null
+        : Number((grossProfit - totalFees).toFixed(2));
       const allocationType = attribution?.fundingType || 'unclassified';
       return {
         trade: {
