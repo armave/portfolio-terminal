@@ -1056,7 +1056,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Updated live": "Обновлено в реальном времени",
   'Upper bound: missing commission inputs; actual net P&L may be lower.': 'Верхняя граница: часть комиссий не указана; фактическая чистая прибыль может быть ниже.',
   "Current position and after purchase projection amounts by date.": "Суммы текущей позиции и прогноза после покупки по датам.",
-  "Settings": "Настройки",
   "Settings sections": "Разделы настроек",
   "Account": "Учётная запись",
   "Data & Sync": "Данные и синхронизация",
@@ -1089,4 +1088,9 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Broker & Trading Model": "Модель брокера и торговли",
   "These assumptions affect modeled financing, margin thresholds, and commissions. Confirm values with your broker.": "Эти допущения влияют на расчёт финансирования, маржинальных порогов и комиссий. Сверьте значения с брокером.",
   "Understand how portfolio metrics are calculated and where model limitations apply.": "Узнайте, как рассчитываются показатели портфеля и какие ограничения есть у модели.",
+  "Rollover time (Asia/Yerevan)": "Время ролловера (Asia/Yerevan)",
+  "Unsaved changes": "Не сохранено",
+  "All broker assumptions saved.": "Все допущения брокера сохранены.",
+  "Save to apply these assumptions.": "Сохраните, чтобы применить эти допущения.",
+  "Broker assumptions are saved in this browser.": "Допущения брокера сохранены в этом браузере.",
 };
