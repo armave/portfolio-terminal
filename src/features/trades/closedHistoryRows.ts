@@ -82,9 +82,14 @@ export function buildClosedHistoryRows({
       const grossProfit = broker.profit !== null && broker.profit !== undefined && Number.isFinite(broker.profit)
         ? broker.profit
         : fifoGrossProfit;
-      const profit = grossProfit === null || !commissionsComplete
+      // Known commission/fee components form a lower bound on total costs.
+      // When gross P&L is known but one commission side is missing, expose the
+      // resulting net value as an upper bound rather than hiding it or calling
+      // it exact. The UI and summary keep that distinction explicit.
+      const profit = grossProfit === null
         ? null
         : Number((grossProfit - totalFees).toFixed(2));
+      const profitIsUpperBound = profit !== null && !commissionsComplete;
       const allocationType = attribution?.fundingType || 'unclassified';
       return {
         trade: {
@@ -104,6 +109,7 @@ export function buildClosedHistoryRows({
         source: 'tradenet' as const,
         allocationKey: 'broker:' + String(broker.id ?? ('tradenet-' + index)),
         profit,
+        profitIsUpperBound,
         fees,
         commissions,
         commissionsComplete,
@@ -147,6 +153,8 @@ export function buildClosedHistoryRows({
           ? (Number(oldDuration) * oldQty + Number(newDuration) * newQty) / totalQty
           : oldDuration ?? newDuration;
         previous.profit = oldProfit == null || newProfit == null ? null : oldProfit + newProfit;
+        previous.profitIsUpperBound = previous.profit !== null &&
+          (previous.profitIsUpperBound === true || row.profitIsUpperBound === true);
         previous.fees = (previous.fees || 0) + (row.fees || 0);
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
@@ -225,7 +233,11 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
   averageHoldingDays: number | null;
   winRate: number;
 } {
-  const profitKnownTrades = trades.filter((row) => row.profit !== null);
+  // Bounded results are useful per-row, but are not exact realized P&L and
+  // must not enter the Known Net P&L or win-rate denominator.
+  const profitKnownTrades = trades.filter((row) =>
+    row.profit !== null && row.profitIsUpperBound !== true
+  );
   const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
   const knownDurations = trades
     .map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld))
