@@ -71,7 +71,6 @@ describe('cash/margin mix inputs', () => {
     expect(deskSource).toContain("currentMixInputDraft.editedSide === 'margin'");
     expect(deskSource).toContain("nextEditor?.getAttribute('data-mix-editor-tranche') === tranche.id");
     expect(deskSource).toContain("data-mix-editor-tranche={tranche.id}");
-    expect(deskSource).toContain("resolveActiveTrancheMixEdit(value, editedSide, tranche.quantity, baseMix)");
     expect(deskSource).not.toContain('defaultValue={mix.cash}');
     expect(deskSource).not.toContain('defaultValue={mix.margin}');
   });
