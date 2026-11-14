@@ -157,6 +157,20 @@ describe('guest holding valuation', () => {
       currentPrice: 110, price: 110, marketValue: 110
     }])).toBe(0);
   });
+
+  it('keeps overflowed market value and cost basis unavailable', async () => {
+    const { getGuestHoldingValuation } = await import('./guestPortfolio');
+    const result = getGuestHoldingValuation({
+      shares: 1e308,
+      averagePrice: 1e308,
+      currentPrice: 1e308,
+      price: 1e308
+    });
+    expect(result.marketValue).toBeNull();
+    expect(result.costBasis).toBeNull();
+    expect(result.unrealizedPnl).toBeNull();
+    expect(result.unrealizedPnlPercent).toBeNull();
+  });
 });
 
 
