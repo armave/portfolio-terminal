@@ -218,6 +218,25 @@ describe('portfolio sync runtime bindings', () => {
     );
   });
 
+  it('marks a guest refresh with source failures as failed while preserving its previous success time', async () => {
+    const dependencies = createDependencies({
+      getAccountRole: () => 'guest',
+      refreshQuotes: vi.fn(async () => false)
+    });
+    const resolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve });
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(resolve.mock.calls[0][0]).toMatchObject({
+      role: 'guest', guestSnapshot: true, quotes: false, success: false
+    });
+    expect(dependencies.setSyncStatus).toHaveBeenLastCalledWith({
+      status: 'error', text: 'Assigned data refresh failed'
+    });
+  });
+
   it('does not run sync operations when no account role is active', async () => {
     const dependencies = createDependencies({ getAccountRole: () => null });
     const resolve = vi.fn();

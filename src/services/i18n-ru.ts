@@ -1122,4 +1122,11 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Stress shocks must be finite declines from zero up to, but not including, 100%.": "Сценарные снижения должны быть конечными значениями от 0% до менее чем 100%.",
   "Stress sensitivity exceeds the finite calculation range.": "Результат сценарного анализа выходит за допустимый числовой диапазон.",
   "Stress sensitivity is unavailable.": "Сценарный анализ недоступен.",
+
+  "Assigned data synchronization": "Синхронизация назначенных данных",
+  "Assigned data refresh confirmed": "Обновление назначенных данных подтверждено",
+  "Assigned data refresh in progress": "Выполняется обновление назначенных данных",
+  "Assigned data refresh failed": "Не удалось обновить назначенные данные",
+  "Assigned data refresh status not checked": "Статус обновления назначенных данных не проверен",
+  "Last successful assigned-data refresh": "Последнее успешное обновление назначенных данных",
 };

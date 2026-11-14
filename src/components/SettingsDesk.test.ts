@@ -208,5 +208,6 @@ describe('Settings information architecture', () => {
     expect(source).toContain("translateText('Last successful cloud sync')");
     expect(source).toContain("'Assigned data refresh confirmed'");
     expect(source).toContain("'Last successful assigned-data refresh'");
+    expect(source).toContain("account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization'");
   });
 });

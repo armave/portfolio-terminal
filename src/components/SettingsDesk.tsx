@@ -406,7 +406,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
             </p>
             <div class="settings-sync-status flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2" role="status" aria-live="polite">
-              <span class="text-[11px] font-semibold text-slate-300">{translateText('Cloud synchronization')}</span>
+              <span class="text-[11px] font-semibold text-slate-300">{translateText(account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization')}</span>
               <span class={cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
                 {translateText(account?.role === 'guest'
                   ? cloudSyncStatus.status === 'synced' ? 'Assigned data refresh confirmed' : cloudSyncStatus.status === 'syncing' ? 'Assigned data refresh in progress' : cloudSyncStatus.status === 'error' ? 'Assigned data refresh failed' : 'Assigned data refresh status not checked'

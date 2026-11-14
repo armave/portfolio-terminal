@@ -44,6 +44,20 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes guest assigned-data refresh status in Russian', () => {
+    const guestSyncCopy = [
+      'Assigned data synchronization',
+      'Assigned data refresh confirmed',
+      'Assigned data refresh in progress',
+      'Assigned data refresh failed',
+      'Assigned data refresh status not checked',
+      'Last successful assigned-data refresh'
+    ];
+    for (const copy of guestSyncCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('keeps authentication modal copy localized in Russian', () => {
     const authenticationCopy = [
       'Create administrator account',
