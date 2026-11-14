@@ -7,13 +7,13 @@ interface TradeNetWorkerEnv {
     FREEDOM_PRIVATE_KEY?: string;
 }
 
-export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
+export type TradeNetReadCommand = "getPositionJson" | "getOPQ" | "getTradingLimits" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
 
 export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
-    if (!["getPositionJson", "getTradesHistory", "getStockQuotesJson", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
+    if (!["getPositionJson", "getOPQ", "getTradingLimits", "getTradesHistory", "getStockQuotesJson", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
         throw new Error("Unsupported read-only TradeNet command.");
     }
 
@@ -57,26 +57,28 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     });
 
     const data = await response.json().catch(() => null);
-    if (!response.ok) {
-        // Do not return upstream response bodies, which may contain account details.
-        throw new Error(`TradeNet returned HTTP ${response.status}.`);
-    }
-    if (!data || typeof data !== "object") {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+        if (!response.ok) throw new Error(`TradeNet returned HTTP ${response.status}.`);
         throw new Error("TradeNet returned a non-JSON response.");
     }
-    // TradeNet often returns application-level errors with HTTP 200. Surface only
-    // a short, sanitized message so we can diagnose auth/signature/permission issues
-    // without logging or returning the full broker payload.
+
+    // Keep only the provider's short error text, never the raw error body. This
+    // makes HTTP validation failures actionable without exposing account data.
     const errorValue = data.errMsg ?? data.error ?? data.message;
-    if (errorValue) {
-        const upstreamMessage = typeof errorValue === "string"
-            ? errorValue
-            : "TradeNet returned an application-level error.";
-        const safeMessage = upstreamMessage
+    const safeProviderMessage = typeof errorValue === "string"
+        ? errorValue
             .replace(/(public|private)?\s*key\s*[:=]\s*\S+/gi, "$1 key=[redacted]")
-            .replace(/(token|signature|sid|password)\s*[:=]\s*\S+/gi, "$1=[redacted]")
-            .slice(0, 240);
-        throw new Error(`TradeNet API error: ${safeMessage}`);
+            .replace(/(password|private[_-]?key|public[_-]?key|secret|token|signature|sid|login|account[_-]?id|user[_-]?id)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+            .trim()
+            .slice(0, 180)
+        : null;
+
+    if (!response.ok) {
+        throw new Error(`TradeNet returned HTTP ${response.status}${safeProviderMessage ? `: ${safeProviderMessage}` : ""}.`);
+    }
+    if (errorValue) {
+        throw new Error(`TradeNet API error: ${safeProviderMessage || "Provider rejected the request."}`);
     }
     return data;
 }

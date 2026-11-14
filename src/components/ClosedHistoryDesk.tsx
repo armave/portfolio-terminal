@@ -843,7 +843,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               </tr>
             ) : (
               visibleTrades.map((row) => {
-                const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
+                const { trade, index, source, profit: rowProfit, profitIsUpperBound, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
                 const allocationType = row.allocationType || 'margin';
                 const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
                 const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
@@ -926,6 +926,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
 
                 const isPositive = (netProfit ?? 0) >= 0;
                 const sign = isPositive ? '+' : '-';
+                const profitTextPrefix = profitIsUpperBound === true ? '≤ ' : '';
 
                 return (
                     <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
@@ -982,10 +983,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                       {commissionsComplete === false ? '≥' : ''}${formatUSD(Number(rowCommissions ?? 0))}
                     </td>
                     <td
-                      class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'
+                      class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}
+                      title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
                     >
-                      {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
+                      {netProfit === null ? "—" : profitTextPrefix + sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
                     </tr>
                 );

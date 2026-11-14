@@ -1050,5 +1050,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Enter positive shares, purchase price and projected target price to calculate this scenario.": "Для расчёта сценария укажите положительное количество акций, цену покупки и целевую цену прогноза.",
   "Scenario summary": "Сводка сценария",
   "Updated live": "Обновлено в реальном времени",
+  'Upper bound: missing commission inputs; actual net P&L may be lower.': 'Верхняя граница: часть комиссий не указана; фактическая чистая прибыль может быть ниже.',
   "Current position and after purchase projection amounts by date.": "Суммы текущей позиции и прогноза после покупки по датам.",
 };

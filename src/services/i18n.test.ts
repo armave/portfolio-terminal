@@ -782,4 +782,13 @@ describe('app localization', () => {
   });
 
 
+
+  it('localizes the bounded Closed History net P&L explanation in Russian', () => {
+    expect(translateText(
+      'Upper bound: missing commission inputs; actual net P&L may be lower.',
+      'ru'
+    )).toBe('Верхняя граница: часть комиссий не указана; фактическая чистая прибыль может быть ниже.');
+  });
+
+
 });

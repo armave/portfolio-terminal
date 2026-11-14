@@ -805,18 +805,40 @@ export function normalizeFreedomUsMarketPhase(value) {
 
 /**
  * Resolve one compact US-equities phase from the public markets event.
- * Prefer FIX (the combined US market); if absent, use Nasdaq then NYSE.
- * Provider-specific raw labels never leave the Worker.
+ * Prefer FIX (the combined US market); if absent, compare Nasdaq and NYSE and
+ * report MIXED when their normalized states disagree rather than choosing one.
+ * Preserve only the documented schedule/time fields; provider payloads stay bounded.
  */
 export function selectFreedomUsMarketStatus(eventSummary) {
     const rows = Array.isArray(eventSummary?.marketPreview) ? eventSummary.marketPreview : [];
     const normalizedCode = value => String(value || "").trim().toUpperCase();
+    const safeValue = value => typeof value === "string"
+        ? value.slice(0, 64)
+        : typeof value === "number" && Number.isFinite(value) ? value : null;
+    const toMarket = row => ({
+        name: safeValue(row?.n),
+        code: safeValue(row?.n2),
+        providerStatus: safeValue(row?.s),
+        openTime: safeValue(row?.o),
+        closeTime: safeValue(row?.c),
+        timezoneOffset: safeValue(row?.dt)
+    });
+    const providerTime = typeof eventSummary?.serverTime === "string"
+        ? eventSummary.serverTime.slice(0, 40)
+        : null;
     const fixRow = rows.find(row =>
         normalizedCode(row?.n2) === "FIX" || normalizedCode(row?.n) === "FIX"
     );
     const fixStatus = normalizeFreedomUsMarketPhase(fixRow?.s);
     if (fixStatus) {
-        return { market: "US equities", code: "FIX", status: fixStatus, source: "FIX" };
+        return {
+            market: "US equities",
+            code: "FIX",
+            status: fixStatus,
+            source: "FIX",
+            ...toMarket(fixRow),
+            providerTime
+        };
     }
 
     const usRows = rows.filter(row => {
@@ -824,17 +846,37 @@ export function selectFreedomUsMarketStatus(eventSummary) {
         const code = normalizedCode(row?.n2);
         return name === "NASDAQ" || name === "NYSE" || code === "NASDAQ" || code === "NYSE";
     });
-    const preferredRows = [
-        usRows.find(row => normalizedCode(row?.n2) === "NASDAQ" || normalizedCode(row?.n) === "NASDAQ"),
-        usRows.find(row => normalizedCode(row?.n2) === "NYSE" || normalizedCode(row?.n) === "NYSE")
-    ].filter(Boolean);
-    for (const row of preferredRows) {
-        const status = normalizeFreedomUsMarketPhase(row?.s);
-        if (status) {
-            return { market: "US equities", code: "US", status, source: "US_EXCHANGES" };
-        }
+    const nasdaq = usRows.find(row => normalizedCode(row?.n2) === "NASDAQ" || normalizedCode(row?.n) === "NASDAQ");
+    const nyse = usRows.find(row => normalizedCode(row?.n2) === "NYSE" || normalizedCode(row?.n) === "NYSE");
+    const nasdaqStatus = normalizeFreedomUsMarketPhase(nasdaq?.s);
+    const nyseStatus = normalizeFreedomUsMarketPhase(nyse?.s);
+    if (nasdaqStatus && nyseStatus && nasdaqStatus !== nyseStatus) {
+        return {
+            market: "US equities",
+            code: "US",
+            status: "MIXED",
+            source: "US_EXCHANGES",
+            name: "NASDAQ / NYSE",
+            providerStatus: "MIXED",
+            openTime: null,
+            closeTime: null,
+            timezoneOffset: null,
+            providerTime,
+            exchanges: [toMarket(nasdaq), toMarket(nyse)]
+        };
     }
-    return null;
+    const selectedRow = nasdaqStatus ? nasdaq : nyseStatus ? nyse : null;
+    const selectedStatus = nasdaqStatus || nyseStatus;
+    if (!selectedRow || !selectedStatus) return null;
+    return {
+        market: "US equities",
+        ...toMarket(selectedRow),
+        code: "US",
+        status: selectedStatus,
+        source: "US_EXCHANGES",
+        providerTime,
+        exchanges: [nasdaq, nyse].filter(Boolean).map(toMarket)
+    };
 }
 
 function summarizeFreedomStreamEvent(eventName, payload) {
@@ -1293,8 +1335,9 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
 }
 
 export function sanitizeFreedomPositions(response) {
-    // The upstream API response can be wrapped differently depending on the
-    // TradeNet gateway/version. Accept only known position-envelope variants.
+    // A portfolio snapshot is a single atomic account+positions envelope.
+    // Missing one array is not an empty array: reject it so callers retain the
+    // last known-good snapshot rather than accidentally clearing exposure.
     const candidates = [
         response?.data?.result?.ps,
         response?.result?.ps,
@@ -1304,39 +1347,74 @@ export function sanitizeFreedomPositions(response) {
         response?.result
     ];
     const ps = candidates.find(value => value && typeof value === "object"
-        && (Array.isArray(value.acc) || Array.isArray(value.pos)));
+        && Array.isArray(value.acc) && Array.isArray(value.pos));
     const loaded = ps?.loaded === true || ps?.loaded === 1 || ps?.loaded === "1" || ps?.loaded === "true";
     if (!ps || (ps.loaded !== undefined && ps.loaded !== null && !loaded)) {
-        throw new Error("TradeNet returned an invalid or unloaded positions response.");
+        throw new Error("TradeNet returned an invalid or unloaded portfolio snapshot.");
     }
-    const usdRows = (rows) => Array.isArray(rows)
-        ? rows.filter(row => String(row?.curr ?? row?.base_currency ?? "").toUpperCase() === "USD")
-        : [];
+
     const numberOrNull = value => {
-        if (value === null || value === undefined || value === "") return null;
+        if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
         const number = Number(value);
         return Number.isFinite(number) ? number : null;
     };
-    const acc = usdRows(ps.acc).map(row => ({
-        curr: "USD",
-        s: numberOrNull(row.s),
-        currval: numberOrNull(row.currval),
-        forecast_in: numberOrNull(row.forecast_in) ?? 0,
-        forecast_out: numberOrNull(row.forecast_out) ?? 0,
-        t2_in: numberOrNull(row.t2_in) ?? 0,
-        t2_out: numberOrNull(row.t2_out) ?? 0
-    }));
-    const pos = usdRows(ps.pos).map(row => ({
-        i: String(row.i ?? row.base_contract_code ?? ""),
-        name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument"),
-        q: numberOrNull(row.q) ?? 0,
-        curr: "USD",
-        mkt_price: numberOrNull(row.mkt_price),
-        market_value: numberOrNull(row.market_value),
-        bal_price_a: numberOrNull(row.bal_price_a),
-        profit_close: numberOrNull(row.profit_close),
-        acc_pos_id: numberOrNull(row.acc_pos_id)
-    })).filter(row => row.i);
+    const usdRows = rows => rows.filter(row =>
+        row && typeof row === "object" && !Array.isArray(row) &&
+        String(row.curr ?? row.base_currency ?? "").toUpperCase() === "USD"
+    );
+
+    const acc = usdRows(ps.acc).map(row => {
+        const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
+        if (amount === null) {
+            throw new Error("TradeNet returned a USD account row without a valid balance amount.");
+        }
+        return {
+            curr: "USD",
+            s: amount,
+            currval: numberOrNull(row.currval),
+            forecast_in: numberOrNull(row.forecast_in) ?? 0,
+            forecast_out: numberOrNull(row.forecast_out) ?? 0,
+            t2_in: numberOrNull(row.t2_in) ?? 0,
+            t2_out: numberOrNull(row.t2_out) ?? 0
+        };
+    });
+
+    const pos = usdRows(ps.pos).map(row => {
+        const quantity = numberOrNull(row.q);
+        if (quantity === null) {
+            throw new Error("TradeNet returned a USD position without a valid signed quantity.");
+        }
+        const ticker = String(row.i ?? row.base_contract_code ?? "").trim();
+        if (!ticker) {
+            throw new Error("TradeNet returned a USD position without an instrument ticker.");
+        }
+        const instrumentId = row.instr_id === undefined || row.instr_id === null
+            ? null
+            : String(row.instr_id).slice(0, 120);
+        const issueNumber = row.issue_nb === undefined || row.issue_nb === null
+            ? null
+            : String(row.issue_nb).slice(0, 120);
+        const type = typeof row.t === "string" || typeof row.t === "number" ? row.t : null;
+        const kind = typeof row.k === "string" || typeof row.k === "number" ? row.k : null;
+        return {
+            i: ticker.slice(0, 40),
+            name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument").slice(0, 160),
+            q: quantity,
+            curr: "USD",
+            mkt_price: numberOrNull(row.mkt_price),
+            market_value: numberOrNull(row.market_value),
+            bal_price_a: numberOrNull(row.bal_price_a),
+            profit_close: numberOrNull(row.profit_close),
+            acc_pos_id: numberOrNull(row.acc_pos_id),
+            instr_id: instrumentId,
+            issue_nb: issueNumber,
+            t: type,
+            k: kind,
+            go: numberOrNull(row.go),
+            vm: numberOrNull(row.vm)
+        };
+    });
+
     return {
         data: {
             result: {
@@ -2154,6 +2232,9 @@ export default {
                 }), { headers: corsHeaders });
             }
 
+            // Standalone raw getOPQ and experimental getTradingLimits diagnostics are intentionally
+            // not exposed as Worker actions. Account portfolio data remains available through the
+            // validated WebSocket snapshot and bounded getPositionJson fallback.
             // Read-only market data. Commands are fixed server-side; callers cannot submit
             // arbitrary TradeNet commands or access trading operations.
             if (["freedom-quote", "freedom-news", "freedom-history"].includes(action)) {

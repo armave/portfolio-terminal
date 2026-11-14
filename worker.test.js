@@ -493,31 +493,63 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(body).toMatchObject({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' }
+      marketStatus: {
+        market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX',
+        name: 'US Equities', providerStatus: 'OPEN',
+        openTime: '09:30:00', closeTime: '16:00:00',
+        timezoneOffset: null, providerTime: '2026-11-03 09:00:00'
+      }
     });
     expect(body).not.toHaveProperty('markets');
     expect(body).not.toHaveProperty('marketPreview');
     expect(body).not.toHaveProperty('diagnostics');
     expect(body).not.toHaveProperty('serverTime');
+    expect(body.marketStatus).not.toHaveProperty('sid');
+    expect(body.marketStatus).not.toHaveProperty('account');
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('combines separate Nasdaq and NYSE states without publishing the market list', async () => {
+  it('reports MIXED when Nasdaq and NYSE publish different states instead of selecting one exchange', async () => {
     const { response } = await runEventDiagnostic('markets', {
       t: '2026-11-03 09:00:00',
       m: [
-        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN' },
-        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE' },
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
+        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
         { n: 'LSE', n2: 'LSE', s: 'OPEN' }
       ]
     }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.marketStatus).toEqual({
-      market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES'
+    expect(body.marketStatus).toMatchObject({
+      market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES',
+      name: 'NASDAQ / NYSE', providerStatus: 'MIXED',
+      providerTime: '2026-11-03 09:00:00',
+      exchanges: [
+        { name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' },
+        { name: 'NYSE', code: 'NYSE', providerStatus: 'CLOSE', openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: '+03:00' }
+      ]
     });
-    expect(Object.keys(body)).toEqual(['ok', 'provider', 'marketStatus', 'updatedAt']);
+    expect(JSON.stringify(body)).not.toContain('LSE');
+    expect(body).not.toHaveProperty('markets');
+    expect(body).not.toHaveProperty('marketPreview');
+    expect(body).not.toHaveProperty('diagnostics');
+  });
+
+  it('preserves schedule metadata when the two US exchanges agree', () => {
+    const status = selectFreedomUsMarketStatus({
+      serverTime: '2026-11-03 09:00:00',
+      marketPreview: [
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' },
+        { n: 'NYSE', n2: 'NYSE', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '+03:00' }
+      ]
+    });
+    expect(status).toMatchObject({
+      status: 'MARKET', source: 'US_EXCHANGES',
+      name: 'NASDAQ', providerStatus: 'OPEN',
+      openTime: '09:30:00', closeTime: '16:00:00',
+      timezoneOffset: '+03:00', providerTime: '2026-11-03 09:00:00'
+    });
   });
 
   it.each([
@@ -938,11 +970,37 @@ describe('sanitizeFreedomPositions', () => {
     expect(result.data.result.ps.pos).toEqual([{
       i: 'GOOGL.US', name: 'Alphabet', q: 81, curr: 'USD',
       mkt_price: 321.09, market_value: 26001,
-      bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060
+      bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060,
+      instr_id: '123', issue_nb: 'secret', t: null, k: null, go: null, vm: null
     }]);
     expect(JSON.stringify(result)).not.toContain('private-account-key');
-    expect(JSON.stringify(result)).not.toContain('instr_id');
-    expect(JSON.stringify(result)).not.toContain('issue_nb');
+    expect(JSON.stringify(result)).not.toContain('sql_exec_tm');
+    expect(JSON.stringify(result)).not.toContain('secret:');
+  });
+
+  it('preserves signed short quantities and the documented position margin/instrument metadata', () => {
+    const result = sanitizeFreedomPositions({
+      data: { result: { ps: {
+        loaded: true, acc: [],
+        pos: [{
+          i: 'TSLA.US', q: -3, curr: 'USD', instr_id: 'instrument-2',
+          issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+        }]
+      } } }
+    });
+    expect(result.data.result.ps.pos[0]).toMatchObject({
+      i: 'TSLA.US', q: -3, instr_id: 'instrument-2',
+      issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+    });
+  });
+
+  it.each([
+    ['missing acc array', { result: { ps: { loaded: true, pos: [] } } }],
+    ['missing pos array', { result: { ps: { loaded: true, acc: [] } } }],
+    ['malformed q', { result: { ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD', q: true }] } } }],
+    ['missing q', { result: { ps: { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD' }] } } }]
+  ])('rejects incomplete portfolio payloads (%s) instead of fabricating zero exposure', (_label, input) => {
+    expect(() => sanitizeFreedomPositions(input)).toThrow();
   });
 
   it.each([
@@ -1853,6 +1911,63 @@ describe("Margin Intelligence encryption migration Worker boundary", () => {
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
       "/api/auth/verify"
     ]);
+  });
+});
+
+describe('PortfolioStateDO TradeNet portfolio stream sanitization', () => {
+  function makeStore() {
+    const values = new Map();
+    const storage = {
+      get: async key => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async key => values.delete(key),
+      list: async () => new Map(),
+      transaction: async callback => callback({
+        get: async key => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async key => values.delete(key)
+      })
+    };
+    return new PortfolioStateDO({ storage }, {
+      PORTFOLIO_KV: { get: async () => null }
+    });
+  }
+
+  it('accepts a valid empty account and positions snapshot', () => {
+    const store = makeStore();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true, acc: [], pos: []
+    })).toEqual({ data: { result: { ps: { loaded: true, acc: [], pos: [] } } } });
+  });
+
+  it('preserves negative q and documented position margin/instrument fields', () => {
+    const store = makeStore();
+    const result = store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true, acc: [],
+      pos: [{
+        i: 'TSLA.US', q: -3, curr: 'USD', instr_id: 'instrument-2',
+        issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+      }]
+    });
+    expect(result.data.result.ps.pos[0]).toMatchObject({
+      i: 'TSLA.US', q: -3, instr_id: 'instrument-2',
+      issue_nb: 'US88160R1014', t: 'stock', k: 'equity', go: 120, vm: -12
+    });
+  });
+
+  it.each([
+    ['missing quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD' }] }],
+    ['malformed quantity', { loaded: true, acc: [], pos: [{ i: 'AAPL.US', curr: 'USD', q: true }] }],
+    ['missing ticker', { loaded: true, acc: [], pos: [{ curr: 'USD', q: 3 }] }]
+  ])('rejects %s rather than treating it as an empty or zero position', (_label, payload) => {
+    const store = makeStore();
+    expect(() => store.sanitizeFreedomPortfolioStreamPayload(payload)).toThrow();
+  });
+
+  it('returns null for an unloaded or incomplete stream envelope', () => {
+    const store = makeStore();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: false, acc: [], pos: [] })).toBeNull();
+    expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: true, acc: [] })).toBeNull();
   });
 });
 
@@ -3216,6 +3331,8 @@ describe('guest data isolation at the Worker boundary', () => {
     const cashflowsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', { headers }), env);
     const portfolioEventResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }), env);
     const marketDepthResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL', { headers }), env);
+    const opqResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-opq', { headers }), env);
+    const limitsProbeResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trading-limits-probe&instrumentId=40000019798', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
@@ -3226,7 +3343,9 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(cashflowsResponse.status).toBe(403);
     expect(portfolioEventResponse.status).toBe(403);
     expect(marketDepthResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(9);
+    expect(opqResponse.status).toBe(400);
+    expect(limitsProbeResponse.status).toBe(400);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(11);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
@@ -3440,10 +3559,22 @@ describe('guest data isolation at the Worker boundary', () => {
       'https://worker.test/?action=freedom-market-status&event=markets', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(marketsResponse.status).toBe(200);
-    await expect(marketsResponse.json()).resolves.toMatchObject({
+    const marketBody = await marketsResponse.json();
+    expect(marketBody).toMatchObject({
       ok: true,
-      marketStatus: { market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES' }
+      marketStatus: {
+        market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES',
+        name: 'NASDAQ', providerStatus: 'OPEN',
+        openTime: '09:30:00', closeTime: '16:00:00',
+        timezoneOffset: -420, providerTime: '2026-11-03T10:00:00',
+        exchanges: [{
+          name: 'NASDAQ', code: 'NASDAQ', providerStatus: 'OPEN',
+          openTime: '09:30:00', closeTime: '16:00:00', timezoneOffset: -420
+        }]
+      }
     });
+    expect(JSON.stringify(marketBody)).not.toContain('s'.repeat(48));
+    expect(marketBody).not.toHaveProperty('serverTime');
 
     const diagnosticResponse = await worker.fetch(new Request(
       'https://worker.test/?action=freedom-event-stream&event=markets', { headers }
@@ -3454,11 +3585,16 @@ describe('guest data isolation at the Worker boundary', () => {
       'https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(portfolioResponse.status).toBe(403);
+
+    const limitsProbeResponse = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-trading-limits-probe', { headers }
+    ), { PORTFOLIO_STATE_DO: namespace });
+    expect(limitsProbeResponse.status).toBe(400);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(stateStub.fetch.mock.calls.filter(([request]) => {
       const requestUrl = typeof request === 'string' ? request : request.url;
       return new URL(requestUrl).pathname === '/api/auth/verify';
-    })).toHaveLength(3);
+    })).toHaveLength(4);
   });
 
   it('routes the guest endpoint without exposing the shared-state route', async () => {
