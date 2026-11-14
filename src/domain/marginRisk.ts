@@ -420,7 +420,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
 }
 
 /** Compatibility result for older summary callers; new code should use calculateMarginRiskSnapshot. */
-export interface MarginRiskStressScenario {
+interface MarginRiskStressScenario {
   declinePct: number;
   assets: number;
   equity: number;
