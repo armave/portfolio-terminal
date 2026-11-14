@@ -374,7 +374,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Mkt Val.': 'Рыночная стоимость',
   'P/L': 'Прибыль/убыток',
   'Eq. Alloc': 'Доля капитала',
-  'Open purchases from Freedom trade history · new operations default to Cash': 'Открытые покупки из истории сделок Freedom · новые операции по умолчанию относятся к денежным средствам',
+  'Open purchases from Freedom trade history · new operations default to Margin': 'Открытые покупки из истории сделок Freedom · новые операции по умолчанию относятся к марже',
   'Purchase date': 'Дата покупки',
   'Avg. Cost': 'Средняя стоимость',
   'Value': 'Стоимость',
