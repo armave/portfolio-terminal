@@ -128,7 +128,8 @@ describe('broker closed-history source reconciliation', () => {
         id: 'app-group-duplicate',
         ticker: 'AAPL',
         shares: 5,
-        exitDate: '2026-11-13T10:20:00.000Z'
+        exitDate: '2026-11-13T10:20:00.000Z',
+        sellPrice: 120.6
       },
       index: 0,
       source: 'app',
