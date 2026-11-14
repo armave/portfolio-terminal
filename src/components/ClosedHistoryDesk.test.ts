@@ -40,7 +40,8 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('summarizeClosedHistoryRows(trades)');
     const model = readFileSync(new URL('../features/trades/closedHistoryRows.ts', import.meta.url), 'utf8');
     expect(model).toContain('time - previousTime <= 60 * 60 * 1000');
-    expect(model).toContain('deduplicateClosedHistoryRows(appTrades, groupedBrokerRows)');
+    expect(model).toContain('deduplicateClosedHistoryRows(appTrades, brokerRows)');
+    expect(model).toContain('deduplicateClosedHistoryRows(appTradesWithoutFillDuplicates, groupedBrokerRows)');
     expect(model).toContain('resolveClosedTradeAllocation(');
   });
 
