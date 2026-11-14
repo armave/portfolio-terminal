@@ -849,6 +849,12 @@ try {
   await page.getByRole('button', { name: /BALANCE/ }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
+  const marginTypeButton = aaplRow.locator('button[aria-pressed="true"]').filter({ hasText: 'Margin' });
+  await marginTypeButton.waitFor({ state: 'visible', timeout: 20_000 });
+  if (await aaplRow.locator('select').count() !== 0) {
+    throw new Error('A new unclassified AAPL tranche must default to Margin and must not expose a cash-funded guest assignment.');
+  }
+  await aaplRow.getByRole('button', { name: 'Cash', exact: true }).click();
   const guestAssignment = aaplRow.locator('select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
   await waitForCondition(
