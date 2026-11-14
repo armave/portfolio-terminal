@@ -989,10 +989,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
             {translateText('Volume', getAppLanguage())} {volume ?? '—'}
           </span>
-          <QuoteProvenanceList holdings={[
-            { ...pos, kind: 'Margin position' },
-            ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
-          ]} />
         </div>
         <div class="portfolio-micro-column portfolio-micro-costs">
           <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
