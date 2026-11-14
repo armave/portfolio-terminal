@@ -598,6 +598,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             })}
           </div>
         ) : (
+          <>
           <TableScrollRegion label="Cash-funded stock holdings" className="table-scroll-wrapper">
             <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
               <caption class="sr-only">Cash-funded stock holdings</caption>
