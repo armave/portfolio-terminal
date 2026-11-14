@@ -559,18 +559,21 @@ describe('transaction journal replay coverage inspection', () => {
     ]);
 
     expect(report).toMatchObject({
-      status: 'complete',
+      status: 'incomplete',
       eventCount: 5,
       replayableCount: 2,
       evidenceOnlyCount: 2,
-      auditOnlyCount: 1,
-      issues: []
+      auditOnlyCount: 0,
+      issues: [expect.objectContaining({
+        eventId: 'coverage-history-correction',
+        disposition: 'incomplete'
+      })]
     });
     expect(report.findings.map(({ disposition }) => disposition)).toEqual([
       'replayable',
       'evidence-only',
       'evidence-only',
-      'audit-only',
+      'incomplete',
       'replayable'
     ]);
   });

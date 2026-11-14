@@ -1,7 +1,9 @@
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 export interface CloudStateSecurityDependencies {
   workerProxyUrl: string;
   getStoredGatewaySecret: () => string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
 }
 
 export interface CloudStateSecurity {
@@ -50,19 +52,33 @@ export function createCloudStateSecurity(
     if (!activeSecretGetter) return sessionToken;
     if (!cloudEncryptionSecretPromise) {
       cloudEncryptionSecretPromise = (async () => {
-        const response = await fetchImpl(new URL('/api/auth/cloud-key', dependencies.workerProxyUrl), {
-          method: 'GET',
-          headers: {
-            'X-App-Auth': sessionToken,
-            Authorization: `Bearer ${sessionToken}`
+        const { response, payload } = await fetchAndConsumeWithTimeout(
+          fetchImpl,
+          new URL('/api/auth/cloud-key', dependencies.workerProxyUrl),
+          {
+            method: 'GET',
+            headers: {
+              'X-App-Auth': sessionToken,
+              Authorization: `Bearer ${sessionToken}`
+            },
+            cache: 'no-store'
           },
-          cache: 'no-store'
-        });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || typeof payload?.key !== 'string' || !payload.key) {
-          throw new Error(payload?.error || 'Could not retrieve the shared cloud encryption key.');
+          async (response) => ({
+            response,
+            payload: await response.json().catch(() => null)
+          }),
+          dependencies.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+        );
+        const key = payload && typeof payload === 'object'
+          ? (payload as Record<string, unknown>).key
+          : null;
+        const error = payload && typeof payload === 'object'
+          ? (payload as Record<string, unknown>).error
+          : null;
+        if (!response.ok || typeof key !== 'string' || !key) {
+          throw new Error(typeof error === 'string' && error ? error : 'Could not retrieve the shared cloud encryption key.');
         }
-        return payload.key;
+        return key;
       })().catch((error) => {
         cloudEncryptionSecretPromise = null;
         throw error;

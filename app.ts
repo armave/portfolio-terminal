@@ -113,6 +113,7 @@ import {
   normalizeSavedFreedomCashflows
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
+import { buildClosedHistoryFeeAuditUpdate } from './src/domain/closedHistoryFeeAudit';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
 import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
@@ -1519,7 +1520,14 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     );
     const updatedClosedTrades = applyCashflowAllocationsToClosedTrades(
       appClosedTrades,
-      allocations.appAllocations
+      allocations.appAllocations,
+      allocations.appAllocationDetails
+    );
+    const feeAuditUpdate = buildClosedHistoryFeeAuditUpdate(
+      allocationState.transactionEvents || [],
+      appClosedTrades,
+      updatedClosedTrades,
+      mergedCashflows
     );
     const nextState: Partial<PortfolioState> = {};
     if (JSON.stringify(allocationState.brokerExecutedTrades || []) !== JSON.stringify(updatedExecutions)) {
@@ -1531,12 +1539,24 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     if (JSON.stringify(allocationState.cashflows || []) !== JSON.stringify(mergedCashflows)) {
       nextState.cashflows = mergedCashflows;
     }
-    if (JSON.stringify(appClosedTrades) !== JSON.stringify(updatedClosedTrades)) {
-      nextState.closedTrades = updatedClosedTrades;
-    }
-
     const previousState = current;
-    if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
+    const closedHistoryChanged = JSON.stringify(appClosedTrades) !== JSON.stringify(feeAuditUpdate.closedTrades);
+    const journalChanged = feeAuditUpdate.transactionEvents.length !== (allocationState.transactionEvents || []).length;
+    if (feeAuditUpdate.rejectedCount > 0) {
+      logAppMessage('[Closed History Sync Warning]: Some legacy closed-trade fee updates were retained unchanged because a linked sale event or complete source cashflow evidence was unavailable.');
+    }
+    if (Object.keys(nextState).length || closedHistoryChanged || journalChanged) {
+      const committed = portfolioStore.commitClosedHistoryFeeSync(
+        nextState,
+        feeAuditUpdate.closedTrades,
+        feeAuditUpdate.transactionEvents,
+        false
+      );
+      if (!committed) {
+        logAppMessage('[Closed History Sync Error]: The closed-history fee/audit snapshot could not be committed; prior history was preserved.');
+        return false;
+      }
+    }
     if (!isCurrentSession()) {
       portfolioStore.update(() => previousState, false);
       state = portfolioStore.getState();

@@ -4,18 +4,20 @@ import { createCloudStateSecurity } from './cloudStateSecurity';
 
 const WORKER_PROXY_URL = 'https://worker.example.test';
 
-function createSecurity(fetchImpl: typeof fetch = vi.fn() as unknown as typeof fetch) {
+function createSecurity(fetchImpl: typeof fetch = vi.fn() as unknown as typeof fetch, requestTimeoutMs?: number) {
   const getStoredGatewaySecret = vi.fn(() => '');
   const security = createCloudStateSecurity({
     workerProxyUrl: WORKER_PROXY_URL,
     getStoredGatewaySecret,
-    fetchImpl
+    fetchImpl,
+    requestTimeoutMs
   });
   return { security, getStoredGatewaySecret };
 }
 
 describe('cloud state security runtime', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -75,6 +77,33 @@ describe('cloud state security runtime', () => {
     await expect(security.encryptCloudPayload('value', 'session-token'))
       .rejects.toThrow('temporary failure');
     await expect(security.encryptCloudPayload('value', 'session-token')).resolves.toMatch(/^aesgcm:v2:/);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+
+  it('aborts a stalled shared cloud-key request at the configured deadline and allows retry', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        })
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ key: 'recovered-key' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })) as unknown as typeof fetch;
+    const { security } = createSecurity(fetchImpl, 25);
+    security.setSecretGetter(() => 'configured');
+
+    const first = security.encryptCloudPayload('first', 'session-token');
+    const rejected = expect(first).rejects.toThrow('Request timed out after 0.025 seconds.');
+    await vi.advanceTimersByTimeAsync(25);
+    await rejected;
+    const firstInit = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
+    expect(firstInit.signal?.aborted).toBe(true);
+
+    await expect(security.encryptCloudPayload('second', 'session-token')).resolves.toMatch(/^aesgcm:v2:/);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 

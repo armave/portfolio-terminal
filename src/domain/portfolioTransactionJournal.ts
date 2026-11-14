@@ -5,7 +5,8 @@ import {
   type PortfolioTransactionDraft,
   type PortfolioTransactionEvent,
   type PortfolioTransactionEventType,
-  type PortfolioTransactionLotAllocation
+  type PortfolioTransactionLotAllocation,
+  type PortfolioTransactionHistoryFeeSnapshot
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
@@ -73,6 +74,55 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteOptional(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function hasTransactionJournalDeltaCandidate(value: Record<string, unknown>): boolean {
+  return ['positionQuantityDelta', 'cashHoldingQuantityDelta', 'cashDelta', 'marginDebtDelta', 'realizedMarginChargeDelta']
+    .some((field) => value[field] !== undefined);
+}
+
+function isHistoryFeeSnapshot(value: unknown, allowUnknownAllocations: boolean): value is PortfolioTransactionHistoryFeeSnapshot {
+  if (!isPlainRecord(value)) return false;
+  if (typeof value.marginFee !== 'number' || !Number.isFinite(value.marginFee) || value.marginFee < 0) return false;
+  if (value.feesAndCommissions !== null &&
+      (typeof value.feesAndCommissions !== 'number' || !Number.isFinite(value.feesAndCommissions) || value.feesAndCommissions < 0)) return false;
+  if (value.netProfit !== null &&
+      (typeof value.netProfit !== 'number' || !Number.isFinite(value.netProfit))) return false;
+  if (value.cashflowAllocations === null) return allowUnknownAllocations && value.marginFee > 0;
+  if (!Array.isArray(value.cashflowAllocations) || value.cashflowAllocations.length > 500) return false;
+  const ids = new Set<string>();
+  let total = 0;
+  for (const allocation of value.cashflowAllocations) {
+    if (!isPlainRecord(allocation) ||
+        typeof allocation.cashflowId !== 'string' || !allocation.cashflowId.trim() || allocation.cashflowId.length > 180 ||
+        typeof allocation.amount !== 'number' || !Number.isFinite(allocation.amount) || allocation.amount < 0 ||
+        ids.has(allocation.cashflowId)) return false;
+    ids.add(allocation.cashflowId);
+    total += allocation.amount;
+  }
+  return Math.abs(total - value.marginFee) <= 0.011;
+}
+
+function cloneHistoryFeeSnapshot(value: PortfolioTransactionHistoryFeeSnapshot): PortfolioTransactionHistoryFeeSnapshot {
+  return {
+    marginFee: value.marginFee,
+    feesAndCommissions: value.feesAndCommissions,
+    netProfit: value.netProfit,
+    cashflowAllocations: value.cashflowAllocations === null
+      ? null
+      : value.cashflowAllocations.map((allocation) => ({ ...allocation }))
+  };
+}
+
+function freezeHistoryFeeSnapshot(value: PortfolioTransactionHistoryFeeSnapshot): PortfolioTransactionHistoryFeeSnapshot {
+  return Object.freeze({
+    marginFee: value.marginFee,
+    feesAndCommissions: value.feesAndCommissions,
+    netProfit: value.netProfit,
+    cashflowAllocations: value.cashflowAllocations === null
+      ? null
+      : Object.freeze(value.cashflowAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionHistoryFeeSnapshot['cashflowAllocations']
+  });
 }
 
 export function isPortfolioTransactionEvent(value: unknown): value is PortfolioTransactionEvent {
@@ -202,6 +252,19 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
+  if (value.historyFeeCorrection !== undefined) {
+    const correction = value.historyFeeCorrection;
+    if (value.type !== 'history.correction' || hasTransactionJournalDeltaCandidate(value) ||
+        !isPlainRecord(correction) ||
+        correction.kind !== 'closed-trade-margin-fee' ||
+        typeof correction.closedTradeId !== 'string' || !correction.closedTradeId.trim() || correction.closedTradeId.length > 180 ||
+        typeof correction.saleEventId !== 'string' || !correction.saleEventId.trim() || correction.saleEventId.length > 180 ||
+        (correction.revisionOfEventId !== undefined &&
+          (typeof correction.revisionOfEventId !== 'string' || !correction.revisionOfEventId.trim() || correction.revisionOfEventId.length > 200)) ||
+        correction.saleEventId !== value.relatedEventId ||
+        !isHistoryFeeSnapshot(correction.before, true) ||
+        !isHistoryFeeSnapshot(correction.after, false)) return false;
+  }
   return true;
 }
 
@@ -221,6 +284,15 @@ export function freezePortfolioTransactionEventList(
     actor: Object.freeze({ ...event.actor }),
     ...(event.lotAllocations
       ? { lotAllocations: Object.freeze(event.lotAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[] }
+      : {}),
+    ...(event.historyFeeCorrection
+      ? {
+          historyFeeCorrection: Object.freeze({
+            ...event.historyFeeCorrection,
+            before: freezeHistoryFeeSnapshot(event.historyFeeCorrection.before),
+            after: freezeHistoryFeeSnapshot(event.historyFeeCorrection.after)
+          })
+        }
       : {})
   }))) as unknown as PortfolioTransactionEvent[];
 }
@@ -281,6 +353,11 @@ export function createPortfolioTransactionEvent(
     ...(draft.netAmount !== undefined ? { netAmount: draft.netAmount } : {}),
     ...(draft.realizedPnl !== undefined ? { realizedPnl: draft.realizedPnl } : {}),
     ...(draft.relatedEventId ? { relatedEventId: draft.relatedEventId } : {}),
+    ...(draft.historyFeeCorrection ? { historyFeeCorrection: {
+      ...draft.historyFeeCorrection,
+      before: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.before),
+      after: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.after)
+    } } : {}),
     ...(draft.note ? { note: draft.note } : {})
   };
 
@@ -327,6 +404,7 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     netAmount: event.netAmount,
     realizedPnl: event.realizedPnl,
     relatedEventId: event.relatedEventId,
+    historyFeeCorrection: event.historyFeeCorrection,
     note: event.note
   });
 }
@@ -633,21 +711,33 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
         });
         break;
 
-      case 'history.correction':
+      case 'history.correction': {
+        const correction = event.historyFeeCorrection;
+        const sale = correction ? knownEvents.get(correction.saleEventId) : undefined;
+        const revision = correction?.revisionOfEventId ? knownEvents.get(correction.revisionOfEventId) : undefined;
+        const structured = Boolean(
+          correction &&
+          event.relatedEventId === correction.saleEventId &&
+          sale?.type === 'trade.sell' &&
+          event.source === 'closed-history-fee-allocation' &&
+          event.actor.type === 'system' &&
+          event.note?.trim() &&
+          (!correction.revisionOfEventId ||
+            (revision?.type === 'history.correction' &&
+              revision.historyFeeCorrection?.closedTradeId === correction.closedTradeId &&
+              revision.historyFeeCorrection?.saleEventId === correction.saleEventId))
+        );
         findings.push({
           ...base,
-          disposition: hasDeltas
-            ? 'unsupported'
-            : event.note?.trim()
-              ? 'audit-only'
-              : 'incomplete',
+          disposition: hasDeltas ? 'unsupported' : structured ? 'audit-only' : 'incomplete',
           reason: hasDeltas
-            ? 'Closed-history cleanup must not alter financial replay balances.'
-            : event.note?.trim()
-              ? 'History-display correction is auditable but does not change financial replay balances.'
-              : 'History correction is missing its audit explanation.'
+            ? 'Closed-history fee corrections must not post cash, debt, quantity or realized-margin deltas.'
+            : structured
+              ? 'Closed-trade fee correction is linked to its sale event and records source allocations plus before/after fee and P&L snapshots; it is audit-only for the current balance replay.'
+              : 'History correction requires a stable closed-trade ID, linked app sale event, immutable fee/P&L snapshots and a valid revision chain.'
         });
         break;
+      }
 
       case 'trade.buy':
       case 'trade.sell': {
