@@ -294,7 +294,7 @@ describe('closed history row model', () => {
     const broker = createSellExecution('broker-sale', 5, 100, '2026-11-10T10:00:00.000Z');
     const appTrades = [
       {
-        trade: { id: 'duplicate-app', ticker: 'AAPL', shares: 5, exitDate: '2026-11-10T10:30:00.000Z' },
+        trade: { id: 'duplicate-app', ticker: 'AAPL', shares: 5, exitDate: '2026-11-10T10:30:00.000Z', sellPrice: 100 },
         allocationKey: 'app:duplicate-app',
         allocationType: 'unclassified',
         guestAllocations: [],
