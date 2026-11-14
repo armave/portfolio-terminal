@@ -51,6 +51,7 @@ beforeEach(() => {
   storage.setGatewaySecret('test-gateway-secret');
 });
 afterEach(() => {
+  vi.useRealTimers();
   clearApiRequestCaches();
   setMarketRequestSessionForTests(null);
   storage.setGatewaySecret('');

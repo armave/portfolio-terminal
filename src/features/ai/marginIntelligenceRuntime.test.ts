@@ -217,6 +217,7 @@ describe('Margin Intelligence runtime', () => {
 });
 
 
+describe('Margin Intelligence timeout recovery', () => {
   it('keeps the last saved review visibly stale and reports a retryable refresh timeout', async () => {
     const recorder = createStateRecorder();
     const snapshot = createSnapshot();
@@ -265,3 +266,4 @@ describe('Margin Intelligence runtime', () => {
     expect(recorder.getState()?.staleReasons).toContain('news-old');
     runtime.dispose();
   });
+});
