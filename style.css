@@ -3465,6 +3465,7 @@ table tbody tr:hover {
 
   #settingsDesk .settings-account-summary {
     align-items: flex-start;
+    justify-content: center;
   }
 
   #settingsDesk .settings-refresh-description {

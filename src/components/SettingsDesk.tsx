@@ -382,7 +382,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         <div class="settings-data-grid">
           <div class="settings-toolbar__card settings-refresh-card flex flex-col gap-3">
             <div class="settings-refresh-heading flex flex-wrap items-center justify-between gap-2">
-              <label class="settings-refresh-interval flex min-w-0 flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+              <label class="settings-refresh-interval flex min-w-0 flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 justify-center">
                 {translateText('Automatic refresh interval')}
                 <select
                   id="quoteRefreshInterval"
