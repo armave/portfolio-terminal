@@ -159,6 +159,10 @@ export function buildClosedHistoryRows({
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        // Keep the embedded trade record in sync with the display-row totals;
+        // downstream consumers must not see only the first fill's P&L/fees.
+        (previous.trade as any).netProfit = previous.profit;
+        (previous.trade as any).feesAndCommissions = previous.feesTotal;
         previous.cashQuantity = (previous.cashQuantity || 0) + (row.cashQuantity || 0);
         previous.marginQuantity = (previous.marginQuantity || 0) + (row.marginQuantity || 0);
         const allocationTypes = Array.from(new Set([
