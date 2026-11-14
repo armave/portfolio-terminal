@@ -53,6 +53,26 @@ export interface PortfolioTransactionLotAllocation {
   realizedPnl: number;
 }
 
+export interface PortfolioTransactionHistoryFeeAllocation {
+  cashflowId: string;
+  amount: number;
+}
+export interface PortfolioTransactionHistoryFeeSnapshot {
+  marginFee: number;
+  feesAndCommissions: number | null;
+  netProfit: number | null;
+  /** null means the prior allocation cannot be reconstructed from legacy history. */
+  cashflowAllocations: PortfolioTransactionHistoryFeeAllocation[] | null;
+}
+export interface PortfolioTransactionHistoryFeeCorrection {
+  kind: 'closed-trade-margin-fee';
+  closedTradeId: string;
+  saleEventId: string;
+  revisionOfEventId?: string;
+  before: PortfolioTransactionHistoryFeeSnapshot;
+  after: PortfolioTransactionHistoryFeeSnapshot;
+}
+
 export interface PortfolioTransactionEvent {
   id: string;
   schemaVersion: typeof PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION;
@@ -107,6 +127,8 @@ export interface PortfolioTransactionEvent {
   /** Realized profit/loss when the event closes or reduces a position. */
   realizedPnl?: number;
   relatedEventId?: string;
+  /** Immutable history-only fee correction evidence; never posts balance deltas. */
+  historyFeeCorrection?: PortfolioTransactionHistoryFeeCorrection;
   note?: string;
 }
 
@@ -136,6 +158,7 @@ export interface PortfolioTransactionDraft {
   netAmount?: number;
   realizedPnl?: number;
   relatedEventId?: string;
+  historyFeeCorrection?: PortfolioTransactionHistoryFeeCorrection;
   note?: string;
 }
 

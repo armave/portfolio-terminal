@@ -160,6 +160,9 @@ export interface ClosedTrade {
   feesAndCommissions?: number;
   totalCommissions?: number;
   marginInterest?: number;
+  marginFee?: number;
+  /** Exact broker cashflow source allocations for auditable app-history fee revisions. */
+  marginFeeAllocations?: Record<string, number>;
   netProfit?: number;
   netRealizedGain?: number;
   holdingDays?: number;

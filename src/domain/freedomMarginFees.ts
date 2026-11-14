@@ -58,6 +58,8 @@ export interface FreedomMarginFeeAllocations {
   brokerOpenAllocations: Map<number, Record<string, number>>;
   /** Legacy app-owned closed-trade fallback, used only when broker executions are absent. */
   appAllocations: Map<number, number>;
+  /** Per-app-closed-trade allocations retained by source cashflow ID. */
+  appAllocationDetails: Map<number, Record<string, number>>;
   /** Financing fees carried by still-open app-owned margin positions, keyed by position ticker/key. */
   appOpenAllocations: Map<string, Record<string, number>>;
   matchedFeeRows: number;
@@ -275,11 +277,12 @@ export function calculateFreedomMarginFeeAllocations(
   const brokerAllocations = new Map<number, Record<string, number>>();
   const brokerOpenAllocations = new Map<number, Record<string, number>>();
   const appAllocations = new Map<number, number>();
+  const appAllocationDetails = new Map<number, Record<string, number>>();
   const appOpenAllocations = new Map<string, Record<string, number>>();
   const feeRows = cashflows.filter(isFinancingCashflow);
   if (feeRows.length === 0) {
     return {
-      brokerAllocations, brokerOpenAllocations, appAllocations, appOpenAllocations,
+      brokerAllocations, brokerOpenAllocations, appAllocations, appAllocationDetails, appOpenAllocations,
       matchedFeeRows: 0, allocatedAmount: 0, closedAllocatedAmount: 0, openAllocatedAmount: 0
     };
   }
@@ -462,6 +465,9 @@ export function calculateFreedomMarginFeeAllocations(
       for (const [index, amount] of allocations) {
         if (index < appTrades.length) {
           appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+          const byCashflow = appAllocationDetails.get(index) ?? {};
+          byCashflow[fee.id] = Number((((byCashflow[fee.id] || 0) * 100 + amount) / 100).toFixed(2));
+          appAllocationDetails.set(index, byCashflow);
           closedAllocatedCents += amount;
         } else {
           const key = syntheticByIndex.get(index);
@@ -481,6 +487,7 @@ export function calculateFreedomMarginFeeAllocations(
     brokerAllocations,
     brokerOpenAllocations,
     appAllocations,
+    appAllocationDetails,
     appOpenAllocations,
     matchedFeeRows,
     allocatedAmount: Number((allocatedCents / 100).toFixed(2)),
