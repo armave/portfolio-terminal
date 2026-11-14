@@ -777,6 +777,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             onPageSizeChange={cashHoldingsPagination.setPageSize}
             controlsId="cashStocksTableBody"
           />
+          </>
         )}
 
         {isAdmin && !guestUserId && (reversibleBalanceAdjustments.length > 0 || balanceAdjustmentNotice) && (
