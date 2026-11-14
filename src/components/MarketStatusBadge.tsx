@@ -392,8 +392,8 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         {statusLabel}
       </span>
       {countdown && (
-        <span class="inline-flex shrink-0 items-center rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 font-mono text-[10px] font-semibold leading-none tabular-nums text-slate-300">
-          <span>{countdownParts?.label}</span><span class="text-slate-100">{countdownParts?.time}</span>
+        <span class="shrink-0 items-center rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 font-mono text-[10px] font-semibold leading-none tabular-nums text-slate-300">
+          <span>{countdownParts?.label}</span> <span class="text-slate-100">{countdownParts?.time}</span>
         </span>
       )}
     </div>
