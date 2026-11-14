@@ -64,8 +64,12 @@ describe('cash/margin mix inputs', () => {
     expect(deskSource).toContain("quantity: tranche.quantity");
     expect(deskSource).toContain("cash: mix.cash");
     expect(deskSource).toContain("margin: mix.margin");
-    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash)');
-    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin)');
+    expect(deskSource).toContain("resolveActiveTrancheMixEdit(currentCashInputDraft.value, 'cash', tranche.quantity, mix)");
+    expect(deskSource).toContain("resolveActiveTrancheMixEdit(currentMarginInputDraft.value, 'margin', tranche.quantity, mix)");
+    expect(deskSource).toContain('cashDraftMix?.margin ?? mix.margin');
+    expect(deskSource).toContain('marginDraftMix?.cash ?? mix.cash');
+    expect(deskSource).toContain("resolveActiveTrancheMixEdit(value, 'cash', tranche.quantity, mix)");
+    expect(deskSource).toContain("resolveActiveTrancheMixEdit(value, 'margin', tranche.quantity, mix)");
     expect(deskSource).not.toContain('defaultValue={mix.cash}');
     expect(deskSource).not.toContain('defaultValue={mix.margin}');
   });
