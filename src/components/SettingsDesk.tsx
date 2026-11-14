@@ -12,6 +12,8 @@ import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
 import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
@@ -106,6 +108,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
+  const usersPagination = useTablePagination('settings-users', users.length, 10);
+  const visibleUsers = sliceTablePage(users, usersPagination.currentPage, usersPagination.pageSize);
 
   const refreshUsers = async () => {
     // The application already owns the verified session identity. Refresh only
@@ -406,9 +410,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <TableScrollRegion label="User management table" className="table-scroll-wrapper settings-table-scroll"><table class="w-full min-w-[790px] text-left text-xs">
             <caption class="sr-only">User management table</caption>
             <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">Name</th><th scope="col" class="p-2">Role</th><th scope="col" class="p-2">Language</th><th scope="col" class="p-2">New password</th><th scope="col" class="p-2">Actions</th></tr></thead>
-            <tbody>
+            <tbody id="settingsUsersTableBody">
               {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
-              {users.map((user) => <tr key={user.id} class="border-t border-slate-800">
+              {visibleUsers.map((user) => <tr key={user.id} class="border-t border-slate-800">
                 <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
                 <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
                 <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>
@@ -417,6 +421,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
               </tr>)}</tbody>
           </table></TableScrollRegion>
+          <TablePagination
+            tableLabel="User management"
+            page={usersPagination.currentPage}
+            pageCount={usersPagination.pageCount}
+            pageSize={usersPagination.pageSize}
+            start={usersPagination.start}
+            end={usersPagination.end}
+            total={users.length}
+            onPageChange={usersPagination.setPage}
+            onPageSizeChange={usersPagination.setPageSize}
+            controlsId="settingsUsersTableBody"
+          />
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
