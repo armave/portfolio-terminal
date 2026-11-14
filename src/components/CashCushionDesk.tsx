@@ -3,7 +3,7 @@ import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
-import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
