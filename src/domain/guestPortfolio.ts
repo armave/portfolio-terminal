@@ -303,11 +303,18 @@ export function getGuestHoldingValuation(
   const shares = parsedShares !== null ? Math.max(0, parsedShares) : 0;
   const currentPrice = positiveNumber(holding.currentPrice) ?? positiveNumber(holding.price);
   const averagePrice = positiveNumber(holding.averagePrice);
-  const marketValue = currentPrice === null ? null : shares * currentPrice;
-  const costBasis = averagePrice === null ? null : shares * averagePrice;
-  const unrealizedPnl = marketValue === null || costBasis === null ? null : marketValue - costBasis;
-  const unrealizedPnlPercent = unrealizedPnl === null || costBasis === null || costBasis <= 0
+  const calculatedMarketValue = currentPrice === null ? null : shares * currentPrice;
+  const calculatedCostBasis = averagePrice === null ? null : shares * averagePrice;
+  const marketValue = calculatedMarketValue !== null && Number.isFinite(calculatedMarketValue)
+    ? calculatedMarketValue : null;
+  const costBasis = calculatedCostBasis !== null && Number.isFinite(calculatedCostBasis)
+    ? calculatedCostBasis : null;
+  const calculatedPnl = marketValue === null || costBasis === null ? null : marketValue - costBasis;
+  const unrealizedPnl = calculatedPnl !== null && Number.isFinite(calculatedPnl) ? calculatedPnl : null;
+  const calculatedPnlPercent = unrealizedPnl === null || costBasis === null || costBasis <= 0
     ? null
     : unrealizedPnl / costBasis * 100;
+  const unrealizedPnlPercent = calculatedPnlPercent !== null && Number.isFinite(calculatedPnlPercent)
+    ? calculatedPnlPercent : null;
   return { shares, currentPrice, marketValue, averagePrice, costBasis, unrealizedPnl, unrealizedPnlPercent };
 }
