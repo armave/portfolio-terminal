@@ -51,11 +51,45 @@ export function buildClosedHistoryRows({
       const commissions = Number(((sellCommission ?? 0) + (buyCommission ?? 0)).toFixed(2));
       const fees = Number(Math.abs(marginFee).toFixed(2));
       const totalFees = Number((commissions + fees).toFixed(2));
-      const profit = broker.profit == null || !commissionsComplete
-        ? null
-        : Number((Number(broker.profit) - totalFees).toFixed(2));
       const ticker = normalizeExecutionTicker(broker.ticker);
       const attribution = trancheAttributions.get(broker);
+      const quantity = Math.abs(Number(broker.quantity ?? 0));
+      const directSellPrice = Number(broker.price);
+      const tradeValue = Math.abs(Number(broker.tradeValue ?? 0));
+      const sellPrice = Number.isFinite(directSellPrice) && directSellPrice > 0
+        ? directSellPrice
+        : tradeValue > 0 && quantity > 0 ? tradeValue / quantity : null;
+      const averageBuyPrice = attribution?.averagePrice;
+      const hasCompleteFifoCostBasis = Boolean(
+        attribution &&
+        Number.isFinite(attribution.unmatchedQuantity) &&
+        attribution.unmatchedQuantity <= 1e-8 &&
+        averageBuyPrice !== null &&
+        averageBuyPrice !== undefined &&
+        Number.isFinite(averageBuyPrice) &&
+        averageBuyPrice > 0 &&
+        sellPrice !== null &&
+        Number.isFinite(sellPrice) &&
+        sellPrice > 0 &&
+        quantity > 0
+      );
+      // Prefer TradeNet's reported gross result. If it is absent, derive gross
+      // P&L only from a complete FIFO match with a known acquisition cost and
+      // a usable sell execution price; never price unmatched shares by guesswork.
+      const fifoGrossProfit = hasCompleteFifoCostBasis
+        ? Number(((sellPrice! - averageBuyPrice!) * quantity).toFixed(2))
+        : null;
+      const grossProfit = broker.profit !== null && broker.profit !== undefined && Number.isFinite(broker.profit)
+        ? broker.profit
+        : fifoGrossProfit;
+      // Known commission/fee components form a lower bound on total costs.
+      // When gross P&L is known but one commission side is missing, expose the
+      // resulting net value as an upper bound rather than hiding it or calling
+      // it exact. The UI and summary keep that distinction explicit.
+      const profit = grossProfit === null
+        ? null
+        : Number((grossProfit - totalFees).toFixed(2));
+      const profitIsUpperBound = profit !== null && !commissionsComplete;
       const allocationType = attribution?.fundingType || 'unclassified';
       return {
         trade: {
@@ -75,6 +109,7 @@ export function buildClosedHistoryRows({
         source: 'tradenet' as const,
         allocationKey: 'broker:' + String(broker.id ?? ('tradenet-' + index)),
         profit,
+        profitIsUpperBound,
         fees,
         commissions,
         commissionsComplete,
@@ -118,10 +153,16 @@ export function buildClosedHistoryRows({
           ? (Number(oldDuration) * oldQty + Number(newDuration) * newQty) / totalQty
           : oldDuration ?? newDuration;
         previous.profit = oldProfit == null || newProfit == null ? null : oldProfit + newProfit;
+        previous.profitIsUpperBound = previous.profit !== null &&
+          (previous.profitIsUpperBound === true || row.profitIsUpperBound === true);
         previous.fees = (previous.fees || 0) + (row.fees || 0);
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        // Keep the embedded trade record in sync with the display-row totals;
+        // downstream consumers must not see only the first fill's P&L/fees.
+        (previous.trade as any).netProfit = previous.profit;
+        (previous.trade as any).feesAndCommissions = previous.feesTotal;
         previous.cashQuantity = (previous.cashQuantity || 0) + (row.cashQuantity || 0);
         previous.marginQuantity = (previous.marginQuantity || 0) + (row.marginQuantity || 0);
         const allocationTypes = Array.from(new Set([
@@ -157,7 +198,12 @@ export function buildClosedHistoryRows({
     return groups;
   })();
 
-  const uniqueAppTrades = deduplicateClosedHistoryRows(appTrades, groupedBrokerRows);
+  // Match app-owned records to individual broker fills before comparing with
+  // grouped broker rows. A grouped 5-share sale may contain the same 2-share
+  // execution as an app row; matching only against the 5-share aggregate would
+  // leave that duplicate in the table and double-count its P&L and fees.
+  const appTradesWithoutFillDuplicates = deduplicateClosedHistoryRows(appTrades, brokerRows);
+  const uniqueAppTrades = deduplicateClosedHistoryRows(appTradesWithoutFillDuplicates, groupedBrokerRows);
   const getExitTimestamp = (row: any): number => {
     const raw = row.trade?.exitDate ?? row.trade?.sellDate ?? row.trade?.closedAt ?? row.trade?.date;
     if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -196,14 +242,18 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
   averageHoldingDays: number | null;
   winRate: number;
 } {
-  const profitKnownTrades = trades.filter((row) => row.profit !== null);
+  // Bounded results are useful per-row, but are not exact realized P&L and
+  // must not enter the Known Net P&L or win-rate denominator.
+  const profitKnownTrades = trades.filter((row) =>
+    row.profit !== null && row.profitIsUpperBound !== true
+  );
   const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
   const knownDurations = trades
     .map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld))
     .filter((days) => Number.isFinite(days) && days >= 0);
 
   return {
-    realizedNet: trades.reduce((total, row) => total + (row.profit ?? 0), 0),
+    realizedNet: profitKnownTrades.reduce((total, row) => total + (row.profit ?? 0), 0),
     totalFees: trades.reduce((total, row) => total + (
       Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))
     ), 0),

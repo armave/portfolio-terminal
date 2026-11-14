@@ -65,6 +65,35 @@ describe('Freedom execution contract normalization', () => {
     });
   });
 
+  it('preserves open-buy financing fee allocations, including an explicit cleared bucket', () => {
+    const [allocated] = normalizeFreedomTrades([{
+      id: 'buy-open-fee',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 4,
+      price: 100,
+      executedAt: '2026-11-01T10:00:00Z',
+      openMarginFeeAllocations: { 'freedom-2026-11-02': 0.6 },
+      openMarginFee: 0.6
+    }]);
+    expect(allocated).toMatchObject({
+      openMarginFeeAllocations: { 'freedom-2026-11-02': 0.6 },
+      openMarginFee: 0.6
+    });
+
+    const [cleared] = normalizeFreedomTrades([{
+      id: 'buy-open-fee',
+      ticker: 'AAPL',
+      side: 'BUY',
+      quantity: 4,
+      price: 100,
+      executedAt: '2026-11-01T10:00:00Z',
+      openMarginFeeAllocations: {},
+      openMarginFee: 0
+    }]);
+    expect(cleared).toMatchObject({ openMarginFeeAllocations: {}, openMarginFee: 0 });
+  });
+
   it('produces distinct stable fallback IDs for duplicate executions in one response', () => {
     const row = {
       instr_nm: 'MSFT',

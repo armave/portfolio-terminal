@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixEdit, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -12,6 +12,15 @@ describe('Freedom portfolio type contracts', () => {
       .toEqualTypeOf<CashStockHolding[]>();
     expectTypeOf<FreedomReconciliationResult['positions']>()
       .toEqualTypeOf<Record<string, FreedomReconciliationPosition>>();
+  });
+});
+
+describe('active tranche funding defaults', () => {
+  it('defaults new unclassified operations to Margin while respecting saved overrides', () => {
+    expect(getActiveTrancheType(undefined, 'AAPL:buy-1', 'AAPL')).toBe('margin');
+    expect(getActiveTrancheType({}, 'AAPL:buy-1', 'AAPL')).toBe('margin');
+    expect(getActiveTrancheType({ AAPL: 'cash' }, 'AAPL:buy-1', 'AAPL')).toBe('cash');
+    expect(getActiveTrancheType({ AAPL: 'cash', 'AAPL:buy-1': 'mix' }, 'AAPL:buy-1', 'AAPL')).toBe('mix');
   });
 });
 
@@ -29,10 +38,31 @@ describe('resolveActiveTrancheMixInput', () => {
     expect(resolveActiveTrancheMixInput('12', 10, 4)).toBe(10);
   });
 
-  it('returns zero for invalid total quantities and clamps the fallback', () => {
-    expect(resolveActiveTrancheMixInput('5', 0, 4)).toBe(0);
-    expect(resolveActiveTrancheMixInput('', 10, 12)).toBe(10);
-    expect(resolveActiveTrancheMixInput('', 10, -2)).toBe(0);
+  it('recalculates Margin immediately when Cash is edited against the tranche total', () => {
+    expect(resolveActiveTrancheMixEdit('7', 'cash', 20, { cash: 4, margin: 16 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('7.5', 'cash', 20, { cash: 4, margin: 16 }))
+      .toEqual({ cash: 7.5, margin: 12.5 });
+  });
+
+  it('recalculates Cash immediately when Margin is edited against the tranche total', () => {
+    expect(resolveActiveTrancheMixEdit('5', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 15, margin: 5 });
+    expect(resolveActiveTrancheMixEdit('6.25', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 13.75, margin: 6.25 });
+  });
+
+  it('clamps either edited side and retains the previous split for blank or invalid input', () => {
+    expect(resolveActiveTrancheMixEdit('25', 'cash', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 20, margin: 0 });
+    expect(resolveActiveTrancheMixEdit('-2', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 20, margin: 0 });
+    expect(resolveActiveTrancheMixEdit('', 'cash', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('invalid', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('5', 'cash', Number.NaN, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 0, margin: 0 });
   });
 });
 
@@ -261,16 +291,23 @@ describe('active broker tranches', () => {
     expect(result[2]).toMatchObject({ ticker: 'MSFT', quantity: 1 });
   });
 
-  it('defaults unclassified broker tickers to cash and moves selected margin tickers into positions', () => {
+  it('defaults new unclassified broker tickers to Margin and honors explicit classifications', () => {
     const result = classifyFreedomPortfolio(snapshot, {}, [], { MSFT: 'margin' }, 123);
-    expect(result.cashStocks).toEqual([
-      expect.objectContaining({ ticker: 'AAPL', shares: 5, currentPrice: 210, price: 210 })
-    ]);
+    expect(result.cashStocks).toEqual([]);
+    expect(result.positions.AAPL).toMatchObject({
+      ticker: 'AAPL', shares: 5, currentPrice: 210
+    });
     expect(result.positions.MSFT).toMatchObject({
       ticker: 'MSFT', shares: 4, currentPrice: 400,
       tranches: [{ qty: 4, price: 350 }], quoteSource: 'Freedom TradeNet',
       quoteDetails: { price: 400, freshness: 'unknown', receivedAt: 123 }
     });
+
+    const explicitCash = classifyFreedomPortfolio(snapshot, {}, [], { AAPL: 'cash' }, 123);
+    expect(explicitCash.cashStocks).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 5, currentPrice: 210, price: 210 })
+    ]);
+    expect(explicitCash.positions.AAPL).toBeUndefined();
   });
 
   it('keeps timestamped live quotes when an untimestamped broker snapshot arrives', () => {
@@ -302,7 +339,7 @@ describe('active broker tranches', () => {
       quoteUpdatedAt: observedAt,
       quoteSource: 'Yahoo',
       quoteDetails: { price: 125, freshness: 'fresh', sourceTimestamp }
-    }], { MSFT: 'margin' }, observedAt);
+    }], { MSFT: 'margin', AAPL: 'cash' }, observedAt);
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'AAPL',
@@ -359,7 +396,7 @@ describe('active broker tranches', () => {
       quoteRequestSequence: 42,
       quoteSource: 'Freedom TradeNet',
       quoteDetails: { ...websocketQuote, price: 195.25 }
-    }], { GOOGL: 'margin' }, receivedAt);
+    }], { GOOGL: 'margin', AAPL: 'cash' }, receivedAt);
 
     // This is the same reclassification used when the Trades section refreshes
     // executed history. Broker mkt_price is older and has no observation time.
@@ -392,7 +429,7 @@ describe('active broker tranches', () => {
       currentPrice: 110,
       price: 110,
       quoteDetails: { price: 110, freshness: 'unknown' }
-    }]);
+    }], { AAPL: 'cash' });
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'AAPL',
@@ -698,15 +735,17 @@ describe('cash holdings average purchase price', () => {
       balances: [],
       positions: [{ ticker: 'AAPL.US', quantity: 10, marketPrice: 130 }]
     };
-    const mixedTranche = getActiveTranchesFromTrades(trades, snapshot)
-      .find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    const activeTranches = getActiveTranchesFromTrades(trades, snapshot);
+    const cashTranche = activeTranches.find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:00:00Z'));
+    const mixedTranche = activeTranches.find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    expect(cashTranche).toBeDefined();
     expect(mixedTranche).toBeDefined();
 
     const result = classifyFreedomPortfolio(
       snapshot,
       {},
       [],
-      { [mixedTranche!.id]: 'mix' },
+      { [cashTranche!.id]: 'cash', [mixedTranche!.id]: 'mix' },
       123,
       trades,
       undefined,
@@ -742,7 +781,7 @@ describe('cash holdings average purchase price', () => {
       shares: 5,
       averagePrice: 110,
       lots: appLots
-    }], {}, 123, trades);
+    }], { MSFT: 'cash' }, 123, trades);
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'MSFT',
@@ -763,7 +802,7 @@ describe('cash holdings average purchase price', () => {
       positions: [{ ticker: 'MSFT', quantity: 5, marketPrice: 110 }]
     };
 
-    const result = classifyFreedomPortfolio(snapshot, {}, [], {}, 123, trades);
+    const result = classifyFreedomPortfolio(snapshot, {}, [], { MSFT: 'cash' }, 123, trades);
 
     expect(result.cashStocks[0].shares).toBe(5);
     expect(result.cashStocks[0].averagePrice).toBeNull();

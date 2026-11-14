@@ -615,6 +615,17 @@ describe('app localization', () => {
     expect(changes).toEqual(['ru', 'en']);
   });
 
+  it('localizes shared table pagination controls in Russian', () => {
+    expect(translateText('Rows', 'ru')).toBe('Строки');
+    expect(translateText('Rows per page for {table}', 'ru').replace('{table}', 'Closed history'))
+      .toBe('Строк на странице: Closed history');
+    expect(translateText('Rows {start}–{end} of {total}', 'ru')
+      .replace('{start}', '11').replace('{end}', '20').replace('{total}', '78'))
+      .toBe('Строки 11–20 из 78');
+    expect(translateText('Previous page', 'ru')).toBe('Предыдущая страница');
+    expect(translateText('Next page', 'ru')).toBe('Следующая страница');
+  });
+
   it('localizes dynamic Closed History profit and pagination summaries', () => {
     expect(translateText('6 of 9 records with known profit profitable', 'ru'))
       .toBe('Прибыльные сделки: 6 из 9');
@@ -779,6 +790,15 @@ describe('app localization', () => {
       'Unreadable records are preserved. Review or recover them before deciding whether any retention or deletion action is appropriate.'
     ];
     for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
+
+
+  it('localizes the bounded Closed History net P&L explanation in Russian', () => {
+    expect(translateText(
+      'Upper bound: missing commission inputs; actual net P&L may be lower.',
+      'ru'
+    )).toBe('Верхняя граница: часть комиссий не указана; фактическая чистая прибыль может быть ниже.');
   });
 
 

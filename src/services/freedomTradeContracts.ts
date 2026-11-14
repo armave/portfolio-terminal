@@ -115,6 +115,13 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
       commissionCurrency: String(row.commission_currency ?? row.curr_c ?? row.currency ?? ''),
       raw: row,
       marginFeeAllocations: numericRecordOrUndefined(row.marginFeeAllocations),
+      // Preserve an explicitly empty object: it clears the last open-lot fee
+      // allocation and must not be mistaken for a provider response that omitted it.
+      openMarginFeeAllocations: row.openMarginFeeAllocations && typeof row.openMarginFeeAllocations === 'object' &&
+        !Array.isArray(row.openMarginFeeAllocations)
+        ? numericRecordOrUndefined(row.openMarginFeeAllocations) ?? {}
+        : undefined,
+      openMarginFee: numberOrNull(row.openMarginFee) ?? undefined,
       feesAndCommissions: numberOrNull(row.feesAndCommissions) ?? undefined,
       netProfit: row.netProfit === null ? null : numberOrNull(row.netProfit) ?? undefined
     };

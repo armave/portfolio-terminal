@@ -102,6 +102,26 @@ The helper's precedence is exact: **incomplete first, then provisional, otherwis
 
 The current portfolio valuation input does not carry currency codes or an FX conversion table. It therefore has no explicit cross-currency conversion contract. The formula is valid only when the supplied balances, cash, holdings prices, and quantities are already denominated in a common reporting currency. Do not sum unlike currencies or invent an exchange rate. Multi-currency consolidated valuation is a future feature requiring explicit FX source, timestamp, base currency, conversion direction, and stale-rate behavior.
 
+### Balance desk holding-row calculations
+
+**Sources:** `getCashHoldingDisplayMetrics` and `summarizeCashHoldings` in `src/features/cash/cashCushionModel.ts`; presentation and editing in `src/components/CashCushionDesk.tsx`.
+
+For each positive-quantity cash holding:
+
+- Market value = shares × selected positive market price.
+- Average value = shares × positive average entry price.
+- Gross unrealized P&L = market value − average value.
+- Gross unrealized P&L percent = gross unrealized P&L / average value × 100.
+- Holding allocation = market value / total priced market value × 100, but only when every positive-quantity holding has a usable market value.
+
+Input values at these calculation boundaries must be finite numbers or non-empty numeric strings. Booleans, arrays, objects, blank strings, zero/negative prices, non-positive quantities, and overflowing products are not financial values. Missing or invalid market values and P&L remain unavailable rather than being presented as zero. If any positive-quantity holding is unpriced, allocation percentages remain unavailable; the footer may show a lower-bound priced subtotal, not a complete total.
+
+Provider-reported quote volume is not assigned a currency symbol because its unit depends on the quote source. Quote change and change-percent values are independently validated before rendering.
+
+Cash/margin mix editing preserves the in-progress input string across unrelated store rerenders. While either sub-input is being edited, the opposite sub-input is recalculated live as the tranche's total quantity minus the edited side; this keeps the displayed split balanced before the edit is committed. The edited side is clamped to the range from zero through the tranche quantity, and blank or invalid intermediate text retains the last valid allocation for calculating the opposite side. On blur, the shared resolver commits the edited split, so cash plus margin equals the total quantity. A local draft is only displayed while its base tranche quantity and saved cash/margin mix still match; a changed tranche or accepted allocation invalidates the old draft.
+
+Unclassified active tranches default to Margin. An explicit saved operation- or ticker-level Cash/Mix classification takes precedence, and a new Mix allocation starts fully Margin-funded unless the prior saved classification says otherwise. A persisted guest assignment remains evidence of a legacy or explicit cash-backed allocation; this does not make newly observed, unassigned tranches default to Cash.
+
 ## 3. Unrealized P&L and target-projection contracts
 
 **Sources:** `src/components/SummaryMetricsGrid.tsx`, the portfolio review summary in `src/App.tsx`, and `getGuestHoldingValuation` in `src/domain/guestPortfolio.ts`.
@@ -193,6 +213,17 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 - Net realized profit = gross realized profit − total commissions − allocated margin interest, rounded to cents.
 - Net cash proceeds = sale proceeds − sell commission, rounded to cents. Margin rollover interest is already reflected in signed balance and is not deducted from cash proceeds again.
 
+### Broker Trades display fallback
+
+For the read-only broker Closed History table:
+- Prefer a finite TradeNet-reported gross `profit` value when present.
+- When it is absent, derive gross realized P&L as `(sell execution price − FIFO-weighted acquisition price) × sold quantity`. The sell price must be a positive execution price or a positive `tradeValue / quantity` fallback.
+- Derive this value only when the FIFO attribution covers every sold share and every matched acquisition lot has a known positive recorded price. Unmatched quantity or missing cost/price evidence keeps P&L unavailable; do not use a current quote or broker aggregate average as a substitute.
+- Subtract all known fees and commission components. When one or more commission inputs are missing but gross P&L and FIFO cost basis are complete, show the resulting value as an **upper bound** (actual net P&L may be lower); do not present it as exact.
+- Keep bounded rows out of the exact Known Net P&L aggregate and win-rate denominator. Mark the row with a `≤` prefix and an explanatory tooltip.
+- If gross P&L or FIFO cost evidence is incomplete, net P&L remains unavailable.
+- This calculation is display-only. It does not write to the portfolio snapshot, closed-history record, or transaction journal.
+
 ### Debt-first settlement
 
 `settleSaleProceeds(debt, freeCash, netProceeds)` clamps negative legacy debt/cash/proceeds to zero, but rejects non-finite inputs. It repays debt first; any remainder increases free cash. Existing free cash is unchanged when proceeds do not exceed debt. It does not itself impose a new currency conversion or interest calculation.
@@ -223,13 +254,27 @@ Inputs include validated open quantity, sold quantity, signed portfolio balance,
 
 - Only rows identified as Freedom API rows (IDs beginning `freedom-`) are eligible.
 - Financing-fee text is matched against the existing financing patterns and excludes trade-commission rows.
-- Current implementation allocates USD financing rows to FIFO-matched buy-to-sell exposure segments.
-- Allocation weights are exposure quantity × buy price and allocations are performed in integer cents using largest-remainder distribution, preserving the input fee's cents.
-- If broker executions exist, the broker-execution allocation path is selected; app closed trades are a fallback only when broker executions are absent.
-- Known non-USD cashflows and known non-USD executions are excluded from USD allocation.
-- **Legacy compatibility:** missing/blank currency is currently treated as USD. This should be made explicit and reviewed before tightening the behavior, because changing it can alter historical fee attribution.
+- USD financing rows are allocated against FIFO exposure segments that were open on the fee date. Exposure weight is margin-funded quantity × buy price; explicitly cash-funded quantity is excluded, and mixed tranches contribute only their margin fraction.
+- Each fee is split in integer cents using largest-remainder distribution, preserving every cent across the closed and still-open portions.
+- The closed portion is stored by cashflow ID on the corresponding broker sell execution as `marginFeeAllocations`. The remaining open portion is stored separately on the originating buy execution as `openMarginFeeAllocations` / `openMarginFee`. These two buckets are mutually exclusive; when an open lot later sells, recalculation transfers its historical fee share from the buy-side open bucket to the sell-side closed bucket.
+- Open buy-lot fees are also aggregated by ticker onto the active Margin position as `brokerMarginFeeAllocations` / `brokerMarginFee` for display. This imported broker amount is separate from the app's modeled `marginCharged` accrual and never mutates it.
+- Without broker execution history, the app fallback splits fees across historical closed app trades and current app-owned Margin-position tranches. The open portion is stored on the position using the same broker-fee fields; it is not copied into `marginCharged`.
+- Active lots without an explicit funding classification use the active portfolio's Cash default. A sale with no explicit or inherited classification retains the established closed-history Margin fallback; explicit tranche/ticker classification is carried across partial closes.
+- Broker-execution history is the primary source; app closed trades and active app Margin positions are a compatibility fallback only when broker execution history is absent.
+- Known non-USD cashflows and known non-USD executions are excluded from USD allocation. The app does not convert EUR/AMD/other currencies; a foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
+- **Legacy compatibility:** missing/blank currency is currently treated as USD. This behavior remains explicit and should be reviewed before tightening because changing it can alter historical fee attribution.
 
 The fee allocator does not convert EUR/AMD/other currencies to USD. A foreign-currency fee must not be mixed into USD realized P&L without a separately specified and timestamped FX conversion.
+
+### Cashflow sync identity and correction semantics
+
+- Cashflow history is merged from the encrypted cloud record, local history sidecar, portfolio snapshot and the latest broker response. `mergeFreedomCashflowRows` deduplicates both persisted and incoming copies by stable row ID; later source copies override the earlier row's facts, and the incoming broker row is applied last.
+- A broker correction carrying the same stable operation ID replaces that row's amount/date/details. The fee allocator then rebuilds per-execution and open-lot allocations from the merged history; it does not add the corrected allocation on top of a stale allocation.
+- Different provider operation IDs remain separate even when date, amount, description and currency are identical. Do not deduplicate broker rows by visible amount/date alone.
+- The current provider adapter has no verified deletion/tombstone contract. A row missing from an incremental page is not evidence that an older operation was deleted, so saved history is retained. A cancellation or refund must arrive as an explicit provider correction/reversal row; absence must never silently erase an allocation.
+- When TradeNet omits an operation ID, the normalizer creates a synthetic ID from date, type, amount, currency and description. That identity preserves separate same-day rows conservatively, but an amount correction cannot be proven to refer to the same source operation and may appear as a second row. Do not claim correction reconciliation for such rows without a provider ID or another stable source reference.
+- Incremental reads use the latest persisted cashflow date with a one-calendar-day overlap. This catches nearby late updates, not arbitrarily old corrections. A full baseline is performed when the account baseline is absent; the current adapter does not prove that every older source correction will be rediscovered after the baseline.
+- The sync must persist the canonical portfolio snapshot before checkpointing the separate encrypted history record. A failed canonical save aborts the history write; an unconfirmed cloud write is reported as partial and remains retryable. The account/session guard must be checked after every asynchronous boundary.
 
 ## 9. Funding classification contract
 

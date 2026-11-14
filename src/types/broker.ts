@@ -141,6 +141,10 @@ export interface BrokerExecution {
   commissionCurrency: string;
   raw: Record<string, unknown>;
   /** App-calculated/persisted metadata is kept distinct from broker-reported facts. */
+  /** Fee allocations currently carried by the still-open remainder of this buy lot. */
+  openMarginFeeAllocations?: Record<string, number>;
+  openMarginFee?: number;
+  /** Fee allocations transferred to this closed sell execution. */
   marginFeeAllocations?: Record<string, number>;
   feesAndCommissions?: number;
   netProfit?: number | null;

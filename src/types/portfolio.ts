@@ -60,8 +60,11 @@ export interface PositionRecord {
   currentPrice: number;
   pt: number;
   commBuy: number;
-  /** Unallocated one-shot financing charge retained until the next realized sale. */
+  /** Unallocated one-shot modeled financing charge retained until the next realized sale. */
   marginCharged?: number;
+  /** Actual broker cashflow margin fees attributed to the still-open position, separate from modeled accrual. */
+  brokerMarginFeeAllocations?: Record<string, number>;
+  brokerMarginFee?: number;
   startDate?: string;
   tranches?: TrancheItem[];
   quoteUpdatedAt?: number;
@@ -315,7 +318,7 @@ export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
   /** Read-only broker snapshot; never replaces app-owned cash/margin classifications. */
-  /** User's persisted cash/margin classification for each broker ticker; unknown tickers default to cash. */
+  /** User's persisted cash/margin classification; unclassified new active tranches default to Margin. */
   activeTrancheTypes?: Record<string, ActiveTrancheType>;
   /** Per-operation share quantities for mixed cash/margin classifications. */
   activeTrancheMixes?: Record<string, ActiveTrancheMix>;

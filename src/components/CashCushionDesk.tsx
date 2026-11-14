@@ -3,7 +3,7 @@ import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
-import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
@@ -23,7 +23,7 @@ import {
   buildCashHoldingDisplayGroups,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
-  getCashHoldingMarketPrice,
+  getCashHoldingDisplayMetrics,
   getReversibleBalanceAdjustmentEvents,
   selectCashCushionPortfolioState,
   shouldShowCashHoldingMarketDepth,
@@ -31,6 +31,8 @@ import {
 } from '../features/cash/cashCushionModel';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -43,6 +45,16 @@ const BADGE_STYLES: Record<string, string> = {
 const EMPTY_TRANCHE_MIXES: Record<string, ActiveTrancheMix> = {};
 const EMPTY_TRANCHE_TYPES: Record<string, ActiveTrancheType> = {};
 const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
+
+type MixInputDraft = {
+  value: string;
+  editedSide: 'cash' | 'margin';
+  quantity: number;
+  baseCash: number;
+  baseMargin: number;
+  cash: number;
+  margin: number;
+};
 
 function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (!details || typeof details !== 'object') return null;
@@ -153,6 +165,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     emitBrokerEvent('broker:request-executed-trades');
   };
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
+  // Preserve raw split-field input while the portfolio store rerenders.
+  const [mixInputDrafts, setMixInputDrafts] = useState<Record<string, MixInputDraft>>({});
   const [guestDirectory, dispatchGuestDirectory] = useReducer(
     guestDirectoryReducer<AuthUser>,
     undefined,
@@ -315,6 +329,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     if (latestPrice === null || latestPrice === tranche.marketPrice) return tranche;
     return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
   }), [activeTrancheSource, cashHoldings, positions]);
+  const activeTranchePagination = useTablePagination('active-tranches', activeTranches.length, 10);
+  const visibleActiveTranches = sliceTablePage(
+    activeTranches,
+    activeTranchePagination.currentPage,
+    activeTranchePagination.pageSize
+  );
   const guestHoldings = useMemo(() => guestUserId
     ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
@@ -367,7 +387,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     () => new Map(guestUsers.map((guest) => [guest.id, guest.name || ''])),
     [guestUsers]
   );
-  const { displayTableRows } = useMemo(
+  const { displayHoldingGroups } = useMemo(
     () => buildCashHoldingDisplayGroups({
       isAdmin,
       guestNames,
@@ -383,7 +403,29 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     [isAdmin, guestNames, guestDirectoryPending, activeTranches, activeTrancheGuestAssignments,
       activeTrancheTypes, activeTrancheMixes, cashHoldings, holdings]
   );
-
+  const displayHoldingRows = useMemo(
+    () => displayHoldingGroups.flatMap((group) =>
+      group.holdings.map((holding) => ({ group, holding }))
+    ),
+    [displayHoldingGroups]
+  );
+  const cashHoldingsPagination = useTablePagination('cash-holdings', displayHoldingRows.length, 10);
+  const visibleDisplayTableRows = useMemo(() => {
+    const pageRows = sliceTablePage(
+      displayHoldingRows,
+      cashHoldingsPagination.currentPage,
+      cashHoldingsPagination.pageSize
+    );
+    return pageRows.flatMap((item, index) => {
+      const previous = pageRows[index - 1];
+      return [
+        ...(isAdmin && (!previous || previous.group.key !== item.group.key)
+          ? [{ type: 'group' as const, key: 'group-' + item.group.key, label: item.group.label }]
+          : []),
+        { type: 'holding' as const, key: 'holding-' + item.group.key + '-' + item.holding.ticker, holding: item.holding }
+      ];
+    });
+  }, [displayHoldingRows, cashHoldingsPagination.currentPage, cashHoldingsPagination.pageSize, isAdmin]);
 
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
     return <DeskLoading
@@ -510,7 +552,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 .filter((tranche) => tranche.assignedShares > 0)
                 .sort((a, b) => (b.purchasedAt ?? 0) - (a.purchasedAt ?? 0));
 
-              const volume = '$' + formatQuoteVolume(holding.quoteDetails?.volume);
+              const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
                 <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
@@ -568,6 +610,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             })}
           </div>
         ) : (
+          <>
           <TableScrollRegion label="Cash-funded stock holdings" className="table-scroll-wrapper">
             <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
               <caption class="sr-only">Cash-funded stock holdings</caption>
@@ -584,14 +627,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 </tr>
               </thead>
               <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
-                {displayTableRows.length === 0 ? (
+                {displayHoldingRows.length === 0 ? (
                   <tr class="cash-holding-empty-row">
                     <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                       {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                     </td>
                   </tr>
                 ) : (
-                  displayTableRows.map((row) => {
+                  visibleDisplayTableRows.map((row) => {
                     if (row.type === 'group') {
                       return (
                         <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
@@ -607,23 +650,23 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       );
                     }
                     const h = row.holding;
-                    const shares = Number(h.shares) || 0;
-                    const price = getCashHoldingMarketPrice(h);
-                    const averagePrice = Number(h.averagePrice);
-                    const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
-                    const hasMarketComparison = hasAveragePrice && price !== null;
-                    const averageValue = hasAveragePrice ? shares * averagePrice : null;
-                    const val = price === null ? null : shares * price;
-                    const totalDifference = hasMarketComparison && val !== null ? val - averageValue! : null;
-                    const totalDifferencePercent = hasMarketComparison && averageValue! > 0 && totalDifference !== null
-                      ? (totalDifference / averageValue!) * 100
-                      : null;
-                    const allocation = unpricedHoldingCount === 0 && stocksTotal > 0 && val !== null
-                      ? (val / stocksTotal) * 100
-                      : null;
+                    const {
+                      shares,
+                      price,
+                      averagePrice,
+                      averageValue,
+                      marketValue: val,
+                      unrealizedPnl: totalDifference,
+                      unrealizedPnlPercent: totalDifferencePercent,
+                      allocation
+                    } = getCashHoldingDisplayMetrics(h, stocksTotal, unpricedHoldingCount);
+                    const hasAveragePrice = averagePrice !== null;
+                    const hasMarketComparison = totalDifference !== null && totalDifferencePercent !== null;
                     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
 
-                    const hasChange = Number.isFinite(h.quoteDetails?.change);
+                    const hasChange = typeof h.quoteDetails?.change === 'number' && Number.isFinite(h.quoteDetails.change);
+                    const hasChangePercent = typeof h.quoteDetails?.changePercent === 'number' &&
+                      Number.isFinite(h.quoteDetails?.changePercent);
                     const direction: SentimentDirection = hasChange
                       ? h.quoteDetails!.change! > 0
                         ? 'bullish'
@@ -632,11 +675,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           : 'neutral'
                       : 'unknown';
                     const badgeText =
-                      hasChange && h.quoteDetails?.changePercent !== undefined
-                        ? `${h.quoteDetails.changePercent.toFixed(2)}%`
+                      hasChange && hasChangePercent
+                        ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
                         : sentimentLabel(direction);
 
-                    const volume = '$' + formatQuoteVolume(h.quoteDetails?.volume)
+                    const volume = formatQuoteVolume(h.quoteDetails?.volume)
 
                     return (
                         <tr key={row.key} class="cash-holding-row hover:bg-slate-900/40">
@@ -734,6 +777,19 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </tfoot>
             </table>
           </TableScrollRegion>
+          <TablePagination
+            tableLabel={translateText('Cash-funded stock holdings', getAppLanguage())}
+            page={cashHoldingsPagination.currentPage}
+            pageCount={cashHoldingsPagination.pageCount}
+            pageSize={cashHoldingsPagination.pageSize}
+            start={cashHoldingsPagination.start}
+            end={cashHoldingsPagination.end}
+            total={displayHoldingRows.length}
+            onPageChange={cashHoldingsPagination.setPage}
+            onPageSizeChange={cashHoldingsPagination.setPageSize}
+            controlsId="cashStocksTableBody"
+          />
+          </>
         )}
 
         {isAdmin && !guestUserId && (reversibleBalanceAdjustments.length > 0 || balanceAdjustmentNotice) && (
@@ -839,7 +895,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
             <div>
               <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches ({activeTranches.length})</h2>
-              <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Cash</p>
+              <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Margin</p>
             </div>
             <div class="flex items-center gap-2">
               <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -892,26 +948,86 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       <th scope="col" class="py-2 px-2 text-center">Guest · cash shares</th>
                     </tr>
                   </thead>
-                  <tbody class="active-tranches-body divide-y divide-slate-800/60 font-mono">
+                  <tbody id="activeTranchesTableBody" class="active-tranches-body divide-y divide-slate-800/60 font-mono">
                     {activeTranches.length === 0 ? (
                       <tr class="active-tranche-empty-row"><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
-                    ) : activeTranches.map((tranche) => {
-                      const type = activeTrancheTypes[tranche.id] || activeTrancheTypes[tranche.ticker] || 'cash';
+                    ) : visibleActiveTranches.map((tranche) => {
+                      const type = getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker);
                       const mix = normalizeActiveTrancheMix(
                         tranche.quantity,
                         activeTrancheMixes[tranche.id] || activeTrancheMixes[tranche.ticker]
                       );
                       const cashQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
                       const assignedGuestId = activeTrancheGuestAssignments[tranche.id] || '';
-                      const updateMixCash = (value: string) => {
-                        const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
-                        setActiveTrancheType(tranche.id, 'mix', { cash, margin: tranche.quantity - cash });
+                      const mixInputDraft = mixInputDrafts[tranche.id];
+                      const currentMixInputDraft = mixInputDraft &&
+                        mixInputDraft.quantity === tranche.quantity &&
+                        mixInputDraft.baseCash === mix.cash &&
+                        mixInputDraft.baseMargin === mix.margin
+                        ? mixInputDraft : null;
+                      // One draft follows the whole Cash/Margin editor. Switching fields
+                      // keeps the current preview; each edited side derives the remainder.
+                      const cashInputValue = currentMixInputDraft
+                        ? currentMixInputDraft.editedSide === 'cash'
+                          ? currentMixInputDraft.value
+                          : currentMixInputDraft.cash
+                        : mix.cash;
+                      const marginInputValue = currentMixInputDraft
+                        ? currentMixInputDraft.editedSide === 'margin'
+                          ? currentMixInputDraft.value
+                          : currentMixInputDraft.margin
+                        : mix.margin;
+                      const updateMixInputDraft = (value: string, editedSide: 'cash' | 'margin') => {
+                        setMixInputDrafts((current) => {
+                          const previous = current[tranche.id];
+                          const previousIsCurrent = previous &&
+                            previous.quantity === tranche.quantity &&
+                            previous.baseCash === mix.cash &&
+                            previous.baseMargin === mix.margin;
+                          const baseMix = previousIsCurrent
+                            ? { cash: previous.cash, margin: previous.margin }
+                            : mix;
+                          const nextMix = resolveActiveTrancheMixEdit(
+                            value,
+                            editedSide,
+                            tranche.quantity,
+                            baseMix
+                          );
+                          return {
+                            ...current,
+                            [tranche.id]: {
+                              value,
+                              editedSide,
+                              quantity: tranche.quantity,
+                              baseCash: previousIsCurrent ? previous.baseCash : mix.cash,
+                              baseMargin: previousIsCurrent ? previous.baseMargin : mix.margin,
+                              ...nextMix
+                            }
+                          };
+                        });
                       };
-                      const updateMixMargin = (value: string) => {
-                        const margin = resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin);
-                        setActiveTrancheType(tranche.id, 'mix', { cash: tranche.quantity - margin, margin });
+                      const commitMixInput = (
+                        value: string,
+                        editedSide: 'cash' | 'margin',
+                        relatedTarget: EventTarget | null
+                      ) => {
+                        const nextElement = relatedTarget as HTMLElement | null;
+                        const nextEditor = nextElement && typeof nextElement.closest === 'function'
+                          ? nextElement.closest('[data-mix-editor-tranche]')
+                          : null;
+                        if (nextEditor?.getAttribute('data-mix-editor-tranche') === tranche.id) return;
+
+                        const allocation = currentMixInputDraft
+                          ? { cash: currentMixInputDraft.cash, margin: currentMixInputDraft.margin }
+                          : resolveActiveTrancheMixEdit(value, editedSide, tranche.quantity, mix);
+                        setActiveTrancheType(tranche.id, 'mix', allocation);
+                        setMixInputDrafts((current) => {
+                          const next = { ...current };
+                          delete next[tranche.id];
+                          return next;
+                        });
                       };
                       const mixExpanded = expandedMixTranches.has(tranche.id);
                       const selectMix = () => {
@@ -961,7 +1077,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             >
                               <div>
                                 {type === 'mix' && (
-                                  <div class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
+                                  <div data-mix-editor-tranche={tranche.id} class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
                                       Cash
                                       <input
@@ -970,9 +1086,17 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        value={mix.cash}
-                                        onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
-                                        class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                        value={cashInputValue}
+                                        onInput={(inputEvent) => {
+                                          const value = (inputEvent.currentTarget as HTMLInputElement).value;
+                                          updateMixInputDraft(value, 'cash');
+                                        }}
+                                        onBlur={(event) => commitMixInput(
+                                          (event.currentTarget as HTMLInputElement).value,
+                                          'cash',
+                                          event.relatedTarget
+                                        )}
+                                        class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
                                       />
                                     </label>
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
@@ -983,9 +1107,17 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        value={mix.margin}
-                                        onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
-                                        class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                        value={marginInputValue}
+                                        onInput={(inputEvent) => {
+                                          const value = (inputEvent.currentTarget as HTMLInputElement).value;
+                                          updateMixInputDraft(value, 'margin');
+                                        }}
+                                        onBlur={(event) => commitMixInput(
+                                          (event.currentTarget as HTMLInputElement).value,
+                                          'margin',
+                                          event.relatedTarget
+                                        )}
+                                        class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
                                       />
                                     </label>
                                   </div>
@@ -1031,6 +1163,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   </tr></tfoot>}
                 </table>
               </TableScrollRegion>
+              <TablePagination
+                tableLabel={translateText('Active tranches and guest assignments', getAppLanguage())}
+                page={activeTranchePagination.currentPage}
+                pageCount={activeTranchePagination.pageCount}
+                pageSize={activeTranchePagination.pageSize}
+                start={activeTranchePagination.start}
+                end={activeTranchePagination.end}
+                total={activeTranches.length}
+                onPageChange={activeTranchePagination.setPage}
+                onPageSizeChange={activeTranchePagination.setPageSize}
+                controlsId="activeTranchesTableBody"
+              />
             </div>
           </div>
         </section>}

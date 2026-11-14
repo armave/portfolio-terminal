@@ -269,6 +269,8 @@ async function pullCloudState(
       if (!local) return trade;
       const preserved = { ...trade };
       preserved.marginFeeAllocations = local.marginFeeAllocations ?? trade.marginFeeAllocations;
+      preserved.openMarginFeeAllocations = local.openMarginFeeAllocations ?? trade.openMarginFeeAllocations;
+      preserved.openMarginFee = local.openMarginFee ?? trade.openMarginFee;
       preserved.marginFee = local.marginFee ?? trade.marginFee;
       preserved.feesAndCommissions = local.feesAndCommissions ?? trade.feesAndCommissions;
       preserved.netProfit = local.netProfit ?? trade.netProfit;

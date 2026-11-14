@@ -14,6 +14,7 @@ function firstFiniteNumber(...values: unknown[]): number | null {
 }
 
 
+const BUY_SIDES = new Set(['buy', 'b', 'purchase', 'bought', '1']);
 const SELL_SIDES = new Set(['sell', 's', 'sale', 'sold', '2']);
 
 /**
@@ -31,8 +32,10 @@ export function preservePersistedBrokerFeeAllocations<T extends object>(
     if (!trade) continue;
     const id = trade.id == null ? '' : String(trade.id);
     const allocations = asFeeRecord(trade.marginFeeAllocations);
-    if (!id || !allocations ||
-        !Object.values(allocations).some((amount) => Number(amount) > 0)) continue;
+    const openAllocations = asFeeRecord(trade.openMarginFeeAllocations);
+    const hasClosedFees = Boolean(allocations && Object.values(allocations).some((amount) => Number(amount) > 0));
+    const hasOpenFees = Boolean(openAllocations && Object.values(openAllocations).some((amount) => Number(amount) > 0));
+    if (!id || (!hasClosedFees && !hasOpenFees)) continue;
     rowsWithAllocations.set(id, trade);
   }
 
@@ -41,6 +44,17 @@ export function preservePersistedBrokerFeeAllocations<T extends object>(
     const id = current.id == null ? '' : String(current.id);
     const persisted = id ? rowsWithAllocations.get(id) : undefined;
     if (!persisted) return trade;
+    const side = String(current.side ?? '').trim().toLowerCase();
+    if (BUY_SIDES.has(side)) {
+      // An explicit empty open-allocation object is a calculated clearing result,
+      // not a missing provider field. Never resurrect an older buy-side allocation.
+      if (current.openMarginFeeAllocations !== undefined || current.openMarginFee !== undefined) return trade;
+      return {
+        ...trade,
+        openMarginFeeAllocations: persisted.openMarginFeeAllocations,
+        openMarginFee: persisted.openMarginFee
+      } as T;
+    }
     const currentAllocations = asFeeRecord(current.marginFeeAllocations);
     if (currentAllocations &&
         Object.values(currentAllocations).some((amount) => Number(amount) > 0)) return trade;
@@ -84,11 +98,34 @@ export function mergeBrokerExecutionHistory<T extends object>(persisted: T[], fe
 
 export function applyCashflowAllocationsToBrokerExecutions<T extends object>(
   executions: T[],
-  allocationsBySell: ReadonlyMap<number, Record<string, number>>
+  allocationsBySell: ReadonlyMap<number, Record<string, number>>,
+  allocationsByOpenBuy: ReadonlyMap<number, Record<string, number>> = new Map()
 ): T[] {
   return executions.map((trade, index) => {
     const record = asFeeRecord(trade) ?? {};
-    if (!SELL_SIDES.has(String(record.side ?? '').toLowerCase())) return trade;
+    const side = String(record.side ?? '').trim().toLowerCase();
+
+    if (BUY_SIDES.has(side)) {
+      const openMarginFeeAllocations = Object.fromEntries(
+        Object.entries(allocationsByOpenBuy.get(index) ?? {})
+          .map(([id, amount]) => [id, Number(amount.toFixed(6))])
+      ) as Record<string, number>;
+      const openMarginFee = Number(
+        Object.values(openMarginFeeAllocations)
+          .reduce((sum, amount) => sum + (Number(amount) || 0), 0)
+          .toFixed(2)
+      );
+      const hadPreviousOpenAllocation = record.openMarginFeeAllocations !== undefined ||
+        record.openMarginFee !== undefined;
+      if (!hadPreviousOpenAllocation && Object.keys(openMarginFeeAllocations).length === 0) return trade;
+      if (
+        JSON.stringify(record.openMarginFeeAllocations ?? {}) === JSON.stringify(openMarginFeeAllocations) &&
+        Number(record.openMarginFee ?? 0) === openMarginFee
+      ) return trade;
+      return { ...trade, openMarginFeeAllocations, openMarginFee } as T;
+    }
+
+    if (!SELL_SIDES.has(side)) return trade;
 
     // Rebuild from the current broker cashflows. Keeping the old allocation
     // object here would retain fees from cashflow rows that were replaced/removed.
@@ -102,7 +139,8 @@ export function applyCashflowAllocationsToBrokerExecutions<T extends object>(
         .toFixed(2)
     );
     const commission = Math.abs(Number(record.commission ?? 0)) || 0;
-    const profit = record.profit == null ? null : Number(record.profit);
+    const parsedProfit = record.profit == null ? null : Number(record.profit);
+    const profit = parsedProfit !== null && Number.isFinite(parsedProfit) ? parsedProfit : null;
 
     const feesAndCommissions = Number((commission + marginFee).toFixed(2));
     const netProfit = profit == null ? null : Number((profit - feesAndCommissions).toFixed(2));
@@ -118,14 +156,75 @@ export function applyCashflowAllocationsToBrokerExecutions<T extends object>(
   });
 }
 
+/** Collapse per-buy-lot open broker fees to the active ticker position for display/reporting. */
+export function aggregateOpenBrokerMarginFeeAllocationsByTicker<T extends object>(
+  executions: readonly T[],
+  allocationsByOpenBuy: ReadonlyMap<number, Record<string, number>>
+): Map<string, Record<string, number>> {
+  const result = new Map<string, Record<string, number>>();
+  executions.forEach((execution, index) => {
+    const record = asFeeRecord(execution) ?? {};
+    const side = String(record.side ?? '').trim().toLowerCase();
+    if (!BUY_SIDES.has(side)) return;
+    const ticker = String(record.ticker ?? '').trim().toUpperCase().replace(/\.US$/i, '');
+    if (!ticker) return;
+    const allocations = allocationsByOpenBuy.get(index);
+    if (!allocations) return;
+    const byFee = result.get(ticker) ?? {};
+    for (const [feeId, amount] of Object.entries(allocations)) {
+      byFee[feeId] = Number((((byFee[feeId] || 0) * 100 + Number(amount || 0) * 100) / 100).toFixed(2));
+    }
+    result.set(ticker, byFee);
+  });
+  return result;
+}
+
+/** Apply broker-imported financing fees to active app-owned Margin positions without
+ * mutating the separate modeled/accrued `marginCharged` field. */
+export function applyCashflowAllocationsToMarginPositions<T extends object>(
+  positions: Record<string, T>,
+  allocationsByPosition: ReadonlyMap<string, Record<string, number>>
+): Record<string, T> {
+  return Object.fromEntries(Object.entries(positions).map(([key, position]) => {
+    const record = asFeeRecord(position) ?? {};
+    const brokerMarginFeeAllocations = Object.fromEntries(
+      Object.entries(allocationsByPosition.get(key) ?? {})
+        .map(([id, amount]) => [id, Number(amount.toFixed(6))])
+    ) as Record<string, number>;
+    const brokerMarginFee = Number(
+      Object.values(brokerMarginFeeAllocations)
+        .reduce((sum, amount) => sum + (Number(amount) || 0), 0)
+        .toFixed(2)
+    );
+    const hadPrevious = record.brokerMarginFeeAllocations !== undefined || record.brokerMarginFee !== undefined;
+    if (!hadPrevious && Object.keys(brokerMarginFeeAllocations).length === 0) return [key, position];
+    if (
+      JSON.stringify(record.brokerMarginFeeAllocations ?? {}) === JSON.stringify(brokerMarginFeeAllocations) &&
+      Number(record.brokerMarginFee ?? 0) === brokerMarginFee
+    ) return [key, position];
+    return [key, {
+      ...position,
+      brokerMarginFeeAllocations,
+      brokerMarginFee
+    }];
+  }));
+}
+
 export function applyCashflowAllocationsToClosedTrades<T extends object>(
   trades: T[],
   allocationsByTrade: ReadonlyMap<number, number>
 ): T[] {
   return trades.map((trade, index) => {
     const record = asFeeRecord(trade) ?? {};
-    const addedFee = Number((allocationsByTrade.get(index) || 0).toFixed(2));
-    const previousMargin = Math.abs(Number(record.marginInterest) || Number(record.marginFee) || 0);
+    const rawAddedFee = Number(allocationsByTrade.get(index) ?? 0);
+    const addedFee = Number((Number.isFinite(rawAddedFee) ? Math.max(0, rawAddedFee) : 0).toFixed(2));
+    // marginInterest and marginFee are compatibility aliases. When legacy rows
+    // disagree, remove the larger recorded amount so replacement cannot leave a
+    // residual duplicate margin charge in aggregate fees or net P/L.
+    const previousMargin = Math.max(
+      Math.abs(Number(record.marginInterest) || 0),
+      Math.abs(Number(record.marginFee) || 0)
+    );
     if (addedFee <= 0 && previousMargin <= 0) return trade;
 
     // Undo the previous cashflow allocation before applying the current one.
@@ -173,7 +272,10 @@ export interface ClosedTradeFeeBreakdown {
 /** Resolve commission-only and aggregate fee fields without counting margin twice. */
 export function resolveClosedTradeFeeBreakdown(trade: object): ClosedTradeFeeBreakdown {
   const record = asFeeRecord(trade) ?? {};
-  const marginFee = Math.abs(Number(record.marginFee) || Number(record.marginInterest) || 0);
+  const marginFee = Math.max(
+    Math.abs(Number(record.marginFee) || 0),
+    Math.abs(Number(record.marginInterest) || 0)
+  );
   const explicitValue = firstFiniteNumber(record.commissions, record.commission);
   const aggregateValue = firstFiniteNumber(record.feesAndCommissions);
   const totalValue = firstFiniteNumber(record.totalCommissions);
@@ -221,10 +323,17 @@ export function deduplicateClosedHistoryRows<
     const rawDate = record.exitDate ?? record.sellDate ?? record.closedAt ?? record.date;
     const timestamp = typeof rawDate === 'number' ? rawDate : Date.parse(String(rawDate ?? ''));
     const shares = Math.abs(Number(record.shares ?? record.quantity ?? 0));
+    const rawSellPrice = record.sellPrice ?? record.exitPrice ?? record.price;
+    const sellPrice = rawSellPrice === null || rawSellPrice === undefined || rawSellPrice === ''
+      ? NaN : Math.abs(Number(rawSellPrice));
     if (!ticker || !Number.isFinite(timestamp) || !Number.isFinite(shares) || shares <= 0) return null;
     const date = new Date(timestamp);
     const day = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-    return `${ticker}|${day}|${shares.toFixed(6)}`;
+    // A same-day, same-quantity execution is not enough to prove two records
+    // describe the same sale. Compare the available per-share exit price too;
+    // retain the legacy unknown-price fallback only when both sides lack it.
+    const priceKey = Number.isFinite(sellPrice) && sellPrice > 0 ? sellPrice.toFixed(4) : 'unknown';
+    return `${ticker}|${day}|${shares.toFixed(6)}|${priceKey}`;
   };
   const available = new Map<string, number>();
   for (const row of brokerRows) {

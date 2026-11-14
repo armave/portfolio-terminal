@@ -13,7 +13,7 @@ import {
   markFreedomCashflowTradeCheckpoint,
   savePortfolioSnapshot
 } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
+import { aggregateOpenBrokerMarginFeeAllocationsByTicker, applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, applyCashflowAllocationsToMarginPositions, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
@@ -23,6 +23,8 @@ import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetric
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
@@ -113,7 +115,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
-  const [tradesPage, setTradesPage] = useState(1);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
@@ -231,7 +232,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
     // successful allocation changes its own key and triggers another pass.
-    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']);
+    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'openMarginFeeAllocations', 'openMarginFee', 'feesAndCommissions', 'netProfit']);
     const sourceExecutions = executions.map((trade) =>
       Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
     );
@@ -240,7 +241,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         !['marginFee', 'marginInterest', 'feesAndCommissions', 'totalCommissions', 'netProfit', 'netRealizedGain'].includes(field)
       ))
     );
-    const key = JSON.stringify({ cashflows, executions: sourceExecutions, appTrades: sourceAppTrades });
+    const sourceAppPositions = Object.fromEntries(Object.entries(state.positions || {}).map(([key, position]) => [
+      key,
+      Object.fromEntries(Object.entries(position || {}).filter(([field]) =>
+        !['brokerMarginFeeAllocations', 'brokerMarginFee'].includes(field)
+      ))
+    ]));
+    const key = JSON.stringify({
+      cashflows,
+      executions: sourceExecutions,
+      appTrades: sourceAppTrades,
+      appPositions: sourceAppPositions,
+      trancheTypes: state.activeTrancheTypes || {},
+      trancheMixes: state.activeTrancheMixes || {}
+    });
     if (key === lastRecalculationKey.current) {
       setCashflowAllocationReady(true);
       return;
@@ -256,7 +270,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     return () => {
       active = false;
     };
-  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, brokerTrades]);
+  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, state.positions, state.activeTrancheTypes, state.activeTrancheMixes, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false,
@@ -270,20 +284,38 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
 
       // Persist broker-normalized cashflow rows as the source of truth so fee
       // allocations can be recalculated after refresh without another API read.
-      const storedBrokerExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+      const currentPortfolio = portfolioStore.getState();
+      const storedBrokerExecutions = currentPortfolio.brokerExecutedTrades || [];
       // The canonical store may be empty while the broker table has already
       // hydrated. Use the same visible execution set for allocation and display.
       const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)];
-      const appTrades = [...(state.closedTrades || [])];
-      const { brokerAllocations, appAllocations } = calculateFreedomMarginFeeAllocations(
+      const appTrades = [...(currentPortfolio.closedTrades || state.closedTrades || [])];
+      const { brokerAllocations, brokerOpenAllocations, appAllocations, appOpenAllocations } = calculateFreedomMarginFeeAllocations(
         cashflowRows,
         brokerExecutions,
-        appTrades
+        appTrades,
+        {
+          trancheTypes: currentPortfolio.activeTrancheTypes ?? state.activeTrancheTypes,
+          trancheMixes: currentPortfolio.activeTrancheMixes ?? state.activeTrancheMixes,
+          openAppPositions: currentPortfolio.positions || state.positions
+        }
       );
-      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, brokerAllocations);
+      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
+        brokerExecutions,
+        brokerAllocations,
+        brokerOpenAllocations
+      );
       const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+      const openPositionFeeAllocations = brokerExecutions.length
+        ? aggregateOpenBrokerMarginFeeAllocationsByTicker(brokerExecutions, brokerOpenAllocations)
+        : appOpenAllocations;
+      const updatedMarginPositions = applyCashflowAllocationsToMarginPositions(
+        currentPortfolio.positions || state.positions || {},
+        openPositionFeeAllocations
+      );
       const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
+      const changedMarginPositions = JSON.stringify(currentPortfolio.positions || {}) !== JSON.stringify(updatedMarginPositions);
       const updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
@@ -299,6 +331,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
+      if (changedMarginPositions) nextState.positions = updatedMarginPositions;
       if (!isOperationCurrent()) return false;
       const previousPortfolioState = portfolioStore.getState();
       if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
@@ -470,6 +503,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           commission: trade?.commission ?? null,
           commissionCurrency: String(trade?.commissionCurrency ?? ''),
           marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
+          openMarginFeeAllocations: previous?.openMarginFeeAllocations ?? trade?.openMarginFeeAllocations,
+          openMarginFee: previous?.openMarginFee ?? trade?.openMarginFee,
           feesAndCommissions: previous?.feesAndCommissions ?? trade?.feesAndCommissions,
           netProfit: previous?.netProfit ?? trade?.netProfit,
           raw: {}
@@ -577,14 +612,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     }),
     [brokerTrades, brokerTradeMetrics, trancheAttributions, appTrades, state.closedTradeAllocations]
   );
-  const tradesPageSize = 10;
-  const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
-  // Clamp during render so a shrinking refresh never paints an empty, out-of-range page.
-  const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount));
-  const visibleTrades = trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize);
-  useEffect(() => {
-    if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage);
-  }, [tradesPage, safeTradesPage]);
+  const pagination = useTablePagination('closed-history', trades.length, 10);
+  const visibleTrades = sliceTablePage(trades, pagination.currentPage, pagination.pageSize);
   const tradeSummary = useMemo(
     () => summarizeClosedHistoryRows(trades),
     [trades]
@@ -767,7 +796,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
       </div>
       
-      <div key={tradesPage} class="closed-history-page-transition">
+      <div key={pagination.currentPage} class="closed-history-page-transition">
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
@@ -809,7 +838,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               </tr>
             ) : (
               visibleTrades.map((row) => {
-                const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
+                const { trade, index, source, profit: rowProfit, profitIsUpperBound, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
                 const allocationType = row.allocationType || 'margin';
                 const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
                 const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
@@ -892,6 +921,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
 
                 const isPositive = (netProfit ?? 0) >= 0;
                 const sign = isPositive ? '+' : '-';
+                const profitTextPrefix = profitIsUpperBound === true ? '≤ ' : '';
 
                 return (
                     <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
@@ -948,10 +978,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                       {commissionsComplete === false ? '≥' : ''}${formatUSD(Number(rowCommissions ?? 0))}
                     </td>
                     <td
-                      class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'
+                      class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}
+                      title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
                     >
-                      {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
+                      {netProfit === null ? "—" : profitTextPrefix + sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
                     </tr>
                 );
@@ -961,18 +992,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </table>
       </TableScrollRegion>
       </div>
-      {trades.length > 0 && (
-        <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
-          <span class="text-slate-500" aria-live="polite">
-            {translateText(`Showing ${(safeTradesPage - 1) * tradesPageSize + 1}–${Math.min(safeTradesPage * tradesPageSize, trades.length)} of ${trades.length} trades`, getAppLanguage())}
-          </span>
-          <div class="closed-history-pagination-controls flex items-center gap-2">
-            <button type="button" onClick={() => setTradesPage(Math.max(1, safeTradesPage - 1))} disabled={safeTradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
-            <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {safeTradesPage} / {tradesPageCount}</span>
-            <button type="button" onClick={() => setTradesPage(Math.min(tradesPageCount, safeTradesPage + 1))} disabled={safeTradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
-          </div>
-        </div>
-      )}
+      <TablePagination
+        tableLabel={translateText('Closed trade history', getAppLanguage())}
+        page={pagination.currentPage}
+        pageCount={pagination.pageCount}
+        pageSize={pagination.pageSize}
+        start={pagination.start}
+        end={pagination.end}
+        total={trades.length}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+        className="closed-history-pagination pt-2"
+        controlsClassName="closed-history-pagination-controls"
+        controlsId="closedTradesTableBody"
+      />
     </section>
   );
 }

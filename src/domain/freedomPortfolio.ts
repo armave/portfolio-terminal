@@ -5,6 +5,17 @@ import { getPositiveMarketPrice } from './portfolioValuation';
 import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
 import type { BrokerPositionIntegrityIssue } from '../types/broker';
 
+/** Newly observed active purchases are margin-funded unless the user chose otherwise. */
+const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
+
+export function getActiveTrancheType(
+  classifications: Record<string, ActiveTrancheType> | null | undefined,
+  trancheId: string,
+  ticker: string
+): ActiveTrancheType {
+  return classifications?.[trancheId] ?? classifications?.[ticker] ?? DEFAULT_ACTIVE_TRANCHE_TYPE;
+}
+
 /**
  * Parse one edited side of a cash/margin split. Empty or invalid input keeps the
  * last valid value; valid input is clamped so the opposite side remains non-negative.
@@ -54,6 +65,29 @@ export function normalizeActiveTrancheMix(
 
   const cashQuantity = totalQuantity * (cash / allocatedQuantity);
   return { cash: cashQuantity, margin: totalQuantity - cashQuantity };
+}
+
+/**
+ * Resolve a live edit to one side of a tranche split. The edited side is clamped
+ * to the tranche quantity and the opposite side is always the exact remainder.
+ * Blank or invalid edits retain the previous allocation until a valid value is entered.
+ */
+export function resolveActiveTrancheMixEdit(
+  value: unknown,
+  editedSide: 'cash' | 'margin',
+  totalQuantity: number,
+  allocation?: Partial<ActiveTrancheMix> | null
+): ActiveTrancheMix {
+  const total = Number(totalQuantity);
+  if (!Number.isFinite(total) || total <= 0) return { cash: 0, margin: 0 };
+
+  const current = normalizeActiveTrancheMix(total, allocation);
+  const editedQuantity = resolveActiveTrancheMixInput(value, total, current[editedSide]);
+  const remainingQuantity = total - editedQuantity;
+
+  return editedSide === 'cash'
+    ? { cash: editedQuantity, margin: remainingQuantity }
+    : { cash: remainingQuantity, margin: editedQuantity };
 }
 
 export interface FreedomPortfolioSnapshotLike {
@@ -492,7 +526,7 @@ export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike |
 /**
  * Project the broker's current open quantities into the app's cash and margin
  * ledgers. Broker data is authoritative for active quantities; classifications
- * are user preferences and default to cash for newly observed tickers.
+ * are user preferences and default to margin for newly observed tickers.
  */
 export function classifyFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
@@ -535,7 +569,7 @@ export function classifyFreedomPortfolio(
     : getActiveBrokerTranches(snapshot);
   for (const tranche of activeTranches) {
     if (unsupportedTickers.has(tickerKey(tranche.ticker))) continue;
-    const type = classifications[tranche.id] || classifications[tranche.ticker] || 'cash';
+    const type = getActiveTrancheType(classifications, tranche.id, tranche.ticker);
     const allocation = type === 'mix'
       ? normalizeActiveTrancheMix(tranche.quantity, mixedAllocations[tranche.id] || mixedAllocations[tranche.ticker])
       : null;

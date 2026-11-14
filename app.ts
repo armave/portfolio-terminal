@@ -102,6 +102,8 @@ import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import {
   applyCashflowAllocationsToBrokerExecutions,
   applyCashflowAllocationsToClosedTrades,
+  aggregateOpenBrokerMarginFeeAllocationsByTicker,
+  applyCashflowAllocationsToMarginPositions,
   mergeBrokerExecutionHistory,
   preservePersistedBrokerFeeAllocations
 } from './src/domain/closedHistoryFees';
@@ -112,7 +114,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -372,8 +374,11 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
     .find((tranche) => tranche.id === operationId);
   if (selectedType === 'mix') {
-    const previousType = current.activeTrancheTypes?.[operationId] ||
-      current.activeTrancheTypes?.[operationId.split(':')[0]] || 'cash';
+    const previousType = getActiveTrancheType(
+      current.activeTrancheTypes,
+      operationId,
+      operationId.split(':')[0]
+    );
     const requestedMix = detail.mix || activeTrancheMixes[operationId] ||
       (previousType === 'margin'
         ? { cash: 0, margin: activeTranche?.quantity ?? 0 }
@@ -1470,25 +1475,45 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       fetchedCashflows
     );
 
-    const appClosedTrades = [...(current.closedTrades || [])];
+    // Broker cashflow retrieval is asynchronous. Read classifications and open
+    // positions again immediately before allocating so a user edit made during
+    // the fetch is not overwritten by a stale fee projection.
+    const allocationState = portfolioStore.getState();
+    const appClosedTrades = [...(allocationState.closedTrades || [])];
     const allocations = calculateFreedomMarginFeeAllocations(
       mergedCashflows,
       mergedExecutions,
-      appClosedTrades
+      appClosedTrades,
+      {
+        trancheTypes: allocationState.activeTrancheTypes,
+        trancheMixes: allocationState.activeTrancheMixes,
+        openAppPositions: allocationState.positions
+      }
     );
     const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
       mergedExecutions,
-      allocations.brokerAllocations
+      allocations.brokerAllocations,
+      allocations.brokerOpenAllocations
+    );
+    const openPositionFeeAllocations = mergedExecutions.length
+      ? aggregateOpenBrokerMarginFeeAllocationsByTicker(mergedExecutions, allocations.brokerOpenAllocations)
+      : allocations.appOpenAllocations;
+    const updatedMarginPositions = applyCashflowAllocationsToMarginPositions(
+      allocationState.positions || {},
+      openPositionFeeAllocations
     );
     const updatedClosedTrades = applyCashflowAllocationsToClosedTrades(
       appClosedTrades,
       allocations.appAllocations
     );
     const nextState: Partial<PortfolioState> = {};
-    if (JSON.stringify(current.brokerExecutedTrades || []) !== JSON.stringify(updatedExecutions)) {
+    if (JSON.stringify(allocationState.brokerExecutedTrades || []) !== JSON.stringify(updatedExecutions)) {
       nextState.brokerExecutedTrades = updatedExecutions;
     }
-    if (JSON.stringify(current.cashflows || []) !== JSON.stringify(mergedCashflows)) {
+    if (JSON.stringify(allocationState.positions || {}) !== JSON.stringify(updatedMarginPositions)) {
+      nextState.positions = updatedMarginPositions;
+    }
+    if (JSON.stringify(allocationState.cashflows || []) !== JSON.stringify(mergedCashflows)) {
       nextState.cashflows = mergedCashflows;
     }
     if (JSON.stringify(appClosedTrades) !== JSON.stringify(updatedClosedTrades)) {

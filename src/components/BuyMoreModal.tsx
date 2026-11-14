@@ -10,6 +10,8 @@ import { formatUSD } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 interface BuyMoreModalProps { initialTicker?: string; storageKey: string; onClose: () => void; }
 interface BuyMorePositionReference {
@@ -186,6 +188,8 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
   const projectedAverage = inputsValid && averageEntry !== null
     ? (averageEntry * currentShares + purchaseValue!) / (currentShares + shares) : null;
   const tableRows = displayedResult?.rows ?? [];
+  const tablePagination = useTablePagination('buy-more-projection', tableRows.length, 10);
+  const visibleTableRows = sliceTablePage(tableRows, tablePagination.currentPage, tablePagination.pageSize);
 
   return createPortal(
     <ModalFrame
@@ -348,8 +352,8 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
                     </th>)}
                 </tr>
               </thead>
-              <tbody>
-                {tableRows.map((row,index) => {
+              <tbody id="buyMoreProjectionTableBody">
+                {visibleTableRows.map((row,index) => {
                   const current = [row.values[0],row.values[2],row.values[4]];
                   const projected = [row.values[1],row.values[3],row.values[5]];
                   const rowClass = row.kind === 'result' ? 'border-b border-cyan-900/60 bg-cyan-950/20'
@@ -363,6 +367,18 @@ export function BuyMoreModal({ initialTicker, storageKey, onClose }: BuyMoreModa
               </tbody>
             </table>
           </div>
+          <TablePagination
+            tableLabel={translateText('Current position and after purchase projection amounts by date.', language)}
+            page={tablePagination.currentPage}
+            pageCount={tablePagination.pageCount}
+            pageSize={tablePagination.pageSize}
+            start={tablePagination.start}
+            end={tablePagination.end}
+            total={tableRows.length}
+            onPageChange={tablePagination.setPage}
+            onPageSizeChange={tablePagination.setPageSize}
+            controlsId="buyMoreProjectionTableBody"
+          />
           {displayedSummary && <details class="rounded-lg border border-slate-800 bg-slate-900/40">
             <summary class="cursor-pointer px-3 py-2.5 text-xs font-semibold text-slate-300">{translateText('Scenario summary', language)}</summary>
             <pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-slate-800 px-3 py-3 text-[11px] leading-relaxed text-slate-300">{translateText(displayedSummary, language)}</pre>
