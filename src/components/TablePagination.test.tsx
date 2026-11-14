@@ -63,7 +63,7 @@ describe('TablePagination', () => {
 
   it('localizes its accessible labels and hides controls for an empty table', () => {
     setAppLanguage('ru');
-    const view = TablePagination(baseProps);
+    const view = TablePagination(baseProps)!;
     const nodes = flatten(view);
     const select = nodes.find((node) => node.type === 'select');
 
