@@ -68,6 +68,43 @@ describe('cloud state compact serialization', () => {
     expect(serialized).not.toHaveProperty('closedHistory');
     expect(serialized.closedTrades[0]).not.toHaveProperty('raw');
   });
+
+  it('allows a compacted snapshot larger than the former 3.5 MB client limit', async () => {
+    let encryptedPlaintext = '';
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async (plaintext) => {
+        encryptedPlaintext = plaintext;
+        return 'aesgcm:v2:test-ciphertext:test-nonce';
+      },
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: () => 2,
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(1)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => new Response(
+        JSON.stringify({ success: true, revision: 2 }),
+        { status: 200, headers: { ETag: '\"2\"' } }
+      )
+    });
+
+    const largeLegacyField = 'x'.repeat(3_600 * 1024);
+    const result = await runtime.pushCloudState({
+      activeView: 'GOOGL',
+      largeLegacyField
+    }, { secret: 'test-secret' });
+
+    expect(result).toBe(true);
+    expect(encryptedPlaintext).toContain(largeLegacyField);
+  });
 });
 
 
