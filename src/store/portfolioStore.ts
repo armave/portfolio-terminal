@@ -619,11 +619,13 @@ export class PortfolioStore {
     persist = false
   ): boolean {
     if (!Array.isArray(closedTrades) || !isPortfolioTransactionEventList(transactionEvents)) return false;
-    return this.update((state) => {
+    let mergeFailed = false;
+    const committed = this.update((state) => {
       let mergedEvents: PortfolioTransactionEvent[];
       try {
         mergedEvents = mergePortfolioTransactionEvents(state.transactionEvents || [], transactionEvents);
       } catch {
+        mergeFailed = true;
         return state;
       }
       return {
@@ -633,6 +635,7 @@ export class PortfolioStore {
         transactionEvents: mergedEvents
       };
     }, persist);
+    return committed && !mergeFailed;
   }
 
   private updateFinancialMutation(
