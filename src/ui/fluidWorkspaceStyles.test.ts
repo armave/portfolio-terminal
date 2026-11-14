@@ -165,9 +165,10 @@ describe('Margin desk localization', () => {
   });
 
   it('localizes all static Margin summary metric labels', () => {
-    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value', 'Open Broker Margin Fees']) {
+    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value']) {
       expect(summarySource).toContain(`translateText('${label}', getAppLanguage())`);
     }
+    expect(summarySource).not.toContain("translateText('Open Broker Margin Fees', getAppLanguage())");
   });
 
   it('localizes projection entry, status, and pagination copy', () => {
