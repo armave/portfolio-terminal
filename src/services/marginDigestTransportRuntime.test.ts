@@ -169,8 +169,9 @@ describe('Margin Intelligence digest transport', () => {
     const { runtime } = createRuntime(fetchImpl);
 
     await expect(runtime.fetchMarginDigestMigrationInventory()).rejects.toThrow('inventory response was invalid');
+    expect(fetchImpl).toHaveBeenCalledOnce();
     await expect(runtime.migrateMarginDigestBatch({ limit: 51 })).rejects.toThrow('batch settings are invalid');
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it('aborts a stalled digest read at its deadline', async () => {
