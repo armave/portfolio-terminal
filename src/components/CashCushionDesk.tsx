@@ -3,7 +3,7 @@ import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
-import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
@@ -960,15 +960,30 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       const assignedGuestId = activeTrancheGuestAssignments[tranche.id] || '';
                       const cashInputDraft = mixInputDrafts[tranche.id + ':cash'];
                       const marginInputDraft = mixInputDrafts[tranche.id + ':margin'];
-                      const cashInputValue = cashInputDraft && cashInputDraft.quantity === tranche.quantity &&
+                      const currentCashInputDraft = cashInputDraft &&
+                        cashInputDraft.quantity === tranche.quantity &&
                         cashInputDraft.cash === mix.cash && cashInputDraft.margin === mix.margin
-                        ? cashInputDraft.value : mix.cash;
-                      const marginInputValue = marginInputDraft && marginInputDraft.quantity === tranche.quantity &&
+                        ? cashInputDraft : null;
+                      const currentMarginInputDraft = marginInputDraft &&
+                        marginInputDraft.quantity === tranche.quantity &&
                         marginInputDraft.cash === mix.cash && marginInputDraft.margin === mix.margin
-                        ? marginInputDraft.value : mix.margin;
+                        ? marginInputDraft : null;
+                      // Keep the focused field's raw text, but derive the opposite side
+                      // on every keystroke so the displayed split always totals the entry.
+                      const cashDraftMix = currentCashInputDraft
+                        ? resolveActiveTrancheMixEdit(currentCashInputDraft.value, 'cash', tranche.quantity, mix)
+                        : null;
+                      const marginDraftMix = currentMarginInputDraft
+                        ? resolveActiveTrancheMixEdit(currentMarginInputDraft.value, 'margin', tranche.quantity, mix)
+                        : null;
+                      const cashInputValue = currentCashInputDraft
+                        ? currentCashInputDraft.value
+                        : marginDraftMix?.cash ?? mix.cash;
+                      const marginInputValue = currentMarginInputDraft
+                        ? currentMarginInputDraft.value
+                        : cashDraftMix?.margin ?? mix.margin;
                       const updateMixCash = (value: string) => {
-                        const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
-                        const margin = tranche.quantity - cash;
+                        const { cash, margin } = resolveActiveTrancheMixEdit(value, 'cash', tranche.quantity, mix);
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin });
                         setMixInputDrafts((current) => {
                           const next = { ...current };
@@ -977,8 +992,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         });
                       };
                       const updateMixMargin = (value: string) => {
-                        const margin = resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin);
-                        const cash = tranche.quantity - margin;
+                        const { cash, margin } = resolveActiveTrancheMixEdit(value, 'margin', tranche.quantity, mix);
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin });
                         setMixInputDrafts((current) => {
                           const next = { ...current };
