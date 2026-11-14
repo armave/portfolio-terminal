@@ -8,6 +8,7 @@ import {
 } from './portfolioSubscriptions';
 import {
   PortfolioState,
+  ClosedTrade,
   PortfolioPerformanceValuationSnapshot,
   PositionRecord,
   Holding,
@@ -606,6 +607,34 @@ export class PortfolioStore {
    * the same portfolio snapshot. Existing positions remain canonical; the
    * journal is append-only evidence and never becomes a second source of truth.
    */
+  /**
+   * Commit the Closed History Sync projections and their immutable fee-correction
+   * events in one snapshot. This is the only non-command path allowed to append
+   * history-only fee events; generic setState continues to reject journal writes.
+   */
+  public commitClosedHistoryFeeSync(
+    changes: Pick<Partial<PortfolioState>, 'brokerExecutedTrades' | 'positions' | 'cashflows'>,
+    closedTrades: ClosedTrade[],
+    transactionEvents: PortfolioTransactionEvent[],
+    persist = false
+  ): boolean {
+    if (!Array.isArray(closedTrades) || !isPortfolioTransactionEventList(transactionEvents)) return false;
+    return this.update((state) => {
+      let mergedEvents: PortfolioTransactionEvent[];
+      try {
+        mergedEvents = mergePortfolioTransactionEvents(state.transactionEvents || [], transactionEvents);
+      } catch {
+        return state;
+      }
+      return {
+        ...state,
+        ...changes,
+        closedTrades,
+        transactionEvents: mergedEvents
+      };
+    }, persist);
+  }
+
   private updateFinancialMutation(
     context: PortfolioTransactionContext | undefined,
     prepare: (state: PortfolioState) => {
