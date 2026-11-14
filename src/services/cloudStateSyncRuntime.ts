@@ -4,6 +4,10 @@ import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from '
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
+// The Worker accepts 20 MiB request bodies. AES-GCM's base64 envelope expands
+// plaintext by roughly 4/3, so keep enough headroom for the envelope and JSON wrapper.
+const MAX_CLOUD_STATE_PLAINTEXT_BYTES = 14 * 1024 * 1024;
+
 interface CloudStateRecord {
   transactionEvents?: PortfolioState['transactionEvents'];
   positions?: Record<string, { shares?: number | string }>;
@@ -15,6 +19,19 @@ type CloudStateInput = PortfolioState | CloudStateRecord;
 
 function isRecord(value: unknown): value is CloudStateRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function describeLargestCloudStateFields(state: CloudStateRecord): string {
+  const encoder = new TextEncoder();
+  return Object.entries(state)
+    .map(([name, value]) => {
+      const serialized = JSON.stringify(value);
+      return { name, bytes: encoder.encode(serialized ?? 'null').byteLength };
+    })
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 5)
+    .map(({ name, bytes }) => `${name} (${(bytes / 1024 / 1024).toFixed(2)} MB)`)
+    .join(', ') || 'unavailable';
 }
 
 function errorMessage(value: unknown, fallback = 'Unknown error.'): string {
@@ -653,8 +670,9 @@ async function performPushCloudState(
 
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
-    if (serializedBytes > 3500 * 1024) {
-      throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB). Check large state fields before syncing.`);
+    if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) {
+      const largestFields = describeLargestCloudStateFields(stateToEncrypt);
+      throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB; limit ${(MAX_CLOUD_STATE_PLAINTEXT_BYTES / 1024 / 1024).toFixed(0)} MB). Largest fields: ${largestFields}.`);
     }
     const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
     if (!isCurrentSession()) return false;
