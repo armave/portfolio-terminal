@@ -318,7 +318,7 @@ export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
   /** Read-only broker snapshot; never replaces app-owned cash/margin classifications. */
-  /** User's persisted cash/margin classification for each broker ticker; unknown tickers default to cash. */
+  /** User's persisted cash/margin classification; unclassified new active tranches default to Margin. */
   activeTrancheTypes?: Record<string, ActiveTrancheType>;
   /** Per-operation share quantities for mixed cash/margin classifications. */
   activeTrancheMixes?: Record<string, ActiveTrancheMix>;
