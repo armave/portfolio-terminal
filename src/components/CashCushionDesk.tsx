@@ -23,7 +23,7 @@ import {
   buildCashHoldingDisplayGroups,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
-  getCashHoldingMarketPrice,
+  getCashHoldingDisplayMetrics,
   getReversibleBalanceAdjustmentEvents,
   selectCashCushionPortfolioState,
   shouldShowCashHoldingMarketDepth,
@@ -155,6 +155,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     emitBrokerEvent('broker:request-executed-trades');
   };
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
+  // Preserve raw split-field input while the portfolio store rerenders.
+  const [mixInputDrafts, setMixInputDrafts] = useState<Record<string, string>>({});
   const [guestDirectory, dispatchGuestDirectory] = useReducer(
     guestDirectoryReducer<AuthUser>,
     undefined,
@@ -540,7 +542,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 .filter((tranche) => tranche.assignedShares > 0)
                 .sort((a, b) => (b.purchasedAt ?? 0) - (a.purchasedAt ?? 0));
 
-              const volume = '$' + formatQuoteVolume(holding.quoteDetails?.volume);
+              const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
                 <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
@@ -638,23 +640,23 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       );
                     }
                     const h = row.holding;
-                    const shares = Number(h.shares) || 0;
-                    const price = getCashHoldingMarketPrice(h);
-                    const averagePrice = Number(h.averagePrice);
-                    const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
-                    const hasMarketComparison = hasAveragePrice && price !== null;
-                    const averageValue = hasAveragePrice ? shares * averagePrice : null;
-                    const val = price === null ? null : shares * price;
-                    const totalDifference = hasMarketComparison && val !== null ? val - averageValue! : null;
-                    const totalDifferencePercent = hasMarketComparison && averageValue! > 0 && totalDifference !== null
-                      ? (totalDifference / averageValue!) * 100
-                      : null;
-                    const allocation = unpricedHoldingCount === 0 && stocksTotal > 0 && val !== null
-                      ? (val / stocksTotal) * 100
-                      : null;
+                    const {
+                      shares,
+                      price,
+                      averagePrice,
+                      averageValue,
+                      marketValue: val,
+                      unrealizedPnl: totalDifference,
+                      unrealizedPnlPercent: totalDifferencePercent,
+                      allocation
+                    } = getCashHoldingDisplayMetrics(h, stocksTotal, unpricedHoldingCount);
+                    const hasAveragePrice = averagePrice !== null;
+                    const hasMarketComparison = totalDifference !== null && totalDifferencePercent !== null;
                     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
 
-                    const hasChange = Number.isFinite(h.quoteDetails?.change);
+                    const hasChange = typeof h.quoteDetails?.change === 'number' && Number.isFinite(h.quoteDetails.change);
+                    const hasChangePercent = typeof h.quoteDetails?.changePercent === 'number' &&
+                      Number.isFinite(h.quoteDetails.changePercent);
                     const direction: SentimentDirection = hasChange
                       ? h.quoteDetails!.change! > 0
                         ? 'bullish'
@@ -663,11 +665,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           : 'neutral'
                       : 'unknown';
                     const badgeText =
-                      hasChange && h.quoteDetails?.changePercent !== undefined
+                      hasChange && hasChangePercent
                         ? `${h.quoteDetails.changePercent.toFixed(2)}%`
                         : sentimentLabel(direction);
 
-                    const volume = '$' + formatQuoteVolume(h.quoteDetails?.volume)
+                    const volume = formatQuoteVolume(h.quoteDetails?.volume)
 
                     return (
                         <tr key={row.key} class="cash-holding-row hover:bg-slate-900/40">
@@ -951,11 +953,23 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       const assignedGuestId = activeTrancheGuestAssignments[tranche.id] || '';
                       const updateMixCash = (value: string) => {
                         const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
-                        setActiveTrancheType(tranche.id, 'mix', { cash, margin: tranche.quantity - cash });
+                        const margin = tranche.quantity - cash;
+                        setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                        setMixInputDrafts((current) => ({
+                          ...current,
+                          [tranche.id + ':cash']: String(cash),
+                          [tranche.id + ':margin']: String(margin)
+                        }));
                       };
                       const updateMixMargin = (value: string) => {
                         const margin = resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin);
-                        setActiveTrancheType(tranche.id, 'mix', { cash: tranche.quantity - margin, margin });
+                        const cash = tranche.quantity - margin;
+                        setActiveTrancheType(tranche.id, 'mix', { cash, margin });
+                        setMixInputDrafts((current) => ({
+                          ...current,
+                          [tranche.id + ':cash']: String(cash),
+                          [tranche.id + ':margin']: String(margin)
+                        }));
                       };
                       const mixExpanded = expandedMixTranches.has(tranche.id);
                       const selectMix = () => {
@@ -1014,9 +1028,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        value={mix.cash}
+                                        value={mixInputDrafts[tranche.id + ':cash'] ?? mix.cash}
+                                        onInput={(inputEvent) => setMixInputDrafts((current) => ({
+                                          ...current,
+                                          [tranche.id + ':cash']: (inputEvent.currentTarget as HTMLInputElement).value
+                                        }))}
                                         onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
-                                        class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                        class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
                                       />
                                     </label>
                                     <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
@@ -1027,9 +1045,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        value={mix.margin}
+                                        value={mixInputDrafts[tranche.id + ':margin'] ?? mix.margin}
+                                        onInput={(inputEvent) => setMixInputDrafts((current) => ({
+                                          ...current,
+                                          [tranche.id + ':margin']: (inputEvent.currentTarget as HTMLInputElement).value
+                                        }))}
                                         onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
-                                        class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                        class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
                                       />
                                     </label>
                                   </div>
