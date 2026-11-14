@@ -555,6 +555,8 @@ const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
 
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function pullGuestPortfolioSnapshot(): Promise<void> {
+  setCloudStatus('syncing', 'CONNECTING');
+  setCloudSyncStatus({ text: 'Assigned data refresh in progress', status: 'syncing' });
   try {
     await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
     setCloudStatus('synced', 'READY');
