@@ -120,6 +120,8 @@ Provider-reported quote volume is not assigned a currency symbol because its uni
 
 Cash/margin mix editing preserves the in-progress input string across unrelated store rerenders. On blur, the shared normalizer clamps the edited side to the tranche quantity and derives the other side so cash plus margin always equals total quantity. A local draft is only displayed while its base tranche quantity and saved cash/margin mix still match; a changed tranche or accepted allocation invalidates the old draft.
 
+Unclassified active tranches default to Margin. An explicit saved operation- or ticker-level Cash/Mix classification takes precedence, and a new Mix allocation starts fully Margin-funded unless the prior saved classification says otherwise. A persisted guest assignment remains evidence of a legacy or explicit cash-backed allocation; this does not make newly observed, unassigned tranches default to Cash.
+
 ## 3. Unrealized P&L and target-projection contracts
 
 **Sources:** `src/components/SummaryMetricsGrid.tsx`, the portfolio review summary in `src/App.tsx`, and `getGuestHoldingValuation` in `src/domain/guestPortfolio.ts`.
