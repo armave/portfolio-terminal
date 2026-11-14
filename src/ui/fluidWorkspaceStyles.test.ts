@@ -112,6 +112,8 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('settings-user-panel');
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
+    expect(fluidStyles).toContain('#settingsDesk .settings-subsection > summary');
     expect(fluidStyles).toMatch(/@container\s+settings-workspace\s*\(min-width:\s*54rem\)/);
     expect(fluidStyles).toMatch(/#settingsDesk \.settings-table-scroll table\s*\{[^}]*min-width:\s*49rem/s);
   });

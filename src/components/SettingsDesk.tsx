@@ -9,7 +9,8 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
-import { translateText, type AppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText, type AppLanguage } from '../services/i18n';
+import { useCloudSyncStatus } from '../ui/uiStateStore';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
@@ -72,6 +73,32 @@ interface SettingsDeskProps {
   currentUser: AuthUser | null;
 }
 
+function formatSettingsTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp) return translateText('Never confirmed');
+  return new Intl.DateTimeFormat(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(timestamp));
+}
+
+function getManualSyncIssueLabels(result: ManualPortfolioSyncResult): string[] {
+  const issues: string[] = [];
+  if (result.role === 'admin') {
+    if (!result.brokerAccount) issues.push('Broker account');
+    if (!result.executedTrades) issues.push('Executed trades');
+    if (!result.activeOrders) issues.push('Active orders');
+    if (!result.quotes) issues.push('Market quotes');
+    if (!result.cloud) issues.push('Cloud portfolio');
+    if (!result.cloudHistory) issues.push('Closed history');
+  } else if (result.role === 'guest') {
+    if (!result.guestSnapshot) issues.push('Assigned portfolio');
+    if (!result.quotes) issues.push('Market quotes');
+  } else {
+    issues.push('Portfolio sync');
+  }
+  return issues.length ? issues : ['Portfolio sync'];
+}
+
 export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
@@ -94,6 +121,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   }, [currentUser?.id, currentUser?.role]);
   const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
+  const cloudSyncStatus = useCloudSyncStatus();
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
   const [initialUsersLoading, setInitialUsersLoading] = useState(currentUser?.role === 'admin');
@@ -106,6 +134,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
   const [brokerRulesOpen, setBrokerRulesOpen] = useState(false);
+  const [tenantDirectoryOpen, setTenantDirectoryOpen] = useState(false);
+  const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
+  const [manualSyncResult, setManualSyncResult] = useState<ManualPortfolioSyncResult | null>(null);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
   const usersPagination = useTablePagination('settings-users', users.length, 10);
@@ -234,6 +265,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
     toBrokerRulesFormValues(rules)
   );
+  const persistedRuleValues = toBrokerRulesFormValues(rules);
+  const brokerRulesDirty = (Object.keys(persistedRuleValues) as Array<keyof BrokerRulesFormValues>)
+    .some((field) => ruleValues[field] !== persistedRuleValues[field]);
 
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -284,7 +318,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     });
     portfolioSyncPromise.current = request;
     try {
-      await request;
+      const result = await request;
+      setManualSyncResult(result);
     } finally {
       if (portfolioSyncPromise.current === request) portfolioSyncPromise.current = null;
       setSyncingPortfolio(false);
@@ -295,103 +330,155 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
       <div class="settings-header border-b border-slate-800 pb-3">
         <h1 class="text-lg font-black text-slate-200 tracking-wide">
-          TERMINAL SETTINGS &amp; SYNC
+          {translateText('Settings')}
         </h1>
         <p class="text-xs text-slate-400">
-          {account?.role === 'guest'
-            ? 'Manage your account and mandatory portfolio sync preferences.'
-            : 'Configure broker assumptions, mandatory portfolio synchronization, and account access.'}
+          {translateText('Manage account, data, and application preferences.')}
         </p>
       </div>
 
-      <div class="settings-toolbar settings-toolbar settings-toolbar--organized w-full py-1">
-        <div class="settings-toolbar__card settings-account-card flex flex-col gap-3" role="group" aria-label={translateText('Account actions')}>
-          <div class="settings-account-summary flex flex-wrap items-center justify-between gap-3">
-            <div class="settings-account-identity flex min-w-0 flex-wrap items-center gap-2">
-              <span class="text-sm font-bold text-slate-200">{account?.name || translateText('Account information unavailable')}</span>
-              {account && <span class="rounded bg-slate-800 px-2 py-1 uppercase text-[10px] font-bold text-cyan-300">{account.role}</span>}
+      <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
+        <a href="#settings-account-section">{translateText('Account')}</a>
+        <a href="#settings-data-section">{translateText('Data & Sync')}</a>
+        {account?.role === 'admin' && <a href="#settings-access-section">{translateText('Access management')}</a>}
+        {permissions.canEditBrokerRules && <a href="#settings-broker-section">{translateText('Broker & Trading')}</a>}
+        <a href="#settings-maintenance-section">{translateText('Diagnostics & Maintenance')}</a>
+        <a href="#settings-help-section">{translateText('Methodology & Help')}</a>
+      </nav>
+
+      <section id="settings-account-section" class="settings-section" aria-labelledby="settingsAccountTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsAccountTitle">{translateText('Account & Preferences')}</h2>
+          <p>{translateText('Manage your sign-in identity and language preference.')}</p>
+        </div>
+        <div class="settings-toolbar settings-toolbar--organized w-full py-1">
+          <div class="settings-toolbar__card settings-account-card flex flex-col gap-3" role="group" aria-label={translateText('Account actions')}>
+            <div class="settings-account-summary flex flex-wrap items-center justify-between gap-3">
+              <div class="settings-account-identity flex min-w-0 flex-wrap items-center gap-2">
+                <span class="text-sm font-bold text-slate-200">{account?.name || translateText('Account information unavailable')}</span>
+                {account && <span class="rounded bg-slate-800 px-2 py-1 uppercase text-[10px] font-bold text-cyan-300">{account.role}</span>}
+              </div>
+              {account && <label class="settings-account-language flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+                {translateText('Language')}
+                <select aria-label={translateText('Account language')} value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 text-center px-2 text-xs text-slate-300">
+                  <option value="en">English</option>
+                  <option value="ru">Russian</option>
+                </select>
+              </label>}
             </div>
-            {account && <label class="settings-account-language flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
-              {translateText('Language')}
-              <select aria-label={translateText('Account language')} value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 text-center px-2 text-xs text-slate-300">
-                <option value="en" class="text-center">English</option>
-                <option value="ru" class="text-center">Russian</option>
-              </select>
-            </label>}
-          </div>
-          {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-          <div class={'settings-account-actions grid grid-cols-2 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
-            {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-9 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">{translateText('Pull cloud')}</button>}
-            {(account?.role === "admin" || account?.role === "guest") && <button
-              type="button"
-              onClick={() => void handleManualPortfolioSync()}
-              disabled={syncingPortfolio}
-              aria-busy={syncingPortfolio}
-              aria-label={translateText('Sync portfolio')}
-              title={translateText('Sync portfolio')}
-              class="settings-sync-button h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio')}</button>}
-            <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
+            {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
+            <div class={'settings-account-actions grid grid-cols-1 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
+              <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div class="settings-toolbar__card settings-refresh-card flex flex-col gap-3" role="group" aria-label={translateText('Portfolio data refresh and backup controls')}>
-          <div class="settings-refresh-heading flex flex-wrap items-center justify-between gap-2">
-            <label class="settings-refresh-interval flex min-w-0 flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
-              {translateText('Mandatory Sync Interval')}
-              <select
-                id="quoteRefreshInterval"
-                value={refreshInterval}
-                onChange={handleIntervalChange}
-                aria-label={translateText('Mandatory automatic portfolio sync interval')}
-                title={translateText(account?.role === 'guest'
-                  ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
-                  : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
-                class="h-9 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
-              >
-                <option value="15000">{translateText('15 sec')}</option>
-                <option value="30000">{translateText('30 sec')}</option>
-                <option value="60000">{translateText('1 min')}</option>
-              </select>
-            </label>
-          </div>
-          <p class="settings-refresh-description text-left text-[10px] leading-relaxed text-slate-500">
-            {translateText(account?.role === 'guest'
-              ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
-              : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
-          </p>
-          {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => emitUiEvent('settings:export-backup')}
-              aria-label="Export portfolio backup as JSON"
-              title="Export portfolio state to JSON file"
-              class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-            >{translateText('Export')}</button>
-            <button
-              type="button"
-              onClick={() => emitUiEvent('settings:backup-import-request')}
-              title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
-              aria-label="Import portfolio backup from JSON"
-              class="h-9 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
-            >{translateText('Import')}</button>
-            <button
-              type="button"
-              onClick={() => emitUiEvent('settings:reset-to-blank-state')}
-              title={translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}
-              aria-label={translateText('Reset local and cloud portfolio data')}
-              class="h-9 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-            >{translateText('Reset')}</button>
-          </div>}
+      <section id="settings-data-section" class="settings-section" aria-labelledby="settingsDataTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsDataTitle">{translateText('Data & synchronization')}</h2>
+          <p>{translateText('Manage automatic refresh, cloud synchronization, and portfolio recovery.')}</p>
         </div>
-      </div>
+        <div class="settings-data-grid">
+          <div class="settings-toolbar__card settings-refresh-card flex flex-col gap-3">
+            <div class="settings-refresh-heading flex flex-wrap items-center justify-between gap-2">
+              <label class="settings-refresh-interval flex min-w-0 flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500 justify-center">
+                {translateText('Automatic refresh interval')}
+                <select
+                  id="quoteRefreshInterval"
+                  value={refreshInterval}
+                  onChange={handleIntervalChange}
+                  aria-label={translateText('Automatic portfolio refresh interval')}
+                  title={translateText(account?.role === 'guest'
+                    ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
+                    : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
+                  class="h-9 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="15000">{translateText('15 sec')}</option>
+                  <option value="30000">{translateText('30 sec')}</option>
+                  <option value="60000">{translateText('1 min')}</option>
+                </select>
+              </label>
+            </div>
+            <p class="settings-refresh-description text-left text-[10px] leading-relaxed text-slate-500">
+              {translateText(account?.role === 'guest'
+                ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
+                : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
+            </p>
+            <div class="settings-sync-status flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2" role="status" aria-live="polite">
+              <span class="text-[11px] font-semibold text-slate-300">{translateText(account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization')}</span>
+              <span class={cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
+                {translateText(account?.role === 'guest'
+                  ? cloudSyncStatus.status === 'synced' ? 'Assigned data refresh confirmed' : cloudSyncStatus.status === 'syncing' ? 'Assigned data refresh in progress' : cloudSyncStatus.status === 'error' ? 'Assigned data refresh failed' : 'Assigned data refresh status not checked'
+                  : cloudSyncStatus.status === 'synced' ? 'Cloud sync confirmed' : cloudSyncStatus.status === 'syncing' ? 'Cloud sync in progress' : cloudSyncStatus.status === 'error' ? 'Cloud sync failed' : 'Cloud sync status not checked')}
+              </span>
+              <span class="w-full text-[10px] text-slate-500">
+                {translateText(account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync')}: {formatSettingsTimestamp(cloudSyncStatus.lastSyncedAt)}
+              </span>
+            </div>
+            <div class="settings-data-actions flex flex-wrap items-center gap-2">
+              {(account?.role === "admin" || account?.role === "guest") && <button
+                type="button"
+                onClick={() => void handleManualPortfolioSync()}
+                disabled={syncingPortfolio}
+                aria-busy={syncingPortfolio}
+                aria-label={translateText('Sync portfolio')}
+                title={translateText('Sync portfolio')}
+                class="settings-sync-button h-10 rounded border border-cyan-700 bg-cyan-950/40 px-3 text-xs font-bold text-cyan-200 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio now')}</button>}
+              {account?.role === "admin" && <button
+                type="button"
+                onClick={() => emitUiEvent("settings:pull-cloud-state")}
+                title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}
+                aria-label={translateText('Replace local portfolio from KV cloud')}
+                class="h-10 rounded border border-purple-700 bg-slate-800 px-3 text-xs font-bold text-purple-300 hover:bg-slate-700"
+              >{translateText('Pull cloud')}</button>}
+            </div>
+            {manualSyncResult && <p class="text-[11px] leading-4 text-slate-300" role="status" aria-live="polite">
+              {translateText(manualSyncResult.success
+                ? 'Last manual sync completed successfully.'
+                : 'Last manual sync completed with issues. Check the activity log.')}
+            </p>}
+            {manualSyncResult && !manualSyncResult.success && <p class="text-[10px] leading-4 text-amber-200" role="status" aria-live="polite">
+              {translateText('Unavailable sources')}: {getManualSyncIssueLabels(manualSyncResult).map((label) => translateText(label)).join(', ')}
+            </p>}
+            {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-3 gap-2 border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => emitUiEvent('settings:export-backup')}
+                aria-label={translateText('Export portfolio backup as JSON')}
+                title={translateText('Export portfolio state to JSON file')}
+                class="h-10 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+              >{translateText('Export')}</button>
+              <button
+                type="button"
+                onClick={() => emitUiEvent('settings:backup-import-request')}
+                title={translateText('Validate and confirm a portfolio backup import; cloud sync depends on KV configuration')}
+                aria-label={translateText('Import portfolio backup from JSON')}
+                class="h-10 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+              >{translateText('Import')}</button>
+              <button
+                type="button"
+                onClick={() => emitUiEvent('settings:reset-to-blank-state')}
+                title={translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}
+                aria-label={translateText('Reset local and cloud portfolio data')}
+                class="h-10 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+              >{translateText('Reset')}</button>
+            </div>}
+            {permissions.canManageBackups && <div class="settings-data-safety-note flex w-full items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
+              <span aria-hidden="true" class="shrink-0 text-sm text-amber-300">⚠</span>
+              <p class="min-w-0 font-semibold text-left text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
+            </div>}
+          </div>
+        </div>
+      </section>
 
-      {permissions.canManageBackups && <div class="settings-data-safety-note flex w-full items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
-        <span aria-hidden="true" class="shrink-0 text-sm text-amber-300">⚠</span>
-        <p class="min-w-0 font-semibold text-left text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
-      </div>}
-
-      {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+{account?.role === "admin" && <section id="settings-access-section" class="settings-section" aria-labelledby="settingsAccessTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsAccessTitle">{translateText('Access management')}</h2>
+          <p>{translateText('Manage administrator and guest accounts, roles, and portfolio access.')}</p>
+        </div>
+              <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="settings-user-heading flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
             <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
@@ -435,23 +522,49 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           />
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
+      </section>
+              {account?.role === 'admin' && <details
+        class="settings-subsection"
+        open={tenantDirectoryOpen}
+        onToggle={(event) => setTenantDirectoryOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary>{translateText('Portfolio ownership')}</summary>
+        {tenantDirectoryOpen && (LoadedTenantDirectoryPanel ? (
+          <LoadedTenantDirectoryPanel currentUser={account} />
+        ) : (
+          <div class="settings-panel text-xs text-slate-500" role="status">
+            {tenantDirectoryLoadFailed
+              ? translateText('Portfolio ownership could not be loaded.')
+              : translateText('Loading portfolio ownership…')}
+          </div>
+        ))}
+      </details>}
       </section>}
 
-      
-
-      <DeviceCheckSummary />
-      {account?.role === 'admin' && <MarginDigestSecurityPanel currentUserId={account.id} />}
-      {account?.role === 'admin' && (LoadedTenantDirectoryPanel ? (
-        <LoadedTenantDirectoryPanel currentUser={account} />
-      ) : (
-        <div class="settings-panel text-xs text-slate-500" role="status">
-          {tenantDirectoryLoadFailed
-            ? translateText('Portfolio ownership could not be loaded.')
-            : translateText('Loading portfolio ownership…')}
+      <section id="settings-maintenance-section" class="settings-section" aria-labelledby="settingsMaintenanceTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsMaintenanceTitle">{translateText('Diagnostics & Maintenance')}</h2>
+          <p>{translateText('Check this device and open advanced security maintenance when needed.')}</p>
         </div>
-      ))}
+        <DeviceCheckSummary />
+        {account?.role === 'admin' && <details
+          class="settings-subsection settings-maintenance-advanced"
+          open={advancedMaintenanceOpen}
+          onToggle={(event) => setAdvancedMaintenanceOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary>{translateText('Advanced maintenance')}</summary>
+          <div class="pt-3">
+            {advancedMaintenanceOpen && <MarginDigestSecurityPanel />}
+          </div>
+        </details>}
+      </section>
 
-      {permissions.canEditBrokerRules && <details
+      {permissions.canEditBrokerRules && <section id="settings-broker-section" class="settings-section" aria-labelledby="settingsBrokerSectionTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsBrokerSectionTitle">{translateText('Broker & Trading Model')}</h2>
+          <p>{translateText('These assumptions affect modeled financing, margin thresholds, and commissions. Confirm values with your broker.')}</p>
+        </div>
+              <details
         class="settings-panel settings-broker-rules space-y-3"
         open={brokerRulesOpen}
         onToggle={(event) => setBrokerRulesOpen((event.currentTarget as HTMLDetailsElement).open)}
@@ -468,6 +581,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             const values = readBrokerRulesFormValues(form, ruleValues);
             emitUiEvent('settings:save-broker-rules', { values });
           }} class="settings-rules-form space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2" role="status" aria-live="polite">
+              <span class={brokerRulesDirty ? 'text-[11px] font-semibold text-amber-200' : 'text-[11px] font-semibold text-emerald-300'}>
+                {translateText(brokerRulesDirty ? 'Unsaved changes' : 'All broker assumptions saved.')}
+              </span>
+              <span class="text-[10px] text-slate-500">
+                {translateText(brokerRulesDirty ? 'Save to apply these assumptions.' : 'Broker assumptions are saved in this browser.')}
+              </span>
+            </div>
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
@@ -537,7 +658,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
-                Rollover time (ARM)
+                Rollover time (Asia/Yerevan)
                 <input
                   id="rolloverTimeInput"
                   type="time"
@@ -612,9 +733,19 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </div>
           </form>
         </div>
-      </details>}
+      </details>
+      </section>}
 
-      <PortfolioMethodologyPanel />
+      <section id="settings-help-section" class="settings-section" aria-labelledby="settingsHelpTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsHelpTitle">{translateText('Methodology & Help')}</h2>
+          <p>{translateText('Understand how portfolio metrics are calculated and where model limitations apply.')}</p>
+        </div>
+        <details class="settings-subsection">
+          <summary>{translateText('Metric methodology and data notes')}</summary>
+          <div class="pt-3"><PortfolioMethodologyPanel /></div>
+        </details>
+      </section>
     </div>
   );
 }

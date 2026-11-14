@@ -125,14 +125,23 @@ export function resolveEffectiveMarketStatus(
 }
 
 /** Do not show a calendar-derived countdown when a fresh broker state disagrees with the local calendar. */
+export function getEffectiveMarketStatusCountdownParts(
+  providerStatus: string | null | undefined,
+  updatedAt: number | null | undefined,
+  now = new Date()
+): MarketStatusCountdownParts | null {
+  const effective = resolveEffectiveMarketStatus(providerStatus, updatedAt, now);
+  if (effective === 'MIXED' || effective !== getCalendarMarketStatus(now)) return null;
+  return getMarketStatusCountdownParts(effective, now);
+}
+
 export function getEffectiveMarketStatusCountdown(
   providerStatus: string | null | undefined,
   updatedAt: number | null | undefined,
   now = new Date()
 ): string | null {
-  const effective = resolveEffectiveMarketStatus(providerStatus, updatedAt, now);
-  if (effective === 'MIXED' || effective !== getCalendarMarketStatus(now)) return null;
-  return getMarketStatusCountdown(effective, now);
+  const parts = getEffectiveMarketStatusCountdownParts(providerStatus, updatedAt, now);
+  return parts ? `${parts.label}${parts.time}` : null;
 }
 
 export function formatMarketCountdown(remainingMs: number): string {
@@ -143,11 +152,9 @@ export function formatMarketCountdown(remainingMs: number): string {
   const days = hasDays ? Math.floor(hours / 24) : 0;
   const remainingHours = hours % 24;
   const template = hasDays
-    ? minutes > 0
-      ? '{days}d {hours}h {minutes}m'
-      : remainingHours > 0
-        ? '{days}d {hours}h'
-        : '{days}d'
+    ? remainingHours > 0
+      ? '{days}d {hours}h'
+      : '{days}d'
     : hours > 0
       ? minutes > 0 ? '{hours}h {minutes}m' : '{hours}h'
       : '{minutes}m';
@@ -172,7 +179,15 @@ export function getMarketStatusTransitionAt(status: string | null | undefined, n
   return getUsEquityNextTransitionAt(session, now);
 }
 
-export function getMarketStatusCountdown(status: string | null | undefined, now = new Date()): string | null {
+export interface MarketStatusCountdownParts {
+  label: string;
+  time: string;
+}
+
+export function getMarketStatusCountdownParts(
+  status: string | null | undefined,
+  now = new Date()
+): MarketStatusCountdownParts | null {
   const normalized = normalizeMarketSessionStatus(status);
   const transitionAt = getMarketStatusTransitionAt(status, now);
   if (!normalized || !transitionAt) return null;
@@ -182,7 +197,12 @@ export function getMarketStatusCountdown(status: string | null | undefined, now 
     : normalized === 'PREMARKET'
       ? 'Opens in {time}'
       : 'Closes in {time}';
-  return translateText(template).replace('{time}', time);
+  return { label: translateText(template).replace('{time}', ''), time };
+}
+
+export function getMarketStatusCountdown(status: string | null | undefined, now = new Date()): string | null {
+  const parts = getMarketStatusCountdownParts(status, now);
+  return parts ? `${parts.label}${parts.time}` : null;
 }
 
 /** Role-visible market phase; it listens for auth changes so guests don't depend on App's initial user render. */
@@ -303,7 +323,8 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   if (!hasAuthenticatedSession) return null;
 
-  const countdown = getEffectiveMarketStatusCountdown(snapshot?.marketStatus.status, snapshot?.updatedAt, now);
+  const countdownParts = getEffectiveMarketStatusCountdownParts(snapshot?.marketStatus.status, snapshot?.updatedAt, now);
+  const countdown = countdownParts ? `${countdownParts.label}${countdownParts.time}` : null;
   const tone = getMarketStatusTone(status);
   const statusLabel = loading && !snapshot
     ? translateText(isAdmin ? 'Unavailable' : 'Market Unavailable')
@@ -372,7 +393,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       </span>
       {countdown && (
         <span class="inline-flex shrink-0 items-center rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 font-mono text-[10px] font-semibold leading-none tabular-nums text-slate-300">
-          {countdown}
+          <span>{countdownParts?.label}</span><span class="text-slate-100">{countdownParts?.time}</span>
         </span>
       )}
     </div>

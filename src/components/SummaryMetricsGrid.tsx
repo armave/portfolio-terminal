@@ -55,7 +55,7 @@ function getCashCushionValueFromState(state: BoardState): number {
   }, 0);
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope }: {
   equityPct: number;
   risk: MarginRiskDisplay;
   equityText: string;
@@ -64,6 +64,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   valuationStatus?: 'current' | 'provisional' | 'incomplete';
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
+  scope: 'account' | 'allocated-ticker';
 }) {
   const language = getAppLanguage();
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -72,6 +73,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   const overviewModal = overviewOpen ? (
     <MarginRiskOverviewModal
       onClose={closeOverview}
+      assumptions={rules}
+      scope={scope}
       riskSnapshot={risk.snapshot}
       equityText={equityText}
       equityPct={equityPct}
@@ -88,6 +91,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       riskReason={risk.reason}
     />
   ) : null;
+
+  const isProvisionalEstimate = risk.status === 'provisional' || valuationStatus === 'provisional';
 
   if (valuationStatus === 'incomplete' || risk.status === 'unavailable') {
     return (
@@ -131,6 +136,13 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
     );
   }
 
+  const riskStatusClass = risk.riskLevel === 'Margin-call level' || risk.riskLevel === 'Stop-out level'
+    ? 'margin-risk-status danger'
+    : isProvisionalEstimate
+      ? 'margin-risk-status elevated'
+      : risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt'
+        ? 'margin-risk-status healthy'
+        : 'margin-risk-status elevated';
   const stopOutTitle = translateText(
     'Configured stop-out threshold and account cash are used as assumptions for this estimate; actual broker requirements may differ.',
     language
@@ -150,8 +162,9 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             aria-label={translateText('Open margin risk overview', language)}
             title={translateText('Click to view margin risk overview', language)}
           >
-            <span class={risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt' ? 'margin-risk-status healthy' : risk.riskLevel === 'Elevated' ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>
+            <span class={riskStatusClass}>
               {risk.summaryText.split(' · ')[0]}
+              {isProvisionalEstimate ? ` · ${translateText('Provisional estimate', language)}` : ''}
             </span>
           </button>
         </div>
@@ -740,6 +753,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         </section>
 
         <MarginRiskGaugeCard
+          scope="account"
           equityPct={equityPct}
           risk={risk}
           equityText={equityText}
@@ -1007,6 +1021,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       </section>
 
       <MarginRiskGaugeCard
+        scope="allocated-ticker"
         equityPct={equityPct}
         risk={risk}
         equityText={equityText}
