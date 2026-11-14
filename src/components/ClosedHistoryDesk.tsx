@@ -951,7 +951,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                     <td
                       class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}
-                      title={profitIsUpperBound === true ? 'Upper bound: one or more commission inputs are missing; actual net P&L may be lower.' : undefined}
+                      title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
                     >
                       {netProfit === null ? "—" : profitTextPrefix + sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
