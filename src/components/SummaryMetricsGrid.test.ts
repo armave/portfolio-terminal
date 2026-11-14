@@ -2,6 +2,31 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
+describe('Margin risk confidence and scope disclosures', () => {
+  it('keeps provisional risk styling while avoiding redundant status and period labels', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("const isProvisionalEstimate = risk.status === 'provisional' || valuationStatus === 'provisional';");
+    expect(source).not.toContain("translateText('Provisional estimate', language)");
+    expect(source).not.toContain("translateText('Position to date', getAppLanguage())");
+    expect(source).toContain("const marginChargedText = formatUSD(posMarginCharged);");
+    expect(source).toContain('scope="account"');
+    expect(source).toContain('scope="allocated-ticker"');
+    expect(source).not.toContain('margin-risk-scope-note');
+    expect(source).toContain("risk.summaryText.split(' · ')[0]");
+  });
+
+  it('connects the overview to explicit dollar buffers and bounded stress sensitivity', () => {
+    const modal = readFileSync(new URL('./MarginRiskOverviewModal.tsx', import.meta.url), 'utf8');
+    expect(modal).toContain('riskSnapshot.baseMaintenanceBuffer');
+    expect(modal).toContain('riskSnapshot.maintenanceBuffer');
+    expect(modal).toContain('riskSnapshot.stopOutBuffer');
+    expect(modal).toContain('calculateMarginRiskStressScenarios(riskSnapshot, assumptions)');
+    expect(modal).toContain("translateText('Price shock sensitivity', language)");
+    expect(modal).toContain('broker call price or liquidation forecast');
+    expect(modal).toContain("riskLabel === 'Stop-out level' || riskLabel === 'Margin-call level'");
+  });
+});
+
 describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
@@ -72,14 +97,13 @@ describe('portfolio metric quote updates', () => {
     expect(source).not.toContain('previousPricesRef');
   });
 
-  it('exposes source timestamps and provisional valuation warnings for all holdings', () => {
+  it('keeps quote freshness compact without the expandable source and timestamp disclosure', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    const provenance = readFileSync(new URL('./QuoteProvenance.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
-    expect(provenance).toContain('quoteDetails?.sourceTimestamp');
-    expect(provenance).toContain('Observation time unavailable');
-    expect(source).toContain('kind: \'Cash holding\'');
+    expect(source).not.toContain('QuoteProvenanceList');
+    expect(source).not.toContain('Quote sources and observation times');
+    expect(source).toContain('formatQuoteFreshnessSummary(quoteSummary)');
+    expect(source).toContain('quoteMetaText');
   });
 
   it('shows available per-ticker volume and quote metadata in both margin views', () => {

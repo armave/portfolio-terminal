@@ -420,6 +420,81 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
 }
 
 /** Compatibility result for older summary callers; new code should use calculateMarginRiskSnapshot. */
+interface MarginRiskStressScenario {
+  declinePct: number;
+  assets: number;
+  equity: number;
+  equityRatio: number | null;
+  maintenanceBuffer: number;
+  stopOutBuffer: number;
+  riskLevel: MarginRiskLevel;
+}
+
+export type MarginRiskStressCalculation =
+  | { status: 'available'; scenarios: MarginRiskStressScenario[] }
+  | { status: 'unavailable'; reason: string };
+
+/**
+ * Apply uniform price shocks to tracked long exposure while holding account
+ * cash and margin debt constant. This is an app-side sensitivity calculation,
+ * not a broker liquidation or buying-power model.
+ */
+export function calculateMarginRiskStressScenarios(
+  snapshot: MarginRiskSnapshot,
+  assumptions: BrokerAssumptions,
+  shockLevels: readonly number[] = [0.05, 0.1, 0.2, 0.3]
+): MarginRiskStressCalculation {
+  if (!snapshot ||
+      ![snapshot.longExposure, snapshot.shortExposure, snapshot.cashBalance, snapshot.marginDebt]
+        .every(isFiniteNumber) ||
+      snapshot.longExposure < 0 || snapshot.shortExposure < 0 ||
+      snapshot.cashBalance < 0 || snapshot.marginDebt < 0) {
+    return { status: 'unavailable', reason: 'Stress sensitivity inputs are invalid.' };
+  }
+  if (snapshot.shortExposure > 0) {
+    return {
+      status: 'unavailable',
+      reason: 'Stress sensitivity is unavailable while short exposure is present because no broker-specific short-margin model is configured.'
+    };
+  }
+  if (!validAssumptions(assumptions)) {
+    return { status: 'unavailable', reason: 'Stress sensitivity requires valid configured maintenance and stop-out ratios.' };
+  }
+  if (!Array.isArray(shockLevels) || shockLevels.length === 0 ||
+      shockLevels.some(level => !isFiniteNumber(level) || level < 0 || level >= 1)) {
+    return { status: 'unavailable', reason: 'Stress shocks must be finite declines from zero up to, but not including, 100%.' };
+  }
+
+  const uniqueShockLevels = [...new Set(shockLevels)];
+  const scenarios: MarginRiskStressScenario[] = uniqueShockLevels.map(declinePct => {
+    const shockedLongExposure = snapshot.longExposure * (1 - declinePct);
+    const assets = snapshot.cashBalance + shockedLongExposure;
+    const equity = assets - snapshot.marginDebt;
+    const equityRatio = assets > 0 ? equity / assets : null;
+    return {
+      declinePct,
+      assets,
+      equity,
+      equityRatio,
+      maintenanceBuffer: equity - assets * assumptions.maintenanceEquityRatio,
+      stopOutBuffer: equity - assets * assumptions.stopOutRatio,
+      riskLevel: snapshot.marginDebt <= 0
+        ? 'Healthy'
+        : getMarginRiskLevel(equityRatio ?? Number.NEGATIVE_INFINITY, assumptions)
+    };
+  });
+
+  if (scenarios.some(scenario =>
+    ![scenario.assets, scenario.equity, scenario.maintenanceBuffer, scenario.stopOutBuffer]
+      .every(isFiniteNumber) ||
+    (scenario.equityRatio !== null && !isFiniteNumber(scenario.equityRatio))
+  )) {
+    return { status: 'unavailable', reason: 'Stress sensitivity exceeds the finite calculation range.' };
+  }
+  return { status: 'available', scenarios };
+}
+
+
 export interface MarginRiskMetrics {
   assets: number;
   equity: number;

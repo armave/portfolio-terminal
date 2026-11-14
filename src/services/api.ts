@@ -359,6 +359,8 @@ export const logoutAccount = authTransportRuntime.logoutAccount;
 
 
 export interface ProxyFetchOptions extends RequestInit {
+  /** Per-request deadline; removed before passing options to fetch. */
+  timeoutMs?: number;
   secret?: string;
   state?: Record<string, any> | PortfolioState;
   /** Optional override for the shared read-only request scheduler. */
@@ -509,6 +511,8 @@ async function performProxyFetch(
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
   const requestInit = { ...fetchOptions };
+  const timeoutMs = requestInit.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  delete requestInit.timeoutMs;
   delete requestInit.requestPriority;
   const url = new URL(WORKER_PROXY_URL);
   if (action) {
@@ -550,7 +554,7 @@ async function performProxyFetch(
       throw new Error(errorMessage);
     }
     return data;
-  }, DEFAULT_REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
 }
 
 function recordApiMetric(metric: string, details: Record<string, unknown> = {}): void {

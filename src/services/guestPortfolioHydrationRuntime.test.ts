@@ -68,7 +68,7 @@ describe('guest portfolio hydration runtime', () => {
     const fixture = createFixture({ currentView: 'SETTINGS' });
     const runtime = createGuestPortfolioHydrationRuntime(fixture.dependencies);
 
-    await runtime.pullGuestPortfolioSnapshot();
+    await expect(runtime.pullGuestPortfolioSnapshot()).resolves.toBe(true);
 
     expect(fixture.dependencies.getGuestPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.importGuestWorkspace).toHaveBeenCalledTimes(1);
@@ -172,7 +172,7 @@ describe('guest portfolio hydration runtime', () => {
     const fixture = createFixture({ missingIdentityGeneration: true });
     const runtime = createGuestPortfolioHydrationRuntime(fixture.dependencies);
 
-    await runtime.pullGuestPortfolioSnapshot();
+    await expect(runtime.pullGuestPortfolioSnapshot()).resolves.toBe(false);
 
     expect(fixture.dependencies.getSessionIdentity).toHaveBeenNthCalledWith(1, -1);
     expect(fixture.dependencies.getSessionIdentity).toHaveBeenNthCalledWith(2, -2);
@@ -192,7 +192,7 @@ describe('guest portfolio hydration runtime', () => {
     });
     const runtime = createGuestPortfolioHydrationRuntime(fixture.dependencies);
 
-    await runtime.pullGuestPortfolioSnapshot();
+    await expect(runtime.pullGuestPortfolioSnapshot()).resolves.toBe(false);
 
     expect(fixture.dependencies.importGuestWorkspace).not.toHaveBeenCalled();
   });

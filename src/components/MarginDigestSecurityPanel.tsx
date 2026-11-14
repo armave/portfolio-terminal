@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   fetchMarginDigestMigrationInventory,
   migrateMarginDigestBatch,
@@ -6,14 +6,10 @@ import {
 } from '../services/api';
 import { translateText } from '../services/i18n';
 
-interface MarginDigestSecurityPanelProps {
-  currentUserId: string;
-}
-
 const MIGRATION_BATCH_SIZE = 25;
 const MAX_MIGRATION_BATCHES_PER_RUN = 20;
 
-export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurityPanelProps) {
+export function MarginDigestSecurityPanel({ currentUserId }: { currentUserId: string }) {
   const [inventory, setInventory] = useState<MarginDigestMigrationInventory | null>(null);
   const [loading, setLoading] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -22,44 +18,44 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
   const [migratedCount, setMigratedCount] = useState(0);
   const [conflictCount, setConflictCount] = useState(0);
   const [migrationCursor, setMigrationCursor] = useState<string | null>(null);
+  const sessionGeneration = useRef(0);
+
+  useEffect(() => {
+    sessionGeneration.current += 1;
+    setInventory(null);
+    setLoading(false);
+    setMigrating(false);
+    setError('');
+    setStatus('');
+    setMigratedCount(0);
+    setConflictCount(0);
+    setMigrationCursor(null);
+    return () => { sessionGeneration.current += 1; };
+  }, [currentUserId]);
 
   const refresh = async () => {
+    const generation = sessionGeneration.current;
     setLoading(true);
     setError('');
     try {
       const next = await fetchMarginDigestMigrationInventory();
+      if (generation !== sessionGeneration.current) return;
       setInventory(next);
       if (next.plaintextRecords === 0) setMigrationCursor(null);
       setStatus(translateText('Inventory scan complete.'));
     } catch {
-      setError(translateText('Encryption migration failed. No source records were deleted.'));
+      if (generation === sessionGeneration.current) {
+        setError(translateText('Encryption migration failed. No source records were deleted.'));
+      }
     } finally {
-      setLoading(false);
+      if (generation === sessionGeneration.current) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    setInventory(null);
-    setMigrationCursor(null);
-    setMigratedCount(0);
-    setLoading(true);
-    setError('');
-    void fetchMarginDigestMigrationInventory().then((next) => {
-      if (!cancelled) {
-        setInventory(next);
-        setStatus(translateText('Inventory scan complete.'));
-      }
-    }).catch(() => {
-      if (!cancelled) setError(translateText('Encryption migration failed. No source records were deleted.'));
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [currentUserId]);
-
   const migrate = async () => {
     if (migrating || !inventory || inventory.plaintextRecords === 0) return;
+    const generation = sessionGeneration.current;
+    const isCurrentSession = () => generation === sessionGeneration.current;
     setMigrating(true);
     setError('');
     setStatus(translateText('Migrating saved digest records…'));
@@ -71,7 +67,9 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
     let batches = 0;
     try {
       while (batches < MAX_MIGRATION_BATCHES_PER_RUN) {
+        if (!isCurrentSession()) return;
         const result = await migrateMarginDigestBatch({ cursor, limit: MIGRATION_BATCH_SIZE });
+        if (!isCurrentSession()) return;
         totalMigrated += result.migrated;
         totalConflicts += result.conflicts;
         setConflictCount(totalConflicts);
@@ -91,9 +89,11 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
       // A CAS conflict can refer to a key before the current cursor. Restart
       // from the first page so the next run retries that record; encrypted
       // records are skipped idempotently.
+      if (!isCurrentSession()) return;
       if (totalConflicts > 0) cursor = null;
       setMigrationCursor(cursor);
       const next = await fetchMarginDigestMigrationInventory();
+      if (!isCurrentSession()) return;
       setInventory(next);
       if (next.plaintextRecords === 0) setMigrationCursor(null);
 
@@ -108,14 +108,16 @@ export function MarginDigestSecurityPanel({ currentUserId }: MarginDigestSecurit
         setError(translateText('The inventory still contains records that need review. Strict encryption enforcement remains disabled.'));
       }
     } catch {
-      // If any earlier batch conflicted, a failed later request must still
-      // restart from the beginning on the next attempt.
-      if (totalConflicts > 0) cursor = null;
-      setMigrationCursor(cursor);
-      setMigratedCount(totalMigrated);
-      setError(translateText('Encryption migration failed. No source records were deleted.'));
+      if (isCurrentSession()) {
+        // If any earlier batch conflicted, a failed later request must still
+        // restart from the beginning on the next attempt.
+        if (totalConflicts > 0) cursor = null;
+        setMigrationCursor(cursor);
+        setMigratedCount(totalMigrated);
+        setError(translateText('Encryption migration failed. No source records were deleted.'));
+      }
     } finally {
-      setMigrating(false);
+      if (isCurrentSession()) setMigrating(false);
     }
   };
 

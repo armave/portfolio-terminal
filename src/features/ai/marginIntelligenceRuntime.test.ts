@@ -215,3 +215,58 @@ describe('Margin Intelligence runtime', () => {
     runtime.dispose();
   });
 });
+
+
+describe('Margin Intelligence timeout recovery', () => {
+  const now = Date.UTC(2026, 10, 11, 8, 0, 0);
+  const nowIso = () => new Date(now).toISOString();
+
+  it('keeps the last saved review visibly stale and reports a retryable refresh timeout', async () => {
+    const recorder = createStateRecorder();
+    const snapshot = createSnapshot();
+    const loadDigest = vi.fn().mockResolvedValue({
+      digest: {
+        key: 'position:AAPL',
+        title: 'AAPL · Position Review',
+        scope: 'position',
+        ticker: 'AAPL',
+        analysis: 'Previously saved analysis',
+        articles: [],
+        coverage: [{
+          ticker: 'AAPL', status: 'loaded', fetchedAt: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(),
+          availableArticleCount: 1, selectedArticleCount: 1
+        }],
+        snapshotFingerprint: 'old-fingerprint',
+        snapshotAsOf: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(),
+        promptVersion: 4,
+        syncedAt: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString()
+      },
+      revision: 7,
+      migrationStatus: 'not-required'
+    });
+    const runtime = createMarginIntelligenceRuntime({
+      canViewMarginDesk: () => true,
+      getPortfolioState: () => snapshot,
+      refreshIntervalMs: 60_000,
+      setState: recorder.setState,
+      translate: (message) => message,
+      loadDigest,
+      fetchNews: vi.fn().mockResolvedValue([]),
+      generateAnalysis: vi.fn().mockRejectedValue(new Error('Request timed out after 40 seconds.')),
+      now: () => now,
+      nowIso
+    });
+
+    await runtime.handleRequest({ ticker: 'AAPL', refresh: true });
+
+    expect(recorder.getState()).toMatchObject({
+      ticker: 'AAPL',
+      loading: false,
+      analysis: 'Previously saved analysis',
+      stale: true,
+      error: 'Request timed out after 40 seconds.'
+    });
+    expect(recorder.getState()?.staleReasons).toContain('news-old');
+    runtime.dispose();
+  });
+});
