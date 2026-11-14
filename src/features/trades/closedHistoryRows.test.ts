@@ -50,6 +50,110 @@ function buildRows(
   });
 }
 
+describe('broker closed-history source reconciliation', () => {
+  it('does not double-count an app sale that matches one fill inside a grouped broker sale', () => {
+    const firstSell = createSell({
+      id: 'broker-sell-2',
+      quantity: 2,
+      price: 120,
+      tradeValue: 240,
+      executedAt: '2026-11-13T10:00:00.000Z',
+      profit: 20,
+      marginFee: 0.4,
+      commission: 0.5
+    });
+    const secondSell = createSell({
+      id: 'broker-sell-3',
+      quantity: 3,
+      price: 121,
+      tradeValue: 363,
+      executedAt: '2026-11-13T10:20:00.000Z',
+      profit: 30,
+      marginFee: 0.6,
+      commission: 0.75
+    });
+    const appDuplicate = {
+      trade: {
+        id: 'app-duplicate',
+        ticker: 'AAPL',
+        shares: 2,
+        exitDate: firstSell.executedAt,
+        sellPrice: 120
+      },
+      index: 0,
+      source: 'app',
+      profit: 20,
+      fees: 0.4,
+      commissions: 0.5,
+      feesTotal: 0.9,
+      commissionsComplete: true
+    };
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [firstSell, secondSell],
+      brokerTradeMetrics: new Map([
+        [firstSell, { holdingDays: 49, buyCommission: 0.2 }],
+        [secondSell, { holdingDays: 50, buyCommission: 0.3 }]
+      ]),
+      trancheAttributions: new Map([
+        [firstSell, createAttribution({ marginQuantity: 2, averagePrice: 110 })],
+        [secondSell, createAttribution({ marginQuantity: 3, averagePrice: 111 })]
+      ]),
+      appTrades: [appDuplicate]
+    });
+
+    // The two broker fills remain one displayed 5-share row; the duplicated
+    // 2-share app record must not add a second sale to the totals.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].source).toBe('tradenet');
+    expect(rows[0].trade.shares).toBe(5);
+    expect(rows[0].profit).toBe(50);
+    expect(rows[0].feesTotal).toBe(2.5);
+  });
+
+  it('still deduplicates an app record that matches the grouped broker total', () => {
+    const firstSell = createSell({
+      id: 'broker-sell-a',
+      quantity: 2,
+      executedAt: '2026-11-13T10:00:00.000Z',
+      profit: 20
+    });
+    const secondSell = createSell({
+      id: 'broker-sell-b',
+      quantity: 3,
+      executedAt: '2026-11-13T10:20:00.000Z',
+      profit: 30
+    });
+    const appDuplicate = {
+      trade: {
+        id: 'app-group-duplicate',
+        ticker: 'AAPL',
+        shares: 5,
+        exitDate: '2026-11-13T10:20:00.000Z'
+      },
+      index: 0,
+      source: 'app',
+      profit: 50
+    };
+
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [firstSell, secondSell],
+      brokerTradeMetrics: new Map([
+        [firstSell, { holdingDays: 49, buyCommission: 0.2 }],
+        [secondSell, { holdingDays: 50, buyCommission: 0.3 }]
+      ]),
+      trancheAttributions: new Map([
+        [firstSell, createAttribution({ marginQuantity: 2, averagePrice: 110 })],
+        [secondSell, createAttribution({ marginQuantity: 3, averagePrice: 111 })]
+      ]),
+      appTrades: [appDuplicate]
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].source).toBe('tradenet');
+    expect(rows[0].trade.shares).toBe(5);
+  });
+});
+
 describe('broker closed-history net profit fallback', () => {
   it('derives net P&L from a complete FIFO cost basis when TradeNet omits profit', () => {
     const sell = createSell({ price: null, tradeValue: 600 });
