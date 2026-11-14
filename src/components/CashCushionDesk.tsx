@@ -23,6 +23,7 @@ import {
   buildCashHoldingDisplayGroups,
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
+  getActiveTrancheType,
   getCashHoldingDisplayMetrics,
   getReversibleBalanceAdjustmentEvents,
   selectCashCushionPortfolioState,
@@ -892,7 +893,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
             <div>
               <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches ({activeTranches.length})</h2>
-              <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Cash</p>
+              <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Margin</p>
             </div>
             <div class="flex items-center gap-2">
               <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -951,7 +952,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
                     ) : visibleActiveTranches.map((tranche) => {
-                      const type = activeTrancheTypes[tranche.id] || activeTrancheTypes[tranche.ticker] || 'cash';
+                      const type = getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker);
                       const mix = normalizeActiveTrancheMix(
                         tranche.quantity,
                         activeTrancheMixes[tranche.id] || activeTrancheMixes[tranche.ticker]
