@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { getTablePaginationRange } from '../ui/useTablePagination';
 
 function readSource(): string {
   return readFileSync(new URL('./ClosedHistoryDesk.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -97,13 +98,15 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain("translateText('Retry cashflow sync')");
   });
 
-  it('clamps the rendered Trades page before a shrinking refresh can show an empty range', () => {
+  it('uses shared pagination and clamps the rendered Trades page after a shrinking refresh', () => {
     const source = readSource();
-    expect(source).toContain('const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount))');
-    expect(source).toContain('trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize)');
-    expect(source).toContain('if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage)');
-    expect(source).toContain("translateText(`Showing ${(safeTradesPage - 1) * tradesPageSize + 1}");
-    expect(source).toContain('Page {safeTradesPage} / {tradesPageCount}');
+    expect(source).toContain("useTablePagination('closed-history', trades.length, 10)");
+    expect(source).toContain('sliceTablePage(trades, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain('<TablePagination');
+    // A requested page beyond the shortened result is clamped before slicing.
+    expect(getTablePaginationRange(78, 9, 10)).toEqual({
+      pageCount: 8, page: 8, start: 71, end: 78
+    });
   });
 
   it('preserves the last valid Mix quantity when a closed-trade input is blank or invalid', () => {

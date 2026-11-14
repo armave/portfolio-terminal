@@ -6,6 +6,8 @@ import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { createLatestFramePublisher, type LatestFramePublisher } from '../services/marketDepthFramePublisher';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 export interface MarketDepthLevel {
   position: number;
@@ -292,6 +294,8 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
 
   const displayState = getMarketDepthDisplayState(streamStatus, snapshot);
   const liveSnapshot = displayState === 'live' ? snapshot : null;
+  const bidsPagination = useTablePagination('market-depth-bids', liveSnapshot?.bids.length ?? 0, 10);
+  const asksPagination = useTablePagination('market-depth-asks', liveSnapshot?.asks.length ?? 0, 10);
   const summary = liveSnapshot ? summarizeMarketDepth(liveSnapshot) : null;
   const levelCount = liveSnapshot ? liveSnapshot.bids.length + liveSnapshot.asks.length : 0;
   // Scale the ladder against the same top-five levels that are actually drawn.
@@ -424,13 +428,15 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
                     <th scope="col" class="px-2 py-1">{depthText('Size')}</th>
                     <th scope="col" class="px-2 py-1">{depthText('Cumulative')}</th>
                   </tr></thead>
-                  <tbody>{(() => {
+                  <tbody id={side === 'bids' ? 'marketDepthBidsTableBody' : 'marketDepthAsksTableBody'}>{(() => {
                     let cumulative = 0;
                     const rows = liveSnapshot[side].map((level) => {
                       cumulative += level.quantity;
                       return { level, cumulative };
                     });
-                    return rows.length ? rows.map(({ level, cumulative: cumulativeQuantity }) => <tr key={level.position} class="border-t border-slate-800 text-slate-300">
+                    const pagination = side === 'bids' ? bidsPagination : asksPagination;
+                    const visibleRows = sliceTablePage(rows, pagination.currentPage, pagination.pageSize);
+                    return visibleRows.length ? visibleRows.map(({ level, cumulative: cumulativeQuantity }) => <tr key={level.position} class="border-t border-slate-800 text-slate-300">
                       <td class="px-2 py-1.5 text-left">{level.position + 1}</td>
                       <td class="px-2 py-1.5">{formatDepthNumber(level.price)}</td>
                       <td class="px-2 py-1.5">{formatDepthNumber(level.quantity)}</td>
@@ -438,6 +444,18 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
                     </tr>) : <tr><td colSpan={4} class="px-2 py-3 text-center text-slate-500">{depthText('No levels received.')}</td></tr>;
                   })()}</tbody>
                 </table>
+                <TablePagination
+                  tableLabel={depthText(side === 'bids' ? 'Bids' : 'Asks')}
+                  page={(side === 'bids' ? bidsPagination : asksPagination).currentPage}
+                  pageCount={(side === 'bids' ? bidsPagination : asksPagination).pageCount}
+                  pageSize={(side === 'bids' ? bidsPagination : asksPagination).pageSize}
+                  start={(side === 'bids' ? bidsPagination : asksPagination).start}
+                  end={(side === 'bids' ? bidsPagination : asksPagination).end}
+                  total={liveSnapshot[side].length}
+                  onPageChange={(side === 'bids' ? bidsPagination : asksPagination).setPage}
+                  onPageSizeChange={(side === 'bids' ? bidsPagination : asksPagination).setPageSize}
+                  controlsId={side === 'bids' ? 'marketDepthBidsTableBody' : 'marketDepthAsksTableBody'}
+                />
               </div>)}
               </div>
             </div>}

@@ -35,6 +35,7 @@ describe('fluid workspace styles', () => {
 describe('Margin projection and insights layout', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
+  const paginationSource = readFileSync(new URL('../components/TablePagination.tsx', import.meta.url), 'utf8');
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
@@ -59,8 +60,10 @@ describe('Margin projection and insights layout', () => {
 
   it('animates Margin projection page rows and keeps pagination controls accessible and fluid', () => {
     expect(projectionSource).toContain('projection-page-row');
-    expect(projectionSource).toContain('projection-pagination-controls');
-    expect(projectionSource).toContain('aria-live="polite"');
+    expect(projectionSource).toContain('controlsClassName="projection-pagination-controls"');
+    expect(projectionSource).toContain('<TablePagination');
+    expect(paginationSource).toContain('aria-live="polite"');
+    expect(paginationSource).toContain('TABLE_PAGE_SIZE_OPTIONS');
     expect(fluidStyles).toContain('#projectionTableContainer .projection-page-row');
     expect(fluidStyles).toContain('animation: projection-page-swap 160ms');
     expect(fluidStyles).toContain('@keyframes projection-page-swap');
@@ -85,11 +88,12 @@ describe('desk transitions and supporting layouts', () => {
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
 
   it('animates Trades pagination on a keyed block wrapper outside table internals', () => {
-    expect(closedSource).toContain('<div key={tradesPage} class="closed-history-page-transition">');
+    expect(closedSource).toContain('<div key={pagination.currentPage} class="closed-history-page-transition">');
     expect(closedSource).toContain('<tbody id="closedTradesTableBody"');
-    expect(closedSource).toContain('closed-history-pagination');
-    expect(closedSource).toContain('aria-controls="closedTradesTableBody"');
-    expect(closedSource).not.toContain('<tbody key={tradesPage}');
+    expect(closedSource).toContain('className="closed-history-pagination pt-2"');
+    expect(closedSource).toContain('controlsClassName="closed-history-pagination-controls"');
+    expect(closedSource).toContain('controlsId="closedTradesTableBody"');
+    expect(closedSource).not.toContain('<tbody key={pagination.currentPage}');
     expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*display:\s*flow-root/s);
     expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
     expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+180ms/);
@@ -137,6 +141,7 @@ describe('Margin desk localization', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
+  const paginationSource = readFileSync(new URL('../components/TablePagination.tsx', import.meta.url), 'utf8');
   const russianSource = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
 
   it('routes projection table labels and its accessible description through i18n', () => {
@@ -173,19 +178,19 @@ describe('Margin desk localization', () => {
       'TODAY',
       'BREAKEVEN',
       'EOW · +{days}d',
-      'NTD · +{days}d',
-      'Projection table pagination',
-      'Previous projection page',
-      'Next projection page',
-      'Previous',
-      'Next',
-      'Rows {start}–{end} of {total}',
-      'Page {current} of {total}'
+      'NTD · +{days}d'
     ]) {
       expect(projectionSource).toContain(`translateText('${label}', getAppLanguage())`);
     }
-    expect(russianSource).toContain("'Rows {start}–{end} of {total}':");
-    expect(russianSource).toContain("'Page {current} of {total}':");
+    expect(projectionSource).toContain("useTablePagination('portfolio-projection'");
+    expect(projectionSource).toContain('<TablePagination');
+    for (const label of [
+      'Rows', 'Rows per page for {table}', 'Pagination for {table}',
+      'Previous page', 'Next page', 'Rows {start}–{end} of {total}', 'Page {current} of {total}'
+    ]) {
+      expect(paginationSource).toContain(`translateText('${label}', language)`);
+      expect(russianSource).toContain(`'${label}':`);
+    }
   });
 
   it('provides Russian translations for the combined fee header and projection description', () => {

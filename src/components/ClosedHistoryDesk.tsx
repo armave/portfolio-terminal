@@ -23,6 +23,8 @@ import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetric
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
+import { TablePagination } from './TablePagination';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
@@ -113,7 +115,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
-  const [tradesPage, setTradesPage] = useState(1);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
@@ -611,14 +612,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     }),
     [brokerTrades, brokerTradeMetrics, trancheAttributions, appTrades, state.closedTradeAllocations]
   );
-  const tradesPageSize = 10;
-  const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
-  // Clamp during render so a shrinking refresh never paints an empty, out-of-range page.
-  const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount));
-  const visibleTrades = trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize);
-  useEffect(() => {
-    if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage);
-  }, [tradesPage, safeTradesPage]);
+  const pagination = useTablePagination('closed-history', trades.length, 10);
+  const visibleTrades = sliceTablePage(trades, pagination.currentPage, pagination.pageSize);
   const tradeSummary = useMemo(
     () => summarizeClosedHistoryRows(trades),
     [trades]
@@ -801,7 +796,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
       </div>
       
-      <div key={tradesPage} class="closed-history-page-transition">
+      <div key={pagination.currentPage} class="closed-history-page-transition">
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
@@ -997,18 +992,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </table>
       </TableScrollRegion>
       </div>
-      {trades.length > 0 && (
-        <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
-          <span class="text-slate-500" aria-live="polite">
-            {translateText(`Showing ${(safeTradesPage - 1) * tradesPageSize + 1}–${Math.min(safeTradesPage * tradesPageSize, trades.length)} of ${trades.length} trades`, getAppLanguage())}
-          </span>
-          <div class="closed-history-pagination-controls flex items-center gap-2">
-            <button type="button" onClick={() => setTradesPage(Math.max(1, safeTradesPage - 1))} disabled={safeTradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
-            <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {safeTradesPage} / {tradesPageCount}</span>
-            <button type="button" onClick={() => setTradesPage(Math.min(tradesPageCount, safeTradesPage + 1))} disabled={safeTradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
-          </div>
-        </div>
-      )}
+      <TablePagination
+        tableLabel={translateText('Closed trade history', getAppLanguage())}
+        page={pagination.currentPage}
+        pageCount={pagination.pageCount}
+        pageSize={pagination.pageSize}
+        start={pagination.start}
+        end={pagination.end}
+        total={trades.length}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+        className="closed-history-pagination pt-2"
+        controlsClassName="closed-history-pagination-controls"
+        controlsId="closedTradesTableBody"
+      />
     </section>
   );
 }
