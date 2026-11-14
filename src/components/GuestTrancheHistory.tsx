@@ -200,7 +200,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           </table>
         </TableScrollRegion>
         <TablePagination
-          tableLabel="Guest assignment history"
+          tableLabel={translateText('Guest assignment history table', getAppLanguage())}
           page={pagination.currentPage}
           pageCount={pagination.pageCount}
           pageSize={pagination.pageSize}
