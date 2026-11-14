@@ -162,6 +162,7 @@ function ProjectionsTableView() {
             onPageChange={pagination.setPage}
             onPageSizeChange={pagination.setPageSize}
             className="border-0 px-0 py-1"
+            controlsClassName="projection-pagination-controls"
             controlsId="projectionTableBody"
           />
         </td>
