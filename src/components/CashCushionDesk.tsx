@@ -1058,15 +1058,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         max={tranche.quantity}
                                         step="any"
                                         value={cashInputValue}
-                                        onInput={(inputEvent) => setMixInputDrafts((current) => ({
-                                          ...current,
-                                          [tranche.id + ':cash']: {
-                                            value: (inputEvent.currentTarget as HTMLInputElement).value,
-                                            quantity: tranche.quantity,
-                                            cash: mix.cash,
-                                            margin: mix.margin
-                                          }
-                                        }))}
+                                        onInput={(inputEvent) => {
+                                          const value = (inputEvent.currentTarget as HTMLInputElement).value;
+                                          setMixInputDrafts((current) => ({
+                                            ...current,
+                                            [tranche.id + ':cash']: {
+                                              value,
+                                              quantity: tranche.quantity,
+                                              cash: mix.cash,
+                                              margin: mix.margin
+                                            }
+                                          }));
+                                        }}
                                         onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
                                         class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
                                       />
@@ -1080,15 +1083,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         max={tranche.quantity}
                                         step="any"
                                         value={marginInputValue}
-                                        onInput={(inputEvent) => setMixInputDrafts((current) => ({
-                                          ...current,
-                                          [tranche.id + ':margin']: {
-                                            value: (inputEvent.currentTarget as HTMLInputElement).value,
-                                            quantity: tranche.quantity,
-                                            cash: mix.cash,
-                                            margin: mix.margin
-                                          }
-                                        }))}
+                                        onInput={(inputEvent) => {
+                                          const value = (inputEvent.currentTarget as HTMLInputElement).value;
+                                          setMixInputDrafts((current) => ({
+                                            ...current,
+                                            [tranche.id + ':margin']: {
+                                              value,
+                                              quantity: tranche.quantity,
+                                              cash: mix.cash,
+                                              margin: mix.margin
+                                            }
+                                          }));
+                                        }}
                                         onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
                                         class="min-h-11 w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
                                       />
