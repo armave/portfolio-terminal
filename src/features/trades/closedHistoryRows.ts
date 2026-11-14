@@ -244,7 +244,7 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
     .filter((days) => Number.isFinite(days) && days >= 0);
 
   return {
-    realizedNet: trades.reduce((total, row) => total + (row.profit ?? 0), 0),
+    realizedNet: profitKnownTrades.reduce((total, row) => total + (row.profit ?? 0), 0),
     totalFees: trades.reduce((total, row) => total + (
       Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))
     ), 0),
