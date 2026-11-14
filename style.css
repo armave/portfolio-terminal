@@ -4032,8 +4032,3 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #settingsDesk .settings-section-nav a {
-    transition: none;
-  }
-}
