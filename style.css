@@ -2782,7 +2782,7 @@ table tbody tr:hover {
 
 #settingsDesk .settings-toolbar>div {
   min-width: 0;
-  justify-content: flex-center;
+  justify-content: center;
   align-content: center;
   border: 1px solid var(--border-subtle);
   border-radius: var(--surface-radius, 0.875rem);
@@ -3465,6 +3465,7 @@ table tbody tr:hover {
 
   #settingsDesk .settings-account-summary {
     align-items: flex-start;
+    justify-content: center;
   }
 
   #settingsDesk .settings-refresh-description {
@@ -3902,6 +3903,139 @@ table tbody tr:hover {
   }
 }
 
+
+/* Settings information architecture: persistent section links, compact status, and progressive disclosure. */
+#settingsDesk .settings-section {
+  display: grid;
+  gap: clamp(0.65rem, 1.2cqw, 1rem);
+  min-width: 0;
+  scroll-margin-top: 1rem;
+}
+
+#settingsDesk .settings-section-heading {
+  display: grid;
+  gap: 0.25rem;
+}
+
+#settingsDesk .settings-section-heading h2 {
+  color: var(--text-primary, #e2e8f0);
+  font-size: 0.875rem;
+  font-weight: 750;
+  letter-spacing: 0.015em;
+}
+
+#settingsDesk .settings-section-heading p {
+  max-width: 68ch;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.6875rem;
+  line-height: 1.55;
+}
+
+#settingsDesk .settings-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.25rem 0 0.75rem;
+  border-bottom: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+}
+
+#settingsDesk .settings-section-nav a {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.55);
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+#settingsDesk .settings-section-nav a:hover {
+  border-color: rgb(34 211 238 / 0.55);
+  background: rgb(8 47 73 / 0.42);
+  color: rgb(165 243 252);
+}
+
+#settingsDesk .settings-data-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+#settingsDesk .settings-data-grid > .settings-toolbar__card {
+  min-width: 0;
+  padding: clamp(0.75rem, 1.2cqw, 1rem);
+  border: 1px solid var(--border-card, rgb(51 65 85 / 0.8));
+  border-radius: var(--surface-radius, 0.875rem);
+  background: rgba(15, 23, 42, 0.34);
+}
+
+#settingsDesk .settings-subsection {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border-card, rgb(51 65 85 / 0.8));
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+#settingsDesk .settings-subsection > summary,
+#settingsDesk .settings-device-details > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  cursor: pointer;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 0.75rem;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+#settingsDesk .settings-subsection[open] > summary,
+#settingsDesk .settings-device-details[open] > summary {
+  color: rgb(103 232 249);
+}
+
+#settingsDesk .settings-device-details {
+  min-width: 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+}
+
+#settingsDesk .settings-device-details > summary {
+  font-size: 0.6875rem;
+}
+
+#settingsDesk .settings-account-actions > button {
+  width: 100%;
+  min-height: 2.5rem;
+}
+
+@media (max-width: 640px) {
+  #settingsDesk .settings-section-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  #settingsDesk .settings-data-actions > button {
+    flex: 1 1 auto;
+    min-height: 2.75rem;
+  }
+
+  #settingsDesk .settings-backup-actions > button {
+    min-height: 2.75rem;
+    padding-inline: 0.35rem;
+  }
+}
 
 /* Margin-risk confidence and scenario readability. */
 .margin-risk-scope-note {

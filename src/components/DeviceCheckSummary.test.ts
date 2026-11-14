@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   checkLocalStorageAvailability,
@@ -85,5 +86,16 @@ describe('Device Check summary diagnostics', () => {
     expect(getDeviceHealth({
       online: true, localStorageAvailable: true, secureContext: true
     }, { status: 'synced', text: 'UPDATED' }, { status: 'error', text: 'Sync failed' })).toBe('attention');
+  });
+});
+
+
+describe('Device Check progressive disclosure', () => {
+  it('keeps technical device diagnostics collapsed behind the health summary', () => {
+    const source = readFileSync(new URL('./DeviceCheckSummary.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<details class="settings-device-details">');
+    expect(source).toContain("label('Technical details')");
+    expect(source).toContain("['Cloud storage', getCloudStorageLabel(cloudStatus)]");
+    expect(source).toContain("['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]");
   });
 });
