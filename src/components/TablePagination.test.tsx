@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
 import { TablePagination } from './TablePagination';
@@ -30,7 +29,7 @@ const baseProps = {
 
 describe('TablePagination', () => {
   it('renders compact page-size and navigation controls connected to the table body', () => {
-    const view = TablePagination(baseProps);
+    const view = TablePagination(baseProps)!;
     const nodes = flatten(view);
     const select = nodes.find((node) => node.type === 'select');
 
