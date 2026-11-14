@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -12,6 +12,15 @@ describe('Freedom portfolio type contracts', () => {
       .toEqualTypeOf<CashStockHolding[]>();
     expectTypeOf<FreedomReconciliationResult['positions']>()
       .toEqualTypeOf<Record<string, FreedomReconciliationPosition>>();
+  });
+});
+
+describe('active tranche funding defaults', () => {
+  it('defaults new unclassified operations to Margin while respecting saved overrides', () => {
+    expect(getActiveTrancheType(undefined, 'AAPL:buy-1', 'AAPL')).toBe('margin');
+    expect(getActiveTrancheType({}, 'AAPL:buy-1', 'AAPL')).toBe('margin');
+    expect(getActiveTrancheType({ AAPL: 'cash' }, 'AAPL:buy-1', 'AAPL')).toBe('cash');
+    expect(getActiveTrancheType({ AAPL: 'cash', 'AAPL:buy-1': 'mix' }, 'AAPL:buy-1', 'AAPL')).toBe('mix');
   });
 });
 
@@ -261,16 +270,23 @@ describe('active broker tranches', () => {
     expect(result[2]).toMatchObject({ ticker: 'MSFT', quantity: 1 });
   });
 
-  it('defaults unclassified broker tickers to cash and moves selected margin tickers into positions', () => {
+  it('defaults new unclassified broker tickers to Margin and honors explicit classifications', () => {
     const result = classifyFreedomPortfolio(snapshot, {}, [], { MSFT: 'margin' }, 123);
-    expect(result.cashStocks).toEqual([
-      expect.objectContaining({ ticker: 'AAPL', shares: 5, currentPrice: 210, price: 210 })
-    ]);
+    expect(result.cashStocks).toEqual([]);
+    expect(result.positions.AAPL).toMatchObject({
+      ticker: 'AAPL', shares: 5, currentPrice: 210
+    });
     expect(result.positions.MSFT).toMatchObject({
       ticker: 'MSFT', shares: 4, currentPrice: 400,
       tranches: [{ qty: 4, price: 350 }], quoteSource: 'Freedom TradeNet',
       quoteDetails: { price: 400, freshness: 'unknown', receivedAt: 123 }
     });
+
+    const explicitCash = classifyFreedomPortfolio(snapshot, {}, [], { AAPL: 'cash' }, 123);
+    expect(explicitCash.cashStocks).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 5, currentPrice: 210, price: 210 })
+    ]);
+    expect(explicitCash.positions.AAPL).toBeUndefined();
   });
 
   it('keeps timestamped live quotes when an untimestamped broker snapshot arrives', () => {
