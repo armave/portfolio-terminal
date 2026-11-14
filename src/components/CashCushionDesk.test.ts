@@ -32,6 +32,11 @@ describe('active tranche operation accessibility', () => {
     expect(deskSource).toContain("aria-expanded={activeTranchesExpanded}");
   });
 
+  it('defaults new active-tranche operations to Margin and preserves explicit saved types', () => {
+    expect(deskSource).toContain('getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker)');
+    expect(deskSource).toContain('new operations default to Margin');
+  });
+
   it('localizes dynamic active-tranche accessible names without translating ticker values', () => {
     expect(deskSource).toContain("translateText('Operation type', getAppLanguage()) + ': ' + tranche.ticker");
     expect(deskSource).toContain("translateText('Cash shares', getAppLanguage()) + ': ' + tranche.ticker");
