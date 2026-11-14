@@ -32,8 +32,9 @@ export interface PortfolioValuation {
 }
 
 function finiteNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
 }
 
