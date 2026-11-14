@@ -24,6 +24,18 @@ describe('Margin hardcode centralization', () => {
   });
 });
 
+describe('broker margin fee metric visibility', () => {
+  it('removes the incorrect Open Broker Margin Fees row from combined and single-ticker views while retaining accrued interest', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+
+    expect(source).not.toContain("translateText('Open Broker Margin Fees'");
+    expect(source).not.toContain('boardBrokerMarginFee');
+    expect(source).not.toContain('totalBrokerMarginFees');
+    expect(source).toContain("translateText('Accrued Margin Interest', getAppLanguage())");
+    expect(source).toContain('boardMarginCharged');
+  });
+});
+
 describe('broker history adapter boundary', () => {
   it('normalizes saved executions through the provider adapter', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
