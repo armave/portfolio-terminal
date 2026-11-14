@@ -227,9 +227,8 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const explicitFundingType = validTrancheType(types[groupId])
         ? types[groupId]
         : validTrancheType(types[group.ticker]) ? types[group.ticker] : null;
-      // Active tranche assignments default to Cash. A closed trade with no
-      // explicit classification still defaults to Margin unless it carries
-      // an active guest assignment whose ownership is cash-funded.
+      // Unclassified active tranches default to Margin. A persisted guest
+      // assignment remains evidence of an explicit cash-backed allocation.
       const fundingType = explicitFundingType ||
         (currentGuestId ? 'cash' : inherited?.fundingType || (inheritedGuestId ? 'cash' : 'margin'));
       const mix = mixes[groupId]

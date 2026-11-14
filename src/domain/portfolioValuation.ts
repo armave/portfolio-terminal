@@ -32,8 +32,9 @@ export interface PortfolioValuation {
 }
 
 function finiteNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value.trim());
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -54,9 +55,11 @@ function marketValue(
   const price = isCashHolding
     ? getPositiveMarketPrice(holding.currentPrice, (holding as ValuationCashHoldingLike).price)
     : getPositiveMarketPrice(holding.currentPrice);
+  const calculatedValue = price === null ? null : shares * price;
+  const priced = calculatedValue !== null && Number.isFinite(calculatedValue);
   return {
-    value: price === null ? 0 : shares * price,
-    priced: price !== null,
+    value: priced ? calculatedValue : 0,
+    priced,
     hasShares: true
   };
 }

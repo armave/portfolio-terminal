@@ -83,14 +83,62 @@ export function getAssignedGuestIds(assignments: Record<string, string> | undefi
   return [...new Set(Object.values(assignments || {}).filter(Boolean))].sort();
 }
 
+function finiteCashHoldingNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function finiteCashHoldingProduct(left: number, right: number): number | null {
+  const product = left * right;
+  return Number.isFinite(product) ? product : null;
+}
+
 export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; price?: unknown }): number | null {
   const positivePrice = (value: unknown): number | null => {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    const parsed = finiteCashHoldingNumber(value);
+    return parsed !== null && parsed > 0 ? parsed : null;
   };
-
   return positivePrice(holding.currentPrice) ?? positivePrice(holding.price);
+}
+
+export interface CashHoldingDisplayMetrics {
+  shares: number;
+  price: number | null;
+  averagePrice: number | null;
+  averageValue: number | null;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPnlPercent: number | null;
+  allocation: number | null;
+}
+
+export function getCashHoldingDisplayMetrics(
+  holding: { shares: unknown; currentPrice?: unknown; price?: unknown; averagePrice?: unknown },
+  pricedMarketValueTotal: number,
+  unpricedHoldingCount: number
+): CashHoldingDisplayMetrics {
+  const parsedShares = finiteCashHoldingNumber(holding.shares);
+  const shares = parsedShares !== null && parsedShares > 0 ? parsedShares : 0;
+  const price = getCashHoldingMarketPrice(holding);
+  const parsedAveragePrice = finiteCashHoldingNumber(holding.averagePrice);
+  const averagePrice = parsedAveragePrice !== null && parsedAveragePrice > 0 ? parsedAveragePrice : null;
+  const averageValue = averagePrice === null || shares <= 0 ? null : finiteCashHoldingProduct(shares, averagePrice);
+  const marketValue = price === null || shares <= 0 ? null : finiteCashHoldingProduct(shares, price);
+  const canCompare = averageValue !== null && averageValue > 0 && marketValue !== null;
+  const unrealizedPnl = canCompare ? marketValue - averageValue : null;
+  const unrealizedPnlPercent = canCompare && unrealizedPnl !== null ? unrealizedPnl / averageValue * 100 : null;
+  const allocation = unpricedHoldingCount === 0 &&
+    Number.isFinite(pricedMarketValueTotal) && pricedMarketValueTotal > 0 && marketValue !== null
+    ? marketValue / pricedMarketValueTotal * 100
+    : null;
+  return {
+    shares, price, averagePrice, averageValue, marketValue,
+    unrealizedPnl: unrealizedPnl !== null && Number.isFinite(unrealizedPnl) ? unrealizedPnl : null,
+    unrealizedPnlPercent: unrealizedPnlPercent !== null && Number.isFinite(unrealizedPnlPercent) ? unrealizedPnlPercent : null,
+    allocation: allocation !== null && Number.isFinite(allocation) ? allocation : null
+  };
 }
 
 /**
@@ -188,13 +236,19 @@ export function summarizeCashHoldings<T extends { shares: unknown; currentPrice?
   let stocksTotal = 0;
 
   for (const holding of holdings) {
-    const shares = Number(holding.shares);
-    if (!Number.isFinite(shares) || shares <= 0) continue;
+    const shares = finiteCashHoldingNumber(holding.shares);
+    if (shares === null || shares <= 0) continue;
     const price = getCashHoldingMarketPrice(holding);
-    if (price === null) unpricedHoldingCount++;
+    const marketValue = price === null ? null : finiteCashHoldingProduct(shares, price);
+    if (marketValue === null) unpricedHoldingCount++;
     else {
+      const nextTotal = stocksTotal + marketValue;
+      if (!Number.isFinite(nextTotal)) {
+        unpricedHoldingCount++;
+        continue;
+      }
       pricedHoldingCount++;
-      stocksTotal += shares * price;
+      stocksTotal = nextTotal;
     }
   }
 
@@ -246,7 +300,8 @@ export function buildCashHoldingDisplayGroups(input: CashHoldingDisplayGroupsInp
         assignedByTicker.set(holding.ticker, (assignedByTicker.get(holding.ticker) || 0) + holding.shares);
       }));
       return input.cashHoldings.flatMap((holding) => {
-        const shares = Math.max(0, Number(holding.shares || 0) - (assignedByTicker.get(holding.ticker) || 0));
+        const brokerShares = finiteCashHoldingNumber(holding.shares) ?? 0;
+        const shares = Math.max(0, brokerShares - (assignedByTicker.get(holding.ticker) || 0));
         return shares > 1e-8 ? [{ ...holding, shares }] : [];
       });
     })()

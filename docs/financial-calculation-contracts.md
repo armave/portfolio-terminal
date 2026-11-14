@@ -102,6 +102,26 @@ The helper's precedence is exact: **incomplete first, then provisional, otherwis
 
 The current portfolio valuation input does not carry currency codes or an FX conversion table. It therefore has no explicit cross-currency conversion contract. The formula is valid only when the supplied balances, cash, holdings prices, and quantities are already denominated in a common reporting currency. Do not sum unlike currencies or invent an exchange rate. Multi-currency consolidated valuation is a future feature requiring explicit FX source, timestamp, base currency, conversion direction, and stale-rate behavior.
 
+### Balance desk holding-row calculations
+
+**Sources:** `getCashHoldingDisplayMetrics` and `summarizeCashHoldings` in `src/features/cash/cashCushionModel.ts`; presentation and editing in `src/components/CashCushionDesk.tsx`.
+
+For each positive-quantity cash holding:
+
+- Market value = shares × selected positive market price.
+- Average value = shares × positive average entry price.
+- Gross unrealized P&L = market value − average value.
+- Gross unrealized P&L percent = gross unrealized P&L / average value × 100.
+- Holding allocation = market value / total priced market value × 100, but only when every positive-quantity holding has a usable market value.
+
+Input values at these calculation boundaries must be finite numbers or non-empty numeric strings. Booleans, arrays, objects, blank strings, zero/negative prices, non-positive quantities, and overflowing products are not financial values. Missing or invalid market values and P&L remain unavailable rather than being presented as zero. If any positive-quantity holding is unpriced, allocation percentages remain unavailable; the footer may show a lower-bound priced subtotal, not a complete total.
+
+Provider-reported quote volume is not assigned a currency symbol because its unit depends on the quote source. Quote change and change-percent values are independently validated before rendering.
+
+Cash/margin mix editing preserves the in-progress input string across unrelated store rerenders. While either sub-input is being edited, the opposite sub-input is recalculated live as the tranche's total quantity minus the edited side; this keeps the displayed split balanced before the edit is committed. The edited side is clamped to the range from zero through the tranche quantity, and blank or invalid intermediate text retains the last valid allocation for calculating the opposite side. On blur, the shared resolver commits the edited split, so cash plus margin equals the total quantity. A local draft is only displayed while its base tranche quantity and saved cash/margin mix still match; a changed tranche or accepted allocation invalidates the old draft.
+
+Unclassified active tranches default to Margin. An explicit saved operation- or ticker-level Cash/Mix classification takes precedence, and a new Mix allocation starts fully Margin-funded unless the prior saved classification says otherwise. A persisted guest assignment remains evidence of a legacy or explicit cash-backed allocation; this does not make newly observed, unassigned tranches default to Cash.
+
 ## 3. Unrealized P&L and target-projection contracts
 
 **Sources:** `src/components/SummaryMetricsGrid.tsx`, the portfolio review summary in `src/App.tsx`, and `getGuestHoldingValuation` in `src/domain/guestPortfolio.ts`.

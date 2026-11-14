@@ -393,17 +393,43 @@ async function assertResponsiveLayout(page, width) {
           tickerStripDisplay: tickerStrip ? getComputedStyle(tickerStrip).display : ''
         };
       });
+    const overflowCandidates = Array.from(document.body.querySelectorAll('*'))
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName.toLowerCase(),
+          id: element.id,
+          className: typeof element.className === 'string' ? element.className.slice(0, 120) : '',
+          left: Math.round(bounds.left * 10) / 10,
+          right: Math.round(bounds.right * 10) / 10,
+          width: Math.round(bounds.width * 10) / 10,
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth,
+          overflowX: style.overflowX,
+          whiteSpace: style.whiteSpace
+        };
+      })
+      .filter((item) => item.right > viewportWidth + 1 || item.left < -1)
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 16);
     return {
       viewportWidth,
       documentWidth: document.documentElement.scrollWidth,
+      bodyWidth: document.body.scrollWidth,
+      bodyClientWidth: document.body.clientWidth,
+      rootWidth: document.querySelector('#root')?.getBoundingClientRect().width ?? null,
+      rootScrollWidth: document.querySelector('#root')?.scrollWidth ?? null,
       mainBounds: mainBounds ? { left: mainBounds.left, right: mainBounds.right } : null,
       navBounds: navBounds ? { left: navBounds.left, right: navBounds.right } : null,
-      navControls
+      navControls,
+      overflowCandidates
     };
   });
 
   if (layout.documentWidth > layout.viewportWidth + 1) {
-    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport. Diagnostics: ${JSON.stringify(layout)}`);
   }
   if (!layout.mainBounds || layout.mainBounds.left < -1 || layout.mainBounds.right > layout.viewportWidth + 1) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
@@ -823,6 +849,42 @@ try {
   await page.getByRole('button', { name: /BALANCE/ }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
+  const marginTypeButton = aaplRow.locator('button[aria-pressed="true"]').filter({ hasText: 'Margin' });
+  await marginTypeButton.waitFor({ state: 'visible', timeout: 20_000 });
+  if (await aaplRow.locator('select').count() !== 0) {
+    throw new Error('A new unclassified AAPL tranche must default to Margin and must not expose a cash-funded guest assignment.');
+  }
+  await aaplRow.getByRole('button', { name: 'Mix', exact: true }).click();
+  const cashSharesInput = aaplRow.locator('input[aria-label^="Cash shares:"]');
+  const marginSharesInput = aaplRow.locator('input[aria-label^="Margin shares:"]');
+  await cashSharesInput.waitFor({ state: 'visible', timeout: 10_000 });
+  await marginSharesInput.waitFor({ state: 'visible', timeout: 10_000 });
+  const trancheTotal = Number((await aaplRow.locator('[data-label="Shares"]').textContent() || '').replace(/,/g, ''));
+  if (!Number.isFinite(trancheTotal) || trancheTotal <= 0) {
+    throw new Error('The AAPL test tranche must have a positive total share quantity.');
+  }
+  const cashEdit = Number((trancheTotal * 0.35).toFixed(4));
+  await cashSharesInput.fill(String(cashEdit));
+  await page.waitForFunction(({ expectedMargin }) => {
+    const row = Array.from(document.querySelectorAll('#activeTranchesTable .active-tranche-row'))
+      .find((item) => item.querySelector('[data-label="Ticker"]')?.textContent?.trim() === 'AAPL');
+    const input = row?.querySelector('input[aria-label^="Margin shares:"]');
+    return Boolean(input && Math.abs(Number(input.value) - expectedMargin) < 1e-8);
+  }, { expectedMargin: trancheTotal - cashEdit }, { timeout: 10_000 });
+  const marginEdit = Number((trancheTotal * 0.2).toFixed(4));
+  await marginSharesInput.fill(String(marginEdit));
+  await page.waitForFunction(({ expectedCash, expectedMargin }) => {
+    const row = Array.from(document.querySelectorAll('#activeTranchesTable .active-tranche-row'))
+      .find((item) => item.querySelector('[data-label="Ticker"]')?.textContent?.trim() === 'AAPL');
+    const cash = row?.querySelector('input[aria-label^="Cash shares:"]');
+    const margin = row?.querySelector('input[aria-label^="Margin shares:"]');
+    return Boolean(cash && margin &&
+      Math.abs(Number(cash.value) - expectedCash) < 1e-8 &&
+      Math.abs(Number(margin.value) - expectedMargin) < 1e-8);
+  }, { expectedCash: trancheTotal - marginEdit, expectedMargin: marginEdit }, { timeout: 10_000 });
+  // Guest assignment is cash-funded: switch from Mix to Cash only after verifying
+  // that both Mix sub-inputs recalculate the complementary quantity live.
+  await aaplRow.getByRole('button', { name: 'Cash', exact: true }).click();
   const guestAssignment = aaplRow.locator('select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
   await waitForCondition(

@@ -114,7 +114,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
-import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createGuestPortfolioAssignmentRuntime } from './src/services/guestPortfolioAssignmentRuntime';
@@ -374,8 +374,11 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
     .find((tranche) => tranche.id === operationId);
   if (selectedType === 'mix') {
-    const previousType = current.activeTrancheTypes?.[operationId] ||
-      current.activeTrancheTypes?.[operationId.split(':')[0]] || 'cash';
+    const previousType = getActiveTrancheType(
+      current.activeTrancheTypes,
+      operationId,
+      operationId.split(':')[0]
+    );
     const requestedMix = detail.mix || activeTrancheMixes[operationId] ||
       (previousType === 'margin'
         ? { cash: 0, margin: activeTranche?.quantity ?? 0 }

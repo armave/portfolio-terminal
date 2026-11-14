@@ -25,10 +25,12 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
-  it('keeps detailed portfolio tables scrollable', () => {
+  it('keeps desktop detail tables scrollable and contains card-table overflow on mobile', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
+    expect(stylesheet).toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*hidden;/);
+    expect(stylesheet).not.toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*visible;/);
   });
 });
 
@@ -165,9 +167,10 @@ describe('Margin desk localization', () => {
   });
 
   it('localizes all static Margin summary metric labels', () => {
-    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value', 'Open Broker Margin Fees']) {
+    for (const label of ['Shares / Tranches', 'Invested / Avg. Entry', 'Share Price / Market Value']) {
       expect(summarySource).toContain(`translateText('${label}', getAppLanguage())`);
     }
+    expect(summarySource).not.toContain("translateText('Open Broker Margin Fees', getAppLanguage())");
   });
 
   it('localizes projection entry, status, and pagination copy', () => {

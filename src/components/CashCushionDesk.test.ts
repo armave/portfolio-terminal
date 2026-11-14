@@ -6,6 +6,7 @@ import {
   formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
   getAssignedGuestIds,
+  getCashHoldingDisplayMetrics,
   getCashHoldingMarketPrice,
   shouldShowCashHoldingMarketDepth,
   summarizeCashHoldings,
@@ -31,6 +32,11 @@ describe('active tranche operation accessibility', () => {
     expect(deskSource).toContain("aria-expanded={activeTranchesExpanded}");
   });
 
+  it('defaults new active-tranche operations to Margin and preserves explicit saved types', () => {
+    expect(deskSource).toContain('getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker)');
+    expect(deskSource).toContain('new operations default to Margin');
+  });
+
   it('localizes dynamic active-tranche accessible names without translating ticker values', () => {
     expect(deskSource).toContain("translateText('Operation type', getAppLanguage()) + ': ' + tranche.ticker");
     expect(deskSource).toContain("translateText('Cash shares', getAppLanguage()) + ': ' + tranche.ticker");
@@ -46,11 +52,25 @@ describe('active tranche operation accessibility', () => {
 describe('cash/margin mix inputs', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('keeps both visible split fields synchronized with the saved normalized mix', () => {
-    expect(deskSource).toContain('value={mix.cash}');
-    expect(deskSource).toContain('value={mix.margin}');
-    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash)');
-    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin)');
+  it('keeps normalized split values and retains in-progress edits across rerenders', () => {
+    expect(deskSource).toContain('value={cashInputValue}');
+    expect(deskSource).toContain('value={marginInputValue}');
+    expect(deskSource).toContain("mixInputDraft.quantity === tranche.quantity");
+    expect(deskSource).toContain("mixInputDraft.baseCash === mix.cash");
+    expect(deskSource).toContain("mixInputDraft.baseMargin === mix.margin");
+    expect(deskSource).toContain("delete next[tranche.id]");
+    expect(deskSource.match(/const value = \(inputEvent\.currentTarget as HTMLInputElement\)\.value;/g)).toHaveLength(2);
+    expect(deskSource).toContain("const updateMixInputDraft = (value: string, editedSide: 'cash' | 'margin')");
+    expect(deskSource).toContain("const baseMix = previousIsCurrent");
+    expect(deskSource).toContain("previous.cash, margin: previous.margin");
+    expect(deskSource).toContain('const nextMix = resolveActiveTrancheMixEdit(');
+    expect(deskSource).toContain('editedSide,\n                            tranche.quantity,\n                            baseMix');
+    expect(deskSource).toContain("baseCash: previousIsCurrent ? previous.baseCash : mix.cash");
+    expect(deskSource).toContain("baseMargin: previousIsCurrent ? previous.baseMargin : mix.margin");
+    expect(deskSource).toContain("currentMixInputDraft.editedSide === 'cash'");
+    expect(deskSource).toContain("currentMixInputDraft.editedSide === 'margin'");
+    expect(deskSource).toContain("nextEditor?.getAttribute('data-mix-editor-tranche') === tranche.id");
+    expect(deskSource).toContain("data-mix-editor-tranche={tranche.id}");
     expect(deskSource).not.toContain('defaultValue={mix.cash}');
     expect(deskSource).not.toContain('defaultValue={mix.margin}');
   });
@@ -108,11 +128,39 @@ describe('cash holding market price', () => {
     expect(getCashHoldingMarketPrice({ currentPrice: null, price: '120.5' })).toBe(120.5);
   });
 
-  it('does not turn missing, invalid, zero, or negative prices into a zero quote', () => {
+  it('does not turn invalid or coercible values into a market price', () => {
     expect(getCashHoldingMarketPrice({})).toBeNull();
     expect(getCashHoldingMarketPrice({ currentPrice: '', price: undefined })).toBeNull();
     expect(getCashHoldingMarketPrice({ currentPrice: 'not-a-price', price: Number.NaN })).toBeNull();
     expect(getCashHoldingMarketPrice({ currentPrice: -1, price: 0 })).toBeNull();
+    expect(getCashHoldingMarketPrice({ currentPrice: true, price: '   ' })).toBeNull();
+    expect(getCashHoldingMarketPrice({ currentPrice: [], price: {} })).toBeNull();
+  });
+});
+
+describe('Balance holding row calculations', () => {
+  it('calculates market value, gross unrealized return, and allocation from valid inputs', () => {
+    expect(getCashHoldingDisplayMetrics({ shares: '2', currentPrice: 100, averagePrice: '80' }, 400, 0)).toEqual({
+      shares: 2, price: 100, averagePrice: 80, averageValue: 160, marketValue: 200,
+      unrealizedPnl: 40, unrealizedPnlPercent: 25, allocation: 50
+    });
+  });
+
+  it('keeps P/L unavailable for zero or invalid quantities and zero cost basis', () => {
+    for (const holding of [
+      { shares: 0, currentPrice: 100, averagePrice: 80 },
+      { shares: true, currentPrice: 100, averagePrice: 80 },
+      { shares: 2, currentPrice: 100, averagePrice: 0 }
+    ]) {
+      const result = getCashHoldingDisplayMetrics(holding, 200, 0);
+      expect(result.unrealizedPnl).toBeNull();
+      expect(result.unrealizedPnlPercent).toBeNull();
+      expect(result.allocation).toBe(holding.shares === 2 ? 100 : null);
+    }
+  });
+
+  it('does not claim complete allocation when a different holding is unpriced', () => {
+    expect(getCashHoldingDisplayMetrics({ shares: 1, currentPrice: 100, averagePrice: 80 }, 100, 1).allocation).toBeNull();
   });
 });
 
@@ -179,12 +227,13 @@ describe('cash holdings daily quote range', () => {
 describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows provider volume and quote metadata on guest cards and admin holdings rows', () => {
-    expect(deskSource).toContain('formatQuoteVolume(holding.quoteDetails?.volume)');
-    expect(deskSource).toContain('formatQuoteVolume(h.quoteDetails?.volume)');
+  it('shows provider volume without adding a currency label and validates percentage metadata', () => {
+    expect(deskSource).toContain('const volume = formatQuoteVolume(holding.quoteDetails?.volume)');
+    expect(deskSource).toContain('const volume = formatQuoteVolume(h.quoteDetails?.volume)');
+    expect(deskSource).toContain('Number.isFinite(h.quoteDetails?.changePercent)');
     expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');
     expect(deskSource).toContain('renderDailyQuoteSubtext(holding.quoteDetails)');
-    expect(deskSource).toContain('Provider-reported volume; reporting period may vary by source.');
+    expect(deskSource).toContain('volume ??');
   });
 
   it('shows administrator Market Depth controls only during an open US equity session', () => {
@@ -291,7 +340,7 @@ describe('Balance cache-first rendering wiring', () => {
   });
 
   it('shows unpriced admin holdings as unavailable instead of zero-valued assets', () => {
-    expect(deskSource).toContain('getCashHoldingMarketPrice(h)');
+    expect(deskSource).toContain('getCashHoldingDisplayMetrics(h, stocksTotal, unpricedHoldingCount)');
     expect(deskSource).toContain("{price !== null ? formatUSD(price) : '—'}");
     expect(deskSource).toContain("{val !== null ? formatUSD(val) : '—'}");
     expect(deskSource).toContain("allocation !== null ? allocation.toFixed(1) + '%' : '—'");

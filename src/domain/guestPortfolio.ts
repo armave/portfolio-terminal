@@ -23,10 +23,16 @@ interface CashHoldingQuoteLike {
   quoteDetails?: QuoteDetails;
 }
 
+function finiteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function positiveNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  const parsed = finiteNumber(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
 }
 
 /**
@@ -61,6 +67,7 @@ export function getGuestAssignedCashHoldings(input: {
     const ticker = String(tranche.ticker || '').trim().toUpperCase();
     if (!ticker) continue;
 
+    // A persisted guest assignment is legacy/explicit evidence of cash funding.
     const type = input.types?.[tranche.id] || input.types?.[ticker] || 'cash';
     const mix = normalizeActiveTrancheMix(
       tranche.quantity,
@@ -120,7 +127,9 @@ export function getGuestAssignedCashHoldings(input: {
 export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): number {
   return (holdings || []).reduce((total, holding) => {
     const price = positiveNumber(holding.currentPrice) ?? positiveNumber(holding.price);
-    return total + (price === null ? 0 : Math.max(0, Number(holding.shares) || 0) * price);
+    const shares = finiteNumber(holding.shares);
+    const value = price === null || shares === null || shares <= 0 ? 0 : shares * price;
+    return total + (Number.isFinite(value) ? value : 0);
   }, 0);
 }
 
@@ -291,14 +300,22 @@ export interface GuestHoldingValuation {
 export function getGuestHoldingValuation(
   holding: Pick<GuestCashHolding, 'shares' | 'currentPrice' | 'price' | 'averagePrice'>
 ): GuestHoldingValuation {
-  const shares = Math.max(0, Number(holding.shares) || 0);
+  const parsedShares = finiteNumber(holding.shares);
+  const shares = parsedShares !== null ? Math.max(0, parsedShares) : 0;
   const currentPrice = positiveNumber(holding.currentPrice) ?? positiveNumber(holding.price);
   const averagePrice = positiveNumber(holding.averagePrice);
-  const marketValue = currentPrice === null ? null : shares * currentPrice;
-  const costBasis = averagePrice === null ? null : shares * averagePrice;
-  const unrealizedPnl = marketValue === null || costBasis === null ? null : marketValue - costBasis;
-  const unrealizedPnlPercent = unrealizedPnl === null || costBasis === null || costBasis <= 0
+  const calculatedMarketValue = currentPrice === null ? null : shares * currentPrice;
+  const calculatedCostBasis = averagePrice === null ? null : shares * averagePrice;
+  const marketValue = calculatedMarketValue !== null && Number.isFinite(calculatedMarketValue)
+    ? calculatedMarketValue : null;
+  const costBasis = calculatedCostBasis !== null && Number.isFinite(calculatedCostBasis)
+    ? calculatedCostBasis : null;
+  const calculatedPnl = marketValue === null || costBasis === null ? null : marketValue - costBasis;
+  const unrealizedPnl = calculatedPnl !== null && Number.isFinite(calculatedPnl) ? calculatedPnl : null;
+  const calculatedPnlPercent = unrealizedPnl === null || costBasis === null || costBasis <= 0
     ? null
     : unrealizedPnl / costBasis * 100;
+  const unrealizedPnlPercent = calculatedPnlPercent !== null && Number.isFinite(calculatedPnlPercent)
+    ? calculatedPnlPercent : null;
   return { shares, currentPrice, marketValue, averagePrice, costBasis, unrealizedPnl, unrealizedPnlPercent };
 }
