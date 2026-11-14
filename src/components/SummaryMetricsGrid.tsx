@@ -235,7 +235,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
 
   return {
     text: `Day: ${parts.join(' · ')}`,
-    className: `mt-0.5 block text-[9px] font-normal tabular-nums ${colorClass}`
+    className: `mt-0.5 block text-[9px] font-normal tabular-nums text-right ${colorClass}`
   };
 }
 
@@ -993,7 +993,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
           </span>
-          <span class="mt-0.5 block text-[10px] text-slate-500" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
+          <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
             {translateText('Volume', getAppLanguage())} {volume ?? '—'}
           </span>
           <QuoteProvenanceList holdings={[
