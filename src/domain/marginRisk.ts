@@ -495,6 +495,7 @@ export function calculateMarginRiskStressScenarios(
 }
 
 
+export interface MarginRiskMetrics {
   assets: number;
   equity: number;
   equityRatio: number;
