@@ -53,6 +53,8 @@ describe('cash/margin mix inputs', () => {
     expect(deskSource).toContain("cashInputDraft.quantity === tranche.quantity");
     expect(deskSource).toContain("cashInputDraft.cash === mix.cash");
     expect(deskSource).toContain("marginInputDraft.margin === mix.margin");
+    expect(deskSource).toContain("delete next[tranche.id + ':cash']");
+    expect(deskSource).toContain("delete next[tranche.id + ':margin']");
     expect(deskSource).toContain("value: (inputEvent.currentTarget as HTMLInputElement).value");
     expect(deskSource).toContain("quantity: tranche.quantity");
     expect(deskSource).toContain("cash: mix.cash");
