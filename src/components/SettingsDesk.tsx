@@ -81,6 +81,24 @@ function formatSettingsTimestamp(timestamp: number | null | undefined): string {
   }).format(new Date(timestamp));
 }
 
+function getManualSyncIssueLabels(result: ManualPortfolioSyncResult): string[] {
+  const issues: string[] = [];
+  if (result.role === 'admin') {
+    if (!result.brokerAccount) issues.push('Broker account');
+    if (!result.executedTrades) issues.push('Executed trades');
+    if (!result.activeOrders) issues.push('Active orders');
+    if (!result.quotes) issues.push('Market quotes');
+    if (!result.cloud) issues.push('Cloud portfolio');
+    if (!result.cloudHistory) issues.push('Closed history');
+  } else if (result.role === 'guest') {
+    if (!result.guestSnapshot) issues.push('Assigned portfolio');
+    if (!result.quotes) issues.push('Market quotes');
+  } else {
+    issues.push('Portfolio sync');
+  }
+  return issues.length ? issues : ['Portfolio sync'];
+}
+
 export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
@@ -330,7 +348,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
 
       <section id="settings-account-section" class="settings-section" aria-labelledby="settingsAccountTitle">
         <div class="settings-section-heading">
-          <h2 id="settingsAccountTitle">{translateText('Account & Security')}</h2>
+          <h2 id="settingsAccountTitle">{translateText('Account & Preferences')}</h2>
           <p>{translateText('Manage your sign-in identity and language preference.')}</p>
         </div>
         <div class="settings-toolbar settings-toolbar--organized w-full py-1">
@@ -418,6 +436,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               {translateText(manualSyncResult.success
                 ? 'Last manual sync completed successfully.'
                 : 'Last manual sync completed with issues. Check the activity log.')}
+            </p>}
+            {manualSyncResult && !manualSyncResult.success && <p class="text-[10px] leading-4 text-amber-200" role="status" aria-live="polite">
+              {translateText('Unavailable sources')}: {getManualSyncIssueLabels(manualSyncResult).map((label) => translateText(label)).join(', ')}
             </p>}
             {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-3 gap-2 border-t border-slate-800 pt-3">
               <button
