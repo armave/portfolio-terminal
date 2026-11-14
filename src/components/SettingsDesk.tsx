@@ -247,6 +247,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
     toBrokerRulesFormValues(rules)
   );
+  const persistedRuleValues = toBrokerRulesFormValues(rules);
+  const brokerRulesDirty = (Object.keys(persistedRuleValues) as Array<keyof BrokerRulesFormValues>)
+    .some((field) => ruleValues[field] !== persistedRuleValues[field]);
 
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -555,6 +558,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             const values = readBrokerRulesFormValues(form, ruleValues);
             emitUiEvent('settings:save-broker-rules', { values });
           }} class="settings-rules-form space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2" role="status" aria-live="polite">
+              <span class={brokerRulesDirty ? 'text-[11px] font-semibold text-amber-200' : 'text-[11px] font-semibold text-emerald-300'}>
+                {translateText(brokerRulesDirty ? 'Unsaved changes' : 'All broker assumptions saved.')}
+              </span>
+              <span class="text-[10px] text-slate-500">
+                {translateText(brokerRulesDirty ? 'Save to apply these assumptions.' : 'Broker assumptions are saved in this browser.')}
+              </span>
+            </div>
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
@@ -624,7 +635,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
-                Rollover time (ARM)
+                Rollover time (Asia/Yerevan)
                 <input
                   id="rolloverTimeInput"
                   type="time"
