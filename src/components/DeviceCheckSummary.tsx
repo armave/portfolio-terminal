@@ -306,7 +306,14 @@ export function DeviceCheckSummary() {
 
   const health = getDeviceHealth(diagnostics, cloudStatus, cloudSyncStatus);
 
-  const rows: Array<[string, string]> = diagnostics ? [
+  const primaryRows: Array<[string, string]> = diagnostics ? [
+    ['Network', diagnostics.online ? 'Online (browser-reported)' : 'Offline'],
+    ['Local storage', diagnostics.localStorageAvailable ? 'Available' : 'Unavailable'],
+    ['Cloud storage', getCloudStorageLabel(cloudStatus)],
+    ['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]
+  ] : [];
+
+  const technicalRows: Array<[string, string]> = diagnostics ? [
     ['Browser', diagnostics.browser],
     ['Operating system', diagnostics.operatingSystem],
     ['Device type', diagnostics.deviceType],
@@ -315,13 +322,9 @@ export function DeviceCheckSummary() {
     ['Pixel ratio', diagnostics.pixelRatio],
     ['Language', diagnostics.language],
     ['Time zone', diagnostics.timeZone],
-    ['Network', diagnostics.online ? 'Online (browser-reported)' : 'Offline'],
-    ['Local storage', diagnostics.localStorageAvailable ? 'Available' : 'Unavailable'],
     ['Secure context', diagnostics.secureContext ? 'Secure' : 'Not secure'],
     ['Service worker', serviceWorkerLabel(diagnostics.serviceWorker)],
-    ['Installed app mode', diagnostics.standalone ? 'Installed' : 'Browser tab'],
-    ['Cloud storage', getCloudStorageLabel(cloudStatus)],
-    ['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]
+    ['Installed app mode', diagnostics.standalone ? 'Installed' : 'Browser tab']
   ] : [];
 
   return (
@@ -333,7 +336,7 @@ export function DeviceCheckSummary() {
         </div>
         <div class="flex items-center gap-2">
           <span class={'rounded-full border px-2.5 py-1 text-[10px] font-semibold ' + healthTone(health)} role="status">
-            {label(health === 'ready' ? 'Local environment ready' : health === 'offline' ? 'Offline' : health === 'checking' ? 'Checking…' : 'Needs attention')}
+            {label(health === 'ready' ? 'Environment ready' : health === 'offline' ? 'Offline' : health === 'checking' ? 'Checking…' : 'Needs attention')}
           </span>
           <button type="button" onClick={() => void runCheck()} disabled={checking} class="rounded border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 disabled:opacity-50">
             {label(checking ? 'Checking…' : 'Run check')}
@@ -341,8 +344,8 @@ export function DeviceCheckSummary() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map(([name, value]) => (
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {primaryRows.map(([name, value]) => (
           <div key={name} class="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-slate-900/70 px-3 py-2">
             <span class="text-[10px] text-slate-500">{label(name)}</span>
             <span class={'min-w-0 break-words text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
@@ -351,19 +354,30 @@ export function DeviceCheckSummary() {
         {!diagnostics && <p class="col-span-full text-xs text-slate-400" role="status">{label('Checking…')}</p>}
       </div>
 
-      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2">
-        <p class="max-w-3xl text-[10px] leading-4 text-slate-500">
-          {label('Browser-reported network state does not confirm that the API or cloud service is reachable.')}
-          {' '}
-          {label('The storage check writes and removes a temporary test value; no portfolio data is changed.')}
-          {' '}{label('Browser and device details are inferred from browser-provided information and may be approximate.')}
-          {' '}{label('An active service worker does not guarantee that every page or data source works offline.')}
-          {' '}{label('Device diagnostics stay in this browser and are not uploaded as a device identifier.')}
-        </p>
-        <span class="shrink-0 text-[10px] text-slate-500">
-          {label('Last checked')}: {formatCheckedAt(diagnostics?.checkedAt ?? null)}
-        </span>
-      </div>
+      <details class="settings-device-details">
+        <summary>{label('Technical details')}</summary>
+        <div class="grid grid-cols-1 gap-2 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+          {technicalRows.map(([name, value]) => (
+            <div key={name} class="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-slate-900/70 px-3 py-2">
+              <span class="text-[10px] text-slate-500">{label(name)}</span>
+              <span class={'min-w-0 break-words text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
+            </div>
+          ))}
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2 mt-3">
+          <p class="max-w-3xl text-[10px] leading-4 text-slate-500">
+            {label('Browser-reported network state does not confirm that the API or cloud service is reachable.')}
+            {' '}
+            {label('The storage check writes and removes a temporary test value; no portfolio data is changed.')}
+            {' '}{label('Browser and device details are inferred from browser-provided information and may be approximate.')}
+            {' '}{label('An active service worker does not guarantee that every page or data source works offline.')}
+            {' '}{label('Device diagnostics stay in this browser and are not uploaded as a device identifier.')}
+          </p>
+          <span class="shrink-0 text-[10px] text-slate-500">
+            {label('Last checked')}: {formatCheckedAt(diagnostics?.checkedAt ?? null)}
+          </span>
+        </div>
+      </details>
     </section>
   );
 }
