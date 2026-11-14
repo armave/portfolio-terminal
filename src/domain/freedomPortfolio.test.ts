@@ -318,7 +318,7 @@ describe('active broker tranches', () => {
       quoteUpdatedAt: observedAt,
       quoteSource: 'Yahoo',
       quoteDetails: { price: 125, freshness: 'fresh', sourceTimestamp }
-    }], { MSFT: 'margin' }, observedAt);
+    }], { MSFT: 'margin', AAPL: 'cash' }, observedAt);
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'AAPL',
@@ -375,7 +375,7 @@ describe('active broker tranches', () => {
       quoteRequestSequence: 42,
       quoteSource: 'Freedom TradeNet',
       quoteDetails: { ...websocketQuote, price: 195.25 }
-    }], { GOOGL: 'margin' }, receivedAt);
+    }], { GOOGL: 'margin', AAPL: 'cash' }, receivedAt);
 
     // This is the same reclassification used when the Trades section refreshes
     // executed history. Broker mkt_price is older and has no observation time.
@@ -408,7 +408,7 @@ describe('active broker tranches', () => {
       currentPrice: 110,
       price: 110,
       quoteDetails: { price: 110, freshness: 'unknown' }
-    }]);
+    }], { AAPL: 'cash' });
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'AAPL',
@@ -714,15 +714,17 @@ describe('cash holdings average purchase price', () => {
       balances: [],
       positions: [{ ticker: 'AAPL.US', quantity: 10, marketPrice: 130 }]
     };
-    const mixedTranche = getActiveTranchesFromTrades(trades, snapshot)
-      .find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    const activeTranches = getActiveTranchesFromTrades(trades, snapshot);
+    const cashTranche = activeTranches.find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:00:00Z'));
+    const mixedTranche = activeTranches.find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    expect(cashTranche).toBeDefined();
     expect(mixedTranche).toBeDefined();
 
     const result = classifyFreedomPortfolio(
       snapshot,
       {},
       [],
-      { [mixedTranche!.id]: 'mix' },
+      { [cashTranche!.id]: 'cash', [mixedTranche!.id]: 'mix' },
       123,
       trades,
       undefined,
@@ -758,7 +760,7 @@ describe('cash holdings average purchase price', () => {
       shares: 5,
       averagePrice: 110,
       lots: appLots
-    }], {}, 123, trades);
+    }], { MSFT: 'cash' }, 123, trades);
 
     expect(result.cashStocks[0]).toMatchObject({
       ticker: 'MSFT',
@@ -779,7 +781,7 @@ describe('cash holdings average purchase price', () => {
       positions: [{ ticker: 'MSFT', quantity: 5, marketPrice: 110 }]
     };
 
-    const result = classifyFreedomPortfolio(snapshot, {}, [], {}, 123, trades);
+    const result = classifyFreedomPortfolio(snapshot, {}, [], { MSFT: 'cash' }, 123, trades);
 
     expect(result.cashStocks[0].shares).toBe(5);
     expect(result.cashStocks[0].averagePrice).toBeNull();
