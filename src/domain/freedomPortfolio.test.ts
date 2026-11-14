@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { CashStockHolding } from '../types/portfolio';
 import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
-import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixEdit, resolveActiveTrancheMixInput } from './freedomPortfolio';
 
 
 describe('Freedom portfolio type contracts', () => {
@@ -38,10 +38,31 @@ describe('resolveActiveTrancheMixInput', () => {
     expect(resolveActiveTrancheMixInput('12', 10, 4)).toBe(10);
   });
 
-  it('returns zero for invalid total quantities and clamps the fallback', () => {
-    expect(resolveActiveTrancheMixInput('5', 0, 4)).toBe(0);
-    expect(resolveActiveTrancheMixInput('', 10, 12)).toBe(10);
-    expect(resolveActiveTrancheMixInput('', 10, -2)).toBe(0);
+  it('recalculates Margin immediately when Cash is edited against the tranche total', () => {
+    expect(resolveActiveTrancheMixEdit('7', 'cash', 20, { cash: 4, margin: 16 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('7.5', 'cash', 20, { cash: 4, margin: 16 }))
+      .toEqual({ cash: 7.5, margin: 12.5 });
+  });
+
+  it('recalculates Cash immediately when Margin is edited against the tranche total', () => {
+    expect(resolveActiveTrancheMixEdit('5', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 15, margin: 5 });
+    expect(resolveActiveTrancheMixEdit('6.25', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 13.75, margin: 6.25 });
+  });
+
+  it('clamps either edited side and retains the previous split for blank or invalid input', () => {
+    expect(resolveActiveTrancheMixEdit('25', 'cash', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 20, margin: 0 });
+    expect(resolveActiveTrancheMixEdit('-2', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 20, margin: 0 });
+    expect(resolveActiveTrancheMixEdit('', 'cash', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('invalid', 'margin', 20, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 7, margin: 13 });
+    expect(resolveActiveTrancheMixEdit('5', 'cash', Number.NaN, { cash: 7, margin: 13 }))
+      .toEqual({ cash: 0, margin: 0 });
   });
 });
 
