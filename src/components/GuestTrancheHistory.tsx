@@ -212,6 +212,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           onPageSizeChange={pagination.setPageSize}
           controlsId="guestTrancheHistoryTableBody"
         />
+        </>
       )}
       <p class="text-[9px] text-slate-600">Value shows current market value for open tranches and sale proceeds for closed trades. Net P&amp;L appears only when the closed trade's net result is available.</p>
     </section>
