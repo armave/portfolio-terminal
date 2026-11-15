@@ -24,6 +24,10 @@ describe('standard non-Margin page layout', () => {
     expect(appSource).toContain('id="cashCushionContainer" class={"standard-desk-container');
     expect(appSource).toContain('id="guestHistoryContainer"');
     expect(appSource).toContain('standard-desk-container desk-view-transition');
+    expect(appSource).toContain('id="guestHistoryContainer"\n            class={`standard-desk-container desk-view-transition min-w-0');
+    expect(appSource).toContain('id="closedHistoryContainer"\n        class={"standard-desk-container desk-view-transition min-w-0');
+    expect(appSource).toContain('id="settings" class={"standard-desk-container min-w-0');
+    expect(appSource).not.toContain('id="settings" class={"standard-desk-container desk-view-transition');
   });
 
   it('does not apply the non-Margin page shell to the Margin board', () => {

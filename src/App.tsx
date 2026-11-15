@@ -499,7 +499,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       </div>
 
       {/* Settings */}
-      <div id="settings" class={"standard-desk-container desk-view-transition min-w-0 " + (activeDeskView === "SETTINGS" ? "" : "hidden")}>
+      <div id="settings" class={"standard-desk-container min-w-0 " + (activeDeskView === "SETTINGS" ? "" : "hidden")}>
         {shouldRenderSettings
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
             <SettingsDesk currentUser={currentUser} />
