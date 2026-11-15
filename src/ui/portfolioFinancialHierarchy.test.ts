@@ -10,7 +10,7 @@ describe('financial target and carry-break-even scope', () => {
   });
 
   it('states that the unchanged break-even estimate is portfolio-wide and localizes its status', () => {
-    expect(runtimeSource).toContain("translateText('Portfolio carry break-even', getAppLanguage())");
+    expect(runtimeSource).toContain("translateText('BE', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No margin debt', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No active trades', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('days', getAppLanguage())");

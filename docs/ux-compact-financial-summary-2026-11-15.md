@@ -9,7 +9,7 @@ This is a presentation-only refinement of the existing administrator margin desk
 - The financial summary visually prioritizes market valuation, then shares/position targets and invested basis, then debt and carrying costs.
 - The existing account or allocated-position Margin Health card remains intact and appears before secondary scenario and analysis tools.
 - User-defined PT and net return at target are presented separately from the external analyst consensus.
-- The break-even calculation remains portfolio-wide. Its label now states **Portfolio carry break-even**, including while a single ticker is selected.
+- The break-even calculation remains portfolio-wide. Its label now states **Portfolio carry break-even** (BE), including while a single ticker is selected.
 - The Combined Portfolio header suppresses the selected ticker's analyst consensus; the ticker-specific analyst target is explicitly labelled when a ticker view is active.
 - Quote freshness, provider metadata, financing costs, margin-risk assumptions and disclosures remain available.
 

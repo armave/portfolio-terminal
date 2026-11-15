@@ -964,7 +964,7 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const carryLabel = translateText('Portfolio carry break-even', getAppLanguage());
+  const carryLabel = translateText('BE', getAppLanguage());
   const setText = (status: string) => setBreakevenText(carryLabel + ': ' + status);
 
   const tickers = Object.keys(state.positions);
