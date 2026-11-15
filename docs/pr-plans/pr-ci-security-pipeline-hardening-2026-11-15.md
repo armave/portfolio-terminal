@@ -29,19 +29,19 @@
 
 ## Validation checklist
 
-- [ ] actionlint passes for all checked-in workflows.
-- [ ] zizmor reports no medium-or-higher severity/confidence findings.
-- [ ] New-commit Gitleaks scan passes on the exact PR head.
+- [x] actionlint passes for all checked-in workflows.
+- [x] zizmor reports no medium-or-higher severity/confidence findings.
+- [x] New-commit Gitleaks scan passes on the exact PR head.
 - [ ] Scheduled/manual historical Gitleaks audit reports only the documented legacy findings or any newly discovered exposure.
-- [ ] CodeQL completes successfully for JavaScript/TypeScript.
-- [ ] Pull Request CI quality and unit-test job passes.
-- [ ] Production build and artifact job passes.
-- [ ] Production browser smoke and performance job passes.
-- [ ] Operations Browser Journey passes using the artifact produced by the same CI run.
+- [x] CodeQL completes successfully for JavaScript/TypeScript.
+- [x] Pull Request CI quality and unit-test job passes.
+- [x] Production build and artifact job passes.
+- [x] Production browser smoke and performance job passes.
+- [x] Operations Browser Journey passes using the artifact produced by the same CI run.
 - [ ] Pages deployment workflow passes on the resulting main-branch candidate.
 - [ ] Worker deployment preflight typecheck, tests, and audits pass on a Worker change before deployment.
-- [ ] Confirm English/Russian localization suites still pass as part of the full Vitest suite.
-- [ ] Confirm each successful workflow summary identifies the tested commit SHA.
+- [x] Confirm English/Russian localization suites still pass as part of the full Vitest suite.
+- [x] Confirm each CI/browser workflow summary identifies the tested commit SHA.
 
 ## Explicit follow-ups
 
