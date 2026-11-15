@@ -1300,8 +1300,13 @@ try {
     throw new Error('The open authentication dialog did not make the background workspace inert and aria-hidden.');
   }
 
+  // Let the modal's useEffect-based focus owner register after the sign-in surface opens.
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  ));
   // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
   await page.locator('#authUserName').focus();
+  await page.waitForFunction(() => document.activeElement?.id === 'authUserName', null, { timeout: 2_000 });
   await page.keyboard.press('Shift+Tab');
   const reverseTabFocus = await page.evaluate(() => {
     const active = document.activeElement;
