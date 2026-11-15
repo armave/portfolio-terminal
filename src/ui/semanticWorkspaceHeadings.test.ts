@@ -23,7 +23,7 @@ describe('semantic workspace headings', () => {
       expect(source).toContain("import { DeskPageHeader } from './DeskPageHeader';");
       expect(source).toContain('<DeskPageHeader');
     }
-    expect(sharedHeader).toContain('<h1 id={titleId} class="desk-page-header__title">');
+    expect(sharedHeader).toContain('<h1 id={titleId} class="desk-page-header__title md:justify-start justify-center">');
   });
 
 });

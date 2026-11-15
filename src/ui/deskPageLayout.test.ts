@@ -24,7 +24,7 @@ describe('standard non-Margin page layout', () => {
     expect(appSource).toContain('id="cashCushionContainer" class={"standard-desk-container');
     expect(appSource).toContain('id="guestHistoryContainer"');
     expect(appSource).toContain('standard-desk-container desk-view-transition');
-    expect(appSource).toMatch(/id="guestHistoryContainer"\s+class={`standard-desk-container desk-view-transition min-w-0/);
+    expect(appSource).toMatch(/id="guestHistoryContainer"\s+class={`standard-desk-container desk-view-transition text-center md:text-left min-w-0/);
     expect(appSource).toMatch(/id="closedHistoryContainer"\s+class={"standard-desk-container desk-view-transition min-w-0/);
     expect(appSource).toMatch(/id="settings"\s+class={"standard-desk-container min-w-0/);
     expect(appSource).not.toMatch(/id="settings"\s+class={"standard-desk-container desk-view-transition/);
@@ -42,7 +42,7 @@ describe('standard non-Margin page layout', () => {
       expect(source).toContain("import { DeskPageHeader } from './DeskPageHeader';");
       expect(source).toContain('<DeskPageHeader');
     }
-    expect(headerSource).toContain('<header class="desk-page-header">');
+    expect(headerSource).toContain('<header class="desk-page-header md:text-left text-center">');
     expect(headerSource).toContain('desk-page-header__title');
     expect(headerSource).toContain('desk-page-header__description');
     expect(headerSource).toContain('desk-page-header__trailing');
