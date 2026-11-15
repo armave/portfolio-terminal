@@ -111,7 +111,7 @@ describe('Market Tools Buy More preview', () => {
     } as any);
 
     const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
-    const firstProjection = result.modal?.rows[0];
+    const firstProjection = result.modal?.rows.find(row => row.kind === 'result');
 
     expect(result.type).toBe('res');
     expect(firstProjection).toMatchObject({ kind: 'result' });
