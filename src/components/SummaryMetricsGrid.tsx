@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { calculateCombinedMetrics, calculatePositionMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
@@ -840,7 +840,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     commSell
   )} ${translateText('sell', getAppLanguage())})`;
   const marginChargedText = formatUSD(posMarginCharged);
-  const netTargetReturnPct = calculatePositionMetrics(state, pos, rules, dailyRate).netPct;
   const quoteMetaText = usableMarketPrice === null
     ? translateText('Quote unavailable', getAppLanguage())
     : formatQuoteMetadata(pos, refreshIntervalMs);
@@ -972,12 +971,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <div class="portfolio-micro-row">
             <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
             <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
-          </div>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Your PT / Net return at target', getAppLanguage())}</span>
-            <span id="boardNetTargetReturn" class={'portfolio-metric-value text-xs sm:text-sm font-semibold ' + (totalInvested <= 0 ? 'text-slate-500' : netTargetReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
-              {formatUSD(pos.pt)} · {totalInvested > 0 ? (netTargetReturnPct >= 0 ? '+' : '') + netTargetReturnPct.toFixed(2) + '%' : '—'}
-            </span>
           </div>
         </div>
         <div class="portfolio-micro-column portfolio-micro-market">

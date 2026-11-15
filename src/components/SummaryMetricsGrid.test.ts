@@ -358,11 +358,14 @@ describe('cross-device financial summary hierarchy', () => {
     expect(riskCard).toBeLessThan(marketTools);
   });
 
-  it('labels owner targets separately from analyst targets and distinguishes combined target return', () => {
+  it('keeps the combined target-return KPI without repeating target values in a ticker summary', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
-    expect(source).toContain("translateText('Your PT / Net return at target', getAppLanguage())");
     expect(source).toContain("translateText('Net return at targets', getAppLanguage())");
     expect(source).toContain('id="boardNetTargetReturn"');
     expect(source).toContain('totalInvested > 0 ?');
+    expect(singleTickerView).not.toContain('Your PT / Net return at target');
+    expect(singleTickerView).not.toContain('calculatePositionMetrics');
+    expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
   });
 });
