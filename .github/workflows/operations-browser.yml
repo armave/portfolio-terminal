@@ -1,31 +1,47 @@
 name: Operations Browser Journey
 
 on:
-  pull_request:
-  push:
-    branches:
-      - dev
-      - main
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Name of the production build artifact produced by Pull Request CI.
+        required: false
+        type: string
+        default: portfolio-terminal-dist
+      reuse_build_artifact:
+        description: Reuse the caller workflow's production build instead of building again.
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: Build artifact name when reusing an existing workflow artifact.
+        required: false
+        type: string
+        default: portfolio-terminal-dist
+      reuse_build_artifact:
+        description: Reuse an existing workflow artifact; otherwise build locally in this run.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: operations-browser-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   operations-browser:
-    # Pin Chromium browser tests to a Playwright-supported hosted runner.
+    name: Account, Settings and guest browser journey
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -34,24 +50,24 @@ jobs:
         id: install_dependencies
         run: npm ci
 
-      - name: Typecheck
-        id: typecheck
-        run: npm run typecheck
-
-      - name: Run unit and Worker tests
-        id: tests
-        run: npm test
-
-      - name: Build production site
+      - name: Build production site for standalone manual runs
+        if: ${{ !inputs.reuse_build_artifact }}
         id: build
         run: npm run build
+
+      - name: Download caller production build
+        if: ${{ inputs.reuse_build_artifact }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: dist/
 
       - name: Install isolated browser runner
         id: install_playwright
         run: npm run setup:browser-tests
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-ubuntu-24.04-playwright-1.56.1-chromium
@@ -66,40 +82,23 @@ jobs:
 
       - name: Upload authenticated synthetic-portfolio performance baseline
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: authenticated-portfolio-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/authenticated-portfolio-performance.json
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Validate dead code
-        id: dead_code
-        run: npm run validate:dead-code
-
-      - name: Audit all dependencies
-        id: dependency_audit
-        run: npm run audit:dependencies
-
-      - name: Audit production dependencies
-        id: production_audit
-        run: npm run audit:production
-
       - name: Publish exact-head operations evidence
         if: always()
         env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
           DEPENDENCIES_RESULT: ${{ steps.install_dependencies.outcome || 'not-run' }}
-          TYPECHECK_RESULT: ${{ steps.typecheck.outcome || 'not-run' }}
-          TESTS_RESULT: ${{ steps.tests.outcome || 'not-run' }}
           BUILD_RESULT: ${{ steps.build.outcome || 'not-run' }}
           PLAYWRIGHT_RESULT: ${{ steps.install_playwright.outcome || 'not-run' }}
           CHROMIUM_RESULT: ${{ steps.install_chromium.outcome || 'not-run' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
           BROWSER_RESULT: ${{ steps.operations_browser.outcome || 'not-run' }}
-          DEAD_CODE_RESULT: ${{ steps.dead_code.outcome || 'not-run' }}
-          DEPENDENCY_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
-          PRODUCTION_AUDIT_RESULT: ${{ steps.production_audit.outcome || 'not-run' }}
         run: |
           TESTED_CHECKOUT_SHA="$(git rev-parse HEAD)"
           {
@@ -117,15 +116,10 @@ jobs:
             echo "| Validation | Outcome |"
             echo "|---|---|"
             echo "| npm ci | $DEPENDENCIES_RESULT |"
-            echo "| Typecheck | $TYPECHECK_RESULT |"
-            echo "| Vitest and Worker tests | $TESTS_RESULT |"
-            echo "| Production build | $BUILD_RESULT |"
+            echo "| Standalone production build | $BUILD_RESULT |"
             echo "| Playwright install | $PLAYWRIGHT_RESULT |"
             echo "| Chromium install | $CHROMIUM_RESULT |"
             echo "| Operations browser journey | $BROWSER_RESULT |"
-            echo "| Dead-code validation | $DEAD_CODE_RESULT |"
-            echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
-            echo "| Production dependency audit | $PRODUCTION_AUDIT_RESULT |"
             echo
-            echo "The Worker and broker interactions in the browser journey are deterministic test fixtures; live authenticated broker verification remains a separate manual gate."
+            echo "The Worker and broker interactions in this browser journey use deterministic fixtures; live authenticated broker verification remains a separate manual gate."
           } >> "$GITHUB_STEP_SUMMARY"
