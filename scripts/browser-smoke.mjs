@@ -254,12 +254,13 @@ async function mockWorkerApi(page) {
       }
     }
 
-    if (pathname === '/' && method === 'POST' && !call.action && typeof body.symbol === 'string') {
+    if (pathname === '/' && method === 'POST' && !call.action &&
+        (url.searchParams.has('symbol') || typeof body.symbol === 'string')) {
       if (!currentUser || token !== currentToken) {
         await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
       }
-      const symbol = String(body.symbol).trim().toUpperCase();
+      const symbol = String(url.searchParams.get('symbol') || body.symbol || '').trim().toUpperCase();
       const current = symbol === 'AAPL' ? 11 : symbol === 'MSFT' ? 21 : 100;
       const target = symbol === 'AAPL' ? 15 : symbol === 'MSFT' ? 28 : 125;
       await json(route, 200, {
