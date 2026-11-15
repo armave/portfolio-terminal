@@ -755,7 +755,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
+            {realizedNet >= 0 ? '+' : '−'}{formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
@@ -765,7 +765,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
-          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
+          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}{formatUSD(totalFees)}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
@@ -949,17 +949,17 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                       </div>
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      ${formatUSD(fees)}
+                      {formatUSD(fees)}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      {commissionsComplete === false ? '≥' : ''}${formatUSD(Number(rowCommissions ?? 0))}
+                      {commissionsComplete === false ? '≥' : ''}{formatUSD(Number(rowCommissions ?? 0))}
                     </td>
                     <td
                       class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
                     >
-                      {netProfit === null ? "—" : profitTextPrefix + sign + "$" + formatUSD(Math.abs(netProfit))}
+                      {netProfit === null ? "—" : profitTextPrefix + sign + formatUSD(Math.abs(netProfit))}
                     </td>
                     </tr>
                 );

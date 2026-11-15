@@ -14,6 +14,19 @@ function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('Trades USD amount formatting', () => {
+  it('uses the shared currency formatter without adding duplicate dollar symbols', () => {
+    const source = readSource();
+    expect(source).toContain("{realizedNet >= 0 ? '+' : '−'}{formatUSD(Math.abs(realizedNet))}");
+    expect(source).toContain("{formatUSD(totalFees)}");
+    expect(source).toContain("{formatUSD(fees)}");
+    expect(source).toContain('profitTextPrefix + sign + formatUSD(Math.abs(netProfit))');
+    expect(source).not.toContain('${formatUSD(');
+    expect(source).not.toContain('"$" + formatUSD(');
+  });
+});
+
+
 describe('Trades reconciliation audit review', () => {
   it('records reviewed findings through the audit-only PortfolioStore API', () => {
     const source = readSource();
