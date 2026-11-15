@@ -1236,8 +1236,23 @@ try {
   // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
   await page.locator('#authUserName').focus();
   await page.keyboard.press('Shift+Tab');
-  if (await page.evaluate(() => document.activeElement?.type) !== 'submit') {
-    throw new Error('Shift+Tab escaped the authentication dialog instead of wrapping to Submit.');
+  const reverseTabFocus = await page.evaluate(() => {
+    const active = document.activeElement;
+    const dialog = document.querySelector('.auth-card');
+    return {
+      tagName: active?.tagName || null,
+      id: active?.id || null,
+      type: active?.getAttribute('type') || null,
+      className: typeof active?.className === 'string' ? active.className : '',
+      insideDialog: Boolean(dialog && active && dialog.contains(active)),
+      focusables: dialog ? Array.from(dialog.querySelectorAll('a[href], area[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), iframe, object, embed, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'))
+        .filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[hidden], [inert], [aria-hidden="true"]'))
+        .map((element) => ({ tagName: element.tagName, id: element.id, type: element.getAttribute('type'), className: element.className }))
+        : []
+    };
+  });
+  if (reverseTabFocus.type !== 'submit') {
+    throw new Error('Shift+Tab did not wrap to the auth submit control: ' + JSON.stringify(reverseTabFocus));
   }
   await page.keyboard.press('Tab');
   if (await page.evaluate(() => document.activeElement?.id) !== 'authUserName') {
