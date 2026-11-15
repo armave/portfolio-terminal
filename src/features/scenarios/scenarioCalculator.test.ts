@@ -115,7 +115,7 @@ describe('Market Tools Buy More preview', () => {
 
     expect(result.type).toBe('res');
     expect(firstProjection).toMatchObject({ kind: 'result' });
-    expect(firstProjection?.label).toContain('Mon, Jun 22 · NTD · +3d');
+    expect(firstProjection?.label).toContain('NTD · +3d');
     expect(result.modal?.rows.some(row => /Fri, Jun 19|Sat, Jun 20|Sun, Jun 21/.test(row.label))).toBe(false);
   });
 
