@@ -77,36 +77,7 @@ jobs:
           set -e
           if [ -f .gitleaks-report.json ]; then
             echo "## Gitleaks finding metadata (secret values intentionally omitted)" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '.[] | [.RuleID, .File, (.StartLine|tostring), .Commit] | @tsv' .gitleaks-report.json | while IFS=
-
-  codeql:
-    name: CodeQL JavaScript and TypeScript
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: read
-      security-events: write
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          languages: javascript-typescript
-          build-mode: none
-
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          category: /language:javascript-typescript
-\t' read -r rule file line commit; do
-              echo "- Rule: \`$rule\`; file: \`$file\`; line: $line; commit: \`$commit\`" >> "$GITHUB_STEP_SUMMARY"
-            done
+            jq -r '.[] | "- Rule: \(.RuleID); file: \(.File); line: \(.StartLine); commit: \(.Commit)"' .gitleaks-report.json >> "$GITHUB_STEP_SUMMARY"
             rm -f .gitleaks-report.json
           fi
           exit "$scan_status"
