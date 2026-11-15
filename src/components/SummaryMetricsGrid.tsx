@@ -705,7 +705,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
     return (
       <>
-        <section class="portfolio-header-kpis" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
+        <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
           <PortfolioHeaderMetric
             metric="net-target-return"
             label={translateText('Net return at targets', getAppLanguage())}
@@ -996,7 +996,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
-      <section class="portfolio-header-kpis" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
+      <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
         <PortfolioHeaderMetric
           metric="carry-break-even"
           label={translateText('Portfolio carry break-even', getAppLanguage())}
