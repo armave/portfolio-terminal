@@ -96,6 +96,8 @@ jobs:
           BUILD_RESULT: ${{ steps.build.outcome || 'not-run' }}
           PLAYWRIGHT_RESULT: ${{ steps.install_playwright.outcome || 'not-run' }}
           CHROMIUM_RESULT: ${{ steps.install_chromium.outcome || 'not-run' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
           BROWSER_RESULT: ${{ steps.operations_browser.outcome || 'not-run' }}
         run: |
           TESTED_CHECKOUT_SHA="$(git rev-parse HEAD)"
@@ -105,8 +107,8 @@ jobs:
             echo "| Field | Value |"
             echo "|---|---|"
             echo "| Tested checkout SHA | $TESTED_CHECKOUT_SHA |"
-            echo "| PR head SHA | ${{ github.event.pull_request.head.sha || 'not-applicable' }} |"
-            echo "| PR base SHA | ${{ github.event.pull_request.base.sha || 'not-applicable' }} |"
+            echo "| PR head SHA | $PR_HEAD_SHA |"
+            echo "| PR base SHA | $PR_BASE_SHA |"
             echo "| Ref | $GITHUB_REF |"
             echo "| Event | $GITHUB_EVENT_NAME |"
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
