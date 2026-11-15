@@ -195,6 +195,8 @@ jobs:
       - name: Publish exact-head browser evidence
         if: always()
         env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || 'not-applicable' }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || 'not-applicable' }}
           BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome || 'not-run' }}
           PERFORMANCE_RESULT: ${{ steps.browser_performance.outcome || 'not-run' }}
         run: |
@@ -204,7 +206,8 @@ jobs:
             echo "| Field | Value |"
             echo "|---|---|"
             echo "| Tested checkout SHA | $(git rev-parse HEAD) |"
-            echo "| PR head SHA | ${{ github.event.pull_request.head.sha || 'not-applicable' }} |"
+            echo "| PR head SHA | $PR_HEAD_SHA |"
+            echo "| PR base SHA | $PR_BASE_SHA |"
             echo "| Browser smoke | $BROWSER_SMOKE_RESULT |"
             echo "| Desktop/mobile performance baseline | $PERFORMANCE_RESULT |"
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
