@@ -57,7 +57,9 @@ export function formatUSD(val: unknown): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
-  return sign + '
+  const currencySymbol = String.fromCharCode(36);
+  return sign + currencySymbol + amount;
+}
 
 /** Formats an already-currency-labelled table value with locale grouping and consistent signs. */
 export function formatUSDDisplayValue(value: string): string {
