@@ -40,7 +40,7 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 
 - `.github/workflows/ci.yml` is the single PR validation entry point. Static checks/unit tests and the production build run independently; browser journeys consume the exact production artifact produced by that run.
 - `.github/workflows/operations-browser.yml` is reusable by PR CI and remains manually runnable. It does not repeat unit tests, typecheck, dead-code validation, dependency audits, or the production build when called by PR CI.
-- `.github/workflows/security.yml` runs CodeQL for JavaScript/TypeScript, a full-history Gitleaks scan, actionlint, and zizmor. Treat findings as merge blockers unless they are verified false positives with narrow, documented suppressions.
+- `.github/workflows/security.yml` runs CodeQL for JavaScript/TypeScript, a blocking Gitleaks scan over commits introduced by each PR/push, actionlint, and zizmor. A separate scheduled/manual full-history Gitleaks audit is advisory so legacy findings remain visible without hiding new leaks. Treat new-commit findings as merge blockers; do not add broad secret-scan suppressions.
 - `.github/dependabot.yml` keeps npm and GitHub Actions dependencies on a weekly update cadence. Review major-version updates separately; do not automatically accept breaking changes.
 - Third-party GitHub Actions must be pinned to immutable commit SHAs and annotated with the corresponding release version. Keep those SHAs current through Dependabot.
 - Pages deployment must validate the exact production build with a browser smoke test before publishing. Worker deployment remains a separate `main`-only lane and must typecheck plus run Worker/authentication tests and dependency audits before deployment.
