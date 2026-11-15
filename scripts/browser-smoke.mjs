@@ -977,7 +977,7 @@ try {
 
   // Assign the active cash tranche through the admin UI and verify that the
   // Worker receives both the guest projection and durable LOTS ledger record.
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
   await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
@@ -1051,7 +1051,7 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
   const marginTypeButton = aaplRow.locator('button[aria-pressed="true"]').filter({ hasText: 'Margin' });
@@ -1121,7 +1121,7 @@ try {
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Administrator Closed History desk');
   await assertResponsiveSurface(page, '#closedHistoryContainer', 'Administrator Closed History desk');
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
 
   // The first explicit sync may be the first snapshot trigger in this browser
@@ -1289,7 +1289,7 @@ try {
     throw new Error('Guest login could not verify the AAPL assignment published by the administrator.');
   }
 
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(
     () => document.querySelector('#cashCushionContainer')?.innerText.includes('AAPL') === true,
@@ -1298,7 +1298,7 @@ try {
   );
   await captureUxReviewScreenshots(page, 'guest-balance');
 
-  await page.getByRole('button', { name: 'LOTS' }).click();
+  await page.getByRole('button', { name: /lots/i }).click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Guest LOTS history desk');
   await assertResponsiveSurface(page, '#guestHistoryContainer', 'Guest LOTS history desk');
