@@ -840,7 +840,14 @@ try {
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
+  // The authenticated startup may restore Balance. Select the Combined Portfolio
+  // explicitly so this assertion exercises the Combined admin header, not the initial desk.
+  const combinedPortfolioTab = page.locator('#tickerTabs [aria-label="COMBINED PORTFOLIO"]');
+  await combinedPortfolioTab.waitFor({ state: 'visible', timeout: 20_000 });
+  await combinedPortfolioTab.click();
   if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await page.locator('.portfolio-header-kpis [data-header-metric="net-target-return"]')
+      .waitFor({ state: 'visible', timeout: 20_000 });
     await assertFinancialHeaderLayout(page, 'combined');
   }
 
