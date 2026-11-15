@@ -11,11 +11,19 @@ describe('semantic workspace headings', () => {
     expect(readSource('../components/EmptyStatePanel.tsx')).toContain('<h1 class="text-lg font-black');
   });
 
-  it('provides a primary heading for each standalone workspace destination', () => {
-    expect(readSource('../components/CashCushionDesk.tsx')).toContain('<h1 class="text-lg font-black text-cyan-400');
-    expect(readSource('../components/ClosedHistoryDesk.tsx')).toContain('<h1 class="flex items-center gap-2');
-    expect(readSource('../components/SettingsDesk.tsx')).toContain('<h1 class="text-lg font-black text-slate-200');
-    expect(readSource('../components/GuestTrancheHistory.tsx')).toContain('<h1 id="guestTrancheHistoryHeading"');
+  it('provides a primary heading for each standalone workspace destination through the shared header', () => {
+    const sharedHeader = readSource('../components/DeskPageHeader.tsx');
+    for (const path of [
+      '../components/CashCushionDesk.tsx',
+      '../components/ClosedHistoryDesk.tsx',
+      '../components/SettingsDesk.tsx',
+      '../components/GuestTrancheHistory.tsx'
+    ]) {
+      const source = readSource(path);
+      expect(source).toContain("import { DeskPageHeader } from './DeskPageHeader';");
+      expect(source).toContain('<DeskPageHeader');
+    }
+    expect(sharedHeader).toContain('<h1 id={titleId} class="desk-page-header__title">');
   });
 
 });

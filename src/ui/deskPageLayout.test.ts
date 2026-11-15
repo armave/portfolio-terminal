@@ -69,6 +69,10 @@ describe('standard non-Margin page layout', () => {
       'Manage account, data, and application preferences.',
       'Your cash-funded purchase allocations, including completed and removed assignments',
       'Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.'
-    ]) expect(russian).toContain(`'${label}':`);
+    ]) {
+      expect(
+        russian.includes(`'${label}':`) || russian.includes(`"${label}":`)
+      ).toBe(true);
+    }
   });
 });

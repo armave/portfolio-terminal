@@ -16,7 +16,7 @@ Standardize the page-level header and container treatment for Balance, guest Lot
 
 - Let header copy and metadata wrap within the available width; move trailing metadata to its own row on narrow screens.
 - Keep semantic `header` and `h1` markup and preserve accessible status labels.
-- Add Russian translations for the changed page headings and descriptions. English remains the source copy.
+- Reuse the existing Russian dictionary entries for updated page headings and descriptions through `translateText`; no duplicate dictionary keys are added. English remains the source copy.
 
 ## Validation
 
