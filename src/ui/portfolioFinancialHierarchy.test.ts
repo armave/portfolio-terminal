@@ -8,8 +8,14 @@ const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx
 const renderBoardSource = readFileSync(new URL('./renderBoard.ts', import.meta.url), 'utf8');
 
 describe('financial target and carry-break-even scope', () => {
-  it('does not show a selected ticker analyst target as a Combined Portfolio metric', () => {
-    expect(appSource).toContain("activeDeskView === 'COMBINED' ? ' hidden' : ''");
+  it('keeps the Combined Portfolio title standalone and outside the ticker target panel', () => {
+    const combinedBranchStart = appSource.indexOf("{activeDeskView === 'COMBINED' ? (");
+    const combinedBranchEnd = appSource.indexOf(") : (", combinedBranchStart);
+    const combinedHeaderBranch = appSource.slice(combinedBranchStart, combinedBranchEnd);
+
+    expect(combinedBranchStart).toBeGreaterThanOrEqual(0);
+    expect(combinedHeaderBranch).toContain('id="boardTitle"');
+    expect(combinedHeaderBranch).not.toContain('boardTargetSection');
   });
 
   it('states that the unchanged break-even estimate is portfolio-wide and localizes its status', () => {

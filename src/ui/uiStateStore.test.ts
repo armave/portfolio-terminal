@@ -105,6 +105,8 @@ describe('runtime presentation store subscriptions', () => {
     setBoardTitle({
       title: 'COMBINED PORTFOLIO (2 Positions)',
       showDailyMove: true,
+      shareCount: undefined,
+      dailyMovePercent: undefined,
       marginPtValue: '',
       marginPtReturnText: '',
       marginPtTitle: ''
