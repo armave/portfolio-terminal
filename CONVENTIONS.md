@@ -36,3 +36,13 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
     The checked-in devcontainer provisions Node.js 22, Playwright/Chromium, and the Git pre-push hook. In an existing checkout, run `npm ci` and then `npm run setup:browser-tests`, install Chromium with `node node_modules/playwright/cli.js install chromium`, and activate the hook with `npm run setup:git-hooks`. The hook runs the same local CI suite while reusing installed dependencies.
 
     Inspect the final diff for unintended financial, persisted-data, broker, security, and deployment changes. Report unavailable checks honestly; never claim a test or build passed without evidence. Resolve failures at their source rather than weakening assertions or skipping checks.
+## CI, security, and deployment gates
+
+- `.github/workflows/ci.yml` is the single PR validation entry point. Static checks/unit tests and the production build run independently; browser journeys consume the exact production artifact produced by that run.
+- `.github/workflows/operations-browser.yml` is reusable by PR CI and remains manually runnable. It does not repeat unit tests, typecheck, dead-code validation, dependency audits, or the production build when called by PR CI.
+- `.github/workflows/security.yml` runs CodeQL for JavaScript/TypeScript, a full-history Gitleaks scan, actionlint, and zizmor. Treat findings as merge blockers unless they are verified false positives with narrow, documented suppressions.
+- `.github/dependabot.yml` keeps npm and GitHub Actions dependencies on a weekly update cadence. Review major-version updates separately; do not automatically accept breaking changes.
+- Third-party GitHub Actions must be pinned to immutable commit SHAs and annotated with the corresponding release version. Keep those SHAs current through Dependabot.
+- Pages deployment must validate the exact production build with a browser smoke test before publishing. Worker deployment remains a separate `main`-only lane and must typecheck plus run Worker/authentication tests and dependency audits before deployment.
+- Require the PR CI quality, production-build, browser-smoke, operations-browser, workflow-security, secret-scan, and CodeQL checks in repository branch protection. Branch-protection settings live in GitHub repository settings and are not enforceable by workflow YAML alone.
+- `npm run ci:local` reproduces project typecheck, Vitest, build, browser, dead-code, and npm-audit validation. GitHub-hosted CodeQL, Gitleaks, zizmor, and actionlint jobs remain authoritative for their respective scans.
