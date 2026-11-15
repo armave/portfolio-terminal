@@ -350,7 +350,8 @@ describe('cross-device financial summary hierarchy', () => {
 
   it('uses the canonical target-return selectors and keeps the risk card ahead of secondary tools', () => {
     expect(source).toContain('calculateCombinedMetrics(state, rules, tickers, dailyRate).netPct');
-    expect(source).toContain('calculatePositionMetrics(state, pos, rules, dailyRate).netPct');
+    expect(source).toContain('calculateCombinedMetrics(state, rules, tickers, dailyRate).netPct');
+    expect(source).not.toContain('calculatePositionMetrics');
     const riskCard = source.lastIndexOf('<MarginRiskGaugeCard');
     const marketTools = source.lastIndexOf('<MarginMarketTools');
     expect(riskCard).toBeGreaterThan(-1);

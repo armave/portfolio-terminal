@@ -595,7 +595,7 @@ describe('guest holding card compact presentation', () => {
   });
 
   it('localizes the new break-even and guest detail labels in Russian', () => {
-    expect(translateText('BE', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
+    expect(translateText('Portfolio carry break-even', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
     expect(translateText('Details', 'ru')).toBe('Детали');
     expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
   });
