@@ -52,6 +52,12 @@ export const TickerTabs = memo(function TickerTabs({
   const isGuestHistoryActive = activeView === 'GUEST_HISTORY';
   const isSettingsActive = activeView === 'SETTINGS';
   const isMarginDeskActive = isMarginDeskView(activeView, isAdmin);
+
+  // Margin requests active orders only when entering the Margin workspace.
+  useEffect(() => {
+    if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
+  }, [isMarginDeskActive]);
+
   const canViewGuestHistory = !isAdmin && Boolean(userId);
   const navigationViews = getWorkspaceNavigationViews(tickers, isAdmin, canViewGuestHistory);
   const balanceNavIndex = isAdmin ? navigationViews.length - 3 : 0;
@@ -173,7 +179,7 @@ export const TickerTabs = memo(function TickerTabs({
       >
         <WorkspaceNavigationIcon name="balance" />
         <span class="workspace-nav-button__label">{translateText('Balance', getAppLanguage())}</span>
-        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} />
       </button>
 
       {canViewGuestHistory && (
@@ -316,12 +322,10 @@ function areTickerListsEqual(previous: string[], next: string[]): boolean {
 /** Isolate live valuation updates from the navigation buttons themselves. */
 const BalanceEquityBadge = memo(function BalanceEquityBadge({
   isAdmin,
-  userId,
-  isActive
+  userId
 }: {
   isAdmin: boolean;
   userId?: string;
-  isActive: boolean;
 }) {
   const state = usePortfolioSelector(selectBalanceBadgeSnapshot, areBalanceBadgeSnapshotsEqual);
   const portfolioValuation = calculatePortfolioValuation({
