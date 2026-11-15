@@ -841,3 +841,20 @@ describe('app localization', () => {
 
 
 });
+
+
+describe('new financial header copy localization', () => {
+  it('localizes the new KPI and supporting-section labels in Russian', () => {
+    const copy = [
+      'Portfolio key indicators',
+      'Portfolio carry break-even',
+      'Allocated Equity',
+      'Margin Risk',
+      'Fees & accrued interest',
+      'of total debt'
+    ];
+    for (const label of copy) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+  });
+});

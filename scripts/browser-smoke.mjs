@@ -515,6 +515,63 @@ async function assertResponsiveSurface(page, selector, surface) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 }
 
+async function assertFinancialHeaderLayout(page, view) {
+  const expectedMetrics = view === 'combined'
+    ? ['net-target-return', 'carry-break-even', 'account-equity', 'margin-debt', 'margin-risk']
+    : ['carry-break-even', 'allocated-equity', 'margin-debt', 'margin-risk'];
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const layout = await page.evaluate(() => {
+      const metrics = Array.from(document.querySelectorAll('.portfolio-header-kpis [data-header-metric]'))
+        .map((element) => element.getAttribute('data-header-metric'));
+      const health = document.querySelector('.portfolio-risk-tools-row > .margin-risk-gauge-card');
+      const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
+      const healthBounds = health?.getBoundingClientRect();
+      const toolsBounds = tools?.getBoundingClientRect();
+      return {
+        metrics,
+        targetReturnCount: document.querySelectorAll('#boardNetTargetReturn').length,
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        healthVisible: Boolean(health?.getClientRects().length),
+        toolsVisible: Boolean(tools?.getClientRects().length),
+        healthTop: healthBounds?.top ?? null,
+        healthBottom: healthBounds?.bottom ?? null,
+        toolsTop: toolsBounds?.top ?? null,
+        sameRow: Boolean(healthBounds && toolsBounds && Math.abs(healthBounds.top - toolsBounds.top) <= 2)
+      };
+    });
+
+    if (JSON.stringify(layout.metrics) !== JSON.stringify(expectedMetrics)) {
+      throw new Error('Unexpected ' + view + ' financial header KPI set at ' + viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (layout.targetReturnCount !== (view === 'combined' ? 1 : 0)) {
+      throw new Error('Ticker target return is duplicated or the Combined KPI is missing: ' + JSON.stringify(layout));
+    }
+    if (!layout.healthVisible || !layout.toolsVisible) {
+      throw new Error('Account Equity Health or Market Tools is missing at ' + viewport.width + 'px.');
+    }
+    if (layout.documentWidth > layout.viewportWidth + 1) {
+      throw new Error('Financial header caused page-level horizontal overflow at ' + viewport.width + 'px.');
+    }
+    if (viewport.width >= 768 && !layout.sameRow) {
+      throw new Error('Account Equity Health and Market Tools must share one row above mobile width: ' + JSON.stringify(layout));
+    }
+    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthBottom - 1)) {
+      throw new Error('Account Equity Health and Market Tools must stack on mobile: ' + JSON.stringify(layout));
+    }
+  }
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
+
 async function assertNewsDialogTouchTargets(page) {
   const controls = await page.locator('.news-article-dialog button, .news-article-dialog a[href]').evaluateAll((elements) =>
     elements.map((element) => {
@@ -783,8 +840,9 @@ try {
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
-
-
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertFinancialHeaderLayout(page, 'combined');
+  }
 
   // Exercise roving keyboard navigation through the full destination list.
   const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
@@ -842,6 +900,9 @@ try {
   const marketInsights = page.locator('#marketInsightsPanel');
   await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
   await page.locator('#boardTitle').waitFor({ state: 'visible', timeout: 10_000 });
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertFinancialHeaderLayout(page, 'ticker');
+  }
   await captureUxReviewScreenshots(page, 'admin-ticker');
   await waitForCondition(
     () => worker.calls.some((call) => call.action === 'news'),
@@ -1108,7 +1169,11 @@ try {
 
   await page.getByRole('button', { name: /BALANCE/ }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
-  await page.locator('.guest-stock-card-enter').first().waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForFunction(
+    () => document.querySelector('#cashCushionContainer')?.innerText.includes('AAPL') === true,
+    null,
+    { timeout: 20_000 }
+  );
   await captureUxReviewScreenshots(page, 'guest-balance');
 
   await page.getByRole('button', { name: 'LOTS' }).click();

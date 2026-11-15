@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
+import { useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
@@ -120,7 +120,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
 
   const { title: boardTitle, showDailyMove } = useBoardTitle();
-  const breakevenText = useBreakevenText();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
@@ -332,13 +331,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   {boardTitle}
                 </h1>
 
-                {permissions.isAdmin && <div
-                  class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-                  id="daysToBreakeven"
-                  title={translateText('Estimated days to breakeven', getAppLanguage())}
-                >
-                  {breakevenText}
-                </div>}
 
                 <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className + (activeDeskView === 'COMBINED' ? ' hidden' : '')} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>

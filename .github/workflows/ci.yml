@@ -197,12 +197,14 @@ jobs:
             (
               cd "$BEFORE_WORKTREE"
               npm run build
-              UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/before" \
+              UX_EXPECT_NEW_HEADER=false \
+                UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/before" \
                 BROWSER_SMOKE_PORT=4173 \
                 node "$GITHUB_WORKSPACE/scripts/browser-smoke.mjs"
             )
 
-            UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/after" \
+            UX_EXPECT_NEW_HEADER=true \
+              UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/after" \
               BROWSER_SMOKE_PORT=4174 \
               node scripts/browser-smoke.mjs
 

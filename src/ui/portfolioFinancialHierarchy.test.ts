@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
 describe('financial target and carry-break-even scope', () => {
   it('does not show a selected ticker analyst target as a Combined Portfolio metric', () => {
@@ -10,7 +11,8 @@ describe('financial target and carry-break-even scope', () => {
   });
 
   it('states that the unchanged break-even estimate is portfolio-wide and localizes its status', () => {
-    expect(runtimeSource).toContain("translateText('BE', getAppLanguage())");
+    expect(runtimeSource).not.toContain("translateText('BE', getAppLanguage())");
+    expect(summarySource).toContain("translateText('Portfolio carry break-even', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No margin debt', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No active trades', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('days', getAppLanguage())");

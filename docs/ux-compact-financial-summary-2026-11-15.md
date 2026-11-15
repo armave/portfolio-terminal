@@ -38,3 +38,14 @@ The original Stage 3 implementation was delivered in [PR #301](https://github.co
 PR #482 extends that work with a reproducible before/after visual-review artifact. CI builds the exact PR base and captures the same deterministic administrator ticker and guest Balance journeys as the PR head, at mobile (390x844), tablet (768x1024), and desktop (1440x900) sizes. The artifact groups matching filenames under `before/` and `after/`.
 
 The screenshots use synthetic mocked account/broker data from the production-browser smoke fixture. They are not evidence of live TradeNet or production account behavior. Human visual sign-off remains a manual pre-merge step.
+
+## Administrator header implementation
+
+The administrator board now has a distinct decision-KPI strip directly below the board title:
+
+- **Combined Portfolio:** net return at targets, portfolio-wide carry break-even, account equity, margin debt (with daily carry), and margin-risk status.
+- **Single ticker:** portfolio-wide carry break-even, allocated equity, allocated margin debt (with daily carry), and margin-risk status. Ticker PT and net target return remain in the board title and are not repeated in the KPI strip.
+- Supporting market valuation, invested basis, commissions, accrued margin interest, ticker quote provenance and volume remain in the detailed three-group summary below the KPI strip.
+
+The Account Equity Health gauge and Market Tools are now siblings in one responsive row from 768px upward. They stack vertically below 768px. The same production-browser smoke checks both Combined and ticker header metric sets and verifies the row geometry at 390px, 768px, and 1440px.
+

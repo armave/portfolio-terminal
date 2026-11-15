@@ -964,8 +964,7 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const carryLabel = translateText('BE', getAppLanguage());
-  const setText = (status: string) => setBreakevenText(carryLabel + ': ' + status);
+  const setText = (status: string) => setBreakevenText('Breakeven: ' + status);
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);

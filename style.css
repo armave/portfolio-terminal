@@ -4180,3 +4180,115 @@ table tbody tr:hover {
   .portfolio-micro-basis,
   .portfolio-micro-costs { border-left: 0 !important; }
 }
+
+/* Decision-focused financial header and paired equity/tools workspace. */
+.portfolio-header-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.portfolio-header-metric {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 4.35rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.17);
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.42), rgba(2, 6, 23, 0.48));
+}
+
+.portfolio-header-metric-label {
+  color: #94a3b8;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.portfolio-header-metric-value {
+  min-width: 0;
+  color: #f8fafc;
+  font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
+  font-size: clamp(0.875rem, 1.1vw, 1rem);
+  font-weight: 750;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-header-metric-value.is-positive { color: #4ade80; }
+.portfolio-header-metric-value.is-negative { color: #f87171; }
+.portfolio-header-metric-value.is-muted { color: #94a3b8; }
+.portfolio-header-metric-value.is-carry { color: #6ee7b7; }
+.portfolio-header-metric-value.is-warning { color: #fbbf24; }
+
+.portfolio-header-metric-detail {
+  min-width: 0;
+  color: #64748b;
+  font-size: 0.625rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-risk-tools-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.625rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.portfolio-risk-tools-row > .margin-risk-gauge-card {
+  grid-column: auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.portfolio-risk-tools-row > .portfolio-market-tools-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+}
+
+.portfolio-risk-tools-row .portfolio-market-tools {
+  min-height: 100%;
+  align-content: center;
+}
+
+@media (min-width: 768px) {
+  .portfolio-risk-tools-row {
+    grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr);
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 767px) {
+  .portfolio-header-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .portfolio-header-metric {
+    min-height: 4.1rem;
+    padding: 0.55rem 0.6rem;
+  }
+
+  .portfolio-header-metric-value {
+    font-size: 0.875rem;
+  }
+
+  .portfolio-risk-tools-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
