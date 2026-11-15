@@ -4525,6 +4525,3 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .workspace-nav-button { transition: none; }
-}
