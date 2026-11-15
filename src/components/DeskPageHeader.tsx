@@ -11,9 +11,9 @@ export interface DeskPageHeaderProps {
 export function DeskPageHeader({ title, description, trailing, titleId }: DeskPageHeaderProps) {
   return (
     <header class="desk-page-header">
-      <div class="desk-page-header__copy md:justify-start justify-center">
-        <h1 id={titleId} class="desk-page-header__title">{title}</h1>
-        {description != null && <p class="desk-page-header__description">{description}</p>}
+      <div class="desk-page-header__copy">
+        <h1 id={titleId} class="desk-page-header__title md:justify-start justify-center">{title}</h1>
+        {description != null && <p class="desk-page-header__description md:justify-start justify-center">{description}</p>}
       </div>
       {trailing != null && <div class="desk-page-header__trailing">{trailing}</div>}
     </header>
