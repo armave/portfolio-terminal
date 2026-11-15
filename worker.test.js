@@ -3302,6 +3302,92 @@ describe('Gateway compatibility during account migration', () => {
 
 
 
+describe('guest read-only Yahoo deep-data access', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('allows an authenticated guest to POST the legacy default Yahoo read-only route', async () => {
+    const stateStub = {
+      fetch: vi.fn(async request => {
+        if (new URL(request.url).pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-market-data', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw new Error('Unexpected state-service request.');
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn().mockReturnValue('portfolio-state'),
+      get: vi.fn().mockReturnValue(stateStub)
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', {
+        status: 200,
+        headers: { 'Set-Cookie': 'A1=test-cookie; Path=/' }
+      }))
+      .mockResolvedValueOnce(new Response('test-crumb', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        quoteSummary: {
+          result: [{
+            price: { regularMarketPrice: { raw: 171.25 }, marketState: 'CLOSED' },
+            financialData: { targetMeanPrice: { raw: 200 } }
+          }]
+        }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?symbol=GOOGL', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Auth': 'guest-session-token',
+        Authorization: 'Bearer guest-session-token'
+      }
+    }), { PORTFOLIO_STATE_DO: namespace });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      symbol: 'GOOGL',
+      analystTargets: { mean: 200 }
+    });
+    expect(stateStub.fetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/v10/finance/quoteSummary/GOOGL?');
+  });
+
+  it('continues to reject guest POST requests outside the read-only Yahoo route', async () => {
+    const stateStub = {
+      fetch: vi.fn(async request => new URL(request.url).pathname === '/api/auth/verify'
+        ? new Response(JSON.stringify({ user: { id: 'guest-market-data', role: 'guest' } }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        })
+        : new Response('{}', { status: 200 }))
+    };
+    const namespace = {
+      idFromName: vi.fn().mockReturnValue('portfolio-state'),
+      get: vi.fn().mockReturnValue(stateStub)
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Auth': 'guest-session-token',
+        Authorization: 'Bearer guest-session-token'
+      },
+      body: JSON.stringify({ prompt: 'This must not reach a provider.' })
+    }), { PORTFOLIO_STATE_DO: namespace });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: 'Guest accounts have read-only access.' });
+    expect(stateStub.fetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+
 describe('guest data isolation at the Worker boundary', () => {
   it('denies guest access to shared portfolio state and account-wide broker reads', async () => {
     const stateStub = {

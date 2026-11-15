@@ -1666,6 +1666,19 @@ export default {
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
+        // Parse and validate the request contract before reading any POST body.
+        // Authenticated but invalid requests should not consume the body budget.
+        const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
+        // The legacy Yahoo deep-data endpoint uses POST for a read-only lookup.
+        // Keep this guest exception limited to the root route with no action and
+        // a validated symbol; all other guest POST requests remain forbidden.
+        const guestYahooDeepDataRead = request.method === "POST" &&
+            accountRole === "guest" &&
+            !gatewayAdmin &&
+            pathname === "/" &&
+            action === null &&
+            Boolean(symbol) &&
+            validSymbolList(symbol);
         const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
 // Keep the tenant route allowlist exact; the Durable Object rechecks the same contract and fails closed.
                 const tenantMembershipRoute = /^\/api\/tenants\/[A-Za-z0-9_-]{8,80}\/memberships(?:\/revoke)?$/.test(pathname);
@@ -1679,13 +1692,10 @@ export default {
         if (tenantDirectoryPath && !tenantDirectoryRoute) {
             return jsonError("Not found.", 404, corsHeaders);
         }
-        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin && !tenantDirectoryRoute) {
+        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin &&
+            !tenantDirectoryRoute && !guestYahooDeepDataRead) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
-        // Parse and validate the request contract before reading any POST body.
-        // Authenticated but invalid requests should not consume the body budget.
-        const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
-
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest", "/api/margin-digest-migration"].includes(pathname);
             const sharedDataAction = [
