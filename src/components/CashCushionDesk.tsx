@@ -32,6 +32,7 @@ import {
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
+import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -483,7 +484,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   }
 
   return (
-    <div>
+    <div class="desk-page-content min-w-0">
       <style>{`
         @keyframes guest-stock-card-enter {
           from { opacity: 0; transform: translateY(6px); }
@@ -496,24 +497,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class="flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2">
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-lg font-black text-cyan-400 tracking-wide">
-              {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
-            </h1>
-            {balanceRefreshing && (
-              <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
-                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
-                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
-                  <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-                </svg>
-                {translateText('Syncing…', getAppLanguage())}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      <DeskPageHeader
+        title={translateText(guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE', getAppLanguage())}
+        trailing={balanceRefreshing && (
+          <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
+              <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+            </svg>
+            {translateText('Syncing…', getAppLanguage())}
+          </span>
+        )}
+      />
 
       {isAdmin && (balanceSync.status === 'stale' || balanceSync.status === 'error') && (
         <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">

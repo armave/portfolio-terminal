@@ -10,6 +10,7 @@ import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
+import { DeskPageHeader } from './components/DeskPageHeader';
 import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import type { AuthUser } from './services/api';
 import { startFreedomAccountStreamForSession } from '../app';
@@ -449,7 +450,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>}
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
+          <div id="cashCushionContainer" class={"standard-desk-container desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {shouldRenderCashCushion
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}>
                 <CashCushionDesk
@@ -465,7 +466,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {/* Guest-only assignment history is a standalone destination, separate from Balance. */}
           {permissions.canViewGuestTrancheHistory && <div
             id="guestHistoryContainer"
-            class={`desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
+            class={`standard-desk-container desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
           >
             {hasOpenedGuestHistory
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}>
@@ -481,13 +482,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           
 
         </div>
-      </main>
-
       {/* Trades */}
       <div
         id="closedHistoryContainer"
-
-        class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
+        class={"standard-desk-container desk-view-transition min-w-0 " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && shouldRenderClosedHistory
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
@@ -501,13 +499,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       </div>
 
       {/* Settings */}
-      <div class={"border-card p-4 sm:p-6 rounded-xl space-y-4 max-w-6xl md:text-left text-center mx-auto " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
+      <div id="settings" class={"standard-desk-container desk-view-transition min-w-0 " + (activeDeskView === "SETTINGS" ? "" : "hidden")}>
         {shouldRenderSettings
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
             <SettingsDesk currentUser={currentUser} />
           </Suspense></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
+
+      </main>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>

@@ -102,8 +102,13 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toMatch(/\.closed-history-pagination-controls\s*\{[^}]*flex-wrap:\s*wrap;/s);
   });
 
-  it('gives Settings the same centered bordered workspace shell as the main page', () => {
-    expect(appSource).toContain('class={"border-card p-4 sm:p-6 rounded-xl space-y-4 max-w-6xl md:text-left text-center mx-auto " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"');
+  it('keeps Settings in the shared non-Margin workspace shell without a nested card', () => {
+    const settingsStart = appSource.indexOf('id="settings"');
+    const settingsEnd = appSource.indexOf('</div>', settingsStart);
+    expect(settingsStart).toBeGreaterThan(-1);
+    expect(settingsEnd).toBeGreaterThan(settingsStart);
+    expect(appSource.slice(settingsStart, settingsEnd)).toContain('standard-desk-container');
+    expect(appSource.slice(settingsStart, settingsEnd)).not.toContain('border-card');
   });
 
   it('gives Settings a fluid container, responsive panels, and a scrollable user table', () => {
