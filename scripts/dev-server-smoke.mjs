@@ -74,8 +74,8 @@ try {
   }
 
   const transformedEntry = await entryResponse.text();
-  if (transformedEntry.includes('virtual:pwa-register')) {
-    throw new Error('The development entry still imports virtual:pwa-register.');
+  if (!transformedEntry.includes('registerSW') || /from\s+['"]virtual:pwa-register['"]/.test(transformedEntry)) {
+    throw new Error('The PWA registration import was not resolved by vite-plugin-pwa in the served development entry.');
   }
 
   await delay(500);

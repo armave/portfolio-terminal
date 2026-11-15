@@ -3,7 +3,10 @@ import { h, render } from 'preact';
 import { App } from './App';
 import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
+import { registerSW } from 'virtual:pwa-register';
 import { initializeSavedHistoryStorage } from './services/storage';
+
+registerSW({ immediate: true });
 
 /**
  * Ask browser autofill and common password managers to ignore ordinary app
