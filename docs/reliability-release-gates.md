@@ -234,7 +234,7 @@ The Pages workflow now runs the production browser smoke against the exact build
 
 ### Required checks and repository settings
 
-Configure branch protection for `dev` (and `main`, if direct PRs are permitted) to require the PR validation jobs and security jobs. Expected PR checks are `Static validation and unit tests`, `Production build and artifact`, `Production browser smoke and performance`, `Operations Browser Journey`, `Workflow lint and security analysis`, `Full-history secret scan`, and `CodeQL JavaScript and TypeScript`. GitHub branch-protection settings are repository configuration and cannot be set by committed workflow files.
+Configure branch protection for `dev` (and `main`, if direct PRs are permitted) to require the PR validation jobs and security jobs. Expected PR checks are `Static validation and unit tests`, `Production build and artifact`, `Production browser smoke and performance`, `Operations Browser Journey / Account, Settings and guest browser journey`, `Workflow lint and security analysis`, `New-commit secret scan`, and `CodeQL JavaScript and TypeScript`. The scheduled/manual `Full-history secret audit (advisory)` is intentionally not a required PR check. GitHub branch-protection settings are repository configuration and cannot be set by committed workflow files.
 
 ### Historical Gitleaks baseline review
 
