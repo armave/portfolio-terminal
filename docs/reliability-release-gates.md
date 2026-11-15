@@ -221,7 +221,7 @@ The Operations Browser Journey remains manually runnable. A manual run builds th
 `Security & Workflow Validation` runs on pull requests, pushes to `dev` and `main`, manual dispatch, and a weekly schedule:
 
 - CodeQL analysis for JavaScript and TypeScript.
-- Gitleaks against the full Git history and working tree, with secret contents redacted in CLI output.
+- Gitleaks against commits introduced by the PR/push as a blocking gate, with secret contents redacted and only finding metadata reported. A separate scheduled/manual full-history audit is advisory so previously committed legacy matches remain visible without blocking unrelated PRs.
 - actionlint validation for all checked-in GitHub Actions workflows.
 - zizmor analysis for GitHub Actions security patterns, with medium-or-higher severity and confidence findings treated as failures.
 - Dependabot weekly grouped updates for npm production/development dependencies and GitHub Actions.
@@ -235,6 +235,10 @@ The Pages workflow now runs the production browser smoke against the exact build
 ### Required checks and repository settings
 
 Configure branch protection for `dev` (and `main`, if direct PRs are permitted) to require the PR validation jobs and security jobs. Expected PR checks are `Static validation and unit tests`, `Production build and artifact`, `Production browser smoke and performance`, `Operations Browser Journey`, `Workflow lint and security analysis`, `Full-history secret scan`, and `CodeQL JavaScript and TypeScript`. GitHub branch-protection settings are repository configuration and cannot be set by committed workflow files.
+
+### Historical Gitleaks baseline review
+
+The first full-history scan reported nine historic matches. Source inspection found seven matches on legacy Finnhub credential-field/variable references in `app.js` and two matches on synthetic idempotency-key test strings in `src/store/portfolioStore.test.ts`; the cited source lines contained no hardcoded credential assignments. These historic matches are retained in the scheduled/manual advisory audit. The blocking PR/push scan checks only newly introduced commits, so new secrets remain merge-blocking without adding a broad ignore list.
 
 ### Coverage status
 
