@@ -363,5 +363,6 @@ describe('cross-device financial summary hierarchy', () => {
     expect(source).toContain("translateText('Your PT / Net return at target', getAppLanguage())");
     expect(source).toContain("translateText('Net return at targets', getAppLanguage())");
     expect(source).toContain('id="boardNetTargetReturn"');
+    expect(source).toContain('totalInvested > 0 ?');
   });
 });
