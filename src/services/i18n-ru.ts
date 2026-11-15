@@ -491,6 +491,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Portfolio workspace': 'Рабочая область портфеля',
   'Portfolio assets': 'Активы портфеля',
   'Portfolio summary metrics': 'Сводные показатели портфеля',
+  'Estimated days to breakeven': 'Оценка дней до безубыточности',
   'Portfolio projection by date': 'Прогноз портфеля по датам',
   'Market insights': 'Рыночная аналитика',
   'New user role': 'Роль нового пользователя',

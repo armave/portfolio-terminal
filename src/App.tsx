@@ -335,6 +335,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 {permissions.isAdmin && <div
                   class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
                   id="daysToBreakeven"
+                  title={translateText('Estimated days to breakeven', getAppLanguage())}
                 >
                   {breakevenText}
                 </div>}
