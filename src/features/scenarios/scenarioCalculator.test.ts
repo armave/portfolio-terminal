@@ -3,7 +3,8 @@ import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateSaleCommission } from '../../domain/portfolioTransactions';
-import { calculateAccruedFees, calculateMarginInterest } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, findProjectionBreakevenDay, resolveCommissionConfig } from '../../domain/portfolio';
+import { getUsEquityTradingProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePositionMetrics } from '../../domain/portfolioSelectors';
 
 afterEach(() => {
@@ -95,6 +96,30 @@ describe('Market Tools Buy More preview', () => {
     expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
   });
 
+  it('starts Buy More projections on the next trading session when today is a market holiday', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 19, 12, 0, 0)); // Juneteenth, 2026
+
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'AAPL',
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
+        startDate: '2026-06-18',
+        tranches: [{ qty: 10, price: 100, date: '2026-06-18', buyCommission: 2 }]
+      } }
+    } as any);
+
+    const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
+    const firstProjection = result.modal?.rows.find(row => row.kind === 'result');
+
+    expect(result.type).toBe('res');
+    expect(firstProjection).toMatchObject({ kind: 'result' });
+    expect(firstProjection?.label).toContain('NTD · +3d');
+    expect(result.modal?.rows.some(row => /Fri, Jun 19|Sat, Jun 20|Sun, Jun 21/.test(row.label))).toBe(false);
+  });
+
   it('blocks Buy More when broker account or instrument limits are not verified', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
@@ -143,8 +168,8 @@ describe('Market Tools Buy More preview', () => {
       ...state,
       activeView: 'AAPL',
       balance: -1_000,
-      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 100 },
-      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 20_000 },
+      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 0.365, dayCountBasis: 365 },
       positions: {
         AAPL: {
           ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
@@ -175,9 +200,9 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
     // Buy More's current Net must match the single-position Projection Table,
     // including its cost-weighted allocation of whole-account margin debt.
-    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
+    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 0.365, dayCountBasis: 365 as const };
     const positionMetrics = calculatePositionMetrics(
-      scenarioState, scenarioState.positions.AAPL, scenarioRules, 36.5 / 365
+      scenarioState, scenarioState.positions.AAPL, scenarioRules, 0.365 / 365
     );
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
@@ -194,13 +219,13 @@ describe('Market Tools Buy More preview', () => {
     // AFTER Net recalculates the selected position's debt share and accrued interest
     // after the hypothetical position is added to total invested capital.
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
-    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
+    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 20_000);
     const afterPositionCost = 1_000 + 5 * 105;
     const portfolioInvestedAfter = 3_000 + 5 * 105;
     const afterAllocatedDebt = Math.abs(brokerBalanceAfterPurchase) * afterPositionCost / portfolioInvestedAfter;
     const afterMargin = calculateMarginInterest(
       [{ qty: 10, price: 100, date: '2026-11-10' }],
-      { dailyRate: 36.5 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
+      { dailyRate: 0.365 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
     );
     const expectedAfterNet = 15 * 150 - afterPositionCost - calculateAccruedFees(
       2 + calculateSaleCommission(5, 5 * 105, scenarioRules) +
@@ -210,11 +235,45 @@ describe('Market Tools Buy More preview', () => {
     );
     expect(parseSignedMoney(today?.values[1])).toBeCloseTo(expectedAfterNet, 2);
 
+    // The table must continue through whichever scenario (NOW or AFTER) has
+    // the later projected break-even, not stop at the default nine weekly rows.
+    const commissionRules = resolveCommissionConfig(scenarioState.brokerAssumptions);
+    const currentBreakevenDays = findProjectionBreakevenDay(
+      10 * 150 - 1_000,
+      2 + calculateCommission(10, 10 * 150, commissionRules),
+      positionMetrics.posMarginCharged,
+      positionMetrics.allocatedDebt,
+      0.365 / 365,
+      3650
+    );
+    const afterBreakevenDays = findProjectionBreakevenDay(
+      15 * 150 - afterPositionCost,
+      2 + calculateCommission(5, 5 * 105, commissionRules) +
+        calculateCommission(15, 15 * 150, commissionRules),
+      afterMargin,
+      afterAllocatedDebt,
+      0.365 / 365,
+      3650
+    );
+    expect(currentBreakevenDays).toBeDefined();
+    expect(afterBreakevenDays).toBeDefined();
+    expect(afterBreakevenDays!).toBeGreaterThan(currentBreakevenDays!);
+    expect(afterBreakevenDays!).toBeGreaterThan(63);
+    const expectedLastProjection = getUsEquityTradingProjectionDates(
+      new Date(),
+      '2026-11-10',
+      Math.max(currentBreakevenDays!, afterBreakevenDays!)
+    ).at(-1)!;
+    const expectedLastDateLabel = expectedLastProjection.date.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric'
+    });
+    expect(custom.modal?.rows.at(-1)?.label).toBe(expectedLastDateLabel + ' · BREAKEVEN');
+
     // Balance is the resulting cash after selling all shares at the projected target.
-    const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
+    const expectedCurrentBalance = 20_000 - 1_000 + 10 * 150 -
       calculateSaleCommission(10, 10 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[4])).toBeCloseTo(expectedCurrentBalance, 2);
-    const remainingFreeCash = Math.max(0, 100 - cashNeeded);
+    const remainingFreeCash = Math.max(0, 20_000 - cashNeeded);
     const expectedAfterBalance = remainingFreeCash + brokerBalanceAfterPurchase + 15 * 150 -
       calculateSaleCommission(15, 15 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[5])).toBeCloseTo(expectedAfterBalance, 2);
