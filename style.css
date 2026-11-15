@@ -4586,7 +4586,6 @@ table tbody tr:hover {
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
 }
 .board-ticker-identity {
-  justify-content: flex-start;
   align-items: center;
   gap: 0.5rem 0.65rem;
   flex-wrap: wrap;
@@ -4635,16 +4634,12 @@ table tbody tr:hover {
   background: rgba(15, 23, 42, 0.6);
   color: #cbd5e1;
 }
-.board-target-section .board-target-segment--margin {
-  justify-content: flex-start;
-}
 .board-target-section #boardAnalystConsensus {
   display: flex;
   flex: 1 1 auto;
   max-width: 100%;
   min-width: 0;
   align-items: center;
-  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 0.25rem 0.65rem;
   padding: 0.55rem 0.8rem;
@@ -4685,13 +4680,7 @@ table tbody tr:hover {
     border-top: 1px solid rgba(100, 116, 139, 0.38);
   }
   .instrument-target-segment {
-    justify-content: flex-start;
     padding: 0.55rem 0.7rem;
-  }
-  .board-target-section .board-target-segment--margin,
-  .board-target-section #boardAnalystConsensus {
-    justify-content: flex-start;
-    text-align: left;
   }
   .board-ticker-identity { align-items: center; }
 }

@@ -10,7 +10,6 @@ import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import { DeskPageHeader } from './components/DeskPageHeader';
 import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import type { AuthUser } from './services/api';
 import { startFreedomAccountStreamForSession } from '../app';
@@ -344,7 +343,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     class={"instrument-target-section board-target-section " + (!marginPtValue && !analystConsensus.text ? 'hidden' : '') + (analystConsensus.text && analystConsensus.className !== 'hidden' ? ' has-analyst-target' : '')}
                     aria-label={translateText('Margin and analyst target information', getAppLanguage())}
                   >
-                    <div id="boardTickerIdentity" class="instrument-target-segment board-ticker-identity">
+                    <div id="boardTickerIdentity" class="instrument-target-segment board-ticker-identity md:justify-start justify-center">
                       <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
                         {boardTitle}
                       </h1>
@@ -360,13 +359,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                       )}
                     </div>
                     {marginPtValue && (
-                      <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin" title={marginPtTitle}>
+                      <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin md:justify-start justify-center" title={marginPtTitle}>
                         <span class="instrument-target-label">{translateText('Margin PT', getAppLanguage())}</span>
                         <strong id="boardMarginPtValue" class="instrument-target-value">{marginPtValue}</strong>
                         <span id="boardMarginPtReturn" class="instrument-target-return">{marginPtReturnText}</span>
                       </div>
                     )}
-                    <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>
+                    <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst md:justify-start justify-center board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>
                       {analystConsensus.label && analystConsensus.value ? (
                         <>
                           <span class="instrument-target-label">{analystConsensus.label}</span>
@@ -479,33 +478,33 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>}
 
           {/* Desk-specific content stays within the responsive portfolio workspace. */}
-          
+
 
         </div>
-      {/* Trades */}
-      <div
-        id="closedHistoryContainer"
-        class={"standard-desk-container desk-view-transition min-w-0 " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
-      >
-        {permissions.canViewClosedHistory && shouldRenderClosedHistory
-          ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
-            <ClosedHistoryDesk
-              key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
-              accountId={currentUser?.id || ''}
-              isSessionCurrent={isAccountSessionCurrent}
-            />
-          </Suspense></div>
-          : null}
-      </div>
+        {/* Trades */}
+        <div
+          id="closedHistoryContainer"
+          class={"standard-desk-container desk-view-transition min-w-0 " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
+        >
+          {permissions.canViewClosedHistory && shouldRenderClosedHistory
+            ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
+              <ClosedHistoryDesk
+                key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+                accountId={currentUser?.id || ''}
+                isSessionCurrent={isAccountSessionCurrent}
+              />
+            </Suspense></div>
+            : null}
+        </div>
 
-      {/* Settings */}
-      <div id="settings" class={"standard-desk-container min-w-0 " + (activeDeskView === "SETTINGS" ? "" : "hidden")}>
-        {shouldRenderSettings
-          ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
-            <SettingsDesk currentUser={currentUser} />
-          </Suspense></div>
-          : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
-      </div>
+        {/* Settings */}
+        <div id="settings" class={"standard-desk-container min-w-0 " + (activeDeskView === "SETTINGS" ? "" : "hidden")}>
+          {shouldRenderSettings
+            ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
+              <SettingsDesk currentUser={currentUser} />
+            </Suspense></div>
+            : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
+        </div>
 
       </main>
 

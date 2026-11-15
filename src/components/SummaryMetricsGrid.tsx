@@ -1030,11 +1030,8 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         <div class="portfolio-micro-column portfolio-micro-basis">
           <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
           <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Tranches', getAppLanguage())}</span>
+            <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
             <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
-              <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
-                <span class="whitespace-nowrap">{pos.shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} {translateText('shares', getAppLanguage())}</span>
-              </div>
               {hiddenTrancheCount > 0 && (
                 <>
                   <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
@@ -1054,7 +1051,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                       </div>
                     </div>
                   </div>
-                  <button type="button" class="mt-1 inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
+                  <button type="button" class="inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
                     {tranchesExpanded ? translateText('Show less', getAppLanguage()) : translateText('Show {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
                   </button>
                 </>
