@@ -10,7 +10,6 @@ import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import { DeskPageHeader } from './components/DeskPageHeader';
 import type { MarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import type { AuthUser } from './services/api';
 import { startFreedomAccountStreamForSession } from '../app';
