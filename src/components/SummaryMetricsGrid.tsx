@@ -762,7 +762,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 {unpricedMarginPositionCount > 0 ? (
                   <>
                     {pricedMarginPositionCount > 0 ? `≥${formatUSD(totalMarketValue)} · ${translateText('Priced market value', getAppLanguage())}` : '—'}
-                    <span class="block text-amber-300">
+                    <br></br><span class="block text-amber-300">
                       {translateText('Unrealized return unavailable', getAppLanguage())} ({translateText('Unpriced positions', getAppLanguage())}: {unpricedMarginPositionCount})
                     </span>
                   </>
@@ -1068,7 +1068,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
             <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
-              {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}
+              {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}<br></br>
               {unrealized !== null && unrealizedPct !== null ? (
                 <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                   {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
