@@ -402,7 +402,7 @@ describe('cross-device financial header hierarchy', () => {
     const toolsStart = source.indexOf('function MarginMarketTools');
     const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
     const toolsComponent = source.slice(toolsStart, toolsEnd);
-    expect(toolsComponent).toContain("aria-label={translateText('Portfolio actions', language)}");
+    expect(toolsComponent).toContain('role="group" aria-label={translateText(\'Portfolio actions\', language)}');
     expect(toolsComponent).not.toContain("translateText('MARKET TOOLS', language)");
     expect(toolsComponent).not.toContain('portfolio-micro-heading');
     expect(styles).toContain('.portfolio-market-tools .modal-tools-group {');

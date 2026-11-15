@@ -480,7 +480,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
     : 'Review recent news and risk across all margin positions with Gemini';
 
   return (
-    <div class="portfolio-market-tools" aria-label={translateText('Portfolio actions', language)}>
+    <div class="portfolio-market-tools" role="group" aria-label={translateText('Portfolio actions', language)}>
       <div class="modal-tools-group">
         <button
           type="button"

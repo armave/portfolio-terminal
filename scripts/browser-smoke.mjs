@@ -539,6 +539,8 @@ async function assertFinancialHeaderLayout(page, view) {
       const actionGroup = marketPanel?.querySelector('.modal-tools-group');
       const actionBounds = actionGroup?.getBoundingClientRect();
       const actionButtonsCount = actionGroup?.querySelectorAll('button').length ?? 0;
+      const marketPanelRole = marketPanel?.getAttribute('role') ?? null;
+      const marketPanelLabel = marketPanel?.getAttribute('aria-label') ?? null;
       const visibleMarketToolsHeading = Boolean(
         marketPanel?.querySelector('.portfolio-micro-heading')?.getClientRects().length
       );
@@ -550,6 +552,8 @@ async function assertFinancialHeaderLayout(page, view) {
         healthVisible: Boolean(health?.getClientRects().length),
         toolsVisible: Boolean(tools?.getClientRects().length),
         actionButtonsCount,
+        marketPanelRole,
+        marketPanelLabel,
         visibleMarketToolsHeading,
         actionGroupCentered: Boolean(
           panelBounds && actionBounds &&
@@ -573,6 +577,9 @@ async function assertFinancialHeaderLayout(page, view) {
     }
     if (layout.visibleMarketToolsHeading) {
       throw new Error('The visible Market Tools heading should be removed.');
+    }
+    if (layout.marketPanelRole !== 'group' || layout.marketPanelLabel !== 'Portfolio actions') {
+      throw new Error('The tools panel must retain its accessible Portfolio actions group name: ' + JSON.stringify(layout));
     }
     if (layout.actionButtonsCount < 3 || !layout.actionGroupCentered) {
       throw new Error('Market action buttons must be centered in their panel: ' + JSON.stringify(layout));
