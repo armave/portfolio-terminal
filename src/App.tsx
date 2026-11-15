@@ -305,10 +305,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap gap-2 justify-center items-baseline">
-            <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
-            <MarketStatusBadge isAdmin={permissions.isAdmin} />
-            {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+          <div class="workspace-header-controls">
+            <div class="workspace-header-destinations">
+              <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}>
+                <MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              </div>
+            </div>
+            <div class="workspace-header-status" role="group" aria-label={translateText('Market and sync status', getAppLanguage())}>
+              <MarketStatusBadge isAdmin={permissions.isAdmin} />
+              {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+            </div>
           </div>
         </div>
 

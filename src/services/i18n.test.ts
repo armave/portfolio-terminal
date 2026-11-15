@@ -864,3 +864,18 @@ describe('portfolio action region accessibility copy', () => {
     expect(translateText('Portfolio actions', 'ru')).toBe('Действия портфеля');
   });
 });
+
+describe('standardized workspace navigation localization', () => {
+  it('localizes the compact Portfolio destination and shared market/sync status region', () => {
+    expect(translateText('Portfolio', 'ru')).toBe('Портфель');
+    expect(translateText('Market and sync status', 'ru')).toBe('Состояние рынка и синхронизации');
+  });
+});
+
+describe('standardized workspace navigation localization', () => {
+  it('localizes compact navigation labels and the shared status region in Russian', () => {
+    expect(translateText('Portfolio', 'ru')).toBe('Портфель');
+    expect(translateText('Lots', 'ru')).toBe('Лоты');
+    expect(translateText('Market and sync status', 'ru')).toBe('Состояние рынка и синхронизации');
+  });
+});

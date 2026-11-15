@@ -1145,4 +1145,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Assigned data refresh failed": "Не удалось обновить назначенные данные",
   "Assigned data refresh status not checked": "Статус обновления назначенных данных не проверен",
   "Last successful assigned-data refresh": "Последнее успешное обновление назначенных данных",
+  'Portfolio': 'Портфель',
+  'Market and sync status': 'Состояние рынка и синхронизации',
+  'Lots': 'Лоты',
 };

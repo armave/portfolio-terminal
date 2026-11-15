@@ -60,7 +60,7 @@ function renderSummaryCards(
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
     setBoardTitle({
-      title: `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`,
+      title: `${pos.ticker} (${pos.shares} Shares · Margin PT ${formatUSD(pos.pt)} · ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net @ PT)`,
       showDailyMove: false
     });
 

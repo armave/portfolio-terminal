@@ -52,3 +52,9 @@ The Account Equity Health gauge and Market Tools are now siblings in one respons
 ## Market actions panel refinement
 
 The visible **Market Tools** heading has been removed from the Account Equity Health / tools row. The panel retains a localized accessible name, while its scenario and research action buttons are horizontally centered within the panel. Browser smoke verifies the heading is absent, at least three action buttons are present and centered, and the row keeps its desktop/tablet side-by-side and mobile stacked behavior.
+
+## Standardized role-aware workspace navigation
+
+Existing destinations now share one icon, label, sizing and active-state system. Administrators retain Margin (Combined/ticker), Balance, Trades and Settings. Guests retain Balance, assigned Lots history and Settings only. Market status and KV sync remain separate status elements in a shared header status group. The 44px touch target, keyboard tab order, selected-state semantics, role permissions, ticker rail behavior and Balance equity badge are preserved.
+
+On phones, fixed navigation destinations compact to icon-first controls with accessible names; ticker tabs retain their ticker labels. The administrator target is explicitly labelled **Margin PT** in the Margin ticker header. Guest Stocks does not expose PT or any margin target.

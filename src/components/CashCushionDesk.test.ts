@@ -594,6 +594,18 @@ describe('guest holding card compact presentation', () => {
     expect(source).toContain('<summary class="flex min-h-11 list-none cursor-pointer');
   });
 
+  it('does not expose margin targets or PT labels in guest Stocks cards', () => {
+    const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    const guestCardStart = source.indexOf('{guestUserId ? (');
+    const guestCardEnd = source.indexOf(') : (', guestCardStart);
+    const guestCard = source.slice(guestCardStart, guestCardEnd);
+    expect(guestCard).not.toContain('Margin PT');
+    expect(guestCard).not.toContain('Your PT');
+    expect(guestCard).not.toContain('Net return at target');
+    expect(guestCard).toContain('Current market value');
+    expect(guestCard).toContain('Unrealized P/L');
+  });
+
   it('localizes the new break-even and guest detail labels in Russian', () => {
     expect(translateText('Portfolio carry break-even', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
     expect(translateText('Details', 'ru')).toBe('Детали');

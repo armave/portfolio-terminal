@@ -515,6 +515,72 @@ async function assertResponsiveSurface(page, selector, surface) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 }
 
+async function assertStandardizedWorkspaceNavigation(page, role) {
+  const expectations = role === 'admin'
+    ? ['balance', 'trades', 'settings']
+    : ['balance', 'lots', 'settings'];
+
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const navigation = await page.evaluate(() => {
+      const nav = document.querySelector('#tickerTabs');
+      const controls = Array.from(nav?.querySelectorAll('button[data-nav-tab="true"]') || []);
+      const status = document.querySelector('.workspace-header-status');
+      return {
+        kinds: controls.map((button) => button.getAttribute('data-nav-kind')),
+        buttons: controls.map((button) => {
+          const bounds = button.getBoundingClientRect();
+          const icon = button.querySelector('svg.workspace-nav-button__icon');
+          const label = button.querySelector('.workspace-nav-button__label');
+          return {
+            name: button.getAttribute('aria-label'),
+            pressed: button.getAttribute('aria-pressed'),
+            height: bounds.height,
+            icon: Boolean(icon?.getClientRects().length),
+            labelText: label?.textContent?.trim() || '',
+            labelDisplay: label ? getComputedStyle(label).display : 'missing',
+            radius: getComputedStyle(button).borderRadius,
+            kind: button.getAttribute('data-nav-kind')
+          };
+        }),
+        statusOutsideNavigation: Boolean(status && nav && !nav.contains(status)),
+        marketStatus: Boolean(status?.querySelector('[data-market-status-role]')),
+        cloudStatus: Boolean(status?.querySelector('#cloudStatus')),
+        hasPortfolioPtCopy: document.querySelector('#cashCushionContainer')?.innerText.includes('Margin PT') ?? false
+      };
+    });
+
+    const kindSet = new Set(navigation.kinds);
+    for (const expected of expectations) {
+      if (!kindSet.has(expected)) {
+        throw new Error(role + ' navigation is missing ' + expected + ' at ' + width + 'px: ' + JSON.stringify(navigation));
+      }
+    }
+    if (!navigation.statusOutsideNavigation || !navigation.marketStatus ||
+        (role === 'admin' && !navigation.cloudStatus)) {
+      throw new Error('Market status and role-permitted KV sync must stay in the separate shared header status group.');
+    }
+    if (role === 'admin' && !['margin', 'margin-ticker', 'portfolio'].some(kind => navigation.kinds.includes(kind))) {
+      throw new Error('Administrator navigation must retain its Margin workspace destination.');
+    }
+    for (const button of navigation.buttons) {
+      if (!button.name || !button.icon || !button.labelText || button.height < 43 ||
+          !button.radius || button.pressed === null) {
+        throw new Error('Navigation control is missing its shared icon/label/size/selected-state contract: ' + JSON.stringify(button));
+      }
+    }
+    if (role === 'guest' && navigation.hasPortfolioPtCopy) {
+      throw new Error('Guest Stocks must not display the administrator Margin PT.');
+    }
+    if (width === 390 && navigation.buttons.some(button => button.kind !== 'margin-ticker' && button.labelDisplay !== 'none')) {
+      throw new Error('Fixed mobile navigation should use the compact icon-first treatment: ' + JSON.stringify(navigation));
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
+
 async function assertFinancialHeaderLayout(page, view) {
   const expectedMetrics = view === 'combined'
     ? ['net-target-return', 'carry-break-even', 'account-equity', 'margin-debt', 'margin-risk']
@@ -861,6 +927,7 @@ try {
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
   await assertVisibleControlsHaveNames(page, 'administrator dashboard');
+  await assertStandardizedWorkspaceNavigation(page, 'admin');
   if (await page.locator('#cloudStatus').count() !== 1) {
     throw new Error('Cloud synchronization health must have one persistent header indicator.');
   }
@@ -1185,6 +1252,7 @@ try {
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   await submitAuth(page, { name: 'Smoke Guest', password: 'valid-smoke-password' });
   await waitForAuthOverlay(page, false);
+  await assertStandardizedWorkspaceNavigation(page, 'guest');
   const workspaceRestored = await page.locator('#mainTerminalView').evaluate((element) =>
     !element.closest('[inert]') && !element.closest('[aria-hidden="true"]')
   );
