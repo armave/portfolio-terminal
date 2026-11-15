@@ -4770,3 +4770,24 @@ table tbody tr:hover {
   position: relative;
   top: -0.25rem;
 }
+
+/* Keep every financial summary group readable across narrow mobile widths.
+   The ID-qualified selector intentionally overrides the older generic mobile
+   two-column rule when the summary's available width is below 767px. */
+@media (max-width: 767px) {
+  #portfolioMetricsGrid > .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  #portfolioMetricsGrid > .portfolio-micro-summary > .portfolio-micro-column {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    border-left: 0 !important;
+  }
+
+  #portfolioMetricsGrid > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+}
