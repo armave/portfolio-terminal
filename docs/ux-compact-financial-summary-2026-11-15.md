@@ -35,7 +35,7 @@ The associated PR tracks focused Vitest coverage for target-return labels, break
 
 The original Stage 3 implementation was delivered in [PR #301](https://github.com/armave/portfolio-terminal/pull/301). Its implementation and automated responsive checks passed, but its plan left before/after visual captures outstanding.
 
-PR #482 extends that work with a reproducible before/after visual-review artifact. CI builds the exact PR base and captures the same deterministic administrator ticker and guest Balance journeys as the PR head, at mobile (390x844), tablet (768x1024), and desktop (1440x900) sizes. The artifact groups matching filenames under `before/` and `after/`.
+PR #482 extends that work with a reproducible before/after visual-review artifact. CI builds the exact PR base and captures the same deterministic administrator Combined Portfolio, administrator ticker, and guest Balance journeys as the PR head, at mobile (390x844), tablet (768x1024), and desktop (1440x900) sizes. The artifact groups matching filenames under `before/` and `after/`.
 
 The screenshots use synthetic mocked account/broker data from the production-browser smoke fixture. They are not evidence of live TradeNet or production account behavior. Human visual sign-off remains a manual pre-merge step.
 

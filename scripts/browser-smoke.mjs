@@ -850,6 +850,7 @@ try {
       .waitFor({ state: 'visible', timeout: 20_000 });
     await assertFinancialHeaderLayout(page, 'combined');
   }
+  await captureUxReviewScreenshots(page, 'admin-combined');
 
   // Exercise roving keyboard navigation through the full destination list.
   const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');

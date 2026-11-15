@@ -209,7 +209,7 @@ jobs:
               node scripts/browser-smoke.mjs
 
             for stage in before after; do
-              for surface in admin-ticker guest-balance; do
+              for surface in admin-combined admin-ticker guest-balance; do
                 for viewport in mobile-390x844 tablet-768x1024 desktop-1440x900; do
                   test -s "artifacts/ux-visual-review/$stage/$surface-$viewport.png"
                 done
@@ -224,7 +224,7 @@ jobs:
           - PR head commit: $PR_HEAD_SHA
           - After tested checkout (PR merge candidate): $AFTER_CHECKOUT_SHA
           - Fixture: deterministic synthetic administrator and guest accounts from scripts/browser-smoke.mjs.
-          - Captured surfaces: administrator ticker view and guest Balance view.
+          - Captured surfaces: administrator Combined Portfolio, administrator ticker, and guest Balance views.
           - Viewports: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop).
           - These screenshots are mocked browser fixtures, not live broker or production-account evidence.
           - Compare matching filenames under before/ and after/.

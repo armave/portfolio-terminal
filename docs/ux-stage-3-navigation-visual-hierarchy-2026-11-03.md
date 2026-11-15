@@ -64,7 +64,7 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 - [x] Check 320, 360, 390, 768, 1024, and 1440px for page-level overflow, clipped destinations, and header layout.
 - [x] Verify every destination is reachable by pointer and keyboard; verify ArrowLeft/ArrowRight wrap and Home/End behavior.
 - [x] Verify the sync action remains independently named, operable, and outside the destination group.
-- [x] Capture before/after screenshots at mobile (390px), tablet (768px), and desktop (1440px) for administrator ticker and guest Balance views through the PR #482 browser artifact.
+- [x] Capture before/after screenshots at mobile (390px), tablet (768px), and desktop (1440px) for administrator Combined Portfolio, administrator ticker, and guest Balance views through the PR #482 browser artifact.
 - [ ] Manually review the before/after screenshots before merging PR #482.
 - [x] Run the full required CI sequence: typecheck, Vitest, production build, browser smoke, dead-code validation, and dependency audits.
 
@@ -91,7 +91,7 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 - [x] Implement the related navigation and summary refinements together in one frontend PR.
 - [x] Preserve English/Russian localization and add Vitest coverage.
 - [x] Extend the existing Playwright smoke test with responsive geometry and long-ticker evidence.
-- [x] Capture like-for-like before/after screenshots for admin ticker and guest Balance at 390px, 768px, and 1440px (PR #482 CI artifact).
+- [x] Capture like-for-like before/after screenshots for admin Combined Portfolio, admin ticker, and guest Balance at 390px, 768px, and 1440px (PR #482 CI artifact).
 - [ ] Complete the separate manual visual review and record sign-off in PR #482.
 - [x] Track each acceptance item in the PR description.
 - [ ] Do not merge until the full validation suite passes on the final head.

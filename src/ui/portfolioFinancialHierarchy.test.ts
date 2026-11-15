@@ -28,6 +28,7 @@ describe('Stage 3 before/after visual review evidence', () => {
   const workflowSource = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
   it('captures the admin ticker and guest Balance surfaces at mobile, tablet and desktop sizes', () => {
+    expect(smokeSource).toContain("captureUxReviewScreenshots(page, 'admin-combined')");
     expect(smokeSource).toContain("captureUxReviewScreenshots(page, 'admin-ticker')");
     expect(smokeSource).toContain("captureUxReviewScreenshots(page, 'guest-balance')");
     expect(smokeSource).toContain("{ name: 'mobile', width: 390, height: 844 }");
