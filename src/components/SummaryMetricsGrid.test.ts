@@ -369,9 +369,10 @@ describe('cross-device financial header hierarchy', () => {
     expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
       combinedView.indexOf('class="portfolio-micro-summary"')
     );
-    expect(combinedView).toContain('id="boardNetTargetReturn"');
-    expect(combinedView).toContain('id="daysToBreakeven"');
-    expect(combinedView).toContain('id="boardMargin"');
+    expect(source).toContain('id={valueId}');
+    expect(combinedView).toContain('valueId="boardNetTargetReturn"');
+    expect(combinedView).toContain('valueId="daysToBreakeven"');
+    expect(combinedView).toContain('valueId="boardMargin"');
   });
 
   it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
