@@ -4519,7 +4519,6 @@ table tbody tr:hover {
   .workspace-header-status { justify-content: center; }
 
   .workspace-header-status-pill {
-    max-width: calc(100vw - 6.5rem);
     flex-wrap: nowrap;
     overflow: hidden;
   }
