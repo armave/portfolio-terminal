@@ -25,13 +25,13 @@
     "@preact/preset-vite": "^2.10.6",
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^26.6.6",
-    "autoprefixer": "^10.6.1",
-    "postcss": "^8.5.29",
-    "tailwindcss": "^4.3.3",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
     "vite": "6.4.5",
     "vite-plugin-pwa": "^2.0.0",
-    "vitest": "^5.0.3"
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",
