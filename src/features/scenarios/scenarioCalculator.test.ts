@@ -3,7 +3,7 @@ import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateSaleCommission } from '../../domain/portfolioTransactions';
-import { calculateAccruedFees, calculateCommission, calculateMarginInterest, findProjectionBreakevenDay } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, findProjectionBreakevenDay, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityTradingProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePositionMetrics } from '../../domain/portfolioSelectors';
 
@@ -237,9 +237,10 @@ describe('Market Tools Buy More preview', () => {
 
     // The table must continue through whichever scenario (NOW or AFTER) has
     // the later projected break-even, not stop at the default nine weekly rows.
+    const commissionRules = resolveCommissionConfig(scenarioState.brokerAssumptions);
     const currentBreakevenDays = findProjectionBreakevenDay(
       10 * 150 - 1_000,
-      2 + calculateCommission(10, 10 * 150, scenarioRules),
+      2 + calculateCommission(10, 10 * 150, commissionRules),
       positionMetrics.posMarginCharged,
       positionMetrics.allocatedDebt,
       36.5 / 365,
@@ -247,8 +248,8 @@ describe('Market Tools Buy More preview', () => {
     );
     const afterBreakevenDays = findProjectionBreakevenDay(
       15 * 150 - afterPositionCost,
-      2 + calculateCommission(5, 5 * 105, scenarioRules) +
-        calculateCommission(15, 15 * 150, scenarioRules),
+      2 + calculateCommission(5, 5 * 105, commissionRules) +
+        calculateCommission(15, 15 * 150, commissionRules),
       afterMargin,
       afterAllocatedDebt,
       36.5 / 365,
