@@ -1149,7 +1149,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Market and sync status': 'Состояние рынка и синхронизации',
   'Lots': 'Лоты',
   "Margin and analyst target information": "Информация о целях маржи и аналитиков",
-  "Current market value": "Текущая рыночная стоимость",
   "Analyst target unavailable": "Цель аналитиков недоступна",
   "Loading analyst target…": "Загрузка цели аналитиков…",
   "Margin PT": "Целевая цена маржинальной позиции",
