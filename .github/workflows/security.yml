@@ -53,30 +53,76 @@ jobs:
           min-confidence: medium
 
   secret-scan:
-    name: Full-history secret scan
+    name: New-commit secret scan
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - name: Check out full Git history
+      - name: Check out repository history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Scan Git history and working tree with Gitleaks
+      - name: Scan only commits introduced by this PR or push
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          PUSH_BEFORE_SHA: ${{ github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PR_BASE_SHA" ] && [ -n "$PR_HEAD_SHA" ]; then
+            scan_range="$PR_BASE_SHA..$PR_HEAD_SHA"
+          elif [ -n "$PUSH_BEFORE_SHA" ] && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            scan_range="$PUSH_BEFORE_SHA..$GITHUB_SHA"
+          else
+            echo 'Could not establish a commit range for this event.' >&2
+            exit 1
+          fi
+          set +e
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb \
+            git /repo --redact --exit-code 1 --log-opts="$scan_range" --report-format json --report-path /repo/.gitleaks-report.json
+          scan_status=$?
+          set -e
+          if [ -f .gitleaks-report.json ]; then
+            echo "## Gitleaks new-commit finding metadata (secret values intentionally omitted)" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.[] | "- Rule: \(.RuleID); file: \(.File); line: \(.StartLine); commit: \(.Commit)"' .gitleaks-report.json | tee -a "$GITHUB_STEP_SUMMARY"
+            rm -f .gitleaks-report.json
+          fi
+          exit "$scan_status"
+
+  historical-secret-audit:
+    name: Full-history secret audit (advisory)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Audit full Git history with redacted output
         shell: bash
         run: |
           set +e
           docker run --rm \
             --volume "$GITHUB_WORKSPACE:/repo" \
             ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb \
-            git /repo --redact --exit-code 1 --report-format json --report-path /repo/.gitleaks-report.json
+            git /repo --redact --exit-code 1 --log-opts='--all' --report-format json --report-path /repo/.gitleaks-report.json
           scan_status=$?
           set -e
           if [ -f .gitleaks-report.json ]; then
-            echo "## Gitleaks finding metadata (secret values intentionally omitted)" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Historical Gitleaks finding metadata (secret values intentionally omitted)" >> "$GITHUB_STEP_SUMMARY"
             jq -r '.[] | "- Rule: \(.RuleID); file: \(.File); line: \(.StartLine); commit: \(.Commit)"' .gitleaks-report.json | tee -a "$GITHUB_STEP_SUMMARY"
             rm -f .gitleaks-report.json
           fi
