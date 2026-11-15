@@ -208,3 +208,34 @@ Use the repository PR template to record:
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
+## 8. CI security and pipeline hardening — 2026-11-15
+
+### PR validation layout
+
+`Pull Request CI` is the single PR entry point. The `Static validation and unit tests` and `Production build and artifact` jobs run independently. The production build is uploaded once and reused by the `Production browser smoke and performance` job and the reusable `Operations Browser Journey` workflow. This removes repeated typecheck, Vitest, dead-code, dependency-audit, and production-build execution from the Operations workflow while retaining its independent account/Settings/guest browser journey.
+
+The Operations Browser Journey remains manually runnable. A manual run builds the production site itself; a run invoked by PR CI consumes the exact build artifact from that workflow run. Both browser journeys remain deterministic and mocked; neither is evidence of live broker connectivity.
+
+### Security and supply-chain checks
+
+`Security & Workflow Validation` runs on pull requests, pushes to `dev` and `main`, manual dispatch, and a weekly schedule:
+
+- CodeQL analysis for JavaScript and TypeScript.
+- Gitleaks against the full Git history and working tree, with secret contents redacted in CLI output.
+- actionlint validation for all checked-in GitHub Actions workflows.
+- zizmor analysis for GitHub Actions security patterns, with medium-or-higher severity and confidence findings treated as failures.
+- Dependabot weekly grouped updates for npm production/development dependencies and GitHub Actions.
+
+All third-party Actions referenced by the PR, security, operations, and Pages workflows are pinned to immutable commit SHAs. The Cloudflare Wrangler action was already SHA-pinned and remains so. Dependabot monitors the pinned Actions for updates.
+
+### Deployment validation
+
+The Pages workflow now runs the production browser smoke against the exact build before uploading the Pages artifact. The Worker deployment remains restricted to `main` and now adds TypeScript validation, focused Worker/authentication tests, and both full and production dependency audits before deploying the pinned Wrangler action.
+
+### Required checks and repository settings
+
+Configure branch protection for `dev` (and `main`, if direct PRs are permitted) to require the PR validation jobs and security jobs. Expected PR checks are `Static validation and unit tests`, `Production build and artifact`, `Production browser smoke and performance`, `Operations Browser Journey`, `Workflow lint and security analysis`, `Full-history secret scan`, and `CodeQL JavaScript and TypeScript`. GitHub branch-protection settings are repository configuration and cannot be set by committed workflow files.
+
+### Coverage status
+
+This CI hardening slice does not add a numeric Vitest coverage threshold or coverage artifact. The current lockfile does not include a Vitest coverage provider, and no measured module-level baseline is recorded. Add a version-matched coverage provider and focused domain/store/Worker thresholds in a follow-up that updates and validates `package.json` and `package-lock.json` together; do not introduce arbitrary global thresholds.
