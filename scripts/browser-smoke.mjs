@@ -623,6 +623,7 @@ async function assertFinancialHeaderLayout(page, view) {
       const metrics = Array.from(document.querySelectorAll('.portfolio-header-kpis [data-header-metric]'))
         .map((element) => element.getAttribute('data-header-metric'));
       const targetSection = document.querySelector('#boardTargetSection');
+      const tickerIdentity = targetSection?.querySelector('#boardTickerIdentity');
       const marginTarget = targetSection?.querySelector('#boardMarginTarget');
       const analystTarget = targetSection?.querySelector('#boardAnalystConsensus');
       const boardTitle = document.querySelector('#boardTitle');
@@ -644,13 +645,21 @@ async function assertFinancialHeaderLayout(page, view) {
         metrics,
         targetSectionVisible: Boolean(targetSection?.getClientRects().length),
         targetSegmentsShareSection: Boolean(
-          marginTarget && analystTarget &&
+          tickerIdentity && marginTarget && analystTarget &&
+          tickerIdentity.parentElement === targetSection &&
           marginTarget.parentElement === targetSection &&
           analystTarget.parentElement === targetSection
         ),
         titleContainsMarginPt: boardTitle?.textContent?.includes('Margin PT') ?? false,
+        tickerTitle: boardTitle?.textContent?.trim() ?? '',
+        shareCountText: tickerIdentity?.querySelector('.ticker-share-count')?.textContent?.trim() ?? '',
+        dailyMoveText: tickerIdentity?.querySelector('.ticker-daily-move')?.textContent?.trim() ?? '',
         marginTargetText: marginTarget?.textContent?.trim() ?? '',
         analystTargetText: analystTarget?.textContent?.trim() ?? '',
+        tickerIdentityBounds: tickerIdentity ? (() => {
+          const r = tickerIdentity.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        })() : null,
         marginTargetBounds: marginTarget ? (() => {
           const r = marginTarget.getBoundingClientRect();
           return { top: r.top, bottom: r.bottom };
@@ -688,17 +697,21 @@ async function assertFinancialHeaderLayout(page, view) {
     if (view === 'ticker') {
       const target = layout.marginTargetBounds;
       const analyst = layout.analystTargetBounds;
+      const identity = layout.tickerIdentityBounds;
       if (!layout.targetSectionVisible || !layout.targetSegmentsShareSection || layout.titleContainsMarginPt ||
-          !layout.marginTargetText.includes('Margin PT') || !/\d/.test(layout.marginTargetText) ||
-          !layout.analystTargetText.toLowerCase().includes('analyst target') ||
-          !/\d/.test(layout.analystTargetText) || !target || !analyst) {
-        throw new Error('Margin PT and Analyst target must share one separated header section: ' + JSON.stringify(layout));
+          !layout.tickerTitle || !layout.shareCountText || !layout.marginTargetText.includes('Margin PT') ||
+          !/\d/.test(layout.marginTargetText) ||
+          !layout.analystTargetText.toLowerCase().includes('analyst') ||
+          !/\d/.test(layout.analystTargetText) || !identity || !target || !analyst) {
+        throw new Error('Ticker identity, Margin PT and Analyst target must share one separated header section: ' + JSON.stringify(layout));
       }
-      if (viewport.width >= 768 && Math.abs(target.top - analyst.top) > 3) {
-        throw new Error('Desktop/tablet target segments should be side-by-side: ' + JSON.stringify(layout));
+      if (viewport.width >= 768 &&
+          (Math.abs(identity.top - target.top) > 3 || Math.abs(target.top - analyst.top) > 3)) {
+        throw new Error('Desktop/tablet ticker identity and target segments should be side-by-side: ' + JSON.stringify(layout));
       }
-      if (viewport.width < 768 && analyst.top < target.bottom - 2) {
-        throw new Error('Mobile target segments should stack vertically: ' + JSON.stringify(layout));
+      if (viewport.width < 768 &&
+          (target.top < identity.bottom - 2 || analyst.top < target.bottom - 2)) {
+        throw new Error('Mobile ticker identity, PT and analyst target should stack vertically: ' + JSON.stringify(layout));
       }
     } else if (layout.targetSectionVisible) {
       throw new Error('Combined Portfolio must not show an individual ticker target section.');
@@ -1390,7 +1403,7 @@ try {
         };
       });
       if (!guestTargetLayout.sectionVisible || !guestTargetLayout.sharedSection ||
-          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst target') ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst (yahoo)') ||
           guestTargetLayout.hasMarginPt || !guestTargetLayout.marketValue.includes('Current market value')) {
         throw new Error('Guest Stocks target information must be combined and PT-free: ' + JSON.stringify(guestTargetLayout));
       }

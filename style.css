@@ -4524,7 +4524,7 @@ table tbody tr:hover {
   }
 }
 
-/* One separated target-information section for Margin PT + analyst consensus and guest analyst-only cards. */
+/* Unified ticker identity + target subheader for admin Margin and guest Stocks. */
 .instrument-target-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -4536,7 +4536,6 @@ table tbody tr:hover {
   background: rgba(2, 6, 23, 0.48);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
-
 .instrument-target-segment {
   display: flex;
   min-width: 0;
@@ -4546,11 +4545,9 @@ table tbody tr:hover {
   gap: 0.25rem 0.65rem;
   padding: 0.55rem 0.8rem;
 }
-
 .instrument-target-segment + .instrument-target-segment {
   border-left: 1px solid rgba(100, 116, 139, 0.38);
 }
-
 .instrument-target-label {
   color: #94a3b8;
   font-size: 0.625rem;
@@ -4559,7 +4556,6 @@ table tbody tr:hover {
   line-height: 1.2;
   text-transform: uppercase;
 }
-
 .instrument-target-value {
   color: #67e8f9;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -4568,7 +4564,6 @@ table tbody tr:hover {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-
 .instrument-target-return {
   color: #34d399;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -4577,36 +4572,87 @@ table tbody tr:hover {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-
 .board-title-row {
-  align-items: center;
+  display: block;
+  width: 100%;
+  min-width: 0;
 }
-
-.board-title-row--with-targets #boardTitle {
-  flex: 1 1 14rem;
-  min-width: min(100%, 12rem);
+.board-title-row > #boardTitle {
+  display: block;
+  flex: none;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
 }
-
 .board-target-section {
-  flex: 1.6 1 30rem;
-  max-width: 100%;
+  width: 100%;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.94fr) minmax(0, 1fr);
 }
-
 .board-target-section:not(.has-analyst-target) {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
 }
-
-.board-target-section .board-target-segment--margin {
+.board-ticker-identity {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  flex-wrap: wrap;
+}
+.board-ticker-identity #boardTitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  width: auto;
+  color: #67e8f9;
+  font-size: clamp(1.2rem, 1.55vw, 1.55rem);
+  line-height: 1.1;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.ticker-share-count,
+.ticker-daily-move {
+  display: inline-flex;
+  min-height: 1.65rem;
+  align-items: center;
   justify-content: center;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-
+.ticker-share-count {
+  background: rgba(30, 41, 59, 0.68);
+  color: #cbd5e1;
+}
+.ticker-daily-move--positive {
+  border-color: rgba(5, 150, 105, 0.55);
+  background: rgba(6, 78, 59, 0.32);
+  color: #34d399;
+}
+.ticker-daily-move--negative {
+  border-color: rgba(190, 24, 93, 0.55);
+  background: rgba(76, 5, 25, 0.32);
+  color: #fb7185;
+}
+.ticker-daily-move--neutral {
+  border-color: rgba(100, 116, 139, 0.45);
+  background: rgba(15, 23, 42, 0.6);
+  color: #cbd5e1;
+}
+.board-target-section .board-target-segment--margin {
+  justify-content: flex-start;
+}
 .board-target-section #boardAnalystConsensus {
   display: flex;
   flex: 1 1 auto;
   max-width: 100%;
   min-width: 0;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.65rem;
   padding: 0.55rem 0.8rem;
   border: 0 !important;
   border-radius: 0;
@@ -4614,65 +4660,51 @@ table tbody tr:hover {
   font-size: 0.7rem;
   font-weight: 700;
   line-height: 1.35;
-  text-align: center;
+  text-align: left;
   white-space: normal;
 }
-
+.board-analyst-consensus__status {
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.board-target-upside--positive { color: #34d399; }
+.board-target-upside--negative { color: #fb7185; }
+.board-target-upside--neutral { color: #cbd5e1; }
 .guest-stock-value-section {
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
 }
-
 .guest-stock-market-value {
   justify-content: flex-start;
   align-items: flex-start;
 }
-
 .guest-stock-analyst-target {
   justify-content: flex-start;
   align-items: center;
 }
-
 @media (max-width: 767px) {
-  .board-title-row--with-targets {
-    align-items: stretch;
-  }
-
-  .board-title-row--with-targets #boardTitle {
-    flex-basis: 100%;
-    width: 100%;
-  }
-
-  .board-target-section {
-    flex-basis: 100%;
-    width: 100%;
-  }
-
   .instrument-target-section {
     grid-template-columns: minmax(0, 1fr);
   }
-
   .instrument-target-segment + .instrument-target-segment {
     border-left: 0;
     border-top: 1px solid rgba(100, 116, 139, 0.38);
   }
-
   .instrument-target-segment {
     justify-content: flex-start;
     padding: 0.55rem 0.7rem;
   }
-
   .board-target-section .board-target-segment--margin,
   .board-target-section #boardAnalystConsensus {
     justify-content: flex-start;
     text-align: left;
   }
+  .board-ticker-identity { align-items: center; }
 }
-
 .instrument-target-section.hidden,
 .board-target-section.hidden {
   display: none !important;
 }
-
 .board-target-section #boardAnalystConsensus.hidden {
   display: none !important;
 }

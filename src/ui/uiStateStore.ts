@@ -87,13 +87,26 @@ export interface AnalystConsensusState {
   text: string;
   title: string;
   className: string;
+  /** Structured target fields are used when a provider returns a numeric consensus. */
+  label?: string;
+  value?: string;
+  upsideText?: string;
+  upsideTone?: 'positive' | 'negative' | 'neutral';
 }
 
 let analystConsensus: AnalystConsensusState = { text: '', title: '', className: 'hidden' };
 const analystConsensusListeners = new Set<(state: AnalystConsensusState) => void>();
 
 export function setAnalystConsensus(state: AnalystConsensusState): void {
-  if (state.text === analystConsensus.text && state.title === analystConsensus.title && state.className === analystConsensus.className) return;
+  if (
+    state.text === analystConsensus.text &&
+    state.title === analystConsensus.title &&
+    state.className === analystConsensus.className &&
+    state.label === analystConsensus.label &&
+    state.value === analystConsensus.value &&
+    state.upsideText === analystConsensus.upsideText &&
+    state.upsideTone === analystConsensus.upsideTone
+  ) return;
   analystConsensus = state;
   analystConsensusListeners.forEach((listener) => listener(analystConsensus));
 }
@@ -118,6 +131,9 @@ export function useAnalystConsensus(): AnalystConsensusState {
 export interface BoardTitleState {
   title: string;
   showDailyMove: boolean;
+  /** Position identity metadata, kept separate from target presentation. */
+  shareCount?: number;
+  dailyMovePercent?: number;
   /** Margin-only user target; never populate this for a guest Stocks desk. */
   marginPtValue?: string;
   marginPtReturnText?: string;
@@ -131,6 +147,8 @@ export function setBoardTitle(state: BoardTitleState): void {
   if (
     state.title === boardTitle.title &&
     state.showDailyMove === boardTitle.showDailyMove &&
+    state.shareCount === boardTitle.shareCount &&
+    state.dailyMovePercent === boardTitle.dailyMovePercent &&
     state.marginPtValue === boardTitle.marginPtValue &&
     state.marginPtReturnText === boardTitle.marginPtReturnText &&
     state.marginPtTitle === boardTitle.marginPtTitle

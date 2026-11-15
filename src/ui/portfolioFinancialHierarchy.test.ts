@@ -51,18 +51,34 @@ describe('Stage 3 before/after visual review evidence', () => {
 });
 
 describe('financial title and KPI single-source presentation', () => {
-  it('keeps Combined net-target return in its KPI and retains PT/return in an individual ticker title', () => {
+  it('keeps Combined title treatment and groups ticker identity, PT and analyst target together', () => {
     const combinedTitle = renderBoardSource.slice(
       renderBoardSource.indexOf('if (isCombined)'),
       renderBoardSource.indexOf("if (typeof onRenderAnalystConsensus === 'function' && tickers[0])")
     );
     expect(combinedTitle).toContain('COMBINED PORTFOLIO (${tickers.length} Positions)');
     expect(combinedTitle).not.toContain('Net Target');
-    expect(renderBoardSource).toContain('title: `${pos.ticker} (${pos.shares} Shares)`');
+    expect(renderBoardSource).toContain('title: pos.ticker');
+    expect(renderBoardSource).toContain('shareCount: pos.shares');
+    expect(renderBoardSource).toContain('dailyMovePercent:');
     expect(renderBoardSource).toContain('marginPtValue: formatUSD(pos.pt)');
     expect(renderBoardSource).toContain('marginPtReturnText:');
     expect(renderBoardSource).toContain('metrics.netPct.toFixed(2)');
+    expect(appSource).toContain("{activeDeskView === 'COMBINED' ? (");
+    expect(appSource).toContain('id="boardTickerIdentity"');
+    expect(appSource).toContain('id="boardTargetSection"');
+    expect(appSource).toContain('id="boardMarginTarget"');
+    expect(appSource).toContain('id="boardAnalystConsensus"');
+    expect(appSource).toContain('analystConsensus.upsideText');
+    expect(appSource).toContain('translateText(shareCount === 1 ? \'share\' : \'shares\', getAppLanguage())');
     expect(renderBoardSource).not.toContain('Margin PT ${formatUSD(pos.pt)} in the ticker title');
     expect(renderBoardSource).not.toContain('Guest PT');
+  });
+
+  it('keeps Guest Stocks PT-free and labels the Yahoo target consistently', () => {
+    const guestSource = readFileSync(new URL('../components/CashCushionDesk.tsx', import.meta.url), 'utf8');
+    expect(guestSource).toContain("translateText('Analyst (Yahoo)', getAppLanguage())");
+    expect(guestSource).not.toContain('Margin PT');
+    expect(guestSource).toContain('guest-stock-value-section');
   });
 });

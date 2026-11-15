@@ -44,6 +44,21 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes the unified ticker identity and target subheader in Russian', () => {
+    const tickerHeaderCopy = [
+      'Analyst',
+      'Analyst (Yahoo)',
+      'Margin PT',
+      'Margin and analyst target information',
+      'share',
+      'shares',
+      'DAY'
+    ];
+    for (const copy of tickerHeaderCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes guest assigned-data refresh status in Russian', () => {
     const guestSyncCopy = [
       'Assigned data synchronization',

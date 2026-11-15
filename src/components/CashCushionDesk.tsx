@@ -73,7 +73,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}${formatUSD(Math.abs(details.change))}`
+      `${sign}${Math.abs(details.change).toFixed(2)}`
     );
     colorClass =
       details.change > 0
@@ -633,7 +633,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       return (
                         <div class="instrument-target-segment guest-stock-analyst-target">
                           <div class="min-w-0">
-                            <p class="instrument-target-label">{translateText('Analyst target', getAppLanguage())} · Yahoo</p>
+                            <p class="instrument-target-label">{translateText('Analyst (Yahoo)', getAppLanguage())}</p>
                             {analystTarget.status === 'available' && analystTarget.targetPrice ? (
                               <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                                 <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>

@@ -224,6 +224,15 @@ describe('cash holdings daily quote range', () => {
   });
 });
 
+describe('guest stock subheader daily move formatting', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('shows the native daily price change without adding a currency symbol', () => {
+    expect(deskSource).toContain('Math.abs(details.change).toFixed(2)');
+    expect(deskSource).not.toContain('formatUSD(Math.abs(details.change))');
+  });
+});
+
 describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 

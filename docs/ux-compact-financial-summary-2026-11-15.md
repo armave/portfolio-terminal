@@ -44,7 +44,7 @@ The screenshots use synthetic mocked account/broker data from the production-bro
 The administrator board now has a distinct decision-KPI strip directly below the board title:
 
 - **Combined Portfolio:** the board title shows only the portfolio name and position count; net return at targets appears once in the KPI strip, alongside portfolio-wide carry break-even, account equity, margin debt (with daily carry), and margin-risk status.
-- **Single ticker:** the ticker identity shows symbol and shares; a unified divided subheader holds **Margin PT + net return at PT** beside the separate **Analyst Target + upside**. The KPI strip contains portfolio-wide carry break-even, allocated equity, allocated margin debt (with daily carry), and margin-risk status.
+- **Single ticker:** one bordered, three-part header combines the symbol, share-count and daily-change pills with **Margin PT + net return at PT** and the separate **Analyst (Yahoo) target + upside**. The KPI strip contains portfolio-wide carry break-even, allocated equity, allocated margin debt (with daily carry), and margin-risk status.
 - Supporting market valuation, invested basis, commissions, accrued margin interest, ticker quote provenance and volume remain in the detailed three-group summary below the KPI strip.
 
 The Account Equity Health gauge and Market Tools are now siblings in one responsive row from 768px upward. They stack vertically below 768px. The same production-browser smoke checks both Combined and ticker header metric sets and verifies the row geometry at 390px, 768px, and 1440px.
@@ -61,6 +61,6 @@ On phones, fixed navigation destinations compact to icon-first controls with acc
 
 ## Unified target-information subheader
 
-The admin Margin ticker identity is now separate from target information. Margin PT and net return at PT are rendered as one labeled segment; Yahoo analyst consensus is the adjacent segment inside the same bordered section, with an internal divider. On mobile the same section stacks the two segments with a horizontal divider. Combined Portfolio has no per-ticker PT section.
+The admin Margin ticker identity is the first segment inside the same bordered subheader as target information. It shows the ticker, a share-count pill, and the daily percentage move when quote data is available. Margin PT and net return at PT occupy the second segment; Yahoo analyst target and upside occupy the third. Desktop and tablet use one continuous, vertically divided three-column panel. On mobile the identity, Margin PT, and Analyst (Yahoo) segments stack into three rows with horizontal dividers. Combined Portfolio keeps its standalone title and has no per-ticker target section.
 
-Guest Stocks uses the same section treatment for the current market value and Yahoo analyst target, separated internally; it never receives Margin PT, the margin target return, or margin-only data. Guest analyst consensus is loaded from the existing Yahoo deep-data transport for assigned stock tickers and its upside is calculated against the current share price.
+Guest Stocks keeps its ticker and daily-change row above a divided Current Market Value / Analyst (Yahoo) section; it never receives Margin PT, the margin target return, or margin-only data. Guest analyst consensus is loaded from the existing Yahoo deep-data transport for assigned stock tickers and its upside is calculated against the current share price.

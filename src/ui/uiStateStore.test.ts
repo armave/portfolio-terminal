@@ -94,8 +94,10 @@ describe('runtime presentation store subscriptions', () => {
     const updates: BoardTitleState[] = [];
     const unsubscribe = subscribeBoardTitle((value) => updates.push(value));
     setBoardTitle({
-      title: 'GOOGL (68 Shares)',
+      title: 'GOOGL',
       showDailyMove: false,
+      shareCount: 68,
+      dailyMovePercent: -0.62,
       marginPtValue: '$335.00',
       marginPtReturnText: '+10.15%',
       marginPtTitle: 'Margin PT $335.00'
@@ -108,11 +110,16 @@ describe('runtime presentation store subscriptions', () => {
       marginPtTitle: ''
     });
     expect(updates[updates.length - 2]).toMatchObject({
+      title: 'GOOGL',
+      shareCount: 68,
+      dailyMovePercent: -0.62,
       marginPtValue: '$335.00',
       marginPtReturnText: '+10.15%'
     });
     expect(updates[updates.length - 1]).toMatchObject({
       title: 'COMBINED PORTFOLIO (2 Positions)',
+      shareCount: undefined,
+      dailyMovePercent: undefined,
       marginPtValue: '',
       marginPtReturnText: ''
     });
@@ -134,6 +141,34 @@ describe('analyst consensus store subscriptions', () => {
 
     expect(received).toEqual([published]);
 
+    unsubscribe();
+  });
+
+  it('notifies subscribers when structured analyst target values change', () => {
+    const received: AnalystConsensusState[] = [];
+    const unsubscribe = subscribeAnalystConsensus((state) => received.push(state));
+    const published: AnalystConsensusState = {
+      text: 'Analyst target · Yahoo · $400.00 · +36.09%',
+      title: 'Target from Yahoo.',
+      className: 'loaded',
+      label: 'Analyst (Yahoo)',
+      value: '$400.00',
+      upsideText: '+36.09%',
+      upsideTone: 'positive'
+    };
+    setAnalystConsensus(published);
+    setAnalystConsensus({
+      ...published,
+      text: 'Analyst target · Yahoo · $405.00 · +37.80%',
+      value: '$405.00',
+      upsideText: '+37.80%'
+    });
+    expect(received[received.length - 1]).toMatchObject({
+      label: 'Analyst (Yahoo)',
+      value: '$405.00',
+      upsideText: '+37.80%',
+      upsideTone: 'positive'
+    });
     unsubscribe();
   });
 

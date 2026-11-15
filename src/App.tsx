@@ -119,7 +119,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
 
 
-  const { title: boardTitle, showDailyMove, marginPtValue, marginPtReturnText, marginPtTitle } = useBoardTitle();
+  const { title: boardTitle, showDailyMove, shareCount, dailyMovePercent, marginPtValue, marginPtReturnText, marginPtTitle } = useBoardTitle();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
@@ -331,28 +331,57 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="boardTitleRow"
-                class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "") + (marginPtValue || analystConsensus.text ? ' board-title-row--with-targets' : '')}
+                class={"board-title-row " + (emptyStateVisible ? "hidden" : "")}
               >
-                <h1 class="board-title-text min-w-0 text-lg font-bold text-white text-center md:text-left" id="boardTitle">
-                  {boardTitle}
-                </h1>
-
-                <section
-                  id="boardTargetSection"
-                  class={"instrument-target-section board-target-section " + (activeDeskView === 'COMBINED' || (!marginPtValue && !analystConsensus.text) ? 'hidden' : '') + (analystConsensus.text && analystConsensus.className !== 'hidden' ? ' has-analyst-target' : '')}
-                  aria-label={translateText('Margin and analyst target information', getAppLanguage())}
-                >
-                  {marginPtValue && (
-                    <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin" title={marginPtTitle}>
-                      <span class="instrument-target-label">{translateText('Margin PT', getAppLanguage())}</span>
-                      <strong id="boardMarginPtValue" class="instrument-target-value">{marginPtValue}</strong>
-                      <span id="boardMarginPtReturn" class="instrument-target-return">{marginPtReturnText}</span>
+                {activeDeskView === 'COMBINED' ? (
+                  <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
+                    {boardTitle}
+                  </h1>
+                ) : (
+                  <section
+                    id="boardTargetSection"
+                    class={"instrument-target-section board-target-section " + (!marginPtValue && !analystConsensus.text ? 'hidden' : '') + (analystConsensus.text && analystConsensus.className !== 'hidden' ? ' has-analyst-target' : '')}
+                    aria-label={translateText('Margin and analyst target information', getAppLanguage())}
+                  >
+                    <div id="boardTickerIdentity" class="instrument-target-segment board-ticker-identity">
+                      <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
+                        {boardTitle}
+                      </h1>
+                      {typeof shareCount === 'number' && Number.isFinite(shareCount) && (
+                        <span class="ticker-share-count">
+                          {shareCount.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {translateText(shareCount === 1 ? 'share' : 'shares', getAppLanguage())}
+                        </span>
+                      )}
+                      {typeof dailyMovePercent === 'number' && Number.isFinite(dailyMovePercent) && (
+                        <span class={"ticker-daily-move ticker-daily-move--" + (dailyMovePercent > 0 ? 'positive' : dailyMovePercent < 0 ? 'negative' : 'neutral')}>
+                          {(dailyMovePercent > 0 ? '+' : '') + dailyMovePercent.toFixed(2)}% {translateText('DAY', getAppLanguage())}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst board-analyst-consensus " + analystConsensus.className + (activeDeskView === 'COMBINED' ? ' hidden' : '')} title={analystConsensus.title}>
-                    {analystConsensus.text}
-                  </div>
-                </section>
+                    {marginPtValue && (
+                      <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin" title={marginPtTitle}>
+                        <span class="instrument-target-label">{translateText('Margin PT', getAppLanguage())}</span>
+                        <strong id="boardMarginPtValue" class="instrument-target-value">{marginPtValue}</strong>
+                        <span id="boardMarginPtReturn" class="instrument-target-return">{marginPtReturnText}</span>
+                      </div>
+                    )}
+                    <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>
+                      {analystConsensus.label && analystConsensus.value ? (
+                        <>
+                          <span class="instrument-target-label">{analystConsensus.label}</span>
+                          <strong class="instrument-target-value">{analystConsensus.value}</strong>
+                          {analystConsensus.upsideText && (
+                            <span class={"instrument-target-return board-target-upside board-target-upside--" + (analystConsensus.upsideTone || 'neutral')}>
+                              {analystConsensus.upsideText}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span class="board-analyst-consensus__status">{analystConsensus.text}</span>
+                      )}
+                    </div>
+                  </section>
+                )}
               </div>
 
 

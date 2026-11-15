@@ -46,6 +46,8 @@ function renderSummaryCards(
         ? `COMBINED PORTFOLIO (${tickers.length} Positions)`
         : 'NO ACTIVE MARGIN POSITIONS',
       showDailyMove: true,
+      shareCount: undefined,
+      dailyMovePercent: undefined,
       marginPtValue: '',
       marginPtReturnText: '',
       marginPtTitle: ''
@@ -63,8 +65,12 @@ function renderSummaryCards(
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
     setBoardTitle({
-      title: `${pos.ticker} (${pos.shares} Shares)`,
+      title: pos.ticker,
       showDailyMove: false,
+      shareCount: pos.shares,
+      dailyMovePercent: Number.isFinite(pos.quoteDetails?.changePercent)
+        ? pos.quoteDetails?.changePercent
+        : undefined,
       marginPtValue: formatUSD(pos.pt),
       marginPtReturnText: `${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%`,
       marginPtTitle: `Margin position target price: ${formatUSD(pos.pt)}. Net return at this target: ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%.`
