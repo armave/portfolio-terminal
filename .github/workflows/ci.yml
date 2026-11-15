@@ -181,9 +181,68 @@ jobs:
       - name: Install Chromium
         run: node node_modules/playwright/cli.js install chromium
 
-      - name: Smoke-test the production app in a browser
+      - name: Smoke-test the production app and capture before/after UX screenshots
         id: browser_smoke
-        run: node scripts/browser-smoke.mjs
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && -n "$PR_BASE_SHA" ]]; then
+            BEFORE_WORKTREE="$RUNNER_TEMP/ux-visual-before"
+            mkdir -p artifacts/ux-visual-review/before artifacts/ux-visual-review/after
+            git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+            git worktree add --detach "$BEFORE_WORKTREE" "$PR_BASE_SHA"
+            ln -s "$GITHUB_WORKSPACE/node_modules" "$BEFORE_WORKTREE/node_modules"
+
+            (
+              cd "$BEFORE_WORKTREE"
+              npm run build
+              UX_EXPECT_NEW_HEADER=false \
+                UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/before" \
+                BROWSER_SMOKE_PORT=4173 \
+                node "$GITHUB_WORKSPACE/scripts/browser-smoke.mjs"
+            )
+
+            UX_EXPECT_NEW_HEADER=true \
+              UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/after" \
+              BROWSER_SMOKE_PORT=4174 \
+              node scripts/browser-smoke.mjs
+
+            for stage in before after; do
+              for surface in admin-combined admin-ticker guest-balance; do
+                for viewport in mobile-390x844 tablet-768x1024 desktop-1440x900; do
+                  test -s "artifacts/ux-visual-review/$stage/$surface-$viewport.png"
+                done
+              done
+            done
+
+            AFTER_CHECKOUT_SHA="$(git rev-parse HEAD)"
+            cat > artifacts/ux-visual-review/README.md <<EOF
+          # Before/after UI visual review
+
+          - Before commit: $PR_BASE_SHA
+          - PR head commit: $PR_HEAD_SHA
+          - After tested checkout (PR merge candidate): $AFTER_CHECKOUT_SHA
+          - Fixture: deterministic synthetic administrator and guest accounts from scripts/browser-smoke.mjs.
+          - Captured surfaces: administrator Combined Portfolio, administrator ticker, and guest Balance views.
+          - Viewports: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop).
+          - These screenshots are mocked browser fixtures, not live broker or production-account evidence.
+          - Compare matching filenames under before/ and after/.
+          EOF
+
+            git worktree remove --force "$BEFORE_WORKTREE"
+          else
+            node scripts/browser-smoke.mjs
+          fi
+
+      - name: Upload before/after UX visual review screenshots
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ux-visual-review-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: artifacts/ux-visual-review/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Capture desktop and mobile browser performance baseline
         id: browser_performance
@@ -214,8 +273,12 @@ jobs:
             echo "| Tested checkout SHA | $(git rev-parse HEAD) |"
             echo "| PR head SHA | $PR_HEAD_SHA |"
             echo "| PR base SHA | $PR_BASE_SHA |"
-            echo "| Browser smoke | $BROWSER_SMOKE_RESULT |"
+            echo "| Browser smoke and PR base/head screenshots | $BROWSER_SMOKE_RESULT |"
             echo "| Desktop/mobile performance baseline | $PERFORMANCE_RESULT |"
+            if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+              echo "| UX visual review artifact | ux-visual-review-${{ github.event.pull_request.number }}-$GITHUB_RUN_ID |"
+              echo "| Screenshot coverage | Admin ticker + guest Balance at 390x844, 768x1024, and 1440x900 (base and PR head) |"
+            fi
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
             echo
             echo "The performance baseline is an unauthenticated app-shell fixture with mocked API responses; it does not certify authenticated live broker behavior."

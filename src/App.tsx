@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
+import { useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
@@ -119,8 +119,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
 
 
-  const { title: boardTitle, showDailyMove } = useBoardTitle();
-  const breakevenText = useBreakevenText();
+  const { title: boardTitle, showDailyMove, shareCount, dailyMovePercent, marginPtValue, marginPtReturnText, marginPtTitle } = useBoardTitle();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
@@ -306,10 +305,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap gap-2 justify-center items-baseline">
-            <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
-            <MarketStatusBadge isAdmin={permissions.isAdmin} />
-            {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+          <div class="workspace-header-controls">
+            <div class="workspace-header-destinations">
+              <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}>
+                <MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              </div>
+            </div>
+            <div class="workspace-header-status" role="group" aria-label={translateText('Market and sync status', getAppLanguage())}>
+              <MarketStatusBadge isAdmin={permissions.isAdmin} />
+              {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+            </div>
           </div>
         </div>
 
@@ -326,20 +331,57 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="boardTitleRow"
-                class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
+                class={"board-title-row " + (emptyStateVisible ? "hidden" : "")}
               >
-                <h1 class="board-title-text min-w-0 text-lg font-bold text-white text-center md:text-left" id="boardTitle">
-                  {boardTitle}
-                </h1>
-
-                {permissions.isAdmin && <div
-                  class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-                  id="daysToBreakeven"
-                >
-                  {breakevenText}
-                </div>}
-
-                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
+                {activeDeskView === 'COMBINED' ? (
+                  <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
+                    {boardTitle}
+                  </h1>
+                ) : (
+                  <section
+                    id="boardTargetSection"
+                    class={"instrument-target-section board-target-section " + (!marginPtValue && !analystConsensus.text ? 'hidden' : '') + (analystConsensus.text && analystConsensus.className !== 'hidden' ? ' has-analyst-target' : '')}
+                    aria-label={translateText('Margin and analyst target information', getAppLanguage())}
+                  >
+                    <div id="boardTickerIdentity" class="instrument-target-segment board-ticker-identity">
+                      <h1 class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
+                        {boardTitle}
+                      </h1>
+                      {typeof shareCount === 'number' && Number.isFinite(shareCount) && (
+                        <span class="ticker-share-count">
+                          {shareCount.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })} {translateText(shareCount === 1 ? 'share' : 'shares', getAppLanguage())}
+                        </span>
+                      )}
+                      {typeof dailyMovePercent === 'number' && Number.isFinite(dailyMovePercent) && (
+                        <span class={"ticker-daily-move ticker-daily-move--" + (dailyMovePercent > 0 ? 'positive' : dailyMovePercent < 0 ? 'negative' : 'neutral')}>
+                          {(dailyMovePercent > 0 ? '+' : '') + dailyMovePercent.toFixed(2)}% {translateText('DAY', getAppLanguage())}
+                        </span>
+                      )}
+                    </div>
+                    {marginPtValue && (
+                      <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin" title={marginPtTitle}>
+                        <span class="instrument-target-label">{translateText('Margin PT', getAppLanguage())}</span>
+                        <strong id="boardMarginPtValue" class="instrument-target-value">{marginPtValue}</strong>
+                        <span id="boardMarginPtReturn" class="instrument-target-return">{marginPtReturnText}</span>
+                      </div>
+                    )}
+                    <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>
+                      {analystConsensus.label && analystConsensus.value ? (
+                        <>
+                          <span class="instrument-target-label">{analystConsensus.label}</span>
+                          <strong class="instrument-target-value">{analystConsensus.value}</strong>
+                          {analystConsensus.upsideText && (
+                            <span class={"instrument-target-return board-target-upside board-target-upside--" + (analystConsensus.upsideTone || 'neutral')}>
+                              {analystConsensus.upsideText}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span class="board-analyst-consensus__status">{analystConsensus.text}</span>
+                      )}
+                    </div>
+                  </section>
+                )}
               </div>
 
 

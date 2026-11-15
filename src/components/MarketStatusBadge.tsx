@@ -378,7 +378,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div
-      class="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 shadow-sm shadow-black/10"
+      class="workspace-header-status-pill inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-800/90 bg-slate-950/75 px-2.5 py-1.5 shadow-sm shadow-black/10"
       role="status"
       aria-label={`${roleLabel}: ${statusLabel}${countdown ? `, ${countdown}` : ''}`}
       data-market-status-role={isAdmin ? 'admin' : 'guest'}

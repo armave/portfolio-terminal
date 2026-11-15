@@ -5,8 +5,10 @@ const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 
 describe('Market Tools wiring', () => {
-  it('keeps Market Insights and Margin Intelligence launchers in the metrics grid', () => {
-    expect(summarySource).toContain('class="portfolio-micro-column portfolio-micro-actions"');
+  it('keeps Market Insights and Margin Intelligence launchers in a separate tools row after Margin Health', () => {
+    expect(summarySource).toContain('class="portfolio-market-tools"');
+    expect(summarySource).toContain('<div class="portfolio-market-tools-row">');
+    expect(summarySource.indexOf('<MarginRiskGaugeCard')).toBeLessThan(summarySource.indexOf('<div class="portfolio-market-tools-row">'));
     expect(summarySource).toContain('<BoardExternalLinks />');
     expect(summarySource).toContain('<MarginMarketTools isAdmin={isAdmin} />');
     expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />');

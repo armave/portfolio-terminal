@@ -102,7 +102,7 @@ export function CloudSyncIndicator({
   return (
     <div
       id="cloudStatus"
-      class={`cloud-sync-indicator cloud-sync-indicator--${tone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
+      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${tone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
       aria-live="polite"
       aria-atomic="true"
     >

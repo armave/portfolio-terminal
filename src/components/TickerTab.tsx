@@ -11,6 +11,26 @@ import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import type { PortfolioState } from '../types/portfolio';
 
+type WorkspaceNavigationIconName = 'margin' | 'portfolio' | 'balance' | 'trades' | 'lots' | 'settings';
+
+function WorkspaceNavigationIcon({ name }: { name: WorkspaceNavigationIconName }) {
+  const paths: Record<WorkspaceNavigationIconName, string> = {
+    margin: 'M4 19V5 M9 19V10 M14 19V6 M19 19V3 M3 19H21',
+    portfolio: 'M4 4H11V11H4Z M13 4H20V11H13Z M4 13H11V20H4Z M13 13H20V20H13Z',
+    balance: 'M4 7.5H20A1.5 1.5 0 0 1 21.5 9V18A2 2 0 0 1 19.5 20H4.5A2.5 2.5 0 0 1 2 17.5V6A2 2 0 0 1 4 4H18 M2 8H21.5 M16 14H18',
+    trades: 'M4 7H20 M16 3L20 7L16 11 M20 17H4 M8 13L4 17L8 21',
+    lots: 'M12 3L21 8L12 13L3 8L12 3Z M3 12L12 17L21 12 M3 16L12 21L21 16',
+    settings: 'M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5 M19.4 15A1.7 1.7 0 0 0 19.7 16.9L19.8 17L17 19.8L16.9 19.7A1.7 1.7 0 0 0 15 19.4A1.7 1.7 0 0 0 13.8 21H10.2A1.7 1.7 0 0 0 9 19.4A1.7 1.7 0 0 0 7.1 19.7L7 19.8L4.2 17L4.3 16.9A1.7 1.7 0 0 0 4.6 15A1.7 1.7 0 0 0 3 13.8V10.2A1.7 1.7 0 0 0 4.6 9A1.7 1.7 0 0 0 4.3 7.1L4.2 7L7 4.2L7.1 4.3A1.7 1.7 0 0 0 9 4.6A1.7 1.7 0 0 0 10.2 3H13.8A1.7 1.7 0 0 0 15 4.6A1.7 1.7 0 0 0 16.9 4.3L17 4.2L19.8 7L19.7 7.1A1.7 1.7 0 0 0 19.4 9A1.7 1.7 0 0 0 21 10.2V13.8A1.7 1.7 0 0 0 19.4 15Z'
+  };
+  return <svg class="workspace-nav-button__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d={paths[name]} /></svg>;
+}
+
+function workspaceNavigationButtonClass(active: boolean, ticker = false): string {
+  return 'workspace-nav-button' +
+    (active ? ' workspace-nav-button--active' : '') +
+    (ticker ? ' workspace-nav-button--ticker' : '');
+}
+
 export const TickerTabs = memo(function TickerTabs({
   isAdmin = false,
   userId
@@ -22,23 +42,18 @@ export const TickerTabs = memo(function TickerTabs({
   const activeView = useActiveView();
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Refresh the latest portfolio quotes whenever a different Margin section
-    // is selected; same-section clicks and non-Margin routes do not start a batch.
     const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
     emitUiEvent('portfolio:set-active-view', { view });
-    // Show the selected desk immediately; refresh existing prices in the background.
     if (refreshQuotes) void handleRefreshQuotes();
   };
 
-  const isCushionActive =
-    activeView === 'CASH_CUSHION' || activeView === 'BALANCE';
+  const isCushionActive = activeView === 'CASH_CUSHION' || activeView === 'BALANCE';
   const isClosedHistoryActive = activeView === 'CLOSED_HISTORY';
   const isGuestHistoryActive = activeView === 'GUEST_HISTORY';
   const isSettingsActive = activeView === 'SETTINGS';
   const isMarginDeskActive = isMarginDeskView(activeView, isAdmin);
 
-  // The Margin desk depends on open broker orders. Request them only when the
-  // user enters this workspace, not whenever they switch between ticker tabs.
+  // Margin requests active orders only when entering the Margin workspace.
   useEffect(() => {
     if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
   }, [isMarginDeskActive]);
@@ -55,7 +70,6 @@ export const TickerTabs = memo(function TickerTabs({
     const currentIndex = Number(currentButton.dataset.navIndex);
     const nextIndex = resolveTabNavigationIndex(currentIndex, navigationViews.length, event.key);
     if (nextIndex === null) return;
-
     event.preventDefault();
     const nextButton = tabButtonRefs.current[nextIndex];
     nextButton?.focus({ preventScroll: true });
@@ -64,8 +78,6 @@ export const TickerTabs = memo(function TickerTabs({
   };
 
   const handleRefreshQuotes = async (): Promise<void> => {
-    // Every section change reaches the app coordinator. It coalesces duplicate
-    // queued triggers without losing a latest-state follow-up behind an active batch.
     await new Promise<void>((resolve) => {
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
@@ -74,50 +86,43 @@ export const TickerTabs = memo(function TickerTabs({
   return (
     <>
       {isAdmin && tickers.length > 1 && (
-        <div
-          class="workspace-nav-ticker-list"
-          role="group"
-          aria-label={translateText('MARGIN DESK', getAppLanguage())}
-        >
-          <>
+        <div class="workspace-nav-ticker-list" role="group" aria-label={translateText('MARGIN DESK', getAppLanguage())}>
+          <button
+            type="button"
+            onClick={() => selectView('COMBINED')}
+            aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
+            aria-pressed={activeView === 'COMBINED'}
+            class={workspaceNavigationButtonClass(activeView === 'COMBINED' && isMarginDeskActive)}
+            data-nav-tab="true"
+            data-nav-kind="portfolio"
+            data-nav-index={0}
+            ref={(element) => { tabButtonRefs.current[0] = element; }}
+            onKeyDown={handleTabKeyDown}
+            title={translateText('COMBINED PORTFOLIO', getAppLanguage())}
+          >
+            <WorkspaceNavigationIcon name="portfolio" />
+            <span class="workspace-nav-button__label workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+            <span class="workspace-nav-button__label workspace-nav-label--mobile">{translateText('Portfolio', getAppLanguage())}</span>
+          </button>
+          {tickers.map((ticker, index) => (
             <button
+              key={ticker}
               type="button"
-              onClick={() => selectView('COMBINED')}
-              aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
-              aria-pressed={activeView === 'COMBINED'}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
-                ? 'bg-emerald-600 text-black'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
+              onClick={() => selectView(ticker)}
+              aria-label={`${translateText('Margin', getAppLanguage())}: ${ticker}`}
+              aria-pressed={activeView === ticker}
+              class={workspaceNavigationButtonClass(activeView === ticker && isMarginDeskActive, true)}
               data-nav-tab="true"
-              data-nav-index={0}
-              ref={(element) => { tabButtonRefs.current[0] = element; }}
+              data-nav-kind="margin-ticker"
+              data-nav-index={index + 1}
+              ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
               onKeyDown={handleTabKeyDown}
+              title={`${translateText('Margin', getAppLanguage())}: ${ticker}`}
             >
-              <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-              <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+              <WorkspaceNavigationIcon name="margin" />
+              <span class="workspace-nav-button__label">{ticker}</span>
             </button>
-
-            {tickers.map((t, index) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => selectView(t)}
-                aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
-                aria-pressed={activeView === t}
-                class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
-                  ? 'bg-emerald-600 text-black'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                  }`}
-                data-nav-tab="true"
-                data-nav-index={index + 1}
-                ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
-                onKeyDown={handleTabKeyDown}
-              >
-                {t}
-              </button>
-            ))}
-          </>
+          ))}
         </div>
       )}
 
@@ -127,17 +132,16 @@ export const TickerTabs = memo(function TickerTabs({
           onClick={() => selectView(tickers[0])}
           aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
           aria-pressed={activeView === tickers[0]}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
+          class={workspaceNavigationButtonClass(activeView === tickers[0] && isMarginDeskActive, true)}
           data-nav-tab="true"
+          data-nav-kind="margin-ticker"
           data-nav-index={0}
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
+          title={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
         >
-          <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
-          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
+          <WorkspaceNavigationIcon name="margin" />
+          <span class="workspace-nav-button__label"><span class="workspace-nav-button__context">{translateText('Margin', getAppLanguage())}: </span>{tickers[0]}</span>
         </button>
       )}
 
@@ -145,95 +149,97 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           data-nav-tab="true"
+          data-nav-kind="margin"
           data-nav-index={0}
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           onClick={() => selectView('COMBINED')}
           aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
           aria-pressed={isMarginDeskActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
+          class={workspaceNavigationButtonClass(isMarginDeskActive)}
+          title={translateText('MARGIN DESK', getAppLanguage())}
         >
-          <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
-          <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+          <WorkspaceNavigationIcon name="margin" />
+          <span class="workspace-nav-button__label">{translateText('MARGIN DESK', getAppLanguage())}</span>
         </button>
       )}
 
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
+        aria-label={translateText('Balance', getAppLanguage())}
         aria-pressed={isCushionActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
-          ? 'bg-cyan-500 text-black'
-          : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
-          }`}
+        class={workspaceNavigationButtonClass(isCushionActive)}
         data-nav-tab="true"
+        data-nav-kind="balance"
         data-nav-index={balanceNavIndex}
         ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
         onKeyDown={handleTabKeyDown}
+        title={translateText('Balance', getAppLanguage())}
       >
-        <span>{translateText('BALANCE', getAppLanguage())}</span>
-        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
+        <WorkspaceNavigationIcon name="balance" />
+        <span class="workspace-nav-button__label">{translateText('Balance', getAppLanguage())}</span>
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} />
       </button>
 
-      {canViewGuestHistory && <button
-        type="button"
-        onClick={() => selectView('GUEST_HISTORY')}
-        aria-pressed={isGuestHistoryActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
-          ? 'bg-indigo-500 text-white'
-          : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
-          }`}
-        data-nav-tab="true"
-        data-nav-index={guestHistoryNavIndex}
-        ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
-        onKeyDown={handleTabKeyDown}
-      >
-        {translateText('LOTS', getAppLanguage())}
-      </button>}
+      {canViewGuestHistory && (
+        <button
+          type="button"
+          onClick={() => selectView('GUEST_HISTORY')}
+          aria-label={translateText('Lots', getAppLanguage())}
+          aria-pressed={isGuestHistoryActive}
+          class={workspaceNavigationButtonClass(isGuestHistoryActive)}
+          data-nav-tab="true"
+          data-nav-kind="lots"
+          data-nav-index={guestHistoryNavIndex}
+          ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
+          onKeyDown={handleTabKeyDown}
+          title={translateText('Lots', getAppLanguage())}
+        >
+          <WorkspaceNavigationIcon name="lots" />
+          <span class="workspace-nav-button__label">{translateText('LOTS', getAppLanguage())}</span>
+        </button>
+      )}
 
-      {isAdmin && <button
-        type="button"
-        onClick={() => selectView('CLOSED_HISTORY')}
-        aria-label={translateText('Trades', getAppLanguage())}
-        aria-pressed={isClosedHistoryActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
-          ? 'bg-purple-500 text-black'
-          : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
-          }`}
-        data-nav-tab="true"
-        data-nav-index={balanceNavIndex + 1}
-        ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
-        onKeyDown={handleTabKeyDown}
-      >
-        {translateText('TRADES', getAppLanguage())}
-      </button>}
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => selectView('CLOSED_HISTORY')}
+          aria-label={translateText('Trades', getAppLanguage())}
+          aria-pressed={isClosedHistoryActive}
+          class={workspaceNavigationButtonClass(isClosedHistoryActive)}
+          data-nav-tab="true"
+          data-nav-kind="trades"
+          data-nav-index={balanceNavIndex + 1}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
+          onKeyDown={handleTabKeyDown}
+          title={translateText('Trades', getAppLanguage())}
+        >
+          <WorkspaceNavigationIcon name="trades" />
+          <span class="workspace-nav-button__label">{translateText('TRADES', getAppLanguage())}</span>
+        </button>
+      )}
 
       <button
         id="settingsBtn"
         type="button"
         aria-pressed={isSettingsActive}
         onClick={() => selectView('SETTINGS')}
-        class={
-          isSettingsActive
-            ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
-            : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
-        }
+        class={workspaceNavigationButtonClass(isSettingsActive)}
         data-nav-tab="true"
+        data-nav-kind="settings"
         data-nav-index={settingsNavIndex}
         ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
         onKeyDown={handleTabKeyDown}
         aria-label={translateText('Settings', getAppLanguage())}
         title={translateText('Settings', getAppLanguage())}
       >
-        <span aria-hidden="true">⚙️</span>
+        <WorkspaceNavigationIcon name="settings" />
+        <span class="workspace-nav-button__label">{translateText('Settings', getAppLanguage())}</span>
       </button>
     </>
   );
 });
-
 
 /** Portfolio synchronization is an action, not a workspace destination. */
 export function PortfolioSyncButton({
@@ -316,12 +322,10 @@ function areTickerListsEqual(previous: string[], next: string[]): boolean {
 /** Isolate live valuation updates from the navigation buttons themselves. */
 const BalanceEquityBadge = memo(function BalanceEquityBadge({
   isAdmin,
-  userId,
-  isActive
+  userId
 }: {
   isAdmin: boolean;
   userId?: string;
-  isActive: boolean;
 }) {
   const state = usePortfolioSelector(selectBalanceBadgeSnapshot, areBalanceBadgeSnapshotsEqual);
   const portfolioValuation = calculatePortfolioValuation({
@@ -371,7 +375,7 @@ const BalanceEquityBadge = memo(function BalanceEquityBadge({
     <span
       title={equityBadgeTitle}
       aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
-      class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'}`}
+      class={'workspace-nav-equity-badge' + (isAdmin ? ' workspace-nav-equity-badge--admin' : '')}
     >
       {equityBadgeText}
     </span>

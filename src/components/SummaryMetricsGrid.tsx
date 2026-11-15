@@ -4,11 +4,12 @@ import { useEffect, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
+import { useBreakevenText } from '../ui/uiStateStore';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -321,6 +322,49 @@ function computeMarginRiskDisplay(input: MarginRiskInput): MarginRiskDisplay {
   };
 }
 
+function PortfolioHeaderMetric({
+  metric,
+  label,
+  value,
+  detail,
+  valueClass = '',
+  valueId,
+  valueTitle
+}: {
+  metric: string;
+  label: string;
+  value: string;
+  detail?: string;
+  valueClass?: string;
+  valueId?: string;
+  valueTitle?: string;
+}) {
+  return (
+    <div class="portfolio-header-metric" data-header-metric={metric}>
+      <span class="portfolio-header-metric-label">{label}</span>
+      <strong id={valueId} title={valueTitle} class={'portfolio-header-metric-value ' + valueClass}>{value}</strong>
+      {detail && <span class="portfolio-header-metric-detail">{detail}</span>}
+    </div>
+  );
+}
+
+function getHeaderRiskDetail(risk: MarginRiskDisplay): string {
+  if (risk.status === 'provisional') return translateText('Provisional estimate', getAppLanguage());
+  if (risk.status === 'unavailable') return '';
+  return risk.summaryText.split(' · ').slice(1).join(' · ');
+}
+
+function getHeaderRiskValueClass(risk: MarginRiskDisplay): string {
+  if (risk.status !== 'available' || risk.riskLevel === 'Elevated') return 'is-warning';
+  if (risk.riskLevel === 'Healthy' || risk.riskLevel === 'No margin debt') return 'is-positive';
+  return 'is-negative';
+}
+
+export function getHeaderBreakevenValue(value: string): string {
+  const displayValue = value.replace(/^(?:Breakeven|BE):\s*/i, '').trim();
+  return displayValue || '—';
+}
+
 export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[] {
   return expanded ? tranches : [];
 }
@@ -436,8 +480,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
     : 'Review recent news and risk across all margin positions with Gemini';
 
   return (
-    <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
-      <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
+    <div class="portfolio-market-tools" role="group" aria-label={translateText('Portfolio actions', language)}>
       <div class="modal-tools-group">
         <button
           type="button"
@@ -446,7 +489,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
           class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
-          ⇧<br />{translateText('Add Calc', language)}
+          ⇧<br />{translateText('Add?', language)}
         </button>
         <button
           type="button"
@@ -455,7 +498,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
           onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
           class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
         >
-          ⇄<br />{translateText('Exit Calc', language)}
+          ⇄<br />{translateText('Exit?', language)}
         </button>
         <button
           type="button"
@@ -490,6 +533,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const activeView = useActiveView();
   const rules = state.brokerAssumptions;
   const refreshIntervalMs = useQuoteRefreshInterval();
+  const breakevenText = useBreakevenText();
   const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
   const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
@@ -548,13 +592,11 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
     const investedText = `${formatUSD(totalInvested)} | ${translateText('Across {count} assets', getAppLanguage()).replace('{count}', String(tickers.length))}`;
     const unSign = (totalUnrealized ?? 0) >= 0 ? '+' : '';
-    const marginText = `-${formatUSD(totalDebt)} (${formatUSD(dailyAccrual)} ${translateText('per day', getAppLanguage())} @ ${(
-      dailyRate * 100
-    ).toFixed(4)}%)`;
     const commsText = `${formatUSD(totalComms)} (${formatUSD(totalCommBuy)} ${translateText('buy', getAppLanguage())} / ${formatUSD(
       totalCommSell
     )} ${translateText('sell', getAppLanguage())})`;
     const marginChargedText = `${formatUSD(totalMarginCharged)}`;
+    const netTargetReturnPct = calculateCombinedMetrics(state, rules, tickers, dailyRate).netPct;
 
     const quoteSummary = summarizeQuoteFreshness(
       tickers.map((ticker) => {
@@ -663,11 +705,48 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
     return (
       <>
+        <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
+          <PortfolioHeaderMetric
+            metric="net-target-return"
+            label={translateText('Net return at targets', getAppLanguage())}
+            value={totalInvested > 0 ? (netTargetReturnPct >= 0 ? '+' : '') + netTargetReturnPct.toFixed(2) + '%' : '—'}
+            valueId="boardNetTargetReturn"
+            valueClass={totalInvested <= 0 ? 'is-muted' : netTargetReturnPct >= 0 ? 'is-positive' : 'is-negative'}
+          />
+          <PortfolioHeaderMetric
+            metric="carry-break-even"
+            label={translateText('Portfolio carry break-even', getAppLanguage())}
+            value={getHeaderBreakevenValue(breakevenText)}
+            valueId="daysToBreakeven"
+            valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+            valueClass="is-carry"
+          />
+          <PortfolioHeaderMetric
+            metric="account-equity"
+            label={translateText('Account equity', getAppLanguage())}
+            value={equityText}
+          />
+          <PortfolioHeaderMetric
+            metric="margin-debt"
+            label={translateText('Margin Debt', getAppLanguage())}
+            value={totalDebt > 0 ? '-' + formatUSD(totalDebt) : formatUSD(0)}
+            valueId="boardMargin"
+            valueClass={totalDebt > 0 ? 'is-negative' : 'is-muted'}
+            detail={formatUSD(dailyAccrual) + ' ' + translateText('per day', getAppLanguage()) + ' @ ' + (dailyRate * 100).toFixed(4) + '%'}
+          />
+          <PortfolioHeaderMetric
+            metric="margin-risk"
+            label={translateText('Margin Risk', getAppLanguage())}
+            value={risk.summaryText.split(' · ')[0]}
+            valueClass={getHeaderRiskValueClass(risk)}
+            detail={getHeaderRiskDetail(risk)}
+          />
+        </section>
         <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
           <div class="portfolio-micro-column portfolio-micro-basis">
             <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
             <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Tranches / Holdings', getAppLanguage())}</span>
+              <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
               <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
             </div>
             <div class="portfolio-micro-row">
@@ -727,11 +806,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             </span>
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
-            <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Margin Debt', getAppLanguage())}</span>
-              <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
-            </div>
+            <span class="portfolio-micro-heading">{translateText('Fees & accrued interest', getAppLanguage())}</span>
             <div class="portfolio-micro-row">
               <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
               <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
@@ -741,20 +816,24 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
             </div>
           </div>
-          <MarginMarketTools isAdmin={isAdmin} />
         </section>
 
-        <MarginRiskGaugeCard
-          scope="account"
-          equityPct={equityPct}
-          risk={risk}
-          equityText={equityText}
-          collateralText={formatUSD(valuation.cashBalance)}
-          rules={rules}
-          valuationStatus={valuationStatus}
-          accountBalanceAvailable={valuation.accountBalanceAvailable}
-          unpricedHoldings={valuation.unpricedHoldings}
-        />
+        <div class="portfolio-risk-tools-row">
+          <MarginRiskGaugeCard
+            scope="account"
+            equityPct={equityPct}
+            risk={risk}
+            equityText={equityText}
+            collateralText={formatUSD(valuation.cashBalance)}
+            rules={rules}
+            valuationStatus={valuationStatus}
+            accountBalanceAvailable={valuation.accountBalanceAvailable}
+            unpricedHoldings={valuation.unpricedHoldings}
+          />
+          <div class="portfolio-market-tools-row">
+            <MarginMarketTools isAdmin={isAdmin} />
+          </div>
+        </div>
       </>
     );
   }
@@ -819,13 +898,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const unSign = (unrealized ?? 0) >= 0 ? '+' : '';
   const dailyQuoteMeta = getDailyQuoteMeta(pos.quoteDetails);
 
-  const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
-  const marginText = isFullDebt
-    ? `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)} ${translateText('per day', getAppLanguage())})`
-    : `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)} ${translateText('per day', getAppLanguage())}) [${(
-      (allocatedDebt / (totalAccountDebt || 1)) *
-      100
-    ).toFixed(0)}% of -${formatUSD(totalAccountDebt)} ${translateText('Total', getAppLanguage())}]`;
 
   const commsText = `${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} ${translateText('buy', getAppLanguage())} / ${formatUSD(
     commSell
@@ -924,6 +996,36 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
+      <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
+        <PortfolioHeaderMetric
+          metric="carry-break-even"
+          label={translateText('Portfolio carry break-even', getAppLanguage())}
+          value={getHeaderBreakevenValue(breakevenText)}
+          valueId="daysToBreakeven"
+          valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+          valueClass="is-carry"
+        />
+        <PortfolioHeaderMetric
+          metric="allocated-equity"
+          label={translateText('Allocated Equity', getAppLanguage())}
+          value={equityText}
+        />
+        <PortfolioHeaderMetric
+          metric="margin-debt"
+          label={translateText('Margin Debt', getAppLanguage())}
+          value={allocatedDebt > 0 ? '-' + formatUSD(allocatedDebt) : formatUSD(0)}
+          valueId="boardMargin"
+          valueClass={allocatedDebt > 0 ? 'is-negative' : 'is-muted'}
+          detail={formatUSD(allocatedDailyAccrual) + ' ' + translateText('per day', getAppLanguage()) + (totalAccountDebt > 0 ? ' · ' + ((allocatedDebt / totalAccountDebt) * 100).toFixed(0) + '% ' + translateText('of total debt', getAppLanguage()) : '')}
+        />
+        <PortfolioHeaderMetric
+          metric="margin-risk"
+          label={translateText('Margin Risk', getAppLanguage())}
+          value={risk.summaryText.split(' · ')[0]}
+          valueClass={getHeaderRiskValueClass(risk)}
+          detail={getHeaderRiskDetail(risk)}
+        />
+      </section>
       <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
         <div class="portfolio-micro-column portfolio-micro-basis">
           <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
@@ -991,11 +1093,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           </span>
         </div>
         <div class="portfolio-micro-column portfolio-micro-costs">
-          <span class="portfolio-micro-heading">{translateText('DEBT & CARRYING COSTS', getAppLanguage())}</span>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Margin Debt', getAppLanguage())}</span>
-            <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
-          </div>
+          <span class="portfolio-micro-heading">{translateText('Fees & accrued interest', getAppLanguage())}</span>
           <div class="portfolio-micro-row">
             <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
             <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
@@ -1005,20 +1103,24 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
           </div>
         </div>
-        <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
       </section>
 
-      <MarginRiskGaugeCard
-        scope="allocated-ticker"
-        equityPct={equityPct}
-        risk={risk}
-        equityText={equityText}
-        collateralText={formatUSD(allocatedCashBalance)}
-        rules={rules}
-        valuationStatus={positionValuationStatus}
-        accountBalanceAvailable={accountBalanceAvailable}
-        unpricedHoldings={positionUnpricedHoldingCount}
-      />
+      <div class="portfolio-risk-tools-row">
+        <MarginRiskGaugeCard
+          scope="allocated-ticker"
+          equityPct={equityPct}
+          risk={risk}
+          equityText={equityText}
+          collateralText={formatUSD(allocatedCashBalance)}
+          rules={rules}
+          valuationStatus={positionValuationStatus}
+          accountBalanceAvailable={accountBalanceAvailable}
+          unpricedHoldings={positionUnpricedHoldingCount}
+        />
+        <div class="portfolio-market-tools-row">
+          <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
+        </div>
+      </div>
     </>
   );
 }

@@ -1,13 +1,13 @@
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
-import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import { sentimentLabel, SentimentDirection, calculateTargetUpsidePercent } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
 import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
-import { getCachedUsers, listUsers, type AuthUser } from '../services/api';
+import { getCachedUsers, listUsers, fetchYahooDeepStockData, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
@@ -46,6 +46,11 @@ const EMPTY_TRANCHE_MIXES: Record<string, ActiveTrancheMix> = {};
 const EMPTY_TRANCHE_TYPES: Record<string, ActiveTrancheType> = {};
 const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
 
+type GuestAnalystTarget = {
+  status: 'loading' | 'available' | 'unavailable';
+  targetPrice?: number;
+};
+
 type MixInputDraft = {
   value: string;
   editedSide: 'cash' | 'margin';
@@ -68,7 +73,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}${formatUSD(Math.abs(details.change))}`
+      `${sign}${Math.abs(details.change).toFixed(2)}`
     );
     colorClass =
       details.change > 0
@@ -346,6 +351,48 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     })
     : [], [guestUserId, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
   const holdings = isAdmin ? cashHoldings : guestHoldings;
+  const guestAnalystTickerKey = guestUserId
+    ? [...new Set(guestHoldings.map((holding) => holding.ticker.trim().toUpperCase()))].sort().join('|')
+    : '';
+  const [guestAnalystTargets, setGuestAnalystTargets] = useState<Record<string, GuestAnalystTarget>>({});
+
+  useEffect(() => {
+    const tickers = guestAnalystTickerKey ? guestAnalystTickerKey.split('|').filter(Boolean) : [];
+    if (!guestUserId || tickers.length === 0) {
+      setGuestAnalystTargets({});
+      return;
+    }
+
+    const controller = new AbortController();
+    setGuestAnalystTargets((previous) => Object.fromEntries(
+      tickers.map((ticker) => [ticker, previous[ticker] || { status: 'loading' }])
+    ));
+
+    void Promise.all(tickers.map(async (ticker) => {
+      try {
+        const data = await fetchYahooDeepStockData(ticker, false, controller.signal);
+        const targetPrice = [data.analystTargets?.median, data.analystTargets?.mean, data.analystTargets?.high]
+          .find((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+        return [ticker, targetPrice ? { status: 'available' as const, targetPrice } : { status: 'unavailable' as const }] as const;
+      } catch {
+        return controller.signal.aborted
+          ? null
+          : [ticker, { status: 'unavailable' as const }] as const;
+      }
+    })).then((results) => {
+      if (controller.signal.aborted) return;
+      setGuestAnalystTargets((previous) => {
+        const next = { ...previous };
+        results.forEach((result) => {
+          if (result) next[result[0]] = result[1];
+        });
+        return next;
+      });
+    });
+
+    return () => controller.abort();
+  }, [guestUserId, guestAnalystTickerKey]);
+
   const setActiveTrancheType = (
     ticker: string,
     type: ActiveTrancheType,
@@ -449,7 +496,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class={`flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2 ${!isAdmin && 'hidden'}`}>
+      <div class="flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-lg font-black text-cyan-400 tracking-wide">
@@ -554,7 +601,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
               const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
-                <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
+                <article
+                  key={holding.ticker}
+                  class={'guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm ' + (guestHoldings.length === 1 ? 'sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-2xl' : '')}
+                >
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <div class="flex items-center gap-2">
@@ -563,46 +613,78 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     </div>
                     {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
                   </div>
-                  <div class="mt-4">
-                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
-                    <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
-                    {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
-                    {renderDailyQuoteSubtext(holding.quoteDetails)}
-                    <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                      {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
-                    </p>
+                  <div class="instrument-target-section guest-stock-value-section mt-3">
+                    <div class="instrument-target-segment guest-stock-market-value">
+                      <div>
+                        <p class="instrument-target-label">{translateText('Current market value', getAppLanguage())}</p>
+                        <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
+                        {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
+                        {renderDailyQuoteSubtext(holding.quoteDetails)}
+                        <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
+                          {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
+                        </p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const analystTarget = guestAnalystTargets[holding.ticker] || { status: 'loading' as const };
+                      const upside = analystTarget.status === 'available' && analystTarget.targetPrice
+                        ? calculateTargetUpsidePercent(analystTarget.targetPrice, price ?? Number.NaN)
+                        : undefined;
+                      return (
+                        <div class="instrument-target-segment guest-stock-analyst-target">
+                          <div class="min-w-0">
+                            <p class="instrument-target-label">{translateText('Analyst (Yahoo)', getAppLanguage())}</p>
+                            {analystTarget.status === 'available' && analystTarget.targetPrice ? (
+                              <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>
+                                <span class={"instrument-target-return " + (upside === undefined ? 'text-slate-400' : upside >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                                  {upside === undefined ? '—' : (upside >= 0 ? '+' : '') + upside.toFixed(2) + '%'}
+                                </span>
+                              </div>
+                            ) : (
+                              <p class="mt-1 text-xs font-semibold text-slate-400">
+                                {analystTarget.status === 'loading' ? translateText('Loading analyst target…', getAppLanguage()) : translateText('Analyst target unavailable', getAppLanguage())}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                  <div class="mt-3 grid grid-cols-2 gap-2.5 border-t border-slate-800 pt-3">
                     <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
                   </div>
-                  <div class="mt-4 border-t border-slate-800 pt-3">
-                    <div class="mb-2 flex items-center justify-between gap-2">
-                      <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? 'tranche' : 'tranches'}</span>
-                    </div>
+                  <div class="mt-3 border-t border-slate-800 pt-2">
                     {relatedTranches.length === 0 ? (
-                      <p class="text-[10px] text-slate-500">No active tranche details available.</p>
+                      <p class="text-[10px] text-slate-500">{translateText('No active tranche details available.', getAppLanguage())}</p>
                     ) : (
-                      <div class="space-y-2">
-                        {relatedTranches.map((tranche) => {
-                          const trancheDate = tranche.purchasedAt !== null
-                            ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
-                            : 'Date unavailable';
-                          return (
-                            <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
-                              <div class="flex flex-wrap items-center justify-between gap-2">
-                                <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                      <details class="guest-tranche-details">
+                        <summary class="flex min-h-11 list-none cursor-pointer items-center justify-between gap-2 rounded px-1 py-1 text-xs font-semibold text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                          <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? translateText('tranche', getAppLanguage()) : translateText('tranches', getAppLanguage())}</span>
+                          <span class="text-cyan-300">{translateText('Details', getAppLanguage())} <span aria-hidden="true">⌄</span></span>
+                        </summary>
+                        <div class="mt-2 space-y-2">
+                          {relatedTranches.map((tranche) => {
+                            const trancheDate = tranche.purchasedAt !== null
+                              ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
+                              : 'Date unavailable';
+                            return (
+                              <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                  <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                                </div>
+                                <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                                  <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
+                                  <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
+                                </div>
                               </div>
-                              <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                                <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
-                                <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      </details>
                     )}
                   </div>
                 </article>

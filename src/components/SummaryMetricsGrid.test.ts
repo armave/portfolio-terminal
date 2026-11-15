@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
+import { getHeaderBreakevenValue, getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin risk confidence and scope disclosures', () => {
   it('keeps provisional risk styling while avoiding redundant status and period labels', () => {
@@ -341,5 +341,72 @@ describe('accessible Margin Health overview action', () => {
     expect(modal).toContain('onEscape: requestClose');
     expect(modal).not.toContain('role="tablist"');
     expect(modal).not.toContain('MarginRiskModalTab');
+  });
+});
+
+
+describe('header carry-break-even formatting', () => {
+  it('removes only the legacy internal prefix while preserving status and date text', () => {
+    expect(getHeaderBreakevenValue('Breakeven: 216 days (Nov 15, 2026)')).toBe('216 days (Nov 15, 2026)');
+    expect(getHeaderBreakevenValue('Breakeven: No margin debt')).toBe('No margin debt');
+    expect(getHeaderBreakevenValue('Breakeven: —')).toBe('—');
+    expect(getHeaderBreakevenValue('')).toBe('—');
+  });
+});
+
+describe('cross-device financial header hierarchy', () => {
+  const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+
+  it('renders the proposed Combined Portfolio decision KPIs above the supporting financial detail', () => {
+    expect(source).toContain('data-header-metric={metric}');
+    const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
+    expect(combinedView).toContain('metric="net-target-return"');
+    expect(combinedView).toContain('metric="carry-break-even"');
+    expect(combinedView).toContain('metric="account-equity"');
+    expect(combinedView).toContain('metric="margin-debt"');
+    expect(combinedView).toContain('metric="margin-risk"');
+    expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
+      combinedView.indexOf('class="portfolio-micro-summary"')
+    );
+    expect(source).toContain('id={valueId}');
+    expect(combinedView).toContain('valueId="boardNetTargetReturn"');
+    expect(combinedView).toContain('valueId="daysToBreakeven"');
+    expect(combinedView).toContain('valueId="boardMargin"');
+  });
+
+  it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
+    expect(singleTickerView).toContain('metric="carry-break-even"');
+    expect(singleTickerView).toContain('metric="allocated-equity"');
+    expect(singleTickerView).toContain('metric="margin-debt"');
+    expect(singleTickerView).toContain('metric="margin-risk"');
+    expect(singleTickerView).not.toContain('metric="net-target-return"');
+    expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
+    expect(singleTickerView).not.toContain('Your PT / Net return at target');
+    expect(singleTickerView).not.toContain('calculatePositionMetrics');
+  });
+
+  it('places Account Equity Health and Market Tools in one non-mobile row and stacks them on mobile', () => {
+    expect(source).toContain('<div class="portfolio-risk-tools-row">');
+    expect(source).toContain('<MarginRiskGaugeCard');
+    expect(source).toContain('<MarginMarketTools');
+    expect(styles).toContain('@media (min-width: 768px)');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
+  });
+
+  it('removes the visible Market Tools heading and centers the action buttons in their panel', () => {
+    const toolsStart = source.indexOf('function MarginMarketTools');
+    const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
+    const toolsComponent = source.slice(toolsStart, toolsEnd);
+    expect(toolsComponent).toContain('role="group" aria-label={translateText(\'Portfolio actions\', language)}');
+    expect(toolsComponent).not.toContain("translateText('MARKET TOOLS', language)");
+    expect(toolsComponent).not.toContain('portfolio-micro-heading');
+    expect(styles).toContain('.portfolio-market-tools .modal-tools-group {');
+    expect(styles).toContain('justify-content: center;');
+    expect(styles).toContain('width: 100%;');
   });
 });

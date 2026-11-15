@@ -1,10 +1,36 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { getWorkspaceNavigationViews } from '../ui/tabNavigation';
 
 const tickerTabSource = readFileSync(new URL('./TickerTab.tsx', import.meta.url), 'utf8');
 const tickerTabsStart = tickerTabSource.indexOf('export const TickerTabs');
 const syncButtonStart = tickerTabSource.indexOf('export function PortfolioSyncButton');
 const syncButtonSource = tickerTabSource.slice(syncButtonStart);
+
+describe('standardized workspace navigation controls', () => {
+  it('uses one shared icon, label, touch target and active-state contract for every destination', () => {
+    expect(tickerTabSource).toContain('function WorkspaceNavigationIcon');
+    expect(tickerTabSource).toContain('workspace-nav-button__icon');
+    expect(tickerTabSource).toContain('workspace-nav-button__label');
+    expect(tickerTabSource).toContain('workspaceNavigationButtonClass');
+    expect(tickerTabSource).toContain('data-nav-kind="balance"');
+    expect(tickerTabSource).toContain('data-nav-kind="trades"');
+    expect(tickerTabSource).toContain('data-nav-kind="lots"');
+    expect(tickerTabSource).toContain('data-nav-kind="settings"');
+    expect(tickerTabSource).toContain('data-nav-kind="margin-ticker"');
+    expect(tickerTabSource).toContain('aria-pressed={isCushionActive}');
+  });
+
+  it('keeps Margin destinations exclusive to admins while guests retain Balance, assigned Lots and Settings', () => {
+    expect(getWorkspaceNavigationViews(['AAPL'], false, true))
+      .toEqual(['BALANCE', 'GUEST_HISTORY', 'SETTINGS']);
+    expect(getWorkspaceNavigationViews(['AAPL'], false, false))
+      .toEqual(['BALANCE', 'SETTINGS']);
+    expect(tickerTabSource).toContain('{isAdmin && tickers.length === 1 &&');
+    expect(tickerTabSource).toContain('{isAdmin && tickers.length > 1 &&');
+    expect(tickerTabSource).toContain('{canViewGuestHistory && (');
+  });
+});
 
 describe('navigation portfolio sync control', () => {
   it('uses a dedicated full-sync action instead of a quote-only nav refresh', () => {
