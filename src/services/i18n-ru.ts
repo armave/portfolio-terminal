@@ -36,7 +36,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'LOTS': 'ЛОТЫ',
   'Manage account, data, and application preferences.': 'Управление учётной записью, данными и настройками приложения.',
   'Your cash-funded purchase allocations, including completed and removed assignments': 'Распределение покупок за счёт денежных средств, включая завершённые и удалённые назначения.',
-  'Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.': 'Закрытые сделки и исполнения продаж, включая частичные продажи. Исполнения покупок используются для сопоставления длительности владения и не отображаются как закрытые сделки.',
   'Refreshing balance…': 'Обновление баланса…',
   'Syncing…': 'Синхронизация…',
   'Migrating…': 'Выполняется миграция…',
