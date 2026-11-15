@@ -89,6 +89,35 @@ describe('runtime presentation store subscriptions', () => {
     expect(receivedCloudSyncStatus).toHaveLength(2);
     expect(receivedBoardTitle).toHaveLength(2);
   });
+
+  it('publishes separate Margin PT and return fields, then clears them when switching to Combined', () => {
+    const updates: BoardTitleState[] = [];
+    const unsubscribe = subscribeBoardTitle((value) => updates.push(value));
+    setBoardTitle({
+      title: 'GOOGL (68 Shares)',
+      showDailyMove: false,
+      marginPtValue: '$335.00',
+      marginPtReturnText: '+10.15%',
+      marginPtTitle: 'Margin PT $335.00'
+    });
+    setBoardTitle({
+      title: 'COMBINED PORTFOLIO (2 Positions)',
+      showDailyMove: true,
+      marginPtValue: '',
+      marginPtReturnText: '',
+      marginPtTitle: ''
+    });
+    expect(updates[updates.length - 2]).toMatchObject({
+      marginPtValue: '$335.00',
+      marginPtReturnText: '+10.15%'
+    });
+    expect(updates[updates.length - 1]).toMatchObject({
+      title: 'COMBINED PORTFOLIO (2 Positions)',
+      marginPtValue: '',
+      marginPtReturnText: ''
+    });
+    unsubscribe();
+  });
 });
 
 describe('analyst consensus store subscriptions', () => {

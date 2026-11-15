@@ -58,8 +58,11 @@ describe('financial title and KPI single-source presentation', () => {
     );
     expect(combinedTitle).toContain('COMBINED PORTFOLIO (${tickers.length} Positions)');
     expect(combinedTitle).not.toContain('Net Target');
-    expect(renderBoardSource).toContain('${metrics.netPct.toFixed(2)}% Net @ PT');
-    expect(renderBoardSource).toContain('Margin PT ${formatUSD(pos.pt)}');
+    expect(renderBoardSource).toContain('title: `${pos.ticker} (${pos.shares} Shares)`');
+    expect(renderBoardSource).toContain('marginPtValue: formatUSD(pos.pt)');
+    expect(renderBoardSource).toContain('marginPtReturnText:');
+    expect(renderBoardSource).toContain('metrics.netPct.toFixed(2)');
+    expect(renderBoardSource).not.toContain('Margin PT ${formatUSD(pos.pt)} in the ticker title');
     expect(renderBoardSource).not.toContain('Guest PT');
   });
 });

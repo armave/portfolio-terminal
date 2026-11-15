@@ -118,13 +118,23 @@ export function useAnalystConsensus(): AnalystConsensusState {
 export interface BoardTitleState {
   title: string;
   showDailyMove: boolean;
+  /** Margin-only user target; never populate this for a guest Stocks desk. */
+  marginPtValue?: string;
+  marginPtReturnText?: string;
+  marginPtTitle?: string;
 }
 
 let boardTitle: BoardTitleState = { title: 'COMBINED PORTFOLIO', showDailyMove: false };
 const boardTitleListeners = new Set<(state: BoardTitleState) => void>();
 
 export function setBoardTitle(state: BoardTitleState): void {
-  if (state.title === boardTitle.title && state.showDailyMove === boardTitle.showDailyMove) return;
+  if (
+    state.title === boardTitle.title &&
+    state.showDailyMove === boardTitle.showDailyMove &&
+    state.marginPtValue === boardTitle.marginPtValue &&
+    state.marginPtReturnText === boardTitle.marginPtReturnText &&
+    state.marginPtTitle === boardTitle.marginPtTitle
+  ) return;
   boardTitle = state;
   boardTitleListeners.forEach((listener) => listener(boardTitle));
 }

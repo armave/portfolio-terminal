@@ -606,6 +606,15 @@ describe('guest holding card compact presentation', () => {
     expect(guestCard).toContain('Unrealized P/L');
   });
 
+  it('places current value and Yahoo Analyst target in one internally separated guest section', () => {
+    expect(source).toContain('instrument-target-section guest-stock-value-section');
+    expect(source).toContain('guest-stock-market-value');
+    expect(source).toContain('guest-stock-analyst-target');
+    expect(source).toContain('fetchYahooDeepStockData(ticker, false, controller.signal)');
+    expect(source).not.toContain('Margin PT');
+    expect(source).not.toContain('Your PT');
+  });
+
   it('localizes the new break-even and guest detail labels in Russian', () => {
     expect(translateText('Portfolio carry break-even', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
     expect(translateText('Details', 'ru')).toBe('Детали');

@@ -119,7 +119,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
 
 
-  const { title: boardTitle, showDailyMove } = useBoardTitle();
+  const { title: boardTitle, showDailyMove, marginPtValue, marginPtReturnText, marginPtTitle } = useBoardTitle();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
@@ -331,14 +331,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="boardTitleRow"
-                class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
+                class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "") + (marginPtValue || analystConsensus.text ? ' board-title-row--with-targets' : '')}
               >
                 <h1 class="board-title-text min-w-0 text-lg font-bold text-white text-center md:text-left" id="boardTitle">
                   {boardTitle}
                 </h1>
 
-
-                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className + (activeDeskView === 'COMBINED' ? ' hidden' : '')} title={analystConsensus.title}>{analystConsensus.text}</div>
+                <section
+                  id="boardTargetSection"
+                  class={"instrument-target-section board-target-section " + (activeDeskView === 'COMBINED' || (!marginPtValue && !analystConsensus.text) ? 'hidden' : '') + (analystConsensus.text && analystConsensus.className !== 'hidden' ? ' has-analyst-target' : '')}
+                  aria-label={translateText('Margin and analyst target information', getAppLanguage())}
+                >
+                  {marginPtValue && (
+                    <div id="boardMarginTarget" class="instrument-target-segment board-target-segment board-target-segment--margin" title={marginPtTitle}>
+                      <span class="instrument-target-label">{translateText('Margin PT', getAppLanguage())}</span>
+                      <strong id="boardMarginPtValue" class="instrument-target-value">{marginPtValue}</strong>
+                      <span id="boardMarginPtReturn" class="instrument-target-return">{marginPtReturnText}</span>
+                    </div>
+                  )}
+                  <div id="boardAnalystConsensus" class={"instrument-target-segment board-target-segment board-target-segment--analyst board-analyst-consensus " + analystConsensus.className + (activeDeskView === 'COMBINED' ? ' hidden' : '')} title={analystConsensus.title}>
+                    {analystConsensus.text}
+                  </div>
+                </section>
               </div>
 
 

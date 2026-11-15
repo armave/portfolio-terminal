@@ -45,7 +45,10 @@ function renderSummaryCards(
       title: tickers.length > 0
         ? `COMBINED PORTFOLIO (${tickers.length} Positions)`
         : 'NO ACTIVE MARGIN POSITIONS',
-      showDailyMove: true
+      showDailyMove: true,
+      marginPtValue: '',
+      marginPtReturnText: '',
+      marginPtTitle: ''
     });
 
     if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
@@ -60,8 +63,11 @@ function renderSummaryCards(
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
     setBoardTitle({
-      title: `${pos.ticker} (${pos.shares} Shares · Margin PT ${formatUSD(pos.pt)} · ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net @ PT)`,
-      showDailyMove: false
+      title: `${pos.ticker} (${pos.shares} Shares)`,
+      showDailyMove: false,
+      marginPtValue: formatUSD(pos.pt),
+      marginPtReturnText: `${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%`,
+      marginPtTitle: `Margin position target price: ${formatUSD(pos.pt)}. Net return at this target: ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%.`
     });
 
     if (typeof onRenderAnalystConsensus === 'function') {

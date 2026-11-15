@@ -879,3 +879,11 @@ describe('standardized workspace navigation localization', () => {
     expect(translateText('Market and sync status', 'ru')).toBe('Состояние рынка и синхронизации');
   });
 });
+
+describe('Margin PT target information localization', () => {
+  it('translates the Margin-specific target label while keeping analyst consensus distinct', () => {
+    expect(translateText('Margin PT', 'ru')).toBe('Целевая цена маржинальной позиции');
+    expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
+    expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
+  });
+});
