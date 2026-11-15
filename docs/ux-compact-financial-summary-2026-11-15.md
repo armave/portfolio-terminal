@@ -49,3 +49,6 @@ The administrator board now has a distinct decision-KPI strip directly below the
 
 The Account Equity Health gauge and Market Tools are now siblings in one responsive row from 768px upward. They stack vertically below 768px. The same production-browser smoke checks both Combined and ticker header metric sets and verifies the row geometry at 390px, 768px, and 1440px.
 
+## Market actions panel refinement
+
+The visible **Market Tools** heading has been removed from the Account Equity Health / tools row. The panel retains a localized accessible name, while its scenario and research action buttons are horizontally centered within the panel. Browser smoke verifies the heading is absent, at least three action buttons are present and centered, and the row keeps its desktop/tablet side-by-side and mobile stacked behavior.

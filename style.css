@@ -4116,9 +4116,10 @@ table tbody tr:hover {
 }
 .portfolio-market-tools {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 0.5rem;
   width: 100%;
   min-width: 0;
@@ -4127,12 +4128,18 @@ table tbody tr:hover {
   border-radius: 0.75rem;
   background: rgba(2, 6, 23, 0.55);
 }
-.portfolio-market-tools .portfolio-micro-heading { margin: 0 auto 0 0; }
 .portfolio-market-tools .modal-tools-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 0.375rem;
+  width: 100%;
+  margin: 0;
+}
+.portfolio-market-tools .market-links-group {
+  justify-content: center;
+  width: 100%;
 }
 .guest-tranche-details > summary::-webkit-details-marker { display: none; }
 .guest-tranche-details > summary::marker { content: ''; }

@@ -397,4 +397,16 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('@media (max-width: 767px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
   });
+
+  it('removes the visible Market Tools heading and centers the action buttons in their panel', () => {
+    const toolsStart = source.indexOf('function MarginMarketTools');
+    const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
+    const toolsComponent = source.slice(toolsStart, toolsEnd);
+    expect(toolsComponent).toContain("aria-label={translateText('Portfolio actions', language)}");
+    expect(toolsComponent).not.toContain("translateText('MARKET TOOLS', language)");
+    expect(toolsComponent).not.toContain('portfolio-micro-heading');
+    expect(styles).toContain('.portfolio-market-tools .modal-tools-group {');
+    expect(styles).toContain('justify-content: center;');
+    expect(styles).toContain('width: 100%;');
+  });
 });

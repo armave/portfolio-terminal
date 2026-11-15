@@ -534,6 +534,14 @@ async function assertFinancialHeaderLayout(page, view) {
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
       const healthBounds = health?.getBoundingClientRect();
       const toolsBounds = tools?.getBoundingClientRect();
+      const marketPanel = tools?.querySelector('.portfolio-market-tools');
+      const panelBounds = marketPanel?.getBoundingClientRect();
+      const actionGroup = marketPanel?.querySelector('.modal-tools-group');
+      const actionBounds = actionGroup?.getBoundingClientRect();
+      const actionButtonsCount = actionGroup?.querySelectorAll('button').length ?? 0;
+      const visibleMarketToolsHeading = Boolean(
+        marketPanel?.querySelector('.portfolio-micro-heading')?.getClientRects().length
+      );
       return {
         metrics,
         targetReturnCount: document.querySelectorAll('#boardNetTargetReturn').length,
@@ -541,6 +549,12 @@ async function assertFinancialHeaderLayout(page, view) {
         documentWidth: document.documentElement.scrollWidth,
         healthVisible: Boolean(health?.getClientRects().length),
         toolsVisible: Boolean(tools?.getClientRects().length),
+        actionButtonsCount,
+        visibleMarketToolsHeading,
+        actionGroupCentered: Boolean(
+          panelBounds && actionBounds &&
+          Math.abs((panelBounds.left + panelBounds.right) / 2 - (actionBounds.left + actionBounds.right) / 2) <= 3
+        ),
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
         toolsTop: toolsBounds?.top ?? null,
@@ -556,6 +570,12 @@ async function assertFinancialHeaderLayout(page, view) {
     }
     if (!layout.healthVisible || !layout.toolsVisible) {
       throw new Error('Account Equity Health or Market Tools is missing at ' + viewport.width + 'px.');
+    }
+    if (layout.visibleMarketToolsHeading) {
+      throw new Error('The visible Market Tools heading should be removed.');
+    }
+    if (layout.actionButtonsCount < 3 || !layout.actionGroupCentered) {
+      throw new Error('Market action buttons must be centered in their panel: ' + JSON.stringify(layout));
     }
     if (layout.documentWidth > layout.viewportWidth + 1) {
       throw new Error('Financial header caused page-level horizontal overflow at ' + viewport.width + 'px.');

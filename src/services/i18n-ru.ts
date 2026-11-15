@@ -795,6 +795,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Before vs. after · estimated values": "До и после · расчётные значения",
   "Portfolio-wide Margin Review": "Обзор маржинального портфеля",
   "MARKET TOOLS": "РЫНОЧНЫЕ ИНСТРУМЕНТЫ",
+  "Portfolio actions": "Действия портфеля",
   "Analyze": "Анализ",
   "Portfolio Review": "Обзор портфеля",
   "Review recent news and risk across all margin positions with Gemini": "Анализ свежих новостей и рисков по всем маржинальным позициям с Gemini",

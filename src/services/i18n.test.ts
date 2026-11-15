@@ -858,3 +858,9 @@ describe('new financial header copy localization', () => {
     }
   });
 });
+
+describe('portfolio action region accessibility copy', () => {
+  it('provides a localized accessible name after the visible Market Tools heading is removed', () => {
+    expect(translateText('Portfolio actions', 'ru')).toBe('Действия портфеля');
+  });
+});
