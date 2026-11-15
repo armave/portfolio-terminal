@@ -25,6 +25,15 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
+  it('keeps each financial summary group full-width on mobile', () => {
+    expect(fluidStyles).toMatch(
+      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
+    );
+    expect(fluidStyles).toMatch(
+      /#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
+    );
+  });
+
   it('keeps desktop detail tables scrollable and contains card-table overflow on mobile', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);

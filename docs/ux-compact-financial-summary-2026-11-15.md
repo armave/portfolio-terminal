@@ -64,3 +64,14 @@ On phones, fixed navigation destinations compact to icon-first controls with acc
 The admin Margin ticker identity is the first segment inside the same bordered subheader as target information. It shows the ticker, a share-count pill, and the daily percentage move when quote data is available. Margin PT and net return at PT occupy the second segment; Yahoo analyst target and upside occupy the third. Desktop and tablet use one continuous, vertically divided three-column panel. On mobile the identity, Margin PT, and Analyst (Yahoo) segments stack into three rows with horizontal dividers. Combined Portfolio keeps its standalone title and has no per-ticker target section.
 
 Guest Stocks keeps its ticker and daily-change row above a divided Current Market Value / Analyst (Yahoo) section; it never receives Margin PT, the margin target return, or margin-only data. Guest analyst consensus is loaded from the existing Yahoo deep-data transport for assigned stock tickers and its upside is calculated against the current share price.
+
+
+## Mobile financial-summary width correction — 2026-11-15
+
+A mobile regression allowed the older, more-specific two-column media rule to override the summary's narrow-container layout. At viewport widths up to 767px, the market valuation and position-basis groups could therefore be constrained to a partial card width while the fees group used a wider span.
+
+The correction applies a deliberately ID-qualified rule to the summary directly inside `#portfolioMetricsGrid`: the summary becomes a single-column grid, and each market, position-basis, and fees group spans the full available width. Existing row-level label/value alignment, financial calculations, and localized copy remain unchanged.
+
+- [x] Keep all three financial-summary groups full-width at mobile widths.
+- [x] Add a Vitest regression assertion for the mobile selector and full-width grid items.
+- [x] Preserve the existing desktop and tablet summary layout.
