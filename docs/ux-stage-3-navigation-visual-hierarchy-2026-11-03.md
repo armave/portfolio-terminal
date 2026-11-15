@@ -64,7 +64,8 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 - [x] Check 320, 360, 390, 768, 1024, and 1440px for page-level overflow, clipped destinations, and header layout.
 - [x] Verify every destination is reachable by pointer and keyboard; verify ArrowLeft/ArrowRight wrap and Home/End behavior.
 - [x] Verify the sync action remains independently named, operable, and outside the destination group.
-- [ ] Capture before/after screenshots at narrow mobile, tablet, and desktop widths for visual review.
+- [x] Capture before/after screenshots at mobile (390px), tablet (768px), and desktop (1440px) for administrator ticker and guest Balance views through the PR #482 browser artifact.
+- [ ] Manually review the before/after screenshots before merging PR #482.
 - [x] Run the full required CI sequence: typecheck, Vitest, production build, browser smoke, dead-code validation, and dependency audits.
 
 ## Acceptance criteria
@@ -90,7 +91,8 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 - [x] Implement the related navigation and summary refinements together in one frontend PR.
 - [x] Preserve English/Russian localization and add Vitest coverage.
 - [x] Extend the existing Playwright smoke test with responsive geometry and long-ticker evidence.
-- [ ] Capture before/after screenshots for a separate manual visual review.
+- [x] Capture like-for-like before/after screenshots for admin ticker and guest Balance at 390px, 768px, and 1440px (PR #482 CI artifact).
+- [ ] Complete the separate manual visual review and record sign-off in PR #482.
 - [x] Track each acceptance item in the PR description.
 - [ ] Do not merge until the full validation suite passes on the final head.
 
@@ -114,4 +116,4 @@ Validated on exact PR head `78f1cce41a88917cc47a10e11f8d2fd4a778f977` in [CI run
 - [x] Full dependency audit (configured high-severity threshold passed; 4 low-severity advisories remain).
 - [x] Production dependency audit (0 production vulnerabilities reported).
 
-Manual before/after screenshots were not captured; the automated browser geometry and interaction checks passed.
+The original PR #301 delivery did not capture before/after screenshots. PR #482 closes that evidence gap by building the exact PR base and head, running the same deterministic Playwright journey against both, and uploading matching admin-ticker and guest-Balance screenshots at 390x844, 768x1024, and 1440x900. The synthetic fixture is not live-account evidence. The separate manual visual review remains open until a maintainer reviews the artifact.

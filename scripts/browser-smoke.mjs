@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -369,6 +370,43 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
   throw new Error('Timed out waiting for ' + label + '.');
 }
 
+const UX_SCREENSHOT_VIEWPORTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 }
+];
+
+async function captureUxReviewScreenshots(page, surface) {
+  const outputDirectory = process.env.UX_SCREENSHOT_DIR;
+  if (!outputDirectory) return;
+
+  await mkdir(outputDirectory, { recursive: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  for (const viewport of UX_SCREENSHOT_VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      ));
+    });
+
+    const filename = surface + '-' + viewport.name + '-' +
+      viewport.width + 'x' + viewport.height + '.png';
+    const screenshotPath = join(outputDirectory, filename);
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage: false,
+      animations: 'disabled',
+      caret: 'hide'
+    });
+    console.log('[UX visual review] Captured ' + screenshotPath);
+  }
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
 
 async function assertResponsiveLayout(page, width) {
   await page.setViewportSize({ width, height: 900 });
@@ -803,6 +841,8 @@ try {
   // Exercise the real News dialog with a deterministic provider response.
   const marketInsights = page.locator('#marketInsightsPanel');
   await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#boardTitle').waitFor({ state: 'visible', timeout: 10_000 });
+  await captureUxReviewScreenshots(page, 'admin-ticker');
   await waitForCondition(
     () => worker.calls.some((call) => call.action === 'news'),
     'Market Insights company news request'
@@ -1065,6 +1105,11 @@ try {
   if (!publishedGuestSnapshot?.snapshot?.tranches?.some((tranche) => String(tranche.ticker || '').toUpperCase().includes('AAPL'))) {
     throw new Error('Guest login could not verify the AAPL assignment published by the administrator.');
   }
+
+  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('.guest-stock-card-enter').first().waitFor({ state: 'visible', timeout: 20_000 });
+  await captureUxReviewScreenshots(page, 'guest-balance');
 
   await page.getByRole('button', { name: 'LOTS' }).click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });

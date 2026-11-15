@@ -20,3 +20,27 @@ describe('financial target and carry-break-even scope', () => {
     expect(runtimeSource).toContain('${analystTargetLabel} · ${snapshot.source}');
   });
 });
+
+describe('Stage 3 before/after visual review evidence', () => {
+  const smokeSource = readFileSync(new URL('../../scripts/browser-smoke.mjs', import.meta.url), 'utf8');
+  const workflowSource = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+  it('captures the admin ticker and guest Balance surfaces at mobile, tablet and desktop sizes', () => {
+    expect(smokeSource).toContain("captureUxReviewScreenshots(page, 'admin-ticker')");
+    expect(smokeSource).toContain("captureUxReviewScreenshots(page, 'guest-balance')");
+    expect(smokeSource).toContain("{ name: 'mobile', width: 390, height: 844 }");
+    expect(smokeSource).toContain("{ name: 'tablet', width: 768, height: 1024 }");
+    expect(smokeSource).toContain("{ name: 'desktop', width: 1440, height: 900 }");
+    expect(smokeSource).toContain('process.env.UX_SCREENSHOT_DIR');
+  });
+
+  it('compares the PR base build with the PR head and uploads the matching captures', () => {
+    expect(workflowSource).toContain('git worktree add --detach "$BEFORE_WORKTREE" "$PR_BASE_SHA"');
+    expect(workflowSource).toContain('AFTER_CHECKOUT_SHA="$(git rev-parse HEAD)"');
+    expect(workflowSource).toContain('After tested checkout (PR merge candidate): $AFTER_CHECKOUT_SHA');
+    expect(workflowSource).toContain('UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/before"');
+    expect(workflowSource).toContain('UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/after"');
+    expect(workflowSource).toContain('ux-visual-review-${{ github.event.pull_request.number }}-${{ github.run_id }}');
+    expect(workflowSource).toContain('path: artifacts/ux-visual-review/');
+  });
+});
