@@ -43,7 +43,7 @@ The screenshots use synthetic mocked account/broker data from the production-bro
 
 The administrator board now has a distinct decision-KPI strip directly below the board title:
 
-- **Combined Portfolio:** net return at targets, portfolio-wide carry break-even, account equity, margin debt (with daily carry), and margin-risk status.
+- **Combined Portfolio:** the board title shows only the portfolio name and position count; net return at targets appears once in the KPI strip, alongside portfolio-wide carry break-even, account equity, margin debt (with daily carry), and margin-risk status.
 - **Single ticker:** portfolio-wide carry break-even, allocated equity, allocated margin debt (with daily carry), and margin-risk status. Ticker PT and net target return remain in the board title and are not repeated in the KPI strip.
 - Supporting market valuation, invested basis, commissions, accrued margin interest, ticker quote provenance and volume remain in the detailed three-group summary below the KPI strip.
 

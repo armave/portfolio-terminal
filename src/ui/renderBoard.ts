@@ -1,6 +1,5 @@
 import { setBoardTitle } from './uiStateStore';
 import {
-  calculateCombinedMetrics,
   calculatePositionMetrics
 } from '../domain/portfolioSelectors';
 export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
@@ -42,11 +41,9 @@ function renderSummaryCards(
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
   if (isCombined) {
-    const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
-
     setBoardTitle({
       title: tickers.length > 0
-        ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
+        ? `COMBINED PORTFOLIO (${tickers.length} Positions)`
         : 'NO ACTIVE MARGIN POSITIONS',
       showDailyMove: true
     });

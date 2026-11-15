@@ -5,6 +5,8 @@ const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
 const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
+const renderBoardSource = readFileSync(new URL('./renderBoard.ts', import.meta.url), 'utf8');
+
 describe('financial target and carry-break-even scope', () => {
   it('does not show a selected ticker analyst target as a Combined Portfolio metric', () => {
     expect(appSource).toContain("activeDeskView === 'COMBINED' ? ' hidden' : ''");
@@ -45,5 +47,18 @@ describe('Stage 3 before/after visual review evidence', () => {
     expect(workflowSource).toContain('UX_SCREENSHOT_DIR="$GITHUB_WORKSPACE/artifacts/ux-visual-review/after"');
     expect(workflowSource).toContain('ux-visual-review-${{ github.event.pull_request.number }}-${{ github.run_id }}');
     expect(workflowSource).toContain('path: artifacts/ux-visual-review/');
+  });
+});
+
+describe('financial title and KPI single-source presentation', () => {
+  it('keeps Combined net-target return in its KPI and retains PT/return in an individual ticker title', () => {
+    const combinedTitle = renderBoardSource.slice(
+      renderBoardSource.indexOf('if (isCombined)'),
+      renderBoardSource.indexOf("if (typeof onRenderAnalystConsensus === 'function' && tickers[0])")
+    );
+    expect(combinedTitle).toContain('COMBINED PORTFOLIO (${tickers.length} Positions)');
+    expect(combinedTitle).not.toContain('Net Target');
+    expect(renderBoardSource).toContain('${metrics.netPct.toFixed(2)}% Net Target');
+    expect(renderBoardSource).toContain('${formatUSD(pos.pt)} PT');
   });
 });
