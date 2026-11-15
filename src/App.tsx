@@ -465,7 +465,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {/* Guest-only assignment history is a standalone destination, separate from Balance. */}
           {permissions.canViewGuestTrancheHistory && <div
             id="guestHistoryContainer"
-            class={`standard-desk-container desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
+            class={`standard-desk-container desk-view-transition text-center md:text-left min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
           >
             {hasOpenedGuestHistory
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}>

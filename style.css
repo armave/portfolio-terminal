@@ -2027,6 +2027,7 @@ summary:focus-visible {
 
 #tradingWorkspaceGrid>#cashCushionContainer {
   min-width: 0;
+  margin-top: 10px;
 }
 
 @media (min-width: 65rem) {}
@@ -4763,4 +4764,9 @@ table tbody tr:hover {
     width: 100%;
     margin-left: 0;
   }
+}
+
+.details-symbol {
+  position: relative;
+  top: -0.25rem;
 }
