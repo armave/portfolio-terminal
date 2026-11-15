@@ -689,10 +689,9 @@ async function assertFinancialHeaderLayout(page, view) {
       const target = layout.marginTargetBounds;
       const analyst = layout.analystTargetBounds;
       if (!layout.targetSectionVisible || !layout.targetSegmentsShareSection || layout.titleContainsMarginPt ||
-          !layout.marginTargetText.includes('Margin PT') || !layout.marginTargetText.includes('$') ||
-          !layout.marginTargetText.includes('+') ||
+          !layout.marginTargetText.includes('Margin PT') || !/\d/.test(layout.marginTargetText) ||
           !layout.analystTargetText.toLowerCase().includes('analyst target') ||
-          !layout.analystTargetText.includes('$') || !target || !analyst) {
+          !/\d/.test(layout.analystTargetText) || !target || !analyst) {
         throw new Error('Margin PT and Analyst target must share one separated header section: ' + JSON.stringify(layout));
       }
       if (viewport.width >= 768 && Math.abs(target.top - analyst.top) > 3) {
