@@ -5,6 +5,7 @@ import { formatUSD } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
+import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 interface GuestTrancheHistoryProps {
@@ -49,17 +50,18 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     : formatUSD(summary.currentMarketValue);
 
   return (
-    <section id="guestTrancheHistory" class="text-center md:text-left space-y-3 rounded-xl border border-indigo-900/50 bg-slate-950/50 p-3 sm:p-4"
+    <section id="guestTrancheHistory" class="desk-page-content min-w-0 space-y-4"
       aria-labelledby="guestTrancheHistoryHeading">
-      <div class="flex flex-wrap items-start justify-center md:justify-between gap-2 border-b border-slate-800 pb-3">
-        <div>
-          <h1 id="guestTrancheHistoryHeading" class="text-sm font-black uppercase tracking-wide text-indigo-300">LOTS</h1>
-          <p class="mt-1 text-[10px] text-slate-500">Your cash-funded purchase allocations, including completed and removed assignments</p>
-        </div>
-        <span class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] tabular-nums text-slate-400">
-          {filteredRecords.length} / {records.length} records
-        </span>
-      </div>
+      <DeskPageHeader
+        title={translateText('LOTS', getAppLanguage())}
+        description={translateText('Your cash-funded purchase allocations, including completed and removed assignments', getAppLanguage())}
+        titleId="guestTrancheHistoryHeading"
+        trailing={
+          <span class="text-xs tabular-nums text-slate-400">
+            {translateText(`${filteredRecords.length} records`, getAppLanguage())} / {translateText(`${records.length} records`, getAppLanguage())}
+          </span>
+        }
+      />
 
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">

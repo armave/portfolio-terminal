@@ -24,6 +24,7 @@ import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
+import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
@@ -642,48 +643,24 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   }
 
   return (
-    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
-      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
-        <div>
-          <h1 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
-            Trades
+    <section class="desk-page-content min-w-0 space-y-4" aria-label={translateText('Trades', getAppLanguage())}>
+      <DeskPageHeader
+        title={(
+          <>
+            {translateText('Trades', getAppLanguage())}
             {isBackgroundUpdating && (
-              <span
-                role="status"
-                aria-label={translateText('Updating saved trade calculations in the background…')}
-                title={translateText('Updating saved trade calculations in the background…')}
-                class="inline-flex h-4 w-4 items-center justify-center text-purple-300"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none"
-                  fill="none"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeDasharray="24 14"
-                  />
+              <span role="status" aria-label={translateText('Updating saved trade calculations in the background…', getAppLanguage())} title={translateText('Updating saved trade calculations in the background…', getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
+                <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
                 </svg>
               </span>
             )}
-          </h1>
-          <p class="text-xs text-slate-400">
-            Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="text-xs font-mono text-slate-500">
-            {trades.length} records
-          </div>
-        </div>
-      </div>
-
+          </>
+        )}
+        description={translateText('Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.', getAppLanguage())}
+        trailing={<div class="text-xs font-mono text-slate-500">{translateText(`${trades.length} records`, getAppLanguage())}</div>}
+      />
+      
       <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
         <button
           type="button"
@@ -778,7 +755,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
+            {realizedNet >= 0 ? '+' : '−'}{formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
@@ -788,7 +765,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
-          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
+          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}{formatUSD(totalFees)}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
@@ -972,17 +949,17 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
                       </div>
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      ${formatUSD(fees)}
+                      {formatUSD(fees)}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      {commissionsComplete === false ? '≥' : ''}${formatUSD(Number(rowCommissions ?? 0))}
+                      {commissionsComplete === false ? '≥' : ''}{formatUSD(Number(rowCommissions ?? 0))}
                     </td>
                     <td
                       class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
                     >
-                      {netProfit === null ? "—" : profitTextPrefix + sign + "$" + formatUSD(Math.abs(netProfit))}
+                      {netProfit === null ? "—" : profitTextPrefix + sign + formatUSD(Math.abs(netProfit))}
                     </td>
                     </tr>
                 );

@@ -13,6 +13,7 @@ import { getAppLanguage, translateText, type AppLanguage } from '../services/i18
 import { useCloudSyncStatus } from '../ui/uiStateStore';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { TableScrollRegion } from './TableScrollRegion';
+import { DeskPageHeader } from './DeskPageHeader';
 import { TablePagination } from './TablePagination';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
@@ -328,14 +329,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
 
   return (
     <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
-      <div class="settings-header border-b border-slate-800 pb-3">
-        <h1 class="text-lg font-black text-slate-200 tracking-wide">
-          {translateText('Settings')}
-        </h1>
-        <p class="text-xs text-slate-400">
-          {translateText('Manage account, data, and application preferences.')}
-        </p>
-      </div>
+      <DeskPageHeader
+        title={translateText('Settings', getAppLanguage())}
+        description={translateText('Manage account, data, and application preferences.', getAppLanguage())}
+      />
 
       <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
         <a href="#settings-account-section">{translateText('Account')}</a>

@@ -220,16 +220,16 @@ describe('active tranche market price', () => {
 
 describe('cash holdings daily quote range', () => {
   it('formats the actual high and low prices instead of placeholder text', () => {
-    expect(formatDailyQuoteRange({ high: 123.45, low: 120 })).toBe('H 123.45 / L 120.00');
+    expect(formatDailyQuoteRange({ high: 123.45, low: 120 })).toBe('H $123.45 / L $120.00');
   });
 });
 
 describe('guest stock subheader daily move formatting', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows the native daily price change without adding a currency symbol', () => {
-    expect(deskSource).toContain('Math.abs(details.change).toFixed(2)');
-    expect(deskSource).not.toContain('formatUSD(Math.abs(details.change))');
+  it('shows the daily monetary price change with the shared USD symbol', () => {
+    expect(deskSource).toContain('formatUSD(Math.abs(details.change))');
+    expect(deskSource).not.toContain('Math.abs(details.change).toFixed(2)');
   });
 });
 
