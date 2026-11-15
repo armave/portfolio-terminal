@@ -79,6 +79,8 @@ export default defineConfig({
     startupCriticalCssPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Inject a standalone register script instead of importing a PWA virtual module.
+      injectRegister: 'script',
       includeAssets: ['ico.svg'],
       manifest: {
         name: 'Portfolio Terminal',

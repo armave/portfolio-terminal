@@ -7,6 +7,17 @@ import { assertEntryBundleBudget, ENTRY_BUNDLE_BUDGET } from './bundleBudget.js'
 try {
   await build();
 
+  // Verify the PWA plugin injects service-worker registration without an app-side
+  // virtual module import. This protects production registration from regressions.
+  const [builtHtml, registrationScript] = await Promise.all([
+    readFile(path.resolve('dist/index.html'), 'utf8'),
+    readFile(path.resolve('dist/registerSW.js'), 'utf8')
+  ]);
+  if (!builtHtml.includes('registerSW.js') || registrationScript.length === 0) {
+    throw new Error('Expected a non-empty PWA registerSW.js script referenced by dist/index.html.');
+  }
+  console.log('[PWA] Service-worker registration script was injected into production HTML.');
+
   const assetsDirectory = path.resolve('dist/assets');
   const assets = await readdir(assetsDirectory);
   const entryAssets = assets.filter((name) => /^index-[\w-]+\.js$/.test(name));
