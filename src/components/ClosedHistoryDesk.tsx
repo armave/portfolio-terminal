@@ -651,7 +651,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
             {isBackgroundUpdating && (
               <span role="status" aria-label={translateText('Updating saved trade calculations in the background…', getAppLanguage())} title={translateText('Updating saved trade calculations in the background…', getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
                 <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="24 14" />
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
                 </svg>
               </span>
             )}
