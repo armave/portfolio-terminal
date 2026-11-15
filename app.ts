@@ -964,7 +964,8 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const setText = (text: string) => setBreakevenText(text);
+  const carryLabel = translateText('Portfolio carry break-even', getAppLanguage());
+  const setText = (status: string) => setBreakevenText(carryLabel + ': ' + status);
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
@@ -997,28 +998,28 @@ function updateCombinedBreakeven() {
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
 
   if (tickers.length === 0 || totalInvested === 0) {
-    setText("Breakeven: No active trades");
+    setText(translateText('No active trades', getAppLanguage()));
     return;
   }
 
   if (totalDebt <= 0) {
-    setText("Breakeven: No margin debt");
+    setText(translateText('No margin debt', getAppLanguage()));
     return;
   }
 
   if (netTargetProfit <= 0) {
-    setText("Breakeven: No date");
+    setText(translateText('No date', getAppLanguage()));
     return;
   }
 
   if (getDailyRate() === 0) {
-    setText("Breakeven: No date");
+    setText(translateText('No date', getAppLanguage()));
     return;
   }
 
   const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
   if (beDays === null) {
-    setText("Breakeven: No non-negative breakeven date");
+    setText(translateText('No non-negative breakeven date', getAppLanguage()));
     return;
   }
 
@@ -1026,7 +1027,7 @@ function updateCombinedBreakeven() {
   beDate.setDate(beDate.getDate() + beDays);
   const beDateStr = beDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  setText(`Breakeven: ${beDays} days (${beDateStr})`);
+  setText(beDays + ' ' + translateText('days', getAppLanguage()) + ' (' + beDateStr + ')');
 }
 
 function renderBoard() {
@@ -1074,6 +1075,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 function renderBoardAnalystConsensus(ticker: string, force = false) {
   const publish = (text: string, title = '', className = 'hidden') => setAnalystConsensus({ text, title, className });
   const hideConsensus = () => publish('');
+  const analystTargetLabel = translateText('Analyst target', getAppLanguage());
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
     return;
@@ -1092,9 +1094,9 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
-      publish(`${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`, `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`, `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`);
+      publish(`${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`, `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`, `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`);
     } else {
-      publish(`${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`, `Price target from ${snapshot.source}.`, 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300');
+      publish(`${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · current price unavailable`, `Price target from ${snapshot.source}.`, 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300');
     }
     return;
   }

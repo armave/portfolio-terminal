@@ -343,3 +343,25 @@ describe('accessible Margin Health overview action', () => {
     expect(modal).not.toContain('MarginRiskModalTab');
   });
 });
+
+
+describe('cross-device financial summary hierarchy', () => {
+  const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+
+  it('uses the canonical target-return selectors and keeps the risk card ahead of secondary tools', () => {
+    expect(source).toContain('calculateCombinedMetrics(state, rules, tickers, dailyRate).netPct');
+    expect(source).toContain('calculatePositionMetrics(state, pos, rules, dailyRate).netPct');
+    const riskCard = source.lastIndexOf('<MarginRiskGaugeCard');
+    const marketTools = source.lastIndexOf('<MarginMarketTools');
+    expect(riskCard).toBeGreaterThan(-1);
+    expect(marketTools).toBeGreaterThan(-1);
+    expect(riskCard).toBeLessThan(marketTools);
+  });
+
+  it('labels owner targets separately from analyst targets and distinguishes combined target return', () => {
+    expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
+    expect(source).toContain("translateText('Your PT / Net return at target', getAppLanguage())");
+    expect(source).toContain("translateText('Net return at targets', getAppLanguage())");
+    expect(source).toContain('id="boardNetTargetReturn"');
+  });
+});

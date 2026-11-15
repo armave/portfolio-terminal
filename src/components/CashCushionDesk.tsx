@@ -449,7 +449,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class={`flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2 ${!isAdmin && 'hidden'}`}>
+      <div class="flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-lg font-black text-cyan-400 tracking-wide">
@@ -554,7 +554,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
               const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
-                <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
+                <article
+                  key={holding.ticker}
+                  class={'guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm ' + (guestHoldings.length === 1 ? 'sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-2xl' : '')}
+                >
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <div class="flex items-center gap-2">
@@ -563,7 +566,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     </div>
                     {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
                   </div>
-                  <div class="mt-4">
+                  <div class="mt-3">
                     <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
                     <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
                     {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
@@ -572,37 +575,40 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
                     </p>
                   </div>
-                  <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                  <div class="mt-3 grid grid-cols-2 gap-2.5 border-t border-slate-800 pt-3">
                     <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
                   </div>
-                  <div class="mt-4 border-t border-slate-800 pt-3">
-                    <div class="mb-2 flex items-center justify-between gap-2">
-                      <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? 'tranche' : 'tranches'}</span>
-                    </div>
+                  <div class="mt-3 border-t border-slate-800 pt-2">
                     {relatedTranches.length === 0 ? (
-                      <p class="text-[10px] text-slate-500">No active tranche details available.</p>
+                      <p class="text-[10px] text-slate-500">{translateText('No active tranche details available.', getAppLanguage())}</p>
                     ) : (
-                      <div class="space-y-2">
-                        {relatedTranches.map((tranche) => {
-                          const trancheDate = tranche.purchasedAt !== null
-                            ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
-                            : 'Date unavailable';
-                          return (
-                            <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
-                              <div class="flex flex-wrap items-center justify-between gap-2">
-                                <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                      <details class="guest-tranche-details">
+                        <summary class="flex min-h-11 list-none cursor-pointer items-center justify-between gap-2 rounded px-1 py-1 text-xs font-semibold text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                          <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? translateText('tranche', getAppLanguage()) : translateText('tranches', getAppLanguage())}</span>
+                          <span class="text-cyan-300">{translateText('Details', getAppLanguage())} <span aria-hidden="true">⌄</span></span>
+                        </summary>
+                        <div class="mt-2 space-y-2">
+                          {relatedTranches.map((tranche) => {
+                            const trancheDate = tranche.purchasedAt !== null
+                              ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
+                              : 'Date unavailable';
+                            return (
+                              <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                  <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                                </div>
+                                <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                                  <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
+                                  <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
+                                </div>
                               </div>
-                              <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                                <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
-                                <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      </details>
                     )}
                   </div>
                 </article>

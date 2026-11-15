@@ -339,7 +339,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   {breakevenText}
                 </div>}
 
-                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
+                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className + (activeDeskView === 'COMBINED' ? ' hidden' : '')} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>
 
 

@@ -577,3 +577,26 @@ describe('cash holding model summaries and display groups', () => {
     ]);
   });
 });
+
+
+describe('guest holding card compact presentation', () => {
+  const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('shows the existing My Stocks heading without adding another portfolio-value summary', () => {
+    expect(source).toContain("guestUserId ? 'MY STOCKS'");
+    expect(source).not.toContain('Assigned portfolio market value');
+    expect(source).toContain('Current market value');
+  });
+
+  it('centers one desktop holding card and keeps tranche details collapsed until requested', () => {
+    expect(source).toContain('sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-2xl');
+    expect(source).toContain('<details class="guest-tranche-details">');
+    expect(source).toContain('<summary class="flex min-h-11 list-none cursor-pointer');
+  });
+
+  it('localizes the new break-even and guest detail labels in Russian', () => {
+    expect(translateText('Portfolio carry break-even', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
+    expect(translateText('Details', 'ru')).toBe('Детали');
+    expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
+  });
+});

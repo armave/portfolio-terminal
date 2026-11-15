@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
-let breakevenText = 'Breakeven: 0 days';
+let breakevenText = 'Portfolio carry break-even: 0 days';
 const breakevenTextListeners = new Set<(text: string) => void>();
 
 /** Publish the current combined-portfolio breakeven label. */
