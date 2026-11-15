@@ -927,7 +927,9 @@ try {
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
   await assertVisibleControlsHaveNames(page, 'administrator dashboard');
-  await assertStandardizedWorkspaceNavigation(page, 'admin');
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertStandardizedWorkspaceNavigation(page, 'admin');
+  }
   if (await page.locator('#cloudStatus').count() !== 1) {
     throw new Error('Cloud synchronization health must have one persistent header indicator.');
   }
@@ -1252,7 +1254,9 @@ try {
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   await submitAuth(page, { name: 'Smoke Guest', password: 'valid-smoke-password' });
   await waitForAuthOverlay(page, false);
-  await assertStandardizedWorkspaceNavigation(page, 'guest');
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertStandardizedWorkspaceNavigation(page, 'guest');
+  }
   const workspaceRestored = await page.locator('#mainTerminalView').evaluate((element) =>
     !element.closest('[inert]') && !element.closest('[aria-hidden="true"]')
   );
