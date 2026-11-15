@@ -54,6 +54,7 @@ const steps = [
   ...(!skipInstall ? [{ label: 'Install exact lockfile dependencies', run: () => npm('ci') }] : []),
   { label: 'TypeScript typecheck', run: () => npm('run', 'typecheck') },
   { label: 'Vitest unit and Worker suite', run: () => npm('test') },
+  { label: 'Vite development server smoke', run: () => npm('run', 'test:dev-server') },
   { label: 'Production build', run: () => npm('run', 'build') },
   { label: 'Install pinned Playwright runner', run: () => npm('run', 'setup:browser-tests') },
   { label: 'Install Chromium browser', run: () => node('node_modules/playwright/cli.js', 'install', 'chromium') },

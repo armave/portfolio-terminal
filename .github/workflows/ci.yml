@@ -44,6 +44,10 @@ jobs:
         id: tests
         run: npm test
 
+      - name: Smoke-test Vite development server
+        id: dev_server
+        run: npm run test:dev-server
+
       - name: Validate dead code
         id: dead_code
         run: npm run validate:dead-code
@@ -64,6 +68,7 @@ jobs:
           DEPENDENCIES_RESULT: ${{ steps.install_dependencies.outcome || 'not-run' }}
           TYPECHECK_RESULT: ${{ steps.typecheck.outcome || 'not-run' }}
           TESTS_RESULT: ${{ steps.tests.outcome || 'not-run' }}
+          DEV_SERVER_RESULT: ${{ steps.dev_server.outcome || 'not-run' }}
           DEAD_CODE_RESULT: ${{ steps.dead_code.outcome || 'not-run' }}
           DEPENDENCY_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
           PRODUCTION_AUDIT_RESULT: ${{ steps.production_audit.outcome || 'not-run' }}
@@ -86,6 +91,7 @@ jobs:
             echo "| npm ci | $DEPENDENCIES_RESULT |"
             echo "| Typecheck | $TYPECHECK_RESULT |"
             echo "| Vitest | $TESTS_RESULT |"
+            echo "| Vite development server smoke | $DEV_SERVER_RESULT |"
             echo "| Dead-code validation | $DEAD_CODE_RESULT |"
             echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
             echo "| Production dependency audit | $PRODUCTION_AUDIT_RESULT |"

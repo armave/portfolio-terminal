@@ -72,6 +72,12 @@ function startupCriticalCssPlugin(): Plugin {
 
 export default defineConfig({
   base: '/portfolio-terminal/',
+  optimizeDeps: {
+    rolldownOptions: {
+      // Resolve this plugin-owned module at runtime, not in Vite's static dep scan.
+      external: ['virtual:pwa-register']
+    }
+  },
   appType: 'spa',
   plugins: [
     preact(),

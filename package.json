@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && node scripts/build.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:dev-server": "node scripts/dev-server-smoke.mjs",
     "knip": "npx --yes knip",
     "validate:dead-code": "npm run knip",
     "audit:dependencies": "npm audit --audit-level=high",
