@@ -17,7 +17,8 @@
 - [x] Reuse the same exact production artifact for the application-shell and Operations browser journeys.
 - [x] Keep Operations Browser Journey manually runnable without repeating PR unit/static validation.
 - [x] Add CodeQL JavaScript/TypeScript analysis.
-- [x] Add full-history and working-tree Gitleaks scanning with redacted output.
+- [x] Add blocking Gitleaks scanning for commits introduced by each PR/push, with redacted output and sanitized finding metadata.
+- [x] Retain a scheduled/manual full-history Gitleaks audit as advisory, without ignoring legacy findings.
 - [x] Add actionlint and zizmor workflow-security analysis.
 - [x] Pin referenced GitHub Actions to immutable commit SHAs.
 - [x] Add weekly grouped Dependabot updates for npm and GitHub Actions.
@@ -30,7 +31,8 @@
 
 - [ ] actionlint passes for all checked-in workflows.
 - [ ] zizmor reports no medium-or-higher severity/confidence findings.
-- [ ] Gitleaks full-history scan passes, or each finding is reviewed and handled as a confirmed leak or a narrowly documented false positive.
+- [ ] New-commit Gitleaks scan passes on the exact PR head.
+- [ ] Scheduled/manual historical Gitleaks audit reports only the documented legacy findings or any newly discovered exposure.
 - [ ] CodeQL completes successfully for JavaScript/TypeScript.
 - [ ] Pull Request CI quality and unit-test job passes.
 - [ ] Production build and artifact job passes.
@@ -44,6 +46,7 @@
 ## Explicit follow-ups
 
 - [ ] Enable required branch-protection checks for `dev` (and `main` where applicable) in GitHub repository settings. Workflow YAML cannot enforce this setting.
+- [x] Inspect and document the nine pre-existing historical Gitleaks false positives; keep the full-history audit visible without weakening the new-commit gate.
 - [ ] Add Vitest coverage reporting and measured module-level thresholds after introducing a version-matched coverage provider and updating `package.json` and `package-lock.json` together. No arbitrary global coverage threshold is introduced here.
 - [ ] Authenticated TradeNet, live Market Depth, and live provider verification remain manual release gates; mocked CI does not certify those integrations.
 
