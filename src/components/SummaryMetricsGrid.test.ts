@@ -359,12 +359,13 @@ describe('cross-device financial header hierarchy', () => {
   const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
   it('renders the proposed Combined Portfolio decision KPIs above the supporting financial detail', () => {
+    expect(source).toContain('data-header-metric={metric}');
     const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
-    expect(combinedView).toContain('data-header-metric="net-target-return"');
-    expect(combinedView).toContain('data-header-metric="carry-break-even"');
-    expect(combinedView).toContain('data-header-metric="account-equity"');
-    expect(combinedView).toContain('data-header-metric="margin-debt"');
-    expect(combinedView).toContain('data-header-metric="margin-risk"');
+    expect(combinedView).toContain('metric="net-target-return"');
+    expect(combinedView).toContain('metric="carry-break-even"');
+    expect(combinedView).toContain('metric="account-equity"');
+    expect(combinedView).toContain('metric="margin-debt"');
+    expect(combinedView).toContain('metric="margin-risk"');
     expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
       combinedView.indexOf('class="portfolio-micro-summary"')
     );
@@ -376,11 +377,11 @@ describe('cross-device financial header hierarchy', () => {
   it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
-    expect(singleTickerView).toContain('data-header-metric="carry-break-even"');
-    expect(singleTickerView).toContain('data-header-metric="allocated-equity"');
-    expect(singleTickerView).toContain('data-header-metric="margin-debt"');
-    expect(singleTickerView).toContain('data-header-metric="margin-risk"');
-    expect(singleTickerView).not.toContain('data-header-metric="net-target-return"');
+    expect(singleTickerView).toContain('metric="carry-break-even"');
+    expect(singleTickerView).toContain('metric="allocated-equity"');
+    expect(singleTickerView).toContain('metric="margin-debt"');
+    expect(singleTickerView).toContain('metric="margin-risk"');
+    expect(singleTickerView).not.toContain('metric="net-target-return"');
     expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
     expect(singleTickerView).not.toContain('Your PT / Net return at target');
     expect(singleTickerView).not.toContain('calculatePositionMetrics');
