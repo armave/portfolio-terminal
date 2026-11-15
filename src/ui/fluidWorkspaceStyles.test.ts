@@ -27,10 +27,10 @@ describe('fluid workspace styles', () => {
 
   it('keeps each financial summary group full-width on mobile', () => {
     expect(fluidStyles).toMatch(
-      /@media\\s*\\(max-width:\\s*767px\\)\\s*\\{[^}]*#portfolioMetricsGrid\\s*>\\s*\\.portfolio-micro-summary\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/s
+      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
     );
     expect(fluidStyles).toMatch(
-      /#portfolioMetricsGrid\\s*>\\s*\\.portfolio-micro-summary\\s*>\\s*\\.portfolio-micro-column\\s*\\{[^}]*grid-column:\\s*1\\s*\\/\\s*-1;[^}]*width:\\s*100%;/s
+      /#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
     );
   });
 
