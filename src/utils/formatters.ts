@@ -237,7 +237,3 @@ export function decodeHtmlEntities(text: string): string {
     return String.fromCodePoint(codePoint);
   });
 }
- + amount;
-}
-
-/** Formats an already-currency-labelled table value with locale grouping and consistent signs. */
