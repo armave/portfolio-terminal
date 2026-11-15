@@ -208,3 +208,38 @@ Use the repository PR template to record:
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
+## 8. CI security and pipeline hardening — 2026-11-15
+
+### PR validation layout
+
+`Pull Request CI` is the single PR entry point. The `Static validation and unit tests` and `Production build and artifact` jobs run independently. The production build is uploaded once and reused by the `Production browser smoke and performance` job and the reusable `Operations Browser Journey` workflow. This removes repeated typecheck, Vitest, dead-code, dependency-audit, and production-build execution from the Operations workflow while retaining its independent account/Settings/guest browser journey.
+
+The Operations Browser Journey remains manually runnable. A manual run builds the production site itself; a run invoked by PR CI consumes the exact build artifact from that workflow run. Both browser journeys remain deterministic and mocked; neither is evidence of live broker connectivity.
+
+### Security and supply-chain checks
+
+`Security & Workflow Validation` runs on pull requests, pushes to `dev` and `main`, manual dispatch, and a weekly schedule:
+
+- CodeQL analysis for JavaScript and TypeScript.
+- Gitleaks against commits introduced by the PR/push as a blocking gate, with secret contents redacted and only finding metadata reported. A separate scheduled/manual full-history audit is advisory so previously committed legacy matches remain visible without blocking unrelated PRs.
+- actionlint validation for all checked-in GitHub Actions workflows.
+- zizmor analysis for GitHub Actions security patterns, with medium-or-higher severity and confidence findings treated as failures.
+- Dependabot weekly grouped updates for npm production/development dependencies and GitHub Actions.
+
+All third-party Actions referenced by the PR, security, operations, and Pages workflows are pinned to immutable commit SHAs. The Cloudflare Wrangler action was already SHA-pinned and remains so. Dependabot monitors the pinned Actions for updates.
+
+### Deployment validation
+
+The Pages workflow now runs the production browser smoke against the exact build before uploading the Pages artifact. The Worker deployment remains restricted to `main` and now adds TypeScript validation, focused Worker/authentication tests, and both full and production dependency audits before deploying the pinned Wrangler action.
+
+### Required checks and repository settings
+
+Configure branch protection for `dev` (and `main`, if direct PRs are permitted) to require the PR validation jobs and security jobs. Expected PR checks are `Static validation and unit tests`, `Production build and artifact`, `Production browser smoke and performance`, `Operations Browser Journey / Account, Settings and guest browser journey`, `Workflow lint and security analysis`, `New-commit secret scan`, and `CodeQL JavaScript and TypeScript`. The scheduled/manual `Full-history secret audit (advisory)` is intentionally not a required PR check. GitHub branch-protection settings are repository configuration and cannot be set by committed workflow files.
+
+### Historical Gitleaks baseline review
+
+The first full-history scan reported nine historic matches. Source inspection found seven matches on legacy Finnhub credential-field/variable references in `app.js` and two matches on synthetic idempotency-key test strings in `src/store/portfolioStore.test.ts`; the cited source lines contained no hardcoded credential assignments. These historic matches are retained in the scheduled/manual advisory audit. The blocking PR/push scan checks only newly introduced commits, so new secrets remain merge-blocking without adding a broad ignore list.
+
+### Coverage status
+
+This CI hardening slice does not add a numeric Vitest coverage threshold or coverage artifact. The current lockfile does not include a Vitest coverage provider, and no measured module-level baseline is recorded. Add a version-matched coverage provider and focused domain/store/Worker thresholds in a follow-up that updates and validates `package.json` and `package-lock.json` together; do not introduce arbitrary global thresholds.
