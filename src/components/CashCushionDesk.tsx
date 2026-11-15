@@ -1,13 +1,13 @@
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
-import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import { sentimentLabel, SentimentDirection, calculateTargetUpsidePercent } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
 import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
-import { getCachedUsers, listUsers, type AuthUser } from '../services/api';
+import { getCachedUsers, listUsers, fetchYahooDeepStockData, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
@@ -32,6 +32,7 @@ import {
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
+import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -45,6 +46,11 @@ const BADGE_STYLES: Record<string, string> = {
 const EMPTY_TRANCHE_MIXES: Record<string, ActiveTrancheMix> = {};
 const EMPTY_TRANCHE_TYPES: Record<string, ActiveTrancheType> = {};
 const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
+
+type GuestAnalystTarget = {
+  status: 'loading' | 'available' | 'unavailable';
+  targetPrice?: number;
+};
 
 type MixInputDraft = {
   value: string;
@@ -346,6 +352,48 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     })
     : [], [guestUserId, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
   const holdings = isAdmin ? cashHoldings : guestHoldings;
+  const guestAnalystTickerKey = guestUserId
+    ? [...new Set(guestHoldings.map((holding) => holding.ticker.trim().toUpperCase()))].sort().join('|')
+    : '';
+  const [guestAnalystTargets, setGuestAnalystTargets] = useState<Record<string, GuestAnalystTarget>>({});
+
+  useEffect(() => {
+    const tickers = guestAnalystTickerKey ? guestAnalystTickerKey.split('|').filter(Boolean) : [];
+    if (!guestUserId || tickers.length === 0) {
+      setGuestAnalystTargets({});
+      return;
+    }
+
+    const controller = new AbortController();
+    setGuestAnalystTargets((previous) => Object.fromEntries(
+      tickers.map((ticker) => [ticker, previous[ticker] || { status: 'loading' }])
+    ));
+
+    void Promise.all(tickers.map(async (ticker) => {
+      try {
+        const data = await fetchYahooDeepStockData(ticker, false, controller.signal);
+        const targetPrice = [data.analystTargets?.median, data.analystTargets?.mean, data.analystTargets?.high]
+          .find((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+        return [ticker, targetPrice ? { status: 'available' as const, targetPrice } : { status: 'unavailable' as const }] as const;
+      } catch {
+        return controller.signal.aborted
+          ? null
+          : [ticker, { status: 'unavailable' as const }] as const;
+      }
+    })).then((results) => {
+      if (controller.signal.aborted) return;
+      setGuestAnalystTargets((previous) => {
+        const next = { ...previous };
+        results.forEach((result) => {
+          if (result) next[result[0]] = result[1];
+        });
+        return next;
+      });
+    });
+
+    return () => controller.abort();
+  }, [guestUserId, guestAnalystTickerKey]);
+
   const setActiveTrancheType = (
     ticker: string,
     type: ActiveTrancheType,
@@ -436,7 +484,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   }
 
   return (
-    <div>
+    <div class="desk-page-content min-w-0">
       <style>{`
         @keyframes guest-stock-card-enter {
           from { opacity: 0; transform: translateY(6px); }
@@ -449,24 +497,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class={`flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2 ${!isAdmin && 'hidden'}`}>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-lg font-black text-cyan-400 tracking-wide">
-              {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
-            </h1>
-            {balanceRefreshing && (
-              <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
-                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
-                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
-                  <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-                </svg>
-                {translateText('Syncing…', getAppLanguage())}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      <DeskPageHeader
+        title={translateText(guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE', getAppLanguage())}
+        trailing={balanceRefreshing && (
+          <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
+              <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+            </svg>
+            {translateText('Syncing…', getAppLanguage())}
+          </span>
+        )}
+      />
 
       {isAdmin && (balanceSync.status === 'stale' || balanceSync.status === 'error') && (
         <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
@@ -554,7 +596,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
               const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
-                <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
+                <article
+                  key={holding.ticker}
+                  class={'guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-sm ' + (guestHoldings.length === 1 ? 'sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-2xl' : '')}
+                >
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <div class="flex items-center gap-2">
@@ -563,46 +608,78 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     </div>
                     {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
                   </div>
-                  <div class="mt-4">
-                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
-                    <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
-                    {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
-                    {renderDailyQuoteSubtext(holding.quoteDetails)}
-                    <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                      {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
-                    </p>
+                  <div class="instrument-target-section guest-stock-value-section mt-3">
+                    <div class="instrument-target-segment guest-stock-market-value">
+                      <div>
+                        <p class="instrument-target-label">{translateText('Current market value', getAppLanguage())}</p>
+                        <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
+                        {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
+                        {renderDailyQuoteSubtext(holding.quoteDetails)}
+                        <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
+                          {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
+                        </p>
+                      </div>
+                    </div>
+                    {(() => {
+                      const analystTarget = guestAnalystTargets[holding.ticker] || { status: 'loading' as const };
+                      const upside = analystTarget.status === 'available' && analystTarget.targetPrice
+                        ? calculateTargetUpsidePercent(analystTarget.targetPrice, price ?? Number.NaN)
+                        : undefined;
+                      return (
+                        <div class="instrument-target-segment guest-stock-analyst-target">
+                          <div class="min-w-0">
+                            <p class="instrument-target-label">{translateText('Analyst (Yahoo)', getAppLanguage())}</p>
+                            {analystTarget.status === 'available' && analystTarget.targetPrice ? (
+                              <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>
+                                <span class={"instrument-target-return " + (upside === undefined ? 'text-slate-400' : upside >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                                  {upside === undefined ? '—' : (upside >= 0 ? '+' : '') + upside.toFixed(2) + '%'}
+                                </span>
+                              </div>
+                            ) : (
+                              <p class="mt-1 text-xs font-semibold text-slate-400">
+                                {analystTarget.status === 'loading' ? translateText('Loading analyst target…', getAppLanguage()) : translateText('Analyst target unavailable', getAppLanguage())}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                  <div class="mt-3 grid grid-cols-2 gap-2.5 border-t border-slate-800 pt-3">
                     <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
                   </div>
-                  <div class="mt-4 border-t border-slate-800 pt-3">
-                    <div class="mb-2 flex items-center justify-between gap-2">
-                      <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? 'tranche' : 'tranches'}</span>
-                    </div>
+                  <div class="mt-3 border-t border-slate-800 pt-2">
                     {relatedTranches.length === 0 ? (
-                      <p class="text-[10px] text-slate-500">No active tranche details available.</p>
+                      <p class="text-[10px] text-slate-500">{translateText('No active tranche details available.', getAppLanguage())}</p>
                     ) : (
-                      <div class="space-y-2">
-                        {relatedTranches.map((tranche) => {
-                          const trancheDate = tranche.purchasedAt !== null
-                            ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
-                            : 'Date unavailable';
-                          return (
-                            <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
-                              <div class="flex flex-wrap items-center justify-between gap-2">
-                                <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                      <details class="guest-tranche-details">
+                        <summary class="flex min-h-11 list-none cursor-pointer items-center justify-between gap-2 rounded px-1 py-1 text-xs font-semibold text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
+                          <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? translateText('tranche', getAppLanguage()) : translateText('tranches', getAppLanguage())}</span>
+                          <span class="text-cyan-300">{translateText('Details', getAppLanguage())} <span class="details-symbol" aria-hidden="true">⌄</span></span>
+                        </summary>
+                        <div class="mt-2 space-y-2">
+                          {relatedTranches.map((tranche) => {
+                            const trancheDate = tranche.purchasedAt !== null
+                              ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
+                              : 'Date unavailable';
+                            return (
+                              <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                  <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                                </div>
+                                <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                                  <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
+                                  <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
+                                </div>
                               </div>
-                              <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                                <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
-                                <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      </details>
                     )}
                   </div>
                 </article>
@@ -611,77 +688,77 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </div>
         ) : (
           <>
-          <TableScrollRegion label="Cash-funded stock holdings" className="table-scroll-wrapper">
-            <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
-              <caption class="sr-only">Cash-funded stock holdings</caption>
-              <thead>
-                <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                  <th scope="col" class="w-[12%] py-2 px-2">Ticker</th>
-                  <th scope="col" class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Q</th>
-                  <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Mkt</th>
-                  <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg B.</th>
-                  <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Val.</th>
-                  <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Val.</th>
-                  <th scope="col" class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
-                  <th scope="col" class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
-                </tr>
-              </thead>
-              <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
-                {displayHoldingRows.length === 0 ? (
-                  <tr class="cash-holding-empty-row">
-                    <td colSpan={8} class="py-3 text-center text-slate-500 italic">
-                      {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
-                    </td>
+            <TableScrollRegion label="Cash-funded stock holdings" className="table-scroll-wrapper">
+              <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
+                <caption class="sr-only">Cash-funded stock holdings</caption>
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-400 font-medium">
+                    <th scope="col" class="w-[12%] py-2 px-2">Ticker</th>
+                    <th scope="col" class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Q</th>
+                    <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Mkt</th>
+                    <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg B.</th>
+                    <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Val.</th>
+                    <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Val.</th>
+                    <th scope="col" class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
+                    <th scope="col" class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
                   </tr>
-                ) : (
-                  visibleDisplayTableRows.map((row) => {
-                    if (row.type === 'group') {
+                </thead>
+                <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
+                  {displayHoldingRows.length === 0 ? (
+                    <tr class="cash-holding-empty-row">
+                      <td colSpan={8} class="py-3 text-center text-slate-500 italic">
+                        {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleDisplayTableRows.map((row) => {
+                      if (row.type === 'group') {
+                        return (
+                          <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
+                            <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>
+                              {row.label || (
+                                <>
+                                  <span aria-hidden="true" class="mx-auto block h-2.5 w-16 rounded-full bg-slate-700/80" />
+                                  <span class="sr-only">{translateText('Loading guest name', getAppLanguage())}</span>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const h = row.holding;
+                      const {
+                        shares,
+                        price,
+                        averagePrice,
+                        averageValue,
+                        marketValue: val,
+                        unrealizedPnl: totalDifference,
+                        unrealizedPnlPercent: totalDifferencePercent,
+                        allocation
+                      } = getCashHoldingDisplayMetrics(h, stocksTotal, unpricedHoldingCount);
+                      const hasAveragePrice = averagePrice !== null;
+                      const hasMarketComparison = totalDifference !== null && totalDifferencePercent !== null;
+                      const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
+
+                      const hasChange = typeof h.quoteDetails?.change === 'number' && Number.isFinite(h.quoteDetails.change);
+                      const hasChangePercent = typeof h.quoteDetails?.changePercent === 'number' &&
+                        Number.isFinite(h.quoteDetails?.changePercent);
+                      const direction: SentimentDirection = hasChange
+                        ? h.quoteDetails!.change! > 0
+                          ? 'bullish'
+                          : h.quoteDetails!.change! < 0
+                            ? 'bearish'
+                            : 'neutral'
+                        : 'unknown';
+                      const badgeText =
+                        hasChange && hasChangePercent
+                          ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
+                          : sentimentLabel(direction);
+
+                      const volume = formatQuoteVolume(h.quoteDetails?.volume)
+
                       return (
-                        <tr key={row.key} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
-                          <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300 text-center" style={{ textAlign: 'center' }}>
-                            {row.label || (
-                              <>
-                                <span aria-hidden="true" class="mx-auto block h-2.5 w-16 rounded-full bg-slate-700/80" />
-                                <span class="sr-only">{translateText('Loading guest name', getAppLanguage())}</span>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    }
-                    const h = row.holding;
-                    const {
-                      shares,
-                      price,
-                      averagePrice,
-                      averageValue,
-                      marketValue: val,
-                      unrealizedPnl: totalDifference,
-                      unrealizedPnlPercent: totalDifferencePercent,
-                      allocation
-                    } = getCashHoldingDisplayMetrics(h, stocksTotal, unpricedHoldingCount);
-                    const hasAveragePrice = averagePrice !== null;
-                    const hasMarketComparison = totalDifference !== null && totalDifferencePercent !== null;
-                    const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
-
-                    const hasChange = typeof h.quoteDetails?.change === 'number' && Number.isFinite(h.quoteDetails.change);
-                    const hasChangePercent = typeof h.quoteDetails?.changePercent === 'number' &&
-                      Number.isFinite(h.quoteDetails?.changePercent);
-                    const direction: SentimentDirection = hasChange
-                      ? h.quoteDetails!.change! > 0
-                        ? 'bullish'
-                        : h.quoteDetails!.change! < 0
-                          ? 'bearish'
-                          : 'neutral'
-                      : 'unknown';
-                    const badgeText =
-                      hasChange && hasChangePercent
-                        ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
-                        : sentimentLabel(direction);
-
-                    const volume = formatQuoteVolume(h.quoteDetails?.volume)
-
-                    return (
                         <tr key={row.key} class="cash-holding-row hover:bg-slate-900/40">
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
                             <div class="inline-flex flex-wrap items-center gap-1.5">
@@ -756,39 +833,39 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {allocation !== null ? allocation.toFixed(1) + '%' : '—'}
                           </td>
                         </tr>
-                    );
-                  })
-                )}
-              </tbody>
-              <tfoot id="cashStocksTableFooter" class="cash-holdings-footer border-t border-slate-700 font-mono">
-                {holdings.length > 0 && (
-                  <tr>
-                    <td data-label="Summary" class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
-                      {holdings.length} holding{holdings.length === 1 ? '' : 's'} · {translateText('Priced market value', getAppLanguage())}
-                    </td>
-                    <td data-label="Priced market value" class="py-2 px-3 text-right text-white font-bold">
-                      {pricedHoldingCount > 0 ? (unpricedHoldingCount > 0 ? '≥' : '') + formatUSD(stocksTotal) : '—'}
-                    </td>
-                    <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 font-bold">
-                      {unpricedHoldingCount === 0 && stocksTotal > 0 ? '100.0%' : '—'}
-                    </td>
-                  </tr>
-                )}
-              </tfoot>
-            </table>
-          </TableScrollRegion>
-          <TablePagination
-            tableLabel={translateText('Cash-funded stock holdings', getAppLanguage())}
-            page={cashHoldingsPagination.currentPage}
-            pageCount={cashHoldingsPagination.pageCount}
-            pageSize={cashHoldingsPagination.pageSize}
-            start={cashHoldingsPagination.start}
-            end={cashHoldingsPagination.end}
-            total={displayHoldingRows.length}
-            onPageChange={cashHoldingsPagination.setPage}
-            onPageSizeChange={cashHoldingsPagination.setPageSize}
-            controlsId="cashStocksTableBody"
-          />
+                      );
+                    })
+                  )}
+                </tbody>
+                <tfoot id="cashStocksTableFooter" class="cash-holdings-footer border-t border-slate-700 font-mono">
+                  {holdings.length > 0 && (
+                    <tr>
+                      <td data-label="Summary" class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
+                        {holdings.length} holding{holdings.length === 1 ? '' : 's'} · {translateText('Priced market value', getAppLanguage())}
+                      </td>
+                      <td data-label="Priced market value" class="py-2 px-3 text-right text-white font-bold">
+                        {pricedHoldingCount > 0 ? (unpricedHoldingCount > 0 ? '≥' : '') + formatUSD(stocksTotal) : '—'}
+                      </td>
+                      <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 font-bold">
+                        {unpricedHoldingCount === 0 && stocksTotal > 0 ? '100.0%' : '—'}
+                      </td>
+                    </tr>
+                  )}
+                </tfoot>
+              </table>
+            </TableScrollRegion>
+            <TablePagination
+              tableLabel={translateText('Cash-funded stock holdings', getAppLanguage())}
+              page={cashHoldingsPagination.currentPage}
+              pageCount={cashHoldingsPagination.pageCount}
+              pageSize={cashHoldingsPagination.pageSize}
+              start={cashHoldingsPagination.start}
+              end={cashHoldingsPagination.end}
+              total={displayHoldingRows.length}
+              onPageChange={cashHoldingsPagination.setPage}
+              onPageSizeChange={cashHoldingsPagination.setPageSize}
+              controlsId="cashStocksTableBody"
+            />
           </>
         )}
 

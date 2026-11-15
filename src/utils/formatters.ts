@@ -52,7 +52,13 @@ export function formatTrancheDate(dateStr?: string | number | null): string {
 
 export function formatUSD(val: unknown): string {
   const num = Number(val) || 0;
-  return num.toLocaleString(currentNumberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = num < 0 ? '−' : '';
+  const amount = Math.abs(num).toLocaleString(currentNumberLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const currencySymbol = String.fromCharCode(36);
+  return sign + currencySymbol + amount;
 }
 
 /** Formats an already-currency-labelled table value with locale grouping and consistent signs. */
@@ -64,8 +70,7 @@ export function formatUSDDisplayValue(value: string): string {
   if (!Number.isFinite(amount)) return value;
 
   const sign = match[1] === '+' ? '+' : match[1] ? '−' : '';
-  const currencySymbol = String.fromCharCode(36);
-  return sign + currencySymbol + formatUSD(amount);
+  return sign + formatUSD(amount);
 }
 
 export function formatQuoteVolume(value: unknown): string | null {

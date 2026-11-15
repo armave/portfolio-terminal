@@ -44,6 +44,21 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes the unified ticker identity and target subheader in Russian', () => {
+    const tickerHeaderCopy = [
+      'Analyst',
+      'Analyst (Yahoo)',
+      'Margin PT',
+      'Margin and analyst target information',
+      'share',
+      'shares',
+      'DAY'
+    ];
+    for (const copy of tickerHeaderCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes guest assigned-data refresh status in Russian', () => {
     const guestSyncCopy = [
       'Assigned data synchronization',
@@ -840,4 +855,50 @@ describe('app localization', () => {
   });
 
 
+});
+
+
+describe('new financial header copy localization', () => {
+  it('localizes the new KPI and supporting-section labels in Russian', () => {
+    const copy = [
+      'Portfolio key indicators',
+      'Portfolio carry break-even',
+      'Allocated Equity',
+      'Margin Risk',
+      'Fees & accrued interest',
+      'of total debt'
+    ];
+    for (const label of copy) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+  });
+});
+
+describe('portfolio action region accessibility copy', () => {
+  it('provides a localized accessible name after the visible Market Tools heading is removed', () => {
+    expect(translateText('Portfolio actions', 'ru')).toBe('Действия портфеля');
+  });
+});
+
+describe('standardized workspace navigation localization', () => {
+  it('localizes the compact Portfolio destination and shared market/sync status region', () => {
+    expect(translateText('Portfolio', 'ru')).toBe('Портфель');
+    expect(translateText('Market and sync status', 'ru')).toBe('Состояние рынка и синхронизации');
+  });
+});
+
+describe('standardized workspace navigation localization', () => {
+  it('localizes compact navigation labels and the shared status region in Russian', () => {
+    expect(translateText('Portfolio', 'ru')).toBe('Портфель');
+    expect(translateText('Lots', 'ru')).toBe('Лоты');
+    expect(translateText('Market and sync status', 'ru')).toBe('Состояние рынка и синхронизации');
+  });
+});
+
+describe('Margin PT target information localization', () => {
+  it('translates the Margin-specific target label while keeping analyst consensus distinct', () => {
+    expect(translateText('Margin PT', 'ru')).toBe('Целевая цена маржинальной позиции');
+    expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
+    expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
+  });
 });

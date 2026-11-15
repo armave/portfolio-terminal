@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -253,6 +254,32 @@ async function mockWorkerApi(page) {
       }
     }
 
+    if (pathname === '/' && method === 'POST' && !call.action &&
+        (url.searchParams.has('symbol') || typeof body.symbol === 'string')) {
+      if (!currentUser || token !== currentToken) {
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
+        return;
+      }
+      const symbol = String(url.searchParams.get('symbol') || body.symbol || '').trim().toUpperCase();
+      const current = symbol === 'AAPL' ? 11 : symbol === 'MSFT' ? 21 : 100;
+      const target = symbol === 'AAPL' ? 15 : symbol === 'MSFT' ? 28 : 125;
+      await json(route, 200, {
+        symbol,
+        price: {
+          current, previousClose: current - 0.5, change: 0.5,
+          changePercent: (0.5 / (current - 0.5)) * 100,
+          preMarketPrice: null, preMarketChange: null, preMarketChangePercent: null,
+          postMarketPrice: null, postMarketChange: null, postMarketChangePercent: null,
+          regularMarketTime: 1_800_000_000, preMarketTime: null, postMarketTime: null, marketState: 'REGULAR'
+        },
+        valuation: { peTrailing: null, peForward: null, pegRatio: null, shortPercentOfFloat: null, priceToBook: null },
+        financialHealth: { profitMargin: null, returnOnEquity: null, totalDebt: null },
+        analystTargets: { mean: target, median: target, high: target * 1.1, low: target * 0.9, numberOfAnalysts: 24, consensusRecommendation: 'buy' },
+        calendar: { earningsDate: null }, upgradesDowngrades: [], earningsHistory: [], profile: {}
+      }, {}, call);
+      return;
+    }
+
     if (pathname === '/api/state') {
       if (currentUser?.role !== 'admin' || token !== currentToken) {
         await json(route, 403, { error: 'Administrator access required.' }, {}, call);
@@ -369,6 +396,43 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
   throw new Error('Timed out waiting for ' + label + '.');
 }
 
+const UX_SCREENSHOT_VIEWPORTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 }
+];
+
+async function captureUxReviewScreenshots(page, surface) {
+  const outputDirectory = process.env.UX_SCREENSHOT_DIR;
+  if (!outputDirectory) return;
+
+  await mkdir(outputDirectory, { recursive: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  for (const viewport of UX_SCREENSHOT_VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      ));
+    });
+
+    const filename = surface + '-' + viewport.name + '-' +
+      viewport.width + 'x' + viewport.height + '.png';
+    const screenshotPath = join(outputDirectory, filename);
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage: false,
+      animations: 'disabled',
+      caret: 'hide'
+    });
+    console.log('[UX visual review] Captured ' + screenshotPath);
+  }
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
 
 async function assertResponsiveLayout(page, width) {
   await page.setViewportSize({ width, height: 900 });
@@ -473,6 +537,209 @@ async function assertResponsiveSurface(page, selector, surface) {
       throw new Error(`${surface} is clipped at ${width}px: ${JSON.stringify(layout)}`);
     }
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
+
+async function assertStandardizedWorkspaceNavigation(page, role) {
+  const expectations = role === 'admin'
+    ? ['balance', 'trades', 'settings']
+    : ['balance', 'lots', 'settings'];
+
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const navigation = await page.evaluate(() => {
+      const nav = document.querySelector('#tickerTabs');
+      const controls = Array.from(nav?.querySelectorAll('button[data-nav-tab="true"]') || []);
+      const status = document.querySelector('.workspace-header-status');
+      return {
+        kinds: controls.map((button) => button.getAttribute('data-nav-kind')),
+        buttons: controls.map((button) => {
+          const bounds = button.getBoundingClientRect();
+          const icon = button.querySelector('svg.workspace-nav-button__icon');
+          const label = button.querySelector('.workspace-nav-button__label');
+          return {
+            name: button.getAttribute('aria-label'),
+            pressed: button.getAttribute('aria-pressed'),
+            height: bounds.height,
+            icon: Boolean(icon?.getClientRects().length),
+            labelText: label?.textContent?.trim() || '',
+            labelDisplay: label ? getComputedStyle(label).display : 'missing',
+            radius: getComputedStyle(button).borderRadius,
+            kind: button.getAttribute('data-nav-kind')
+          };
+        }),
+        statusOutsideNavigation: Boolean(status && nav && !nav.contains(status)),
+        marketStatus: Boolean(status?.querySelector('[data-market-status-role]')),
+        cloudStatus: Boolean(status?.querySelector('#cloudStatus')),
+        hasPortfolioPtCopy: document.querySelector('#cashCushionContainer')?.innerText.includes('Margin PT') ?? false
+      };
+    });
+
+    const kindSet = new Set(navigation.kinds);
+    for (const expected of expectations) {
+      if (!kindSet.has(expected)) {
+        throw new Error(role + ' navigation is missing ' + expected + ' at ' + width + 'px: ' + JSON.stringify(navigation));
+      }
+    }
+    if (!navigation.statusOutsideNavigation || !navigation.marketStatus ||
+        (role === 'admin' && !navigation.cloudStatus)) {
+      throw new Error('Market status and role-permitted KV sync must stay in the separate shared header status group.');
+    }
+    if (role === 'admin' && !['margin', 'margin-ticker', 'portfolio'].some(kind => navigation.kinds.includes(kind))) {
+      throw new Error('Administrator navigation must retain its Margin workspace destination.');
+    }
+    for (const button of navigation.buttons) {
+      if (!button.name || !button.icon || !button.labelText || button.height < 43 ||
+          !button.radius || button.pressed === null) {
+        throw new Error('Navigation control is missing its shared icon/label/size/selected-state contract: ' + JSON.stringify(button));
+      }
+    }
+    if (role === 'guest' && navigation.hasPortfolioPtCopy) {
+      throw new Error('Guest Stocks must not display the administrator Margin PT.');
+    }
+    if (width === 390 && navigation.buttons.some(button => button.kind !== 'margin-ticker' && button.labelDisplay !== 'none')) {
+      throw new Error('Fixed mobile navigation should use the compact icon-first treatment: ' + JSON.stringify(navigation));
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
+
+async function assertFinancialHeaderLayout(page, view) {
+  const expectedMetrics = view === 'combined'
+    ? ['net-target-return', 'carry-break-even', 'account-equity', 'margin-debt', 'margin-risk']
+    : ['carry-break-even', 'allocated-equity', 'margin-debt', 'margin-risk'];
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const layout = await page.evaluate(() => {
+      const metrics = Array.from(document.querySelectorAll('.portfolio-header-kpis [data-header-metric]'))
+        .map((element) => element.getAttribute('data-header-metric'));
+      const targetSection = document.querySelector('#boardTargetSection');
+      const tickerIdentity = targetSection?.querySelector('#boardTickerIdentity');
+      const marginTarget = targetSection?.querySelector('#boardMarginTarget');
+      const analystTarget = targetSection?.querySelector('#boardAnalystConsensus');
+      const boardTitle = document.querySelector('#boardTitle');
+      const health = document.querySelector('.portfolio-risk-tools-row > .margin-risk-gauge-card');
+      const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
+      const healthBounds = health?.getBoundingClientRect();
+      const toolsBounds = tools?.getBoundingClientRect();
+      const marketPanel = tools?.querySelector('.portfolio-market-tools');
+      const panelBounds = marketPanel?.getBoundingClientRect();
+      const actionGroup = marketPanel?.querySelector('.modal-tools-group');
+      const actionBounds = actionGroup?.getBoundingClientRect();
+      const actionButtonsCount = actionGroup?.querySelectorAll('button').length ?? 0;
+      const marketPanelRole = marketPanel?.getAttribute('role') ?? null;
+      const marketPanelLabel = marketPanel?.getAttribute('aria-label') ?? null;
+      const visibleMarketToolsHeading = Boolean(
+        marketPanel?.querySelector('.portfolio-micro-heading')?.getClientRects().length
+      );
+      return {
+        metrics,
+        targetSectionVisible: Boolean(targetSection?.getClientRects().length),
+        targetSegmentsShareSection: Boolean(
+          tickerIdentity && marginTarget && analystTarget &&
+          tickerIdentity.parentElement === targetSection &&
+          marginTarget.parentElement === targetSection &&
+          analystTarget.parentElement === targetSection
+        ),
+        titleContainsMarginPt: boardTitle?.textContent?.includes('Margin PT') ?? false,
+        tickerTitle: boardTitle?.textContent?.trim() ?? '',
+        shareCountText: tickerIdentity?.querySelector('.ticker-share-count')?.textContent?.trim() ?? '',
+        dailyMoveText: tickerIdentity?.querySelector('.ticker-daily-move')?.textContent?.trim() ?? '',
+        marginTargetText: marginTarget?.textContent?.trim() ?? '',
+        analystTargetText: analystTarget?.textContent?.trim() ?? '',
+        tickerIdentityBounds: tickerIdentity ? (() => {
+          const r = tickerIdentity.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        })() : null,
+        marginTargetBounds: marginTarget ? (() => {
+          const r = marginTarget.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        })() : null,
+        analystTargetBounds: analystTarget ? (() => {
+          const r = analystTarget.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        })() : null,
+        targetReturnCount: document.querySelectorAll('#boardNetTargetReturn').length,
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        healthVisible: Boolean(health?.getClientRects().length),
+        toolsVisible: Boolean(tools?.getClientRects().length),
+        actionButtonsCount,
+        marketPanelRole,
+        marketPanelLabel,
+        visibleMarketToolsHeading,
+        actionGroupCentered: Boolean(
+          panelBounds && actionBounds &&
+          Math.abs((panelBounds.left + panelBounds.right) / 2 - (actionBounds.left + actionBounds.right) / 2) <= 3
+        ),
+        healthTop: healthBounds?.top ?? null,
+        healthBottom: healthBounds?.bottom ?? null,
+        toolsTop: toolsBounds?.top ?? null,
+        sameRow: Boolean(healthBounds && toolsBounds && Math.abs(healthBounds.top - toolsBounds.top) <= 2)
+      };
+    });
+
+    if (JSON.stringify(layout.metrics) !== JSON.stringify(expectedMetrics)) {
+      throw new Error('Unexpected ' + view + ' financial header KPI set at ' + viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (layout.targetReturnCount !== (view === 'combined' ? 1 : 0)) {
+      throw new Error('Ticker target return is duplicated or the Combined KPI is missing: ' + JSON.stringify(layout));
+    }
+    if (view === 'ticker') {
+      const target = layout.marginTargetBounds;
+      const analyst = layout.analystTargetBounds;
+      const identity = layout.tickerIdentityBounds;
+      if (!layout.targetSectionVisible || !layout.targetSegmentsShareSection || layout.titleContainsMarginPt ||
+          !layout.tickerTitle || !layout.shareCountText || !layout.marginTargetText.includes('Margin PT') ||
+          !/\d/.test(layout.marginTargetText) ||
+          !layout.analystTargetText.toLowerCase().includes('analyst') ||
+          !/\d/.test(layout.analystTargetText) || !identity || !target || !analyst) {
+        throw new Error('Ticker identity, Margin PT and Analyst target must share one separated header section: ' + JSON.stringify(layout));
+      }
+      if (viewport.width >= 768 &&
+          (Math.abs(identity.top - target.top) > 3 || Math.abs(target.top - analyst.top) > 3)) {
+        throw new Error('Desktop/tablet ticker identity and target segments should be side-by-side: ' + JSON.stringify(layout));
+      }
+      if (viewport.width < 768 &&
+          (target.top < identity.bottom - 2 || analyst.top < target.bottom - 2)) {
+        throw new Error('Mobile ticker identity, PT and analyst target should stack vertically: ' + JSON.stringify(layout));
+      }
+    } else if (layout.targetSectionVisible) {
+      throw new Error('Combined Portfolio must not show an individual ticker target section.');
+    }
+
+    if (!layout.healthVisible || !layout.toolsVisible) {
+      throw new Error('Account Equity Health or Market Tools is missing at ' + viewport.width + 'px.');
+    }
+    if (layout.visibleMarketToolsHeading) {
+      throw new Error('The visible Market Tools heading should be removed.');
+    }
+    if (layout.marketPanelRole !== 'group' || layout.marketPanelLabel !== 'Portfolio actions') {
+      throw new Error('The tools panel must retain its accessible Portfolio actions group name: ' + JSON.stringify(layout));
+    }
+    if (layout.actionButtonsCount < 3 || !layout.actionGroupCentered) {
+      throw new Error('Market action buttons must be centered in their panel: ' + JSON.stringify(layout));
+    }
+    if (layout.documentWidth > layout.viewportWidth + 1) {
+      throw new Error('Financial header caused page-level horizontal overflow at ' + viewport.width + 'px.');
+    }
+    if (viewport.width >= 768 && !layout.sameRow) {
+      throw new Error('Account Equity Health and Market Tools must share one row above mobile width: ' + JSON.stringify(layout));
+    }
+    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthBottom - 1)) {
+      throw new Error('Account Equity Health and Market Tools must stack on mobile: ' + JSON.stringify(layout));
+    }
+  }
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
 }
@@ -739,14 +1006,26 @@ try {
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
   await assertVisibleControlsHaveNames(page, 'administrator dashboard');
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertStandardizedWorkspaceNavigation(page, 'admin');
+  }
   if (await page.locator('#cloudStatus').count() !== 1) {
     throw new Error('Cloud synchronization health must have one persistent header indicator.');
   }
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
-
-
+  // The authenticated startup may restore Balance. Select the Combined Portfolio
+  // explicitly so this assertion exercises the Combined admin header, not the initial desk.
+  const combinedPortfolioTab = page.locator('#tickerTabs [aria-label="COMBINED PORTFOLIO"]');
+  await combinedPortfolioTab.waitFor({ state: 'visible', timeout: 20_000 });
+  await combinedPortfolioTab.click();
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await page.locator('.portfolio-header-kpis [data-header-metric="net-target-return"]')
+      .waitFor({ state: 'visible', timeout: 20_000 });
+    await assertFinancialHeaderLayout(page, 'combined');
+  }
+  await captureUxReviewScreenshots(page, 'admin-combined');
 
   // Exercise roving keyboard navigation through the full destination list.
   const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
@@ -777,7 +1056,7 @@ try {
 
   // Assign the active cash tranche through the admin UI and verify that the
   // Worker receives both the guest projection and durable LOTS ledger record.
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
   await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
@@ -803,6 +1082,11 @@ try {
   // Exercise the real News dialog with a deterministic provider response.
   const marketInsights = page.locator('#marketInsightsPanel');
   await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#boardTitle').waitFor({ state: 'visible', timeout: 10_000 });
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertFinancialHeaderLayout(page, 'ticker');
+  }
+  await captureUxReviewScreenshots(page, 'admin-ticker');
   await waitForCondition(
     () => worker.calls.some((call) => call.action === 'news'),
     'Market Insights company news request'
@@ -846,7 +1130,7 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
   const marginTypeButton = aaplRow.locator('button[aria-pressed="true"]').filter({ hasText: 'Margin' });
@@ -916,7 +1200,7 @@ try {
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Administrator Closed History desk');
   await assertResponsiveSurface(page, '#closedHistoryContainer', 'Administrator Closed History desk');
-  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
 
   // The first explicit sync may be the first snapshot trigger in this browser
@@ -1028,11 +1312,31 @@ try {
     throw new Error('The open authentication dialog did not make the background workspace inert and aria-hidden.');
   }
 
+  // Let the modal's useEffect-based focus owner register after the sign-in surface opens.
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  ));
   // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
   await page.locator('#authUserName').focus();
+  await page.waitForFunction(() => document.activeElement?.id === 'authUserName', null, { timeout: 2_000 });
   await page.keyboard.press('Shift+Tab');
-  if (await page.evaluate(() => document.activeElement?.type) !== 'submit') {
-    throw new Error('Shift+Tab escaped the authentication dialog instead of wrapping to Submit.');
+  const reverseTabFocus = await page.evaluate(() => {
+    const active = document.activeElement;
+    const dialog = document.querySelector('.auth-card');
+    return {
+      tagName: active?.tagName || null,
+      id: active?.id || null,
+      type: active?.getAttribute('type') || null,
+      className: typeof active?.className === 'string' ? active.className : '',
+      insideDialog: Boolean(dialog && active && dialog.contains(active)),
+      focusables: dialog ? Array.from(dialog.querySelectorAll('a[href], area[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), iframe, object, embed, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'))
+        .filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[hidden], [inert], [aria-hidden="true"]'))
+        .map((element) => ({ tagName: element.tagName, id: element.id, type: element.getAttribute('type'), className: element.className }))
+        : []
+    };
+  });
+  if (reverseTabFocus.type !== 'submit') {
+    throw new Error('Shift+Tab did not wrap to the auth submit control: ' + JSON.stringify(reverseTabFocus));
   }
   await page.keyboard.press('Tab');
   if (await page.evaluate(() => document.activeElement?.id) !== 'authUserName') {
@@ -1049,6 +1353,9 @@ try {
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   await submitAuth(page, { name: 'Smoke Guest', password: 'valid-smoke-password' });
   await waitForAuthOverlay(page, false);
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await assertStandardizedWorkspaceNavigation(page, 'guest');
+  }
   const workspaceRestored = await page.locator('#mainTerminalView').evaluate((element) =>
     !element.closest('[inert]') && !element.closest('[aria-hidden="true"]')
   );
@@ -1066,7 +1373,52 @@ try {
     throw new Error('Guest login could not verify the AAPL assignment published by the administrator.');
   }
 
-  await page.getByRole('button', { name: 'LOTS' }).click();
+  await page.getByRole('button', { name: /balance/i }).click();
+  await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForFunction(
+    () => document.querySelector('#cashCushionContainer')?.innerText.includes('AAPL') === true,
+    null,
+    { timeout: 20_000 }
+  );
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await page.locator('.guest-stock-analyst-target .instrument-target-value').first()
+      .waitFor({ state: 'visible', timeout: 20_000 });
+    for (const width of [390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+      const guestTargetLayout = await page.locator('.guest-stock-card-enter').first().evaluate((card) => {
+        const section = card.querySelector('.guest-stock-value-section');
+        const market = section?.querySelector('.guest-stock-market-value');
+        const analyst = section?.querySelector('.guest-stock-analyst-target');
+        const marketRect = market?.getBoundingClientRect();
+        const analystRect = analyst?.getBoundingClientRect();
+        return {
+          sectionVisible: Boolean(section?.getClientRects().length),
+          sharedSection: Boolean(market && analyst && market.parentElement === section && analyst.parentElement === section),
+          marketValue: market?.textContent || '',
+          analystTarget: analyst?.textContent || '',
+          hasMarginPt: card.innerText.includes('Margin PT') || card.innerText.includes('Net @ PT'),
+          marketBounds: marketRect ? { top: marketRect.top, bottom: marketRect.bottom } : null,
+          analystBounds: analystRect ? { top: analystRect.top, bottom: analystRect.bottom } : null
+        };
+      });
+      if (!guestTargetLayout.sectionVisible || !guestTargetLayout.sharedSection ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst (yahoo)') ||
+          guestTargetLayout.hasMarginPt || !guestTargetLayout.marketValue.includes('Current market value')) {
+        throw new Error('Guest Stocks target information must be combined and PT-free: ' + JSON.stringify(guestTargetLayout));
+      }
+      if (width >= 768 && Math.abs(guestTargetLayout.marketBounds.top - guestTargetLayout.analystBounds.top) > 3) {
+        throw new Error('Desktop guest market value and analyst target should be side-by-side.');
+      }
+      if (width < 768 && guestTargetLayout.analystBounds.top < guestTargetLayout.marketBounds.bottom - 2) {
+        throw new Error('Mobile guest analyst target should stack below market value.');
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+  await captureUxReviewScreenshots(page, 'guest-balance');
+
+  await page.getByRole('button', { name: /lots/i }).click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Guest LOTS history desk');
   await assertResponsiveSurface(page, '#guestHistoryContainer', 'Guest LOTS history desk');

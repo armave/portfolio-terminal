@@ -220,7 +220,16 @@ describe('active tranche market price', () => {
 
 describe('cash holdings daily quote range', () => {
   it('formats the actual high and low prices instead of placeholder text', () => {
-    expect(formatDailyQuoteRange({ high: 123.45, low: 120 })).toBe('H 123.45 / L 120.00');
+    expect(formatDailyQuoteRange({ high: 123.45, low: 120 })).toBe('H $123.45 / L $120.00');
+  });
+});
+
+describe('guest stock subheader daily move formatting', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('shows the daily monetary price change with the shared USD symbol', () => {
+    expect(deskSource).toContain('formatUSD(Math.abs(details.change))');
+    expect(deskSource).not.toContain('Math.abs(details.change).toFixed(2)');
   });
 });
 
@@ -575,5 +584,46 @@ describe('cash holding model summaries and display groups', () => {
     expect(result.displayTableRows).toEqual([
       { type: 'holding', key: 'holding-guest-AAPL', holding: guestHoldings[0] }
     ]);
+  });
+});
+
+
+describe('guest holding card compact presentation', () => {
+  const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('shows the existing My Stocks heading without adding another portfolio-value summary', () => {
+    expect(source).toContain("guestUserId ? 'MY STOCKS'");
+    expect(source).not.toContain('Assigned portfolio market value');
+    expect(source).toContain('Current market value');
+  });
+
+  it('centers one desktop holding card and keeps tranche details collapsed until requested', () => {
+    expect(source).toContain('sm:col-span-2 sm:mx-auto sm:w-full sm:max-w-2xl');
+    expect(source).toContain('<details class="guest-tranche-details">');
+    expect(source).toContain('<summary class="flex min-h-11 list-none cursor-pointer');
+  });
+
+  it('does not expose margin targets or PT labels in guest Stocks cards', () => {
+    const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toContain('Margin PT');
+    expect(source).not.toContain('Your PT');
+    expect(source).not.toContain('Net return at target');
+    expect(source).toContain('Current market value');
+    expect(source).toContain('Unrealized P/L');
+  });
+
+  it('places current value and Yahoo Analyst target in one internally separated guest section', () => {
+    expect(source).toContain('instrument-target-section guest-stock-value-section');
+    expect(source).toContain('guest-stock-market-value');
+    expect(source).toContain('guest-stock-analyst-target');
+    expect(source).toContain('fetchYahooDeepStockData(ticker, false, controller.signal)');
+    expect(source).not.toContain('Margin PT');
+    expect(source).not.toContain('Your PT');
+  });
+
+  it('localizes the new break-even and guest detail labels in Russian', () => {
+    expect(translateText('Portfolio carry break-even', 'ru')).toBe('Безубыточность портфеля с учётом расходов на маржу');
+    expect(translateText('Details', 'ru')).toBe('Детали');
+    expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
   });
 });

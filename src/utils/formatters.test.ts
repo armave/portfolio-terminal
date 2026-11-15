@@ -15,10 +15,11 @@ describe('display formatters', () => {
     expect(decodeHtmlEntities('unknown &notAnEntity; stays encoded')).toBe('unknown &notAnEntity; stays encoded');
   });
 
-  it('formats currency consistently and safely', () => {
-    expect(formatUSD(1234.5)).toBe('1,234.50');
-    expect(formatUSD('12')).toBe('12.00');
-    expect(formatUSD(Number.NaN)).toBe('0.00');
+  it('formats USD amounts with a dollar symbol and a sign before the symbol', () => {
+    expect(formatUSD(1234.5)).toBe('$1,234.50');
+    expect(formatUSD('12')).toBe('$12.00');
+    expect(formatUSD(-1234.5)).toBe('−$1,234.50');
+    expect(formatUSD(Number.NaN)).toBe('$0.00');
   });
 
   it('adds locale-aware thousands separators to signed currency table values', () => {
@@ -30,7 +31,7 @@ describe('display formatters', () => {
     expect(formatUSDDisplayValue('Not available')).toBe('Not available');
 
     setAppLanguage('ru');
-    expect(formatUSDDisplayValue('$1234567.89')).toMatch(/1.*234.*567,89/);
+    expect(formatUSDDisplayValue('$1234567.89')).toMatch(/^\$.*1.*234.*567,89$/);
   });
 
   it('formats provider-reported volume compactly and omits invalid values', () => {
@@ -51,16 +52,17 @@ describe('display formatters', () => {
 
   it('formats dates and financial numbers with the selected locale', () => {
     setAppLanguage('ru');
-    expect(formatUSD(1234.5)).toContain('234,50');
+    expect(formatUSD(1234.5)).toMatch(/^\$.*234,50$/);
+    expect(formatUSD(-1234.5)).toMatch(/^−\$.*234,50$/);
     expect(formatTrancheDate('2026-10-20')).toMatch(/^20.*окт/i);
     expect(formatTrancheDate('7 Jan')).toContain('янв');
     expect(formatTrancheDate('New')).toBe('Новая');
   });
 
   it('formats risk trigger context without changing calculations', () => {
-    expect(formatRiskTrigger(90, 100)).toBe('Position value 90.00');
-    expect(formatRiskTrigger(110, 100)).toBe('Position value 110.00 (already10.0% below trigger)');
-    expect(formatRiskTrigger(90, 0)).toBe('Position value 90.00');
+    expect(formatRiskTrigger(90, 100)).toBe('Position value $90.00');
+    expect(formatRiskTrigger(110, 100)).toBe('Position value $110.00 (already10.0% below trigger)');
+    expect(formatRiskTrigger(90, 0)).toBe('Position value $90.00');
   });
 
 
