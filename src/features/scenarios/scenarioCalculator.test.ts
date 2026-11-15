@@ -168,8 +168,8 @@ describe('Market Tools Buy More preview', () => {
       ...state,
       activeView: 'AAPL',
       balance: -1_000,
-      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 100 },
-      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 },
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 20_000 },
+      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 0.365, dayCountBasis: 365 },
       positions: {
         AAPL: {
           ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
@@ -200,9 +200,9 @@ describe('Market Tools Buy More preview', () => {
     expect(today?.values[3]).toMatch(/\{\$[\d.]+\/day\}$/);
     // Buy More's current Net must match the single-position Projection Table,
     // including its cost-weighted allocation of whole-account margin debt.
-    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 36.5, dayCountBasis: 365 as const };
+    const scenarioRules = { ...scenarioState.brokerAssumptions, annualBorrowRate: 0.365, dayCountBasis: 365 as const };
     const positionMetrics = calculatePositionMetrics(
-      scenarioState, scenarioState.positions.AAPL, scenarioRules, 36.5 / 365
+      scenarioState, scenarioState.positions.AAPL, scenarioRules, 0.365 / 365
     );
     const parseSignedMoney = (value: string | undefined) =>
       Number(String(value ?? '').replace(/−/g, '-').replace(/[^\d.-]/g, ''));
@@ -219,13 +219,13 @@ describe('Market Tools Buy More preview', () => {
     // AFTER Net recalculates the selected position's debt share and accrued interest
     // after the hypothetical position is added to total invested capital.
     const cashNeeded = Number(custom.text.match(/Cash needed: \$([\d.]+)/)?.[1]);
-    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 100);
+    const brokerBalanceAfterPurchase = -1_000 - Math.max(0, cashNeeded - 20_000);
     const afterPositionCost = 1_000 + 5 * 105;
     const portfolioInvestedAfter = 3_000 + 5 * 105;
     const afterAllocatedDebt = Math.abs(brokerBalanceAfterPurchase) * afterPositionCost / portfolioInvestedAfter;
     const afterMargin = calculateMarginInterest(
       [{ qty: 10, price: 100, date: '2026-11-10' }],
-      { dailyRate: 36.5 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
+      { dailyRate: 0.365 / 365, marginUtilizationRatio: afterAllocatedDebt / afterPositionCost }
     );
     const expectedAfterNet = 15 * 150 - afterPositionCost - calculateAccruedFees(
       2 + calculateSaleCommission(5, 5 * 105, scenarioRules) +
@@ -243,7 +243,7 @@ describe('Market Tools Buy More preview', () => {
       2 + calculateCommission(10, 10 * 150, commissionRules),
       positionMetrics.posMarginCharged,
       positionMetrics.allocatedDebt,
-      36.5 / 365,
+      0.365 / 365,
       3650
     );
     const afterBreakevenDays = findProjectionBreakevenDay(
@@ -252,7 +252,7 @@ describe('Market Tools Buy More preview', () => {
         calculateCommission(15, 15 * 150, commissionRules),
       afterMargin,
       afterAllocatedDebt,
-      36.5 / 365,
+      0.365 / 365,
       3650
     );
     expect(currentBreakevenDays).toBeDefined();
@@ -270,10 +270,10 @@ describe('Market Tools Buy More preview', () => {
     expect(custom.modal?.rows.at(-1)?.label).toBe(expectedLastDateLabel + ' · BREAKEVEN');
 
     // Balance is the resulting cash after selling all shares at the projected target.
-    const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -
+    const expectedCurrentBalance = 20_000 - 1_000 + 10 * 150 -
       calculateSaleCommission(10, 10 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[4])).toBeCloseTo(expectedCurrentBalance, 2);
-    const remainingFreeCash = Math.max(0, 100 - cashNeeded);
+    const remainingFreeCash = Math.max(0, 20_000 - cashNeeded);
     const expectedAfterBalance = remainingFreeCash + brokerBalanceAfterPurchase + 15 * 150 -
       calculateSaleCommission(15, 15 * 150, scenarioRules);
     expect(parseSignedMoney(today?.values[5])).toBeCloseTo(expectedAfterBalance, 2);
