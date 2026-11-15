@@ -92,7 +92,7 @@ export const TickerTabs = memo(function TickerTabs({
             onClick={() => selectView('COMBINED')}
             aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
             aria-pressed={activeView === 'COMBINED'}
-            class={workspaceNavigationButtonClass(activeView === 'COMBINED' && isMarginDeskActive, true)}
+            class={workspaceNavigationButtonClass(activeView === 'COMBINED' && isMarginDeskActive)}
             data-nav-tab="true"
             data-nav-kind="portfolio"
             data-nav-index={0}
@@ -156,7 +156,7 @@ export const TickerTabs = memo(function TickerTabs({
           onClick={() => selectView('COMBINED')}
           aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
           aria-pressed={isMarginDeskActive}
-          class={workspaceNavigationButtonClass(isMarginDeskActive, true)}
+          class={workspaceNavigationButtonClass(isMarginDeskActive)}
           title={translateText('MARGIN DESK', getAppLanguage())}
         >
           <WorkspaceNavigationIcon name="margin" />
