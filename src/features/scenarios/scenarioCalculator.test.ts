@@ -95,6 +95,30 @@ describe('Market Tools Buy More preview', () => {
     expect(ScenarioCalculator.previewBuyMoreScenario('!!!', 5, 105).type).toBe('err');
   });
 
+  it('starts Buy More projections on the next trading session when today is a market holiday', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 19, 12, 0, 0)); // Juneteenth, 2026
+
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'AAPL',
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
+        startDate: '2026-06-18',
+        tranches: [{ qty: 10, price: 100, date: '2026-06-18', buyCommission: 2 }]
+      } }
+    } as any);
+
+    const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105);
+    const firstProjection = result.modal?.rows[0];
+
+    expect(result.type).toBe('res');
+    expect(firstProjection).toMatchObject({ kind: 'result' });
+    expect(firstProjection?.label).toContain('Mon, Jun 22 · NTD · +3d');
+    expect(result.modal?.rows.some(row => /Fri, Jun 19|Sat, Jun 20|Sun, Jun 21/.test(row.label))).toBe(false);
+  });
+
   it('blocks Buy More when broker account or instrument limits are not verified', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({

@@ -239,3 +239,12 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
   }
   return projections;
 }
+
+/**
+ * Buy More scenario rows represent exchange sessions only. When the current
+ * calendar day is closed, omit it and start at the next available trading day.
+ */
+export function getUsEquityTradingProjectionDates(today = new Date(), entryDate?: string): ProjectionDate[] {
+  return getUsEquityProjectionDates(today, entryDate)
+    .filter(({ date }) => isUsEquityTradingDay(date));
+}

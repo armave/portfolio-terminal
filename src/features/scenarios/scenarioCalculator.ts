@@ -3,7 +3,7 @@ import { getAppLanguage } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
-import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
+import { getUsEquityTradingProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePortfolioValuation } from '../../domain/portfolioValuation';
 import { calculatePositionMetrics, getTotalPortfolioInvested } from '../../domain/portfolioSelectors';
 import type { ScenarioModalData } from './scenarioContracts';
@@ -419,7 +419,7 @@ export class ScenarioCalculator {
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
       columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'],
       rows: (() => {
-        const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
+        const dates = getUsEquityTradingProjectionDates(new Date(), pos.startDate || state.startDate);
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
         const currentSaleGross = oldShares * projectionPrice;
@@ -460,7 +460,7 @@ export class ScenarioCalculator {
                 balanceAfter, remainingFreeCashAfterPurchase, afterNetSaleProceeds, rules.dailyRate, item.daysFromToday
               ))
             ],
-            kind: item.kind === 'today' ? 'result' as const : 'fee' as const
+            kind: item.kind === 'today' || item.kind === 'next-trading-day' ? 'result' as const : 'fee' as const
           };
         });
       })(),

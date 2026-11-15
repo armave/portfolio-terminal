@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getNextTradingDay,
   getUsEquityProjectionDates,
+  getUsEquityTradingProjectionDates,
   isStockHoliday,
   isTradingDay,
   isUsEquityTradingDay,
@@ -188,5 +189,15 @@ describe('US equity trading calendar', () => {
     // 2026-10-12 is Monday (Trading Day). Should return itself.
     const monday = localDate(2026, 10, 12);
     expect(dateLabel(getClosestTradingDay(monday))).toBe('2026-10-12');
+  });
+  it('omits weekends and exchange holidays from trading-day projections', () => {
+    // Sunday before Labor Day: Monday is also an exchange holiday.
+    const projections = getUsEquityTradingProjectionDates(localDate(2026, 9, 6), '2026-09-07');
+
+    expect(projections[0]).toMatchObject({ daysFromToday: 2, kind: 'next-trading-day' });
+    expect(dateLabel(projections[0].date)).toBe('2026-09-08');
+    expect(projections.some(({ date }) => dateLabel(date) === '2026-09-06')).toBe(false);
+    expect(projections.some(({ date }) => dateLabel(date) === '2026-09-07')).toBe(false);
+    expect(projections.every(({ date }) => isUsEquityTradingDay(date))).toBe(true);
   });
 });
