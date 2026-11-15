@@ -1,6 +1,6 @@
 import { portfolioStore } from '../../store/portfolioStore';
 import { getAppLanguage } from '../../services/i18n';
-import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, findProjectionBreakevenDay, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
 import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 import { getUsEquityTradingProjectionDates } from '../../domain/tradingCalendar';
@@ -15,6 +15,7 @@ import {
 
 const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
 const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
+const MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS = 3650;
 
 export interface ScenarioCalculationOutput {
   text: string;
@@ -419,9 +420,34 @@ export class ScenarioCalculator {
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
       columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW Balance', 'AFTER Balance'],
       rows: (() => {
-        const dates = getUsEquityTradingProjectionDates(new Date(), pos.startDate || state.startDate);
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
+        const currentBreakevenDays = findProjectionBreakevenDay(
+          oldShares * projectionPrice - oldCost,
+          currentComms,
+          currentMargin,
+          currentAllocatedDebt,
+          rules.dailyRate,
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+        );
+        const afterBreakevenDays = findProjectionBreakevenDay(
+          newShares * projectionPrice - newCost,
+          projectedComms,
+          afterMargin,
+          afterAllocatedDebt,
+          rules.dailyRate,
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+        );
+        const knownBreakevenHorizons = [currentBreakevenDays, afterBreakevenDays]
+          .filter((days): days is number => typeof days === 'number' && Number.isFinite(days));
+        const furthestBreakevenDays = knownBreakevenHorizons.length
+          ? Math.max(...knownBreakevenHorizons)
+          : undefined;
+        const dates = getUsEquityTradingProjectionDates(
+          new Date(),
+          pos.startDate || state.startDate,
+          furthestBreakevenDays
+        );
         const currentSaleGross = oldShares * projectionPrice;
         const afterSaleGross = newShares * projectionPrice;
         const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
@@ -460,7 +486,7 @@ export class ScenarioCalculator {
                 balanceAfter, remainingFreeCashAfterPurchase, afterNetSaleProceeds, rules.dailyRate, item.daysFromToday
               ))
             ],
-            kind: item.kind === 'today' || item.kind === 'next-trading-day' ? 'result' as const : 'fee' as const
+            kind: item.kind === 'today' || item.kind === 'next-trading-day' || item.kind === 'breakeven' ? 'result' as const : 'fee' as const
           };
         });
       })(),

@@ -244,7 +244,34 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
  * Buy More scenario rows represent exchange sessions only. When the current
  * calendar day is closed, omit it and start at the next available trading day.
  */
-export function getUsEquityTradingProjectionDates(today = new Date(), entryDate?: string): ProjectionDate[] {
-  return getUsEquityProjectionDates(today, entryDate)
-    .filter(({ date }) => isUsEquityTradingDay(date));
+export function getUsEquityTradingProjectionDates(
+  today = new Date(),
+  entryDate?: string,
+  breakevenDays?: number
+): ProjectionDate[] {
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const byDate = new Map<string, ProjectionDate>();
+
+  for (const projection of getUsEquityProjectionDates(today, entryDate, breakevenDays)) {
+    let candidate = projection;
+    if (!isUsEquityTradingDay(projection.date)) {
+      // A breakeven reached on a closed day is represented at the next
+      // exchange session; all other closed dates are omitted.
+      if (projection.kind !== 'breakeven') continue;
+      const nextTradingDate = rollForwardToTradingDay(projection.date);
+      candidate = {
+        ...projection,
+        date: nextTradingDate,
+        daysFromToday: calendarDayDifference(start, nextTradingDate)
+      };
+    }
+
+    const key = dateKey(candidate.date);
+    const existing = byDate.get(key);
+    // When a weekend/holiday breakeven rolls onto an existing checkpoint,
+    // keep a single row and preserve its breakeven marker.
+    if (!existing || candidate.kind === 'breakeven') byDate.set(key, candidate);
+  }
+
+  return [...byDate.values()].sort((left, right) => left.date.getTime() - right.date.getTime());
 }

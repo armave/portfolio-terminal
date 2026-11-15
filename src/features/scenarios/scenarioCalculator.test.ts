@@ -3,7 +3,8 @@ import { ScenarioCalculator } from './scenarioCalculator';
 import { loadBuyMorePreferences, saveBuyMorePreferences, type BuyMorePreferences } from './buyMorePreferences';
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateSaleCommission } from '../../domain/portfolioTransactions';
-import { calculateAccruedFees, calculateMarginInterest } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, findProjectionBreakevenDay } from '../../domain/portfolio';
+import { getUsEquityTradingProjectionDates } from '../../domain/tradingCalendar';
 import { calculatePositionMetrics } from '../../domain/portfolioSelectors';
 
 afterEach(() => {
@@ -233,6 +234,39 @@ describe('Market Tools Buy More preview', () => {
       0
     );
     expect(parseSignedMoney(today?.values[1])).toBeCloseTo(expectedAfterNet, 2);
+
+    // The table must continue through whichever scenario (NOW or AFTER) has
+    // the later projected break-even, not stop at the default nine weekly rows.
+    const currentBreakevenDays = findProjectionBreakevenDay(
+      10 * 150 - 1_000,
+      2 + calculateCommission(10, 10 * 150, scenarioRules),
+      positionMetrics.posMarginCharged,
+      positionMetrics.allocatedDebt,
+      36.5 / 365,
+      3650
+    );
+    const afterBreakevenDays = findProjectionBreakevenDay(
+      15 * 150 - afterPositionCost,
+      2 + calculateCommission(5, 5 * 105, scenarioRules) +
+        calculateCommission(15, 15 * 150, scenarioRules),
+      afterMargin,
+      afterAllocatedDebt,
+      36.5 / 365,
+      3650
+    );
+    expect(currentBreakevenDays).toBeDefined();
+    expect(afterBreakevenDays).toBeDefined();
+    expect(afterBreakevenDays!).toBeGreaterThan(currentBreakevenDays!);
+    expect(afterBreakevenDays!).toBeGreaterThan(63);
+    const expectedLastProjection = getUsEquityTradingProjectionDates(
+      new Date(),
+      '2026-11-10',
+      Math.max(currentBreakevenDays!, afterBreakevenDays!)
+    ).at(-1)!;
+    const expectedLastDateLabel = expectedLastProjection.date.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric'
+    });
+    expect(custom.modal?.rows.at(-1)?.label).toBe(expectedLastDateLabel + ' · BREAKEVEN');
 
     // Balance is the resulting cash after selling all shares at the projected target.
     const expectedCurrentBalance = 100 - 1_000 + 10 * 150 -

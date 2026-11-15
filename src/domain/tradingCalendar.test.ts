@@ -200,4 +200,17 @@ describe('US equity trading calendar', () => {
     expect(projections.some(({ date }) => dateLabel(date) === '2026-09-07')).toBe(false);
     expect(projections.every(({ date }) => isUsEquityTradingDay(date))).toBe(true);
   });
+
+  it('extends trading-day projections to the breakeven horizon and rolls closed breakeven dates forward', () => {
+    const longHorizon = getUsEquityTradingProjectionDates(localDate(2026, 10, 12), undefined, 94);
+    expect(longHorizon.at(-1)).toMatchObject({ daysFromToday: 94, kind: 'breakeven' });
+    expect(dateLabel(longHorizon.at(-1)!.date)).toBe('2027-01-14');
+    expect(longHorizon.every(({ date }) => isUsEquityTradingDay(date))).toBe(true);
+
+    // 2026-10-17 is Saturday. Its breakeven marker belongs on Monday 2026-10-19.
+    const weekendBreakeven = getUsEquityTradingProjectionDates(localDate(2026, 10, 12), undefined, 5);
+    expect(weekendBreakeven.at(-1)).toMatchObject({ daysFromToday: 7, kind: 'breakeven' });
+    expect(dateLabel(weekendBreakeven.at(-1)!.date)).toBe('2026-10-19');
+    expect(weekendBreakeven.every(({ date }) => isUsEquityTradingDay(date))).toBe(true);
+  });
 });
