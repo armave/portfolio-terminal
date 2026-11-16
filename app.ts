@@ -757,10 +757,13 @@ async function syncCloudState(mode = 'push') {
     logAppMessage,
     onStatusChange: (status) => {
       const synced = status === 'synced';
-      setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : 'UNAVAILABLE');
+      const conflict = status === 'conflict';
+      setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : conflict ? 'CONFLICT' : 'UNAVAILABLE');
       setCloudSyncStatus(synced
         ? { text: 'Synced', status: 'synced', lastSyncedAt: Date.now() }
-        : { text: 'Sync failed', status: 'error' });
+        : conflict
+          ? { text: 'Cloud sync conflict — recovery required', status: 'conflict' }
+          : { text: 'Sync failed', status: 'error' });
     }
   });
 }
