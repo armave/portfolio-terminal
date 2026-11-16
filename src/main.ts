@@ -45,9 +45,9 @@ function armStartupWatchdog(): void {
 }
 
 addUiEventListener('app:startup-state', (event) => {
-  if (!event.detail.visible) {
+  if (!event.detail.visible || event.detail.failed) {
     clearStartupWatchdog();
-  } else if (!event.detail.failed) {
+  } else {
     armStartupWatchdog();
   }
 });
