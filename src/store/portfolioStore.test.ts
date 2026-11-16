@@ -2448,6 +2448,42 @@ describe('portfolio import boundary validation', () => {
   });
 });
 
+describe('explicit workspace replacement', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('replaces the prior journal instead of merging history from another workspace', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 1, 100, '2026-11-01')).toBe(true);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+
+    const prior = store.getState();
+    const replacement: PortfolioState = {
+      ...prior,
+      positions: {},
+      cashCushion: { freeCash: 0, holdings: [] },
+      cashBalance: 0,
+      balance: 0,
+      closedTrades: [],
+      closedHistory: [],
+      brokerExecutedTrades: [],
+      cashflows: [],
+      transactionEvents: [],
+      corporateActionEvents: [],
+      marketHistoryCorrections: []
+    };
+
+    expect(store.replaceWorkspace(replacement, false)).toBe(true);
+    expect(store.getState().positions).toEqual({});
+    expect(store.getState().transactionEvents).toEqual([]);
+    expect(store.getState().corporateActionEvents).toEqual([]);
+    expect(store.getState().marketHistoryCorrections).toEqual([]);
+  });
+});
+
+
 
 describe('portfolio transaction journal integration', () => {
   beforeEach(() => {

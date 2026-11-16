@@ -48,7 +48,12 @@ function createFixture(initialRole: AuthUser['role'] | null = 'admin', initialId
     cancelPendingApiReads: vi.fn(() => calls.push('cancel-pending-api-reads')),
     clearCloudEncryptionSecretCache: vi.fn(() => calls.push('clear-encryption-cache')),
     clearPendingCloudWrite: vi.fn(() => calls.push('clear-cloud-write-timer')),
-    clearGuestWorkspace: vi.fn(() => calls.push('clear-guest-workspace')),
+    activateWorkspaceStorage: vi.fn(async (user: AuthUser) => {
+      calls.push('activate-storage:' + (user.role === 'admin' ? 'owner' : 'guest:' + user.id));
+    }),
+    clearWorkspaceOnAuthFailure: vi.fn(async () => {
+      calls.push('clear-workspace-on-auth-failure');
+    }),
     emitUserChanged: vi.fn((user: AuthUser | null) => calls.push(user ? `user:${user.role}:${user.id}` : 'user:none')),
     showToast: vi.fn((message: string, tone: 'error') => calls.push(`toast:${tone}:${message}`)),
     logoutAccount: vi.fn(async () => { calls.push('logout-api'); }),
@@ -76,7 +81,7 @@ describe('portfolio session runtime', () => {
     unbindLogout = undefined;
   });
 
-  it('switches to a guest before clearing the previous shared workspace', async () => {
+  it('switches to the guest storage scope after revoking cloud writes', async () => {
     const fixture = createFixture();
     const runtime = createPortfolioSessionRuntime(fixture.dependencies);
 
@@ -89,14 +94,14 @@ describe('portfolio session runtime', () => {
       canWriteCloudState: false
     });
     expect(fixture.calls).toEqual([
+      'cloud-write:false',
       'cancel-pending-api-reads',
       'clear-encryption-cache',
+      'clear-cloud-write-timer',
       'identity:guest:guest-a',
       'role:guest',
       'account:guest-a',
-      'cloud-write:false',
-      'clear-cloud-write-timer',
-      'clear-guest-workspace',
+      'activate-storage:guest:guest-a',
       'user:guest:guest-a'
     ]);
   });
@@ -114,10 +119,70 @@ describe('portfolio session runtime', () => {
       accountId: 'admin-a',
       canWriteCloudState: true
     });
-    expect(fixture.dependencies.clearGuestWorkspace).not.toHaveBeenCalled();
+    expect(fixture.dependencies.activateWorkspaceStorage).toHaveBeenCalledWith(adminUser);
     expect(fixture.dependencies.cancelPendingApiReads).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.clearPendingCloudWrite).toHaveBeenCalledTimes(1);
+    expect(fixture.calls).toContain('cloud-write:false');
+    expect(fixture.calls).toContain('activate-storage:owner');
     expect(fixture.calls).toContain('cloud-write:true');
     expect(fixture.calls[fixture.calls.length - 1]).toBe('user:admin:admin-a');
+  });
+
+  it('waits for the shared workspace activation before enabling administrator writes', async () => {
+    const fixture = createFixture(null, null);
+    fixture.dependencies.getCurrentUser = vi.fn(async () => adminUser);
+    let finishActivation: (() => void) | undefined;
+    fixture.dependencies.activateWorkspaceStorage = vi.fn(async () => {
+      await new Promise<void>((resolve) => { finishActivation = resolve; });
+    });
+    const runtime = createPortfolioSessionRuntime(fixture.dependencies);
+
+    const firstPublish = runtime.publishCurrentUser();
+    await vi.waitFor(() => expect(finishActivation).toBeTypeOf('function'));
+    const secondPublish = runtime.publishCurrentUser();
+
+    await Promise.resolve();
+    expect(fixture.getState().canWriteCloudState).toBe(false);
+    expect(fixture.dependencies.emitUserChanged).not.toHaveBeenCalled();
+    expect(fixture.dependencies.activateWorkspaceStorage).toHaveBeenCalledTimes(1);
+
+    finishActivation?.();
+    const [firstUser, secondUser] = await Promise.all([firstPublish, secondPublish]);
+    expect(firstUser).toBeNull();
+    expect(secondUser).toEqual(adminUser);
+    expect(fixture.getState().canWriteCloudState).toBe(true);
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(adminUser);
+  });
+
+  it('does not let a slow administrator activation re-enable writes after a newer guest login', async () => {
+    const fixture = createFixture(null, null);
+    fixture.dependencies.getCurrentUser = vi.fn(async () => adminUser);
+    let finishAdminActivation: (() => void) | undefined;
+    fixture.dependencies.activateWorkspaceStorage = vi.fn(async (user: AuthUser) => {
+      if (user.role === 'admin') {
+        await new Promise<void>((resolve) => { finishAdminActivation = resolve; });
+      }
+    });
+    const runtime = createPortfolioSessionRuntime(fixture.dependencies);
+
+    const staleAdminPublish = runtime.publishCurrentUser();
+    await vi.waitFor(() => expect(finishAdminActivation).toBeTypeOf('function'));
+
+    fixture.dependencies.getCurrentUser = vi.fn(async () => guestUser);
+    const currentGuestPublish = runtime.publishCurrentUser();
+    await expect(currentGuestPublish).resolves.toEqual(guestUser);
+
+    finishAdminActivation?.();
+    await expect(staleAdminPublish).resolves.toBeNull();
+    expect(fixture.getState()).toEqual({
+      role: 'guest',
+      accountId: 'guest-a',
+      canWriteCloudState: false
+    });
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(guestUser);
+    expect(fixture.calls).not.toContain('cloud-write:true');
   });
 
   it('does not invalidate caches or clear workspace for a repeated identity notification', async () => {
@@ -130,7 +195,7 @@ describe('portfolio session runtime', () => {
     expect(fixture.dependencies.cancelPendingApiReads).not.toHaveBeenCalled();
     expect(fixture.dependencies.setSessionIdentity).not.toHaveBeenCalled();
     expect(fixture.dependencies.clearPendingCloudWrite).not.toHaveBeenCalled();
-    expect(fixture.dependencies.clearGuestWorkspace).not.toHaveBeenCalled();
+    expect(fixture.dependencies.activateWorkspaceStorage).not.toHaveBeenCalled();
   });
 
   it('clears account permissions and invalidates the session when identity lookup fails', async () => {
@@ -150,7 +215,40 @@ describe('portfolio session runtime', () => {
     });
     expect(fixture.dependencies.setSessionIdentity).toHaveBeenCalledWith(null);
     expect(fixture.dependencies.cancelPendingApiReads).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.clearPendingCloudWrite).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.clearWorkspaceOnAuthFailure).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(null);
+  });
+
+  it('does not publish a stale auth failure after a newer login starts during offline cleanup', async () => {
+    const fixture = createFixture();
+    let lookupCount = 0;
+    fixture.dependencies.getCurrentUser = vi.fn(async () => {
+      lookupCount += 1;
+      if (lookupCount === 1) throw new Error('Authentication service unavailable');
+      return guestUser;
+    });
+
+    let finishCleanup: (() => void) | undefined;
+    fixture.dependencies.clearWorkspaceOnAuthFailure = vi.fn(async () => {
+      await new Promise<void>((resolve) => { finishCleanup = resolve; });
+    });
+    const runtime = createPortfolioSessionRuntime(fixture.dependencies);
+
+    const staleFailure = runtime.publishCurrentUser();
+    await vi.waitFor(() => expect(finishCleanup).toBeTypeOf('function'));
+
+    await expect(runtime.publishCurrentUser()).resolves.toEqual(guestUser);
+    finishCleanup?.();
+    await expect(staleFailure).resolves.toBeNull();
+
+    expect(fixture.getState()).toEqual({
+      role: 'guest',
+      accountId: 'guest-a',
+      canWriteCloudState: false
+    });
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(guestUser);
   });
 
   it('allows administrator-only operations for an admin session', async () => {

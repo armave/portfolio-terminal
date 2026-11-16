@@ -36,12 +36,11 @@ export function createPortfolioAuthenticatedStartupRuntime(
   dependencies: PortfolioAuthenticatedStartupDependencies
 ): PortfolioAuthenticatedStartupRuntime {
   const startApp = async (secret: string): Promise<void> => {
-    dependencies.loadBrokerRules();
-
-    // Establish role and write permission before importing state or refreshing quotes.
+    // Resolve identity and activate its browser workspace before reading rules.
     if (secret) await dependencies.publishCurrentUser();
     else dependencies.clearAccountIdentity();
 
+    dependencies.loadBrokerRules();
     dependencies.setGatewaySecret(secret);
     const role = dependencies.getAccountRole();
     if (role === 'guest') {

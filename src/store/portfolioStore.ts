@@ -724,6 +724,16 @@ export class PortfolioStore {
     return this.setState(partial, persist, 'derived');
   }
 
+  /**
+   * Replace the in-memory workspace after the authenticated browser scope changes.
+   * Same-workspace cloud and backup imports must continue using importState(),
+   * which deliberately merges append-only journals.
+   */
+  public replaceWorkspace(newState: PortfolioState, persist = true): boolean {
+    if (!hasValidPortfolioImportShape(newState)) return false;
+    return this.update(() => ({ ...newState }), persist, 'derived');
+  }
+
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 

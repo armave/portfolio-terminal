@@ -67,6 +67,7 @@ import {
   clearCloudEncryptionSecretCache
 } from './src/services/api';
 import {
+  activatePortfolioStorageScope,
   areHeaderCredentialsConfigured,
   clearBrokerRules,
   getGatewaySecret,
@@ -133,7 +134,7 @@ const TRADERNET_RULES: BrokerAssumptions = { ...DEFAULT_TRADERNET_RULES };
 
 let state: PortfolioState = portfolioStore.getState();
 
-/** Clear workspace data without resetting device/account settings. */
+/** Create an empty guest workspace while retaining device/account settings. */
 function createCleanWorkspaceState(now = Date.now()): PortfolioState {
   const current = portfolioStore.getState();
   return {
@@ -144,6 +145,7 @@ function createCleanWorkspaceState(now = Date.now()): PortfolioState {
     autoRefreshInterval: current.autoRefreshInterval
   };
 }
+
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
@@ -1800,9 +1802,50 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
   },
-  clearGuestWorkspace: () => {
-    portfolioStore.importState(createCleanWorkspaceState());
+  activateWorkspaceStorage: async (user) => {
+    // Remove the previous identity's in-memory portfolio before any asynchronous
+    // storage work. Do not persist this temporary blank over the outgoing scope.
+    if (!portfolioStore.replaceWorkspace(createBlankPortfolioState(), false)) {
+      throw new Error('The previous portfolio workspace could not be cleared safely.');
+    }
     state = portfolioStore.getState();
+
+    const scope = user.role === 'admin' ? 'owner' : 'guest:' + user.id;
+    await activatePortfolioStorageScope(scope, { migrateLegacy: user.role === 'admin' });
+
+    // A newer identity may have superseded this queued storage transition.
+    // Never hydrate or publish the stale user's workspace.
+    if (currentAccountRole !== user.role || currentAccountId !== user.id) return;
+
+    const blank = createBlankPortfolioState();
+    const saved = loadSavedState(blank);
+    const history = loadSavedHistory();
+    const workspace: PortfolioState = {
+      ...blank,
+      ...saved,
+      // Persisted history is untrusted input; normalize it through the same
+      // broker adapters used by the live history-sync path before importing.
+      brokerExecutedTrades: freedomBrokerAdapter.normalizeExecutions(
+        history.brokerExecutedTrades,
+        { source: 'cache' }
+      ).data,
+      cashflows: normalizeSavedFreedomCashflows(history.cashflows)
+    };
+    if (!portfolioStore.replaceWorkspace(workspace)) {
+      throw new Error('The authenticated portfolio workspace could not be loaded safely.');
+    }
+    state = portfolioStore.getState();
+  },
+  clearWorkspaceOnAuthFailure: async () => {
+    // Authentication has already failed. Clear visible in-memory data before
+    // waiting for IndexedDB or any other asynchronous offline-scope work.
+    portfolioStore.replaceWorkspace(createBlankPortfolioState(), false);
+    state = portfolioStore.getState();
+    try {
+      await activatePortfolioStorageScope('offline');
+    } catch {
+      // Keep the authentication failure path available if storage is unavailable.
+    }
   },
   emitUserChanged: (user) => emitUiEvent('auth:user-changed', { user }),
   showToast,
