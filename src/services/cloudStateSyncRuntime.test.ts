@@ -265,7 +265,7 @@ describe('background cloud conflict reconciliation', () => {
         positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
         balance: 300,
         lastUpdated: 250
-      }) as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: (state: Record<string, unknown>) => {
         applied = state;
         return true;
@@ -315,7 +315,7 @@ describe('background cloud conflict reconciliation', () => {
         balance: 300,
         transactionEvents: [{ id: 'buy-base' }, { id: 'buy-local' }],
         lastUpdated: 250
-      }) as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: () => { applied = true; return true; },
       showToast: () => {},
       logAppMessage: () => {}
