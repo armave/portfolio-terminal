@@ -9,7 +9,15 @@ import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 
 let serviceWorkerReloadRequested = false;
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  // A first controller acquisition is normal PWA installation and can happen
+  // while the user is creating an account. Never reload that in-flight session.
+  // Only reload when an already-controlled page receives a replacement worker.
+  let hasExistingController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hasExistingController) {
+      hasExistingController = true;
+      return;
+    }
     if (serviceWorkerReloadRequested) return;
     serviceWorkerReloadRequested = true;
     window.location.reload();
