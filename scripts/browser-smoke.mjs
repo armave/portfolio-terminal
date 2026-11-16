@@ -553,6 +553,9 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
       const nav = document.querySelector('#tickerTabs');
       const controls = Array.from(nav?.querySelectorAll('button[data-nav-tab="true"]') || []);
       const status = document.querySelector('.workspace-header-status');
+      const dock = document.querySelector('.workspace-header-destinations');
+      const dockBounds = dock?.getBoundingClientRect();
+      const dockStyle = dock ? getComputedStyle(dock) : null;
       return {
         kinds: controls.map((button) => button.getAttribute('data-nav-kind')),
         buttons: controls.map((button) => {
@@ -566,10 +569,13 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
             icon: Boolean(icon?.getClientRects().length),
             labelText: label?.textContent?.trim() || '',
             labelDisplay: label ? getComputedStyle(label).display : 'missing',
+            labelFlexDirection: label ? getComputedStyle(label).flexDirection : 'missing',
             radius: getComputedStyle(button).borderRadius,
             kind: button.getAttribute('data-nav-kind')
           };
         }),
+        dockPosition: dockStyle?.position ?? null,
+        dockBottomGap: dockBounds ? window.innerHeight - dockBounds.bottom : null,
         statusOutsideNavigation: Boolean(status && nav && !nav.contains(status)),
         marketStatus: Boolean(status?.querySelector('[data-market-status-role]')),
         cloudStatus: Boolean(status?.querySelector('#cloudStatus')),
@@ -599,8 +605,17 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
     if (role === 'guest' && navigation.hasPortfolioPtCopy) {
       throw new Error('Guest Stocks must not display the administrator Margin PT.');
     }
-    if (width === 390 && navigation.buttons.some(button => button.kind !== 'margin-ticker' && button.labelDisplay !== 'none')) {
-      throw new Error('Fixed mobile navigation should use the compact icon-first treatment: ' + JSON.stringify(navigation));
+    if (width <= 768 && (navigation.dockPosition !== 'fixed' || navigation.dockBottomGap > 1 ||
+        navigation.buttons.some(button => button.labelDisplay === 'none'))) {
+      throw new Error('Mobile workspace navigation must stay labeled in the shared footer dock for every role: ' + JSON.stringify(navigation));
+    }
+    if (width > 768 && navigation.dockPosition === 'fixed') {
+      throw new Error('Desktop workspace navigation should remain in the header: ' + JSON.stringify(navigation));
+    }
+    if (role === 'admin' && width <= 768 && navigation.buttons.some(button =>
+      button.kind === 'margin-ticker' && button.labelFlexDirection !== 'column'
+    )) {
+      throw new Error('Admin Margin prefix and ticker should stack vertically in the mobile footer: ' + JSON.stringify(navigation));
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });

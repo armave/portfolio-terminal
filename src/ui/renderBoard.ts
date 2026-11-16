@@ -1,7 +1,4 @@
 import { setBoardTitle } from './uiStateStore';
-import {
-  calculatePositionMetrics
-} from '../domain/portfolioSelectors';
 export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
 import { formatUSD } from '../utils/formatters';
 import {
@@ -14,6 +11,17 @@ export type {
 };
 
 const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS']);
+
+function formatMarginTargetDifference(targetPrice: number, currentPrice: number): string {
+  if (!Number.isFinite(targetPrice) || targetPrice <= 0 ||
+      !Number.isFinite(currentPrice) || currentPrice <= 0) {
+    return '';
+  }
+
+  const differencePercent = ((targetPrice - currentPrice) / currentPrice) * 100;
+  if (!Number.isFinite(differencePercent)) return '';
+  return `${differencePercent >= 0 ? '+' : ''}${differencePercent.toFixed(2)}%`;
+}
 
 export function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
@@ -36,7 +44,6 @@ function renderSummaryCards(
   const { rules, onRenderAnalystConsensus } = options;
   if (!rules) return;
 
-  const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
@@ -62,7 +69,6 @@ function renderSummaryCards(
     const pos = (state.activeView ? state.positions?.[state.activeView] : undefined) || state.positions?.[tickers[0]];
     if (!pos) return;
 
-    const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
     setBoardTitle({
       title: pos.ticker,
@@ -72,8 +78,8 @@ function renderSummaryCards(
         ? pos.quoteDetails?.changePercent
         : undefined,
       marginPtValue: formatUSD(pos.pt),
-      marginPtReturnText: `${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%`,
-      marginPtTitle: `Margin position target price: ${formatUSD(pos.pt)}. Net return at this target: ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}%.`
+      marginPtReturnText: formatMarginTargetDifference(pos.pt, pos.currentPrice),
+      marginPtTitle: `Margin position target price: ${formatUSD(pos.pt)}.`
     });
 
     if (typeof onRenderAnalystConsensus === 'function') {
