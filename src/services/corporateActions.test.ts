@@ -375,7 +375,7 @@ describe('cash-holding split adjustment', () => {
         preSplitCashHolding.lots![0],
         { ...preSplitCashHolding.lots![0], lotId: 'post-action-lot', date: '2021-01-02', acquiredAt: Date.parse('2021-01-02T09:30:00.000Z') }
       ],
-      shares: 11
+      shares: 20
     }, splitEvent())).toMatchObject({ status: 'review_required' });
   });
 
