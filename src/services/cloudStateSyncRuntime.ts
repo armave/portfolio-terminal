@@ -458,7 +458,7 @@ async function pullCloudState(
         return loadSavedState(toCloudStateRecord(state));
       }
       preservedLocalChanges = cloudStateFingerprint(reconciledSnapshot) !== cloudStateFingerprint(remoteSnapshot);
-      parsedState = reconciledSnapshot;
+      parsedState = reconciledSnapshot as CloudStateRecord;
     }
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
