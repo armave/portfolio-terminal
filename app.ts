@@ -830,7 +830,7 @@ async function resetToBlankState(): Promise<void> {
     } catch (error) {
       console.error('Could not restore the previous device desk preference after reset rollback:', error);
     }
-    portfolioStore.update(() => previousState, false);
+    portfolioStore.restoreInMemorySnapshot(previousState);
     state = portfolioStore.getState();
     renderBoard();
     showToast(
@@ -1615,7 +1615,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       }
     }
     if (!isCurrentSession()) {
-      portfolioStore.update(() => previousState, false);
+      portfolioStore.restoreInMemorySnapshot(previousState);
       state = portfolioStore.getState();
       return false;
     }
@@ -1625,7 +1625,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     // localStorage on every scheduled sync; retain the previous local cache.
     const persisted = savePortfolioStateSnapshot(portfolioStore.getState());
     if (!persisted) {
-      portfolioStore.update(() => previousState, false);
+      portfolioStore.restoreInMemorySnapshot(previousState);
       state = portfolioStore.getState();
       logAppMessage('[Closed History Sync Error]: Could not persist the local portfolio snapshot; cloud history was not changed.');
       return false;

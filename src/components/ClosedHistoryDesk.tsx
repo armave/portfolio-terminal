@@ -365,7 +365,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         cashflows: cashflowRows
       });
       if (!historyPersisted) {
-        portfolioStore.update(() => previousPortfolioState, false);
+        portfolioStore.restoreInMemorySnapshot(previousPortfolioState);
         const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
         setCashflowSyncMessage(message);
         console.error(message);

@@ -1143,16 +1143,12 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     store.setCashBalance(1_000);
     store.buyStock('AAPL', 2, 100, '2026-10-15');
-    store.update((state) => {
-      const position = state.positions.AAPL;
-      if (!position) return state;
-      return {
-        ...state,
-        positions: {
-          ...state.positions,
-          AAPL: { ...position, marginCharged: 10 }
-        }
-      };
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: { ...position, marginCharged: 10 }
+      }
     });
 
     store.sellStock('AAPL', 1, 110, '2026-10-16');
@@ -2249,6 +2245,32 @@ describe('atomic portfolio-store persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('rejects generic closed-history writes before state, storage or subscribers change', () => {
+    const store = new PortfolioStore();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = values.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const candidateRows = [{
+      id: 'generic-write-must-not-append',
+      ticker: 'AAPL',
+      shares: 1,
+      netProfit: 10
+    }] as ClosedTrade[];
+
+    expect(store.setState({ closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+
+    expect(store.setState({ balance: -999, closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-100);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('retains the previous snapshot and suppresses subscribers when the state write fails', () => {
     const store = new PortfolioStore();
     store.setState({ balance: -100 }, false);
@@ -2272,6 +2294,17 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledWith(
       'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.'
     );
+  });
+
+  it('only restores a snapshot reference previously committed by this store', () => {
+    const store = new PortfolioStore();
+    const previous = store.getState();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    expect(store.getState().balance).toBe(-100);
+
+    expect(store.restoreInMemorySnapshot(previous)).toBe(true);
+    expect(store.getState().balance).toBe(0);
+    expect(store.restoreInMemorySnapshot({ ...previous })).toBe(false);
   });
 
   it('writes the candidate snapshot before publishing it to subscribers', () => {
