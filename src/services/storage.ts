@@ -6,12 +6,16 @@ import {
 } from './portfolioAutoRefresh';
 
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
+const STORAGE_KEY_STATE_RECOVERY = 'margin_portfolio_state_dynamic_v2_recovery_v1';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
+const STORAGE_KEY_CLOSED_HISTORY_RECOVERY = 'portfolio_closed_history_v1_recovery_v1';
 const HISTORY_DATABASE_NAME = 'portfolio-terminal-history-cache';
 const HISTORY_DATABASE_VERSION = 1;
 const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
+const HISTORY_RECORD_RECOVERY_KEY = 'closed-history-v1:last-known-good';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
+const INDEXED_DB_OPERATION_TIMEOUT_MS = 5_000;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT = 'portfolio_tradenet_cashflow_trade_checkpoint_v1';
@@ -30,6 +34,7 @@ const GW_KEY_STORE = 'keys';
 const GW_KEY_ID = 'gateway-secret-aes-key';
 let pendingSecretPersistence: Promise<boolean> = Promise.resolve(true);
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
+const STORAGE_KEY_RULES_RECOVERY = 'tradernet_rules_v1_recovery_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 const STORAGE_KEY_GUEST_REFRESH_INTERVAL = 'quote_refresh_interval_guest_v1';
 
@@ -105,6 +110,26 @@ function resetHistoryStorageCache(): void {
 }
 
 
+function isExplicitPortfolioReset(state: Record<string, unknown>): boolean {
+  const events = state.transactionEvents;
+  if (!Array.isArray(events) || events.length === 0) return false;
+  const latest = events[events.length - 1];
+  return Boolean(latest && typeof latest === 'object' &&
+    (latest as Record<string, unknown>).type === 'portfolio.reset');
+}
+
+function parseJsonRecord(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeHistorySnapshot(value: unknown): ClosedHistorySnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
@@ -120,17 +145,29 @@ function readLegacySavedHistorySnapshot(
 ): ClosedHistorySnapshot | null {
   const storage = getBrowserStorage();
   if (!storage) return null;
-  let raw: string | null = null;
-  try {
-    raw = storage.getItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
-  } catch (error) {
-    console.warn('Failed to read legacy closed history from localStorage:', error);
-  }
-  if (raw) {
+  const sidecarKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
+  for (const key of [sidecarKey, recoveryKey]) {
+    let raw: string | null = null;
+    try {
+      raw = storage.getItem(key);
+    } catch (error) {
+      console.warn('Failed to read legacy closed history from localStorage:', error);
+      continue;
+    }
+    if (!raw) continue;
     try {
       const history = normalizeHistorySnapshot(JSON.parse(raw));
-      if (history) return history;
-      throw new Error('Saved closed history must contain history arrays.');
+      if (!history) throw new Error('Saved closed history must contain history arrays.');
+      if (key === recoveryKey) {
+        try {
+          storage.setItem(sidecarKey, raw);
+          console.warn('Recovered closed history from a scoped local recovery copy.');
+        } catch (error) {
+          console.warn('Recovered closed history in memory; browser storage repair is pending:', error);
+        }
+      }
+      return history;
     } catch (error) {
       console.warn('Failed to parse saved closed history:', error);
     }
@@ -158,57 +195,210 @@ function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDa
       reject(new Error('IndexedDB is unavailable'));
       return;
     }
+
     const request = indexedDB.open(scopedHistoryDatabaseName(scope), HISTORY_DATABASE_VERSION);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Opening closed-history storage timed out.'));
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+    const rejectRequest = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(HISTORY_OBJECT_STORE)) {
         request.result.createObjectStore(HISTORY_OBJECT_STORE);
       }
     };
     request.onsuccess = () => {
+      if (settled) {
+        // A request that completes after its deadline must not leak a connection.
+        request.result.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
       request.result.onversionchange = () => request.result.close();
       resolve(request.result);
     };
-    request.onerror = () => reject(request.error || new Error('Could not open closed-history storage'));
-    request.onblocked = () => reject(new Error('Closed-history storage upgrade is blocked by another tab'));
+    request.onerror = () => rejectRequest(request.error || new Error('Could not open closed-history storage'));
+    request.onblocked = () => rejectRequest(new Error('Closed-history storage upgrade is blocked by another tab'));
   });
 }
 
 async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScope): Promise<ClosedHistorySnapshot | null> {
   const db = await openHistoryDatabase(scope);
+  let snapshot: ClosedHistorySnapshot | null = null;
+  let recoveryNeeded = false;
   try {
-    return await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
-      const request = transaction.objectStore(HISTORY_OBJECT_STORE).get(HISTORY_RECORD_KEY);
-      let snapshot: ClosedHistorySnapshot | null = null;
-      request.onsuccess = () => {
-        snapshot = normalizeHistorySnapshot(request.result);
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+      let currentValue: unknown;
+      let recoveryValue: unknown;
+      let currentRead = false;
+      let recoveryRead = false;
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Reading closed-history storage timed out.'));
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already be inactive.
+        }
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      const resolveTransaction = () => {
+        if (settled) return;
+        if (!currentRead || !recoveryRead) {
+          settled = true;
+          clearTimeout(timeout);
+          reject(new Error('Closed-history read completed without all requested records.'));
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        const current = normalizeHistorySnapshot(currentValue);
+        const recovery = normalizeHistorySnapshot(recoveryValue);
+        if (current) {
+          snapshot = current;
+          recoveryNeeded = !recovery;
+        } else if (recovery) {
+          snapshot = recovery;
+          recoveryNeeded = true;
+        }
+        resolve();
       };
-      request.onerror = () => reject(request.error || new Error('Could not read closed-history storage'));
-      transaction.oncomplete = () => resolve(snapshot);
-      transaction.onerror = () => reject(transaction.error || new Error('Closed-history read transaction failed'));
-      transaction.onabort = () => reject(transaction.error || new Error('Closed-history read transaction was aborted'));
+      const rejectTransaction = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+
+      const currentRequest = store.get(HISTORY_RECORD_KEY);
+      const recoveryRequest = store.get(HISTORY_RECORD_RECOVERY_KEY);
+      currentRequest.onsuccess = () => {
+        currentValue = currentRequest.result;
+        currentRead = true;
+      };
+      recoveryRequest.onsuccess = () => {
+        recoveryValue = recoveryRequest.result;
+        recoveryRead = true;
+      };
+      currentRequest.onerror = () => rejectTransaction(
+        currentRequest.error || new Error('Could not read closed-history storage')
+      );
+      recoveryRequest.onerror = () => rejectTransaction(
+        recoveryRequest.error || new Error('Could not read closed-history recovery storage')
+      );
+      transaction.oncomplete = resolveTransaction;
+      transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction failed'));
+      transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction was aborted'));
     });
   } finally {
     db.close();
   }
+
+  // Restore a missing/corrupt active row or seed the recovery row on first
+  // initialization. Keep the in-memory recovered rows even if repair cannot save.
+  if (snapshot && recoveryNeeded) {
+    try {
+      await writeHistoryRecordToIndexedDB(snapshot, scope, true);
+    } catch (error) {
+      console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
+    }
+  }
+  if (snapshot) writeLocalHistoryRecoverySnapshot(snapshot, scope);
+  return snapshot;
 }
 
-async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, scope = activePortfolioStorageScope): Promise<void> {
+async function writeHistoryRecordToIndexedDB(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope,
+  resetRecovery = false
+): Promise<void> {
   const db = await openHistoryDatabase(scope);
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
-      transaction.objectStore(HISTORY_OBJECT_STORE).put(history, HISTORY_RECORD_KEY);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error || new Error('Closed-history write transaction failed'));
-      transaction.onabort = () => reject(transaction.error || new Error('Closed-history write transaction was aborted'));
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Writing closed-history storage timed out.'));
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already be inactive.
+        }
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      const resolveTransaction = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      const rejectTransaction = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+
+      // Read the current row inside the same transaction. The previous valid
+      // history is retained as a recovery row before the replacement commits.
+      const currentRequest = store.get(HISTORY_RECORD_KEY);
+      currentRequest.onsuccess = () => {
+        if (resetRecovery) {
+          // An explicit user reset is a new known-good state, not a recoverable
+          // corruption candidate. Keep both rows blank so old history cannot return.
+          store.put(history, HISTORY_RECORD_RECOVERY_KEY);
+          store.put(history, HISTORY_RECORD_KEY);
+          return;
+        }
+        const current = normalizeHistorySnapshot(currentRequest.result);
+        if (current) {
+          store.put(current, HISTORY_RECORD_RECOVERY_KEY);
+          store.put(history, HISTORY_RECORD_KEY);
+          return;
+        }
+
+        // Do not overwrite an existing recovery row when the active row is
+        // missing/corrupt. Seed it only when no valid recovery copy exists.
+        const recoveryRequest = store.get(HISTORY_RECORD_RECOVERY_KEY);
+        recoveryRequest.onsuccess = () => {
+          if (!normalizeHistorySnapshot(recoveryRequest.result)) {
+            store.put(history, HISTORY_RECORD_RECOVERY_KEY);
+          }
+          store.put(history, HISTORY_RECORD_KEY);
+        };
+      };
+      currentRequest.onerror = () => rejectTransaction(
+        currentRequest.error || new Error('Could not inspect existing closed-history storage')
+      );
+
+      transaction.oncomplete = resolveTransaction;
+      transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history write transaction failed'));
+      transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history write transaction was aborted'));
     });
   } finally {
     db.close();
   }
 }
 
-async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot, scope = activePortfolioStorageScope): Promise<boolean> {
+async function writeLegacyHistoryFallback(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope,
+  resetRecovery = false
+): Promise<boolean> {
   const storage = getBrowserStorage();
   if (!storage) return false;
   try {
@@ -216,10 +406,41 @@ async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot, scope 
     if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) {
       throw new Error('Closed history is too large for the legacy localStorage fallback; IndexedDB is required.');
     }
-    storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope), serialized);
+    const sidecarKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope);
+    const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
+    try {
+      if (resetRecovery) {
+        storage.setItem(recoveryKey, serialized);
+      } else {
+        const previous = storage.getItem(sidecarKey);
+        if (previous && normalizeHistorySnapshot(JSON.parse(previous))) {
+          storage.setItem(recoveryKey, previous);
+        }
+      }
+    } catch {
+      // A recovery copy is best-effort; never block the current history write.
+    }
+    storage.setItem(sidecarKey, serialized);
     return true;
   } catch (error) {
     console.warn('Closed history could not be written to the legacy localStorage fallback:', error);
+    return false;
+  }
+}
+
+function writeLocalHistoryRecoverySnapshot(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope
+): boolean {
+  const storage = getBrowserStorage();
+  if (!storage) return false;
+  try {
+    const serialized = JSON.stringify(history);
+    if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) return false;
+    storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope), serialized);
+    return true;
+  } catch (error) {
+    console.warn('Could not update the bounded local history recovery copy:', error);
     return false;
   }
 }
@@ -336,16 +557,15 @@ async function activatePortfolioStorageScopeNow(
 
   if (options.migrateLegacy && nextScope === 'owner') {
     const targetStateKey = scopedStorageKey(STORAGE_KEY_STATE, nextScope);
-    if (!storage.getItem(targetStateKey)) {
+    const targetRecoveryStateKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope);
+    const targetStateIsValid = Boolean(
+      parseJsonRecord(storage.getItem(targetStateKey)) ||
+      parseJsonRecord(storage.getItem(targetRecoveryStateKey))
+    );
+    if (!targetStateIsValid) {
       const legacyState = storage.getItem(STORAGE_KEY_STATE) ?? storage.getItem(STORAGE_KEY_LEGACY_STATE);
       if (legacyState) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(legacyState);
-        } catch {
-          throw new Error('The legacy administrator snapshot could not be parsed safely; its source was left untouched.');
-        }
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        if (!parseJsonRecord(legacyState)) {
           throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
         }
         storage.setItem(targetStateKey, legacyState);
@@ -353,9 +573,14 @@ async function activatePortfolioStorageScopeNow(
     }
 
     const targetRulesKey = scopedStorageKey(STORAGE_KEY_RULES, nextScope);
+    const targetRecoveryRulesKey = scopedStorageKey(STORAGE_KEY_RULES_RECOVERY, nextScope);
+    const targetRulesIsValid = Boolean(
+      parseJsonRecord(storage.getItem(targetRulesKey)) ||
+      parseJsonRecord(storage.getItem(targetRecoveryRulesKey))
+    );
     const legacyRules = storage.getItem(STORAGE_KEY_RULES);
-    if (!storage.getItem(targetRulesKey) && legacyRules !== null) {
-      storage.setItem(targetRulesKey, legacyRules);
+    if (!targetRulesIsValid && legacyRules !== null) {
+      if (parseJsonRecord(legacyRules)) storage.setItem(targetRulesKey, legacyRules);
     }
 
     // The history sidecar may be using the bounded localStorage fallback
@@ -417,7 +642,8 @@ export function activatePortfolioStorageScope(
 
 async function persistSavedHistorySnapshot(
   history: ClosedHistorySnapshot,
-  scope = activePortfolioStorageScope
+  scope = activePortfolioStorageScope,
+  options: { resetRecovery?: boolean } = {}
 ): Promise<boolean> {
   const snapshot: ClosedHistorySnapshot = {
     brokerExecutedTrades: Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [],
@@ -427,13 +653,11 @@ async function persistSavedHistorySnapshot(
   const isActiveScope = scope === activePortfolioStorageScope;
   if (isActiveScope) {
     cachedHistory = snapshot;
-    if (
-      lastPersistedHistory &&
+    if (!options.resetRecovery && lastPersistedHistory &&
       lastPersistedHistory.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       lastPersistedHistory.cashflows === snapshot.cashflows
     ) return true;
-    if (
-      queuedHistorySnapshot &&
+    if (!options.resetRecovery && queuedHistorySnapshot &&
       queuedHistorySnapshot.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       queuedHistorySnapshot.cashflows === snapshot.cashflows
     ) return await historyWriteQueue;
@@ -443,12 +667,13 @@ async function persistSavedHistorySnapshot(
   const previousQueue = historyWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
   const nextWrite = previousQueue.catch(() => false).then(async () => {
     try {
-      await writeHistoryRecordToIndexedDB(snapshot, scope);
+      await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
+      writeLocalHistoryRecoverySnapshot(snapshot, scope);
       removeLegacyHistorySidecar(scope);
       return true;
     } catch (indexedDbError) {
       console.warn('Could not persist closed history in IndexedDB; trying the bounded legacy fallback:', indexedDbError);
-      return await writeLegacyHistoryFallback(snapshot, scope);
+      return await writeLegacyHistoryFallback(snapshot, scope, options.resetRecovery === true);
     }
   });
 
@@ -578,31 +803,100 @@ function openSecureKeyDatabase(): Promise<IDBDatabase> {
       return;
     }
     const request = indexedDB.open(GW_KEY_DB, 1);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Opening secure device-key storage timed out.'));
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+    const rejectRequest = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(GW_KEY_STORE)) {
         request.result.createObjectStore(GW_KEY_STORE);
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Could not open secure key storage'));
+    request.onsuccess = () => {
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onerror = () => rejectRequest(request.error || new Error('Could not open secure key storage'));
+    request.onblocked = () => rejectRequest(new Error('Secure device-key storage upgrade is blocked by another tab.'));
   });
 }
 
-async function getOrCreateDeviceKey(db: IDBDatabase): Promise<CryptoKey> {
+async function getOrCreateDeviceKey(db: IDBDatabase, createIfMissing = true): Promise<CryptoKey> {
   const existing = await new Promise<CryptoKey | undefined>((resolve, reject) => {
-    const request = db.transaction(GW_KEY_STORE, 'readonly').objectStore(GW_KEY_STORE).get(GW_KEY_ID);
-    request.onsuccess = () => resolve(request.result as CryptoKey | undefined);
-    request.onerror = () => reject(request.error);
+    const transaction = db.transaction(GW_KEY_STORE, 'readonly');
+    const request = transaction.objectStore(GW_KEY_STORE).get(GW_KEY_ID);
+    let key: CryptoKey | undefined;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Reading the secure device key timed out.'));
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already be inactive.
+      }
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve(key);
+    };
+
+    request.onsuccess = () => { key = request.result as CryptoKey | undefined; };
+    request.onerror = () => finish(request.error || new Error('Could not read the secure device key'));
+    transaction.oncomplete = () => finish();
+    transaction.onerror = () => finish(transaction.error || new Error('Secure device-key read failed'));
+    transaction.onabort = () => finish(transaction.error || new Error('Secure device-key read was aborted'));
   });
   if (existing) return existing;
+  // A restore must not mint a replacement key: doing so would guarantee that
+  // existing ciphertext cannot decrypt and could destroy a recoverable device key.
+  if (!createIfMissing) throw new Error('The existing device encryption key is unavailable.');
   if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable');
+
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(GW_KEY_STORE, 'readwrite');
     tx.objectStore(GW_KEY_STORE).put(key, GW_KEY_ID);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error || new Error('Secure key storage transaction aborted'));
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Writing the secure device key timed out.'));
+      try {
+        tx.abort();
+      } catch {
+        // The transaction may already be inactive.
+      }
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+    tx.oncomplete = () => finish();
+    tx.onerror = () => finish(tx.error || new Error('Secure key storage transaction failed'));
+    tx.onabort = () => finish(tx.error || new Error('Secure key storage transaction aborted'));
   });
   return key;
 }
@@ -691,8 +985,9 @@ export async function restoreGatewaySecret(): Promise<string> {
       throw new Error('Encrypted Gateway Secret payload is invalid');
     }
   } catch (err) {
-    console.warn('Encrypted Gateway Secret payload is invalid; clearing it:', err);
-    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    // Preserve the original ciphertext for inspection/recovery. A newly entered
+    // credential will replace it after secure device storage is available.
+    console.warn('Encrypted Gateway Secret payload is invalid; preserving the device copy:', err);
     setGatewaySecret('');
     return '';
   }
@@ -715,7 +1010,7 @@ export async function restoreGatewaySecret(): Promise<string> {
 
   let key: CryptoKey;
   try {
-    key = await getOrCreateDeviceKey(db);
+    key = await getOrCreateDeviceKey(db, false);
   } catch (err) {
     console.warn('Could not access the device encryption key; preserving the encrypted Gateway Secret:', err);
     db.close();
@@ -732,10 +1027,10 @@ export async function restoreGatewaySecret(): Promise<string> {
     setGatewaySecret(secret);
     return secret;
   } catch (err) {
-    // Decryption failure means the payload is corrupt or the stored device key
-    // no longer matches it. Keep the established fallback to re-enter the secret.
-    console.warn('Could not decrypt encrypted Gateway Secret; clearing unusable ciphertext:', err);
-    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    // A missing/replaced IndexedDB key can be temporary or recoverable in a
+    // restored browser profile. Preserve ciphertext instead of destroying the
+    // only remaining device copy; the normal sign-in flow remains available.
+    console.warn('Could not decrypt encrypted Gateway Secret; preserving ciphertext for a later retry:', err);
     setGatewaySecret('');
     return '';
   } finally {
@@ -827,13 +1122,31 @@ function persistPortfolioSnapshot(
     return { success: false, stateChanged: false, savedAt: null };
   }
 
+  const resetRecovery = isExplicitPortfolioReset(state);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
   const writes: Array<{ key: string; value: string }> = [
-    { key: stateKey, value: persistedStateJson }
+    { key: stateKey, value: persistedStateJson },
+    ...(resetRecovery ? [{ key: recoveryKey, value: persistedStateJson }] : [])
   ];
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
   }
-  if (brokerRulesJson !== null) writes.push({ key: brokerRulesKey, value: brokerRulesJson });
+  if (brokerRulesJson !== null) {
+    let previousRules: string | null;
+    try {
+      previousRules = storage.getItem(brokerRulesKey);
+    } catch (err) {
+      console.error('Failed to inspect existing broker rules before saving:', err);
+      return { success: false, stateChanged: false, savedAt: null };
+    }
+    if (previousRules && previousRules !== brokerRulesJson && parseJsonRecord(previousRules)) {
+      writes.push({
+        key: scopedStorageKey(STORAGE_KEY_RULES_RECOVERY, scope),
+        value: previousRules
+      });
+    }
+    writes.push({ key: brokerRulesKey, value: brokerRulesJson });
+  }
 
   const previousValues = new Map<string, string | null>();
   try {
@@ -861,6 +1174,14 @@ function persistPortfolioSnapshot(
     }
   }
   const stateChanged = previousComparable !== nextComparable;
+
+  if (!resetRecovery && stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
+    try {
+      storage.setItem(recoveryKey, previousRaw);
+    } catch {
+      // Recovery copies are best-effort; a full quota must not block the primary save.
+    }
+  }
 
   const attemptedKeys: string[] = [];
   try {
@@ -897,13 +1218,14 @@ export async function savePortfolioSnapshot<TState extends object>(
     return false;
   }
   const scope = activePortfolioStorageScope;
+  const resetRecovery = isExplicitPortfolioReset(state as Record<string, unknown>);
   await initializeSavedHistoryStorage(scope);
   const previousHistory = loadSavedHistory();
-  if (!(await persistSavedHistorySnapshot(history, scope))) return false;
+  if (!(await persistSavedHistorySnapshot(history, scope, { resetRecovery }))) return false;
 
   const result = persistPortfolioSnapshot(state as Record<string, any>, options, scope);
   if (!result.success) {
-    const restored = await persistSavedHistorySnapshot(previousHistory, scope);
+    const restored = await persistSavedHistorySnapshot(previousHistory, scope, { resetRecovery });
     if (!restored) console.error('Failed to restore closed history after the portfolio snapshot could not be saved.');
     return false;
   }
@@ -941,8 +1263,9 @@ export function saveState<TState extends object>(
 
   const brokerExecutedTrades = Array.isArray(mutableState.brokerExecutedTrades) ? mutableState.brokerExecutedTrades : [];
   const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
+  const resetRecovery = isExplicitPortfolioReset(mutableState);
   const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
-  const historyChanged = hasHistory && (
+  const historyChanged = resetRecovery || (hasHistory && (
     !lastPersistedHistory ||
     lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
     lastPersistedHistory.cashflows !== cashflows
@@ -950,13 +1273,13 @@ export function saveState<TState extends object>(
     queuedHistorySnapshot &&
     queuedHistorySnapshot.brokerExecutedTrades === brokerExecutedTrades &&
     queuedHistorySnapshot.cashflows === cashflows
-  );
+  ));
 
   const result = persistPortfolioSnapshot(mutableState, options, scope);
   if (!result.success) return false;
 
   if (historyChanged) {
-    void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope).then((saved) => {
+    void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope, { resetRecovery }).then((saved) => {
       if (!saved) console.warn('Portfolio state was saved, but its local closed-history cache could not be updated. Cloud history remains separate.');
     }).catch((error) => {
       console.warn('Portfolio state was saved, but the local closed-history cache update failed:', error);
@@ -982,11 +1305,15 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
     const storage = getBrowserStorage();
     if (!storage) return fallback;
 
-    // Prefer the scoped canonical snapshot while retaining scoped legacy compatibility.
-    for (const key of [
-      scopedStorageKey(STORAGE_KEY_STATE),
+    const canonicalKey = scopedStorageKey(STORAGE_KEY_STATE);
+    // Recovery stays within the active account namespace. Guest/offline scopes
+    // can never inspect the owner's legacy or recovery records.
+    const candidates = [
+      canonicalKey,
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY),
       scopedStorageKey(STORAGE_KEY_LEGACY_STATE)
-    ]) {
+    ];
+    for (const key of candidates) {
       let raw: string | null;
       try {
         raw = storage.getItem(key);
@@ -996,17 +1323,41 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       }
       if (!raw || !raw.trim()) continue;
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        console.warn('Failed to parse saved state:', err);
+      const parsed = parseJsonRecord(raw);
+      if (!parsed) {
+        if (key === canonicalKey) {
+          try {
+            JSON.parse(raw);
+          } catch (err) {
+            console.warn('Failed to parse saved state:', err);
+          }
+        }
         continue;
       }
 
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      if (key !== canonicalKey) {
+        try {
+          // Complete a recoverable interrupted/malformed local snapshot on the
+          // next read. Keep the recovery row in place until a later good save.
+          storage.setItem(canonicalKey, raw);
+          console.warn('Recovered the local portfolio snapshot from a scoped recovery copy.');
+        } catch (error) {
+          console.warn('Recovered local portfolio data in memory; browser storage repair is pending:', error);
+        }
+      }
 
-      const persistedState = { ...(parsed as Record<string, unknown>) };
+      if (key === canonicalKey) {
+        try {
+          const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY);
+          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
+            storage.setItem(recoveryKey, raw);
+          }
+        } catch {
+          // Seeding a recovery copy is best-effort and must not block startup.
+        }
+      }
+
+      const persistedState = { ...parsed };
       // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
       delete persistedState.brokerExecutedTrades;
@@ -1056,10 +1407,30 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
       try {
         await new Promise<void>((resolve, reject) => {
           const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
-          transaction.objectStore(HISTORY_OBJECT_STORE).delete(HISTORY_RECORD_KEY);
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = () => reject(transaction.error || new Error('Could not clear closed history'));
-          transaction.onabort = () => reject(transaction.error || new Error('Closed-history clear was aborted'));
+          const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+          store.delete(HISTORY_RECORD_KEY);
+          store.delete(HISTORY_RECORD_RECOVERY_KEY);
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error('Clearing closed-history storage timed out.'));
+            try {
+              transaction.abort();
+            } catch {
+              // The transaction may already be inactive.
+            }
+          }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+          const finish = (error?: Error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            if (error) reject(error);
+            else resolve();
+          };
+          transaction.oncomplete = () => finish();
+          transaction.onerror = () => finish(transaction.error || new Error('Could not clear closed history'));
+          transaction.onabort = () => finish(transaction.error || new Error('Closed-history clear was aborted'));
         });
       } finally {
         db.close();
@@ -1069,7 +1440,9 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
     }
   }
   try {
-    getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
+    const storage = getBrowserStorage();
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope));
   } catch (error) {
     console.warn('Could not clear legacy closed history:', error);
   }
@@ -1082,12 +1455,43 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
 export function loadBrokerRules(): unknown {
   const storage = getBrowserStorage();
   if (!storage) return null;
+  const key = scopedStorageKey(STORAGE_KEY_RULES);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_RULES_RECOVERY);
   try {
-    const raw = storage.getItem(scopedStorageKey(STORAGE_KEY_RULES));
-    if (!raw) return null;
-    return JSON.parse(raw) as unknown;
+    const raw = storage.getItem(key);
+    if (raw) {
+      const parsed = parseJsonRecord(raw);
+      if (parsed) {
+        try {
+          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
+            storage.setItem(recoveryKey, raw);
+          }
+        } catch {
+          // Seed the last-known-good settings copy best-effort.
+        }
+        return parsed;
+      }
+      try {
+        JSON.parse(raw);
+        console.warn('Saved broker rules have an invalid root shape; trying the recovery copy.');
+      } catch (err) {
+        console.warn('Failed to parse saved broker rules:', err);
+      }
+    }
+
+    const recoveryRaw = storage.getItem(recoveryKey);
+    if (!recoveryRaw) return null;
+    const recovered = parseJsonRecord(recoveryRaw);
+    if (!recovered) return null;
+    try {
+      storage.setItem(key, recoveryRaw);
+      console.warn('Recovered broker assumptions from a scoped local recovery copy.');
+    } catch (error) {
+      console.warn('Recovered broker assumptions in memory; browser storage repair is pending:', error);
+    }
+    return recovered;
   } catch (err) {
-    console.warn('Failed to parse saved broker rules:', err);
+    console.warn('Browser storage is unavailable while reading broker rules:', err);
     return null;
   }
 }
@@ -1096,8 +1500,19 @@ export function loadBrokerRules(): unknown {
 export function saveBrokerRules(rules: BrokerAssumptions): void {
   const storage = getBrowserStorage();
   if (!storage) return;
+  const key = scopedStorageKey(STORAGE_KEY_RULES);
   try {
-    storage.setItem(scopedStorageKey(STORAGE_KEY_RULES), JSON.stringify(rules));
+    const previous = storage.getItem(key);
+    if (previous && previous !== JSON.stringify(rules)) {
+      if (parseJsonRecord(previous)) {
+        try {
+          storage.setItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY), previous);
+        } catch {
+          // Do not block the current settings write when recovery storage is full.
+        }
+      }
+    }
+    storage.setItem(key, JSON.stringify(rules));
   } catch (err) {
     console.error('Failed to save broker rules:', err);
   }
@@ -1108,6 +1523,7 @@ export function clearBrokerRules(): void {
   if (!storage) return;
   try {
     storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES));
+    storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY));
   } catch (err) {
     console.error('Failed to clear broker rules:', err);
   }
@@ -1161,7 +1577,11 @@ export function clearLocalData(): void {
   const storage = getBrowserStorage();
   if (!storage) return;
   try {
-    removeStoredKeys(storage, [scopedStorageKey(STORAGE_KEY_LEGACY_STATE), scopedStorageKey(STORAGE_KEY_STATE)]);
+    removeStoredKeys(storage, [
+      scopedStorageKey(STORAGE_KEY_LEGACY_STATE),
+      scopedStorageKey(STORAGE_KEY_STATE),
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
+    ]);
   } catch (err) {
     console.error('Failed to clear local data:', err);
   }

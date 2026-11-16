@@ -46,6 +46,34 @@ The first administrator activation copies the existing unscoped state and histor
 
 After the scope marker is set, a page reload starts in `offline`; it never automatically reads unscoped legacy data. An authenticated administrator activation selects `owner`, while a guest activation selects only that guest's namespace.
 
+## Slow or unavailable IndexedDB
+
+Each closed-history IndexedDB open and transaction is bounded to five seconds. If a browser never completes one of those operations, the cache read/write falls back to the scoped localStorage sidecar when possible, and the application can continue without waiting indefinitely. A later page load retries IndexedDB initialization.
+
+A timeout does not delete the legacy migration source or replace the portfolio snapshot. If cached history cannot be read from either IndexedDB or the scoped localStorage fallback, the in-memory history cache starts empty for that session; the persisted source remains available for a later retry or recovery.
+
+## Local recovery copies
+
+The active portfolio snapshot, broker assumptions, and closed-history cache retain a scoped last-known-good copy. Startup validates the active record before use; when it is malformed, it restores the last-known-good copy from the same account namespace and repairs the active record when storage permits. IndexedDB history keeps its recovery row in the same scoped database, with a bounded localStorage recovery copy when IndexedDB is unavailable.
+
+Recovery copies are not merged into financial records. They restore one complete prior valid version only; they do not infer missing trades, combine divergent positions, or reconcile independently edited offline tabs. An explicit portfolio reset writes a blank recovery baseline so a later repair cannot resurrect pre-reset holdings or history. Clearing local data removes the corresponding portfolio and broker-rule recovery copies.
+
+Cloud revision conflicts continue to use the separate conservative three-way reconciler: only allowlisted UI preferences are field-merged, and conflicting financial snapshots remain blocked for backup/manual recovery.
+
+## Automatic device-local recovery
+
+The active storage namespace keeps best-effort last-known-good copies of the compact portfolio snapshot and broker assumptions. A malformed or missing active record is repaired from a valid recovery copy in the same namespace; recovery never reads another account's records. Normal saves advance the recovery copy only from a parseable prior record.
+
+Closed trade and cashflow history remains an atomic snapshot, not a mergeable event list. The scoped IndexedDB store retains its previous valid row before replacing the active row. After a successful IndexedDB write, the current valid history is also mirrored to the scoped localStorage recovery key when it fits the existing 512 KiB fallback limit. If the IndexedDB database is unavailable or lost, initialization can restore from that bounded local copy. When a larger history cannot fit, recovery relies on the IndexedDB recovery row and the user's exported JSON backup.
+
+The encrypted device Gateway Secret is handled separately. Secure-key IndexedDB opens and transactions are bounded; restoring ciphertext never creates a new device key. Temporary key-store failures and decryption failures preserve the ciphertext for a later retry. If the original non-extractable device key is permanently lost, the saved session secret cannot be decrypted and the user must sign in again; local recovery does not bypass that device binding.
+
+An explicit `portfolio.reset` is treated as a new recovery baseline. The blank portfolio and empty history replace both active and recovery copies, so a later repair cannot resurrect pre-reset holdings or history. If the combined local reset fails, the previous in-memory snapshot and history are restored.
+
+Recovery writes are best-effort and use the same browser storage origin as the active data. Browser quota/security restrictions can prevent creating or repairing a recovery copy; the app does not delete unrelated records to make room. The existing localStorage multi-key rollback remains best-effort, not a native browser transaction. Keep a current JSON export in a trusted location for recovery from device loss, quota exhaustion, or irrecoverable corruption.
+
+These local repairs do **not** reconcile divergent financial changes between devices. Cloud reconciliation still merges only the explicit non-financial UI preference allowlist; divergent financial/account snapshots, lots, journal arrays, balances, broker history, and unknown fields remain blocked for export/manual recovery. Arrays are never concatenated or guessed.
+
 ## Security boundary and limitations
 
 This is browser-local data isolation for normal account switching. It is not a substitute for server-enforced tenant authorization, tenant-specific Durable Objects, tenant key management, migration/rollback review, or adversarial cross-tenant server tests. The current guest server projection remains read-only and the shared administrator workspace remains the authoritative server workspace.
@@ -61,6 +89,10 @@ Automated coverage verifies:
 - workspace replacement clearing previous journals;
 - authenticated session transition ordering, concurrent authentication checks, and cloud-write gating;
 - fail-closed offline activation when localStorage is unavailable;
+- startup recovery when IndexedDB open requests or read transactions stall;
+- same-scope last-known-good recovery for corrupted/missing portfolio snapshots, broker assumptions, and closed-history storage;
+- explicit reset replacing recovery baselines so pre-reset financial records cannot reappear;
+- bounded secure device-key access and preservation of encrypted credentials when the original key is temporarily unavailable;
 - same-workspace backup/cloud journal merging remaining append-only.
 
 The exact PR head must pass repository CI, including TypeScript, Vitest, production build, dead-code/dependency audits, and the production browser journey. Manual authenticated account-switch and multi-device checks remain separate release evidence.

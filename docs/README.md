@@ -1,0 +1,44 @@
+# Project documentation
+
+This directory contains maintained product and engineering references, current operational policies, and multi-PR workstream contracts. It is not an archive of completed pull-request plans or dated audit snapshots.
+
+## Product and architecture
+
+- [Product vision and delivery roadmap](product-vision-roadmap.md) — product direction, capability map, and delivery dependencies.
+- [Architecture overview and invariants](architecture.md) — runtime composition, state ownership, and engineering boundaries.
+- [Architecture review — 2026-11-14](architecture-review-2026-11-14.md) — a dated code-informed review and its prioritized findings; treat it as a review snapshot, not a security certification.
+- [Financial calculation contracts](financial-calculation-contracts.md) — observed financial semantics and compatibility constraints. Update this before changing formulas.
+- [Multi-portfolio tenancy architecture](multi-portfolio-tenancy-architecture.md) — proposed future ownership and isolation design. It is not an implemented independent-tenant capability.
+
+## Accounts, broker integrations, and UI patterns
+
+- [Account sessions](account-sessions.md) — server-enforced session expiry, per-account session cap, and revocation behavior.
+- [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
+- [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces and authenticated workspace transitions.
+- [Freedom TradeNet market-data integration](FREEDOM_MARKET_DATA.md) — Worker-backed read-only quote, market-status, order, and depth paths.
+- [TradeNet account risk controls](TRADE_NET_ACCOUNT_CONTROLS_IMPLEMENTATION.md) — read-only integration specification for account and instrument constraints.
+- [REST and socket request audit](request-optimization-audit-2026-11-12.md) — request families and startup/refresh behavior.
+- [Request orchestration R03–R05](request-orchestration-r03-r05-2026-11-13.md) — shared request lifecycle and regression gates.
+- [Shared table pagination](table-pagination-pattern.md) — the supported reusable pagination pattern.
+
+## Security and release quality
+
+- [PT-16 security and data-lifecycle threat model](security-threat-model-pt-16.md) — observed controls and residual risks; not a penetration test.
+- [Reliability, performance, observability, and release gates](reliability-release-gates.md) — exact-head CI, browser evidence, and operational limits.
+
+## Delivery workstreams
+
+- [Wave 2 delivery record](wave-2/README.md) — completed foundation streams and their integration history.
+- [Wave 2 performance methodology](wave-2/performance-methodology.md) — deterministic performance-calculation input and quality contract.
+- [Wave 2.5 transparency slice](wave-2.5/README.md) — investor-facing explanations of existing calculations and data quality.
+- [Wave 3 roadmap and implementation model](wave-3/README.md) — current ownership, transaction-trust, and integrated-intelligence workstreams.
+- [Wave 3 current-state audit](wave-3/current-state-audit.md) — code-informed baseline for the active Wave 3 work.
+- The [Wave 3 workstreams](wave-3/workstreams/) contain the detailed PT-02, PT-04, PT-05, PT-06, and PT-07 contracts and acceptance gates.
+
+## Documentation maintenance
+
+- Keep implementation claims synchronized with code and tests. The source and exact-head CI results take precedence when a document disagrees with the repository.
+- Mark proposed, partial, and implemented work distinctly. Do not describe a design or mock-based test as deployed or production-verified behavior.
+- Keep durable contracts, operational policies, and active cross-PR workstreams here.
+- Track temporary audit findings and completed PR checklists in the relevant issue or pull request. Remove branch-specific plans and completed snapshots after their actionable content has been incorporated into maintained references or issues.
+- Add links to this index when introducing a new long-lived document; avoid creating a separate dated audit file for a completed change unless it records a lasting contract or unresolved release gate.
