@@ -278,7 +278,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
           typeof rawAdjustment.priceBefore !== 'number' || !Number.isFinite(rawAdjustment.priceBefore) || rawAdjustment.priceBefore <= 0 ||
           typeof rawAdjustment.priceAfter !== 'number' || !Number.isFinite(rawAdjustment.priceAfter) || rawAdjustment.priceAfter <= 0 ||
           typeof rawAdjustment.acquisitionDate !== 'string' ||
-          !/^\\d{4}-\\d{2}-\\d{2}$/.test(rawAdjustment.acquisitionDate) ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(rawAdjustment.acquisitionDate) ||
           !Number.isFinite(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')) ||
           new Date(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== rawAdjustment.acquisitionDate ||
           typeof rawAdjustment.acquiredAt !== 'number' || !Number.isSafeInteger(rawAdjustment.acquiredAt) || rawAdjustment.acquiredAt <= 0 ||
