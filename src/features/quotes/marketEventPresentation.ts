@@ -34,7 +34,7 @@ const MARKET_EVENT_RU_COPY: Record<string, string> = {
   'Stock splits and reverse splits': 'Дробления и обратные дробления акций',
   'Corporate-action data unavailable': 'Данные о корпоративных действиях недоступны',
   'No verified split events in this period.': 'В этом периоде нет подтверждённых событий дробления.',
-  'Apply split to open position': 'Применить дробление к открытой позиции',
+  'Apply split to eligible portfolio lots': 'Применить дробление к подходящим лотам портфеля',
   'Split already applied': 'Дробление уже применено',
   'Review required': 'Требуется проверка',
   'Split applied; cost basis preserved.': 'Дробление применено; себестоимость сохранена.',
