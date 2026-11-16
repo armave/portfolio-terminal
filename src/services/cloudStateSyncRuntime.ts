@@ -53,7 +53,7 @@ export interface SyncOptions {
   getState?: () => CloudStateInput;
   showToast?: (msg: string, type: string) => void;
   logAppMessage?: (msg: string) => void;
-  onStatusChange?: (status: 'synced' | 'error') => void;
+  onStatusChange?: (status: 'synced' | 'error' | 'conflict') => void;
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
   onEncryptionMigrationFailure?: (error: Error) => void;
@@ -129,6 +129,9 @@ export function createCloudStateSyncRuntime({
     import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
 
   const cloudStatePushFingerprints = new Map<string, string>();
+  // A revision conflict means the local snapshot is based on an obsolete cloud
+  // revision. Block writes until a later pull is accepted locally.
+  let cloudStateConflict = false;
 
   function hasAesGcmV2Envelope(value: unknown): value is string {
     if (typeof value !== 'string' || !value.startsWith('aesgcm:v2:')) return false;
@@ -214,6 +217,7 @@ async function pullCloudState(
 
     if (res.status === 404) {
       // A 404 is a healthy, authorized KV response with no saved portfolio yet.
+      cloudStateConflict = false;
       handlers.onStatusChange?.('synced');
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
@@ -330,6 +334,8 @@ async function pullCloudState(
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
+    // The conflict clears only after decryption, validation and local persistence.
+    cloudStateConflict = false;
 
     cloudStatePushFingerprints.delete(currentSecret);
     // Only trust the cloud revision after its payload was decrypted, validated,
@@ -380,13 +386,13 @@ async function pullCloudState(
       pullCloudAndRewriteLocal(parsedState);
     }
 
-    handlers.onStatusChange?.('synced');
-    reportResult?.(true);
+    handlers.onStatusChange?.(cloudStateConflict ? 'conflict' : 'synced');
+    reportResult?.(!cloudStateConflict);
     return parsedState;
   } catch (err: unknown) {
     if (!isCurrentSession()) return stalePullFallback();
     const message = errorMessage(err);
-    handlers.onStatusChange?.('error');
+    handlers.onStatusChange?.(cloudStateConflict ? 'conflict' : 'error');
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${message}`, 'error');
@@ -615,6 +621,10 @@ async function performPushCloudState(
     showToast('Gateway Secret required to access cloud state.', 'error');
     return false;
   }
+  if (cloudStateConflict) {
+    handlers.onStatusChange?.('conflict');
+    return false;
+  }
 
   try {
     // Closed history has its own record and is synchronized only by its data
@@ -692,7 +702,8 @@ async function performPushCloudState(
           'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
           getAppLanguage()
         );
-        handlers.onStatusChange?.('error');
+        cloudStateConflict = true;
+        handlers.onStatusChange?.('conflict');
         showToast(conflictMessage, 'error');
         logAppMessage(`[Cloud Conflict]: ${await responseError(res)}`);
         return false;
@@ -710,7 +721,7 @@ async function performPushCloudState(
     if (!isCurrentSession()) return false;
     const message = errorMessage(err);
     console.error('Failed to push to KV cloud:', err);
-    handlers.onStatusChange?.('error');
+    handlers.onStatusChange?.(cloudStateConflict ? 'conflict' : 'error');
     showToast(`Cloud push failed: ${message}`, 'error');
     return false;
   }
