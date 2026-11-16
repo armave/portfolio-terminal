@@ -2513,6 +2513,28 @@ describe('portfolio import boundary validation', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('preserves archived fee-correction history when importing an explicitly reset workspace', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(true);
+
+    expect(store.resetToBlankState(1_800_000_000_100, false)).toBe(true);
+    expect(store.getState().closedTrades).toEqual([]);
+    expect(store.getState().cashflows).toEqual([]);
+    expect(store.getState().transactionEvents?.some(event => event.historyFeeCorrection)).toBe(true);
+
+    expect(store.importState({ closedTrades: [], cashflows: [] })).toBe(true);
+  });
+
   it('rejects restored fee corrections with broken revision links before committing any portfolio data', () => {
     const store = new PortfolioStore();
     const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
