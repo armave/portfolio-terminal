@@ -488,16 +488,15 @@ async function activatePortfolioStorageScopeNow(
 
   if (options.migrateLegacy && nextScope === 'owner') {
     const targetStateKey = scopedStorageKey(STORAGE_KEY_STATE, nextScope);
-    if (!storage.getItem(targetStateKey)) {
+    const targetRecoveryStateKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope);
+    const targetStateIsValid = Boolean(
+      parseJsonRecord(storage.getItem(targetStateKey)) ||
+      parseJsonRecord(storage.getItem(targetRecoveryStateKey))
+    );
+    if (!targetStateIsValid) {
       const legacyState = storage.getItem(STORAGE_KEY_STATE) ?? storage.getItem(STORAGE_KEY_LEGACY_STATE);
       if (legacyState) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(legacyState);
-        } catch {
-          throw new Error('The legacy administrator snapshot could not be parsed safely; its source was left untouched.');
-        }
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        if (!parseJsonRecord(legacyState)) {
           throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
         }
         storage.setItem(targetStateKey, legacyState);
@@ -505,9 +504,14 @@ async function activatePortfolioStorageScopeNow(
     }
 
     const targetRulesKey = scopedStorageKey(STORAGE_KEY_RULES, nextScope);
+    const targetRecoveryRulesKey = scopedStorageKey(STORAGE_KEY_RULES_RECOVERY, nextScope);
+    const targetRulesIsValid = Boolean(
+      parseJsonRecord(storage.getItem(targetRulesKey)) ||
+      parseJsonRecord(storage.getItem(targetRecoveryRulesKey))
+    );
     const legacyRules = storage.getItem(STORAGE_KEY_RULES);
-    if (!storage.getItem(targetRulesKey) && legacyRules !== null) {
-      storage.setItem(targetRulesKey, legacyRules);
+    if (!targetRulesIsValid && legacyRules !== null) {
+      if (parseJsonRecord(legacyRules)) storage.setItem(targetRulesKey, legacyRules);
     }
 
     // The history sidecar may be using the bounded localStorage fallback
