@@ -621,6 +621,12 @@ async function seedSyntheticPortfolio(page) {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForAuthOverlay(page, false);
+  // Reload can restore the administrator's last device desk (for example,
+  // Balance). Re-select Combined after reload so this journey actually tests
+  // the Market Insights workspace rather than waiting on a hidden panel.
+  const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
+  await combinedPortfolio.waitFor({ state: 'visible', timeout: 10_000 });
+  await combinedPortfolio.click();
   await page.waitForFunction(() => {
     try {
       const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2::owner');
