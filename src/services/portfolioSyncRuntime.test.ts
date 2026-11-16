@@ -17,6 +17,7 @@ function createDependencies(
     translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
     logAppMessage: vi.fn(),
+    getSyncStatus: () => ({ status: 'idle' }),
     setSyncStatus: vi.fn(),
     ...overrides
   };
@@ -203,3 +204,32 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.refreshQuotes).not.toHaveBeenCalled();
   });
 });
+
+
+  it('does not overwrite a cloud revision conflict when the in-flight manual sync completes', async () => {
+    let cloudStatus = { status: 'idle' };
+    const setSyncStatus = vi.fn((next: { status: 'syncing' | 'synced' | 'error'; text: string }) => {
+      cloudStatus = next;
+    });
+    const dependencies = createDependencies({
+      getSyncStatus: () => cloudStatus,
+      setSyncStatus,
+      pushCloud: vi.fn(async () => {
+        cloudStatus = { status: 'conflict' };
+        return false;
+      })
+    });
+    const resolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve });
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
+
+    expect(cloudStatus.status).toBe('conflict');
+    expect(setSyncStatus).toHaveBeenNthCalledWith(1, {
+      status: 'syncing', text: 'Portfolio sync in progress'
+    });
+    expect(setSyncStatus).not.toHaveBeenLastCalledWith({
+      status: 'error', text: 'Sync failed'
+    });
+  });
