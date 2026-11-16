@@ -123,6 +123,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const LoadedTenantDirectoryPanel = tenantDirectoryModule?.TenantDirectoryPanel;
   const permissions = getAccountPermissions(account?.role);
   const cloudSyncStatus = useCloudSyncStatus();
+  const hasCloudConflict = account?.role === 'admin' && cloudSyncStatus.status === 'conflict';
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
   const [initialUsersLoading, setInitialUsersLoading] = useState(currentUser?.role === 'admin');
@@ -404,23 +405,56 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </p>
             <div class="settings-sync-status flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2" role="status" aria-live="polite">
               <span class="text-[11px] font-semibold text-slate-300">{translateText(account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization')}</span>
-              <span class={cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
+              <span class={hasCloudConflict ? 'text-[11px] font-semibold text-amber-200' : cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
                 {translateText(account?.role === 'guest'
                   ? cloudSyncStatus.status === 'synced' ? 'Assigned data refresh confirmed' : cloudSyncStatus.status === 'syncing' ? 'Assigned data refresh in progress' : cloudSyncStatus.status === 'error' ? 'Assigned data refresh failed' : 'Assigned data refresh status not checked'
-                  : cloudSyncStatus.status === 'synced' ? 'Cloud sync confirmed' : cloudSyncStatus.status === 'syncing' ? 'Cloud sync in progress' : cloudSyncStatus.status === 'error' ? 'Cloud sync failed' : 'Cloud sync status not checked')}
+                  : hasCloudConflict ? 'Cloud sync needs recovery' : cloudSyncStatus.status === 'synced' ? 'Cloud sync confirmed' : cloudSyncStatus.status === 'syncing' ? 'Cloud sync in progress' : cloudSyncStatus.status === 'error' ? 'Cloud sync failed' : 'Cloud sync status not checked')}
               </span>
               <span class="w-full text-[10px] text-slate-500">
                 {translateText(account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync')}: {formatSettingsTimestamp(cloudSyncStatus.lastSyncedAt)}
               </span>
             </div>
+            {hasCloudConflict && <section
+              id="settingsCloudConflictRecovery"
+              aria-labelledby="settingsCloudConflictTitle"
+              role="alert"
+              class="settings-cloud-conflict flex flex-col gap-3 rounded-lg border border-amber-700/60 bg-amber-950/20 px-3 py-3"
+            >
+              <div class="flex items-start gap-2">
+                <span aria-hidden="true" class="mt-0.5 shrink-0 text-amber-300">⚠</span>
+                <div class="min-w-0">
+                  <h3 id="settingsCloudConflictTitle" class="text-xs font-bold text-amber-200">{translateText('Cloud data changed elsewhere')}</h3>
+                  <p class="mt-1 text-[11px] leading-relaxed text-slate-200">
+                    {translateText('The shared portfolio has a newer revision. Local changes on this device have not been confirmed as saved to the cloud.')}
+                  </p>
+                  <p class="mt-1 text-[11px] leading-relaxed text-slate-400">
+                    {translateText("Export a JSON backup before pulling. Pulling replaces this device's local portfolio; reconcile any needed changes from the backup afterward. No financial changes are merged automatically.")}
+                  </p>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => emitUiEvent('settings:export-backup')}
+                  aria-label={translateText('Export local backup')}
+                  class="min-h-10 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700"
+                >{translateText('Export local backup')}</button>
+                <button
+                  type="button"
+                  onClick={() => emitUiEvent('settings:pull-cloud-state')}
+                  aria-label={translateText('Pull latest shared portfolio')}
+                  class="min-h-10 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-900/60"
+                >{translateText('Pull latest shared portfolio')}</button>
+              </div>
+            </section>}
             <div class="settings-data-actions flex flex-wrap items-center gap-2">
               {(account?.role === "admin" || account?.role === "guest") && <button
                 type="button"
                 onClick={() => void handleManualPortfolioSync()}
-                disabled={syncingPortfolio}
+                disabled={syncingPortfolio || hasCloudConflict}
                 aria-busy={syncingPortfolio}
                 aria-label={translateText('Sync portfolio')}
-                title={translateText('Sync portfolio')}
+                title={translateText(hasCloudConflict ? 'Resolve the cloud conflict before syncing' : 'Sync portfolio')}
                 class="settings-sync-button h-10 rounded border border-cyan-700 bg-cyan-950/40 px-3 text-xs font-bold text-cyan-200 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
               >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio now')}</button>}
               {account?.role === "admin" && <button

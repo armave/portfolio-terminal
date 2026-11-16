@@ -159,3 +159,32 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 - [ ] Authenticated live-account and multi-device restore verification remains open.
 
 The additive event schema remains version 1. Existing events without the optional structured payload remain readable; `PortfolioState.positions` remains canonical. This is a closed-history audit slice, not PT-02 completion or a ledger cutover.
+
+
+## Background cloud conflict reconciliation — 2026-11-16
+
+- On HTTP 409, the client makes one background read of the latest encrypted snapshot and compares it with the last accepted in-memory base and the latest local snapshot.
+- Automatic field-level merging is restricted to the non-financial UI preferences `activeView`, `selectedTicker` and `autoRefreshInterval`. Every other field, including unknown future fields, is protected state.
+- If only one side changed protected state, that complete protected projection is retained while independent UI preferences from the other side are applied. Identical protected outcomes are also accepted. If both devices changed protected state differently, the app leaves the conflict blocked and preserves local data for the existing backup/manual-recovery flow.
+- Arrays are atomic and are never concatenated. The client does not merge transaction events, lots, closed trades, cashflows, broker snapshots, balances or financial fields independently. PT-02 journal coverage is not complete enough to claim transaction-level or exactly-once reconciliation.
+- A newer remote-only protected snapshot can be accepted as a pull-only reconcile without an unnecessary POST. Otherwise the client makes at most one conditional write against the latest fetched ETag. The Worker's revision check remains authoritative.
+- An HTTP 404 after a previously populated merge base is treated as a destructive reset, not an empty safe snapshot. A newer snapshot with legacy embedded broker executions or cashflows is left to the existing history migration flow; those rows are not silently stripped.
+- The merge base is held in memory per authenticated credential only; no additional plaintext financial snapshot is persisted. If there is no accepted base, decryption/validation or PortfolioStore application fails, the current local state changes during asynchronous preparation, or the conditional retry loses a race, the conflict remains blocked and the existing recovery panel is used.
+- Successful background reconciliation does not switch the user's desk, scroll the workspace, show a modal or success toast, or briefly flash a conflict indicator. The conflict state is surfaced only when safe background recovery cannot complete.
+- [x] Exact implementation code head `3f44adc6794c7ed9deb81c6797e6c9ae7ff740a0` passed [Pull Request CI #4315](https://github.com/armave/portfolio-terminal/actions/runs/43792083104) and [Security & Workflow Validation #120](https://github.com/armave/portfolio-terminal/actions/runs/43792083132).
+  - TypeScript validation and all 2,277 Vitest tests across 176 test files passed.
+  - Vite development-server smoke, dead-code validation, full and production dependency audits, production build and bundle budget passed.
+  - Production Browser Smoke, desktop/mobile performance baseline and Operations Browser Journey passed.
+  - CodeQL, new-commit secret scan, actionlint and zizmor passed.
+- [ ] Manual authenticated multi-device conflict/recovery verification remains open; deterministic fixtures do not prove live cross-device behavior.
+
+## Cloud revision conflict recovery — 2026-11-16
+
+- HTTP 409 is a distinct `conflict` state rather than a generic connectivity error.
+- After 409 the client first attempts the bounded background reconciliation described above. A safe result clears the latch after the latest revision is accepted; otherwise subsequent stale writes remain blocked and the conflict is shown.
+- The in-memory latch and merge base are scoped to the authenticated credential; a session/account switch does not inherit another session's local state. The Worker revision guard remains authoritative for the shared owner workspace.
+- An authorized 404 establishes an empty baseline only when there was no previously populated base. A missing cloud record after a populated base requires explicit recovery.
+- Settings retains the administrator-only recovery panel with JSON backup export and the confirmation-protected cloud pull action. The normal manual-sync control remains disabled while a conflict requires recovery.
+- The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
+- Vitest and the Operations Browser Journey cover the conflict latch, background reconciliation, ambiguous/divergent financial changes, backup export and fallback recovery.
+- Client-only change: no Worker, Durable Object, API, authorization, encryption, ETag or idempotency contract changes. Canonical snapshot and journal ownership remain unchanged.

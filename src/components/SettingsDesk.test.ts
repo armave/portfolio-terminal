@@ -215,3 +215,18 @@ describe('Settings information architecture', () => {
     expect(source).toContain("account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization'");
   });
 });
+
+
+describe('cloud conflict recovery in Settings', () => {
+  it('shows administrator recovery actions and blocks ordinary stale sync', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("const hasCloudConflict = account?.role === 'admin' && cloudSyncStatus.status === 'conflict';");
+    expect(source).toContain('settingsCloudConflictRecovery');
+    expect(source).toContain("emitUiEvent('settings:export-backup')");
+    expect(source).toContain("emitUiEvent('settings:pull-cloud-state')");
+    expect(source).toContain("disabled={syncingPortfolio || hasCloudConflict}");
+    expect(source).toContain("translateText('Export local backup')");
+    expect(source).toContain("translateText('Pull latest shared portfolio')");
+    expect(source).toContain('No financial changes are merged automatically.');
+  });
+});

@@ -3203,12 +3203,19 @@ table tbody tr:hover {
   color: var(--color-info);
 }
 
-.cloud-sync-indicator--warning .cloud-sync-indicator__dot {
+.cloud-sync-indicator--warning .cloud-sync-indicator__dot,
+.cloud-sync-indicator--conflict .cloud-sync-indicator__dot {
   background: var(--color-warning);
 }
 
-.cloud-sync-indicator--warning .cloud-sync-indicator__state {
+.cloud-sync-indicator--warning .cloud-sync-indicator__state,
+.cloud-sync-indicator--conflict .cloud-sync-indicator__state {
   color: var(--color-warning);
+}
+
+.cloud-sync-indicator--conflict {
+  border-color: rgba(251, 191, 36, 0.42);
+  background: rgba(66, 46, 5, 0.22);
 }
 
 .cloud-sync-indicator--error {

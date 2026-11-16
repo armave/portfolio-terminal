@@ -473,7 +473,7 @@ describe('cloud state sync', () => {
       'error'
     );
     expect(logAppMessage).toHaveBeenCalledWith(expect.stringContaining('[Cloud Conflict]'));
-    expect(onStatusChange).toHaveBeenCalledWith('error');
+    expect(onStatusChange).toHaveBeenCalledWith('conflict');
   });
 
   it('round-trips the append-only journal through encrypted cloud snapshot restoration', async () => {

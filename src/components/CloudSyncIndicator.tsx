@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { getAppLanguage, translateText } from '../services/i18n';
 import type { CloudStatus } from '../ui/uiStateStore';
 
-export type CloudSyncTone = 'neutral' | 'success' | 'pending' | 'warning' | 'error';
+export type CloudSyncTone = 'neutral' | 'success' | 'pending' | 'warning' | 'conflict' | 'error';
 
 export function resolveCloudSyncTone(
   cloudStatus: CloudStatus,
@@ -12,6 +12,7 @@ export function resolveCloudSyncTone(
   const syncState = String(cloudSyncStatus.status || '').toLowerCase();
   const cloudText = String(cloudStatus.text || '').toLowerCase();
 
+  if (cloudState === 'conflict' || syncState === 'conflict') return 'conflict';
   if (cloudState === 'error' || syncState === 'error') return 'error';
   if (['syncing', 'pending'].includes(cloudState) || ['syncing', 'pending'].includes(syncState)) return 'pending';
   if (cloudState === 'synced' || syncState === 'synced') return 'success';
@@ -25,6 +26,7 @@ export function resolveCloudSyncLabel(
   language: ReturnType<typeof getAppLanguage>
 ): string {
   if (tone === 'success') return translateText('Synced', language);
+  if (tone === 'conflict') return translateText('Conflict', language);
   if (tone === 'pending') {
     const isPending = String(cloudStatus.status || '').toLowerCase() === 'pending';
     return translateText(isPending ? 'Pending' : 'Syncing…', language);
@@ -89,9 +91,11 @@ export function CloudSyncIndicator({
     ? formatRelativeSyncTime(lastSyncedAt, now, language)
     : '';
   const exactTime = formatExactSyncTimestamp(lastSyncedAt, language);
-  const detailsText = exactTime
-    ? `${translateText('Last synced', language)}: ${exactTime}`
-    : translateText(cloudSyncStatus.text || cloudStatus.text || 'Offline', language);
+  const detailsText = cloudSyncStatus.status === 'conflict'
+    ? translateText('Cloud sync conflict — recovery required', language)
+    : exactTime
+      ? `${translateText('Last synced', language)}: ${exactTime}`
+      : translateText(cloudSyncStatus.text || cloudStatus.text || 'Offline', language);
   const accessibleText = [
     'KV',
     statusLabel,

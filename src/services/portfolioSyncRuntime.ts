@@ -17,6 +17,7 @@ export interface PortfolioSyncRuntimeDependencies {
   translateText: (message: string) => string;
   showToast: (message: string, tone: 'success' | 'warning' | 'error') => void;
   logAppMessage: (message: string) => void;
+  getSyncStatus: () => { status: string };
   setSyncStatus: (status: { status: 'syncing' | 'synced' | 'error'; text: string }) => void;
 }
 
@@ -59,7 +60,9 @@ export function bindPortfolioSyncRuntime(
   dependencies: PortfolioSyncRuntimeDependencies
 ): () => void {
   const handleSyncRequest = (event: ManualSyncRequestEvent) => {
-    dependencies.setSyncStatus({ status: 'syncing', text: 'Portfolio sync in progress' });
+    if (dependencies.getSyncStatus().status !== 'conflict') {
+      dependencies.setSyncStatus({ status: 'syncing', text: 'Portfolio sync in progress' });
+    }
     void (async () => {
       const role = dependencies.getAccountRole();
       try {
@@ -74,16 +77,20 @@ export function bindPortfolioSyncRuntime(
           pullGuestSnapshot: dependencies.pullGuestSnapshot
         });
         notifySyncResult(result, dependencies);
-        dependencies.setSyncStatus({
-          status: result.success ? 'synced' : 'error',
-          text: result.role === 'guest'
-            ? result.success ? 'Assigned data refreshed' : 'Assigned data refresh failed'
-            : result.success ? 'Synced' : 'Sync failed'
-        });
+        if (dependencies.getSyncStatus().status !== 'conflict') {
+          dependencies.setSyncStatus({
+            status: result.success ? 'synced' : 'error',
+            text: result.role === 'guest'
+              ? result.success ? 'Assigned data refreshed' : 'Assigned data refresh failed'
+              : result.success ? 'Synced' : 'Sync failed'
+          });
+        }
         event.detail.resolve(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        dependencies.setSyncStatus({ status: 'error', text: 'Sync failed' });
+        if (dependencies.getSyncStatus().status !== 'conflict') {
+          dependencies.setSyncStatus({ status: 'error', text: 'Sync failed' });
+        }
         dependencies.logAppMessage(`[Sync Error]: ${message}`);
         dependencies.showToast(
           dependencies.translateText('Could not sync portfolio. Check your connection and try again.'),

@@ -44,6 +44,7 @@ async function mockWorkerApi(page) {
   let currentToken = '';
   let nextUserId = 1;
   let stateRevision = 0;
+  let failNextStateConflict = false;
   let historyRevision = 0;
   let newsRequestCount = 0;
   let tenantDirectoryRevision = 0;
@@ -424,6 +425,15 @@ async function mockWorkerApi(page) {
         await json(route, 404, { error: 'No cloud workspace has been saved yet.' }, { ETag: `"${stateRevision}"` }, call);
         return;
       }
+      if (method === 'POST' && failNextStateConflict) {
+        failNextStateConflict = false;
+        await json(route, 409, {
+          error: 'Cloud portfolio changed since this device last synced.',
+          conflict: true,
+          currentRevision: stateRevision
+        }, { ETag: `"${stateRevision}"` }, call);
+        return;
+      }
       stateRevision += 1;
       await json(route, 200, { success: true, revision: stateRevision }, { ETag: `"${stateRevision}"` }, call);
       return;
@@ -533,7 +543,8 @@ async function mockWorkerApi(page) {
     calls,
     users,
     count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length,
-    findCalls: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname)
+    findCalls: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname),
+    failNextStateConflict: () => { failNextStateConflict = true; }
   };
 }
 
@@ -839,6 +850,54 @@ try {
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+
+  // Exercise conflict recovery through the immediate refresh requested by the cadence control.
+  const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
+  const statePostsBeforeConflict = worker.count('POST', '/api/state');
+  worker.failNextStateConflict();
+  await visibleSettingsDesk().locator('#quoteRefreshInterval').selectOption('60000');
+  await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '60000', null, { timeout: 10_000 });
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/state').slice(statePostsBeforeConflict)
+      .some((call) => call.responseStatus === 409),
+    'injected cloud revision conflict from immediate refresh'
+  );
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && button.disabled;
+  }, null, { timeout: 10_000 });
+  const conflictPanel = visibleSettingsDesk().locator('#settingsCloudConflictRecovery');
+  await conflictPanel.waitFor({ state: 'visible', timeout: 10_000 });
+  await conflictPanel.getByRole('heading', { name: 'Cloud data changed elsewhere' }).waitFor({ state: 'visible' });
+
+  const [backupDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    conflictPanel.getByRole('button', { name: 'Export local backup' }).click()
+  ]);
+  if (!backupDownload.suggestedFilename().toLowerCase().endsWith('.json')) {
+    throw new Error('Cloud conflict recovery did not export a JSON backup.');
+  }
+
+  const statePullsBeforeRecovery = worker.count('GET', '/api/state');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
+  await conflictPanel.getByRole('button', { name: 'Pull latest shared portfolio' }).click();
+  await waitForCondition(
+    () => worker.count('GET', '/api/state') > statePullsBeforeRecovery,
+    'confirmed pull of the latest shared portfolio'
+  );
+  await conflictPanel.waitFor({ state: 'detached', timeout: 10_000 });
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, null, { timeout: 30_000 });
+
+  const statePostsBeforeRecoverySync = worker.count('POST', '/api/state');
+  await syncButton.click();
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/state').slice(statePostsBeforeRecoverySync)
+      .some((call) => call.responseStatus === 200),
+    'cloud writes resuming after successful pull'
+  );
 
   // Create two users, then exercise editing and deletion through the actual Settings form.
   const waitForUserSaveReady = async (name) => {
