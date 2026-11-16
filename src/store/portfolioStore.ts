@@ -756,9 +756,11 @@ export class PortfolioStore {
     persist = true,
     source: PortfolioStoreChangeSource = 'durable'
   ): boolean {
-    // The append-only journal can only be changed by audited financial
-    // commands or by the validated import/merge path below.
-    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
+    // Closed-history rows may change only through audited financial commands,
+    // the dedicated linked fee-sync commit, or validated import/workspace/reset paths.
+    // Append-only journals likewise remain behind their audited mutation boundaries.
+    if (Object.prototype.hasOwnProperty.call(partial, 'closedTrades') ||
+        Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'marketHistoryCorrections')) return false;
     return this.update((state) => ({
