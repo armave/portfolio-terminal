@@ -1,6 +1,6 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
-export type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
+type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
 
 export interface PortfolioAuthenticatedStartupDependencies {
   loadBrokerRules: () => void;
