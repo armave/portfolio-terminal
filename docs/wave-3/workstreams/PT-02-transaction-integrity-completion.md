@@ -171,5 +171,8 @@ The additive event schema remains version 1. Existing events without the optiona
 - The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
 - Vitest and the Operations Browser Journey cover 409, blocked retries, failed-pull retention, successful-pull recovery, backup export and resumed writes.
 - Client-only change: no Worker, Durable Object, authorization, accounting or canonical snapshot/journal ownership changes.
-- [ ] Exact-head CI and browser journeys.
-- [ ] Manual multi-device conflict/recovery verification; deterministic browser fixtures do not establish live cross-device behavior.
+- [x] Exact implementation code head `4c093212bec8cdc79a04c877f27cc73d05abd696` passed [Pull Request CI #4304](https://github.com/armave/portfolio-terminal/actions/runs/43786372160) and [Security & Workflow Validation #109](https://github.com/armave/portfolio-terminal/actions/runs/43786372159).
+  - Typecheck, Vitest, Vite dev-server smoke, dead-code validation, full and production dependency audits, production build and bundle budget passed.
+  - Production Browser Smoke, desktop/mobile performance baseline and Operations Browser Journey passed.
+  - CodeQL, new-commit secret scan, actionlint and zizmor passed.
+- [ ] Manual authenticated multi-device conflict/recovery verification; deterministic browser fixtures do not establish live cross-device behavior.
