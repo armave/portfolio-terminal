@@ -48,6 +48,10 @@ After the scope marker is set, a page reload starts in `offline`; it never autom
 
 ## Slow or unavailable IndexedDB
 
+Startup resolves the account identity before initializing the history cache for the selected namespace. Authenticated workspace activation hydrates that account's history; only unauthenticated startup initializes the offline namespace. The application no longer performs an unrelated pre-authentication history-database read and then repeats it after `/me` selects the owner or guest scope.
+
+Once the authenticated local workspace and required cloud/guest snapshot are ready, the saved view is shown immediately. The first quote batch and pending cloud-write recovery run in the background; a 15-second quote-refresh deadline releases the initial-refresh coordination flag without keeping the startup shell visible. A delayed provider response can still update prices later, but cannot block navigation.
+
 Each closed-history IndexedDB open and transaction is bounded to five seconds. If a browser never completes one of those operations, the cache read/write falls back to the scoped localStorage sidecar when possible, and the application can continue without waiting indefinitely. A later page load retries IndexedDB initialization.
 
 A timeout does not delete the legacy migration source or replace the portfolio snapshot. If cached history cannot be read from either IndexedDB or the scoped localStorage fallback, the in-memory history cache starts empty for that session; the persisted source remains available for a later retry or recovery.
