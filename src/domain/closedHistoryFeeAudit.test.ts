@@ -54,6 +54,13 @@ describe('Closed History fee correction audit', () => {
     expect(Object.isFrozen(correction.historyFeeCorrection?.after.cashflowAllocations)).toBe(true);
   });
 
+  it('rejects correction history when its canonical closed-trade row is missing', () => {
+    const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    const parity = verifyClosedHistoryFeeCorrectionParity(result.transactionEvents, [], cashflows);
+    expect(parity.matches).toBe(false);
+    expect(parity.discrepancies).toContain('closed-trade-1:missing-canonical-trade');
+  });
+
   it('chains successive fee revisions and rejects an unexpected before-state', () => {
     const first = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
     const next = {
