@@ -58,6 +58,7 @@ export function createPortfolioStartupLifecycleRuntime(
   };
 
   const handleStartupOffline = (): void => {
+    dependencies.setStartupState(true, false);
     void dependencies.continueStartupOffline();
   };
 
