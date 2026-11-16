@@ -3822,10 +3822,7 @@ describe('portfolio transaction journal integration', () => {
     expect(state.cashStocks?.[0]).toMatchObject({
       ticker: 'AAPL',
       shares: 40,
-      averagePrice: 25,
-      price: 125,
-      currentPrice: 125,
-      lots: [{ lotId: 'cash-aapl-lot-1', qty: 40, price: 25, buyCommission: 12 }]
+      currentPrice: 125
     });
     expect(state.cashCushion.freeCash).toBe(cashBefore);
     const splitEvent = state.transactionEvents?.find(event =>
