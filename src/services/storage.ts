@@ -6,11 +6,13 @@ import {
 } from './portfolioAutoRefresh';
 
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
+const STORAGE_KEY_STATE_RECOVERY = 'margin_portfolio_state_dynamic_v2_recovery_v1';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
 const HISTORY_DATABASE_NAME = 'portfolio-terminal-history-cache';
 const HISTORY_DATABASE_VERSION = 1;
 const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
+const HISTORY_RECORD_RECOVERY_KEY = 'closed-history-v1:last-known-good';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
 const HISTORY_DATABASE_OPERATION_TIMEOUT_MS = 5_000;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
@@ -31,6 +33,7 @@ const GW_KEY_STORE = 'keys';
 const GW_KEY_ID = 'gateway-secret-aes-key';
 let pendingSecretPersistence: Promise<boolean> = Promise.resolve(true);
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
+const STORAGE_KEY_RULES_RECOVERY = 'tradernet_rules_v1_recovery_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 const STORAGE_KEY_GUEST_REFRESH_INTERVAL = 'quote_refresh_interval_guest_v1';
 
@@ -105,6 +108,18 @@ function resetHistoryStorageCache(): void {
   historyStorageInitialization = null;
 }
 
+
+function parseJsonRecord(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeHistorySnapshot(value: unknown): ClosedHistorySnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -197,12 +212,30 @@ function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDa
 
 async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScope): Promise<ClosedHistorySnapshot | null> {
   const db = await openHistoryDatabase(scope);
+  let snapshot: ClosedHistorySnapshot | null = null;
+  let recoveryNeeded = false;
   try {
-    return await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
-      const request = transaction.objectStore(HISTORY_OBJECT_STORE).get(HISTORY_RECORD_KEY);
-      let snapshot: ClosedHistorySnapshot | null = null;
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+      let currentValue: unknown;
+      let recoveryValue: unknown;
+      let currentRead = false;
+      let recoveryRead = false;
       let settled = false;
+      const finish = () => {
+        if (!currentRead || !recoveryRead || settled) return;
+        settled = true;
+        const current = normalizeHistorySnapshot(currentValue);
+        const recovery = normalizeHistorySnapshot(recoveryValue);
+        if (current) {
+          snapshot = current;
+          recoveryNeeded = !recovery;
+        } else if (recovery) {
+          snapshot = recovery;
+          recoveryNeeded = true;
+        }
+      };
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -214,10 +247,9 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
         }
       }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
       const resolveTransaction = () => {
-        if (settled) return;
-        settled = true;
         clearTimeout(timeout);
-        resolve(snapshot);
+        finish();
+        resolve();
       };
       const rejectTransaction = (error: Error) => {
         if (settled) return;
@@ -226,17 +258,41 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
         reject(error);
       };
 
-      request.onsuccess = () => {
-        snapshot = normalizeHistorySnapshot(request.result);
+      const currentRequest = store.get(HISTORY_RECORD_KEY);
+      const recoveryRequest = store.get(HISTORY_RECORD_RECOVERY_KEY);
+      currentRequest.onsuccess = () => {
+        currentValue = currentRequest.result;
+        currentRead = true;
+        finish();
       };
-      request.onerror = () => rejectTransaction(request.error || new Error('Could not read closed-history storage'));
-      transaction.oncomplete = resolveTransaction;
+      recoveryRequest.onsuccess = () => {
+        recoveryValue = recoveryRequest.result;
+        recoveryRead = true;
+        finish();
+      };
+      currentRequest.onerror = () => rejectTransaction(
+        currentRequest.error || new Error('Could not read closed-history storage')
+      );
+      recoveryRequest.onerror = () => rejectTransaction(
+        recoveryRequest.error || new Error('Could not read closed-history recovery storage')
+      );
       transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction failed'));
       transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction was aborted'));
     });
   } finally {
     db.close();
   }
+
+  // Restore a missing/corrupt active row or seed the recovery row on first
+  // initialization. Keep the in-memory recovered rows even if repair cannot save.
+  if (snapshot && recoveryNeeded) {
+    try {
+      await writeHistoryRecordToIndexedDB(snapshot, scope);
+    } catch (error) {
+      console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
+    }
+  }
+  return snapshot;
 }
 
 async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, scope = activePortfolioStorageScope): Promise<void> {
@@ -244,7 +300,7 @@ async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, sco
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
-      transaction.objectStore(HISTORY_OBJECT_STORE).put(history, HISTORY_RECORD_KEY);
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
       let settled = false;
       const timeout = setTimeout(() => {
         if (settled) return;
@@ -268,6 +324,31 @@ async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, sco
         clearTimeout(timeout);
         reject(error);
       };
+
+      // Read the current row inside the same transaction. The previous valid
+      // history is retained as a recovery row before the replacement commits.
+      const currentRequest = store.get(HISTORY_RECORD_KEY);
+      currentRequest.onsuccess = () => {
+        const current = normalizeHistorySnapshot(currentRequest.result);
+        if (current) {
+          store.put(current, HISTORY_RECORD_RECOVERY_KEY);
+          store.put(history, HISTORY_RECORD_KEY);
+          return;
+        }
+
+        // Do not overwrite an existing recovery row when the active row is
+        // missing/corrupt. Seed it only when no valid recovery copy exists.
+        const recoveryRequest = store.get(HISTORY_RECORD_RECOVERY_KEY);
+        recoveryRequest.onsuccess = () => {
+          if (!normalizeHistorySnapshot(recoveryRequest.result)) {
+            store.put(history, HISTORY_RECORD_RECOVERY_KEY);
+          }
+          store.put(history, HISTORY_RECORD_KEY);
+        };
+      };
+      currentRequest.onerror = () => rejectTransaction(
+        currentRequest.error || new Error('Could not inspect existing closed-history storage')
+      );
 
       transaction.oncomplete = resolveTransaction;
       transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history write transaction failed'));
