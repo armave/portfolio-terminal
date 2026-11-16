@@ -839,6 +839,66 @@ describe('storage service', () => {
       expect(loadSavedHistory()).toEqual(previous);
     });
 
+    it('uses blank local recovery baselines after a committed portfolio reset', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const previousHistory = {
+        brokerExecutedTrades: [{ id: 'before-reset-trade' }],
+        cashflows: [{ id: 'before-reset-cashflow' }]
+      };
+      await initializeSavedHistoryStorage('legacy');
+      expect(await saveSavedHistory(previousHistory)).toBe(true);
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        balance: 500,
+        positions: { AAPL: { shares: 10 } },
+        transactionEvents: [{ type: 'trade.buy', id: 'before-reset-event' }]
+      }));
+
+      const resetState = {
+        activeView: 'COMBINED',
+        balance: 0,
+        positions: {},
+        transactionEvents: [{ type: 'portfolio.reset', id: 'reset-event' }]
+      };
+      expect(await savePortfolioSnapshot(
+        resetState,
+        { brokerExecutedTrades: [], cashflows: [] },
+        { deviceActiveView: 'COMBINED' }
+      )).toBe(true);
+
+      const recoverySnapshot = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1') || 'null');
+      expect(recoverySnapshot).toMatchObject({
+        activeView: 'COMBINED',
+        balance: 0,
+        transactionEvents: [{ type: 'portfolio.reset' }]
+      });
+
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{corrupted-after-reset');
+      expect(loadSavedState({ activeView: 'DEFAULT', balance: 99 })).toMatchObject({
+        activeView: 'COMBINED',
+        balance: 0,
+        transactionEvents: [{ type: 'portfolio.reset' }]
+      });
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open reset history database'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        transaction.objectStore('history').put({ damaged: true }, 'closed-history-v1');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not damage reset history row'));
+        transaction.onabort = () => reject(transaction.error || new Error('Reset history corruption aborted'));
+      });
+      db.close();
+
+      await activatePortfolioStorageScope('guest:reset-recovery-check');
+      await activatePortfolioStorageScope('legacy');
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+    });
+
     it('persists an explicit empty IndexedDB history snapshot so a full reset cannot restore old rows', async () => {
       storageMap.set('portfolio_closed_history_v1', JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
