@@ -221,10 +221,10 @@ describe('background cloud conflict reconciliation', () => {
         if (method === 'GET') {
           getCount += 1;
           if (getCount === 1) {
-            return response(200, { encryptedPayload: `encrypted:${JSON.stringify(base)}` }, 1);
+            return response(200, { encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(base))}:nonce` }, 1);
           }
           return response(200, {
-            encryptedPayload: `encrypted:${JSON.stringify(remoteAfterConflict)}`
+            encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remoteAfterConflict))}:nonce`
           }, 2);
         }
         postCount += 1;
@@ -250,7 +250,6 @@ describe('background cloud conflict reconciliation', () => {
     const remote = {
       positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
       balance: 500,
-      transactionEvents: [{ id: 'buy-base' }],
       activeView: 'MSFT',
       selectedTicker: 'MSFT',
       lastRolloverTimestamp: 100,
