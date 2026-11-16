@@ -436,6 +436,35 @@ describe('storage service', () => {
       warnSpy.mockRestore();
     });
 
+    it('repairs a corrupted local snapshot from the last-known-good scoped copy', () => {
+      const previous = JSON.stringify({ activeView: 'AAPL', balance: 125 });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previous);
+
+      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(previous);
+
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{corrupted');
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'AAPL',
+        balance: 125
+      });
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previous);
+    });
+
+    it('never reads another account scope recovery snapshot', async () => {
+      await activatePortfolioStorageScope('owner');
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1::owner', JSON.stringify({
+        balance: 900,
+        activeView: 'OWNER'
+      }));
+
+      await activatePortfolioStorageScope('guest:local-recovery-a');
+      expect(loadSavedState({ balance: 0, activeView: 'COMBINED' })).toEqual({
+        balance: 0,
+        activeView: 'COMBINED'
+      });
+    });
+
     it('recovers the legacy snapshot when the current snapshot is not an object', () => {
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(['invalid-shape']));
       storageMap.set('portfolio_state', JSON.stringify({ activeView: 'AAPL', balance: 125 }));
@@ -543,6 +572,75 @@ describe('storage service', () => {
       }
     });
 
+    it('bounds stalled secure IndexedDB open requests and preserves encrypted credentials', async () => {
+      vi.useFakeTimers();
+      setGatewaySecret('');
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
+      storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
+      vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn() } });
+      vi.stubGlobal('indexedDB', { open: vi.fn(() => ({})) } as unknown as IDBFactory);
+
+      const restoring = restoreGatewaySecret();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(restoring).resolves.toBe('');
+      expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
+      warning.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('does not mint a replacement device key when the saved key is missing', async () => {
+      setGatewaySecret('');
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
+      storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
+
+      const keyReadRequest = { result: undefined, onsuccess: null, onerror: null, error: null };
+      const readTransaction = {
+        objectStore: () => ({
+          get: () => {
+            queueMicrotask(() => {
+              keyReadRequest.onsuccess?.call(keyReadRequest, new Event('success'));
+              queueMicrotask(() => readTransaction.oncomplete?.call(readTransaction, new Event('complete')));
+            });
+            return keyReadRequest;
+          }
+        }),
+        abort: vi.fn(),
+        oncomplete: null,
+        onerror: null,
+        onabort: null,
+        error: null
+      };
+      const database = {
+        objectStoreNames: { contains: () => true },
+        transaction: () => readTransaction,
+        close: vi.fn()
+      };
+      const openRequest = {
+        result: database,
+        error: null,
+        onupgradeneeded: null,
+        onsuccess: null,
+        onerror: null,
+        onblocked: null
+      };
+      const generateKey = vi.fn();
+      vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn(), generateKey } });
+      vi.stubGlobal('indexedDB', {
+        open: vi.fn(() => {
+          queueMicrotask(() => openRequest.onsuccess?.call(openRequest, new Event('success')));
+          return openRequest;
+        })
+      } as unknown as IDBFactory);
+
+      await expect(restoreGatewaySecret()).resolves.toBe('');
+      expect(generateKey).not.toHaveBeenCalled();
+      expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
+      expect(database.close).toHaveBeenCalledTimes(1);
+      warning.mockRestore();
+    });
+
     it('preserves encrypted device credentials when IndexedDB is temporarily unavailable', async () => {
       setGatewaySecret('');
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -602,6 +700,20 @@ describe('storage service', () => {
       storageMap.set('tradernet_rules_v1', JSON.stringify(legacy));
       expect(loadBrokerRules()).toEqual(legacy);
     });
+    it('repairs malformed broker rules from the last-known-good scoped copy', () => {
+      const original = { annualBorrowRate: 0.12, commissionPerShare: 0.02 };
+      saveBrokerRules(original as never);
+      saveBrokerRules({ annualBorrowRate: 0.18, commissionPerShare: 0.03 } as never);
+      expect(storageMap.get('tradernet_rules_v1_recovery_v1')).toBe(JSON.stringify(original));
+
+      storageMap.set('tradernet_rules_v1', '{broken');
+      expect(loadBrokerRules()).toEqual(original);
+      expect(storageMap.get('tradernet_rules_v1')).toBe(JSON.stringify(original));
+
+      clearBrokerRules();
+      expect(storageMap.has('tradernet_rules_v1_recovery_v1')).toBe(false);
+    });
+
     it('returns null for malformed JSON and absent settings', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('tradernet_rules_v1', '{"broken');
@@ -680,6 +792,40 @@ describe('storage service', () => {
       expect(loadSavedHistory()).toEqual(expected);
       expect(storageMap.get('portfolio_closed_history_v1')).toBe(damagedSidecar);
       expect(warning).toHaveBeenCalledWith('Failed to parse saved closed history:', expect.any(SyntaxError));
+    });
+
+    it('restores a corrupt IndexedDB history row from its last-known-good record without merging rows', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const previous = {
+        brokerExecutedTrades: [{ id: 'previous-trade' }],
+        cashflows: [{ id: 'previous-cashflow' }]
+      };
+      const newest = {
+        brokerExecutedTrades: [{ id: 'newest-trade' }],
+        cashflows: [{ id: 'newest-cashflow' }]
+      };
+      await initializeSavedHistoryStorage('legacy');
+      expect(await saveSavedHistory(previous)).toBe(true);
+      expect(await saveSavedHistory(newest)).toBe(true);
+      await flushSavedHistoryPersistence();
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open test history database'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        transaction.objectStore('history').put({ damaged: true }, 'closed-history-v1');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not corrupt test history row'));
+        transaction.onabort = () => reject(transaction.error || new Error('Test history corruption aborted'));
+      });
+      db.close();
+
+      await activatePortfolioStorageScope('guest:history-recovery-test');
+      await activatePortfolioStorageScope('legacy');
+      expect(loadSavedHistory()).toEqual(previous);
     });
 
     it('persists an explicit empty IndexedDB history snapshot so a full reset cannot restore old rows', async () => {
