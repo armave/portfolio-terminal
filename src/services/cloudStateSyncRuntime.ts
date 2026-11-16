@@ -437,7 +437,8 @@ async function pullCloudState(
 
     if (!isCurrentSession()) return stalePullFallback();
     const wasUpdated = processRollovers(parsedState);
-    const remoteSnapshot = prepareCloudStateSnapshot(parsedState as CloudStateRecord);
+    let stateToPersist = parsedState as CloudStateRecord;
+    const remoteSnapshot = prepareCloudStateSnapshot(stateToPersist);
     let preservedLocalChanges = false;
     if (pullBaseline) {
       const latestLocalSnapshot = prepareCloudStateSnapshot(handlers.getState?.() || state);
@@ -458,9 +459,9 @@ async function pullCloudState(
         return loadSavedState(toCloudStateRecord(state));
       }
       preservedLocalChanges = cloudStateFingerprint(reconciledSnapshot) !== cloudStateFingerprint(remoteSnapshot);
-      parsedState = reconciledSnapshot as CloudStateRecord;
+      stateToPersist = reconciledSnapshot;
     }
-    if (!saveState(parsedState)) {
+    if (!saveState(stateToPersist)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
     // Keep the merge base equal to what the server actually returned. If a
@@ -479,7 +480,7 @@ async function pullCloudState(
 
     if (handlers.allowCloudWrites !== false && requiresEncryptionUpgrade) {
       try {
-        const saved = await pushCloudState(parsedState, {
+        const saved = await pushCloudState(stateToPersist, {
           ...handlers,
           secret: currentSecret,
           showToast: () => { }
@@ -506,7 +507,7 @@ async function pullCloudState(
         logAppMessage(`[Cloud Security]: Encryption upgrade remains pending: ${migrationError instanceof Error ? migrationError.message : 'unknown error'}`);
       }
     } else if (handlers.allowCloudWrites !== false && (wasUpdated || mergedLocalData)) {
-      pushCloudState(parsedState, {
+      pushCloudState(stateToPersist, {
         ...handlers,
         secret: currentSecret,
         showToast: () => { }
@@ -516,13 +517,13 @@ async function pullCloudState(
     }
 
     if (typeof pullCloudAndRewriteLocal === 'function' && isCurrentSession()) {
-      pullCloudAndRewriteLocal(parsedState);
+      pullCloudAndRewriteLocal(stateToPersist);
     }
     if (preservedLocalChanges) handlers.onLocalChangesPreserved?.();
 
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'synced');
     reportResult?.(cloudStateConflictSecret !== currentSecret);
-    return parsedState;
+    return stateToPersist;
   } catch (err: unknown) {
     if (!isCurrentSession()) return stalePullFallback();
     const message = errorMessage(err);
