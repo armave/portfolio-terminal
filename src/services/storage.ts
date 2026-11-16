@@ -765,7 +765,6 @@ export {
   loadGatewaySecret,
   saveApiKeys
 } from './credentialStorage';
-export type { SaveApiKeysOptions } from './credentialStorage';
 
 interface PortfolioSnapshotPersistResult {
   success: boolean;

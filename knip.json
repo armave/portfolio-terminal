@@ -2,8 +2,6 @@
   "$schema": "https://unpkg.com/knip@6.45.1/schema.json",
   "entry": [
     "src/**/*.test.{ts,tsx}",
-    "worker.test.js",
-    "user-auth.test.js",
     "worker.js",
     "startup-critical.css"
   ],

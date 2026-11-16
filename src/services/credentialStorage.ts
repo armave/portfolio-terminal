@@ -298,7 +298,7 @@ export function loadGatewaySecret(): string {
   return inMemoryGatewaySecret;
 }
 
-export interface SaveApiKeysOptions {
+interface SaveApiKeysOptions {
   secret?: string;
   showToast?: (message: string, type?: string) => void;
   logAppMessage?: (message: string) => void;
