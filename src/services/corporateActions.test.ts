@@ -379,6 +379,52 @@ describe('cash-holding split adjustment', () => {
     }, splitEvent())).toMatchObject({ status: 'review_required' });
   });
 
+  it('retains a quote observed after the action without dividing it again', () => {
+    const postActionQuote = Date.parse('2020-09-01T14:00:00.000Z');
+    const holding: CashStockHolding = {
+      ...preSplitCashHolding,
+      price: 125,
+      currentPrice: 125,
+      quoteDetails: {
+        ...preSplitCashHolding.quoteDetails!,
+        price: 125,
+        sourceTimestamp: postActionQuote,
+        freshness: 'fresh',
+        dataQuality: 'complete'
+      }
+    };
+    const result = adjustCashHoldingForSplit(holding, splitEvent());
+    expect(result).toMatchObject({
+      status: 'applied',
+      holding: {
+        shares: 40,
+        price: 125,
+        currentPrice: 125,
+        quoteDetails: { price: 125, sourceTimestamp: postActionQuote, freshness: 'fresh', dataQuality: 'complete' }
+      }
+    });
+  });
+
+  it('withholds fractional aggregate entitlement and duplicate cash lot identity', () => {
+    const fractional: CashStockHolding = {
+      ...preSplitCashHolding,
+      shares: 1,
+      lots: [{ ...preSplitCashHolding.lots![0], qty: 1 }]
+    };
+    expect(adjustCashHoldingForSplit(fractional, splitEvent({ fromFactor: 4, toFactor: 1 })))
+      .toMatchObject({ status: 'review_required' });
+    const duplicateLots: CashStockHolding = {
+      ...preSplitCashHolding,
+      shares: 20,
+      lots: [
+        preSplitCashHolding.lots![0],
+        { ...preSplitCashHolding.lots![0], qty: 10 }
+      ]
+    };
+    expect(adjustCashHoldingForSplit(duplicateLots, splitEvent()))
+      .toMatchObject({ status: 'review_required' });
+  });
+
   it('does not re-adjust cash lots acquired after the effective date', () => {
     const postActionHolding: CashStockHolding = {
       ...preSplitCashHolding,
