@@ -2527,7 +2527,7 @@ describe('portfolio import boundary validation', () => {
       cashflows
     })).toBe(true);
 
-    expect(store.resetToBlankState(1_800_000_000_100, false)).toBe(true);
+    expect(store.resetToBlankState(1_800_000_000_100, false, { recordedAt: 1_800_000_000_100 })).toBe(true);
     expect(store.getState().closedTrades).toEqual([]);
     expect(store.getState().cashflows).toEqual([]);
     expect(store.getState().transactionEvents?.some(event => event.historyFeeCorrection)).toBe(true);
