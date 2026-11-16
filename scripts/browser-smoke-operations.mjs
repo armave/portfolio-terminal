@@ -563,10 +563,10 @@ async function waitForAuthOverlay(page, open, worker = null) {
         hint: element.querySelector('.startup-loading__hint')?.textContent?.trim() || '',
         failed: element.textContent?.includes('Could not finish initializing the app.') || false,
         authOverlayClass: document.querySelector('#auth-container')?.className || '',
-        savedBrokerRulesPresent: localStorage.getItem('tradernet_rules_v1') !== null,
-        savedBrokerRulesBytes: localStorage.getItem('tradernet_rules_v1')?.length || 0,
-        savedPortfolioPresent: localStorage.getItem('margin_portfolio_state_dynamic_v2') !== null,
-        savedHistoryPresent: localStorage.getItem('portfolio_closed_history_v1') !== null
+        savedBrokerRulesPresent: localStorage.getItem('tradernet_rules_v1::owner') !== null,
+        savedBrokerRulesBytes: localStorage.getItem('tradernet_rules_v1::owner')?.length || 0,
+        savedPortfolioPresent: localStorage.getItem('margin_portfolio_state_dynamic_v2::owner') !== null,
+        savedHistoryPresent: localStorage.getItem('portfolio_closed_history_v1::owner') !== null
       }));
       const recentWorkerCalls = worker?.calls?.slice(-20).map((call) => ({
         method: call.method,
@@ -1087,7 +1087,7 @@ try {
   await visibleSettingsDesk().locator('#brokerRulesForm button[type="submit"]').click();
   try {
     await page.waitForFunction(() => {
-      const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null');
+      const stored = JSON.parse(localStorage.getItem('tradernet_rules_v1::owner') || 'null');
       return stored && Math.abs(stored.annualBorrowRate - 0.18) < 0.000001 &&
         Math.abs(stored.maintenanceEquityRatio - 0.125) < 0.000001 &&
         Math.abs(stored.stopOutRatio - 0.03) < 0.000001;
@@ -1107,7 +1107,7 @@ try {
       return {
         inputs,
         formValid: form.checkValidity(),
-        savedRules: JSON.parse(localStorage.getItem('tradernet_rules_v1') || 'null')
+        savedRules: JSON.parse(localStorage.getItem('tradernet_rules_v1::owner') || 'null')
       };
     });
     throw new Error('Broker Rules values did not persist after a valid submission: ' + JSON.stringify(brokerRulesState));
