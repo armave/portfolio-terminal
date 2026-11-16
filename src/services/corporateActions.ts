@@ -458,7 +458,10 @@ export function adjustCashHoldingForSplit(
   }
 
   const effectiveDate = dateOnly(event.effectiveDate);
-  const effectiveAt = effectiveDate ? Date.parse(effectiveDate + 'T00:00:00.000Z') : Number.NaN;
+  if (!effectiveDate) {
+    return { status: 'review_required', reason: 'The corporate-action effective date is invalid or is still in the future.' };
+  }
+  const effectiveAt = Date.parse(effectiveDate + 'T00:00:00.000Z');
   if (!Number.isFinite(effectiveAt) || effectiveAt > Date.now()) {
     return { status: 'review_required', reason: 'The corporate-action effective date is invalid or is still in the future.' };
   }
