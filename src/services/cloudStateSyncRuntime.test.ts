@@ -279,6 +279,7 @@ describe('startup cloud pull local-edit protection', () => {
       balance: 500,
       activeView: 'AAPL',
       selectedTicker: 'AAPL',
+      lastRolloverTimestamp: 100,
       lastUpdated: 100
     };
     let resolveFetch!: (value: Response) => void;
@@ -344,6 +345,7 @@ describe('startup cloud pull local-edit protection', () => {
       balance: 500,
       activeView: 'MSFT',
       selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
       lastUpdated: 200
     };
     const fixture = createRuntime(remote);
