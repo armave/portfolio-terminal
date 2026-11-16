@@ -1,6 +1,6 @@
-export const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
+const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
 
-export const BROWSER_REPAIR_OPERATION_TIMEOUT_MS = 3_000;
+const BROWSER_REPAIR_OPERATION_TIMEOUT_MS = 3_000;
 
 function withOperationTimeout<T>(
   operation: Promise<T>,
