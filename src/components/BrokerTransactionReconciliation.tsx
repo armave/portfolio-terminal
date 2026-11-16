@@ -3,6 +3,7 @@ import type { BrokerCashflow, BrokerExecution } from '../types/broker';
 import type { ClosedTrade } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { reconcileBrokerActivity, type ReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
+import { inspectPortfolioTransactionJournalReplayCoverage } from '../domain/portfolioTransactionJournal';
 import { getAppLanguage } from '../services/i18n';
 import {
   reconcileBrokerQuotePrices,
@@ -173,7 +174,40 @@ const RU_COPY: Record<string, string> = {
   'The broker quote snapshot is stale; it is not used as current price evidence.': 'Снимок котировок брокера устарел и не используется как актуальное подтверждение цены.',
   'The broker provider observation timestamp is unknown; price findings cannot be confirmed.': 'Время наблюдения провайдера брокера неизвестно; расхождения цен нельзя подтвердить.',
   'The broker position snapshot is incomplete; price findings are provisional.': 'Снимок позиций брокера неполный; расхождения цен считаются предварительными.',
-  'One or more app quote observations are not verified as fresh, live, and complete.': 'Одна или несколько котировок приложения не подтверждены как актуальные, текущие и полные.'
+  'One or more app quote observations are not verified as fresh, live, and complete.': 'Одна или несколько котировок приложения не подтверждены как актуальные, текущие и полные.',
+  'App transaction journal coverage': 'Покрытие журнала транзакций приложения',
+  'Complete within scope': 'Полное в пределах указанной области',
+  'Incomplete': 'Неполное',
+  'Unsupported': 'Не поддерживается',
+  'Replayable events': 'Воспроизводимые события',
+  'Evidence-only events': 'Только подтверждающие записи',
+  'Audit-only events': 'Только аудиторские записи',
+  'Items needing review': 'Записи, требующие проверки',
+  'Coverage applies to position quantities, cash-holding quantities, free cash, margin debt and realized margin charges. It does not certify lot cost basis or closed-trade P&L reconstruction.': 'Покрытие относится к количеству активных и денежных позиций, свободным денежным средствам, маржинальному долгу и признанным маржинальным расходам. Оно не подтверждает восстановление себестоимости лотов или прибыли и убытка по закрытым сделкам.',
+  'No journal replay issues were detected for the current coverage scope.': 'В пределах текущей области проверки проблем воспроизведения журнала не обнаружено.',
+  'Showing first 5 coverage findings': 'Показаны первые 5 замечаний по покрытию',
+  'Event is malformed or uses an unsupported transaction schema.': 'Событие имеет некорректную структуру или использует неподдерживаемую схему транзакций.',
+  'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.': 'В журнале повторяется идентификатор события транзакции; воспроизведение заблокировано, чтобы не применить одно событие более одного раза.',
+  'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.': 'В журнале повторяется ключ идемпотентности транзакции; воспроизведение заблокировано, чтобы не применить одну команду более одного раза.',
+  'Broker execution evidence must not post directly to app-owned portfolio balances.': 'Подтверждение исполнения брокера не должно напрямую изменять балансы портфеля приложения.',
+  'Broker execution evidence is missing its source reference, instrument, side or quantity.': 'В подтверждении исполнения брокера отсутствует ссылка на источник, инструмент, направление или количество.',
+  'Closed-history fee corrections must not post cash, debt, quantity or realized-margin deltas.': 'Корректировки комиссий закрытых сделок не должны изменять денежные средства, долг, количество активов или признанные маржинальные расходы.',
+  'History correction requires a stable closed-trade ID, linked app sale event, immutable fee/P&L snapshots and a valid revision chain.': 'Для корректировки истории необходимы стабильный ID закрытой сделки, связанное событие продажи приложения, неизменяемые снимки комиссий и прибыли/убытка, а также корректная цепочка версий.',
+  'Trade event requires an instrument, positive quantity and matching signed position delta.': 'Событию сделки необходимы инструмент, положительное количество и соответствующее знаковое изменение позиции.',
+  'Cash-holding buy is missing a stable lot ID, acquisition date, price, fee evidence or matching quantity delta.': 'Для покупки денежного актива отсутствуют стабильный ID лота, дата приобретения, цена, сведения о комиссии или соответствующее изменение количества.',
+  'Cash-holding sale is missing exact FIFO lot allocations or a matching negative quantity delta.': 'Для продажи денежного актива отсутствуют точные FIFO-распределения по лотам или соответствующее отрицательное изменение количества.',
+  'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics.': 'Удаление денежного актива является корректировкой учёта без выручки от продажи или расчёта реализованной прибыли/убытка.',
+  'Position adjustment requires an instrument and an explicit quantity delta.': 'Для корректировки позиции необходимы инструмент и явное изменение количества.',
+  'Snapshot reconciliation has no explicit state delta or complete audit-review contract.': 'Для сверки снимка отсутствует явное изменение состояния или полный контракт аудиторской проверки.',
+  'Cash adjustment requires an explicit free-cash or margin-debt delta.': 'Для корректировки денежных средств необходимо явное изменение свободных средств или маржинального долга.',
+  'Margin adjustment requires an explicit debt delta.': 'Для корректировки маржи необходимо явное изменение долга.',
+  'Margin-interest event requires explicit debt and realized-charge deltas; legacy events without the realized-charge delta remain incomplete.': 'Для события маржинальных процентов необходимы явные изменения долга и признанных расходов; старые события без изменения признанных расходов остаются неполными.',
+  'Financial correction requires an original event reference, reason and non-zero inverse state delta.': 'Для финансовой корректировки необходимы ссылка на исходное событие, причина и ненулевое обратное изменение состояния.',
+  'Financial correction references an event that is not present in the supplied journal.': 'Финансовая корректировка ссылается на событие, отсутствующее в предоставленном журнале.',
+  'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.': 'Сейчас поддерживается отмена только корректировок денежных средств и долга; отмена сделок, лотов и корпоративных действий пока недоступна.',
+  'Correction state deltas must be the exact inverse of the linked original balance adjustment.': 'Изменения состояния в корректировке должны точно отменять изменения исходной корректировки баланса.',
+  'Financial posting has neither an app-owned state delta nor a complete external evidence reference.': 'Финансовая запись не содержит ни изменения состояния приложения, ни полной ссылки на внешнее подтверждение.',
+  'Event type is not supported by the current quantity/cash/debt replay contract.': 'Тип события не поддерживается текущим контрактом воспроизведения количества активов, денежных средств и долга.'
 };
 
 export function translateBrokerReconciliationCopy(value: string, language = getAppLanguage()): string {
@@ -280,6 +314,13 @@ export function BrokerTransactionReconciliation({
   const emptyMessageClass = report.status === 'matched' ? 'text-emerald-300' : 'text-slate-400';
   const labelClass = report.status === 'matched' ? 'text-emerald-300' :
     report.status === 'differences' ? 'text-amber-300' : 'text-slate-300';
+  const journalCoverage = inspectPortfolioTransactionJournalReplayCoverage(appEvents);
+  const journalCoverageStatusLabel = journalCoverage.status === 'complete'
+    ? 'Complete within scope'
+    : journalCoverage.status === 'unsupported' ? 'Unsupported' : 'Incomplete';
+  const journalCoverageStatusClass = journalCoverage.status === 'complete'
+    ? 'text-emerald-300'
+    : journalCoverage.status === 'unsupported' ? 'text-rose-300' : 'text-amber-300';
   const quoteReport = brokerQuoteSnapshot === undefined ? null : reconcileBrokerQuotePrices({
     brokerSnapshot: brokerQuoteSnapshot,
     appQuotes
@@ -377,6 +418,31 @@ export function BrokerTransactionReconciliation({
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('App journal cashflows')}</div><strong>{report.appCashflowCount}</strong></div>
         <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Matched cashflows')}</div><strong>{report.matchedCashflowCount}</strong></div>
       </div>
+      <section class="space-y-2 rounded border border-slate-800 bg-slate-950/30 p-3" aria-label={translateBrokerReconciliationCopy('App transaction journal coverage')}>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="font-semibold text-slate-200">{translateBrokerReconciliationCopy('App transaction journal coverage')}</h3>
+          <strong class={journalCoverageStatusClass}>{translateBrokerReconciliationCopy(journalCoverageStatusLabel)}</strong>
+        </div>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Replayable events')}</div><strong>{journalCoverage.replayableCount}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Evidence-only events')}</div><strong>{journalCoverage.evidenceOnlyCount}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Audit-only events')}</div><strong>{journalCoverage.auditOnlyCount}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Items needing review')}</div><strong>{journalCoverage.issues.length}</strong></div>
+        </div>
+        <p class="text-slate-500">{translateBrokerReconciliationCopy('Coverage applies to position quantities, cash-holding quantities, free cash, margin debt and realized margin charges. It does not certify lot cost basis or closed-trade P&L reconstruction.')}</p>
+        {journalCoverage.issues.length > 0 ? (
+          <ul class="list-disc space-y-1 pl-4 text-amber-200">
+            {journalCoverage.issues.slice(0, 5).map((finding, index) => (
+              <li key={(finding.eventId || 'journal-finding') + '-' + index}>
+                {translateBrokerReconciliationCopy(finding.reason)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="text-emerald-300">{translateBrokerReconciliationCopy('No journal replay issues were detected for the current coverage scope.')}</p>
+        )}
+        {journalCoverage.issues.length > 5 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 5 coverage findings')}.</p>}
+      </section>
       {report.legacyClosedSaleCount > 0 && (
         <p class="text-slate-500">
           {translateBrokerReconciliationCopy('Legacy closed sales are app summaries, not transaction-journal events.')} {translateBrokerReconciliationCopy('Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.')}

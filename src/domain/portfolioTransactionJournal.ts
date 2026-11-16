@@ -6,7 +6,8 @@ import {
   type PortfolioTransactionEvent,
   type PortfolioTransactionEventType,
   type PortfolioTransactionLotAllocation,
-  type PortfolioTransactionHistoryFeeSnapshot
+  type PortfolioTransactionHistoryFeeSnapshot,
+  type PortfolioCorporateActionLotAdjustment
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
@@ -250,6 +251,65 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
     if (value.realizedPnl === undefined || !closeEnough(allocatedPnl, value.realizedPnl)) return false;
   }
+  if (value.corporateActionMultiplier !== undefined || value.corporateActionLotAdjustments !== undefined) {
+    if (value.type !== 'corporate-action' ||
+        typeof value.corporateActionMultiplier !== 'number' ||
+        !Number.isFinite(value.corporateActionMultiplier) ||
+        value.corporateActionMultiplier <= 0 ||
+        value.corporateActionMultiplier === 1 ||
+        !Array.isArray(value.corporateActionLotAdjustments) ||
+        value.corporateActionLotAdjustments.length === 0 ||
+        value.corporateActionLotAdjustments.length > 500 ||
+        !value.ticker || !value.externalReferenceId) return false;
+    const seenLotIds = new Set<string>();
+    const ledgerDeltas = { position: 0, 'cash-holding': 0 };
+    const multiplier = value.corporateActionMultiplier;
+    let quantityBeforeTotal = 0;
+    if ([value.cashDelta, value.marginDebtDelta, value.realizedMarginChargeDelta,
+      value.netAmount, value.externalCashFlowAmount, value.realizedPnl]
+      .some(amount => amount !== undefined && amount !== 0)) return false;
+    for (const rawAdjustment of value.corporateActionLotAdjustments) {
+      if (!isPlainRecord(rawAdjustment) ||
+          (rawAdjustment.ledger !== 'position' && rawAdjustment.ledger !== 'cash-holding') ||
+          typeof rawAdjustment.lotId !== 'string' || !rawAdjustment.lotId.trim() ||
+          rawAdjustment.lotId.length > 200 || seenLotIds.has(rawAdjustment.lotId) ||
+          typeof rawAdjustment.quantityBefore !== 'number' || !Number.isFinite(rawAdjustment.quantityBefore) || rawAdjustment.quantityBefore <= 0 ||
+          typeof rawAdjustment.quantityAfter !== 'number' || !Number.isFinite(rawAdjustment.quantityAfter) || rawAdjustment.quantityAfter <= 0 ||
+          typeof rawAdjustment.priceBefore !== 'number' || !Number.isFinite(rawAdjustment.priceBefore) || rawAdjustment.priceBefore <= 0 ||
+          typeof rawAdjustment.priceAfter !== 'number' || !Number.isFinite(rawAdjustment.priceAfter) || rawAdjustment.priceAfter <= 0 ||
+          typeof rawAdjustment.acquisitionDate !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(rawAdjustment.acquisitionDate) ||
+          !Number.isFinite(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')) ||
+          new Date(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== rawAdjustment.acquisitionDate ||
+          typeof rawAdjustment.acquiredAt !== 'number' || !Number.isSafeInteger(rawAdjustment.acquiredAt) || rawAdjustment.acquiredAt <= 0 ||
+          !Number.isFinite(new Date(rawAdjustment.acquiredAt).getTime()) ||
+          !(rawAdjustment.openBuyCommission === null ||
+            (typeof rawAdjustment.openBuyCommission === 'number' && Number.isFinite(rawAdjustment.openBuyCommission) && rawAdjustment.openBuyCommission >= 0))) return false;
+      const acquiredDate = new Date(rawAdjustment.acquiredAt).toISOString().slice(0, 10);
+      if (acquiredDate !== rawAdjustment.acquisitionDate) return false;
+      if (Math.abs(rawAdjustment.quantityAfter - rawAdjustment.quantityBefore * multiplier) >
+            Math.max(1e-8, rawAdjustment.quantityAfter * 1e-8) ||
+          Math.abs(rawAdjustment.priceAfter - rawAdjustment.priceBefore / multiplier) >
+            Math.max(1e-8, rawAdjustment.priceAfter * 1e-8) ||
+          Math.abs(rawAdjustment.quantityBefore * rawAdjustment.priceBefore -
+            rawAdjustment.quantityAfter * rawAdjustment.priceAfter) >
+            Math.max(1e-6, rawAdjustment.quantityBefore * rawAdjustment.priceBefore * 1e-8)) return false;
+      seenLotIds.add(rawAdjustment.lotId);
+      quantityBeforeTotal += rawAdjustment.quantityBefore;
+      ledgerDeltas[rawAdjustment.ledger] += rawAdjustment.quantityAfter - rawAdjustment.quantityBefore;
+    }
+    const closeEnough = (left: number, right: number) =>
+      Math.abs(left - right) <= Math.max(1e-8, Math.max(Math.abs(left), Math.abs(right)) * 1e-8);
+    if (typeof value.quantity !== 'number' || !closeEnough(value.quantity, quantityBeforeTotal)) return false;
+    if ((Math.abs(ledgerDeltas.position) > 1e-8
+          ? typeof value.positionQuantityDelta !== 'number' || !closeEnough(value.positionQuantityDelta, ledgerDeltas.position)
+          : value.positionQuantityDelta !== undefined &&
+            (typeof value.positionQuantityDelta !== 'number' || Math.abs(value.positionQuantityDelta) > 1e-8)) ||
+        (Math.abs(ledgerDeltas['cash-holding']) > 1e-8
+          ? typeof value.cashHoldingQuantityDelta !== 'number' || !closeEnough(value.cashHoldingQuantityDelta, ledgerDeltas['cash-holding'])
+          : value.cashHoldingQuantityDelta !== undefined &&
+            (typeof value.cashHoldingQuantityDelta !== 'number' || Math.abs(value.cashHoldingQuantityDelta) > 1e-8))) return false;
+  }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   if (value.historyFeeCorrection !== undefined) {
@@ -269,7 +329,18 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
 }
 
 export function isPortfolioTransactionEventList(value: unknown): value is PortfolioTransactionEvent[] {
-  return Array.isArray(value) && value.every(isPortfolioTransactionEvent);
+  if (!Array.isArray(value)) return false;
+  const eventIds = new Set<string>();
+  const idempotencyKeys = new Set<string>();
+  for (const candidate of value) {
+    if (!isPortfolioTransactionEvent(candidate) || eventIds.has(candidate.id)) return false;
+    eventIds.add(candidate.id);
+    if (candidate.idempotencyKey) {
+      if (idempotencyKeys.has(candidate.idempotencyKey)) return false;
+      idempotencyKeys.add(candidate.idempotencyKey);
+    }
+  }
+  return true;
 }
 
 /** Return a detached, deeply frozen journal list for safe exposure through getState(). */
@@ -284,6 +355,13 @@ export function freezePortfolioTransactionEventList(
     actor: Object.freeze({ ...event.actor }),
     ...(event.lotAllocations
       ? { lotAllocations: Object.freeze(event.lotAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[] }
+      : {}),
+    ...(event.corporateActionLotAdjustments
+      ? {
+          corporateActionLotAdjustments: Object.freeze(
+            event.corporateActionLotAdjustments.map((adjustment) => Object.freeze({ ...adjustment }))
+          ) as unknown as PortfolioCorporateActionLotAdjustment[]
+        }
       : {}),
     ...(event.historyFeeCorrection
       ? {
@@ -358,6 +436,10 @@ export function createPortfolioTransactionEvent(
       before: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.before),
       after: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.after)
     } } : {}),
+    ...(draft.corporateActionMultiplier !== undefined ? { corporateActionMultiplier: draft.corporateActionMultiplier } : {}),
+    ...(draft.corporateActionLotAdjustments
+      ? { corporateActionLotAdjustments: draft.corporateActionLotAdjustments.map((adjustment) => ({ ...adjustment })) }
+      : {}),
     ...(draft.note ? { note: draft.note } : {})
   };
 
@@ -405,6 +487,8 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     realizedPnl: event.realizedPnl,
     relatedEventId: event.relatedEventId,
     historyFeeCorrection: event.historyFeeCorrection,
+    corporateActionMultiplier: event.corporateActionMultiplier,
+    corporateActionLotAdjustments: event.corporateActionLotAdjustments,
     note: event.note
   });
 }
@@ -460,8 +544,10 @@ function haveSamePortfolioTransactionContent(left: unknown, right: unknown): boo
 
 /**
  * Merge imported audit history without allowing an older backup to erase
- * already-recorded events. Exact duplicate IDs/keys are ignored; conflicting
- * reuse is rejected so the caller can keep the existing committed snapshot.
+ * already-recorded events. Exact matches across the existing and incoming
+ * journals are ignored; duplicate IDs/keys within either input list are
+ * malformed and rejected so replay cannot apply one command more than once.
+ * Conflicting reuse is rejected so the caller can keep the committed snapshot.
  * Object property ordering is ignored because JSON backups do not preserve a
  * semantic distinction between otherwise identical event objects.
  */
@@ -662,12 +748,48 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
   events: readonly unknown[]
 ): PortfolioTransactionJournalCoverageReport {
   const findings: PortfolioTransactionJournalCoverageFinding[] = [];
-  const knownEvents = new Map<string, PortfolioTransactionEvent>();
-  for (const candidate of events) {
-    if (isPortfolioTransactionEvent(candidate)) knownEvents.set(candidate.id, candidate);
-  }
+  const duplicateIndexes = new Map<number, string>();
+  const firstIndexById = new Map<string, number>();
+  const firstIndexByIdempotencyKey = new Map<string, number>();
+  const markDuplicate = (firstIndex: number, duplicateIndex: number, reason: string) => {
+    duplicateIndexes.set(firstIndex, duplicateIndexes.has(firstIndex)
+      ? `${duplicateIndexes.get(firstIndex)} ${reason}`
+      : reason);
+    duplicateIndexes.set(duplicateIndex, duplicateIndexes.has(duplicateIndex)
+      ? `${duplicateIndexes.get(duplicateIndex)} ${reason}`
+      : reason);
+  };
+  events.forEach((candidate, index) => {
+    if (!isPortfolioTransactionEvent(candidate)) return;
+    const firstIdIndex = firstIndexById.get(candidate.id);
+    if (firstIdIndex === undefined) firstIndexById.set(candidate.id, index);
+    else markDuplicate(firstIdIndex, index,
+      'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.');
+    if (candidate.idempotencyKey) {
+      const firstKeyIndex = firstIndexByIdempotencyKey.get(candidate.idempotencyKey);
+      if (firstKeyIndex === undefined) firstIndexByIdempotencyKey.set(candidate.idempotencyKey, index);
+      else markDuplicate(firstKeyIndex, index,
+        'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.');
+    }
+  });
 
-  for (const raw of events) {
+  const knownEvents = new Map<string, PortfolioTransactionEvent>();
+  events.forEach((candidate, index) => {
+    if (!duplicateIndexes.has(index) && isPortfolioTransactionEvent(candidate)) {
+      knownEvents.set(candidate.id, candidate);
+    }
+  });
+
+  for (const [index, raw] of events.entries()) {
+    if (duplicateIndexes.has(index) && isPortfolioTransactionEvent(raw)) {
+      findings.push({
+        eventId: raw.id,
+        eventType: raw.type,
+        disposition: 'unsupported',
+        reason: duplicateIndexes.get(index)!
+      });
+      continue;
+    }
     if (!isPortfolioTransactionEvent(raw)) {
       const malformed = isPlainRecord(raw) ? raw : {};
       findings.push({

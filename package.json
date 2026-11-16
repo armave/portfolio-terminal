@@ -9,13 +9,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev-server": "node scripts/dev-server-smoke.mjs",
-    "knip": "npx --yes knip",
-    "validate:dead-code": "npm run knip",
+    "knip": "npx --yes knip@6.45.1",
+    "validate:dead-code": "npm run knip && npm run audit:complexity",
     "audit:dependencies": "npm audit --audit-level=high",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "setup:browser-tests": "node scripts/setup-browser-tests.mjs",
     "setup:git-hooks": "git config core.hooksPath .githooks",
-    "ci:local": "node scripts/ci-local.mjs"
+    "ci:local": "node scripts/ci-local.mjs",
+    "audit:complexity": "node scripts/source-complexity-audit.mjs"
   },
   "overrides": {
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",

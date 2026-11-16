@@ -21,6 +21,7 @@ describe('market event presentation', () => {
   it('uses the source Russian event glossary and English labels without rewriting terms', () => {
     expect(marketEventLabel('Upcoming and recent events', 'ru')).toBe('Предстоящие и недавние события');
     expect(marketEventLabel('Corporate actions', 'ru')).toBe('Корпоративные действия');
+    expect(marketEventLabel('Apply split to eligible portfolio lots', 'ru')).toBe('Применить дробление к подходящим лотам портфеля');
     expect(marketEventLabel('Before market', 'en')).toBe('Before market');
   });
 

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createPortfolioTransactionEvent } from '../domain/portfolioTransactionJournal';
 import {
@@ -127,6 +128,56 @@ describe('broker reconciliation audit-only review markers', () => {
       'Review could not be recorded. No financial data was changed.',
       'Reviewed note',
       'Record a review note only; corrections and writeback remain unavailable.'
+    ];
+    for (const value of copy) {
+      expect(translateBrokerReconciliationCopy(value, 'ru'), value).not.toBe(value);
+    }
+  });
+});
+
+
+describe('transaction journal coverage visibility', () => {
+  it('renders scoped replay counts and bounded issue explanations in broker reconciliation', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('inspectPortfolioTransactionJournalReplayCoverage(appEvents)');
+    expect(source).toContain("aria-label={translateBrokerReconciliationCopy('App transaction journal coverage')}");
+    expect(source).toContain('journalCoverage.issues.slice(0, 5)');
+    expect(source).toContain('journalCoverage.replayableCount');
+    expect(source).toContain('journalCoverage.evidenceOnlyCount');
+    expect(source).toContain('journalCoverage.auditOnlyCount');
+    expect(source).toContain('journalCoverage.issues.length');
+    expect(source).toContain('Coverage applies to position quantities, cash-holding quantities, free cash, margin debt and realized margin charges. It does not certify lot cost basis or closed-trade P&L reconstruction.');
+  });
+
+  it('localizes journal coverage statuses, counts, scope and issue reasons in Russian', () => {
+    const copy = [
+      'App transaction journal coverage', 'Complete within scope', 'Incomplete', 'Unsupported',
+      'Replayable events', 'Evidence-only events', 'Audit-only events', 'Items needing review',
+      'Coverage applies to position quantities, cash-holding quantities, free cash, margin debt and realized margin charges. It does not certify lot cost basis or closed-trade P&L reconstruction.',
+      'No journal replay issues were detected for the current coverage scope.',
+      'Showing first 5 coverage findings',
+      'Event is malformed or uses an unsupported transaction schema.',
+      'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.',
+      'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.',
+      'Broker execution evidence must not post directly to app-owned portfolio balances.',
+      'Broker execution evidence is missing its source reference, instrument, side or quantity.',
+      'Closed-history fee corrections must not post cash, debt, quantity or realized-margin deltas.',
+      'History correction requires a stable closed-trade ID, linked app sale event, immutable fee/P&L snapshots and a valid revision chain.',
+      'Trade event requires an instrument, positive quantity and matching signed position delta.',
+      'Cash-holding buy is missing a stable lot ID, acquisition date, price, fee evidence or matching quantity delta.',
+      'Cash-holding sale is missing exact FIFO lot allocations or a matching negative quantity delta.',
+      'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics.',
+      'Position adjustment requires an instrument and an explicit quantity delta.',
+      'Snapshot reconciliation has no explicit state delta or complete audit-review contract.',
+      'Cash adjustment requires an explicit free-cash or margin-debt delta.',
+      'Margin adjustment requires an explicit debt delta.',
+      'Margin-interest event requires explicit debt and realized-charge deltas; legacy events without the realized-charge delta remain incomplete.',
+      'Financial correction requires an original event reference, reason and non-zero inverse state delta.',
+      'Financial correction references an event that is not present in the supplied journal.',
+      'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.',
+      'Correction state deltas must be the exact inverse of the linked original balance adjustment.',
+      'Financial posting has neither an app-owned state delta nor a complete external evidence reference.',
+      'Event type is not supported by the current quantity/cash/debt replay contract.'
     ];
     for (const value of copy) {
       expect(translateBrokerReconciliationCopy(value, 'ru'), value).not.toBe(value);

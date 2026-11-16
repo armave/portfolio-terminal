@@ -98,6 +98,11 @@ describe('Trades cache-first rendering', () => {
       source.indexOf('const syncCashflowsFromFreedom')
     );
     expect(processEffect).toContain('const isOperationCurrent = () => isSessionCurrent() && isOperationActive();');
+    expect(processEffect).toContain('buildClosedHistoryFeeAuditUpdate(');
+    expect(processEffect).toContain('portfolioStore.commitClosedHistoryFeeSync(');
+    expect(processEffect).not.toContain('portfolioStore.setState(nextState, false)');
+    expect(processEffect).toContain('feeAuditUpdate.transactionEvents');
+    expect(processEffect).toContain('auditedClosedTrades');
     expect(processEffect).toContain('if (!isOperationCurrent()) return false;');
     expect(processEffect).toContain('{ isCurrentSession: isOperationCurrent }');
   });

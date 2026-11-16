@@ -17,7 +17,12 @@ import {
   CashStockHolding,
   PendingMutation
 } from '../types/portfolio';
-import type { PortfolioTransactionContext, PortfolioTransactionDraft, PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import type {
+  PortfolioTransactionContext,
+  PortfolioTransactionDraft,
+  PortfolioTransactionEvent,
+  PortfolioCorporateActionLotAdjustment
+} from '../types/portfolioTransaction';
 import {
   appendPortfolioTransactionEvent,
   createPortfolioTransactionEvent,
@@ -28,10 +33,14 @@ import {
   mergePortfolioTransactionEvents,
   freezePortfolioTransactionEventList,
   appendBrokerHistoryAuditEvents,
+  inspectPortfolioTransactionJournalReplayCoverage,
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
+import { verifyClosedHistoryFeeCorrectionParity } from '../domain/closedHistoryFeeAudit';
+import { replayPortfolioTransactionLots } from '../domain/portfolioLotJournal';
 import {
   adjustPositionForSplit,
+  adjustCashHoldingForSplit,
   mergePortfolioCorporateActionEvents,
   toPortfolioCorporateActionEvent,
   type CorporateActionEvent,
@@ -62,6 +71,40 @@ export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
 const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
+
+/**
+ * Structured closed-history fee corrections must retain valid sale links and
+ * revision lineage. Corrections after the latest reset must also reference
+ * current source cashflows and match exactly one canonical closed-trade row;
+ * pre-reset corrections remain archived audit history after reset.
+ * Other legacy rows retain their existing compatibility rules and are not
+ * upgraded to replayable financial events by this guard.
+ */
+function hasValidClosedHistoryFeeAuditHistory(
+  events: readonly PortfolioTransactionEvent[],
+  closedTrades: readonly ClosedTrade[],
+  cashflows: readonly { id: string }[]
+): boolean {
+  const hasFeeCorrectionPayload = events.some((event) =>
+    isRecord(event) && event.historyFeeCorrection !== undefined
+  );
+  if (!hasFeeCorrectionPayload) return true;
+  if (!isPortfolioTransactionEventList(events)) return false;
+
+  const corrections = events.filter((event) => Boolean(event.historyFeeCorrection));
+  if (!corrections.length) return false;
+
+  const sourceCashflows = cashflows
+    .filter((cashflow) => cashflow && typeof cashflow.id === 'string' && Boolean(cashflow.id.trim()))
+    .map((cashflow) => ({ id: cashflow.id }));
+  if (!verifyClosedHistoryFeeCorrectionParity(events, closedTrades, sourceCashflows).matches) return false;
+
+  const coverage = inspectPortfolioTransactionJournalReplayCoverage(events);
+  const findingsById = new Map(coverage.findings
+    .filter((finding) => finding.eventId)
+    .map((finding) => [finding.eventId as string, finding]));
+  return corrections.every((event) => findingsById.get(event.id)?.disposition === 'audit-only');
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -273,12 +316,14 @@ function mergeLiveQuoteDetails(
 
 export class PortfolioStore {
   private state: PortfolioState;
+  private readonly committedSnapshots = new WeakSet<PortfolioState>();
   private listeners: Set<(state: PortfolioState, source: PortfolioStoreChangeSource) => void> = new Set();
   private activeViewListeners: Set<(view: string) => void> = new Set();
   private persistenceErrorListeners: Set<(message: string) => void> = new Set();
 
   constructor() {
     this.state = this.initializeState();
+    this.committedSnapshots.add(this.state);
   }
 
   private initializeState(): PortfolioState {
@@ -574,7 +619,7 @@ export class PortfolioStore {
    * saveState mutates candidate.lastUpdated only after its storage transaction
    * succeeds, so a failed write leaves the current in-memory snapshot intact.
    */
-  public update(
+  private update(
     updater: (state: PortfolioState) => PortfolioState,
     persist = true,
     source: PortfolioStoreChangeSource = 'durable',
@@ -597,9 +642,20 @@ export class PortfolioStore {
     }
 
     this.state = candidate;
+    this.committedSnapshots.add(candidate);
     this.notify(source);
     if (this.state.activeView !== previousState.activeView) this.notifyActiveView();
     return true;
+  }
+
+  /**
+   * Roll back to a snapshot reference previously issued by this store. This is
+   * reserved for in-memory rollback when a multi-step local/cloud commit fails;
+   * ordinary external writes must use the guarded setter or explicit command/import boundary.
+   */
+  public restoreInMemorySnapshot(snapshot: PortfolioState): boolean {
+    if (!this.committedSnapshots.has(snapshot)) return false;
+    return this.update(() => snapshot, false);
   }
 
   /**
@@ -625,6 +681,11 @@ export class PortfolioStore {
       try {
         mergedEvents = mergePortfolioTransactionEvents(state.transactionEvents || [], transactionEvents);
       } catch {
+        mergeFailed = true;
+        return state;
+      }
+      const candidateCashflows = changes.cashflows ?? state.cashflows ?? [];
+      if (!hasValidClosedHistoryFeeAuditHistory(mergedEvents, closedTrades, candidateCashflows)) {
         mergeFailed = true;
         return state;
       }
@@ -708,9 +769,11 @@ export class PortfolioStore {
     persist = true,
     source: PortfolioStoreChangeSource = 'durable'
   ): boolean {
-    // The append-only journal can only be changed by audited financial
-    // commands or by the validated import/merge path below.
-    if (Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
+    // Closed-history rows may change only through audited financial commands,
+    // the dedicated linked fee-sync commit, or validated import/workspace/reset paths.
+    // Append-only journals likewise remain behind their audited mutation boundaries.
+    if (Object.prototype.hasOwnProperty.call(partial, 'closedTrades') ||
+        Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'marketHistoryCorrections')) return false;
     return this.update((state) => ({
@@ -730,7 +793,12 @@ export class PortfolioStore {
    * which deliberately merges append-only journals.
    */
   public replaceWorkspace(newState: PortfolioState, persist = true): boolean {
-    if (!hasValidPortfolioImportShape(newState)) return false;
+    if (!hasValidPortfolioImportShape(newState) ||
+        !hasValidClosedHistoryFeeAuditHistory(
+          newState.transactionEvents || [],
+          newState.closedTrades || [],
+          newState.cashflows || []
+        )) return false;
     return this.update(() => ({ ...newState }), persist, 'derived');
   }
 
@@ -769,6 +837,12 @@ export class PortfolioStore {
       } catch {
         return false;
       }
+    }
+
+    const candidateClosedTrades = newState.closedTrades ?? this.state.closedTrades ?? [];
+    const candidateCashflows = newState.cashflows ?? this.state.cashflows ?? [];
+    if (!hasValidClosedHistoryFeeAuditHistory(mergedEvents, candidateClosedTrades, candidateCashflows)) {
+      return false;
     }
 
     return this.update((state) => ({
@@ -2491,11 +2565,12 @@ export class PortfolioStore {
       );
       const positionKey = positionEntry?.[0];
       const position = positionEntry?.[1];
-      const hasCashHolding = [
-        ...(state.cashCushion?.holdings || []),
-        ...(state.cashStocks || [])
-      ].some(holding => typeof holding?.ticker === 'string' &&
-        normalizeActionTicker(holding.ticker) === actionTicker);
+      const cashHoldingMatches = (state.cashCushion?.holdings || []).filter(holding =>
+        typeof holding?.ticker === 'string' && normalizeActionTicker(holding.ticker) === actionTicker
+      );
+      const brokerCashMatches = (state.cashStocks || []).filter(holding =>
+        typeof holding?.ticker === 'string' && normalizeActionTicker(holding.ticker) === actionTicker
+      );
       type BrokerSnapshotWithIntegrity = NonNullable<PortfolioState['brokerAccountInfo']> & {
         positionIntegrityIssues?: Array<{ ticker: string; code: string; source: string }>;
         snapshotQuality?: string;
@@ -2508,25 +2583,82 @@ export class PortfolioStore {
         (brokerSnapshot.status !== 'current' ||
           brokerSnapshot.quality !== 'complete' ||
           brokerSnapshot.snapshotQuality !== 'complete');
+      const quoteUnavailable = (reason: string) => ({
+        status: 'review_required' as const,
+        reason
+      });
+      const cashHolding = cashHoldingMatches.length === 1 ? cashHoldingMatches[0] : undefined;
+      const cashShares = Number(cashHolding?.shares);
+      const brokerCashMirrorValid = brokerCashMatches.every(item =>
+        Number.isFinite(Number(item.shares)) &&
+        Math.abs(Number(item.shares) - cashShares) <= Math.max(1e-8, cashShares * 1e-8)
+      );
+      const cashHoldingLotHistoryValid = (() => {
+        if (!cashHolding || !Array.isArray(cashHolding.lots) || cashHolding.lots.length === 0) return false;
+        try {
+          const replay = replayPortfolioTransactionLots(state.transactionEvents || []);
+          const relatedEventIds = new Set((state.transactionEvents || [])
+            .filter(item =>
+              normalizeActionTicker(item.ticker || '') === actionTicker &&
+              (item.type === 'cash-holding.buy' ||
+                item.type === 'cash-holding.sell' ||
+                item.type === 'cash-holding.adjustment' ||
+                (item.type === 'corporate-action' &&
+                  (item.cashHoldingQuantityDelta !== undefined ||
+                    item.corporateActionLotAdjustments?.some(adjustment => adjustment.ledger === 'cash-holding'))))
+            )
+            .map(item => item.id));
+          if (replay.issues.some(issue => issue.eventId && relatedEventIds.has(issue.eventId))) return false;
+          const replayLots = replay.cashHoldingOpenLots.filter(lot => normalizeActionTicker(lot.ticker) === actionTicker);
+          if (replayLots.length !== cashHolding.lots.length) return false;
+          return cashHolding.lots.every(lot => {
+            const replayLot = replayLots.find(item => item.lotId === lot.lotId);
+            return Boolean(replayLot) &&
+              Math.abs(replayLot!.openQuantity - lot.qty) <= Math.max(1e-8, lot.qty * 1e-8) &&
+              Math.abs(replayLot!.acquisitionPrice - lot.price) <= Math.max(1e-8, lot.price * 1e-8) &&
+              replayLot!.acquisitionDate === lot.date &&
+              Math.abs(replayLot!.acquiredAt - lot.acquiredAt) <= 1 &&
+              replayLot!.openBuyCommission !== null &&
+              Math.abs(replayLot!.openBuyCommission - lot.buyCommission) <= 0.011;
+          });
+        } catch {
+          return false;
+        }
+      })();
       const adjusted = brokerIntegrityIssue || brokerSnapshotNotVerified ? {
         status: 'review_required' as const,
         reason: brokerIntegrityIssue
           ? 'Broker position integrity is unresolved for this ticker. Resolve the position-side or execution discrepancy before applying a corporate action.'
-          : 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
-      } : hasCashHolding ? {
+          : 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying the split.'
+      } : position && (cashHoldingMatches.length > 0 || brokerCashMatches.length > 0) ? {
         status: 'review_required' as const,
-        reason: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
-      } : position ? adjustPositionForSplit(position, event) : {
-        status: 'review_required' as const,
-        reason: 'No matching open portfolio position was found for this corporate action.'
-      };
+        reason: 'A margin position and cash holding both exist for this ticker. The split was not partially applied to only one ledger.'
+      } : position ? adjustPositionForSplit(position, event)
+        : cashHoldingMatches.length > 1 ? quoteUnavailable(
+          'More than one cash holding matches this ticker; reconcile duplicate holding rows before applying the split.'
+        )
+        : cashHolding ? brokerCashMatches.length <= 1 && brokerCashMirrorValid
+          ? cashHoldingLotHistoryValid
+            ? adjustCashHoldingForSplit(cashHolding, event)
+            : quoteUnavailable(
+              'Cash-holding lots do not reconcile to the immutable buy/sale journal; restore or reconcile transaction history before applying the split.'
+            )
+          : quoteUnavailable(
+            'The broker cash compatibility quantity is duplicated or does not match the app-owned cash lots; refresh and reconcile the account before applying the split.'
+          )
+        : brokerCashMatches.length > 0 ? quoteUnavailable(
+          'Broker-only cash holdings have no app-recorded acquisition lots; add or reconcile exact lot evidence before applying the split.'
+        )
+        : quoteUnavailable('No matching open position or app-owned cash holding was found for this corporate action.');
       const status = adjusted.status;
       const portfolioEvent = toPortfolioCorporateActionEvent(
         event,
         status,
         recordedAt,
         adjusted.status === 'applied'
-          ? 'Verified split applied to all eligible open lots; aggregate acquisition cost was preserved.'
+          ? ('holding' in adjusted
+              ? 'Verified split applied to every app-owned cash-holding lot; total acquisition cost was preserved and no cash or realized P&L was posted.'
+              : 'Verified split applied to all eligible open position lots; aggregate acquisition cost was preserved.')
           : adjusted.reason
       );
       let mergedActions: PortfolioCorporateActionEvent[];
@@ -2536,33 +2668,101 @@ export class PortfolioStore {
         return state;
       }
       committed = mergedActions.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
-      if (adjusted.status !== 'applied' || !positionKey) {
+      if (adjusted.status !== 'applied') {
         return { ...state, corporateActionEvents: mergedActions };
       }
 
+      const adjustedCashHolding = 'holding' in adjusted ? adjusted.holding : null;
+      const adjustedPosition = 'position' in adjusted ? adjusted.position : null;
+      const lotAdjustments: PortfolioCorporateActionLotAdjustment[] = adjustedCashHolding && cashHolding
+        ? cashHolding.lots!.map((beforeLot, index) => ({
+            ledger: 'cash-holding',
+            lotId: beforeLot.lotId,
+            quantityBefore: beforeLot.qty,
+            quantityAfter: adjustedCashHolding.lots![index].qty,
+            priceBefore: beforeLot.price,
+            priceAfter: adjustedCashHolding.lots![index].price,
+            acquisitionDate: beforeLot.date,
+            acquiredAt: beforeLot.acquiredAt,
+            openBuyCommission: beforeLot.buyCommission
+          }))
+        : [];
+      const sharesBefore = adjusted.sharesBefore;
+      const sharesAfter = adjusted.sharesAfter;
+      const costBasisAfter = adjusted.costBasisAfter;
       const transactionDraft: PortfolioTransactionDraft = {
         type: 'corporate-action',
         effectiveAt: Date.parse(event.effectiveDate + 'T00:00:00Z'),
         ticker: event.symbol,
-        quantity: adjusted.sharesBefore,
-        positionQuantityDelta: adjusted.sharesAfter - adjusted.sharesBefore,
+        quantity: sharesBefore,
+        ...(adjustedCashHolding
+          ? {
+              cashHoldingQuantityDelta: sharesAfter - sharesBefore,
+              corporateActionMultiplier: event.sharesAfterPerShareBefore,
+              corporateActionLotAdjustments: lotAdjustments
+            }
+          : { positionQuantityDelta: sharesAfter - sharesBefore }),
         externalReferenceId: event.sourceId,
-        note: 'Applied verified ' + event.kind + ' (' + event.fromFactor + ':' + event.toFactor +
-          '). Open-lot total acquisition cost remained ' + adjusted.costBasisAfter.toFixed(8) +
+        note: (adjustedCashHolding
+          ? 'Applied verified ' + event.kind + ' to app-owned cash-holding lots; '
+          : 'Applied verified ' + event.kind + ' to open position lots; ') +
+          'total acquisition cost remained ' + costBasisAfter.toFixed(8) +
           '; no cash or realized P&L was posted.'
       };
-      const transaction = createPortfolioTransactionEvent(transactionDraft, {
-        actor: { type: 'user' },
-        source: 'corporate-action',
-        idempotencyKey: 'corporate-action:' + event.sourceId,
-        requestFingerprint: JSON.stringify([event.sourceId, event.fromFactor, event.toFactor]),
-        recordedAt
-      }, recordedAt);
+      let transaction: PortfolioTransactionEvent;
+      try {
+        transaction = createPortfolioTransactionEvent(transactionDraft, {
+          actor: { type: 'user' },
+          source: 'corporate-action',
+          idempotencyKey: 'corporate-action:' + event.sourceId,
+          requestFingerprint: JSON.stringify([
+            event.sourceId,
+            event.fromFactor,
+            event.toFactor,
+            lotAdjustments
+          ]),
+          recordedAt
+        }, recordedAt);
+      } catch {
+        committed = null;
+        return state;
+      }
       const appended = appendPortfolioTransactionEvent(state.transactionEvents || [], transaction);
-      if (!appended.appended && !appended.duplicate) return state;
+      if (!appended.appended && !appended.duplicate) {
+        committed = null;
+        return state;
+      }
+
+      if (adjustedPosition && positionKey) {
+        return {
+          ...state,
+          positions: { ...state.positions, [positionKey]: adjustedPosition },
+          transactionEvents: appended.events,
+          corporateActionEvents: mergedActions
+        };
+      }
+      if (!adjustedCashHolding) return state;
+
+      const holdings = (state.cashCushion?.holdings || []).map(holding =>
+        normalizeActionTicker(holding.ticker) === actionTicker ? adjustedCashHolding : holding
+      );
+      const cashStocks = (state.cashStocks || []).map(holding =>
+        normalizeActionTicker(holding.ticker) === actionTicker
+          ? {
+              ...holding,
+              shares: Number(adjustedCashHolding.shares),
+              currentPrice: Number(adjustedCashHolding.currentPrice),
+              ...(adjustedCashHolding.quoteDetails ? { quoteDetails: adjustedCashHolding.quoteDetails } : {})
+            }
+          : holding
+      );
       return {
         ...state,
-        positions: { ...state.positions, [positionKey]: adjusted.position },
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          holdings
+        },
+        ...(state.cashStocks ? { cashStocks } : {}),
         transactionEvents: appended.events,
         corporateActionEvents: mergedActions
       };

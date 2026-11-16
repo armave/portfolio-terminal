@@ -8,7 +8,8 @@ import {
   subscribeToPortfolioSelector,
   subscribeToActiveView
 } from './portfolioStore';
-import type { Holding, PositionRecord } from '../types/portfolio';
+import type { CashStockHolding, ClosedTrade, Holding, PositionRecord } from '../types/portfolio';
+import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
@@ -22,6 +23,83 @@ const sharedLocalStorage = {
   setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
   removeItem: (key: string) => { sharedTestStorage.delete(key); }
 };
+
+function createCashHoldingSplitFixture() {
+  const acquiredAt = Date.parse('2019-01-02T09:30:00.000Z');
+  const quoteDetails = {
+    price: 500,
+    currency: 'USD',
+    provider: 'FINNHUB',
+    sourceTimestamp: Date.parse('2020-08-28T20:00:00.000Z'),
+    receivedAt: Date.now(),
+    freshness: 'fresh' as const,
+    dataQuality: 'complete' as const
+  };
+  const cashBuy = createPortfolioTransactionEvent({
+    type: 'cash-holding.buy',
+    effectiveAt: acquiredAt,
+    ticker: 'AAPL',
+    quantity: 10,
+    cashHoldingQuantityDelta: 10,
+    lotId: 'cash-aapl-lot-1',
+    acquisitionDate: '2019-01-02',
+    unitPrice: 100,
+    grossAmount: 1_000,
+    fees: 12,
+    cashDelta: 0
+  }, { eventId: 'cash-aapl-buy-event', source: 'cashholding-store-test' });
+  const holding: CashStockHolding = {
+    ticker: 'AAPL',
+    shares: 10,
+    averagePrice: 100,
+    price: 500,
+    currentPrice: 500,
+    lots: [{
+      lotId: 'cash-aapl-lot-1',
+      qty: 10,
+      price: 100,
+      date: '2019-01-02',
+      acquiredAt,
+      buyCommission: 12
+    }],
+    quoteDetails
+  };
+  const brokerCashMirror = {
+    ticker: 'AAPL',
+    shares: 10,
+    currentPrice: 500,
+    quoteDetails
+  };
+  const action = normalizeFinnhubStockSplits([
+    { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+  ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+  return { acquiredAt, cashBuy, holding, brokerCashMirror, action };
+}
+
+function createClosedHistoryFeeAuditImportFixture() {
+  const sale = createPortfolioTransactionEvent({
+    type: 'trade.sell',
+    effectiveAt: Date.parse('2026-01-03T12:00:00.000Z'),
+    ticker: 'AAPL',
+    quantity: 10,
+    positionQuantityDelta: -10
+  }, { eventId: 'import-fee-sale-event', actor: { type: 'user', id: 'admin' }, source: 'portfolio-store' });
+  const before: ClosedTrade = {
+    id: 'import-closed-trade', transactionEventId: sale.id, ticker: 'AAPL', shares: 10,
+    sellDate: '2026-01-03T12:00:00.000Z', feesAndCommissions: 3, totalCommissions: 3,
+    marginInterest: 0, marginFee: 0, marginFeeAllocations: {}, netProfit: 97
+  };
+  const after: ClosedTrade = {
+    ...before, feesAndCommissions: 4, totalCommissions: 4, marginInterest: 1, marginFee: 1,
+    marginFeeAllocations: { 'import-cashflow-1': 0.6, 'import-cashflow-2': 0.4 },
+    netProfit: 96, netRealizedGain: 96
+  };
+  const cashflows = [
+    { id: 'import-cashflow-1', date: '2026-01-03', type: 'margin_interest', amount: 0.6 },
+    { id: 'import-cashflow-2', date: '2026-01-03', type: 'margin_interest', amount: 0.4 }
+  ];
+  return { sale, before, after, cashflows };
+}
 
 beforeEach(() => {
   sharedTestStorage.clear();
@@ -1065,16 +1143,12 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     store.setCashBalance(1_000);
     store.buyStock('AAPL', 2, 100, '2026-10-15');
-    store.update((state) => {
-      const position = state.positions.AAPL;
-      if (!position) return state;
-      return {
-        ...state,
-        positions: {
-          ...state.positions,
-          AAPL: { ...position, marginCharged: 10 }
-        }
-      };
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: { ...position, marginCharged: 10 }
+      }
     });
 
     store.sellStock('AAPL', 1, 110, '2026-10-16');
@@ -2171,6 +2245,32 @@ describe('atomic portfolio-store persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('rejects generic closed-history writes before state, storage or subscribers change', () => {
+    const store = new PortfolioStore();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = values.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const candidateRows = [{
+      id: 'generic-write-must-not-append',
+      ticker: 'AAPL',
+      shares: 1,
+      netProfit: 10
+    }] as ClosedTrade[];
+
+    expect(store.setState({ closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+
+    expect(store.setState({ balance: -999, closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-100);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('retains the previous snapshot and suppresses subscribers when the state write fails', () => {
     const store = new PortfolioStore();
     store.setState({ balance: -100 }, false);
@@ -2194,6 +2294,17 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledWith(
       'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.'
     );
+  });
+
+  it('only restores a snapshot reference previously committed by this store', () => {
+    const store = new PortfolioStore();
+    const previous = store.getState();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    expect(store.getState().balance).toBe(-100);
+
+    expect(store.restoreInMemorySnapshot(previous)).toBe(true);
+    expect(store.getState().balance).toBe(0);
+    expect(store.restoreInMemorySnapshot({ ...previous })).toBe(false);
   });
 
   it('writes the candidate snapshot before publishing it to subscribers', () => {
@@ -2435,6 +2546,189 @@ describe('portfolio import boundary validation', () => {
       { ticker: 'MSFT', shares: 1, netProfit: 20 }
     ]);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+
+
+  it('rejects duplicate journal identities during import without mutating state, storage or subscribers', () => {
+    const store = new PortfolioStore();
+    expect(store.importState({ balance: -250 })).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const eventAt = Date.parse('2026-11-16T09:00:00.000Z');
+    const duplicateIdFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt,
+      cashDelta: 100
+    }, { eventId: 'import-duplicate-event-id', idempotencyKey: 'import-duplicate-id-key-a' });
+    const duplicateIdSecond = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt + 1,
+      cashDelta: 125
+    }, { eventId: 'import-duplicate-event-id', idempotencyKey: 'import-duplicate-id-key-b' });
+    const duplicateKeyFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt,
+      cashDelta: 50
+    }, { eventId: 'import-duplicate-key-event-a', idempotencyKey: 'import-duplicate-key' });
+    const duplicateKeySecond = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt + 1,
+      cashDelta: 75
+    }, { eventId: 'import-duplicate-key-event-b', idempotencyKey: 'import-duplicate-key' });
+
+    for (const transactionEvents of [
+      [duplicateIdFirst, duplicateIdSecond],
+      [duplicateKeyFirst, duplicateKeySecond]
+    ]) {
+      expect(store.importState({
+        balance: -900,
+        transactionEvents
+      })).toBe(false);
+      expect(store.getState()).toBe(previousState);
+      expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    }
+
+    expect(store.getState().balance).toBe(-250);
+    expect(store.getState().transactionEvents).toEqual(previousState.transactionEvents);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('accepts and restores fee corrections when sale, cashflow and canonical snapshots agree', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(true);
+
+    const correction = store.getState().transactionEvents?.find(event => event.historyFeeCorrection);
+    expect(correction).toBeDefined();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find(finding => finding.eventId === correction?.id))
+      .toMatchObject({ disposition: 'audit-only' });
+
+    const restored = new PortfolioStore();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(restored.getState().transactionEvents || [])
+      .findings.find(finding => finding.eventId === correction?.id))
+      .toMatchObject({ disposition: 'audit-only' });
+  });
+
+  it('rejects fee-correction restore when the canonical closed-trade row is missing', () => {
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    const audit = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    expect(audit.appendedCount).toBe(1);
+
+    const store = new PortfolioStore();
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: [],
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('preserves archived fee-correction history when importing an explicitly reset workspace', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(true);
+
+    expect(store.resetToBlankState(1_800_000_000_100, false, { recordedAt: 1_800_000_000_100 })).toBe(true);
+    expect(store.getState().closedTrades).toEqual([]);
+    expect(store.getState().cashflows).toEqual([]);
+    expect(store.getState().transactionEvents?.some(event => event.historyFeeCorrection)).toBe(true);
+
+    expect(store.importState({ closedTrades: [], cashflows: [] })).toBe(true);
+  });
+
+  it('rejects restored fee corrections with broken revision links before committing any portfolio data', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    const validCorrection = audit.transactionEvents.find(event => event.historyFeeCorrection);
+    expect(validCorrection).toBeDefined();
+    const brokenCorrection = {
+      ...validCorrection!,
+      id: 'broken-import-fee-correction',
+      historyFeeCorrection: {
+        ...validCorrection!.historyFeeCorrection!,
+        revisionOfEventId: 'missing-prior-correction'
+      }
+    };
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.importState({
+      transactionEvents: [brokenCorrection],
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('rejects fee-correction imports whose allocations refer to missing source cashflows', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    const validCorrection = audit.transactionEvents.find(event => event.historyFeeCorrection)!;
+    const brokenCorrection = {
+      ...validCorrection,
+      id: 'missing-cashflow-import-correction',
+      historyFeeCorrection: {
+        ...validCorrection.historyFeeCorrection!,
+        after: {
+          ...validCorrection.historyFeeCorrection!.after,
+          cashflowAllocations: [{ cashflowId: 'missing-cashflow', amount: 1 }]
+        }
+      }
+    };
+
+    const previousState = store.getState();
+    expect(store.importState({
+      transactionEvents: [brokenCorrection],
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
   });
 
   it('continues to support valid partial imports without clearing omitted portfolio fields', () => {
@@ -3528,7 +3822,7 @@ describe('portfolio transaction journal integration', () => {
 
     expect(store.applyCorporateActionSplit(action)).toMatchObject({
       status: 'review_required',
-      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying the split.'
     });
     expect(store.getState().positions.AAPL).toEqual(before);
   });
@@ -3567,10 +3861,122 @@ describe('portfolio transaction journal integration', () => {
 
     expect(store.applyCorporateActionSplit(action)).toMatchObject({
       status: 'review_required',
-      note: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+      note: 'A margin position and cash holding both exist for this ticker. The split was not partially applied to only one ledger.'
     });
     expect(store.getState().positions.AAPL).toEqual(before);
     expect(store.getState().cashCushion.holdings).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('applies a verified split to fully journaled app-owned cash lots and restores it idempotently', () => {
+    const store = new PortfolioStore();
+    const { acquiredAt, cashBuy, holding, brokerCashMirror, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: { freeCash: 250, holdings: [holding] },
+      cashStocks: [brokerCashMirror]
+    } as any)).toBe(true);
+
+    const cashBefore = store.getState().cashCushion.freeCash;
+    const recordedAt = Date.parse('2026-11-16T12:00:00.000Z');
+    const applied = store.applyCorporateActionSplit(action, recordedAt);
+    expect(applied).toMatchObject({ status: 'applied', sourceId: action.sourceId });
+
+    const state = store.getState();
+    expect(state.cashCushion.holdings[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 40,
+      averagePrice: 25,
+      price: 125,
+      currentPrice: 125,
+      lots: [{
+        lotId: 'cash-aapl-lot-1',
+        qty: 40,
+        price: 25,
+        date: '2019-01-02',
+        acquiredAt,
+        buyCommission: 12
+      }],
+      quoteDetails: { price: 125, freshness: 'stale', dataQuality: 'partial' }
+    });
+    expect(state.cashStocks?.[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 40,
+      currentPrice: 125
+    });
+    expect(state.cashCushion.freeCash).toBe(cashBefore);
+    const splitEvent = state.transactionEvents?.find(event =>
+      event.type === 'corporate-action' && event.externalReferenceId === action.sourceId
+    );
+    expect(splitEvent).toMatchObject({
+      type: 'corporate-action',
+      cashHoldingQuantityDelta: 30,
+      corporateActionMultiplier: 4,
+      corporateActionLotAdjustments: [{
+        ledger: 'cash-holding',
+        lotId: 'cash-aapl-lot-1',
+        quantityBefore: 10,
+        quantityAfter: 40,
+        priceBefore: 100,
+        priceAfter: 25,
+        acquisitionDate: '2019-01-02',
+        acquiredAt,
+        openBuyCommission: 12
+      }]
+    });
+    expect(inspectPortfolioTransactionJournalReplayCoverage(state.transactionEvents || [])
+      .findings.find(finding => finding.eventId === splitEvent?.id))
+      .toMatchObject({ disposition: 'replayable' });
+    expect(verifyPortfolioTransactionParity(state.transactionEvents || [], state).matches).toBe(true);
+    expect(verifyPortfolioTransactionLotParity(state.transactionEvents || [], {
+      positions: state.positions,
+      closedTrades: state.closedTrades,
+      cashHoldings: state.cashCushion.holdings
+    })).toMatchObject({ status: 'complete', matches: true, discrepancies: [], issues: [] });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().cashCushion.holdings[0]).toMatchObject({ shares: 40 });
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+    expect(reloaded.applyCorporateActionSplit(action, recordedAt + 1)?.status).toBe('applied');
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(40);
+    expect(reloaded.getState().transactionEvents?.filter(event =>
+      event.type === 'corporate-action' && event.externalReferenceId === action.sourceId
+    )).toHaveLength(1);
+  });
+
+  it('withholds a cash-holding split when broker compatibility shares disagree with app lots', () => {
+    const store = new PortfolioStore();
+    const { cashBuy, holding, brokerCashMirror, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: { freeCash: 250, holdings: [holding] },
+      cashStocks: [{ ...brokerCashMirror, shares: 9 }]
+    } as any)).toBe(true);
+    const previousHolding = store.getState().cashCushion.holdings[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({ status: 'review_required' });
+    expect(store.getState().cashCushion.holdings[0]).toEqual(previousHolding);
+    expect(store.getState().cashStocks?.[0].shares).toBe(9);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('withholds a cash-holding split when its current lots do not match the immutable journal', () => {
+    const store = new PortfolioStore();
+    const { cashBuy, holding, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: {
+        freeCash: 250,
+        holdings: [{
+          ...holding,
+          lots: [{ ...holding.lots![0], qty: 9 }]
+        }]
+      }
+    } as any)).toBe(true);
+    const previousHolding = store.getState().cashCushion.holdings[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({ status: 'review_required' });
+    expect(store.getState().cashCushion.holdings[0]).toEqual(previousHolding);
     expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
   });
 

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   adjustPositionForSplit,
+  adjustCashHoldingForSplit,
   mergePortfolioCorporateActionEvents,
   normalizeFinnhubDividendActions,
   normalizeFinnhubStockSplits,
   previewCorporateActionAdjustment,
   toPortfolioCorporateActionEvent
 } from './corporateActions';
-import type { PositionRecord } from '../types/portfolio';
+import type { CashStockHolding, PositionRecord } from '../types/portfolio';
 
 const receivedAt = Date.parse('2026-11-08T10:00:00.000Z');
 
@@ -270,6 +271,171 @@ describe('split position adjustment', () => {
     expect(adjustPositionForSplit(postAction, splitEvent())).toMatchObject({
       status: 'not_applicable'
     });
+  });
+});
+
+describe('cash-holding split adjustment', () => {
+  const acquiredAt = Date.parse('2019-01-02T09:30:00.000Z');
+  const preSplitCashHolding: CashStockHolding = {
+    ticker: 'AAPL',
+    shares: 10,
+    averagePrice: 100,
+    price: 500,
+    currentPrice: 500,
+    lots: [{
+      lotId: 'cash-aapl-lot-1',
+      qty: 10,
+      price: 100,
+      date: '2019-01-02',
+      acquiredAt,
+      buyCommission: 12
+    }],
+    quoteDetails: {
+      price: 500,
+      currency: 'USD',
+      provider: 'FINNHUB',
+      sourceTimestamp: Date.parse('2020-08-28T20:00:00.000Z'),
+      receivedAt,
+      freshness: 'fresh',
+      dataQuality: 'complete'
+    }
+  };
+
+  it('adjusts fully journalable pre-action cash lots and preserves total acquisition cost', () => {
+    const result = adjustCashHoldingForSplit(preSplitCashHolding, splitEvent());
+    expect(result.status).toBe('applied');
+    if (result.status !== 'applied') return;
+    expect(result).toMatchObject({
+      sharesBefore: 10,
+      sharesAfter: 40,
+      costBasisBefore: 1_000,
+      costBasisAfter: 1_000,
+      holding: {
+        shares: 40,
+        averagePrice: 25,
+        price: 125,
+        currentPrice: 125,
+        lots: [{
+          lotId: 'cash-aapl-lot-1',
+          qty: 40,
+          price: 25,
+          date: '2019-01-02',
+          acquiredAt,
+          buyCommission: 12
+        }],
+        quoteDetails: { price: 125, freshness: 'stale', dataQuality: 'partial' }
+      }
+    });
+  });
+
+  it('supports a reverse split with the same per-lot cost-basis invariant', () => {
+    const holding: CashStockHolding = {
+      ...preSplitCashHolding,
+      shares: 4,
+      averagePrice: 80,
+      lots: [{
+        lotId: 'cash-aapl-reverse-lot',
+        qty: 4,
+        price: 80,
+        date: '2019-01-02',
+        acquiredAt,
+        buyCommission: 8
+      }]
+    };
+    const result = adjustCashHoldingForSplit(holding, splitEvent({ fromFactor: 4, toFactor: 1 }));
+    expect(result.status).toBe('applied');
+    if (result.status !== 'applied') return;
+    expect(result).toMatchObject({
+      sharesBefore: 4,
+      sharesAfter: 1,
+      costBasisBefore: 320,
+      costBasisAfter: 320,
+      holding: {
+        shares: 1,
+        averagePrice: 320,
+        lots: [{ lotId: 'cash-aapl-reverse-lot', qty: 1, price: 320, buyCommission: 8 }]
+      }
+    });
+  });
+
+  it('requires complete app-owned lots, exact quantity coverage and an ordered quote', () => {
+    expect(adjustCashHoldingForSplit({ ...preSplitCashHolding, lots: undefined }, splitEvent()))
+      .toMatchObject({ status: 'review_required' });
+    expect(adjustCashHoldingForSplit({
+      ...preSplitCashHolding,
+      lots: [{ ...preSplitCashHolding.lots![0], qty: 9 }]
+    }, splitEvent())).toMatchObject({ status: 'review_required' });
+    expect(adjustCashHoldingForSplit({
+      ...preSplitCashHolding,
+      quoteDetails: { ...preSplitCashHolding.quoteDetails!, sourceTimestamp: undefined }
+    }, splitEvent())).toMatchObject({ status: 'review_required' });
+    expect(adjustCashHoldingForSplit({
+      ...preSplitCashHolding,
+      lots: [
+        preSplitCashHolding.lots![0],
+        { ...preSplitCashHolding.lots![0], lotId: 'post-action-lot', date: '2021-01-02', acquiredAt: Date.parse('2021-01-02T09:30:00.000Z') }
+      ],
+      shares: 20
+    }, splitEvent())).toMatchObject({ status: 'review_required' });
+  });
+
+  it('retains a quote observed after the action without dividing it again', () => {
+    const postActionQuote = Date.parse('2020-09-01T14:00:00.000Z');
+    const holding: CashStockHolding = {
+      ...preSplitCashHolding,
+      price: 125,
+      currentPrice: 125,
+      quoteDetails: {
+        ...preSplitCashHolding.quoteDetails!,
+        price: 125,
+        sourceTimestamp: postActionQuote,
+        freshness: 'fresh',
+        dataQuality: 'complete'
+      }
+    };
+    const result = adjustCashHoldingForSplit(holding, splitEvent());
+    expect(result).toMatchObject({
+      status: 'applied',
+      holding: {
+        shares: 40,
+        price: 125,
+        currentPrice: 125,
+        quoteDetails: { price: 125, sourceTimestamp: postActionQuote, freshness: 'fresh', dataQuality: 'complete' }
+      }
+    });
+  });
+
+  it('withholds fractional aggregate entitlement and duplicate cash lot identity', () => {
+    const fractional: CashStockHolding = {
+      ...preSplitCashHolding,
+      shares: 1,
+      lots: [{ ...preSplitCashHolding.lots![0], qty: 1 }]
+    };
+    expect(adjustCashHoldingForSplit(fractional, splitEvent({ fromFactor: 4, toFactor: 1 })))
+      .toMatchObject({ status: 'review_required' });
+    const duplicateLots: CashStockHolding = {
+      ...preSplitCashHolding,
+      shares: 20,
+      lots: [
+        preSplitCashHolding.lots![0],
+        { ...preSplitCashHolding.lots![0], qty: 10 }
+      ]
+    };
+    expect(adjustCashHoldingForSplit(duplicateLots, splitEvent()))
+      .toMatchObject({ status: 'review_required' });
+  });
+
+  it('does not re-adjust cash lots acquired after the effective date', () => {
+    const postActionHolding: CashStockHolding = {
+      ...preSplitCashHolding,
+      lots: [{
+        ...preSplitCashHolding.lots![0],
+        date: '2021-01-02',
+        acquiredAt: Date.parse('2021-01-02T09:30:00.000Z')
+      }]
+    };
+    expect(adjustCashHoldingForSplit(postActionHolding, splitEvent()))
+      .toMatchObject({ status: 'not_applicable' });
   });
 });
 
