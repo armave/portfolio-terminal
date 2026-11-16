@@ -4798,3 +4798,147 @@ table tbody tr:hover {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 }
+
+/* Mobile navigation dock: keep the shared role-aware destinations visible at the viewport footer. */
+@media (max-width: 768px) {
+  #root {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+
+  .workspace-header-controls {
+    display: contents;
+  }
+
+  .workspace-header-destinations {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.45rem max(0.5rem, env(safe-area-inset-right)) calc(0.45rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+    border-top: 1px solid rgba(71, 85, 105, 0.85);
+    background: rgba(15, 15, 17, 0.96);
+    box-shadow: 0 -0.75rem 2rem rgba(2, 6, 23, 0.28);
+    backdrop-filter: blur(18px);
+  }
+
+  #tickerTabs {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: clamp(0.2rem, 0.8vw, 0.55rem);
+    width: 100%;
+    max-width: 72rem;
+    min-width: 0;
+    margin-inline: auto;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  #tickerTabs > button[data-nav-tab="true"] {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  #tickerTabs > .workspace-nav-ticker-list {
+    display: flex;
+    flex: 1 1 0;
+    align-items: stretch;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    gap: clamp(0.2rem, 0.8vw, 0.55rem);
+    padding: 0 0.1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+
+  .workspace-nav-button {
+    min-width: 0;
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.18rem;
+    padding: 0.4rem 0.25rem;
+    white-space: normal;
+  }
+
+  #tickerTabs > .workspace-nav-ticker-list > * {
+    min-width: 3.5rem;
+    min-height: 52px;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .workspace-nav-button__icon {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .workspace-nav-button:not(.workspace-nav-button--ticker) .workspace-nav-button__label,
+  .workspace-nav-button--ticker .workspace-nav-button__label {
+    display: inline-flex;
+    justify-content: center;
+    font-size: clamp(0.62rem, 1.8vw, 0.78rem);
+    line-height: 1.1;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .workspace-nav-button__context {
+    display: inline;
+    margin-right: 0;
+    font-size: 0.55rem;
+  }
+
+  /* Put the one-ticker admin prefix above its symbol instead of running them together. */
+  .workspace-nav-button--ticker .workspace-nav-button__label {
+    flex-direction: column;
+    gap: 0.08rem;
+  }
+
+  .workspace-nav-equity-badge {
+    min-height: 1.15rem;
+    padding: 0.12rem 0.35rem;
+    font-size: 0.55rem;
+  }
+
+  .workspace-nav-equity-badge--admin {
+    display: none;
+  }
+
+  .workspace-header-status {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (min-width: 540px) and (max-width: 768px) {
+  #tickerTabs > button[data-nav-tab="true"],
+  #tickerTabs > .workspace-nav-ticker-list > * {
+    min-height: 56px;
+  }
+
+  .workspace-nav-button__icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .workspace-nav-button:not(.workspace-nav-button--ticker) .workspace-nav-button__label,
+  .workspace-nav-button--ticker .workspace-nav-button__label {
+    font-size: 0.75rem;
+  }
+
+  .workspace-nav-equity-badge--admin {
+    display: inline-flex;
+  }
+}
