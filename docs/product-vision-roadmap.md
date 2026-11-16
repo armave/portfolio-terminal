@@ -331,7 +331,7 @@ Each child task has a dedicated branch name and issue. Create the implementation
 | ID | Workstream | Tracking issue | Dedicated branch | Depends on |
 |---|---|---:|---|---|
 | PT-01 | Financial correctness baseline | [#329](https://github.com/armave/portfolio-terminal/issues/329) | `feat/pt-01-financial-baseline` | — |
-| PT-02 | Transaction integrity & audit history | [#330](https://github.com/armave/portfolio-terminal/issues/330) | `feat/pt-02-transaction-integrity` | PT-01 |
+| PT-02 | Transaction integrity & audit history | [#507](https://github.com/armave/portfolio-terminal/issues/507) | `feat/pt-02-transaction-integrity` | PT-01 |
 | PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | `feat/pt-03-broker-adapters` | PT-01; PT-02 semantics |
 | PT-04 | Broker reconciliation & provenance | [#332](https://github.com/armave/portfolio-terminal/issues/332) | `feat/pt-04-broker-reconciliation` | PT-01, PT-03 |
 | PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
