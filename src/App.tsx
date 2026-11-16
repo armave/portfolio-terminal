@@ -234,9 +234,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       getRoot: () =>
         document.getElementById(resolveActivePageRootId(activeDeskView)) ??
         document.getElementById('mainTerminalView'),
+      onTimeout: () => {
+        console.warn(
+          '[Startup Readiness]: The active desk did not finish rendering before the 12-second deadline. ' +
+          'Releasing the full-screen overlay; the desk-level loading fallback remains available.'
+        );
+      },
       onReady: () => setStartupState({ visible: false, failed: false, readyRequested: false })
     });
   }, [activeDeskView, startupState.failed, startupState.readyRequested]);
+
+  // The "startup-state: visible=false" message only requests dismissal. The
+  // overlay remains mounted while page readiness is checked; report completion
+  // only after Preact has committed the render that removes the overlay.
+  useEffect(() => {
+    if (!startupState.visible && !startupState.failed) {
+      emitUiEvent('app:startup-overlay-dismissed');
+    }
+  }, [startupState.visible, startupState.failed]);
 
   useEffect(() => {
     const previousUser = previousCurrentUserRef.current;

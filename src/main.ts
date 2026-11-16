@@ -66,12 +66,15 @@ function armStartupWatchdog(): void {
 }
 
 addUiEventListener('app:startup-state', (event) => {
-  if (!event.detail.visible || event.detail.failed) {
+  if (event.detail.failed) {
     clearStartupWatchdog();
-  } else {
+  } else if (event.detail.visible) {
     armStartupWatchdog();
   }
+  // visible=false is only a request. App may keep the overlay mounted until
+  // page-readiness checks finish, so keep the watchdog armed until that commit.
 });
+addUiEventListener('app:startup-overlay-dismissed', clearStartupWatchdog);
 
 /**
  * Ask browser autofill and common password managers to ignore ordinary app

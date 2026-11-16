@@ -73,6 +73,8 @@ The CI artifact `browser-performance-baseline` (schema version 1) contains the u
 - cumulative layout shift (CLS), where supported;
 - browser version, commit SHA, ref, and workflow run ID.
 
+Initial application startup also has a bounded page-readiness gate: the full-screen overlay waits at most 12 seconds for the active desk. A timed-out lazy panel retains its local `DeskLoading` fallback, and the app-shell watchdog remains active until the overlay is actually removed. Vitest covers both readiness completion and timeout release.
+
 The current fixture does not measure authenticated dashboard hydration, large-portfolio rendering, transaction-history scale, real broker latency, or production network/provider availability. A future authenticated performance fixture must first seed a portfolio through a verified application-supported persistence/import path and prove that the same 100-position/200-tranche state survives authenticated startup and broker reconciliation before its measurements are treated as valid.
 
 ### Baseline protocol
