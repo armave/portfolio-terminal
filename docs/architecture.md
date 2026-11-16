@@ -49,7 +49,6 @@ For code changes affecting these boundaries, use the repository's exact-head val
 npm run typecheck
 npm test
 npm run validate:dead-code
-npm run audit:complexity
 npm run build
 ```
 
