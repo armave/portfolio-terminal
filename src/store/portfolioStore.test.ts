@@ -653,6 +653,21 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(state.holdings[0].tranches.map((tranche) => tranche.shares)).toEqual([5, 14, 10]);
   });
 
+  it('persists new cash/margin classifications through the durable store commit', () => {
+    const store = new PortfolioStore();
+    const types = { 'AAPL:operation-1': 'cash' as const, 'MSFT:operation-2': 'mix' as const };
+    const mixes = { 'MSFT:operation-2': { cash: 3, margin: 2 } };
+
+    expect(store.setState({ activeTrancheTypes: types, activeTrancheMixes: mixes })).toBe(true);
+    const saved = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    expect(saved.activeTrancheTypes).toEqual(types);
+    expect(saved.activeTrancheMixes).toEqual(mixes);
+
+    const restored = new PortfolioStore();
+    expect(restored.getState().activeTrancheTypes).toEqual(types);
+    expect(restored.getState().activeTrancheMixes).toEqual(mixes);
+  });
+
   it('restores operation-level cash/margin classifications from persisted state', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
