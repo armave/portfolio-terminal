@@ -48,7 +48,7 @@ function createFixture(initialRole: AuthUser['role'] | null = 'admin', initialId
     cancelPendingApiReads: vi.fn(() => calls.push('cancel-pending-api-reads')),
     clearCloudEncryptionSecretCache: vi.fn(() => calls.push('clear-encryption-cache')),
     clearPendingCloudWrite: vi.fn(() => calls.push('clear-cloud-write-timer')),
-    activateWorkspaceStorage: vi.fn(async (user: AuthUser) => calls.push('activate-storage:' + (user.role === 'admin' ? 'owner' : 'guest:' + user.id)),
+    activateWorkspaceStorage: vi.fn(async (user: AuthUser) => calls.push('activate-storage:' + (user.role === 'admin' ? 'owner' : 'guest:' + user.id))),
     clearWorkspaceOnAuthFailure: vi.fn(async () => calls.push('clear-workspace-on-auth-failure')),
     emitUserChanged: vi.fn((user: AuthUser | null) => calls.push(user ? `user:${user.role}:${user.id}` : 'user:none')),
     showToast: vi.fn((message: string, tone: 'error') => calls.push(`toast:${tone}:${message}`)),
