@@ -2249,6 +2249,32 @@ describe('atomic portfolio-store persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('rejects generic closed-history writes before state, storage or subscribers change', () => {
+    const store = new PortfolioStore();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = values.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const candidateRows = [{
+      id: 'generic-write-must-not-append',
+      ticker: 'AAPL',
+      shares: 1,
+      netProfit: 10
+    }] as ClosedTrade[];
+
+    expect(store.setState({ closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+
+    expect(store.setState({ balance: -999, closedTrades: candidateRows })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-100);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('retains the previous snapshot and suppresses subscribers when the state write fails', () => {
     const store = new PortfolioStore();
     store.setState({ balance: -100 }, false);
