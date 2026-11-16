@@ -2,7 +2,7 @@ import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
-import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
+import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -753,14 +753,29 @@ async function syncCloudState(mode = 'push') {
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
     pullCloudAndRewriteLocal,
+    applyAutoReconciledState: (parsedState) => {
+      // Apply a validated background merge without switching desks or scrolling
+      // the workspace; users can continue working while cloud state reconciles.
+      const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
+        parsedState as unknown as Partial<PortfolioState>,
+        state
+      );
+      const mergedState = { ...state, ...compatibleCloudState };
+      if (!portfolioStore.importState(loadSavedState(mergedState))) return false;
+      state = portfolioStore.getState();
+      return true;
+    },
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logAppMessage,
     onStatusChange: (status) => {
       const synced = status === 'synced';
-      setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : 'UNAVAILABLE');
+      const conflict = status === 'conflict';
+      setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : conflict ? 'CONFLICT' : 'UNAVAILABLE');
       setCloudSyncStatus(synced
         ? { text: 'Synced', status: 'synced', lastSyncedAt: Date.now() }
-        : { text: 'Sync failed', status: 'error' });
+        : conflict
+          ? { text: 'Cloud sync conflict — recovery required', status: 'conflict' }
+          : { text: 'Sync failed', status: 'error' });
     }
   });
 }
@@ -1961,6 +1976,7 @@ function bindStartupActions() {
     translateText,
     showToast,
     logAppMessage,
+    getSyncStatus: getCloudSyncStatus,
     setSyncStatus: setCloudSyncStatus
   });
   addUiEventListener('settings:save-broker-rules', (event) => {

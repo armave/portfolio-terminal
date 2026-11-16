@@ -14,6 +14,12 @@ describe('resolveCloudSyncTone', () => {
     expect(resolveCloudSyncTone(status('error', 'FAIL'), status('synced', 'Synced'))).toBe('error');
   });
 
+  it('surfaces revision conflicts separately from ordinary failures and success', () => {
+    expect(resolveCloudSyncTone(status('synced', 'UPDATED'), status('conflict', 'Recovery required'))).toBe('conflict');
+    expect(resolveCloudSyncLabel(status('conflict'), 'conflict', 'en')).toBe('Conflict');
+    expect(resolveCloudSyncLabel(status('conflict'), 'conflict', 'ru')).toBe('Конфликт');
+  });
+
   it('marks active writes as pending', () => {
     expect(resolveCloudSyncTone(status('syncing', 'WRITING...'), status('idle'))).toBe('pending');
     expect(resolveCloudSyncTone(status('pending'), status('idle'))).toBe('pending');
