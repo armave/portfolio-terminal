@@ -13,7 +13,8 @@ export interface PortfolioSessionRuntimeDependencies {
   cancelPendingApiReads: () => void;
   clearCloudEncryptionSecretCache: () => void;
   clearPendingCloudWrite: () => void;
-  clearGuestWorkspace: () => void;
+  activateWorkspaceStorage: (user: AuthUser) => Promise<void>;
+  clearWorkspaceOnAuthFailure: () => Promise<void>;
   emitUserChanged: (user: AuthUser | null) => void;
   showToast: (message: string, tone: 'error') => void;
   logoutAccount: () => Promise<void>;
@@ -37,41 +38,93 @@ export interface PortfolioSessionRuntime {
 export function createPortfolioSessionRuntime(
   dependencies: PortfolioSessionRuntimeDependencies
 ): PortfolioSessionRuntime {
+  const initialRole = dependencies.getAccountRole();
+  const initialAccountId = dependencies.getAccountId();
+  let publishGeneration = 0;
+  let activeWorkspaceIdentity: string | null =
+    initialRole && initialAccountId ? `${initialRole}:${initialAccountId}` : null;
+  let pendingWorkspaceActivation: { identity: string; promise: Promise<void> } | null = null;
+
   const publishCurrentUser = async (): Promise<AuthUser | null> => {
+    const requestGeneration = ++publishGeneration;
     try {
       const user = await dependencies.getCurrentUser();
+      // An older identity lookup must not publish after a newer auth request.
+      if (requestGeneration !== publishGeneration) return null;
+
+      const identity = `${user.role}:${user.id}`;
       const identityChanged =
         dependencies.getAccountRole() !== user.role ||
         dependencies.getAccountId() !== user.id;
 
       if (identityChanged) {
+        activeWorkspaceIdentity = null;
+        dependencies.setCloudWritePermission(false);
         dependencies.cancelPendingApiReads();
         dependencies.clearCloudEncryptionSecretCache();
-        dependencies.setSessionIdentity(`${user.role}:${user.id}`);
+        dependencies.clearPendingCloudWrite();
+        dependencies.setSessionIdentity(identity);
       }
 
-      // Permissions must change before guest workspace clearing can notify the
-      // store, otherwise a pending administrator subscription could enqueue a
-      // shared-workspace write for the guest session.
       dependencies.setAccountRole(user.role);
       dependencies.setAccountId(user.id);
-      dependencies.setCloudWritePermission(user.role === 'admin');
 
-      if (identityChanged && user.role === 'guest') {
-        // Clear a previously hydrated administrator workspace before the UI
-        // receives the guest identity event or renders the Balance screen.
-        dependencies.clearPendingCloudWrite();
-        dependencies.clearGuestWorkspace();
+      // Repeated checks for the same identity share the pending transition.
+      // Different identities supersede it and are protected by requestGeneration.
+      if (activeWorkspaceIdentity !== identity) {
+        if (!identityChanged) dependencies.setCloudWritePermission(false);
+        if (!pendingWorkspaceActivation || pendingWorkspaceActivation.identity !== identity) {
+          const activation = {
+            identity,
+            promise: dependencies.activateWorkspaceStorage(user)
+          };
+          pendingWorkspaceActivation = activation;
+          void activation.promise.catch(() => {
+            if (pendingWorkspaceActivation === activation) pendingWorkspaceActivation = null;
+          });
+        }
+
+        const activation = pendingWorkspaceActivation;
+        await activation.promise;
+        if (
+          requestGeneration !== publishGeneration ||
+          dependencies.getAccountRole() !== user.role ||
+          dependencies.getAccountId() !== user.id
+        ) return null;
+
+        activeWorkspaceIdentity = identity;
+        if (pendingWorkspaceActivation === activation) pendingWorkspaceActivation = null;
       }
 
+      if (
+        requestGeneration !== publishGeneration ||
+        dependencies.getAccountRole() !== user.role ||
+        dependencies.getAccountId() !== user.id
+      ) return null;
+
+      if (user.role === 'admin') dependencies.setCloudWritePermission(true);
       dependencies.emitUserChanged(user);
       return user;
     } catch {
+      // A failed stale transition must never clear or invalidate a newer session.
+      if (requestGeneration !== publishGeneration) return null;
+
+      activeWorkspaceIdentity = null;
+      pendingWorkspaceActivation = null;
+      dependencies.setCloudWritePermission(false);
       dependencies.cancelPendingApiReads();
+      dependencies.clearPendingCloudWrite();
       dependencies.setAccountRole(null);
       dependencies.setAccountId(null);
-      dependencies.setCloudWritePermission(false);
       dependencies.setSessionIdentity(null);
+      try {
+        await dependencies.clearWorkspaceOnAuthFailure();
+      } catch {
+        // Keep the invalid session blocked even if local cleanup is unavailable.
+      }
+      // A newer login may begin while offline storage cleanup is awaiting I/O.
+      // Do not publish a stale signed-out event over that newer identity.
+      if (requestGeneration !== publishGeneration) return null;
       dependencies.emitUserChanged(null);
       return null;
     }
