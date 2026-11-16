@@ -6,6 +6,11 @@ import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 import { initializeSavedHistoryStorage } from './services/storage';
 import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
+import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
+import {
+  consumeAutomaticRepairAttemptMarker,
+  repairCurrentBrowserAppCache
+} from './services/browserProfileRepairRuntime';
 
 let serviceWorkerReloadRequested = false;
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
@@ -35,21 +40,30 @@ registerSW({
   }
 });
 
-const STARTUP_WATCHDOG_MS = 45_000;
-let startupWatchdog: ReturnType<typeof setTimeout> | null = null;
+const automaticRepairAlreadyAttempted = typeof window !== 'undefined'
+  ? consumeAutomaticRepairAttemptMarker(window.location.href, (url) => {
+    window.history.replaceState(window.history.state, '', url);
+  })
+  : false;
+
+const startupRecoveryWatchdog = createStartupRecoveryWatchdog({
+  automaticRepairAlreadyAttempted,
+  repairBrowserAppCache: () => repairCurrentBrowserAppCache({ automatic: true }),
+  onManualRecoveryRequired: () => {
+    console.error('[Startup Watchdog]: Startup is still blocked after its one automatic browser repair.');
+    emitUiEvent('app:startup-state', { visible: true, failed: true });
+  },
+  onRepairError: (error) => {
+    console.error('[Startup Watchdog]: Automatic browser repair could not complete.', error);
+  }
+});
 
 function clearStartupWatchdog(): void {
-  if (startupWatchdog !== null) clearTimeout(startupWatchdog);
-  startupWatchdog = null;
+  startupRecoveryWatchdog.cancel();
 }
 
 function armStartupWatchdog(): void {
-  clearStartupWatchdog();
-  startupWatchdog = setTimeout(() => {
-    startupWatchdog = null;
-    console.error('[Startup Watchdog]: Startup did not finish within the expected window.');
-    emitUiEvent('app:startup-state', { visible: true, failed: true });
-  }, STARTUP_WATCHDOG_MS);
+  startupRecoveryWatchdog.arm();
 }
 
 addUiEventListener('app:startup-state', (event) => {
