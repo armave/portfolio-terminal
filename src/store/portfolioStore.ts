@@ -316,12 +316,14 @@ function mergeLiveQuoteDetails(
 
 export class PortfolioStore {
   private state: PortfolioState;
+  private readonly committedSnapshots = new WeakSet<PortfolioState>();
   private listeners: Set<(state: PortfolioState, source: PortfolioStoreChangeSource) => void> = new Set();
   private activeViewListeners: Set<(view: string) => void> = new Set();
   private persistenceErrorListeners: Set<(message: string) => void> = new Set();
 
   constructor() {
     this.state = this.initializeState();
+    this.committedSnapshots.add(this.state);
   }
 
   private initializeState(): PortfolioState {
@@ -617,7 +619,7 @@ export class PortfolioStore {
    * saveState mutates candidate.lastUpdated only after its storage transaction
    * succeeds, so a failed write leaves the current in-memory snapshot intact.
    */
-  public update(
+  private update(
     updater: (state: PortfolioState) => PortfolioState,
     persist = true,
     source: PortfolioStoreChangeSource = 'durable',
@@ -640,9 +642,20 @@ export class PortfolioStore {
     }
 
     this.state = candidate;
+    this.committedSnapshots.add(candidate);
     this.notify(source);
     if (this.state.activeView !== previousState.activeView) this.notifyActiveView();
     return true;
+  }
+
+  /**
+   * Roll back to a snapshot reference previously issued by this store. This is
+   * reserved for in-memory rollback when a multi-step local/cloud commit fails;
+   * arbitrary state updates must use the audited command or import boundaries.
+   */
+  public restoreInMemorySnapshot(snapshot: PortfolioState): boolean {
+    if (!this.committedSnapshots.has(snapshot)) return false;
+    return this.update(() => snapshot, false);
   }
 
   /**
