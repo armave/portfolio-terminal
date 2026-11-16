@@ -730,31 +730,100 @@ function openSecureKeyDatabase(): Promise<IDBDatabase> {
       return;
     }
     const request = indexedDB.open(GW_KEY_DB, 1);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Opening secure device-key storage timed out.'));
+    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    const rejectRequest = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(GW_KEY_STORE)) {
         request.result.createObjectStore(GW_KEY_STORE);
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Could not open secure key storage'));
+    request.onsuccess = () => {
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onerror = () => rejectRequest(request.error || new Error('Could not open secure key storage'));
+    request.onblocked = () => rejectRequest(new Error('Secure device-key storage upgrade is blocked by another tab.'));
   });
 }
 
-async function getOrCreateDeviceKey(db: IDBDatabase): Promise<CryptoKey> {
+async function getOrCreateDeviceKey(db: IDBDatabase, createIfMissing = true): Promise<CryptoKey> {
   const existing = await new Promise<CryptoKey | undefined>((resolve, reject) => {
-    const request = db.transaction(GW_KEY_STORE, 'readonly').objectStore(GW_KEY_STORE).get(GW_KEY_ID);
-    request.onsuccess = () => resolve(request.result as CryptoKey | undefined);
-    request.onerror = () => reject(request.error);
+    const transaction = db.transaction(GW_KEY_STORE, 'readonly');
+    const request = transaction.objectStore(GW_KEY_STORE).get(GW_KEY_ID);
+    let key: CryptoKey | undefined;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Reading the secure device key timed out.'));
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already be inactive.
+      }
+    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve(key);
+    };
+
+    request.onsuccess = () => { key = request.result as CryptoKey | undefined; };
+    request.onerror = () => finish(request.error || new Error('Could not read the secure device key'));
+    transaction.oncomplete = () => finish();
+    transaction.onerror = () => finish(transaction.error || new Error('Secure device-key read failed'));
+    transaction.onabort = () => finish(transaction.error || new Error('Secure device-key read was aborted'));
   });
   if (existing) return existing;
+  // A restore must not mint a replacement key: doing so would guarantee that
+  // existing ciphertext cannot decrypt and could destroy a recoverable device key.
+  if (!createIfMissing) throw new Error('The existing device encryption key is unavailable.');
   if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable');
+
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(GW_KEY_STORE, 'readwrite');
     tx.objectStore(GW_KEY_STORE).put(key, GW_KEY_ID);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error || new Error('Secure key storage transaction aborted'));
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Writing the secure device key timed out.'));
+      try {
+        tx.abort();
+      } catch {
+        // The transaction may already be inactive.
+      }
+    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+    tx.oncomplete = () => finish();
+    tx.onerror = () => finish(tx.error || new Error('Secure key storage transaction failed'));
+    tx.onabort = () => finish(tx.error || new Error('Secure key storage transaction aborted'));
   });
   return key;
 }
@@ -769,7 +838,7 @@ async function persistEncryptedGatewaySecret(secret: string): Promise<void> {
   }
   const db = await openSecureKeyDatabase();
   try {
-    const key = await getOrCreateDeviceKey(db);
+    const key = await getOrCreateDeviceKey(db, false);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret));
     const payload = JSON.stringify({
@@ -843,8 +912,9 @@ export async function restoreGatewaySecret(): Promise<string> {
       throw new Error('Encrypted Gateway Secret payload is invalid');
     }
   } catch (err) {
-    console.warn('Encrypted Gateway Secret payload is invalid; clearing it:', err);
-    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    // Preserve the original ciphertext for inspection/recovery. A newly entered
+    // credential will replace it after secure device storage is available.
+    console.warn('Encrypted Gateway Secret payload is invalid; preserving the device copy:', err);
     setGatewaySecret('');
     return '';
   }
@@ -884,10 +954,10 @@ export async function restoreGatewaySecret(): Promise<string> {
     setGatewaySecret(secret);
     return secret;
   } catch (err) {
-    // Decryption failure means the payload is corrupt or the stored device key
-    // no longer matches it. Keep the established fallback to re-enter the secret.
-    console.warn('Could not decrypt encrypted Gateway Secret; clearing unusable ciphertext:', err);
-    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    // A missing/replaced IndexedDB key can be temporary or recoverable in a
+    // restored browser profile. Preserve ciphertext instead of destroying the
+    // only remaining device copy; the normal sign-in flow remains available.
+    console.warn('Could not decrypt encrypted Gateway Secret; preserving ciphertext for a later retry:', err);
     setGatewaySecret('');
     return '';
   } finally {
