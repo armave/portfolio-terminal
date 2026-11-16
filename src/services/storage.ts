@@ -15,7 +15,7 @@ const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
 const HISTORY_RECORD_RECOVERY_KEY = 'closed-history-v1:last-known-good';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
-const HISTORY_DATABASE_OPERATION_TIMEOUT_MS = 5_000;
+const INDEXED_DB_OPERATION_TIMEOUT_MS = 5_000;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT = 'portfolio_tradenet_cashflow_trade_checkpoint_v1';
@@ -202,7 +202,7 @@ function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDa
       if (settled) return;
       settled = true;
       reject(new Error('Opening closed-history storage timed out.'));
-    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
     const rejectRequest = (error: Error) => {
       if (settled) return;
       settled = true;
@@ -253,7 +253,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
         } catch {
           // The transaction may already be inactive.
         }
-      }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
       const resolveTransaction = () => {
         if (settled) return;
         if (!currentRead || !recoveryRead) {
@@ -339,7 +339,7 @@ async function writeHistoryRecordToIndexedDB(
         } catch {
           // The transaction may already be inactive.
         }
-      }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
       const resolveTransaction = () => {
         if (settled) return;
         settled = true;
@@ -653,13 +653,11 @@ async function persistSavedHistorySnapshot(
   const isActiveScope = scope === activePortfolioStorageScope;
   if (isActiveScope) {
     cachedHistory = snapshot;
-    if (
-      lastPersistedHistory &&
+    if (!options.resetRecovery && lastPersistedHistory &&
       lastPersistedHistory.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       lastPersistedHistory.cashflows === snapshot.cashflows
     ) return true;
-    if (
-      queuedHistorySnapshot &&
+    if (!options.resetRecovery && queuedHistorySnapshot &&
       queuedHistorySnapshot.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       queuedHistorySnapshot.cashflows === snapshot.cashflows
     ) return await historyWriteQueue;
@@ -810,7 +808,7 @@ function openSecureKeyDatabase(): Promise<IDBDatabase> {
       if (settled) return;
       settled = true;
       reject(new Error('Opening secure device-key storage timed out.'));
-    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
     const rejectRequest = (error: Error) => {
       if (settled) return;
       settled = true;
@@ -853,7 +851,7 @@ async function getOrCreateDeviceKey(db: IDBDatabase, createIfMissing = true): Pr
       } catch {
         // The transaction may already be inactive.
       }
-    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
@@ -888,7 +886,7 @@ async function getOrCreateDeviceKey(db: IDBDatabase, createIfMissing = true): Pr
       } catch {
         // The transaction may already be inactive.
       }
-    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
@@ -1422,7 +1420,7 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
             } catch {
               // The transaction may already be inactive.
             }
-          }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+          }, INDEXED_DB_OPERATION_TIMEOUT_MS);
           const finish = (error?: Error) => {
             if (settled) return;
             settled = true;
