@@ -631,6 +631,30 @@ describe('storage service', () => {
     });
   });
 
+  it('preserves newer owner history when migration uses the localStorage fallback', async () => {
+    const legacyHistory = {
+      brokerExecutedTrades: [{ id: 'legacy-owner-trade' }],
+      cashflows: [{ id: 'legacy-owner-cashflow' }]
+    };
+    const newerOwnerHistory = {
+      brokerExecutedTrades: [{ id: 'new-owner-trade' }],
+      cashflows: [{ id: 'new-owner-cashflow' }]
+    };
+    storageMap.set('portfolio_closed_history_v1', JSON.stringify(legacyHistory));
+    vi.stubGlobal('indexedDB', undefined);
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+    expect(loadSavedHistory()).toEqual(legacyHistory);
+    expect(await saveSavedHistory(newerOwnerHistory)).toBe(true);
+
+    await activatePortfolioStorageScope('guest:history-fallback-check');
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+
+    expect(loadSavedHistory()).toEqual(newerOwnerHistory);
+    expect(JSON.parse(storageMap.get('portfolio_closed_history_v1::owner') || 'null'))
+      .toEqual(legacyHistory);
+  });
+
   it('isolates owner, guest, and offline snapshots plus broker history and rules', async () => {
     const legacyState = {
       balance: -275,
