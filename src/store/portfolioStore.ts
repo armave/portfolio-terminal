@@ -2628,14 +2628,12 @@ export class PortfolioStore {
         )
         : quoteUnavailable('No matching open position or app-owned cash holding was found for this corporate action.');
       const status = adjusted.status;
-      const isCashHoldingAdjustment = adjusted.status === 'applied' && 'holding' in adjusted;
-      const isPositionAdjustment = adjusted.status === 'applied' && 'position' in adjusted;
       const portfolioEvent = toPortfolioCorporateActionEvent(
         event,
         status,
         recordedAt,
         adjusted.status === 'applied'
-          ? (isCashHoldingAdjustment
+          ? ('holding' in adjusted
               ? 'Verified split applied to every app-owned cash-holding lot; total acquisition cost was preserved and no cash or realized P&L was posted.'
               : 'Verified split applied to all eligible open position lots; aggregate acquisition cost was preserved.')
           : adjusted.reason
@@ -2647,18 +2645,20 @@ export class PortfolioStore {
         return state;
       }
       committed = mergedActions.find(item => item.sourceId === event.sourceId) ?? portfolioEvent;
-      if (!isCashHoldingAdjustment && !isPositionAdjustment) {
+      if (adjusted.status !== 'applied') {
         return { ...state, corporateActionEvents: mergedActions };
       }
 
-      const lotAdjustments: PortfolioCorporateActionLotAdjustment[] = isCashHoldingAdjustment
-        ? cashHolding!.lots!.map((beforeLot, index) => ({
+      const adjustedCashHolding = 'holding' in adjusted ? adjusted.holding : null;
+      const adjustedPosition = 'position' in adjusted ? adjusted.position : null;
+      const lotAdjustments: PortfolioCorporateActionLotAdjustment[] = adjustedCashHolding && cashHolding
+        ? cashHolding.lots!.map((beforeLot, index) => ({
             ledger: 'cash-holding',
             lotId: beforeLot.lotId,
             quantityBefore: beforeLot.qty,
-            quantityAfter: adjusted.holding.lots![index].qty,
+            quantityAfter: adjustedCashHolding.lots![index].qty,
             priceBefore: beforeLot.price,
-            priceAfter: adjusted.holding.lots![index].price,
+            priceAfter: adjustedCashHolding.lots![index].price,
             acquisitionDate: beforeLot.date,
             acquiredAt: beforeLot.acquiredAt,
             openBuyCommission: beforeLot.buyCommission
@@ -2672,7 +2672,7 @@ export class PortfolioStore {
         effectiveAt: Date.parse(event.effectiveDate + 'T00:00:00Z'),
         ticker: event.symbol,
         quantity: sharesBefore,
-        ...(isCashHoldingAdjustment
+        ...(adjustedCashHolding
           ? {
               cashHoldingQuantityDelta: sharesAfter - sharesBefore,
               corporateActionMultiplier: event.sharesAfterPerShareBefore,
@@ -2680,7 +2680,7 @@ export class PortfolioStore {
             }
           : { positionQuantityDelta: sharesAfter - sharesBefore }),
         externalReferenceId: event.sourceId,
-        note: (isCashHoldingAdjustment
+        note: (adjustedCashHolding
           ? 'Applied verified ' + event.kind + ' to app-owned cash-holding lots; '
           : 'Applied verified ' + event.kind + ' to open position lots; ') +
           'total acquisition cost remained ' + costBasisAfter.toFixed(8) +
@@ -2706,26 +2706,26 @@ export class PortfolioStore {
       const appended = appendPortfolioTransactionEvent(state.transactionEvents || [], transaction);
       if (!appended.appended && !appended.duplicate) return state;
 
-      if (isPositionAdjustment && positionKey) {
+      if (adjustedPosition && positionKey) {
         return {
           ...state,
-          positions: { ...state.positions, [positionKey]: adjusted.position },
+          positions: { ...state.positions, [positionKey]: adjustedPosition },
           transactionEvents: appended.events,
           corporateActionEvents: mergedActions
         };
       }
+      if (!adjustedCashHolding) return state;
 
-      const adjustedHolding = adjusted.holding;
       const holdings = (state.cashCushion?.holdings || []).map(holding =>
-        normalizeActionTicker(holding.ticker) === actionTicker ? adjustedHolding : holding
+        normalizeActionTicker(holding.ticker) === actionTicker ? adjustedCashHolding : holding
       );
       const cashStocks = (state.cashStocks || []).map(holding =>
         normalizeActionTicker(holding.ticker) === actionTicker
           ? {
               ...holding,
-              shares: adjustedHolding.shares,
-              currentPrice: adjustedHolding.currentPrice,
-              ...(adjustedHolding.quoteDetails ? { quoteDetails: adjustedHolding.quoteDetails } : {})
+              shares: adjustedCashHolding.shares,
+              currentPrice: adjustedCashHolding.currentPrice,
+              ...(adjustedCashHolding.quoteDetails ? { quoteDetails: adjustedCashHolding.quoteDetails } : {})
             }
           : holding
       );
