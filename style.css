@@ -4821,7 +4821,7 @@ table tbody tr:hover {
     box-sizing: border-box;
     padding: 0.45rem max(0.5rem, env(safe-area-inset-right)) calc(0.45rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
     border-top: 1px solid rgba(71, 85, 105, 0.85);
-    background: rgba(2, 6, 23, 0.96);
+    background: rgba(15, 15, 17, 0.96);
     box-shadow: 0 -0.75rem 2rem rgba(2, 6, 23, 0.28);
     backdrop-filter: blur(18px);
   }
