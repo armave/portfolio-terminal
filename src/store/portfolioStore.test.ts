@@ -2492,6 +2492,27 @@ describe('portfolio import boundary validation', () => {
       .toMatchObject({ disposition: 'audit-only' });
   });
 
+  it('rejects fee-correction restore when the canonical closed-trade row is missing', () => {
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    const audit = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    expect(audit.appendedCount).toBe(1);
+
+    const store = new PortfolioStore();
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: [],
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('rejects restored fee corrections with broken revision links before committing any portfolio data', () => {
     const store = new PortfolioStore();
     const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
