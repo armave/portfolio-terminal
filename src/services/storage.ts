@@ -1307,10 +1307,30 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
       try {
         await new Promise<void>((resolve, reject) => {
           const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
-          transaction.objectStore(HISTORY_OBJECT_STORE).delete(HISTORY_RECORD_KEY);
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = () => reject(transaction.error || new Error('Could not clear closed history'));
-          transaction.onabort = () => reject(transaction.error || new Error('Closed-history clear was aborted'));
+          const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+          store.delete(HISTORY_RECORD_KEY);
+          store.delete(HISTORY_RECORD_RECOVERY_KEY);
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error('Clearing closed-history storage timed out.'));
+            try {
+              transaction.abort();
+            } catch {
+              // The transaction may already be inactive.
+            }
+          }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+          const finish = (error?: Error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            if (error) reject(error);
+            else resolve();
+          };
+          transaction.oncomplete = () => finish();
+          transaction.onerror = () => finish(transaction.error || new Error('Could not clear closed history'));
+          transaction.onabort = () => finish(transaction.error || new Error('Closed-history clear was aborted'));
         });
       } finally {
         db.close();
