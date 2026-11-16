@@ -1,4 +1,4 @@
-import type { PositionRecord, TrancheItem } from '../types/portfolio';
+import type { CashStockHolding, CashStockLot, PositionRecord, TrancheItem } from '../types/portfolio';
 import type {
   CorporateActionEvent,
   CorporateActionFeedQuality,
@@ -53,6 +53,10 @@ export type CorporateActionAdjustmentPreview =
 
 export type SplitPositionAdjustment =
   | { status: 'applied'; position: PositionRecord; sharesBefore: number; sharesAfter: number; costBasisBefore: number; costBasisAfter: number }
+  | { status: 'review_required' | 'not_applicable'; reason: string };
+
+export type SplitCashHoldingAdjustment =
+  | { status: 'applied'; holding: CashStockHolding; sharesBefore: number; sharesAfter: number; costBasisBefore: number; costBasisAfter: number }
   | { status: 'review_required' | 'not_applicable'; reason: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -426,6 +430,145 @@ function acquiredAtForTranche(
     : null;
   if (!dateOnly(date)) return null;
   return Date.parse(date + 'T00:00:00.000Z');
+}
+
+/**
+ * Apply a split to an app-owned cash holding only when every share maps to a
+ * stable acquisition lot and a timestamped quote can be ordered around the
+ * action date. Broker-only quantities and average prices are never converted
+ * into synthetic lots. No cash, dividend or realized-P&L entry is created.
+ */
+export function adjustCashHoldingForSplit(
+  holding: CashStockHolding,
+  event: CorporateActionEvent
+): SplitCashHoldingAdjustment {
+  if (event.kind !== 'stock_split' && event.kind !== 'reverse_split') {
+    return { status: 'review_required', reason: 'This corporate action is evidence-only and needs an explicit settlement/basis policy.' };
+  }
+  const multiplier = positiveFinite(event.sharesAfterPerShareBefore);
+  const fromFactor = positiveFinite(event.fromFactor);
+  const toFactor = positiveFinite(event.toFactor);
+  const factorRatio = fromFactor !== null && toFactor !== null ? toFactor / fromFactor : null;
+  const ratioTolerance = factorRatio === null ? 0 : Math.max(1e-10, Math.abs(factorRatio) * 1e-8);
+  if (multiplier === null || factorRatio === null || !Number.isFinite(factorRatio) ||
+      Math.abs(multiplier - factorRatio) > ratioTolerance ||
+      (event.kind === 'stock_split' && multiplier <= 1) ||
+      (event.kind === 'reverse_split' && multiplier >= 1)) {
+    return { status: 'review_required', reason: 'The corporate-action split ratio does not reconcile to its source factors.' };
+  }
+
+  const effectiveDate = dateOnly(event.effectiveDate);
+  const effectiveAt = effectiveDate ? Date.parse(effectiveDate + 'T00:00:00.000Z') : Number.NaN;
+  if (!Number.isFinite(effectiveAt) || effectiveAt > Date.now()) {
+    return { status: 'review_required', reason: 'The corporate-action effective date is invalid or is still in the future.' };
+  }
+
+  const sharesBefore = positiveFinite(holding.shares);
+  const lots = Array.isArray(holding.lots) ? holding.lots : [];
+  if (sharesBefore === null || lots.length === 0 || lots.length > 500) {
+    return { status: 'review_required', reason: 'A cash holding needs complete app-recorded acquisition lots before a split can be applied.' };
+  }
+
+  const lotIds = new Set<string>();
+  const acquisitionDates: string[] = [];
+  for (const lot of lots) {
+    const date = dateOnly(lot?.date);
+    const acquiredAt = finiteNumber(lot?.acquiredAt);
+    if (!lot || typeof lot.lotId !== 'string' || !lot.lotId.trim() || lotIds.has(lot.lotId) ||
+        lot.lotId.length > 200 ||
+        !Number.isFinite(lot.qty) || lot.qty <= 0 ||
+        !Number.isFinite(lot.price) || lot.price <= 0 ||
+        !date || acquiredAt === null || !Number.isSafeInteger(acquiredAt) || acquiredAt <= 0 ||
+        !Number.isFinite(new Date(acquiredAt).getTime()) ||
+        new Date(acquiredAt).toISOString().slice(0, 10) !== date ||
+        !Number.isFinite(lot.buyCommission) || lot.buyCommission < 0) {
+      return { status: 'review_required', reason: 'One or more cash-holding lots have incomplete or conflicting identity, date, quantity, price or commission data.' };
+    }
+    lotIds.add(lot.lotId);
+    acquisitionDates.push(date);
+  }
+
+  const sharesFromLots = lots.reduce((sum, lot) => sum + lot.qty, 0);
+  if (Math.abs(sharesFromLots - sharesBefore) > Math.max(1e-8, sharesBefore * 1e-8)) {
+    return { status: 'review_required', reason: 'Cash-holding quantity does not reconcile to its app-recorded acquisition lots.' };
+  }
+  if (acquisitionDates.some(date => date === effectiveDate)) {
+    return { status: 'review_required', reason: 'A cash-holding lot shares the corporate-action effective date; the intraday acquisition sequence cannot be verified.' };
+  }
+  if (acquisitionDates.every(date => date > effectiveDate)) {
+    return { status: 'not_applicable', reason: 'All cash-holding lots were acquired after the corporate-action effective date.' };
+  }
+  if (acquisitionDates.some(date => date > effectiveDate)) {
+    return { status: 'review_required', reason: 'The cash holding contains both pre-action and post-action lots; its aggregate cost basis needs manual review.' };
+  }
+
+  const costBasisBefore = lots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+  const updatedLots: CashStockLot[] = lots.map(lot => ({
+    ...lot,
+    qty: lot.qty * multiplier,
+    price: lot.price / multiplier
+  }));
+  const sharesAfter = sharesBefore * multiplier;
+  if (!Number.isFinite(sharesAfter) || sharesAfter <= 0 ||
+      Math.abs(sharesAfter - Math.round(sharesAfter)) > Math.max(1e-8, sharesAfter * 1e-8)) {
+    return { status: 'review_required', reason: 'The split would leave a fractional aggregate cash-holding share entitlement; confirm broker fractional-share or cash-in-lieu settlement before applying it.' };
+  }
+  const costBasisAfter = updatedLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+  const basisTolerance = Math.max(1e-6, Math.abs(costBasisBefore) * 1e-8);
+  if (!Number.isFinite(costBasisBefore) || !Number.isFinite(costBasisAfter) ||
+      Math.abs(costBasisAfter - costBasisBefore) > basisTolerance) {
+    return { status: 'review_required', reason: 'Cash-holding split adjustment failed the acquisition-cost conservation check.' };
+  }
+
+  const currentPrice = positiveFinite(holding.currentPrice) ?? positiveFinite(holding.price);
+  const quoteObservedRaw = finiteNumber(holding.quoteDetails?.sourceTimestamp);
+  const quoteObservedAt = quoteObservedRaw !== null
+    ? quoteObservedRaw < 1e12 ? quoteObservedRaw * 1000 : quoteObservedRaw
+    : null;
+  if (currentPrice === null) {
+    return { status: 'review_required', reason: 'A positive current market quote is required before applying a cash-holding split.' };
+  }
+  if (quoteObservedAt === null) {
+    return { status: 'review_required', reason: 'The cash holding has no verifiable quote observation timestamp. Refresh its market quote before applying the split.' };
+  }
+  if (!Number.isFinite(quoteObservedAt) || quoteObservedAt <= 0 || quoteObservedAt > Date.now() + 60_000) {
+    return { status: 'review_required', reason: 'The cash-holding quote observation timestamp is invalid or in the future; refresh and verify the quote before applying the split.' };
+  }
+
+  let nextCurrentPrice = currentPrice;
+  let nextQuoteDetails = holding.quoteDetails;
+  let nextPrice = positiveFinite(holding.price) ?? currentPrice;
+  if (quoteObservedAt < effectiveAt) {
+    nextCurrentPrice = currentPrice / multiplier;
+    nextPrice = nextPrice / multiplier;
+    if (nextQuoteDetails) {
+      nextQuoteDetails = {
+        ...nextQuoteDetails,
+        ...(positiveFinite(nextQuoteDetails.price) !== null
+          ? { price: Number(nextQuoteDetails.price) / multiplier }
+          : {}),
+        freshness: 'stale',
+        dataQuality: 'partial'
+      };
+    }
+  }
+  const averagePrice = Number((costBasisAfter / sharesAfter).toFixed(8));
+  return {
+    status: 'applied',
+    holding: {
+      ...holding,
+      shares: sharesAfter,
+      lots: updatedLots,
+      averagePrice,
+      price: nextPrice,
+      currentPrice: nextCurrentPrice,
+      ...(nextQuoteDetails ? { quoteDetails: nextQuoteDetails } : {})
+    },
+    sharesBefore,
+    sharesAfter,
+    costBasisBefore,
+    costBasisAfter
+  };
 }
 
 /**
