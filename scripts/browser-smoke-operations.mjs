@@ -886,6 +886,10 @@ try {
     'confirmed pull of the latest shared portfolio'
   );
   await conflictPanel.waitFor({ state: 'detached', timeout: 10_000 });
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, null, { timeout: 30_000 });
 
   const statePostsBeforeRecoverySync = worker.count('POST', '/api/state');
   await syncButton.click();
