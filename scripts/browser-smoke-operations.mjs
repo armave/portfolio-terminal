@@ -596,7 +596,8 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
 
 async function seedSyntheticPortfolio(page) {
   await page.evaluate(() => {
-    const key = 'margin_portfolio_state_dynamic_v2';
+    // Authenticated administrator snapshots now live in the owner namespace.
+    const key = 'margin_portfolio_state_dynamic_v2::owner';
     const previous = localStorage.getItem(key);
     const state = previous ? JSON.parse(previous) : {};
     const now = Date.now();
@@ -622,7 +623,7 @@ async function seedSyntheticPortfolio(page) {
   await waitForAuthOverlay(page, false);
   await page.waitForFunction(() => {
     try {
-      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2');
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2::owner');
       const saved = raw ? JSON.parse(raw) : null;
       return Number(saved?.positions?.AAPL?.shares) >= 5;
     } catch {
