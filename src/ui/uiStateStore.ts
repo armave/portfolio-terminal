@@ -55,6 +55,11 @@ export function useCloudStatus(): CloudStatus {
 let cloudSyncStatus: CloudStatus = { status: 'idle', text: '' };
 const cloudSyncStatusListeners = new Set<(status: CloudStatus) => void>();
 
+/** Read the latest cloud-sync state for orchestration that must preserve a conflict. */
+export function getCloudSyncStatus(): CloudStatus {
+  return cloudSyncStatus;
+}
+
 export function setCloudSyncStatus(status: CloudStatus): void {
   const nextStatus: CloudStatus = status.status === 'synced'
     ? { ...status, lastSyncedAt: status.lastSyncedAt ?? Date.now() }
