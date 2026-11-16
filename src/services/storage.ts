@@ -1014,6 +1014,14 @@ function persistPortfolioSnapshot(
   }
   const stateChanged = previousComparable !== nextComparable;
 
+  if (stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
+    try {
+      storage.setItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope), previousRaw);
+    } catch {
+      // Recovery copies are best-effort; a full quota must not block the primary save.
+    }
+  }
+
   const attemptedKeys: string[] = [];
   try {
     for (const { key, value } of writes) {
@@ -1134,11 +1142,15 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
     const storage = getBrowserStorage();
     if (!storage) return fallback;
 
-    // Prefer the scoped canonical snapshot while retaining scoped legacy compatibility.
-    for (const key of [
-      scopedStorageKey(STORAGE_KEY_STATE),
+    const canonicalKey = scopedStorageKey(STORAGE_KEY_STATE);
+    // Recovery stays within the active account namespace. Guest/offline scopes
+    // can never inspect the owner's legacy or recovery records.
+    const candidates = [
+      canonicalKey,
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY),
       scopedStorageKey(STORAGE_KEY_LEGACY_STATE)
-    ]) {
+    ];
+    for (const key of candidates) {
       let raw: string | null;
       try {
         raw = storage.getItem(key);
@@ -1148,17 +1160,30 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       }
       if (!raw || !raw.trim()) continue;
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (err) {
-        console.warn('Failed to parse saved state:', err);
+      const parsed = parseJsonRecord(raw);
+      if (!parsed) {
+        if (key === canonicalKey) {
+          try {
+            JSON.parse(raw);
+          } catch (err) {
+            console.warn('Failed to parse saved state:', err);
+          }
+        }
         continue;
       }
 
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      if (key !== canonicalKey) {
+        try {
+          // Complete a recoverable interrupted/malformed local snapshot on the
+          // next read. Keep the recovery row in place until a later good save.
+          storage.setItem(canonicalKey, raw);
+          console.warn('Recovered the local portfolio snapshot from a scoped recovery copy.');
+        } catch (error) {
+          console.warn('Recovered local portfolio data in memory; browser storage repair is pending:', error);
+        }
+      }
 
-      const persistedState = { ...(parsed as Record<string, unknown>) };
+      const persistedState = { ...parsed };
       // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
       delete persistedState.brokerExecutedTrades;
@@ -1234,12 +1259,30 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
 export function loadBrokerRules(): unknown {
   const storage = getBrowserStorage();
   if (!storage) return null;
+  const key = scopedStorageKey(STORAGE_KEY_RULES);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_RULES_RECOVERY);
   try {
-    const raw = storage.getItem(scopedStorageKey(STORAGE_KEY_RULES));
-    if (!raw) return null;
-    return JSON.parse(raw) as unknown;
+    const raw = storage.getItem(key);
+    if (raw) {
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch (err) {
+        console.warn('Failed to parse saved broker rules:', err);
+      }
+    }
+
+    const recoveryRaw = storage.getItem(recoveryKey);
+    if (!recoveryRaw) return null;
+    const recovered = JSON.parse(recoveryRaw) as unknown;
+    try {
+      storage.setItem(key, recoveryRaw);
+      console.warn('Recovered broker assumptions from a scoped local recovery copy.');
+    } catch (error) {
+      console.warn('Recovered broker assumptions in memory; browser storage repair is pending:', error);
+    }
+    return recovered;
   } catch (err) {
-    console.warn('Failed to parse saved broker rules:', err);
+    console.warn('Browser storage is unavailable while reading broker rules:', err);
     return null;
   }
 }
@@ -1248,8 +1291,18 @@ export function loadBrokerRules(): unknown {
 export function saveBrokerRules(rules: BrokerAssumptions): void {
   const storage = getBrowserStorage();
   if (!storage) return;
+  const key = scopedStorageKey(STORAGE_KEY_RULES);
   try {
-    storage.setItem(scopedStorageKey(STORAGE_KEY_RULES), JSON.stringify(rules));
+    const previous = storage.getItem(key);
+    if (previous && previous !== JSON.stringify(rules)) {
+      try {
+        JSON.parse(previous);
+        storage.setItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY), previous);
+      } catch {
+        // Do not preserve malformed settings as a recovery candidate.
+      }
+    }
+    storage.setItem(key, JSON.stringify(rules));
   } catch (err) {
     console.error('Failed to save broker rules:', err);
   }
@@ -1260,6 +1313,7 @@ export function clearBrokerRules(): void {
   if (!storage) return;
   try {
     storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES));
+    storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY));
   } catch (err) {
     console.error('Failed to clear broker rules:', err);
   }
@@ -1313,7 +1367,11 @@ export function clearLocalData(): void {
   const storage = getBrowserStorage();
   if (!storage) return;
   try {
-    removeStoredKeys(storage, [scopedStorageKey(STORAGE_KEY_LEGACY_STATE), scopedStorageKey(STORAGE_KEY_STATE)]);
+    removeStoredKeys(storage, [
+      scopedStorageKey(STORAGE_KEY_LEGACY_STATE),
+      scopedStorageKey(STORAGE_KEY_STATE),
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
+    ]);
   } catch (err) {
     console.error('Failed to clear local data:', err);
   }
