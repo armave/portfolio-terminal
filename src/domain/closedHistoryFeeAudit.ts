@@ -271,6 +271,30 @@ export function verifyClosedHistoryFeeCorrectionParity(
   const byId = new Map(events.map(event => [event.id, event]));
   const correctionEvents = events.filter(event => event.historyFeeCorrection);
   const latestByTrade = new Map<string, PortfolioTransactionEvent[]>();
+  const eventIndexes = new Map(events.map((event, index) => [event, index]));
+  let latestResetIndex = -1;
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    const latestReset = latestResetIndex >= 0 ? events[latestResetIndex] : undefined;
+    if (event.type === 'portfolio.reset' && (!latestReset || event.recordedAt > latestReset.recordedAt ||
+        (event.recordedAt === latestReset.recordedAt && index > latestResetIndex))) {
+      latestResetIndex = index;
+    }
+  }
+  const isAfterLatestReset = (event: PortfolioTransactionEvent): boolean => {
+    if (latestResetIndex < 0) return true;
+    const latestReset = events[latestResetIndex];
+    const eventIndex = eventIndexes.get(event) ?? -1;
+    return event.recordedAt > latestReset.recordedAt ||
+      (event.recordedAt === latestReset.recordedAt && eventIndex > latestResetIndex);
+  };
+  if (correctionEvents.length > 0) {
+    const seenEventIds = new Set<string>();
+    for (const event of events) {
+      if (seenEventIds.has(event.id)) discrepancies.push(`${event.id}:duplicate-event-id`);
+      seenEventIds.add(event.id);
+    }
+  }
 
   for (const event of correctionEvents) {
     const correction = event.historyFeeCorrection;
@@ -282,7 +306,7 @@ export function verifyClosedHistoryFeeCorrectionParity(
       continue;
     }
     const allocations = correction.after.cashflowAllocations ?? [];
-    if (allocations.some(allocation => !cashflowIds.has(allocation.cashflowId)) ||
+    if ((isAfterLatestReset(event) && allocations.some(allocation => !cashflowIds.has(allocation.cashflowId))) ||
         Math.abs(allocations.reduce((sum, allocation) => sum + allocation.amount, 0) - correction.after.marginFee) > 0.011) {
       discrepancies.push(`${correction.closedTradeId}:cashflow-allocation-mismatch`);
     }
@@ -309,14 +333,16 @@ export function verifyClosedHistoryFeeCorrectionParity(
       discrepancies.push(`${closedTradeId}:competing-revision-heads`);
       continue;
     }
-    const tradeMatches = closedTrades.filter(trade => trade.id === closedTradeId);
-    if (tradeMatches.length !== 1) {
-      discrepancies.push(`${closedTradeId}:${tradeMatches.length === 0 ? 'missing-canonical-trade' : 'ambiguous-canonical-trade-id'}`);
-      continue;
-    }
-    const snapshot = heads[0].historyFeeCorrection?.after;
-    if (!snapshot || !snapshotMatchesTrade(snapshot, tradeMatches[0])) {
-      discrepancies.push(`${closedTradeId}:canonical-after-state-mismatch`);
+    if (isAfterLatestReset(heads[0])) {
+      const tradeMatches = closedTrades.filter(trade => trade.id === closedTradeId);
+      if (tradeMatches.length !== 1) {
+        discrepancies.push(`${closedTradeId}:${tradeMatches.length === 0 ? 'missing-canonical-trade' : 'ambiguous-canonical-trade-id'}`);
+        continue;
+      }
+      const snapshot = heads[0].historyFeeCorrection?.after;
+      if (!snapshot || !snapshotMatchesTrade(snapshot, tradeMatches[0])) {
+        discrepancies.push(`${closedTradeId}:canonical-after-state-mismatch`);
+      }
     }
   }
   return { matches: discrepancies.length === 0, discrepancies };
