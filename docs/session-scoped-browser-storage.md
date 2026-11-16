@@ -37,6 +37,8 @@ A failed identity lookup invalidates the session, moves to the offline namespace
 - `PortfolioStore.replaceWorkspace()` is reserved for switching authenticated local storage scopes. It replaces the in-memory state and its journals instead of merging events from the previous identity.
 - Portfolio reset semantics are unchanged: reset within a workspace retains that workspace's append-only transaction journal and writes its reset marker.
 - Pending history writes retain their captured storage scope and are drained before the active scope changes. They cannot be redirected into the next account's history database.
+- Concurrent storage activations are serialized; an older authentication response cannot reactivate a prior workspace or re-enable administrator cloud writes after a newer login.
+- If localStorage is unavailable, the browser starts or switches to an in-memory offline scope rather than falling back to unscoped legacy data.
 
 ## Legacy migration and recovery
 
@@ -57,7 +59,8 @@ Automated coverage verifies:
 - separation between owner, guest A, guest B, and offline snapshots/history;
 - delayed history writes completing in the scope where they were started;
 - workspace replacement clearing previous journals;
-- authenticated session transition ordering and cloud-write gating;
+- authenticated session transition ordering, concurrent authentication checks, and cloud-write gating;
+- fail-closed offline activation when localStorage is unavailable;
 - same-workspace backup/cloud journal merging remaining append-only.
 
 The exact PR head must pass repository CI, including TypeScript, Vitest, production build, dead-code/dependency audits, and the production browser journey. Manual authenticated account-switch and multi-device checks remain separate release evidence.

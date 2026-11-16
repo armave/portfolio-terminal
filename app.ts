@@ -1813,6 +1813,10 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     const scope = user.role === 'admin' ? 'owner' : 'guest:' + user.id;
     await activatePortfolioStorageScope(scope, { migrateLegacy: user.role === 'admin' });
 
+    // A newer identity may have superseded this queued storage transition.
+    // Never hydrate or publish the stale user's workspace.
+    if (currentAccountRole !== user.role || currentAccountId !== user.id) return;
+
     const blank = createBlankPortfolioState();
     const saved = loadSavedState(blank);
     const history = loadSavedHistory();

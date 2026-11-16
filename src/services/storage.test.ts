@@ -70,6 +70,18 @@ describe('storage service', () => {
     vi.unstubAllGlobals();
   });
 
+  it('fails closed into the offline scope when localStorage is unavailable', async () => {
+    vi.stubGlobal('localStorage', undefined);
+
+    await expect(activatePortfolioStorageScope('offline')).resolves.toBeUndefined();
+
+    vi.stubGlobal('localStorage', localStorageMock);
+    expect(saveState({ balance: 42 })).toBe(true);
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2::offline')).not.toBeNull();
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(false);
+  });
+
   describe('saveState', () => {
     it('persists state to localStorage and updates lastUpdated', () => {
       const state = { activeView: 'AAPL', balance: 1200, lastUpdated: Date.now() };

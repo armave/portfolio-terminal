@@ -38,37 +38,84 @@ export interface PortfolioSessionRuntime {
 export function createPortfolioSessionRuntime(
   dependencies: PortfolioSessionRuntimeDependencies
 ): PortfolioSessionRuntime {
+  const initialRole = dependencies.getAccountRole();
+  const initialAccountId = dependencies.getAccountId();
+  let publishGeneration = 0;
+  let activeWorkspaceIdentity: string | null =
+    initialRole && initialAccountId ? `${initialRole}:${initialAccountId}` : null;
+  let pendingWorkspaceActivation: { identity: string; promise: Promise<void> } | null = null;
+
   const publishCurrentUser = async (): Promise<AuthUser | null> => {
+    const requestGeneration = ++publishGeneration;
     try {
       const user = await dependencies.getCurrentUser();
+      // An older identity lookup must not publish after a newer auth request.
+      if (requestGeneration !== publishGeneration) return null;
+
+      const identity = `${user.role}:${user.id}`;
       const identityChanged =
         dependencies.getAccountRole() !== user.role ||
         dependencies.getAccountId() !== user.id;
 
       if (identityChanged) {
+        activeWorkspaceIdentity = null;
+        dependencies.setCloudWritePermission(false);
         dependencies.cancelPendingApiReads();
         dependencies.clearCloudEncryptionSecretCache();
         dependencies.clearPendingCloudWrite();
-        dependencies.setSessionIdentity(`${user.role}:${user.id}`);
+        dependencies.setSessionIdentity(identity);
       }
 
       dependencies.setAccountRole(user.role);
       dependencies.setAccountId(user.id);
-      if (identityChanged) {
-        // Keep cloud writes disabled until the new local workspace has loaded.
-        dependencies.setCloudWritePermission(false);
-        await dependencies.activateWorkspaceStorage(user);
-      }
-      if (user.role === 'admin') dependencies.setCloudWritePermission(true);
 
+      // Repeated checks for the same identity share the pending transition.
+      // Different identities supersede it and are protected by requestGeneration.
+      if (activeWorkspaceIdentity !== identity) {
+        if (!identityChanged) dependencies.setCloudWritePermission(false);
+        if (!pendingWorkspaceActivation || pendingWorkspaceActivation.identity !== identity) {
+          const activation = {
+            identity,
+            promise: dependencies.activateWorkspaceStorage(user)
+          };
+          pendingWorkspaceActivation = activation;
+          void activation.promise.catch(() => {
+            if (pendingWorkspaceActivation === activation) pendingWorkspaceActivation = null;
+          });
+        }
+
+        const activation = pendingWorkspaceActivation;
+        await activation.promise;
+        if (
+          requestGeneration !== publishGeneration ||
+          dependencies.getAccountRole() !== user.role ||
+          dependencies.getAccountId() !== user.id
+        ) return null;
+
+        activeWorkspaceIdentity = identity;
+        if (pendingWorkspaceActivation === activation) pendingWorkspaceActivation = null;
+      }
+
+      if (
+        requestGeneration !== publishGeneration ||
+        dependencies.getAccountRole() !== user.role ||
+        dependencies.getAccountId() !== user.id
+      ) return null;
+
+      if (user.role === 'admin') dependencies.setCloudWritePermission(true);
       dependencies.emitUserChanged(user);
       return user;
     } catch {
+      // A failed stale transition must never clear or invalidate a newer session.
+      if (requestGeneration !== publishGeneration) return null;
+
+      activeWorkspaceIdentity = null;
+      pendingWorkspaceActivation = null;
+      dependencies.setCloudWritePermission(false);
       dependencies.cancelPendingApiReads();
       dependencies.clearPendingCloudWrite();
       dependencies.setAccountRole(null);
       dependencies.setAccountId(null);
-      dependencies.setCloudWritePermission(false);
       dependencies.setSessionIdentity(null);
       try {
         await dependencies.clearWorkspaceOnAuthFailure();

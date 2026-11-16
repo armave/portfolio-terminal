@@ -56,13 +56,24 @@ const LEGACY_PORTFOLIO_STORAGE_SCOPE = 'legacy';
 const PORTFOLIO_STORAGE_SCOPE_MARKER = 'portfolio_session_storage_v1';
 
 function initialPortfolioStorageScope(): string {
+  let storage: Storage | null;
   try {
-    return getBrowserStorage()?.getItem(PORTFOLIO_STORAGE_SCOPE_MARKER) === '1'
-      ? 'offline'
-      : LEGACY_PORTFOLIO_STORAGE_SCOPE;
+    storage = getBrowserStorage();
+    // Without localStorage there is no reliable legacy-state marker. Fail closed
+    // rather than hydrating an unscoped snapshot or history from another session.
+    if (!storage) return 'offline';
+    if (storage.getItem(PORTFOLIO_STORAGE_SCOPE_MARKER) === '1') return 'offline';
   } catch {
-    return LEGACY_PORTFOLIO_STORAGE_SCOPE;
+    return 'offline';
   }
+
+  try {
+    if (typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(PORTFOLIO_STORAGE_SCOPE_MARKER) === '1') return 'offline';
+  } catch {
+    // sessionStorage may be disabled while localStorage remains available.
+  }
+  return LEGACY_PORTFOLIO_STORAGE_SCOPE;
 }
 
 let activePortfolioStorageScope = initialPortfolioStorageScope();
@@ -263,7 +274,7 @@ export function initializeSavedHistoryStorage(
  * available for recovery and is never used as a guest/offline fallback after
  * scoped authenticated storage has been activated.
  */
-export async function activatePortfolioStorageScope(
+async function activatePortfolioStorageScopeNow(
   scope: string,
   options: { migrateLegacy?: boolean } = {}
 ): Promise<void> {
@@ -289,6 +300,28 @@ export async function activatePortfolioStorageScope(
       storage?.removeItem(PORTFOLIO_STORAGE_SCOPE_MARKER);
     } catch {
       // The in-memory legacy scope remains usable if browser storage is read-only.
+    }
+    try {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(PORTFOLIO_STORAGE_SCOPE_MARKER);
+    } catch {
+      // The in-memory legacy scope remains usable if session storage is read-only.
+    }
+    activePortfolioStorageScope = nextScope;
+    resetHistoryStorageCache();
+    await initializeSavedHistoryStorage(nextScope);
+    return;
+  }
+
+  if (nextScope === 'offline') {
+    try {
+      storage?.setItem(PORTFOLIO_STORAGE_SCOPE_MARKER, '1');
+    } catch {
+      // The active in-memory scope still becomes offline if persistent storage is read-only.
+    }
+    try {
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(PORTFOLIO_STORAGE_SCOPE_MARKER, '1');
+    } catch {
+      // A same-tab reload marker is best-effort; the active in-memory scope remains isolated.
     }
     activePortfolioStorageScope = nextScope;
     resetHistoryStorageCache();
@@ -357,6 +390,26 @@ export async function activatePortfolioStorageScope(
   activePortfolioStorageScope = nextScope;
   resetHistoryStorageCache();
   await initializeSavedHistoryStorage(nextScope);
+}
+
+let portfolioStorageScopeTransitionQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Serialize workspace transitions so overlapping authentication checks cannot
+ * interleave migration, IndexedDB initialization, or active-scope replacement.
+ */
+export function activatePortfolioStorageScope(
+  scope: string,
+  options: { migrateLegacy?: boolean } = {}
+): Promise<void> {
+  const transition = portfolioStorageScopeTransitionQueue
+    .catch(() => undefined)
+    .then(() => activatePortfolioStorageScopeNow(scope, options));
+  portfolioStorageScopeTransitionQueue = transition.then(
+    () => undefined,
+    () => undefined
+  );
+  return transition;
 }
 
 async function persistSavedHistorySnapshot(
