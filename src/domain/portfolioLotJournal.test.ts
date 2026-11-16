@@ -555,4 +555,116 @@ describe('lot-aware transaction journal replay', () => {
       acquisitionDate: null
     });
   });
+
+  it('replays a cash-holding split through later FIFO sales and verifies lot parity', () => {
+    const acquiredAt = Date.parse('2020-01-02T09:30:00.000Z');
+    const cashBuy = createPortfolioTransactionEvent({
+      type: 'cash-holding.buy',
+      effectiveAt: acquiredAt,
+      ticker: 'AAPL',
+      quantity: 2,
+      cashHoldingQuantityDelta: 2,
+      lotId: 'cash-split-lot',
+      acquisitionDate: '2020-01-02',
+      unitPrice: 100,
+      grossAmount: 200,
+      fees: 0,
+      cashDelta: 0
+    }, { eventId: 'cash-split-buy', source: 'lot-journal-test' });
+    const corporateSplit = createPortfolioTransactionEvent({
+      type: 'corporate-action',
+      effectiveAt: Date.parse('2020-08-31T00:00:00.000Z'),
+      ticker: 'AAPL',
+      quantity: 2,
+      cashHoldingQuantityDelta: 6,
+      externalReferenceId: 'split-source-aapl',
+      corporateActionMultiplier: 4,
+      corporateActionLotAdjustments: [{
+        ledger: 'cash-holding',
+        lotId: 'cash-split-lot',
+        quantityBefore: 2,
+        quantityAfter: 8,
+        priceBefore: 100,
+        priceAfter: 25,
+        acquisitionDate: '2020-01-02',
+        acquiredAt,
+        openBuyCommission: 0
+      }]
+    }, { eventId: 'cash-split-event', source: 'corporate-action' });
+    const cashSale = createPortfolioTransactionEvent({
+      type: 'cash-holding.sell',
+      effectiveAt: Date.parse('2020-09-01T09:30:00.000Z'),
+      ticker: 'AAPL',
+      quantity: 2,
+      cashHoldingQuantityDelta: -2,
+      unitPrice: 30,
+      grossAmount: 60,
+      fees: 0.22,
+      financingCost: 0,
+      netAmount: 59.78,
+      cashDelta: 59.78,
+      marginDebtDelta: 0,
+      realizedPnl: 9.78,
+      lotAllocations: [{
+        lotId: 'cash-split-lot',
+        identity: 'stable',
+        quantity: 2,
+        acquisitionPrice: 25,
+        acquisitionDate: '2020-01-02',
+        acquiredAt,
+        buyCommissionAllocated: 0,
+        sellPrice: 30,
+        sellCommissionAllocated: 0.22,
+        financingCostAllocated: 0,
+        realizedPnl: 9.78
+      }]
+    }, { eventId: 'cash-split-sale', source: 'lot-journal-test' });
+
+    const events = [cashBuy, corporateSplit, cashSale];
+    const replay = replayPortfolioTransactionLots(events);
+    expect(replay).toMatchObject({
+      status: 'complete',
+      openLots: [],
+      sales: [],
+      cashHoldingOpenLots: [{
+        lotId: 'cash-split-lot',
+        ticker: 'AAPL',
+        acquiredQuantity: 8,
+        openQuantity: 6,
+        acquisitionPrice: 25,
+        openBuyCommission: 0
+      }],
+      cashHoldingSales: [{
+        eventId: 'cash-split-sale',
+        ticker: 'AAPL',
+        quantity: 2,
+        soldCostBasis: 50,
+        grossProceeds: 60,
+        grossProfit: 10,
+        commissions: 0.22,
+        realizedPnl: 9.78
+      }],
+      issues: []
+    });
+
+    const parity = verifyPortfolioTransactionLotParity(events, {
+      positions: {},
+      closedTrades: [],
+      cashHoldings: [{
+        ticker: 'AAPL',
+        shares: 6,
+        lots: [{
+          lotId: 'cash-split-lot',
+          qty: 6,
+          price: 25,
+          date: '2020-01-02',
+          acquiredAt,
+          buyCommission: 0
+        }]
+      }]
+    });
+    expect(parity).toMatchObject({ status: 'complete', matches: true, discrepancies: [], issues: [] });
+  });
+
+
 });
