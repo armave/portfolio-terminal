@@ -1,7 +1,29 @@
 export const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
 
+export const BROWSER_REPAIR_OPERATION_TIMEOUT_MS = 3_000;
+
+function withOperationTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Browser repair operation timed out.')), timeoutMs);
+    operation.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
+
 export interface BrowserProfileRepairDependencies {
   automatic?: boolean;
+  operationTimeoutMs?: number;
   appBaseUrl: string;
   origin: string;
   getServiceWorkerRegistration: (scope: string) => Promise<ServiceWorkerRegistration | undefined>;
@@ -42,19 +64,23 @@ export interface BrowserProfileRepairResult {
 export async function repairBrowserProfile(
   dependencies: BrowserProfileRepairDependencies
 ): Promise<BrowserProfileRepairResult> {
+  const operationTimeoutMs = dependencies.operationTimeoutMs ?? BROWSER_REPAIR_OPERATION_TIMEOUT_MS;
   const appScope = new URL(dependencies.appBaseUrl, dependencies.origin);
   if (!appScope.pathname.endsWith('/')) appScope.pathname += '/';
 
   let serviceWorkerUnregistered = false;
   try {
-    const registration = await dependencies.getServiceWorkerRegistration(appScope.href);
+    const registration = await withOperationTimeout(
+      dependencies.getServiceWorkerRegistration(appScope.href),
+      operationTimeoutMs
+    );
     if (registration) {
       const registeredScope = new URL(registration.scope);
       const registrationMatchesApp =
         registeredScope.origin === appScope.origin &&
         (registeredScope.pathname.endsWith('/') ? registeredScope.pathname : registeredScope.pathname + '/') === appScope.pathname;
       if (registrationMatchesApp) {
-        serviceWorkerUnregistered = await registration.unregister();
+        serviceWorkerUnregistered = await withOperationTimeout(registration.unregister(), operationTimeoutMs);
       }
     }
   } catch (error) {
@@ -63,13 +89,13 @@ export async function repairBrowserProfile(
 
   let precacheCachesDeleted = 0;
   try {
-    const cacheNames = await dependencies.getCacheNames();
+    const cacheNames = await withOperationTimeout(dependencies.getCacheNames(), operationTimeoutMs);
     const appPrecacheNames = cacheNames.filter((name) =>
       name.startsWith('workbox-precache-') && name.includes(appScope.pathname)
     );
     for (const name of appPrecacheNames) {
       try {
-        if (await dependencies.deleteCache(name)) precacheCachesDeleted += 1;
+        if (await withOperationTimeout(dependencies.deleteCache(name), operationTimeoutMs)) precacheCachesDeleted += 1;
       } catch (error) {
         console.warn('[Browser Repair]: Could not remove an app precache.', error);
       }
