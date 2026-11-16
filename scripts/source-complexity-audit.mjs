@@ -10,6 +10,7 @@ const FUNCTION_COMPLEXITY_LIMIT = 15;
 
 // ScriptKind numeric values are retained by the TypeScript compiler API even when its runtime bundle omits the enum object.
 const SCRIPT_KIND = Object.freeze({ JS: 1, JSX: 2, TS: 3, TSX: 4 });
+const SCRIPT_TARGET_LATEST = 99;
 const SOURCE_ROOTS = ['src', 'app.ts', 'worker.js', 'state-store.js'];
 const IGNORED_FILE = /(?:\.test\.[cm]?[jt]sx?|\.spec\.[cm]?[jt]sx?|\.d\.ts|\/i18n-ru\.ts)$/;
 
@@ -60,11 +61,9 @@ function measureFunctionComplexity(node) {
       (ts.isCaseClause(current) && current.expression !== undefined)
     ) complexity += 1;
 
-    if (ts.isBinaryExpression(current) && (
-      current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      current.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-      current.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
-    )) complexity += 1;
+    if (ts.isBinaryExpression(current) && ['&&', '||', '??'].includes(current.operatorToken.getText())) {
+      complexity += 1;
+    }
 
     ts.forEachChild(current, visit);
   };
@@ -95,7 +94,7 @@ async function main() {
       : extension === '.jsx' ? SCRIPT_KIND.JSX
         : extension === '.js' || extension === '.mjs' || extension === '.cjs' ? SCRIPT_KIND.JS
           : SCRIPT_KIND.TS;
-    const sourceFile = ts.createSourceFile(relativePath, content, ts.ScriptTarget.Latest, true, scriptKind);
+    const sourceFile = ts.createSourceFile(relativePath, content, SCRIPT_TARGET_LATEST, true, scriptKind);
     const lineCount = sourceFile.getLineAndCharacterOfPosition(content.length).line + 1;
     totalLines += lineCount;
     if (lineCount > FILE_LINE_LIMIT) largeFiles.push({ file: relativePath, lines: lineCount });
