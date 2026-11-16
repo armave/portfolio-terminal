@@ -157,6 +157,8 @@ describe('transaction journal coverage visibility', () => {
       'No journal replay issues were detected for the current coverage scope.',
       'Showing first 5 coverage findings',
       'Event is malformed or uses an unsupported transaction schema.',
+      'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.',
+      'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.',
       'Broker execution evidence must not post directly to app-owned portfolio balances.',
       'Broker execution evidence is missing its source reference, instrument, side or quantity.',
       'Closed-history fee corrections must not post cash, debt, quantity or realized-margin deltas.',

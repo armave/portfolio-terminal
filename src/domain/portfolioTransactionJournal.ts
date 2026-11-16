@@ -329,7 +329,18 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
 }
 
 export function isPortfolioTransactionEventList(value: unknown): value is PortfolioTransactionEvent[] {
-  return Array.isArray(value) && value.every(isPortfolioTransactionEvent);
+  if (!Array.isArray(value)) return false;
+  const eventIds = new Set<string>();
+  const idempotencyKeys = new Set<string>();
+  for (const candidate of value) {
+    if (!isPortfolioTransactionEvent(candidate) || eventIds.has(candidate.id)) return false;
+    eventIds.add(candidate.id);
+    if (candidate.idempotencyKey) {
+      if (idempotencyKeys.has(candidate.idempotencyKey)) return false;
+      idempotencyKeys.add(candidate.idempotencyKey);
+    }
+  }
+  return true;
 }
 
 /** Return a detached, deeply frozen journal list for safe exposure through getState(). */
@@ -533,8 +544,10 @@ function haveSamePortfolioTransactionContent(left: unknown, right: unknown): boo
 
 /**
  * Merge imported audit history without allowing an older backup to erase
- * already-recorded events. Exact duplicate IDs/keys are ignored; conflicting
- * reuse is rejected so the caller can keep the existing committed snapshot.
+ * already-recorded events. Exact matches across the existing and incoming
+ * journals are ignored; duplicate IDs/keys within either input list are
+ * malformed and rejected so replay cannot apply one command more than once.
+ * Conflicting reuse is rejected so the caller can keep the committed snapshot.
  * Object property ordering is ignored because JSON backups do not preserve a
  * semantic distinction between otherwise identical event objects.
  */
@@ -735,12 +748,48 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
   events: readonly unknown[]
 ): PortfolioTransactionJournalCoverageReport {
   const findings: PortfolioTransactionJournalCoverageFinding[] = [];
-  const knownEvents = new Map<string, PortfolioTransactionEvent>();
-  for (const candidate of events) {
-    if (isPortfolioTransactionEvent(candidate)) knownEvents.set(candidate.id, candidate);
-  }
+  const duplicateIndexes = new Map<number, string>();
+  const firstIndexById = new Map<string, number>();
+  const firstIndexByIdempotencyKey = new Map<string, number>();
+  const markDuplicate = (firstIndex: number, duplicateIndex: number, reason: string) => {
+    duplicateIndexes.set(firstIndex, duplicateIndexes.has(firstIndex)
+      ? `${duplicateIndexes.get(firstIndex)} ${reason}`
+      : reason);
+    duplicateIndexes.set(duplicateIndex, duplicateIndexes.has(duplicateIndex)
+      ? `${duplicateIndexes.get(duplicateIndex)} ${reason}`
+      : reason);
+  };
+  events.forEach((candidate, index) => {
+    if (!isPortfolioTransactionEvent(candidate)) return;
+    const firstIdIndex = firstIndexById.get(candidate.id);
+    if (firstIdIndex === undefined) firstIndexById.set(candidate.id, index);
+    else markDuplicate(firstIdIndex, index,
+      'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.');
+    if (candidate.idempotencyKey) {
+      const firstKeyIndex = firstIndexByIdempotencyKey.get(candidate.idempotencyKey);
+      if (firstKeyIndex === undefined) firstIndexByIdempotencyKey.set(candidate.idempotencyKey, index);
+      else markDuplicate(firstKeyIndex, index,
+        'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.');
+    }
+  });
 
-  for (const raw of events) {
+  const knownEvents = new Map<string, PortfolioTransactionEvent>();
+  events.forEach((candidate, index) => {
+    if (!duplicateIndexes.has(index) && isPortfolioTransactionEvent(candidate)) {
+      knownEvents.set(candidate.id, candidate);
+    }
+  });
+
+  for (const [index, raw] of events.entries()) {
+    if (duplicateIndexes.has(index) && isPortfolioTransactionEvent(raw)) {
+      findings.push({
+        eventId: raw.id,
+        eventType: raw.type,
+        disposition: 'unsupported',
+        reason: duplicateIndexes.get(index)!
+      });
+      continue;
+    }
     if (!isPortfolioTransactionEvent(raw)) {
       const malformed = isPlainRecord(raw) ? raw : {};
       findings.push({

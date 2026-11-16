@@ -187,6 +187,8 @@ const RU_COPY: Record<string, string> = {
   'No journal replay issues were detected for the current coverage scope.': 'В пределах текущей области проверки проблем воспроизведения журнала не обнаружено.',
   'Showing first 5 coverage findings': 'Показаны первые 5 замечаний по покрытию',
   'Event is malformed or uses an unsupported transaction schema.': 'Событие имеет некорректную структуру или использует неподдерживаемую схему транзакций.',
+  'Journal contains a duplicate transaction event ID; replay is blocked to prevent applying the same event more than once.': 'В журнале повторяется идентификатор события транзакции; воспроизведение заблокировано, чтобы не применить одно событие более одного раза.',
+  'Journal contains a duplicate transaction idempotency key; replay is blocked to prevent applying the same command more than once.': 'В журнале повторяется ключ идемпотентности транзакции; воспроизведение заблокировано, чтобы не применить одну команду более одного раза.',
   'Broker execution evidence must not post directly to app-owned portfolio balances.': 'Подтверждение исполнения брокера не должно напрямую изменять балансы портфеля приложения.',
   'Broker execution evidence is missing its source reference, instrument, side or quantity.': 'В подтверждении исполнения брокера отсутствует ссылка на источник, инструмент, направление или количество.',
   'Closed-history fee corrections must not post cash, debt, quantity or realized-margin deltas.': 'Корректировки комиссий закрытых сделок не должны изменять денежные средства, долг, количество активов или признанные маржинальные расходы.',

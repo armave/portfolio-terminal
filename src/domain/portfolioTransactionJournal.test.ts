@@ -142,6 +142,29 @@ describe('portfolio transaction journal', () => {
     expect(isPortfolioTransactionEventList([event, { ...event, id: '' }])).toBe(false);
   });
 
+  it('rejects duplicate event IDs and idempotency keys before replay', () => {
+    const first = createPortfolioTransactionEvent(draft, {
+      eventId: 'duplicate-list-event',
+      idempotencyKey: 'duplicate-list-key'
+    });
+    const duplicateId = { ...first };
+    expect(isPortfolioTransactionEventList([first, duplicateId])).toBe(false);
+    expect(() => replayPortfolioTransactionJournal([first, duplicateId])).toThrow(/malformed/i);
+    expect(() => mergePortfolioTransactionEvents([], [first, duplicateId])).toThrow(/malformed/i);
+
+    const duplicateKey = createPortfolioTransactionEvent({
+      ...draft,
+      quantity: 3,
+      grossAmount: 300,
+      cashDelta: -301.25
+    }, {
+      eventId: 'duplicate-list-event-2',
+      idempotencyKey: 'duplicate-list-key'
+    });
+    expect(isPortfolioTransactionEventList([first, duplicateKey])).toBe(false);
+    expect(() => replayPortfolioTransactionJournal([first, duplicateKey])).toThrow(/malformed/i);
+  });
+
   it('validates, freezes and fingerprints exact corporate-action lot conversions', () => {
     const adjustment = {
       ledger: 'cash-holding' as const,
@@ -573,6 +596,43 @@ describe('broker history audit events', () => {
 });
 
 describe('transaction journal replay coverage inspection', () => {
+  it('marks every row with a duplicate event ID or idempotency key unsupported', () => {
+    const duplicateIdFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: 100
+    }, { eventId: 'coverage-duplicate-id' });
+    const duplicateIdSecond = { ...duplicateIdFirst };
+    const duplicateKeyFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt,
+      cashDelta: 50
+    }, { eventId: 'coverage-duplicate-key-first', idempotencyKey: 'coverage-duplicate-key' });
+    const duplicateKeySecond = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt + 1,
+      cashDelta: 75
+    }, { eventId: 'coverage-duplicate-key-second', idempotencyKey: 'coverage-duplicate-key' });
+
+    const report = inspectPortfolioTransactionJournalReplayCoverage([
+      duplicateIdFirst, duplicateIdSecond, duplicateKeyFirst, duplicateKeySecond
+    ]);
+
+    expect(report).toMatchObject({
+      status: 'unsupported',
+      eventCount: 4,
+      replayableCount: 0,
+      evidenceOnlyCount: 0,
+      auditOnlyCount: 0
+    });
+    expect(report.issues).toHaveLength(4);
+    expect(report.findings.map(finding => finding.disposition)).toEqual([
+      'unsupported', 'unsupported', 'unsupported', 'unsupported'
+    ]);
+    expect(report.findings[0].reason).toMatch(/duplicate transaction event ID/i);
+    expect(report.findings[2].reason).toMatch(/duplicate transaction idempotency key/i);
+  });
+
   it('separates app-owned replay deltas from broker evidence and audit-only history corrections', () => {
     const trade = createPortfolioTransactionEvent({
       type: 'trade.buy',
