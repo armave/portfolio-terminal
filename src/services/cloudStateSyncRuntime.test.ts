@@ -365,6 +365,33 @@ describe('background cloud conflict reconciliation', () => {
     expect(posted).toHaveLength(1);
   });
 
+  it('leaves legacy embedded history to the normal migration flow', async () => {
+    let applied = false;
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'AAPL',
+      selectedTicker: 'AAPL',
+      brokerExecutedTrades: [{ id: 'legacy-trade-1', ticker: 'AAPL' }],
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote);
+    const options = {
+      secret: 'test-secret',
+      getState: () => base as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: () => { applied = true; return true; },
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(applied).toBe(false);
+    expect(posted).toHaveLength(1);
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
+  });
+
   it('does not auto-adopt a missing cloud record over a previously populated base', async () => {
     let applied = false;
     const { runtime, base, posted, counts } = createRuntime({}, 404);

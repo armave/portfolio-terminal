@@ -512,7 +512,17 @@ async function tryAutoReconcileCloudConflict(
       if (!isCurrentSession() || decrypted.legacy) return false;
       const parsed: unknown = JSON.parse(decrypted.plaintext);
       assertValidCloudPortfolioPayload(parsed);
-      remoteState = prepareCloudStateSnapshot(parsed as CloudStateInput);
+      const parsedState = parsed as CloudStateRecord;
+      // Legacy embedded history still needs the normal migration path; do not
+      // strip it during an automatic portfolio-only reconciliation.
+      if (
+        (Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length > 0) ||
+        (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0)
+      ) {
+        return false;
+      }
+      processRollovers(parsedState);
+      remoteState = prepareCloudStateSnapshot(parsedState);
     }
 
     const latestLocal = handlers.getState?.() || conflictedState;
