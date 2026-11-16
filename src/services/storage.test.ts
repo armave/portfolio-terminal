@@ -605,7 +605,8 @@ describe('storage service', () => {
           onerror: null,
           error: null
         } as unknown as IDBRequest<CryptoKey>;
-        const readTransaction = {
+        let readTransaction: IDBTransaction;
+        readTransaction = {
           objectStore: () => ({
             get: () => {
               queueMicrotask(() => {
