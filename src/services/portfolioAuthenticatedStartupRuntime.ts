@@ -1,6 +1,6 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
-export type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes';
+export type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
 
 export interface PortfolioAuthenticatedStartupDependencies {
   loadBrokerRules: () => void;
@@ -80,6 +80,20 @@ export function createPortfolioAuthenticatedStartupRuntime(
       .catch((error) => reportBackgroundError(dependencies, 'pending-cloud-writes', error));
   };
 
+  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): void => {
+    if (role === 'guest') {
+      void Promise.resolve()
+        .then(() => dependencies.pullGuestPortfolioSnapshot())
+        .catch((error) => reportBackgroundError(dependencies, 'guest-snapshot', error));
+      return;
+    }
+    if (secret) {
+      void Promise.resolve()
+        .then(() => dependencies.pullSharedCloudState())
+        .catch((error) => reportBackgroundError(dependencies, 'shared-cloud-pull', error));
+    }
+  };
+
   const startApp = async (secret: string): Promise<void> => {
     // Resolve identity and activate its account-scoped storage before reading rules.
     // Offline history is initialized only after we know no account workspace applies.
@@ -92,13 +106,9 @@ export function createPortfolioAuthenticatedStartupRuntime(
     dependencies.loadBrokerRules();
     dependencies.setGatewaySecret(secret);
     const role = dependencies.getAccountRole();
-    if (role === 'guest') {
-      // Replace any administrator workspace before the guest UI can render.
-      await dependencies.pullGuestPortfolioSnapshot();
-    } else {
+    if (role !== 'guest') {
       dependencies.importSavedAdminWorkspace();
       dependencies.applyOvernightRollover();
-      if (secret) await dependencies.pullSharedCloudState();
     }
 
     dependencies.setQuoteRefreshInterval(dependencies.getInitialQuoteRefreshInterval(role));
@@ -115,6 +125,7 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // Local/account workspace and its initial cloud/guest snapshot are ready.
     // Live quotes and cloud-write recovery continue without blocking navigation.
     dependencies.hideStartupLoading();
+    synchronizeWorkspaceInBackground(role, secret);
     startInitialQuoteRefresh(role);
     recoverPendingCloudWritesInBackground();
   };
