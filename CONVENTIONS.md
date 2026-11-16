@@ -36,6 +36,8 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
     The checked-in devcontainer provisions Node.js 22, Playwright/Chromium, and the Git pre-push hook. In an existing checkout, run `npm ci` and then `npm run setup:browser-tests`, install Chromium with `node node_modules/playwright/cli.js install chromium`, and activate the hook with `npm run setup:git-hooks`. The hook runs the same local CI suite while reusing installed dependencies.
 
     Inspect the final diff for unintended financial, persisted-data, broker, security, and deployment changes. Report unavailable checks honestly; never claim a test or build passed without evidence. Resolve failures at their source rather than weakening assertions or skipping checks.
+12. **Numeric literal formatting:** For readable JavaScript/TypeScript numeric literals of 1,000 or greater, use `_` separators in groups of three digits from the right (for example, `1_000`, `60_000`, and `1_800_000_000_000`). Leave smaller values unseparated. Use descriptive unit constants such as `DAY_MS` when a literal represents a reusable unit conversion. Never insert numeric separators into strings, JSON, dates, API payloads, persisted formats, identifiers, HTML input values, or user-facing formatted numbers; those representations must follow their external or localized format. Do not mechanically rewrite existing literals solely to add separators.
+
 ## CI, security, and deployment gates
 
 - `.github/workflows/ci.yml` is the single PR validation entry point. Static checks/unit tests and the production build run independently; browser journeys consume the exact production artifact produced by that run.

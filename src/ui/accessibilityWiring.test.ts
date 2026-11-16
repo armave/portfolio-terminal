@@ -41,16 +41,21 @@ describe('Stage 10 accessibility wiring', () => {
 
   it('uses shared modal focus behavior for News and restores focus to the article trigger', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
-    expect(source).toContain("import { createPortal, memo } from 'preact/compat';");
-    expect(source).toContain('document.body');
-    expect(source).toContain('news-article-content min-h-0 flex-1');
-    expect(source).toContain('useDialogFocus(newsDialogRef, {');
-    expect(source).toContain('active: currentSelectedNews !== null');
-    expect(source).toContain('initialFocusRef: newsCloseButtonRef');
-    expect(source).toContain('restoreFocusRef: newsTriggerRef');
-    expect(source).toContain('onEscape: requestCloseNewsDialog');
-    expect(source).toContain('ref={newsCloseButtonRef}');
-    expect(source).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
+    const dialog = readSource('../components/MarketNewsArticleDialog.tsx');
+
+    expect(source).toContain("import { MarketNewsArticleDialog } from './MarketNewsArticleDialog';");
+    expect(source).toContain('restoreFocusRef={newsTriggerRef}');
+    expect(source).toContain('newsTriggerRef.current = event.currentTarget;');
+    expect(dialog).toContain("import { createPortal } from 'preact/compat';");
+    expect(dialog).toContain('document.body');
+    expect(dialog).toContain('news-article-content min-h-0 flex-1');
+    expect(dialog).toContain('useDialogFocus(dialogRef, {');
+    expect(dialog).toContain('active: article !== null');
+    expect(dialog).toContain('initialFocusRef: closeButtonRef');
+    expect(dialog).toContain('restoreFocusRef,');
+    expect(dialog).toContain('onEscape: requestClose');
+    expect(dialog).toContain('ref={closeButtonRef}');
+    expect(dialog).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
   });
 
   it('mounts Margin Risk Overview at the document root for stable cross-device positioning', () => {
@@ -151,10 +156,12 @@ describe('Stage 10 accessibility wiring', () => {
   });
 
   it('makes long Market Insights and Margin Intelligence content keyboard-scrollable', () => {
-    const news = readSource('../components/MarketInsightsPanel.tsx');
+    const news = readSource('../components/MarketNewsArticleDialog.tsx');
     const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
 
-    expect(news).toContain('role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}');
+    expect(news).toContain('role="region"');
+    expect(news).toContain('aria-labelledby="newsArticleModalTitle"');
+    expect(news).toContain('tabIndex={0}');
     expect(intelligence).toContain('role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}');
   });
 
@@ -162,16 +169,19 @@ describe('Stage 10 accessibility wiring', () => {
 
   it('keeps Market Insights news controls touch-sized and visibly keyboard-focused', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
+    const dialog = readSource('../components/MarketNewsArticleDialog.tsx');
 
     expect(source).toContain('news-feed-item block min-h-11');
     expect(source).toContain('insight-tab min-h-11');
-    expect(source).toContain('min-h-11 min-w-11 items-center justify-center');
-    expect(source).toContain('inline-flex min-h-11 items-center gap-2');
+    expect(dialog).toContain('min-h-11 min-w-11 items-center justify-center');
+    expect(dialog).toContain('inline-flex min-h-11 items-center gap-2');
     expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
+    expect(dialog).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
   });
 
   it('keeps Market Insights and portfolio summary actions touch-sized', () => {
     const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
+    const articleDialog = readSource('../components/MarketNewsArticleDialog.tsx');
     const summary = readSource('../components/SummaryMetricsGrid.tsx');
 
     expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700 px-2 py-1 text-\[10px\] font-semibold text-cyan-300 disabled:opacity-50"/g)).toHaveLength(2);
@@ -179,6 +189,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
+    expect(articleDialog).toContain('inline-flex min-h-11 items-center gap-2');
     expect(summary).toContain('class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90');
     expect(summary).toContain('class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90');
     expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
