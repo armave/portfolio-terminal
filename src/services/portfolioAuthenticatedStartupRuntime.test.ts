@@ -71,6 +71,28 @@ describe('portfolio authenticated startup runtime', () => {
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
   });
 
+  it('keeps pending cloud writes suppressed until the initial remote pull settles', async () => {
+    const fixture = createFixture('admin');
+    let finishCloudPull!: () => void;
+    (fixture.dependencies.pullSharedCloudState as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<void>((resolve) => { finishCloudPull = resolve; }).then(() => {
+        fixture.calls.push('pull-shared-cloud-finished');
+      })
+    );
+
+    await fixture.start();
+    await vi.waitFor(() => expect(fixture.dependencies.pullSharedCloudState).toHaveBeenCalledTimes(1));
+
+    expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.recoverPendingCloudWrites).not.toHaveBeenCalled();
+
+    finishCloudPull();
+    await vi.waitFor(() => expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1));
+
+    expect(fixture.calls.indexOf('pull-shared-cloud-finished'))
+      .toBeLessThan(fixture.calls.indexOf('recover-cloud-writes'));
+  });
+
   it('hydrates the guest-only workspace and restores Balance before background quotes', async () => {
     const fixture = createFixture('guest');
 
