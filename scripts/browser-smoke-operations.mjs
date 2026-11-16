@@ -855,6 +855,12 @@ try {
   await visibleSettingsDesk().locator('#quoteRefreshInterval').selectOption('60000');
   await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '60000', null, { timeout: 10_000 });
   const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
+  // Changing the cadence above requests one immediate refresh. Let that refresh
+  // finish before injecting the conflict intended for the explicit manual sync.
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, null, { timeout: 30_000 });
   const statePostsBeforeConflict = worker.count('POST', '/api/state');
   worker.failNextStateConflict();
   await syncButton.click();
