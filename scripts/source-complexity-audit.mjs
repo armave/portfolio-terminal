@@ -7,6 +7,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FILE_LINE_LIMIT = 750;
 const FUNCTION_LINE_LIMIT = 100;
 const FUNCTION_COMPLEXITY_LIMIT = 15;
+
+// ScriptKind numeric values are retained by the TypeScript compiler API even when its runtime bundle omits the enum object.
+const SCRIPT_KIND = Object.freeze({ JS: 1, JSX: 2, TS: 3, TSX: 4 });
 const SOURCE_ROOTS = ['src', 'app.ts', 'worker.js', 'state-store.js'];
 const IGNORED_FILE = /(?:\.test\.[cm]?[jt]sx?|\.spec\.[cm]?[jt]sx?|\.d\.ts|\/i18n-ru\.ts)$/;
 
@@ -88,10 +91,10 @@ async function main() {
   for (const relativePath of files) {
     const content = await readFile(path.join(root, relativePath), 'utf8');
     const extension = path.extname(relativePath).toLowerCase();
-    const scriptKind = extension === '.tsx' ? ts.ScriptKind.TSX
-      : extension === '.jsx' ? ts.ScriptKind.JSX
-        : extension === '.js' || extension === '.mjs' || extension === '.cjs' ? ts.ScriptKind.JS
-          : ts.ScriptKind.TS;
+    const scriptKind = extension === '.tsx' ? SCRIPT_KIND.TSX
+      : extension === '.jsx' ? SCRIPT_KIND.JSX
+        : extension === '.js' || extension === '.mjs' || extension === '.cjs' ? SCRIPT_KIND.JS
+          : SCRIPT_KIND.TS;
     const sourceFile = ts.createSourceFile(relativePath, content, ts.ScriptTarget.Latest, true, scriptKind);
     const lineCount = sourceFile.getLineAndCharacterOfPosition(content.length).line + 1;
     totalLines += lineCount;
