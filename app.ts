@@ -1837,13 +1837,15 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     state = portfolioStore.getState();
   },
   clearWorkspaceOnAuthFailure: async () => {
+    // Authentication has already failed. Clear visible in-memory data before
+    // waiting for IndexedDB or any other asynchronous offline-scope work.
+    portfolioStore.replaceWorkspace(createBlankPortfolioState(), false);
+    state = portfolioStore.getState();
     try {
       await activatePortfolioStorageScope('offline');
     } catch {
       // Keep the authentication failure path available if storage is unavailable.
     }
-    portfolioStore.replaceWorkspace(createBlankPortfolioState(), false);
-    state = portfolioStore.getState();
   },
   emitUserChanged: (user) => emitUiEvent('auth:user-changed', { user }),
   showToast,
