@@ -299,6 +299,35 @@ describe('background cloud conflict reconciliation', () => {
     expect(counts()).toEqual({ getCount: 2, postCount: 2, revision: 3 });
   });
 
+  it('accepts a newer remote-only financial snapshot without posting it again', async () => {
+    let applied: Record<string, unknown> | undefined;
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'AAPL',
+      selectedTicker: 'AAPL',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote);
+    const options = {
+      secret: 'test-secret',
+      getState: () => base as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: (state: Record<string, unknown>) => {
+        applied = state;
+        return true;
+      },
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(true);
+    expect(applied).toMatchObject({ positions: { AAPL: { ticker: 'AAPL', shares: 8 } }, balance: 600 });
+    expect(posted).toHaveLength(1);
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1, revision: 2 });
+  });
+
   it('keeps a conflict blocked when both devices changed protected financial state differently', async () => {
     let applied = false;
     const remote = {

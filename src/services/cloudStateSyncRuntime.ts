@@ -88,10 +88,20 @@ function prepareCloudStateSnapshot(value?: CloudStateInput): CloudStateRecord {
   return JSON.parse(JSON.stringify(snapshot)) as CloudStateRecord;
 }
 
+function canonicalCloudStateValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalCloudStateValue).join(',')}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${canonicalCloudStateValue(value[key])}`
+    ).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 function cloudStateFingerprint(snapshot: CloudStateRecord): string {
   const fingerprintState = { ...snapshot };
   delete fingerprintState.lastUpdated;
-  return JSON.stringify(fingerprintState);
+  return canonicalCloudStateValue(fingerprintState);
 }
 
 export interface SyncOptions {
