@@ -310,13 +310,13 @@ export function verifyClosedHistoryFeeCorrectionParity(
       continue;
     }
     const tradeMatches = closedTrades.filter(trade => trade.id === closedTradeId);
-    if (tradeMatches.length === 1) {
-      const snapshot = heads[0].historyFeeCorrection?.after;
-      if (!snapshot || !snapshotMatchesTrade(snapshot, tradeMatches[0])) {
-        discrepancies.push(`${closedTradeId}:canonical-after-state-mismatch`);
-      }
-    } else if (tradeMatches.length > 1) {
-      discrepancies.push(`${closedTradeId}:ambiguous-canonical-trade-id`);
+    if (tradeMatches.length !== 1) {
+      discrepancies.push(`${closedTradeId}:${tradeMatches.length === 0 ? 'missing-canonical-trade' : 'ambiguous-canonical-trade-id'}`);
+      continue;
+    }
+    const snapshot = heads[0].historyFeeCorrection?.after;
+    if (!snapshot || !snapshotMatchesTrade(snapshot, tradeMatches[0])) {
+      discrepancies.push(`${closedTradeId}:canonical-after-state-mismatch`);
     }
   }
   return { matches: discrepancies.length === 0, discrepancies };
