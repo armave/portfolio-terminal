@@ -137,6 +137,33 @@ describe('automatic browser repair marker', () => {
     expect(replaceUrl).toHaveBeenCalledWith('/portfolio-terminal/?theme=dark#balance');
   });
 
+  it('reloads even when a browser repair API promise never settles', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    try {
+      const repair = repairBrowserProfile({
+        operationTimeoutMs: 10,
+        appBaseUrl: '/portfolio-terminal/',
+        origin: 'https://example.test',
+        getServiceWorkerRegistration: () => new Promise(() => undefined),
+        getCacheNames: async () => [],
+        deleteCache: vi.fn(),
+        reload,
+        now: () => 99
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(repair).resolves.toMatchObject({
+        serviceWorkerUnregistered: false,
+        precacheCachesDeleted: 0,
+        reloadUrl: 'https://example.test/portfolio-terminal/?_pt_repair=99'
+      });
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not alter a normal page URL without the one-shot marker', () => {
     const replaceUrl = vi.fn();
     const attempted = consumeAutomaticRepairAttemptMarker(
