@@ -726,7 +726,7 @@ function MarketInsightsPanelView() {
                         : notApplicable ? marketEventLabel('No adjustment needed')
                           : isDividend && alreadyRecorded ? marketEventLabel('Dividend evidence saved')
                             : isDividend ? marketEventLabel('Record dividend evidence')
-                              : marketEventLabel('Apply split to open position')}
+                              : marketEventLabel('Apply split to eligible portfolio lots')}
                     </button>
                   </div>
                 );
