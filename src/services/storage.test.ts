@@ -71,15 +71,21 @@ describe('storage service', () => {
   });
 
   it('fails closed into the offline scope when localStorage is unavailable', async () => {
-    vi.stubGlobal('localStorage', undefined);
+    try {
+      vi.stubGlobal('localStorage', undefined);
 
-    await expect(activatePortfolioStorageScope('offline')).resolves.toBeUndefined();
+      await expect(activatePortfolioStorageScope('offline')).resolves.toBeUndefined();
 
-    vi.stubGlobal('localStorage', localStorageMock);
-    expect(saveState({ balance: 42 })).toBe(true);
-    expect(storageMap.get('margin_portfolio_state_dynamic_v2::offline')).not.toBeNull();
-    expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
-    expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(false);
+      vi.stubGlobal('localStorage', localStorageMock);
+      expect(saveState({ balance: 42 })).toBe(true);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2::offline')).not.toBeNull();
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(false);
+    } finally {
+      // Keep the module-level storage scope isolated from other Vitest files.
+      vi.stubGlobal('localStorage', localStorageMock);
+      await activatePortfolioStorageScope('legacy');
+    }
   });
 
   describe('saveState', () => {
