@@ -196,7 +196,7 @@ The additive event schema remains version 1. Existing events without the optiona
 
 - [x] Validate structured closed-history fee-correction events at the backup/cloud `importState` boundary after merging with already-committed local journal events.
 - [x] Validate fee-correction lineage at explicit workspace replacement and the Closed History Sync commit boundary.
-- [x] Require the linked sale event, complete source cashflow references, a single valid revision head, matching before/after revision snapshots and parity with the imported canonical closed-trade projection.
+- [x] Require the linked sale event, complete source cashflow references, a single valid revision head, matching before/after revision snapshots and exactly one matching canonical closed-trade row; reject missing or ambiguous rows.
 - [x] Require each structured fee-correction event to remain classified as audit-only by the existing replay-coverage contract; malformed, incomplete or unsupported linked corrections are rejected before the candidate snapshot is committed.
 - [x] Preserve the existing append-only merge behavior and leave the previous in-memory state, persisted snapshot and subscribers unchanged when validation fails.
 - [x] Display scoped journal replay coverage in Broker Reconciliation: replayable, evidence-only, audit-only and items-needing-review counts, plus a bounded list of issue reasons.
