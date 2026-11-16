@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
 
 describe('cloud state compact serialization', () => {
@@ -166,6 +166,103 @@ describe('cloud state sync options', () => {
   });
 });
 
+
+describe('bounded cloud startup requests', () => {
+  it('falls back to the supplied local workspace when a cloud pull never returns headers', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        })
+      ) as unknown as typeof fetch;
+      const runtime = createCloudStateSyncRuntime({
+        workerProxyUrl: 'https://portfolio.example.test',
+        getActiveGatewaySecret: () => 'test-secret',
+        encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:nonce',
+        decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+        readCloudRevision: () => null,
+        revisionCoordinator: {
+          recordPulledRevision: () => {},
+          setRevision: () => {},
+          enqueueWrite: (operation) => operation(0)
+        },
+        processRollovers: () => false,
+        loadSavedState: (fallback) => fallback,
+        loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+        saveState: () => true,
+        normalizeFreedomTrades: () => [],
+        fetchImpl,
+        requestTimeoutMs: 25
+      });
+      const statuses: string[] = [];
+      const localState = { balance: 321, activeView: 'BALANCE' };
+      const pull = runtime.pullCloudState({
+        secret: 'test-secret',
+        state: localState,
+        showToast: () => {},
+        logAppMessage: () => {},
+        onStatusChange: (status) => statuses.push(status)
+      });
+      const result = expect(pull).resolves.toMatchObject(localState);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await result;
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].signal.aborted).toBe(true);
+      expect(statuses).toEqual(['error']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies the same deadline to response-body consumption', async () => {
+    vi.useFakeTimers();
+    try {
+      const response = {
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"1"' }),
+        json: () => new Promise<unknown>(() => {})
+      } as Response;
+      const fetchImpl = vi.fn().mockResolvedValue(response) as unknown as typeof fetch;
+      const runtime = createCloudStateSyncRuntime({
+        workerProxyUrl: 'https://portfolio.example.test',
+        getActiveGatewaySecret: () => 'test-secret',
+        encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:nonce',
+        decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+        readCloudRevision: () => null,
+        revisionCoordinator: {
+          recordPulledRevision: () => {},
+          setRevision: () => {},
+          enqueueWrite: (operation) => operation(0)
+        },
+        processRollovers: () => false,
+        loadSavedState: (fallback) => fallback,
+        loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+        saveState: () => true,
+        normalizeFreedomTrades: () => [],
+        fetchImpl,
+        requestTimeoutMs: 25
+      });
+      const localState = { balance: 654, activeView: 'AAPL' };
+      const pull = runtime.pullCloudState({
+        secret: 'test-secret',
+        state: localState,
+        showToast: () => {},
+        logAppMessage: () => {}
+      });
+      const result = expect(pull).resolves.toMatchObject(localState);
+
+      await vi.advanceTimersByTimeAsync(25);
+      await result;
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe('background cloud conflict reconciliation', () => {
   const response = (status: number, payload: unknown, revision?: number) => new Response(
