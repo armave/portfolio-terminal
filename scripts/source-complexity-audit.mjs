@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FILE_LINE_LIMIT = 750;
 const FUNCTION_LINE_LIMIT = 100;
-const FUNCTION_COMPLEXITY_LIMIT = 15;
+const FUNCTION_MARKER_LIMIT = 15;
 const SOURCE_ROOTS = ['src', 'app.ts', 'worker.js', 'state-store.js'];
 const IGNORED_FILE = /(?:\.test\.[cm]?[jt]sx?|\.spec\.[cm]?[jt]sx?|\.d\.ts|\/i18n-ru\.ts)$/;
 
@@ -73,16 +73,15 @@ function findFunctionCandidates(source, maskedSource, relativePath) {
       const body = maskedSource.slice(openBrace, closeBrace + 1);
       const branchCount = (body.match(/\b(?:if|for|while|do|catch|case)\b/g) || []).length;
       const booleanCount = (body.match(/&&|\|\||\?\?/g) || []).length;
-      const ternaryCount = (body.match(/\?(?![?.])/g) || []).length;
-      const complexity = 1 + branchCount + booleanCount + ternaryCount;
+      const markerCount = 1 + branchCount + booleanCount;
 
-      if (lineCount > FUNCTION_LINE_LIMIT || complexity >= FUNCTION_COMPLEXITY_LIMIT) {
+      if (lineCount > FUNCTION_LINE_LIMIT || markerCount >= FUNCTION_MARKER_LIMIT) {
         candidates.push({
           file: relativePath,
           name: match[1] || '<anonymous>',
           startLine,
           lines: lineCount,
-          complexity
+          markerCount
         });
       }
     }
@@ -138,11 +137,11 @@ async function main() {
   if (duplicates.length > 30) console.log(`  ... ${duplicates.length - 30} additional selector groups omitted`);
 
   if (complexFunctions.length) {
-    console.log(`\nFunctions over ${FUNCTION_LINE_LIMIT} lines or heuristic complexity ${FUNCTION_COMPLEXITY_LIMIT}+ (${complexFunctions.length}):`);
+    console.log(`\nFunctions over ${FUNCTION_LINE_LIMIT} lines or control-flow marker count ${FUNCTION_MARKER_LIMIT}+ (${complexFunctions.length}):`);
     for (const item of complexFunctions.sort((a, b) =>
-      b.complexity - a.complexity || b.lines - a.lines
+      b.markerCount - a.markerCount || b.lines - a.lines
     ).slice(0, 40)) {
-      console.log(`  ${String(item.complexity).padStart(3)} complexity / ${String(item.lines).padStart(4)} lines  ${item.file}:${item.startLine}  ${item.name}`);
+      console.log(`  ${String(item.markerCount).padStart(3)} control-flow markers / ${String(item.lines).padStart(4)} lines  ${item.file}:${item.startLine}  ${item.name}`);
     }
     if (complexFunctions.length > 40) console.log(`  ... ${complexFunctions.length - 40} additional functions omitted`);
   } else {
