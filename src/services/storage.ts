@@ -993,7 +993,7 @@ export async function restoreGatewaySecret(): Promise<string> {
 
   let key: CryptoKey;
   try {
-    key = await getOrCreateDeviceKey(db);
+    key = await getOrCreateDeviceKey(db, false);
   } catch (err) {
     console.warn('Could not access the device encryption key; preserving the encrypted Gateway Secret:', err);
     db.close();
