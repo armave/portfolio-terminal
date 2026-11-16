@@ -275,8 +275,10 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
           typeof rawAdjustment.priceAfter !== 'number' || !Number.isFinite(rawAdjustment.priceAfter) || rawAdjustment.priceAfter <= 0 ||
           typeof rawAdjustment.acquisitionDate !== 'string' ||
           !/^\\d{4}-\\d{2}-\\d{2}$/.test(rawAdjustment.acquisitionDate) ||
-          new Date(rawAdjustment.acquisitionDate + 'T00:00:00.000Z').toISOString().slice(0, 10) !== rawAdjustment.acquisitionDate ||
+          !Number.isFinite(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')) ||
+          new Date(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== rawAdjustment.acquisitionDate ||
           typeof rawAdjustment.acquiredAt !== 'number' || !Number.isSafeInteger(rawAdjustment.acquiredAt) || rawAdjustment.acquiredAt <= 0 ||
+          !Number.isFinite(new Date(rawAdjustment.acquiredAt).getTime()) ||
           !(rawAdjustment.openBuyCommission === null ||
             (typeof rawAdjustment.openBuyCommission === 'number' && Number.isFinite(rawAdjustment.openBuyCommission) && rawAdjustment.openBuyCommission >= 0))) return false;
       const acquiredDate = new Date(rawAdjustment.acquiredAt).toISOString().slice(0, 10);
