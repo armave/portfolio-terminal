@@ -617,6 +617,10 @@ async function seedSyntheticPortfolio(page) {
     state.activeView = 'AAPL';
     state.lastUpdated = now;
     localStorage.setItem(key, JSON.stringify(state));
+    // The Market Insights assertion belongs to the Combined desk. Persist the
+    // device-level desk choice before reload rather than relying on a tab button
+    // that may not render until the authenticated workspace is ready.
+    localStorage.setItem('portfolio_active_view', 'COMBINED');
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
