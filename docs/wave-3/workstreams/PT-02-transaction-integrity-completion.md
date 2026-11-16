@@ -196,7 +196,7 @@ The additive event schema remains version 1. Existing events without the optiona
 **Exact tested PR head:** `16d0eaa68923a8fcfc10e0ba38cd597111d13f6b` (the final PR head; earlier intermediate SHA `e681dba...` was not the final candidate).
 **CI:** [Pull Request CI #4434](https://github.com/armave/portfolio-terminal/actions/runs/43902637772) and [Security & Workflow Validation #240](https://github.com/armave/portfolio-terminal/actions/runs/43902637803) passed on the final PR head. The advisory full-history secret audit was skipped; the new-commit scan passed.
 
-**Client PR:** PT-02 restore integrity and coverage visibility; target `dev`. No Worker/server or accounting-formula changes.
+**Scope:** Client/domain only; no Worker/server or accounting-formula changes.
 
 - [x] Validate structured closed-history fee-correction events at the backup/cloud `importState` boundary after merging with already-committed local journal events.
 - [x] Validate fee-correction lineage at explicit workspace replacement and the Closed History Sync commit boundary.
@@ -218,7 +218,7 @@ This slice does not alter accounting calculations, FIFO allocations, canonical s
 **Exact tested PR head:** `fc3b42b082f699fe769431f24b440bda7e767ae4`.
 **CI:** [Pull Request CI #4443](https://github.com/armave/portfolio-terminal/actions/runs/43912493765) and [Security & Workflow Validation #249](https://github.com/armave/portfolio-terminal/actions/runs/43912493947) passed on the exact PR head. The advisory full-history secret audit was skipped; the new-commit scan passed. A dedicated Trade Lifecycle Browser Smoke run was not present for this PR head.
 
-**Client/domain PR:** PT-02 cash-holding split and reverse-split support; no Worker/server changes.
+**Scope:** Client/domain only; no Worker/server changes.
 
 - [x] Add a deterministic cash-holding split helper that accepts only complete app-owned lots with unique stable identities, exact quantity coverage, valid acquisition dates/timestamps, positive cost prices and known non-negative buy commissions.
 - [x] Require every lot to predate the action. Post-action-only lots are not re-adjusted; mixed/effective-date lots, fractional aggregate entitlements, missing lots and unverified/future quotes remain review-required.
