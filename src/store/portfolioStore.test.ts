@@ -8,7 +8,8 @@ import {
   subscribeToPortfolioSelector,
   subscribeToActiveView
 } from './portfolioStore';
-import type { Holding, PositionRecord } from '../types/portfolio';
+import type { ClosedTrade, Holding, PositionRecord } from '../types/portfolio';
+import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import { normalizeFinnhubStockSplits } from '../services/corporateActions';
@@ -22,6 +23,31 @@ const sharedLocalStorage = {
   setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
   removeItem: (key: string) => { sharedTestStorage.delete(key); }
 };
+
+function createClosedHistoryFeeAuditImportFixture() {
+  const sale = createPortfolioTransactionEvent({
+    type: 'trade.sell',
+    effectiveAt: Date.parse('2026-01-03T12:00:00.000Z'),
+    ticker: 'AAPL',
+    quantity: 10,
+    positionQuantityDelta: -10
+  }, { eventId: 'import-fee-sale-event', actor: { type: 'user', id: 'admin' }, source: 'portfolio-store' });
+  const before: ClosedTrade = {
+    id: 'import-closed-trade', transactionEventId: sale.id, ticker: 'AAPL', shares: 10,
+    sellDate: '2026-01-03T12:00:00.000Z', feesAndCommissions: 3, totalCommissions: 3,
+    marginInterest: 0, marginFee: 0, marginFeeAllocations: {}, netProfit: 97
+  };
+  const after: ClosedTrade = {
+    ...before, feesAndCommissions: 4, totalCommissions: 4, marginInterest: 1, marginFee: 1,
+    marginFeeAllocations: { 'import-cashflow-1': 0.6, 'import-cashflow-2': 0.4 },
+    netProfit: 96, netRealizedGain: 96
+  };
+  const cashflows = [
+    { id: 'import-cashflow-1', date: '2026-01-03', type: 'margin_interest', amount: 0.6 },
+    { id: 'import-cashflow-2', date: '2026-01-03', type: 'margin_interest', amount: 0.4 }
+  ];
+  return { sale, before, after, cashflows };
+}
 
 beforeEach(() => {
   sharedTestStorage.clear();
@@ -2435,6 +2461,71 @@ describe('portfolio import boundary validation', () => {
       { ticker: 'MSFT', shares: 1, netProfit: 20 }
     ]);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+
+  it('rejects restored fee corrections with broken revision links before committing any portfolio data', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    const validCorrection = audit.transactionEvents.find(event => event.historyFeeCorrection);
+    expect(validCorrection).toBeDefined();
+    const brokenCorrection = {
+      ...validCorrection!,
+      id: 'broken-import-fee-correction',
+      historyFeeCorrection: {
+        ...validCorrection!.historyFeeCorrection!,
+        revisionOfEventId: 'missing-prior-correction'
+      }
+    };
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.importState({
+      transactionEvents: [brokenCorrection],
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('rejects fee-correction imports whose allocations refer to missing source cashflows', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    const validCorrection = audit.transactionEvents.find(event => event.historyFeeCorrection)!;
+    const brokenCorrection = {
+      ...validCorrection,
+      id: 'missing-cashflow-import-correction',
+      historyFeeCorrection: {
+        ...validCorrection.historyFeeCorrection!,
+        after: {
+          ...validCorrection.historyFeeCorrection!.after,
+          cashflowAllocations: [{ cashflowId: 'missing-cashflow', amount: 1 }]
+        }
+      }
+    };
+
+    const previousState = store.getState();
+    expect(store.importState({
+      transactionEvents: [brokenCorrection],
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(false);
+    expect(store.getState()).toBe(previousState);
   });
 
   it('continues to support valid partial imports without clearing omitted portfolio fields', () => {

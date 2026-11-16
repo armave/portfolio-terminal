@@ -188,3 +188,19 @@ The additive event schema remains version 1. Existing events without the optiona
 - The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
 - Vitest and the Operations Browser Journey cover the conflict latch, background reconciliation, ambiguous/divergent financial changes, backup export and fallback recovery.
 - Client-only change: no Worker, Durable Object, API, authorization, encryption, ETag or idempotency contract changes. Canonical snapshot and journal ownership remain unchanged.
+
+
+## Implementation slice 4 — fee-correction restore integrity and scoped journal coverage
+
+**Client PR:** PT-02 restore integrity and coverage visibility; target `dev`. No Worker/server or accounting-formula changes.
+
+- [x] Validate structured closed-history fee-correction events at the backup/cloud `importState` boundary after merging with already-committed local journal events.
+- [x] Validate fee-correction lineage at explicit workspace replacement and the Closed History Sync commit boundary.
+- [x] Require the linked sale event, complete source cashflow references, a single valid revision head, matching before/after revision snapshots and parity with the imported canonical closed-trade projection.
+- [x] Require each structured fee-correction event to remain classified as audit-only by the existing replay-coverage contract; malformed, incomplete or unsupported linked corrections are rejected before the candidate snapshot is committed.
+- [x] Preserve the existing append-only merge behavior and leave the previous in-memory state, persisted snapshot and subscribers unchanged when validation fails.
+- [x] Display scoped journal replay coverage in Broker Reconciliation: replayable, evidence-only, audit-only and items-needing-review counts, plus a bounded list of issue reasons.
+- [x] State the coverage boundary explicitly: active-position and cash-holding quantities, free cash, margin debt and realized margin charges only; no claim is made about complete lot cost-basis or closed-trade P&L reconstruction.
+- [x] Add Vitest regression coverage for invalid revision links, missing source cashflows, coverage display wiring and English/Russian copy parity.
+
+This slice does not alter accounting calculations, FIFO allocations, canonical snapshot ownership, generic reversal semantics, broker matching rules, cloud revision protocol or Worker contracts. Authenticated account and multi-device restore QA remains a manual release gate; deterministic CI fixtures do not replace that verification.
