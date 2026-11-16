@@ -48,7 +48,7 @@ Access the production build on [GitHub Pages](https://armave.github.io/portfolio
 
 ### Accounts and roles
 
-On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 6–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Guest and administrator session tokens expire 30 days after issuance. Session tokens are stored hashed by the Durable Object. Logging out, changing a password, or deleting an account still revokes the relevant sessions.
+On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 6–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Guest and administrator session tokens expire 30 days after issuance. Each account can have at most five active sessions; a new sign-in beyond that limit evicts the oldest session. Session tokens are stored hashed by the Durable Object. See the [account-session policy](docs/account-sessions.md). Logging out, changing a password, or deleting an account still revokes the relevant sessions.
 
 Administrators can create, rename, change the role of, reset the password for, and delete accounts in **Settings → User management**. New accounts default to **guest**. Administrator accounts share the single owner workspace. Guests can read only the account-scoped projections published for them by an administrator; they cannot read the owner's workspace, closed history, or workspace encryption key, and cannot write to their projection. Guest accounts are read-only views, not independent portfolios. At least one administrator must remain, and an administrator cannot delete their own signed-in account. Each account also has an **English (en)** or **Russian (ru)** interface language preference. New accounts default to English; administrators can set a user's language in User management, and every user can change their own language in Settings.
 
@@ -207,6 +207,10 @@ portfolio-terminal/
 ```
 
 Keep the financial domain independent of UI and network concerns. Treat `PortfolioState.positions` as canonical, and retain root-level runtime/Worker files until their call sites, deployment paths, and tests have been migrated deliberately.
+
+## Project documentation
+
+Maintained architecture, product, financial, security, broker-integration, and active workstream references are indexed in [docs/README.md](docs/README.md).
 
 ## Quality & Testing
 
