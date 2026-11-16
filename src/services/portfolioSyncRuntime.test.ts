@@ -203,7 +203,9 @@ describe('portfolio sync runtime bindings', () => {
     expect(resolve).not.toHaveBeenCalled();
     expect(dependencies.refreshQuotes).not.toHaveBeenCalled();
   });
-});
+}
+
+
 
 
   it('does not overwrite a cloud revision conflict when the in-flight manual sync completes', async () => {
@@ -232,4 +234,4 @@ describe('portfolio sync runtime bindings', () => {
     expect(setSyncStatus).not.toHaveBeenLastCalledWith({
       status: 'error', text: 'Sync failed'
     });
-  });
+});
