@@ -322,7 +322,12 @@ export async function activatePortfolioStorageScope(
       storage.setItem(targetRulesKey, legacyRules);
     }
 
-    const targetHistory = await readHistoryRecordFromIndexedDB(nextScope).catch(() => null);
+    // The history sidecar may be using the bounded localStorage fallback
+    // because IndexedDB is unavailable. Treat that scoped record as existing
+    // owner data before consulting the retained legacy source; otherwise a
+    // later login can overwrite newer owner history with the old migration copy.
+    const indexedTargetHistory = await readHistoryRecordFromIndexedDB(nextScope).catch(() => null);
+    const targetHistory = indexedTargetHistory ?? readLegacySavedHistorySnapshot(nextScope);
     if (!targetHistory) {
       const legacyIndexedHistory = await readHistoryRecordFromIndexedDB(LEGACY_PORTFOLIO_STORAGE_SCOPE)
         .catch(() => null);
