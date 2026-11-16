@@ -46,6 +46,12 @@ The first administrator activation copies the existing unscoped state and histor
 
 After the scope marker is set, a page reload starts in `offline`; it never automatically reads unscoped legacy data. An authenticated administrator activation selects `owner`, while a guest activation selects only that guest's namespace.
 
+## Slow or unavailable IndexedDB
+
+Each closed-history IndexedDB open and transaction is bounded to five seconds. If a browser never completes one of those operations, the cache read/write falls back to the scoped localStorage sidecar when possible, and the application can continue without waiting indefinitely. A later page load retries IndexedDB initialization.
+
+A timeout does not delete the legacy migration source or replace the portfolio snapshot. If cached history cannot be read from either IndexedDB or the scoped localStorage fallback, the in-memory history cache starts empty for that session; the persisted source remains available for a later retry or recovery.
+
 ## Security boundary and limitations
 
 This is browser-local data isolation for normal account switching. It is not a substitute for server-enforced tenant authorization, tenant-specific Durable Objects, tenant key management, migration/rollback review, or adversarial cross-tenant server tests. The current guest server projection remains read-only and the shared administrator workspace remains the authoritative server workspace.
@@ -61,6 +67,7 @@ Automated coverage verifies:
 - workspace replacement clearing previous journals;
 - authenticated session transition ordering, concurrent authentication checks, and cloud-write gating;
 - fail-closed offline activation when localStorage is unavailable;
+- startup recovery when IndexedDB open requests or read transactions stall;
 - same-workspace backup/cloud journal merging remaining append-only.
 
 The exact PR head must pass repository CI, including TypeScript, Vitest, production build, dead-code/dependency audits, and the production browser journey. Manual authenticated account-switch and multi-device checks remain separate release evidence.
