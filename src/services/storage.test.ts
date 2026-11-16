@@ -726,6 +726,16 @@ describe('storage service', () => {
       expect(storageMap.has('tradernet_rules_v1_recovery_v1')).toBe(false);
     });
 
+    it('recovers broker assumptions when the stored JSON root shape is invalid', () => {
+      const previous = { annualBorrowRate: 0.12, commissionPerShare: 0.02 };
+      saveBrokerRules(previous as never);
+      saveBrokerRules({ annualBorrowRate: 0.18, commissionPerShare: 0.03 } as never);
+      storageMap.set('tradernet_rules_v1', '[]');
+
+      expect(loadBrokerRules()).toEqual(previous);
+      expect(storageMap.get('tradernet_rules_v1')).toBe(JSON.stringify(previous));
+    });
+
     it('returns null for malformed JSON and absent settings', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('tradernet_rules_v1', '{"broken');
@@ -838,6 +848,31 @@ describe('storage service', () => {
       await activatePortfolioStorageScope('guest:history-recovery-test');
       await activatePortfolioStorageScope('legacy');
       expect(loadSavedHistory()).toEqual(previous);
+    });
+
+    it('recovers history when its IndexedDB database is lost but the bounded local recovery copy remains', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const expected = {
+        brokerExecutedTrades: [{ id: 'durable-recovery-trade' }],
+        cashflows: [{ id: 'durable-recovery-cashflow' }]
+      };
+
+      await initializeSavedHistoryStorage('legacy');
+      expect(await saveSavedHistory(expected)).toBe(true);
+      await flushSavedHistoryPersistence();
+      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1_recovery_v1') || 'null')).toEqual(expected);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('portfolio-terminal-history-cache');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error || new Error('Could not delete test history database'));
+        request.onblocked = () => reject(new Error('Test history database deletion was blocked'));
+      });
+
+      await activatePortfolioStorageScope('guest:history-database-loss');
+      await activatePortfolioStorageScope('legacy');
+      expect(loadSavedHistory()).toEqual(expected);
     });
 
     it('uses blank local recovery baselines after a committed portfolio reset', async () => {
