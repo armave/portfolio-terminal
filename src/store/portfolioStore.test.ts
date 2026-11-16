@@ -3742,7 +3742,7 @@ describe('portfolio transaction journal integration', () => {
 
     expect(store.applyCorporateActionSplit(action)).toMatchObject({
       status: 'review_required',
-      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying the split.'
     });
     expect(store.getState().positions.AAPL).toEqual(before);
   });
