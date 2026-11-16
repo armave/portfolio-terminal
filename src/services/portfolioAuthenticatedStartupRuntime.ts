@@ -80,18 +80,18 @@ export function createPortfolioAuthenticatedStartupRuntime(
       .catch((error) => reportBackgroundError(dependencies, 'pending-cloud-writes', error));
   };
 
-  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): void => {
+  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): Promise<void> => {
     if (role === 'guest') {
-      void Promise.resolve()
+      return Promise.resolve()
         .then(() => dependencies.pullGuestPortfolioSnapshot())
         .catch((error) => reportBackgroundError(dependencies, 'guest-snapshot', error));
-      return;
     }
     if (secret) {
-      void Promise.resolve()
+      return Promise.resolve()
         .then(() => dependencies.pullSharedCloudState())
         .catch((error) => reportBackgroundError(dependencies, 'shared-cloud-pull', error));
     }
+    return Promise.resolve();
   };
 
   const startApp = async (secret: string): Promise<void> => {
@@ -125,9 +125,11 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // Local/account workspace and its initial cloud/guest snapshot are ready.
     // Live quotes and cloud-write recovery continue without blocking navigation.
     dependencies.hideStartupLoading();
-    synchronizeWorkspaceInBackground(role, secret);
+    const workspaceSync = synchronizeWorkspaceInBackground(role, secret);
     startInitialQuoteRefresh(role);
-    recoverPendingCloudWritesInBackground();
+    // Do not release queued local writes until the initial remote snapshot has
+    // been reconciled against any edits made while that request was in flight.
+    void workspaceSync.finally(() => recoverPendingCloudWritesInBackground());
   };
 
   return { startApp };
