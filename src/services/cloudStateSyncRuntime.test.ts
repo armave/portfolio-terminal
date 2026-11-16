@@ -165,3 +165,82 @@ describe('cloud state sync options', () => {
     expect(JSON.parse(encryptedStates[1])).toMatchObject(getterState);
   });
 });
+
+
+describe('cloud revision conflict recovery', () => {
+  it('blocks stale retries until a successful cloud pull is accepted locally', async () => {
+    let postCount = 0;
+    let getCount = 0;
+    const statuses: string[] = [];
+    const response = (status: number, payload: unknown, revision?: number) => new Response(
+      JSON.stringify(payload),
+      {
+        status,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(revision === undefined ? {} : { ETag: `"${revision}"` })
+        }
+      }
+    );
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:test-nonce',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(0)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async (_input, init) => {
+        const method = String(init?.method || 'GET').toUpperCase();
+        if (method === 'GET') {
+          getCount += 1;
+          return getCount === 1
+            ? response(503, { error: 'Temporary pull failure.' })
+            : response(404, { error: 'No cloud workspace has been saved yet.' }, 0);
+        }
+        postCount += 1;
+        return postCount === 1
+          ? response(409, { error: 'Cloud portfolio changed since this device last synced.' }, 1)
+          : response(200, { success: true, revision: 2 }, 2);
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
+    };
+
+    expect(await runtime.pushCloudState({ activeView: 'AAPL' }, options)).toBe(false);
+    expect(statuses.at(-1)).toBe('conflict');
+    expect(postCount).toBe(1);
+
+    expect(await runtime.pushCloudState({ activeView: 'MSFT' }, options)).toBe(false);
+    expect(postCount).toBe(1);
+    expect(statuses.at(-1)).toBe('conflict');
+
+    await runtime.pullCloudState(options);
+    expect(statuses.at(-1)).toBe('conflict');
+    expect(await runtime.pushCloudState({ activeView: 'NVDA' }, options)).toBe(false);
+    expect(postCount).toBe(1);
+
+    // An authorized empty-cloud response is also a confirmed base revision.
+    await runtime.pullCloudState(options);
+    expect(statuses.at(-1)).toBe('synced');
+    expect(getCount).toBe(2);
+    expect(await runtime.pushCloudState({ activeView: 'NVDA' }, options)).toBe(true);
+    expect(postCount).toBe(2);
+    expect(statuses.at(-1)).toBe('synced');
+  });
+});
