@@ -488,6 +488,9 @@ async function tryAutoReconcileCloudConflict(
 
     let remoteState: CloudStateRecord;
     if (response.status === 404) {
+      // A previously populated workspace disappearing may represent an explicit
+      // destructive reset. Never auto-adopt an empty snapshot over that base.
+      if (Object.keys(base).length > 0) return false;
       remoteState = {};
     } else {
       if (!response.ok) return false;

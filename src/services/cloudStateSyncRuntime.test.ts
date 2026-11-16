@@ -179,7 +179,7 @@ describe('background cloud conflict reconciliation', () => {
     }
   );
 
-  function createRuntime(remoteAfterConflict: Record<string, unknown>) {
+  function createRuntime(remoteAfterConflict: Record<string, unknown>, remoteStatus = 200) {
     let revision = 0;
     let postCount = 0;
     let getCount = 0;
@@ -223,9 +223,11 @@ describe('background cloud conflict reconciliation', () => {
           if (getCount === 1) {
             return response(200, { encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(base))}:nonce` }, 1);
           }
-          return response(200, {
-            encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remoteAfterConflict))}:nonce`
-          }, 2);
+          return remoteStatus === 404
+            ? response(404, { error: 'Workspace was reset.' }, 2)
+            : response(200, {
+              encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remoteAfterConflict))}:nonce`
+            }, 2);
         }
         postCount += 1;
         const body = JSON.parse(String(init?.body || '{}'));
@@ -324,6 +326,24 @@ describe('background cloud conflict reconciliation', () => {
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
     expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
     expect(posted).toHaveLength(1);
+  });
+
+  it('does not auto-adopt a missing cloud record over a previously populated base', async () => {
+    let applied = false;
+    const { runtime, base, posted, counts } = createRuntime({}, 404);
+    const options = {
+      secret: 'test-secret',
+      getState: () => base as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: () => { applied = true; return true; },
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(applied).toBe(false);
+    expect(posted).toHaveLength(1);
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
   });
 
   it('does not attempt background reconciliation without an accepted base snapshot', async () => {
