@@ -1,7 +1,13 @@
+export const DEFAULT_PAGE_RENDER_READINESS_TIMEOUT_MS = 12_000;
+
 export interface PageRenderReadinessOptions {
   document: Document;
   getRoot: () => Element | null;
   onReady: () => void;
+  /** Maximum time the full-screen startup overlay may wait for optional desk content. */
+  timeoutMs?: number;
+  /** Diagnostic hook when the active desk still has a loading placeholder at the deadline. */
+  onTimeout?: () => void;
 }
 
 /** Resolve the outer container whose visible contents define each initial page. */
@@ -74,6 +80,7 @@ export function watchPageRenderReadiness(
   const browserWindow = windowRef;
   let disposed = false;
   let frameId: number | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let stableFrames = 0;
   let currentRoot: Element | null = null;
 
@@ -87,6 +94,8 @@ export function watchPageRenderReadiness(
     disposed = true;
     if (frameId !== null) browserWindow.cancelAnimationFrame(frameId);
     frameId = null;
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    timeoutId = null;
     observer.disconnect();
     observeTarget.removeEventListener('load', scheduleCheck, true);
     observeTarget.removeEventListener('error', scheduleCheck, true);
@@ -126,6 +135,22 @@ export function watchPageRenderReadiness(
   function scheduleCheck() {
     if (disposed || frameId !== null) return;
     frameId = browserWindow.requestAnimationFrame(checkReadiness);
+  }
+
+  const readinessTimeoutMs = options.timeoutMs ?? DEFAULT_PAGE_RENDER_READINESS_TIMEOUT_MS;
+  if (readinessTimeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      if (disposed) return;
+      // A stalled optional lazy chunk, eager image, or font must not retain the
+      // full-screen app shell forever. The active desk keeps its own local
+      // fallback while navigation and recovery controls remain available.
+      cleanup();
+      try {
+        options.onTimeout?.();
+      } finally {
+        onReady();
+      }
+    }, readinessTimeoutMs);
   }
 
   observer.observe(observeTarget, {
