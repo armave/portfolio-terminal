@@ -19,6 +19,7 @@ import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
+import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
@@ -307,6 +308,16 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         brokerOpenAllocations
       );
       const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+      const feeAuditUpdate = buildClosedHistoryFeeAuditUpdate(
+        currentPortfolio.transactionEvents || [],
+        appTrades,
+        updatedTrades,
+        cashflowRows
+      );
+      if (feeAuditUpdate.rejectedCount > 0) {
+        console.warn('Closed-history fee sync retained rows without complete linked sale/cashflow evidence:', feeAuditUpdate.rejectedTradeIds);
+      }
+      const auditedClosedTrades = feeAuditUpdate.closedTrades;
       const openPositionFeeAllocations = brokerExecutions.length
         ? aggregateOpenBrokerMarginFeeAllocationsByTicker(brokerExecutions, brokerOpenAllocations)
         : appOpenAllocations;
@@ -315,27 +326,35 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         openPositionFeeAllocations
       );
       const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
-      const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
+      const changedAppRows = auditedClosedTrades.filter((trade, index) => trade !== appTrades[index]).length;
       const changedMarginPositions = JSON.stringify(currentPortfolio.positions || {}) !== JSON.stringify(updatedMarginPositions);
       const updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
       // Persist the current broker cashflow snapshot even when no fee date
       // overlaps a closed trade yet. Later recalculation can retry from storage.
-      const nextState: Record<string, unknown> = {};
+      const nextState: Pick<Partial<PortfolioState>, 'brokerExecutedTrades' | 'positions' | 'cashflows'> = {};
       if (cashflowsChanged) nextState.cashflows = cashflowRows;
       // Compare the complete recalculated records before writing. This prevents
       // repeated post-load recalculation from causing redundant Worker syncs.
       if (changedBrokerRows && JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
         nextState.brokerExecutedTrades = updatedExecutions;
       }
-      if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
-        nextState.closedTrades = updatedTrades;
-      }
       if (changedMarginPositions) nextState.positions = updatedMarginPositions;
       if (!isOperationCurrent()) return false;
       const previousPortfolioState = portfolioStore.getState();
-      if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
+      if (Object.keys(nextState).length || changedAppRows || feeAuditUpdate.appendedCount > 0) {
+        const committed = portfolioStore.commitClosedHistoryFeeSync(
+          nextState,
+          auditedClosedTrades,
+          feeAuditUpdate.transactionEvents,
+          false
+        );
+        if (!committed) {
+          setCashflowSyncMessage('Closed-history fee changes could not be linked to the transaction journal; the prior snapshot was preserved.');
+          return false;
+        }
+      }
       // Keep canonical portfolio fields and the independently stored history
       // sidecar aligned. A failed write restores the prior in-memory snapshot
       // and must never be followed by a cloud history write.
