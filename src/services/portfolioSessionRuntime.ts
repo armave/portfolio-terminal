@@ -122,6 +122,9 @@ export function createPortfolioSessionRuntime(
       } catch {
         // Keep the invalid session blocked even if local cleanup is unavailable.
       }
+      // A newer login may begin while offline storage cleanup is awaiting I/O.
+      // Do not publish a stale signed-out event over that newer identity.
+      if (requestGeneration !== publishGeneration) return null;
       dependencies.emitUserChanged(null);
       return null;
     }
