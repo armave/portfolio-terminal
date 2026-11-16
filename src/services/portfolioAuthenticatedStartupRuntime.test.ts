@@ -55,17 +55,19 @@ describe('portfolio authenticated startup runtime', () => {
 
     expect(fixture.calls.slice(0, 12)).toEqual([
       'publish-user', 'load-rules', 'secret:valid-secret',
-      'import-admin-workspace', 'rollover', 'pull-shared-cloud',
+      'import-admin-workspace', 'rollover',
       'resolve-interval:admin', 'set-interval:admin-interval', 'rollover-timer:true',
-      'quote-refresh-start', 'saved-admin-view', 'scroll'
+      'quote-refresh-start', 'saved-admin-view', 'scroll', 'hide-loading'
     ]);
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.initializeOfflineHistoryStorage).not.toHaveBeenCalled();
     await vi.waitFor(() => {
+      expect(fixture.dependencies.pullSharedCloudState).toHaveBeenCalledTimes(1);
       expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1);
       expect(fixture.dependencies.renderBoardAnalystConsensus).toHaveBeenCalledTimes(1);
       expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1);
     });
+    expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('pull-shared-cloud'));
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
   });
 
@@ -74,12 +76,15 @@ describe('portfolio authenticated startup runtime', () => {
 
     await fixture.start();
 
-    expect(fixture.dependencies.pullGuestPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.importSavedAdminWorkspace).not.toHaveBeenCalled();
     expect(fixture.dependencies.pullSharedCloudState).not.toHaveBeenCalled();
-    expect(fixture.dependencies.showGuestBalanceView).toHaveBeenCalledTimes(2);
+    expect(fixture.dependencies.showGuestBalanceView).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() => expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => {
+      expect(fixture.dependencies.pullGuestPortfolioSnapshot).toHaveBeenCalledTimes(1);
+      expect(fixture.dependencies.finishInitialQuoteRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('pull-guest-snapshot'));
   });
 
   it('initializes the offline history cache only for unauthenticated startup', async () => {
@@ -106,7 +111,7 @@ describe('portfolio authenticated startup runtime', () => {
     await Promise.resolve();
 
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1));
     expect(fixture.dependencies.finishInitialQuoteRefresh).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(15_000);
