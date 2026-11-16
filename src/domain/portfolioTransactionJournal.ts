@@ -303,10 +303,12 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     if (typeof value.quantity !== 'number' || !closeEnough(value.quantity, quantityBeforeTotal)) return false;
     if ((Math.abs(ledgerDeltas.position) > 1e-8
           ? typeof value.positionQuantityDelta !== 'number' || !closeEnough(value.positionQuantityDelta, ledgerDeltas.position)
-          : value.positionQuantityDelta !== undefined && Math.abs(value.positionQuantityDelta) > 1e-8) ||
+          : value.positionQuantityDelta !== undefined &&
+            (typeof value.positionQuantityDelta !== 'number' || Math.abs(value.positionQuantityDelta) > 1e-8)) ||
         (Math.abs(ledgerDeltas['cash-holding']) > 1e-8
           ? typeof value.cashHoldingQuantityDelta !== 'number' || !closeEnough(value.cashHoldingQuantityDelta, ledgerDeltas['cash-holding'])
-          : value.cashHoldingQuantityDelta !== undefined && Math.abs(value.cashHoldingQuantityDelta) > 1e-8)) return false;
+          : value.cashHoldingQuantityDelta !== undefined &&
+            (typeof value.cashHoldingQuantityDelta !== 'number' || Math.abs(value.cashHoldingQuantityDelta) > 1e-8))) return false;
   }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
