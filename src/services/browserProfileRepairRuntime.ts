@@ -1,4 +1,7 @@
+export const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
+
 export interface BrowserProfileRepairDependencies {
+  automatic?: boolean;
   appBaseUrl: string;
   origin: string;
   getServiceWorkerRegistration: (scope: string) => Promise<ServiceWorkerRegistration | undefined>;
@@ -6,6 +9,21 @@ export interface BrowserProfileRepairDependencies {
   deleteCache: (name: string) => Promise<boolean>;
   reload: (url: string) => void;
   now?: () => number;
+}
+
+/**
+ * Read and remove the one-shot marker from the URL after an automatic repair
+ * reload. It is intentionally kept in memory only; no local storage is touched.
+ */
+export function consumeAutomaticRepairAttemptMarker(
+  currentHref: string,
+  replaceUrl: (url: string) => void
+): boolean {
+  const currentUrl = new URL(currentHref);
+  if (currentUrl.searchParams.get(AUTOMATIC_REPAIR_ATTEMPT_QUERY) !== '1') return false;
+  currentUrl.searchParams.delete(AUTOMATIC_REPAIR_ATTEMPT_QUERY);
+  replaceUrl(currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  return true;
 }
 
 export interface BrowserProfileRepairResult {
@@ -62,6 +80,7 @@ export async function repairBrowserProfile(
 
   const reloadUrl = new URL(appScope.href);
   reloadUrl.searchParams.set('_pt_repair', String((dependencies.now ?? Date.now)()));
+  if (dependencies.automatic) reloadUrl.searchParams.set(AUTOMATIC_REPAIR_ATTEMPT_QUERY, '1');
   dependencies.reload(reloadUrl.href);
 
   return {
@@ -72,13 +91,16 @@ export async function repairBrowserProfile(
 }
 
 /** Repair the current Portfolio Terminal shell without touching saved portfolio data. */
-export async function repairCurrentBrowserAppCache(): Promise<BrowserProfileRepairResult> {
+export async function repairCurrentBrowserAppCache(
+  options: { automatic?: boolean } = {}
+): Promise<BrowserProfileRepairResult> {
   if (typeof window === 'undefined') {
     throw new Error('Browser profile repair is available only in a browser.');
   }
 
   return repairBrowserProfile({
     appBaseUrl: import.meta.env.BASE_URL,
+    automatic: options.automatic === true,
     origin: window.location.origin,
     getServiceWorkerRegistration: async (scope) => {
       if (!('serviceWorker' in navigator)) return undefined;
