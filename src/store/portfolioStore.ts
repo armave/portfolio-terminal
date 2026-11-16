@@ -651,7 +651,7 @@ export class PortfolioStore {
   /**
    * Roll back to a snapshot reference previously issued by this store. This is
    * reserved for in-memory rollback when a multi-step local/cloud commit fails;
-   * arbitrary state updates must use the audited command or import boundaries.
+   * ordinary external writes must use the guarded setter or explicit command/import boundary.
    */
   public restoreInMemorySnapshot(snapshot: PortfolioState): boolean {
     if (!this.committedSnapshots.has(snapshot)) return false;
