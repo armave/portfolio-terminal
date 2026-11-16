@@ -911,7 +911,7 @@ async function persistEncryptedGatewaySecret(secret: string): Promise<void> {
   }
   const db = await openSecureKeyDatabase();
   try {
-    const key = await getOrCreateDeviceKey(db, false);
+    const key = await getOrCreateDeviceKey(db);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secret));
     const payload = JSON.stringify({
