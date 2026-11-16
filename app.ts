@@ -2,7 +2,7 @@ import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
-import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
+import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -1964,6 +1964,7 @@ function bindStartupActions() {
     translateText,
     showToast,
     logAppMessage,
+    getSyncStatus: getCloudSyncStatus,
     setSyncStatus: setCloudSyncStatus
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
