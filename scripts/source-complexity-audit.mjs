@@ -1,28 +1,31 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as ts from 'typescript';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FILE_LINE_LIMIT = 750;
 const FUNCTION_LINE_LIMIT = 100;
 const FUNCTION_COMPLEXITY_LIMIT = 15;
-
-// ScriptKind numeric values are retained by the TypeScript compiler API even when its runtime bundle omits the enum object.
-const SCRIPT_KIND = Object.freeze({ JS: 1, JSX: 2, TS: 3, TSX: 4 });
-const SCRIPT_TARGET_LATEST = 99;
 const SOURCE_ROOTS = ['src', 'app.ts', 'worker.js', 'state-store.js'];
 const IGNORED_FILE = /(?:\.test\.[cm]?[jt]sx?|\.spec\.[cm]?[jt]sx?|\.d\.ts|\/i18n-ru\.ts)$/;
 
+// This is a lexical advisory, not a compiler or a proof of dead code.
+// Mask comments and literals before counting braces so most source formatting
+// and inline strings do not distort function boundaries.
+const NON_CODE_PATTERN = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`/g;
+
 async function collectSourceFiles(entry) {
   const absolute = path.join(root, entry);
-  let stat;
+  let entryStat;
   try {
-    stat = await (await import('node:fs/promises')).stat(absolute);
+    entryStat = await stat(absolute);
   } catch {
     return [];
   }
-  if (stat.isFile()) return /\.[cm]?[jt]sx?$/.test(entry) && !IGNORED_FILE.test(entry) ? [entry] : [];
+
+  if (entryStat.isFile()) {
+    return /\.[cm]?[jt]sx?$/.test(entry) && !IGNORED_FILE.test(entry) ? [entry] : [];
+  }
 
   const children = await readdir(absolute, { withFileTypes: true });
   const nested = await Promise.all(children
@@ -35,50 +38,56 @@ async function collectSourceFiles(entry) {
   return files.concat(nested.flat());
 }
 
-function functionName(node, sourceFile) {
-  if (node.name && ts.isIdentifier(node.name)) return node.name.text;
-  const parent = node.parent;
-  if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
-  if (parent && ts.isPropertyAssignment(parent)) return parent.name.getText(sourceFile);
-  if (ts.isConstructorDeclaration(node)) return 'constructor';
-  if (ts.isMethodDeclaration(node)) return node.name.getText(sourceFile);
-  return '<anonymous>';
+function maskNonCode(source) {
+  return source.replace(NON_CODE_PATTERN, value => value.replace(/[^\n]/g, ' '));
 }
 
-function measureFunctionComplexity(node) {
-  let complexity = 1;
-  const visit = current => {
-    if (current !== node && isFunctionLike(current)) return;
-    if (
-      ts.isIfStatement(current) ||
-      ts.isConditionalExpression(current) ||
-      ts.isForStatement(current) ||
-      ts.isForInStatement(current) ||
-      ts.isForOfStatement(current) ||
-      ts.isWhileStatement(current) ||
-      ts.isDoStatement(current) ||
-      ts.isCatchClause(current) ||
-      (ts.isCaseClause(current) && current.expression !== undefined)
-    ) complexity += 1;
-
-    if (ts.isBinaryExpression(current) && ['&&', '||', '??'].includes(current.operatorToken.getText())) {
-      complexity += 1;
+function findMatchingBrace(source, openIndex) {
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    else if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
     }
-
-    ts.forEachChild(current, visit);
-  };
-  visit(node);
-  return complexity;
+  }
+  return -1;
 }
 
-function isFunctionLike(node) {
-  return ts.isFunctionDeclaration(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isConstructorDeclaration(node) ||
-    ts.isGetAccessorDeclaration(node) ||
-    ts.isSetAccessorDeclaration(node) ||
-    ts.isArrowFunction(node) ||
-    ts.isFunctionExpression(node);
+function findFunctionCandidates(source, maskedSource, relativePath) {
+  const candidates = [];
+  const patterns = [
+    /\b(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)?\s*\([^)]*\)\s*(?::\s*[\w$<>\[\]|&?.,\s]+)?\s*\{/g,
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{/g
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of maskedSource.matchAll(pattern)) {
+      const matchIndex = match.index ?? 0;
+      const openBrace = matchIndex + match[0].lastIndexOf('{');
+      const closeBrace = findMatchingBrace(maskedSource, openBrace);
+      if (closeBrace < 0) continue;
+
+      const startLine = source.slice(0, matchIndex).split('\n').length;
+      const lineCount = source.slice(matchIndex, closeBrace + 1).split('\n').length;
+      const body = maskedSource.slice(openBrace, closeBrace + 1);
+      const branchCount = (body.match(/\b(?:if|for|while|do|catch|case)\b/g) || []).length;
+      const booleanCount = (body.match(/&&|\|\||\?\?/g) || []).length;
+      const ternaryCount = (body.match(/\?(?![?.])/g) || []).length;
+      const complexity = 1 + branchCount + booleanCount + ternaryCount;
+
+      if (lineCount > FUNCTION_LINE_LIMIT || complexity >= FUNCTION_COMPLEXITY_LIMIT) {
+        candidates.push({
+          file: relativePath,
+          name: match[1] || '<anonymous>',
+          startLine,
+          lines: lineCount,
+          complexity
+        });
+      }
+    }
+  }
+  return candidates;
 }
 
 async function main() {
@@ -89,39 +98,16 @@ async function main() {
 
   for (const relativePath of files) {
     const content = await readFile(path.join(root, relativePath), 'utf8');
-    const extension = path.extname(relativePath).toLowerCase();
-    const scriptKind = extension === '.tsx' ? SCRIPT_KIND.TSX
-      : extension === '.jsx' ? SCRIPT_KIND.JSX
-        : extension === '.js' || extension === '.mjs' || extension === '.cjs' ? SCRIPT_KIND.JS
-          : SCRIPT_KIND.TS;
-    const sourceFile = ts.createSourceFile(relativePath, content, SCRIPT_TARGET_LATEST, true, scriptKind);
-    const lineCount = sourceFile.getLineAndCharacterOfPosition(content.length).line + 1;
+    const lineCount = content.split('\n').length;
     totalLines += lineCount;
     if (lineCount > FILE_LINE_LIMIT) largeFiles.push({ file: relativePath, lines: lineCount });
 
-    const visit = node => {
-      if (isFunctionLike(node) && node.body) {
-        const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-        const end = sourceFile.getLineAndCharacterOfPosition(node.end).line + 1;
-        const lines = end - start + 1;
-        const complexity = measureFunctionComplexity(node);
-        if (lines > FUNCTION_LINE_LIMIT || complexity >= FUNCTION_COMPLEXITY_LIMIT) {
-          complexFunctions.push({
-            file: relativePath,
-            name: functionName(node, sourceFile),
-            startLine: start,
-            lines,
-            complexity
-          });
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
+    const masked = maskNonCode(content);
+    complexFunctions.push(...findFunctionCandidates(content, masked, relativePath));
   }
 
   console.log('Portfolio Terminal source complexity report');
-  console.log('Informational baseline only; this command does not block on existing hotspots.');
+  console.log('Informational lexical heuristic; this command does not block on existing hotspots or prove code is unused.');
   console.log(`Scanned ${files.length} source files / ${totalLines.toLocaleString('en-US')} lines.`);
 
   if (largeFiles.length) {
@@ -152,7 +138,7 @@ async function main() {
   if (duplicates.length > 30) console.log(`  ... ${duplicates.length - 30} additional selector groups omitted`);
 
   if (complexFunctions.length) {
-    console.log(`\nFunctions over ${FUNCTION_LINE_LIMIT} lines or complexity ${FUNCTION_COMPLEXITY_LIMIT}+ (${complexFunctions.length}):`);
+    console.log(`\nFunctions over ${FUNCTION_LINE_LIMIT} lines or heuristic complexity ${FUNCTION_COMPLEXITY_LIMIT}+ (${complexFunctions.length}):`);
     for (const item of complexFunctions.sort((a, b) =>
       b.complexity - a.complexity || b.lines - a.lines
     ).slice(0, 40)) {
