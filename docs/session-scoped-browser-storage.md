@@ -52,6 +52,14 @@ Each closed-history IndexedDB open and transaction is bounded to five seconds. I
 
 A timeout does not delete the legacy migration source or replace the portfolio snapshot. If cached history cannot be read from either IndexedDB or the scoped localStorage fallback, the in-memory history cache starts empty for that session; the persisted source remains available for a later retry or recovery.
 
+## Local recovery copies
+
+The active portfolio snapshot, broker assumptions, and closed-history cache retain a scoped last-known-good copy. Startup validates the active record before use; when it is malformed, it restores the last-known-good copy from the same account namespace and repairs the active record when storage permits. IndexedDB history keeps its recovery row in the same scoped database, with a bounded localStorage recovery copy when IndexedDB is unavailable.
+
+Recovery copies are not merged into financial records. They restore one complete prior valid version only; they do not infer missing trades, combine divergent positions, or reconcile independently edited offline tabs. An explicit portfolio reset writes a blank recovery baseline so a later repair cannot resurrect pre-reset holdings or history. Clearing local data removes the corresponding portfolio and broker-rule recovery copies.
+
+Cloud revision conflicts continue to use the separate conservative three-way reconciler: only allowlisted UI preferences are field-merged, and conflicting financial snapshots remain blocked for backup/manual recovery.
+
 ## Security boundary and limitations
 
 This is browser-local data isolation for normal account switching. It is not a substitute for server-enforced tenant authorization, tenant-specific Durable Objects, tenant key management, migration/rollback review, or adversarial cross-tenant server tests. The current guest server projection remains read-only and the shared administrator workspace remains the authoritative server workspace.
