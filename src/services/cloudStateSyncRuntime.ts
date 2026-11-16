@@ -539,19 +539,20 @@ async function tryAutoReconcileCloudConflict(
       if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) return false;
       encryptedMerged = await encryptCloudPayload(serialized, secret);
       if (!isCurrentSession()) return false;
+
+      // Encryption is asynchronous. Refuse to apply the earlier candidate if
+      // the user edited this device while the background merge was preparing.
+      const localAfterEncryption = prepareCloudStateSnapshot(handlers.getState?.() || conflictedState);
+      if (cloudStateFingerprint(localAfterEncryption) !== cloudStateFingerprint(localState)) return false;
     }
 
+    // Advance the pull generation before importing state: store subscribers may
+    // enqueue another save during import and must capture the refreshed revision.
+    revisionCoordinator.recordPulledRevision(latestRevision);
     const applied = applyReconciledState(merged);
     if (applied === false || !isCurrentSession()) return false;
 
-    if (mergedFingerprint === remoteFingerprint) {
-      // A pull-only reconciliation still advances the revision generation so
-      // writes already queued against the old base cannot inherit this revision.
-      revisionCoordinator.recordPulledRevision(latestRevision);
-    } else {
-      // Mark the refreshed base before the direct conditional write. The write
-      // is made against exactly the ETag returned by the latest background GET.
-      revisionCoordinator.recordPulledRevision(latestRevision);
+    if (mergedFingerprint !== remoteFingerprint) {
       const retry = await pushCloudWrite(apiUrl('/api/state'), {
         method: 'POST',
         headers: authHeaders(secret, `"${latestRevision}"`),
