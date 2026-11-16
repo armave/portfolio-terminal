@@ -19,6 +19,7 @@ function formatMarginTargetDifference(targetPrice: number, currentPrice: number)
   }
 
   const differencePercent = ((targetPrice - currentPrice) / currentPrice) * 100;
+  if (!Number.isFinite(differencePercent)) return '';
   return `${differencePercent >= 0 ? '+' : ''}${differencePercent.toFixed(2)}%`;
 }
 
