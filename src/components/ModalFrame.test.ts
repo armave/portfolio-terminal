@@ -52,9 +52,9 @@ describe('shared modal frame', () => {
     }
 
     const news = readSource('./MarketNewsArticleDialog.tsx');
-    expect(news).toContain('closeRef={newsCloseRef}');
-    expect(news).toContain('onClose={dismissNewsDialog}');
-    expect(news).toContain('newsCloseRef.current?.()');
+    expect(news).toContain('closeRef={closeRef}');
+    expect(news).toContain('onClose={onClose}');
+    expect(news).toContain('closeRef.current?.()');
   });
 
   it('keeps focus management and content in their owning modules', () => {
@@ -96,4 +96,17 @@ describe('shared modal frame', () => {
     expect(frame).toContain("typeof backdropStyle === 'object' && backdropStyle !== null");
     expect(frame).toContain("typeof dialogStyle === 'object' && dialogStyle !== null");
   });
+  it('keeps company-news article modal ownership outside the market-insights feed', () => {
+    const panel = readSource('./MarketInsightsPanel.tsx');
+    const dialog = readSource('./MarketNewsArticleDialog.tsx');
+
+    expect(panel).toContain('<MarketNewsArticleDialog');
+    expect(panel).not.toContain('createPortal(');
+    expect(panel).not.toContain('useDialogFocus(');
+    expect(dialog).toContain('createPortal(');
+    expect(dialog).toContain('useDialogFocus(');
+    expect(dialog).toContain('ariaLabelledBy="newsArticleModalTitle"');
+    expect(dialog).toContain('restoreFocusRef');
+  });
+
 });
