@@ -126,10 +126,15 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // Live quotes and cloud-write recovery continue without blocking navigation.
     dependencies.hideStartupLoading();
     const workspaceSync = synchronizeWorkspaceInBackground(role, secret);
-    startInitialQuoteRefresh(role);
-    // Do not release queued local writes until the initial remote snapshot has
-    // been reconciled against any edits made while that request was in flight.
-    void workspaceSync.finally(() => recoverPendingCloudWritesInBackground());
+    // Start quote refresh only after the remote snapshot is reconciled. This
+    // avoids racing live price writes against a cloud pull while still keeping
+    // both operations off the first-render critical path.
+    void workspaceSync.finally(() => {
+      startInitialQuoteRefresh(role);
+      // Do not release queued local writes until the initial remote snapshot has
+      // been reconciled against any edits made while that request was in flight.
+      recoverPendingCloudWritesInBackground();
+    });
   };
 
   return { startApp };
