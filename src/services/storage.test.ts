@@ -652,6 +652,8 @@ describe('storage service', () => {
 
     expect(loadSavedHistory()).toEqual(newerOwnerHistory);
     expect(JSON.parse(storageMap.get('portfolio_closed_history_v1::owner') || 'null'))
+      .toEqual(newerOwnerHistory);
+    expect(JSON.parse(storageMap.get('portfolio_closed_history_v1') || 'null'))
       .toEqual(legacyHistory);
   });
 
