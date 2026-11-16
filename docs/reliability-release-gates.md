@@ -127,6 +127,10 @@ If troubleshooting requires user-specific evidence, use an explicit, time-limite
 
 Telemetry collection, retention, sampling, and export must be documented and reviewed with the security/privacy workstream (PT-16) before enabling a new production sink. This PR defines the event contract and does not add a third-party analytics service or transmit portfolio data.
 
+## Stuck profile and service-worker recovery
+
+The app checks its registered service worker for updates on each page load and reloads once when a new controller takes over. If startup remains pending for 45 seconds, the UI exposes **Repair this browser**. This removes only the app-scoped service worker and its Workbox precache, then reloads with a cache-busting query. Portfolio localStorage, IndexedDB, device credentials, and other apps' caches are preserved. The recovery action is not a logout and does not reset the portfolio.
+
 ## Browser cloud-sync request deadlines
 
 Cloud state and closed-history requests are part of authenticated workspace startup. Each cloud request has a 15-second default deadline that covers both response headers and JSON body consumption. A timeout aborts the request; a cloud-state pull then retains the already recovered local workspace and reports sync unavailable rather than leaving the startup overlay pending indefinitely. Idempotent writes retain their existing bounded retry behavior, with each network attempt subject to the same request deadline.
