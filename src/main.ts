@@ -4,7 +4,6 @@ import { App } from './App';
 import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
-import { initializeSavedHistoryStorage } from './services/storage';
 import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
 import {
@@ -173,15 +172,6 @@ async function bootstrapApplication() {
   // prevent the app from rendering its retry/repair controls.
   mountPreactApplication();
   armStartupWatchdog();
-
-  // Hydrate the IndexedDB history cache before authenticated workspace consumers
-  // read it. The shell stays mounted, and the watchdog exposes safe repair if a
-  // stale browser profile prevents this promise from completing.
-  try {
-    await initializeSavedHistoryStorage();
-  } catch (error) {
-    console.warn('Closed-history cache initialization did not complete; legacy and cloud recovery remain available:', error);
-  }
 
   // Let App effects register their runtime event subscriptions before startup emits events.
   window.requestAnimationFrame(() => { void initApp(); });

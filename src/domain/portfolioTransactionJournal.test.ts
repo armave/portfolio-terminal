@@ -196,6 +196,18 @@ describe('portfolio transaction journal imports', () => {
     expect(Object.isFrozen(merged)).toBe(true);
   });
 
+  it('accepts an identical backup event when JSON object keys have been reordered', () => {
+    const original = createPortfolioTransactionEvent(draft, {
+      eventId: 'backup-order-independent',
+      actor: { type: 'user', id: 'user-7' },
+      source: 'terminal'
+    });
+    const reordered = Object.fromEntries(Object.entries(original).reverse()) as typeof original;
+
+    expect(JSON.stringify(original)).not.toBe(JSON.stringify(reordered));
+    expect(mergePortfolioTransactionEvents([original], [reordered])).toEqual([original]);
+  });
+
   it('rejects imports that conflict by event ID or idempotency key', () => {
     const original = createPortfolioTransactionEvent(draft, {
       eventId: 'event-1',

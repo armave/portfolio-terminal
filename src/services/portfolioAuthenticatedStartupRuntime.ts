@@ -1,9 +1,12 @@
 export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 
+type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
+
 export interface PortfolioAuthenticatedStartupDependencies {
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
   clearAccountIdentity: () => void;
+  initializeOfflineHistoryStorage: () => Promise<unknown>;
   setGatewaySecret: (secret: string) => void;
   getAccountRole: () => AuthenticatedStartupRole;
   pullGuestPortfolioSnapshot: () => Promise<unknown>;
@@ -22,34 +25,92 @@ export interface PortfolioAuthenticatedStartupDependencies {
   renderBoardAnalystConsensus: () => void;
   recoverPendingCloudWrites: () => Promise<void>;
   hideStartupLoading: () => void;
+  reportBackgroundStartupError?: (task: StartupBackgroundTask, error: unknown) => void;
 }
 
 export interface PortfolioAuthenticatedStartupRuntime {
   startApp: (secret: string) => Promise<void>;
 }
 
+const INITIAL_QUOTE_REFRESH_DEADLINE_MS = 15_000;
+
+function reportBackgroundError(
+  dependencies: PortfolioAuthenticatedStartupDependencies,
+  task: StartupBackgroundTask,
+  error: unknown
+): void {
+  dependencies.reportBackgroundStartupError?.(task, error);
+}
+
 /**
  * Sequences authenticated admin/guest workspace startup without taking ownership
  * of portfolio storage, quote providers, cloud sync, or financial calculations.
+ * The saved workspace becomes interactive before nonessential live-price and
+ * pending-write work finishes; those tasks must never hold the startup shell open.
  */
 export function createPortfolioAuthenticatedStartupRuntime(
   dependencies: PortfolioAuthenticatedStartupDependencies
 ): PortfolioAuthenticatedStartupRuntime {
+  const startInitialQuoteRefresh = (role: AuthenticatedStartupRole): void => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const refresh = Promise.resolve().then(() => dependencies.refreshLivePrices());
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Initial market-data refresh exceeded its startup deadline.'));
+      }, INITIAL_QUOTE_REFRESH_DEADLINE_MS);
+    });
+
+    void Promise.race([refresh, deadline])
+      .catch((error) => reportBackgroundError(dependencies, 'initial-quotes', error))
+      .finally(() => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+        dependencies.finishInitialQuoteRefresh();
+        if (role === 'guest') dependencies.showGuestBalanceView();
+        try {
+          dependencies.renderBoardAnalystConsensus();
+        } catch (error) {
+          reportBackgroundError(dependencies, 'initial-quotes', error);
+        }
+      });
+  };
+
+  const recoverPendingCloudWritesInBackground = (): void => {
+    void Promise.resolve()
+      .then(() => dependencies.recoverPendingCloudWrites())
+      .catch((error) => reportBackgroundError(dependencies, 'pending-cloud-writes', error));
+  };
+
+  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): Promise<void> => {
+    if (role === 'guest') {
+      return Promise.resolve()
+        .then(() => dependencies.pullGuestPortfolioSnapshot())
+        .then(() => undefined)
+        .catch((error) => reportBackgroundError(dependencies, 'guest-snapshot', error));
+    }
+    if (secret) {
+      return Promise.resolve()
+        .then(() => dependencies.pullSharedCloudState())
+        .then(() => undefined)
+        .catch((error) => reportBackgroundError(dependencies, 'shared-cloud-pull', error));
+    }
+    return Promise.resolve();
+  };
+
   const startApp = async (secret: string): Promise<void> => {
-    // Resolve identity and activate its browser workspace before reading rules.
+    // Resolve identity and activate its account-scoped storage before reading rules.
+    // Offline history is initialized only after we know no account workspace applies.
     if (secret) await dependencies.publishCurrentUser();
-    else dependencies.clearAccountIdentity();
+    if (!secret) dependencies.clearAccountIdentity();
+    if (!secret || dependencies.getAccountRole() === null) {
+      await dependencies.initializeOfflineHistoryStorage();
+    }
 
     dependencies.loadBrokerRules();
     dependencies.setGatewaySecret(secret);
     const role = dependencies.getAccountRole();
-    if (role === 'guest') {
-      // Replace any administrator workspace before the guest UI can render.
-      await dependencies.pullGuestPortfolioSnapshot();
-    } else {
+    if (role !== 'guest') {
       dependencies.importSavedAdminWorkspace();
       dependencies.applyOvernightRollover();
-      if (secret) await dependencies.pullSharedCloudState();
     }
 
     dependencies.setQuoteRefreshInterval(dependencies.getInitialQuoteRefreshInterval(role));
@@ -62,13 +123,20 @@ export function createPortfolioAuthenticatedStartupRuntime(
     else dependencies.showSavedAdminView();
 
     dependencies.scrollWorkspace();
-    await dependencies.refreshLivePrices();
-    dependencies.finishInitialQuoteRefresh();
 
-    if (role === 'guest') dependencies.showGuestBalanceView();
-    dependencies.renderBoardAnalystConsensus();
-    await dependencies.recoverPendingCloudWrites();
+    // Local/account workspace and its initial cloud/guest snapshot are ready.
+    // Live quotes and cloud-write recovery continue without blocking navigation.
     dependencies.hideStartupLoading();
+    const workspaceSync = synchronizeWorkspaceInBackground(role, secret);
+    // Start quote refresh only after the remote snapshot is reconciled. This
+    // avoids racing live price writes against a cloud pull while still keeping
+    // both operations off the first-render critical path.
+    void workspaceSync.finally(() => {
+      startInitialQuoteRefresh(role);
+      // Do not release queued local writes until the initial remote snapshot has
+      // been reconciled against any edits made while that request was in flight.
+      recoverPendingCloudWritesInBackground();
+    });
   };
 
   return { startApp };

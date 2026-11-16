@@ -96,11 +96,16 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusTone('CLOSED')).toBe('closed');
   });
 
-  it('uses a fresh broker market phase as authoritative even when the local calendar differs', () => {
-    const now = new Date('2026-11-02T15:00:00.000Z'); // 10:00 New York time
-    expect(getCalendarMarketStatus(now)).toBe('MARKET');
-    expect(resolveEffectiveMarketStatus('CLOSED', now.getTime(), now)).toBe('CLOSED');
-    expect(resolveEffectiveMarketStatus('MARKET', now.getTime(), now)).toBe('MARKET');
+  it('reconciles a fresh CLOSED provider phase with premarket and regular exchange hours', () => {
+    const premarket = new Date('2026-11-02T13:00:00.000Z'); // 08:00 New York time
+    expect(getCalendarMarketStatus(premarket)).toBe('PREMARKET');
+    expect(resolveEffectiveMarketStatus('CLOSED', premarket.getTime(), premarket)).toBe('PREMARKET');
+
+    const regular = new Date('2026-11-02T15:00:00.000Z'); // 10:00 New York time
+    expect(getCalendarMarketStatus(regular)).toBe('MARKET');
+    expect(resolveEffectiveMarketStatus('CLOSED', regular.getTime(), regular)).toBe('MARKET');
+    expect(resolveEffectiveMarketStatus('MARKET', regular.getTime(), regular)).toBe('MARKET');
+    expect(resolveEffectiveMarketStatus('MIXED', regular.getTime(), regular)).toBe('MIXED');
   });
 
   it('falls back to the New York calendar only when broker status is absent, stale, or implausibly future-dated', () => {
@@ -108,7 +113,7 @@ describe('US-equities market status presentation', () => {
     expect(resolveEffectiveMarketStatus(null, null, now)).toBe('MARKET');
     expect(resolveEffectiveMarketStatus('CLOSED', now.getTime() - 16 * 60_000, now)).toBe('MARKET');
     expect(resolveEffectiveMarketStatus('CLOSED', now.getTime() + 2 * 60_000, now)).toBe('MARKET');
-    expect(resolveEffectiveMarketStatus('CLOSED', now.getTime() - 5 * 60_000, now)).toBe('CLOSED');
+    expect(resolveEffectiveMarketStatus('CLOSED', now.getTime() - 5 * 60_000, now)).toBe('MARKET');
   });
 
   it('keeps a MIXED exchange status visible and suppresses a misleading single-market countdown', () => {
@@ -117,7 +122,7 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusLabel('MIXED')).toBe('Mixed exchange status');
     expect(getMarketStatusLabel('MIXED', false)).toBe('Exchanges report different states');
     expect(getEffectiveMarketStatusCountdown('MIXED', now.getTime(), now)).toBeNull();
-    expect(getEffectiveMarketStatusCountdown('CLOSED', now.getTime(), now)).toBeNull();
+    expect(getEffectiveMarketStatusCountdown('CLOSED', now.getTime(), now)).toBe(getMarketStatusCountdown('MARKET', now));
     expect(getEffectiveMarketStatusCountdown('MARKET', now.getTime(), now)).toBe(getMarketStatusCountdown('MARKET', now));
     expect(getMarketStatusTone('MIXED')).toBe('unknown');
     const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
