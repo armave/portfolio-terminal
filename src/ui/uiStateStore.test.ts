@@ -213,6 +213,9 @@ describe('cloud sync last-success timestamp', () => {
     setCloudSyncStatus({ status: 'error', text: 'Sync failed' });
     expect(synced[1]).toMatchObject({ status: 'error', lastSyncedAt });
 
+    setCloudSyncStatus({ status: 'conflict', text: 'Cloud sync conflict — recovery required' });
+    expect(synced[2]).toMatchObject({ status: 'conflict', lastSyncedAt });
+
     unsubscribe();
   });
 
