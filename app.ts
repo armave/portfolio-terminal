@@ -78,6 +78,7 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  initializeSavedHistoryStorage,
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshot,
@@ -405,9 +406,14 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
 
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
-    portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes, activeTrancheGuestAssignments, activeTrancheGuestAssignmentDetails });
-    // Persist the preference even when broker data is not ready yet.
-    saveState(state);
+    // setState is the durable commit. Do not issue a second save of the previous
+    // closure snapshot if the first write was rejected by browser storage.
+    if (!portfolioStore.setState({
+      activeTrancheTypes,
+      activeTrancheMixes,
+      activeTrancheGuestAssignments,
+      activeTrancheGuestAssignmentDetails
+    })) return;
     pushStateToGist();
     return;
   }
@@ -433,7 +439,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
       ...(price !== null ? { price } : {})
     };
   });
-  portfolioStore.setState({
+  if (!portfolioStore.setState({
     activeTrancheTypes,
     activeTrancheMixes,
     activeTrancheGuestAssignments,
@@ -444,9 +450,8 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
       ...(current.cashCushion || { freeCash: 0, holdings: [] }),
       holdings: brokerCashHoldings
     }
-  });
-  // Store updates persist locally immediately; push explicitly so the local write doesn't suppress cloud sync.
-  saveState(state);
+  })) return;
+  // The store commit is already durable locally; enqueue only the cloud push.
   pushStateToGist();
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const ticker = operationId.split(':')[0];
@@ -1913,6 +1918,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     currentAccountId = null;
     canWriteCloudState = false;
   },
+  initializeOfflineHistoryStorage: () => initializeSavedHistoryStorage(),
   setGatewaySecret: (secret) => { portfolioStore.setState({ gatewaySecret: secret }); },
   getAccountRole: () => currentAccountRole,
   pullGuestPortfolioSnapshot,
@@ -1959,7 +1965,10 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
       );
     }
   },
-  hideStartupLoading
+  hideStartupLoading,
+  reportBackgroundStartupError: (task, error) => {
+    console.warn(`[Startup Background]: ${task} did not complete successfully.`, error);
+  }
 });
 
 async function startApp(secret: string) {
