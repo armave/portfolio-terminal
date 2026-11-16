@@ -9,7 +9,7 @@
 - Root `app.ts` remains the runtime composition/orchestration layer for startup, authentication, navigation, broker and quote refresh, portfolio synchronization, and application workflows. Its size alone is not a reason to remove or rewrite it.
 - `src/domain/` owns deterministic portfolio calculations, selectors, normalization, and calendar logic.
 - `src/store/` owns canonical portfolio state and validated state transitions.
-- `src/services/` owns infrastructure integrations such as persistence, provider access, and synchronization.
+- `src/services/` owns infrastructure integrations such as persistence, provider access, and synchronization. Device-bound Gateway Secret encryption and recovery live in `src/services/credentialStorage.ts`; `src/services/storage.ts` re-exports the established credential API for existing callers.
 - `src/features/` contains cohesive feature logic; `src/components/` and `src/ui/` own presentation and UI behavior.
 - `worker.js` is the Cloudflare Worker API boundary. `state-store.js` implements the Portfolio State Durable Object.
 

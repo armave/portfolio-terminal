@@ -131,6 +131,24 @@ async function main() {
     console.log('\nNo files exceed the line-count advisory.');
   }
 
+  const cssPath = path.join(root, 'style.css');
+  const css = await readFile(cssPath, 'utf8');
+  const repeatedSelectors = new Map();
+  const selectorPattern = /(?:^|})\s*([^@{}][^{}]*)\s*\{/gm;
+  for (const match of css.matchAll(selectorPattern)) {
+    const selector = match[1].trim().replace(/\s+/g, ' ');
+    if (!selector || selector === 'from' || selector === 'to') continue;
+    repeatedSelectors.set(selector, (repeatedSelectors.get(selector) ?? 0) + 1);
+  }
+  const duplicates = [...repeatedSelectors.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1]);
+  console.log(`\nRepeated CSS selectors in style.css (${duplicates.length} selector groups):`);
+  for (const [selector, count] of duplicates.slice(0, 30)) {
+    console.log(`  ${String(count).padStart(3)}  ${selector}`);
+  }
+  if (duplicates.length > 30) console.log(`  ... ${duplicates.length - 30} additional selector groups omitted`);
+
   if (complexFunctions.length) {
     console.log(`\nFunctions over ${FUNCTION_LINE_LIMIT} lines or complexity ${FUNCTION_COMPLEXITY_LIMIT}+ (${complexFunctions.length}):`);
     for (const item of complexFunctions.sort((a, b) =>
