@@ -159,3 +159,16 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 - [ ] Authenticated live-account and multi-device restore verification remains open.
 
 The additive event schema remains version 1. Existing events without the optional structured payload remain readable; `PortfolioState.positions` remains canonical. This is a closed-history audit slice, not PT-02 completion or a ledger cutover.
+
+
+## Cloud revision conflict recovery — 2026-11-16
+
+- The client reports HTTP 409 as a distinct `conflict` state rather than a generic sync error.
+- After a portfolio snapshot receives 409, subsequent snapshot pushes are blocked until a later cloud pull is validated and persisted locally. A failed pull leaves the conflict visible and writes blocked.
+- An authorized 404 (confirmed empty cloud state) and a successful validated 200 pull can establish the accepted base revision and clear the latch.
+- Settings exposes a persistent administrator recovery panel with explicit JSON export and confirmation-protected pull actions. The normal manual-sync control remains disabled until recovery; no financial changes are automatically merged.
+- The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
+- Vitest and the Operations Browser Journey cover 409, blocked retries, failed-pull retention, successful-pull recovery, backup export and resumed writes.
+- Client-only change: no Worker, Durable Object, authorization, accounting or canonical snapshot/journal ownership changes.
+- [ ] Exact-head CI and browser journeys.
+- [ ] Manual multi-device conflict/recovery verification; deterministic browser fixtures do not establish live cross-device behavior.
