@@ -442,10 +442,28 @@ export function appendPortfolioTransactionEvent(
 }
 
 
+function canonicalizePortfolioJournalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizePortfolioJournalValue);
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record).sort().map((key) => [key, canonicalizePortfolioJournalValue(record[key])])
+    );
+  }
+  return value;
+}
+
+function haveSamePortfolioTransactionContent(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalizePortfolioJournalValue(left)) ===
+    JSON.stringify(canonicalizePortfolioJournalValue(right));
+}
+
 /**
  * Merge imported audit history without allowing an older backup to erase
  * already-recorded events. Exact duplicate IDs/keys are ignored; conflicting
  * reuse is rejected so the caller can keep the existing committed snapshot.
+ * Object property ordering is ignored because JSON backups do not preserve a
+ * semantic distinction between otherwise identical event objects.
  */
 export function mergePortfolioTransactionEvents(
   existing: readonly unknown[],
@@ -466,7 +484,7 @@ export function mergePortfolioTransactionEvents(
   for (const event of incoming) {
     const sameId = byId.get(event.id);
     if (sameId) {
-      if (JSON.stringify(sameId) !== JSON.stringify(event)) {
+      if (!haveSamePortfolioTransactionContent(sameId, event)) {
         throw new Error(`Imported transaction event ID "${event.id}" conflicts with existing history.`);
       }
       continue;
