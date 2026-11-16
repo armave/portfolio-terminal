@@ -148,6 +148,9 @@ Unclassified active tranches default to Margin. An explicit saved operation- or 
 - projected sell commission is calculated at the target value;
 - target net projection subtracts commissions and the currently modeled margin charges.
 
+The single-position board's compact Margin PT percentage is a separate quote-relative distance:
+`(pt - currentPrice) / currentPrice × 100`. It is shown only when both prices are finite and positive. It uses the current position quote as its denominator, not average entry/cost basis, and excludes commission and financing charges; it is not a net-return or unrealized-P&L figure. The net target projection above remains unchanged for the projection engine.
+
 These results describe a target-price scenario, **not current unrealized P&L**, and must remain labelled as projection/target metrics. Do not combine target-price and current-market calculations in one metric.
 
 ---

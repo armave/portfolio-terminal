@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderBoard, resolveActiveView, resolvePositionEntryDate } from './renderBoard';
 import type { PositionRecord } from '../types/portfolio';
+import { subscribeBoardTitle, type BoardTitleState } from './uiStateStore';
 
 describe('resolvePositionEntryDate', () => {
   it('uses the chronologically earliest active tranche date instead of array order or a stale saved date', () => {
@@ -74,5 +75,62 @@ describe('resolveActiveView', () => {
 
   it('keeps the combined desk selected', () => {
     expect(resolveActiveView({ activeView: 'COMBINED', positions: {} })).toBe('COMBINED');
+  });
+});
+
+
+describe('Margin PT current-price distance', () => {
+  it('measures the target difference from the current quote, not the tranche average entry', () => {
+    const updates: BoardTitleState[] = [];
+    const unsubscribe = subscribeBoardTitle((value) => updates.push(value));
+
+    try {
+      renderBoard({
+        activeView: 'AAPL',
+        positions: {
+          AAPL: {
+            ticker: 'AAPL',
+            shares: 10,
+            currentPrice: 200,
+            pt: 220,
+            commBuy: 0,
+            tranches: [{ qty: 10, price: 180 }]
+          }
+        }
+      } as any, { rules: {} as any });
+
+      expect(updates[updates.length - 1]).toMatchObject({
+        marginPtValue: '$220.00',
+        marginPtReturnText: '+10.00%',
+        marginPtTitle: 'Margin position target price: $220.00.'
+      });
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('omits the percentage when the current market price is unavailable or invalid', () => {
+    const updates: BoardTitleState[] = [];
+    const unsubscribe = subscribeBoardTitle((value) => updates.push(value));
+
+    try {
+      renderBoard({
+        activeView: 'AAPL',
+        positions: {
+          AAPL: {
+            ticker: 'AAPL',
+            shares: 10,
+            currentPrice: 0,
+            pt: 220,
+            commBuy: 0,
+            tranches: [{ qty: 10, price: 180 }]
+          }
+        }
+      } as any, { rules: {} as any });
+
+      expect(updates[updates.length - 1]?.marginPtReturnText).toBe('');
+    } finally {
+      unsubscribe();
+    }
   });
 });
