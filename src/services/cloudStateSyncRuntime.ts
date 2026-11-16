@@ -118,6 +118,10 @@ export interface SyncOptions {
   onEncryptionMigrationFailure?: (error: Error) => void;
   /** Apply a validated background reconciliation without changing the visible desk. */
   applyAutoReconciledState?: (state: CloudStateRecord) => boolean | void;
+  /** Protect edits made locally while an asynchronous pull is in flight. */
+  protectLocalEditsDuringPull?: boolean;
+  /** Enqueue a follow-up push when a pull preserves newer local edits. */
+  onLocalChangesPreserved?: () => void;
 }
 export interface CloudStateSyncRuntimeDependencies {
   workerProxyUrl: string;
@@ -288,6 +292,9 @@ async function pullCloudState(
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
   const isCurrentSession = handlers.isCurrentSession || (() => true);
+  const pullBaseline = handlers.protectLocalEditsDuringPull
+    ? prepareCloudStateSnapshot(handlers.getState?.() || state)
+    : null;
   const stalePullFallback = (): CloudStateRecord => {
     reportResult?.(false);
     return loadSavedState(toCloudStateRecord(state));
@@ -430,10 +437,36 @@ async function pullCloudState(
 
     if (!isCurrentSession()) return stalePullFallback();
     const wasUpdated = processRollovers(parsedState);
+    const remoteSnapshot = prepareCloudStateSnapshot(parsedState as CloudStateRecord);
+    let preservedLocalChanges = false;
+    if (pullBaseline) {
+      const latestLocalSnapshot = prepareCloudStateSnapshot(handlers.getState?.() || state);
+      const reconciledSnapshot = reconcileCloudStateSnapshots(
+        pullBaseline,
+        latestLocalSnapshot,
+        remoteSnapshot
+      );
+      if (!reconciledSnapshot) {
+        // A local edit and a remote financial edit both landed after the
+        // startup baseline. Keep the current device data and block writes until
+        // the user resolves the cloud conflict; never silently replace either.
+        cloudStateBaseSnapshots.set(currentSecret, remoteSnapshot);
+        cloudStateConflictSecret = currentSecret;
+        handlers.onStatusChange?.('conflict');
+        logAppMessage('Cloud startup sync found overlapping local and remote portfolio edits. The local workspace was preserved; resolve the cloud conflict before syncing.');
+        reportResult?.(false);
+        return loadSavedState(toCloudStateRecord(state));
+      }
+      preservedLocalChanges = cloudStateFingerprint(reconciledSnapshot) !== cloudStateFingerprint(remoteSnapshot);
+      parsedState = reconciledSnapshot;
+    }
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
-    cloudStateBaseSnapshots.set(currentSecret, prepareCloudStateSnapshot(parsedState));
+    // Keep the merge base equal to what the server actually returned. If a
+    // local edit was preserved, the follow-up push must compare against this
+    // remote snapshot rather than pretending the server already has that edit.
+    cloudStateBaseSnapshots.set(currentSecret, remoteSnapshot);
     // The conflict clears only after decryption, validation and local persistence.
     if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
 
@@ -485,6 +518,7 @@ async function pullCloudState(
     if (typeof pullCloudAndRewriteLocal === 'function' && isCurrentSession()) {
       pullCloudAndRewriteLocal(parsedState);
     }
+    if (preservedLocalChanges) handlers.onLocalChangesPreserved?.();
 
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'synced');
     reportResult?.(cloudStateConflictSecret !== currentSecret);
