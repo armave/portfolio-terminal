@@ -73,6 +73,20 @@ export interface PortfolioTransactionHistoryFeeCorrection {
   after: PortfolioTransactionHistoryFeeSnapshot;
 }
 
+/** Exact before/after cost-basis-preserving lot conversion for a verified split. */
+export interface PortfolioCorporateActionLotAdjustment {
+  ledger: 'position' | 'cash-holding';
+  lotId: string;
+  quantityBefore: number;
+  quantityAfter: number;
+  priceBefore: number;
+  priceAfter: number;
+  acquisitionDate: string;
+  acquiredAt: number;
+  /** null preserves an unknown legacy commission instead of inventing zero. */
+  openBuyCommission: number | null;
+}
+
 export interface PortfolioTransactionEvent {
   id: string;
   schemaVersion: typeof PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION;
@@ -129,6 +143,9 @@ export interface PortfolioTransactionEvent {
   relatedEventId?: string;
   /** Immutable history-only fee correction evidence; never posts balance deltas. */
   historyFeeCorrection?: PortfolioTransactionHistoryFeeCorrection;
+  /** Verified split ratio and exact lot conversions for shadow cost-basis replay. */
+  corporateActionMultiplier?: number;
+  corporateActionLotAdjustments?: PortfolioCorporateActionLotAdjustment[];
   note?: string;
 }
 
