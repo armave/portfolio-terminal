@@ -181,6 +181,14 @@ describe('portfolio transaction journal', () => {
       ...event,
       corporateActionLotAdjustments: [{ ...adjustment, acquisitionDate: '2020-99-99' }]
     })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      quantity: 3
+    })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      cashDelta: 1
+    })).toBe(false);
   });
 
   it('rejects duplicate event IDs even when idempotency keys differ', () => {
