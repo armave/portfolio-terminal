@@ -1,4 +1,5 @@
 import type { CloudRevisionCoordinator } from './cloudRevisionCoordinator';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 import { getAppLanguage, translateText } from './i18n';
 import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from './cloudPayloadValidation';
 import type { PortfolioState } from '../types/portfolio';
@@ -133,6 +134,8 @@ export interface CloudStateSyncRuntimeDependencies {
   fetchImpl?: typeof fetch;
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   now?: () => number;
+  /** Deadline for cloud requests, including response-body consumption. */
+  requestTimeoutMs?: number;
 }
 export interface CloudHistoryPushOptions {
   isCurrentSession?: () => boolean;
@@ -164,9 +167,41 @@ export function createCloudStateSyncRuntime({
   normalizeFreedomTrades,
   fetchImpl: injectedFetch,
   storage: injectedStorage,
-  now: injectedNow
+  now: injectedNow,
+  requestTimeoutMs: injectedRequestTimeoutMs
 }: CloudStateSyncRuntimeDependencies): CloudStateSyncRuntime {
   const fetchImpl = injectedFetch ?? ((input, init) => fetch(input, init));
+  const requestTimeoutMs = injectedRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  // Cloud sync is part of authenticated startup. Bound both the network request
+  // and body consumption so a stalled profile/network response falls back to the
+  // retained local workspace instead of leaving the startup promise pending.
+  const fetchWithTimeout = (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => fetchAndConsumeWithTimeout(
+    fetchImpl,
+    input,
+    init ?? {},
+    async (response) => {
+      let body: unknown = null;
+      // Some supported test/injected transports return a minimal response
+      // facade without a JSON body method (successful empty responses).
+      try {
+        if (typeof response.json === 'function') body = await response.json();
+      } catch {
+        body = null;
+      }
+      // Cloud sync consumers need status/headers and JSON only. Return a small
+      // response facade because the original body has already been consumed.
+      return {
+        ok: response.ok,
+        status: response.status,
+        headers: response.headers,
+        json: async () => body
+      } as Response;
+    },
+    requestTimeoutMs
+  );
   const now = injectedNow || Date.now;
   const getLocalStorage = (): Pick<Storage, 'getItem' | 'setItem'> | null => {
     if (injectedStorage !== undefined) return injectedStorage;
@@ -186,7 +221,7 @@ export function createCloudStateSyncRuntime({
     return typeof message === 'string' ? message : String(message);
   };
   const pushCloudWrite = (...args: [RequestInfo | URL, RequestInit, () => boolean]) =>
-    import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
+    import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchWithTimeout, ...args));
 
   const cloudStatePushFingerprints = new Map<string, string>();
   // The encrypted snapshot itself is never persisted as a merge base; keep only the
@@ -209,7 +244,7 @@ export function createCloudStateSyncRuntime({
     previousRevision: number | null,
     validate: (value: unknown) => void
   ): Promise<boolean> {
-    const response = await fetchImpl(apiUrl(path), {
+    const response = await fetchWithTimeout(apiUrl(path), {
       method: 'GET',
       headers: authHeaders(secret)
     });
@@ -270,7 +305,7 @@ async function pullCloudState(
   try {
     const url = apiUrl('/api/state');
     if (!isCurrentSession()) return stalePullFallback();
-    const res = await fetchImpl(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: authHeaders(currentSecret)
     });
@@ -484,7 +519,7 @@ async function tryAutoReconcileCloudConflict(
   const isCurrentSession = handlers.isCurrentSession || (() => true);
 
   try {
-    const response = await fetchImpl(apiUrl('/api/state'), {
+    const response = await fetchWithTimeout(apiUrl('/api/state'), {
       method: 'GET',
       headers: authHeaders(secret),
       cache: 'no-store'
@@ -655,7 +690,7 @@ async function performPushCloudHistory(
   let revision = knownRevision;
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
     const url = apiUrl('/api/history');
-    const current = await fetchImpl(url, { method: 'GET', headers: authHeaders(secret) });
+    const current = await fetchWithTimeout(url, { method: 'GET', headers: authHeaders(secret) });
     if (!isCurrentSession()) return false;
     revision = readCloudRevision(current.headers) ?? 0;
     if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
@@ -750,7 +785,7 @@ async function performPullCloudHistory(
   secret: string,
   isCurrentSession: () => boolean = () => true
 ): Promise<CloudHistorySnapshot> {
-  const res = await fetchImpl(apiUrl('/api/history'), {
+  const res = await fetchWithTimeout(apiUrl('/api/history'), {
     method: 'GET',
     headers: authHeaders(secret)
   });
