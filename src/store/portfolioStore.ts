@@ -2701,10 +2701,14 @@ export class PortfolioStore {
           recordedAt
         }, recordedAt);
       } catch {
+        committed = null;
         return state;
       }
       const appended = appendPortfolioTransactionEvent(state.transactionEvents || [], transaction);
-      if (!appended.appended && !appended.duplicate) return state;
+      if (!appended.appended && !appended.duplicate) {
+        committed = null;
+        return state;
+      }
 
       if (adjustedPosition && positionKey) {
         return {
