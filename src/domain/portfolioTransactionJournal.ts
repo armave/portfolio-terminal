@@ -264,6 +264,10 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     const seenLotIds = new Set<string>();
     const ledgerDeltas = { position: 0, 'cash-holding': 0 };
     const multiplier = value.corporateActionMultiplier;
+    let quantityBeforeTotal = 0;
+    if ([value.cashDelta, value.marginDebtDelta, value.realizedMarginChargeDelta,
+      value.netAmount, value.externalCashFlowAmount, value.realizedPnl]
+      .some(amount => amount !== undefined && amount !== 0)) return false;
     for (const rawAdjustment of value.corporateActionLotAdjustments) {
       if (!isPlainRecord(rawAdjustment) ||
           (rawAdjustment.ledger !== 'position' && rawAdjustment.ledger !== 'cash-holding') ||
@@ -283,20 +287,20 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
             (typeof rawAdjustment.openBuyCommission === 'number' && Number.isFinite(rawAdjustment.openBuyCommission) && rawAdjustment.openBuyCommission >= 0))) return false;
       const acquiredDate = new Date(rawAdjustment.acquiredAt).toISOString().slice(0, 10);
       if (acquiredDate !== rawAdjustment.acquisitionDate) return false;
-      const ratioTolerance = Math.max(1e-8, Math.abs(multiplier) * 1e-8);
       if (Math.abs(rawAdjustment.quantityAfter - rawAdjustment.quantityBefore * multiplier) >
             Math.max(1e-8, rawAdjustment.quantityAfter * 1e-8) ||
           Math.abs(rawAdjustment.priceAfter - rawAdjustment.priceBefore / multiplier) >
             Math.max(1e-8, rawAdjustment.priceAfter * 1e-8) ||
           Math.abs(rawAdjustment.quantityBefore * rawAdjustment.priceBefore -
             rawAdjustment.quantityAfter * rawAdjustment.priceAfter) >
-            Math.max(1e-6, rawAdjustment.quantityBefore * rawAdjustment.priceBefore * 1e-8) ||
-          !Number.isFinite(ratioTolerance)) return false;
+            Math.max(1e-6, rawAdjustment.quantityBefore * rawAdjustment.priceBefore * 1e-8)) return false;
       seenLotIds.add(rawAdjustment.lotId);
+      quantityBeforeTotal += rawAdjustment.quantityBefore;
       ledgerDeltas[rawAdjustment.ledger] += rawAdjustment.quantityAfter - rawAdjustment.quantityBefore;
     }
     const closeEnough = (left: number, right: number) =>
       Math.abs(left - right) <= Math.max(1e-8, Math.max(Math.abs(left), Math.abs(right)) * 1e-8);
+    if (typeof value.quantity !== 'number' || !closeEnough(value.quantity, quantityBeforeTotal)) return false;
     if ((Math.abs(ledgerDeltas.position) > 1e-8
           ? typeof value.positionQuantityDelta !== 'number' || !closeEnough(value.positionQuantityDelta, ledgerDeltas.position)
           : value.positionQuantityDelta !== undefined && Math.abs(value.positionQuantityDelta) > 1e-8) ||
