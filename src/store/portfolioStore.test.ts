@@ -2560,7 +2560,7 @@ describe('portfolio import boundary validation', () => {
     }
 
     expect(store.getState().balance).toBe(-250);
-    expect(store.getState().transactionEvents).toEqual([]);
+    expect(store.getState().transactionEvents).toEqual(previousState.transactionEvents);
     expect(listener).not.toHaveBeenCalled();
   });
 
