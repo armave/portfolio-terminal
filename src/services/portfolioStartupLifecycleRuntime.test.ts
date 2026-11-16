@@ -23,6 +23,7 @@ function createFixture(initialRole: StartupAccountRole = 'admin') {
     setStartupState: vi.fn((shown, failed) => calls.push(`startup-state:${shown}:${failed}`)),
     retryStartup: vi.fn(async () => { calls.push('retry'); }),
     continueStartupOffline: vi.fn(async () => { calls.push('offline'); }),
+    repairBrowserAppCache: vi.fn(async () => { calls.push('repair-browser'); }),
     addVisibilityChangeListener: vi.fn((listener) => {
       visibilityListener = listener;
       return () => {
@@ -124,10 +125,12 @@ describe('portfolio startup lifecycle runtime', () => {
 
     emitUiEvent('app:startup-retry');
     emitUiEvent('app:startup-offline');
+    emitUiEvent('app:startup-repair');
 
     await vi.waitFor(() => {
       expect(fixture.dependencies.retryStartup).toHaveBeenCalledTimes(1);
       expect(fixture.dependencies.continueStartupOffline).toHaveBeenCalledTimes(1);
+      expect(fixture.dependencies.repairBrowserAppCache).toHaveBeenCalledTimes(1);
     });
     expect(fixture.dependencies.setStartupState).toHaveBeenCalledWith(true, false);
     unbind();
@@ -147,8 +150,10 @@ describe('portfolio startup lifecycle runtime', () => {
 
     emitUiEvent('app:startup-retry');
     emitUiEvent('app:startup-offline');
+    emitUiEvent('app:startup-repair');
 
     expect(fixture.dependencies.retryStartup).not.toHaveBeenCalled();
     expect(fixture.dependencies.continueStartupOffline).not.toHaveBeenCalled();
+    expect(fixture.dependencies.repairBrowserAppCache).not.toHaveBeenCalled();
   });
 });
