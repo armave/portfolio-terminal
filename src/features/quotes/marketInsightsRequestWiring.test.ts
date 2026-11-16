@@ -51,11 +51,13 @@ describe('Market Insights request lifecycle wiring', () => {
 
   it('closes and clears an open News article when the active ticker changes', () => {
     const panel = readSource('../../components/MarketInsightsPanel.tsx');
+    const dialog = readSource('../../components/MarketNewsArticleDialog.tsx');
     expect(panel).toContain('const currentSelectedNews = selectedNews?.ticker === ticker ? selectedNews.article : null;');
-    expect(panel).toContain('active: currentSelectedNews !== null');
     expect(panel).toContain('if (selectedNews && selectedNews.ticker !== ticker) setSelectedNews(null);');
     expect(panel).toContain('setSelectedNews({ ticker, article: n });');
-    expect(panel).toContain('{currentSelectedNews && createPortal(');
+    expect(panel).toContain('<MarketNewsArticleDialog');
+    expect(panel).toContain('article={currentSelectedNews}');
+    expect(dialog).toContain('active: article !== null');
   });
 
   it('cancels and invalidates older deep-data requests on effect cleanup', () => {
