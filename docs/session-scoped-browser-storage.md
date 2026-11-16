@@ -60,7 +60,9 @@ A timeout does not delete the legacy migration source or replace the portfolio s
 
 The app checks its service worker for updates on each page load and reloads once when an already-controlling worker is replaced. A first controller acquisition does not interrupt account creation or sign-in.
 
-If startup remains pending for 30 seconds, a watchdog automatically unregisters only a service worker whose scope exactly matches this application and removes only this application's Workbox precache, then reloads with a cache-busting URL. A one-shot URL marker prevents repeated automatic reloads. If the next startup also stalls, the app displays the manual recovery controls instead of looping.
+After the account-scoped workspace has been activated, the full-screen startup overlay waits up to 12 seconds for the selected desk's initial render. If an optional lazy-loaded panel, font, or image remains pending, the shell is released and the affected desk keeps its own local loading fallback; navigation and recovery controls remain available. The startup watchdog stays armed until the overlay is actually removed, rather than being cancelled when dismissal is merely requested.
+
+If startup remains pending for 30 seconds before the overlay is dismissed, a watchdog automatically unregisters only a service worker whose scope exactly matches this application and removes only this application's Workbox precache, then reloads with a cache-busting URL. A one-shot URL marker prevents repeated automatic reloads. If the next startup also stalls, the app displays the manual recovery controls instead of looping.
 
 This repair does not sign the user out and does not clear localStorage, sessionStorage, IndexedDB, portfolio snapshots, broker assumptions, closed history, encrypted Gateway credentials, or caches belonging to another app. It is a shell/cache repair only; existing portfolio recovery remains governed by the account-scoped last-known-good rules below.
 
