@@ -314,6 +314,63 @@ export function replayPortfolioTransactionLots(
       });
     }
 
+    if (event.type === 'corporate-action' && event.corporateActionLotAdjustments?.length) {
+      const multiplier = event.corporateActionMultiplier!;
+      const adjustments = event.corporateActionLotAdjustments;
+      const adjustedIds = new Set(adjustments.map(adjustment => adjustment.ledger + ':' + adjustment.lotId));
+      const expectedCashLots = [...cashLots.values()].filter(lot =>
+        lot.ticker === cleanTicker(event.ticker) && lot.openQuantity > DEFAULT_TOLERANCE
+      );
+      const expectedPositionLots = [...lots.values()].filter(lot =>
+        lot.ticker === cleanTicker(event.ticker) && lot.openQuantity > DEFAULT_TOLERANCE
+      );
+      const expected = [
+        ...expectedCashLots.map(lot => 'cash-holding:' + lot.lotId),
+        ...expectedPositionLots.map(lot => 'position:' + lot.lotId)
+      ];
+      if (expected.some(identity => !adjustedIds.has(identity)) ||
+          adjustments.some(adjustment => !expected.includes(adjustment.ledger + ':' + adjustment.lotId))) {
+        addIssue(event, 'unsupported', 'Corporate-action lot conversion does not include every open app-owned lot for the affected ticker.');
+        continue;
+      }
+
+      const pendingUpdates: Array<{ ledger: 'position' | 'cash-holding'; lot: PortfolioLotReplayOpenLot; quantityAfter: number; priceAfter: number }> = [];
+      let valid = true;
+      for (const adjustment of adjustments) {
+        const targetLots = adjustment.ledger === 'cash-holding' ? cashLots : lots;
+        const lot = targetLots.get(adjustment.lotId);
+        const acquisitionEffectiveAt = Date.parse(adjustment.acquisitionDate + 'T00:00:00.000Z');
+        if (!lot || lot.ticker !== cleanTicker(event.ticker) ||
+            !closeEnough(lot.openQuantity, adjustment.quantityBefore, 1e-8) ||
+            !closeEnough(lot.acquisitionPrice, adjustment.priceBefore, 1e-8) ||
+            lot.acquisitionDate !== adjustment.acquisitionDate ||
+            !closeEnough(lot.acquiredAt, adjustment.acquiredAt, 1) ||
+            (lot.openBuyCommission === null
+              ? adjustment.openBuyCommission !== null
+              : adjustment.openBuyCommission === null || !closeEnough(lot.openBuyCommission, adjustment.openBuyCommission, DEFAULT_TOLERANCE)) ||
+            !Number.isFinite(acquisitionEffectiveAt) || acquisitionEffectiveAt >= event.effectiveAt ||
+            !closeEnough(adjustment.quantityAfter, adjustment.quantityBefore * multiplier, 1e-8) ||
+            !closeEnough(adjustment.priceAfter, adjustment.priceBefore / multiplier, 1e-8)) {
+          addIssue(event, 'unsupported', 'Corporate-action lot conversion conflicts with the recorded lot identity, remaining quantity, price, acquisition date or commission.');
+          valid = false;
+          break;
+        }
+        pendingUpdates.push({
+          ledger: adjustment.ledger,
+          lot,
+          quantityAfter: adjustment.quantityAfter,
+          priceAfter: adjustment.priceAfter
+        });
+      }
+      if (!valid) continue;
+      for (const update of pendingUpdates) {
+        update.lot.acquiredQuantity *= multiplier;
+        update.lot.openQuantity = update.quantityAfter;
+        update.lot.acquisitionPrice = update.priceAfter;
+      }
+      continue;
+    }
+
     if ((event.type === 'position.adjustment' ||
       event.type === 'portfolio.reconciliation' ||
       event.type === 'corporate-action') &&

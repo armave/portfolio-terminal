@@ -8,7 +8,7 @@ import {
   subscribeToPortfolioSelector,
   subscribeToActiveView
 } from './portfolioStore';
-import type { ClosedTrade, Holding, PositionRecord } from '../types/portfolio';
+import type { CashStockHolding, ClosedTrade, Holding, PositionRecord } from '../types/portfolio';
 import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
@@ -23,6 +23,58 @@ const sharedLocalStorage = {
   setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
   removeItem: (key: string) => { sharedTestStorage.delete(key); }
 };
+
+function createCashHoldingSplitFixture() {
+  const acquiredAt = Date.parse('2019-01-02T09:30:00.000Z');
+  const quoteDetails = {
+    price: 500,
+    currency: 'USD',
+    provider: 'FINNHUB',
+    sourceTimestamp: Date.parse('2020-08-28T20:00:00.000Z'),
+    receivedAt: Date.now(),
+    freshness: 'fresh' as const,
+    dataQuality: 'complete' as const
+  };
+  const cashBuy = createPortfolioTransactionEvent({
+    type: 'cash-holding.buy',
+    effectiveAt: acquiredAt,
+    ticker: 'AAPL',
+    quantity: 10,
+    cashHoldingQuantityDelta: 10,
+    lotId: 'cash-aapl-lot-1',
+    acquisitionDate: '2019-01-02',
+    unitPrice: 100,
+    grossAmount: 1_000,
+    fees: 12,
+    cashDelta: 0
+  }, { eventId: 'cash-aapl-buy-event', source: 'cashholding-store-test' });
+  const holding: CashStockHolding = {
+    ticker: 'AAPL',
+    shares: 10,
+    averagePrice: 100,
+    price: 500,
+    currentPrice: 500,
+    lots: [{
+      lotId: 'cash-aapl-lot-1',
+      qty: 10,
+      price: 100,
+      date: '2019-01-02',
+      acquiredAt,
+      buyCommission: 12
+    }],
+    quoteDetails
+  };
+  const brokerCashMirror = {
+    ticker: 'AAPL',
+    shares: 10,
+    currentPrice: 500,
+    quoteDetails
+  };
+  const action = normalizeFinnhubStockSplits([
+    { symbol: 'AAPL', date: '2020-08-31', fromFactor: 1, toFactor: 4 }
+  ], { symbol: 'AAPL', provider: 'Finnhub', receivedAt: Date.now() }).events[0];
+  return { acquiredAt, cashBuy, holding, brokerCashMirror, action };
+}
 
 function createClosedHistoryFeeAuditImportFixture() {
   const sale = createPortfolioTransactionEvent({
@@ -3690,7 +3742,7 @@ describe('portfolio transaction journal integration', () => {
 
     expect(store.applyCorporateActionSplit(action)).toMatchObject({
       status: 'review_required',
-      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying a corporate action.'
+      note: 'The latest broker position snapshot is stale or incomplete. Refresh and verify it before applying the split.'
     });
     expect(store.getState().positions.AAPL).toEqual(before);
   });
@@ -3729,10 +3781,122 @@ describe('portfolio transaction journal integration', () => {
 
     expect(store.applyCorporateActionSplit(action)).toMatchObject({
       status: 'review_required',
-      note: 'A matching cash holding is also present. Its acquisition lots and effective-date eligibility are not modeled, so the split was not partially applied.'
+      note: 'A margin position and cash holding both exist for this ticker. The split was not partially applied to only one ledger.'
     });
     expect(store.getState().positions.AAPL).toEqual(before);
     expect(store.getState().cashCushion.holdings).toHaveLength(1);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('applies a verified split to fully journaled app-owned cash lots and restores it idempotently', () => {
+    const store = new PortfolioStore();
+    const { acquiredAt, cashBuy, holding, brokerCashMirror, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: { freeCash: 250, holdings: [holding] },
+      cashStocks: [brokerCashMirror]
+    } as any)).toBe(true);
+
+    const cashBefore = store.getState().cashCushion.freeCash;
+    const recordedAt = Date.parse('2026-11-16T12:00:00.000Z');
+    const applied = store.applyCorporateActionSplit(action, recordedAt);
+    expect(applied).toMatchObject({ status: 'applied', sourceId: action.sourceId });
+
+    const state = store.getState();
+    expect(state.cashCushion.holdings[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 40,
+      averagePrice: 25,
+      price: 125,
+      currentPrice: 125,
+      lots: [{
+        lotId: 'cash-aapl-lot-1',
+        qty: 40,
+        price: 25,
+        date: '2019-01-02',
+        acquiredAt,
+        buyCommission: 12
+      }],
+      quoteDetails: { price: 125, freshness: 'stale', dataQuality: 'partial' }
+    });
+    expect(state.cashStocks?.[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 40,
+      currentPrice: 125
+    });
+    expect(state.cashCushion.freeCash).toBe(cashBefore);
+    const splitEvent = state.transactionEvents?.find(event =>
+      event.type === 'corporate-action' && event.externalReferenceId === action.sourceId
+    );
+    expect(splitEvent).toMatchObject({
+      type: 'corporate-action',
+      cashHoldingQuantityDelta: 30,
+      corporateActionMultiplier: 4,
+      corporateActionLotAdjustments: [{
+        ledger: 'cash-holding',
+        lotId: 'cash-aapl-lot-1',
+        quantityBefore: 10,
+        quantityAfter: 40,
+        priceBefore: 100,
+        priceAfter: 25,
+        acquisitionDate: '2019-01-02',
+        acquiredAt,
+        openBuyCommission: 12
+      }]
+    });
+    expect(inspectPortfolioTransactionJournalReplayCoverage(state.transactionEvents || [])
+      .findings.find(finding => finding.eventId === splitEvent?.id))
+      .toMatchObject({ disposition: 'replayable' });
+    expect(verifyPortfolioTransactionParity(state.transactionEvents || [], state).matches).toBe(true);
+    expect(verifyPortfolioTransactionLotParity(state.transactionEvents || [], {
+      positions: state.positions,
+      closedTrades: state.closedTrades,
+      cashHoldings: state.cashCushion.holdings
+    })).toMatchObject({ status: 'complete', matches: true, discrepancies: [], issues: [] });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().cashCushion.holdings[0]).toMatchObject({ shares: 40 });
+    expect(reloaded.getState().corporateActionEvents).toEqual(state.corporateActionEvents);
+    expect(reloaded.applyCorporateActionSplit(action, recordedAt + 1)?.status).toBe('applied');
+    expect(reloaded.getState().cashCushion.holdings[0].shares).toBe(40);
+    expect(reloaded.getState().transactionEvents?.filter(event =>
+      event.type === 'corporate-action' && event.externalReferenceId === action.sourceId
+    )).toHaveLength(1);
+  });
+
+  it('withholds a cash-holding split when broker compatibility shares disagree with app lots', () => {
+    const store = new PortfolioStore();
+    const { cashBuy, holding, brokerCashMirror, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: { freeCash: 250, holdings: [holding] },
+      cashStocks: [{ ...brokerCashMirror, shares: 9 }]
+    } as any)).toBe(true);
+    const previousHolding = store.getState().cashCushion.holdings[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({ status: 'review_required' });
+    expect(store.getState().cashCushion.holdings[0]).toEqual(previousHolding);
+    expect(store.getState().cashStocks?.[0].shares).toBe(9);
+    expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
+  });
+
+  it('withholds a cash-holding split when its current lots do not match the immutable journal', () => {
+    const store = new PortfolioStore();
+    const { cashBuy, holding, action } = createCashHoldingSplitFixture();
+    expect(store.importState({
+      transactionEvents: [cashBuy],
+      cashCushion: {
+        freeCash: 250,
+        holdings: [{
+          ...holding,
+          lots: [{ ...holding.lots![0], qty: 9 }]
+        }]
+      }
+    } as any)).toBe(true);
+    const previousHolding = store.getState().cashCushion.holdings[0];
+
+    expect(store.applyCorporateActionSplit(action)).toMatchObject({ status: 'review_required' });
+    expect(store.getState().cashCushion.holdings[0]).toEqual(previousHolding);
     expect(store.getState().transactionEvents?.filter(event => event.type === 'corporate-action')).toHaveLength(0);
   });
 

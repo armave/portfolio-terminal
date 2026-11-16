@@ -3,6 +3,7 @@ import {
   appendPortfolioTransactionEvent,
   appendBrokerHistoryAuditEvents,
   createPortfolioTransactionEvent,
+  freezePortfolioTransactionEventList,
   hasPortfolioTransactionIdempotencyKey,
   inspectPortfolioTransactionJournalReplayCoverage,
   isPortfolioTransactionEvent,
@@ -139,6 +140,55 @@ describe('portfolio transaction journal', () => {
     expect(isPortfolioTransactionEvent({ ...event, realizedMarginChargeDelta: Number.NaN })).toBe(false);
     expect(isPortfolioTransactionEventList([event])).toBe(true);
     expect(isPortfolioTransactionEventList([event, { ...event, id: '' }])).toBe(false);
+  });
+
+  it('validates, freezes and fingerprints exact corporate-action lot conversions', () => {
+    const adjustment = {
+      ledger: 'cash-holding' as const,
+      lotId: 'cash-aapl-lot-1',
+      quantityBefore: 2,
+      quantityAfter: 8,
+      priceBefore: 100,
+      priceAfter: 25,
+      acquisitionDate: '2019-01-02',
+      acquiredAt: Date.parse('2019-01-02T09:30:00.000Z'),
+      openBuyCommission: 1
+    };
+    const event = createPortfolioTransactionEvent({
+      type: 'corporate-action',
+      effectiveAt: Date.parse('2020-08-31T00:00:00.000Z'),
+      ticker: 'AAPL',
+      quantity: 2,
+      cashHoldingQuantityDelta: 6,
+      externalReferenceId: 'split-source-aapl',
+      corporateActionMultiplier: 4,
+      corporateActionLotAdjustments: [adjustment]
+    }, { eventId: 'cash-split-event', source: 'corporate-action' });
+
+    expect(isPortfolioTransactionEvent(event)).toBe(true);
+    const frozen = freezePortfolioTransactionEventList([event])[0];
+    expect(Object.isFrozen(frozen.corporateActionLotAdjustments)).toBe(true);
+    expect(Object.isFrozen(frozen.corporateActionLotAdjustments?.[0])).toBe(true);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      corporateActionLotAdjustments: [{ ...adjustment, quantityAfter: 7 }]
+    })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      cashHoldingQuantityDelta: 7
+    })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      corporateActionLotAdjustments: [{ ...adjustment, acquisitionDate: '2020-99-99' }]
+    })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      quantity: 3
+    })).toBe(false);
+    expect(isPortfolioTransactionEvent({
+      ...event,
+      cashDelta: 1
+    })).toBe(false);
   });
 
   it('rejects duplicate event IDs even when idempotency keys differ', () => {

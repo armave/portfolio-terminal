@@ -6,7 +6,8 @@ import {
   type PortfolioTransactionEvent,
   type PortfolioTransactionEventType,
   type PortfolioTransactionLotAllocation,
-  type PortfolioTransactionHistoryFeeSnapshot
+  type PortfolioTransactionHistoryFeeSnapshot,
+  type PortfolioCorporateActionLotAdjustment
 } from '../types/portfolioTransaction';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
@@ -250,6 +251,65 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
     if (value.financingCost === undefined || !closeEnough(allocatedFinancing, value.financingCost)) return false;
     if (value.realizedPnl === undefined || !closeEnough(allocatedPnl, value.realizedPnl)) return false;
   }
+  if (value.corporateActionMultiplier !== undefined || value.corporateActionLotAdjustments !== undefined) {
+    if (value.type !== 'corporate-action' ||
+        typeof value.corporateActionMultiplier !== 'number' ||
+        !Number.isFinite(value.corporateActionMultiplier) ||
+        value.corporateActionMultiplier <= 0 ||
+        value.corporateActionMultiplier === 1 ||
+        !Array.isArray(value.corporateActionLotAdjustments) ||
+        value.corporateActionLotAdjustments.length === 0 ||
+        value.corporateActionLotAdjustments.length > 500 ||
+        !value.ticker || !value.externalReferenceId) return false;
+    const seenLotIds = new Set<string>();
+    const ledgerDeltas = { position: 0, 'cash-holding': 0 };
+    const multiplier = value.corporateActionMultiplier;
+    let quantityBeforeTotal = 0;
+    if ([value.cashDelta, value.marginDebtDelta, value.realizedMarginChargeDelta,
+      value.netAmount, value.externalCashFlowAmount, value.realizedPnl]
+      .some(amount => amount !== undefined && amount !== 0)) return false;
+    for (const rawAdjustment of value.corporateActionLotAdjustments) {
+      if (!isPlainRecord(rawAdjustment) ||
+          (rawAdjustment.ledger !== 'position' && rawAdjustment.ledger !== 'cash-holding') ||
+          typeof rawAdjustment.lotId !== 'string' || !rawAdjustment.lotId.trim() ||
+          rawAdjustment.lotId.length > 200 || seenLotIds.has(rawAdjustment.lotId) ||
+          typeof rawAdjustment.quantityBefore !== 'number' || !Number.isFinite(rawAdjustment.quantityBefore) || rawAdjustment.quantityBefore <= 0 ||
+          typeof rawAdjustment.quantityAfter !== 'number' || !Number.isFinite(rawAdjustment.quantityAfter) || rawAdjustment.quantityAfter <= 0 ||
+          typeof rawAdjustment.priceBefore !== 'number' || !Number.isFinite(rawAdjustment.priceBefore) || rawAdjustment.priceBefore <= 0 ||
+          typeof rawAdjustment.priceAfter !== 'number' || !Number.isFinite(rawAdjustment.priceAfter) || rawAdjustment.priceAfter <= 0 ||
+          typeof rawAdjustment.acquisitionDate !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(rawAdjustment.acquisitionDate) ||
+          !Number.isFinite(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')) ||
+          new Date(Date.parse(rawAdjustment.acquisitionDate + 'T00:00:00.000Z')).toISOString().slice(0, 10) !== rawAdjustment.acquisitionDate ||
+          typeof rawAdjustment.acquiredAt !== 'number' || !Number.isSafeInteger(rawAdjustment.acquiredAt) || rawAdjustment.acquiredAt <= 0 ||
+          !Number.isFinite(new Date(rawAdjustment.acquiredAt).getTime()) ||
+          !(rawAdjustment.openBuyCommission === null ||
+            (typeof rawAdjustment.openBuyCommission === 'number' && Number.isFinite(rawAdjustment.openBuyCommission) && rawAdjustment.openBuyCommission >= 0))) return false;
+      const acquiredDate = new Date(rawAdjustment.acquiredAt).toISOString().slice(0, 10);
+      if (acquiredDate !== rawAdjustment.acquisitionDate) return false;
+      if (Math.abs(rawAdjustment.quantityAfter - rawAdjustment.quantityBefore * multiplier) >
+            Math.max(1e-8, rawAdjustment.quantityAfter * 1e-8) ||
+          Math.abs(rawAdjustment.priceAfter - rawAdjustment.priceBefore / multiplier) >
+            Math.max(1e-8, rawAdjustment.priceAfter * 1e-8) ||
+          Math.abs(rawAdjustment.quantityBefore * rawAdjustment.priceBefore -
+            rawAdjustment.quantityAfter * rawAdjustment.priceAfter) >
+            Math.max(1e-6, rawAdjustment.quantityBefore * rawAdjustment.priceBefore * 1e-8)) return false;
+      seenLotIds.add(rawAdjustment.lotId);
+      quantityBeforeTotal += rawAdjustment.quantityBefore;
+      ledgerDeltas[rawAdjustment.ledger] += rawAdjustment.quantityAfter - rawAdjustment.quantityBefore;
+    }
+    const closeEnough = (left: number, right: number) =>
+      Math.abs(left - right) <= Math.max(1e-8, Math.max(Math.abs(left), Math.abs(right)) * 1e-8);
+    if (typeof value.quantity !== 'number' || !closeEnough(value.quantity, quantityBeforeTotal)) return false;
+    if ((Math.abs(ledgerDeltas.position) > 1e-8
+          ? typeof value.positionQuantityDelta !== 'number' || !closeEnough(value.positionQuantityDelta, ledgerDeltas.position)
+          : value.positionQuantityDelta !== undefined &&
+            (typeof value.positionQuantityDelta !== 'number' || Math.abs(value.positionQuantityDelta) > 1e-8)) ||
+        (Math.abs(ledgerDeltas['cash-holding']) > 1e-8
+          ? typeof value.cashHoldingQuantityDelta !== 'number' || !closeEnough(value.cashHoldingQuantityDelta, ledgerDeltas['cash-holding'])
+          : value.cashHoldingQuantityDelta !== undefined &&
+            (typeof value.cashHoldingQuantityDelta !== 'number' || Math.abs(value.cashHoldingQuantityDelta) > 1e-8))) return false;
+  }
   if (value.relatedEventId !== undefined && typeof value.relatedEventId !== 'string') return false;
   if (value.note !== undefined && typeof value.note !== 'string') return false;
   if (value.historyFeeCorrection !== undefined) {
@@ -284,6 +344,13 @@ export function freezePortfolioTransactionEventList(
     actor: Object.freeze({ ...event.actor }),
     ...(event.lotAllocations
       ? { lotAllocations: Object.freeze(event.lotAllocations.map((allocation) => Object.freeze({ ...allocation }))) as unknown as PortfolioTransactionLotAllocation[] }
+      : {}),
+    ...(event.corporateActionLotAdjustments
+      ? {
+          corporateActionLotAdjustments: Object.freeze(
+            event.corporateActionLotAdjustments.map((adjustment) => Object.freeze({ ...adjustment }))
+          ) as unknown as PortfolioCorporateActionLotAdjustment[]
+        }
       : {}),
     ...(event.historyFeeCorrection
       ? {
@@ -358,6 +425,10 @@ export function createPortfolioTransactionEvent(
       before: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.before),
       after: cloneHistoryFeeSnapshot(draft.historyFeeCorrection.after)
     } } : {}),
+    ...(draft.corporateActionMultiplier !== undefined ? { corporateActionMultiplier: draft.corporateActionMultiplier } : {}),
+    ...(draft.corporateActionLotAdjustments
+      ? { corporateActionLotAdjustments: draft.corporateActionLotAdjustments.map((adjustment) => ({ ...adjustment })) }
+      : {}),
     ...(draft.note ? { note: draft.note } : {})
   };
 
@@ -405,6 +476,8 @@ function portfolioTransactionCommandFingerprint(event: PortfolioTransactionEvent
     realizedPnl: event.realizedPnl,
     relatedEventId: event.relatedEventId,
     historyFeeCorrection: event.historyFeeCorrection,
+    corporateActionMultiplier: event.corporateActionMultiplier,
+    corporateActionLotAdjustments: event.corporateActionLotAdjustments,
     note: event.note
   });
 }

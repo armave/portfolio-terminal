@@ -206,3 +206,21 @@ The additive event schema remains version 1. Existing events without the optiona
 - [x] Add Vitest regression coverage for invalid revision links, missing source cashflows, coverage display wiring and English/Russian copy parity.
 
 This slice does not alter accounting calculations, FIFO allocations, canonical snapshot ownership, generic reversal semantics, broker matching rules, cloud revision protocol or Worker contracts. Authenticated account and multi-device restore QA remains a manual release gate; deterministic CI fixtures do not replace that verification.
+
+
+## Implementation slice 5 — verified cash-holding corporate-action lot conversion
+
+**Client/domain PR:** PT-02 cash-holding split and reverse-split support; no Worker/server changes.
+
+- [x] Add a deterministic cash-holding split helper that accepts only complete app-owned lots with unique stable identities, exact quantity coverage, valid acquisition dates/timestamps, positive cost prices and known non-negative buy commissions.
+- [x] Require every lot to predate the action. Post-action-only lots are not re-adjusted; mixed/effective-date lots, fractional aggregate entitlements, missing lots and unverified/future quotes remain review-required.
+- [x] Preserve total acquisition cost and each lot's buy commission while multiplying quantity and dividing unit cost. Quotes observed before the action are adjusted only as stale/partial; post-action observations remain unchanged.
+- [x] Apply only when current cash-holding lots exactly match the immutable cash buy/sale journal replay and any broker cash compatibility row matches the same share quantity. Broker aggregates and average prices are never converted into synthetic lots.
+- [x] Refuse mixed margin/cash ledgers and duplicate cash rows rather than partially adjusting a ticker.
+- [x] Append a validated immutable corporate-action event with an explicit multiplier, cash-holding quantity delta and exact per-lot before/after lineage. The event schema rejects mismatched quantities, invalid dates, non-conserving lot conversions and cash/debt/P&L postings.
+- [x] Extend shadow lot replay so later FIFO cash-holding sales use the post-split quantity and unit cost while pre-split sale allocations remain immutable.
+- [x] Keep the legacy broker cash projection synchronized with the adjusted app-owned cash holding only when it is an exact share-count mirror.
+- [x] Add Vitest coverage for forward/reverse split invariants, invalid/incomplete/mixed/post-action lots, quote ordering, journal validation, replay through a later FIFO sale, state persistence/idempotency and broker mirror mismatch.
+- [x] Update the market-events action label and Russian localization.
+
+This slice does not model dividends, mergers, spin-offs, cash-in-lieu, short holdings, mixed margin/cash splits, broker auto-posting, or settlement cash. Unresolved cases remain review-required and do not mutate quantities, cash or realized P&L. Authenticated TradeNet and backup/recovery QA remain release gates.
