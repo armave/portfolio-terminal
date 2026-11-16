@@ -264,6 +264,157 @@ describe('bounded cloud startup requests', () => {
   });
 });
 
+describe('startup cloud pull local-edit protection', () => {
+  const response = (status: number, payload: unknown, revision: number) => new Response(
+    JSON.stringify(payload),
+    {
+      status,
+      headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+    }
+  );
+
+  function createRuntime(remote: Record<string, unknown>) {
+    const base = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500,
+      activeView: 'AAPL',
+      selectedTicker: 'AAPL',
+      lastUpdated: 100
+    };
+    let resolveFetch!: (value: Response) => void;
+    let markFetchStarted!: () => void;
+    const fetchStarted = new Promise<void>((resolve) => { markFetchStarted = resolve; });
+    const fetchResponse = new Promise<Response>((resolve) => { resolveFetch = resolve; });
+    const saved: Record<string, unknown>[] = [];
+    const applied: Record<string, unknown>[] = [];
+    const statuses: string[] = [];
+    let preservedLocalChanges = 0;
+    let revision = 0;
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async (plaintext) => `aesgcm:v2:${encodeURIComponent(plaintext)}:nonce`,
+      decryptCloudPayload: async (payload) => ({
+        plaintext: decodeURIComponent(payload.slice('aesgcm:v2:'.length, -':nonce'.length)),
+        legacy: false
+      }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: (value) => { saved.push(structuredClone(value)); return true; },
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => {
+        markFetchStarted();
+        return await fetchResponse;
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      state: base,
+      getState: () => latestLocal,
+      protectLocalEditsDuringPull: true,
+      pullCloudAndRewriteLocal: (value: Record<string, unknown>) => { applied.push(value); },
+      onLocalChangesPreserved: () => { preservedLocalChanges += 1; },
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status),
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+    let latestLocal: Record<string, unknown> = base;
+    return {
+      runtime, base, options, saved, applied, statuses, fetchStarted,
+      resolveFetch, setLocal: (value: Record<string, unknown>) => { latestLocal = value; },
+      getPreservedLocalChanges: () => preservedLocalChanges,
+      getRevision: () => revision,
+      remote
+    };
+  }
+
+  it('preserves financial edits made locally while the initial cloud pull is pending', async () => {
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastUpdated: 200
+    };
+    const fixture = createRuntime(remote);
+    const pull = fixture.runtime.pullCloudState(fixture.options);
+    await fixture.fetchStarted;
+
+    fixture.setLocal({
+      ...fixture.base,
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      lastUpdated: 250
+    });
+    fixture.resolveFetch(response(200, {
+      encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remote))}:nonce`
+    }, 2));
+
+    const result = await pull;
+
+    expect(result).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT'
+    });
+    expect(fixture.saved[0]).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300
+    });
+    expect(fixture.applied[0]).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      activeView: 'MSFT'
+    });
+    expect(fixture.getPreservedLocalChanges()).toBe(1);
+    expect(fixture.statuses).toEqual(['synced']);
+    expect(fixture.getRevision()).toBe(2);
+  });
+
+  it('keeps the local portfolio and raises a conflict for overlapping local and remote financial edits', async () => {
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastUpdated: 200
+    };
+    const fixture = createRuntime(remote);
+    const pull = fixture.runtime.pullCloudState(fixture.options);
+    await fixture.fetchStarted;
+
+    fixture.setLocal({
+      ...fixture.base,
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      lastUpdated: 250
+    });
+    fixture.resolveFetch(response(200, {
+      encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remote))}:nonce`
+    }, 2));
+
+    const result = await pull;
+
+    expect(result).toMatchObject(fixture.base);
+    expect(fixture.saved).toHaveLength(0);
+    expect(fixture.applied).toHaveLength(0);
+    expect(fixture.getPreservedLocalChanges()).toBe(0);
+    expect(fixture.statuses).toEqual(['conflict']);
+    expect(fixture.getRevision()).toBe(0);
+  });
+});
+
 describe('background cloud conflict reconciliation', () => {
   const response = (status: number, payload: unknown, revision?: number) => new Response(
     JSON.stringify(payload),
