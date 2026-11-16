@@ -650,7 +650,7 @@ async function persistSavedHistorySnapshot(
   const previousQueue = historyWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
   const nextWrite = previousQueue.catch(() => false).then(async () => {
     try {
-      await writeHistoryRecordToIndexedDB(snapshot, scope);
+      await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
       removeLegacyHistorySidecar(scope);
       return true;
     } catch (indexedDbError) {
@@ -1104,8 +1104,11 @@ function persistPortfolioSnapshot(
     return { success: false, stateChanged: false, savedAt: null };
   }
 
+  const resetRecovery = isExplicitPortfolioReset(state);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
   const writes: Array<{ key: string; value: string }> = [
-    { key: stateKey, value: persistedStateJson }
+    { key: stateKey, value: persistedStateJson },
+    ...(resetRecovery ? [{ key: recoveryKey, value: persistedStateJson }] : [])
   ];
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
@@ -1139,12 +1142,7 @@ function persistPortfolioSnapshot(
   }
   const stateChanged = previousComparable !== nextComparable;
 
-  const resetRecovery = isExplicitPortfolioReset(state);
-  const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
-  if (resetRecovery) {
-    // Commit a reset marker's blank snapshot as the new recovery baseline.
-    writes.push({ key: recoveryKey, value: persistedStateJson });
-  } else if (stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
+  if (!resetRecovery && stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
     try {
       storage.setItem(recoveryKey, previousRaw);
     } catch {
@@ -1232,8 +1230,9 @@ export function saveState<TState extends object>(
 
   const brokerExecutedTrades = Array.isArray(mutableState.brokerExecutedTrades) ? mutableState.brokerExecutedTrades : [];
   const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
+  const resetRecovery = isExplicitPortfolioReset(mutableState);
   const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
-  const historyChanged = hasHistory && (
+  const historyChanged = resetRecovery || (hasHistory && (
     !lastPersistedHistory ||
     lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
     lastPersistedHistory.cashflows !== cashflows
@@ -1241,13 +1240,12 @@ export function saveState<TState extends object>(
     queuedHistorySnapshot &&
     queuedHistorySnapshot.brokerExecutedTrades === brokerExecutedTrades &&
     queuedHistorySnapshot.cashflows === cashflows
-  );
+  ));
 
   const result = persistPortfolioSnapshot(mutableState, options, scope);
   if (!result.success) return false;
 
   if (historyChanged) {
-    const resetRecovery = isExplicitPortfolioReset(mutableState);
     void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope, { resetRecovery }).then((saved) => {
       if (!saved) console.warn('Portfolio state was saved, but its local closed-history cache could not be updated. Cloud history remains separate.');
     }).catch((error) => {
