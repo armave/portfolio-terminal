@@ -51,7 +51,7 @@ describe('shared modal frame', () => {
       expect(source, path).not.toContain('scheduleDialogClose');
     }
 
-    const news = readSource('./MarketInsightsPanel.tsx');
+    const news = readSource('./MarketNewsArticleDialog.tsx');
     expect(news).toContain('closeRef={newsCloseRef}');
     expect(news).toContain('onClose={dismissNewsDialog}');
     expect(news).toContain('newsCloseRef.current?.()');
@@ -63,7 +63,7 @@ describe('shared modal frame', () => {
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',
       './MarginRiskOverviewModal.tsx',
-      './MarketInsightsPanel.tsx'
+      './MarketNewsArticleDialog.tsx'
     ];
 
     for (const path of modalPaths) {

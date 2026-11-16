@@ -49,10 +49,11 @@ For code changes affecting these boundaries, use the repository's exact-head val
 npm run typecheck
 npm test
 npm run validate:dead-code
+npm run audit:complexity
 npm run build
 ```
 
-Add or update focused Vitest coverage for the changed lifecycle, persistence, financial, and authorization behavior. Keep English/Russian user-facing copy and translation tests aligned when UI behavior changes. Worker/ Durable Object changes use the repository's direct-to-`main` deployment process and must remain backward-compatible with the client rollout.
+Add or update focused Vitest coverage for the changed lifecycle, persistence, financial, and authorization behavior. `validate:dead-code` runs the pinned Knip analysis and a non-blocking source-complexity report; use the report to prioritize future extraction work, not as permission to delete active ownership boundaries. Keep English/Russian user-facing copy and translation tests aligned when UI behavior changes. Worker/ Durable Object changes use the repository's direct-to-`main` deployment process and must remain backward-compatible with the client rollout.
 
 ## Related maintained references
 
