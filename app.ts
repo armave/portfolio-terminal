@@ -1811,8 +1811,13 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     const workspace: PortfolioState = {
       ...blank,
       ...saved,
-      brokerExecutedTrades: history.brokerExecutedTrades,
-      cashflows: history.cashflows
+      // Persisted history is untrusted input; normalize it through the same
+      // broker adapters used by the live history-sync path before importing.
+      brokerExecutedTrades: freedomBrokerAdapter.normalizeExecutions(
+        history.brokerExecutedTrades,
+        { source: 'cache' }
+      ).data,
+      cashflows: normalizeSavedFreedomCashflows(history.cashflows)
     };
     if (!portfolioStore.replaceWorkspace(workspace)) {
       throw new Error('The authenticated portfolio workspace could not be loaded safely.');
