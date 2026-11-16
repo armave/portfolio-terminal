@@ -851,24 +851,21 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // Exercise the actual cloud conflict recovery controls before continuing the Settings journey.
-  await visibleSettingsDesk().locator('#quoteRefreshInterval').selectOption('60000');
-  await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '60000', null, { timeout: 10_000 });
+  // Exercise conflict recovery through the immediate refresh requested by the cadence control.
   const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
-  // Changing the cadence above requests one immediate refresh. Let that refresh
-  // finish before injecting the conflict intended for the explicit manual sync.
-  await page.waitForFunction(() => {
-    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
-    return button instanceof HTMLButtonElement && !button.disabled;
-  }, null, { timeout: 30_000 });
   const statePostsBeforeConflict = worker.count('POST', '/api/state');
   worker.failNextStateConflict();
-  await syncButton.click();
+  await visibleSettingsDesk().locator('#quoteRefreshInterval').selectOption('60000');
+  await page.waitForFunction(() => localStorage.getItem('quote_refresh_interval') === '60000', null, { timeout: 10_000 });
   await waitForCondition(
     () => worker.findCalls('POST', '/api/state').slice(statePostsBeforeConflict)
       .some((call) => call.responseStatus === 409),
-    'injected cloud revision conflict'
+    'injected cloud revision conflict from immediate refresh'
   );
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && button.disabled;
+  }, null, { timeout: 10_000 });
   const conflictPanel = visibleSettingsDesk().locator('#settingsCloudConflictRecovery');
   await conflictPanel.waitFor({ state: 'visible', timeout: 10_000 });
   await conflictPanel.getByRole('heading', { name: 'Cloud data changed elsewhere' }).waitFor({ state: 'visible' });
