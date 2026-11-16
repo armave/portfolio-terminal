@@ -66,10 +66,12 @@ const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
 
 /**
- * Structured closed-history fee corrections are accepted only when their sale
- * link, source cashflows, revision chain and canonical after-state all agree.
- * Other legacy history rows remain governed by the existing compatibility
- * rules; this guard does not upgrade them to replayable financial events.
+ * Structured closed-history fee corrections must retain valid sale links and
+ * revision lineage. Corrections after the latest reset must also reference
+ * current source cashflows and match exactly one canonical closed-trade row;
+ * pre-reset corrections remain archived audit history after reset.
+ * Other legacy rows retain their existing compatibility rules and are not
+ * upgraded to replayable financial events by this guard.
  */
 function hasValidClosedHistoryFeeAuditHistory(
   events: readonly PortfolioTransactionEvent[],
