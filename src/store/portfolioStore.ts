@@ -2735,11 +2735,8 @@ export class PortfolioStore {
         normalizeActionTicker(holding.ticker) === actionTicker
           ? {
               ...holding,
-              shares: adjustedCashHolding.shares,
-              averagePrice: adjustedCashHolding.averagePrice,
-              price: adjustedCashHolding.price,
-              currentPrice: adjustedCashHolding.currentPrice,
-              ...(adjustedCashHolding.lots ? { lots: adjustedCashHolding.lots } : {}),
+              shares: Number(adjustedCashHolding.shares),
+              currentPrice: Number(adjustedCashHolding.currentPrice),
               ...(adjustedCashHolding.quoteDetails ? { quoteDetails: adjustedCashHolding.quoteDetails } : {})
             }
           : holding
