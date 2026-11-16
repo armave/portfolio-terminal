@@ -84,11 +84,13 @@ export function createPortfolioAuthenticatedStartupRuntime(
     if (role === 'guest') {
       return Promise.resolve()
         .then(() => dependencies.pullGuestPortfolioSnapshot())
+        .then(() => undefined)
         .catch((error) => reportBackgroundError(dependencies, 'guest-snapshot', error));
     }
     if (secret) {
       return Promise.resolve()
         .then(() => dependencies.pullSharedCloudState())
+        .then(() => undefined)
         .catch((error) => reportBackgroundError(dependencies, 'shared-cloud-pull', error));
     }
     return Promise.resolve();
