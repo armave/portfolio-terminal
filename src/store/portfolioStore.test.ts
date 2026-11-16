@@ -2517,6 +2517,53 @@ describe('portfolio import boundary validation', () => {
 
 
 
+  it('rejects duplicate journal identities during import without mutating state, storage or subscribers', () => {
+    const store = new PortfolioStore();
+    expect(store.importState({ balance: -250 })).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const eventAt = Date.parse('2026-11-16T09:00:00.000Z');
+    const duplicateIdFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt,
+      cashDelta: 100
+    }, { eventId: 'import-duplicate-event-id', idempotencyKey: 'import-duplicate-id-key-a' });
+    const duplicateIdSecond = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt + 1,
+      cashDelta: 125
+    }, { eventId: 'import-duplicate-event-id', idempotencyKey: 'import-duplicate-id-key-b' });
+    const duplicateKeyFirst = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt,
+      cashDelta: 50
+    }, { eventId: 'import-duplicate-key-event-a', idempotencyKey: 'import-duplicate-key' });
+    const duplicateKeySecond = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: eventAt + 1,
+      cashDelta: 75
+    }, { eventId: 'import-duplicate-key-event-b', idempotencyKey: 'import-duplicate-key' });
+
+    for (const transactionEvents of [
+      [duplicateIdFirst, duplicateIdSecond],
+      [duplicateKeyFirst, duplicateKeySecond]
+    ]) {
+      expect(store.importState({
+        balance: -900,
+        transactionEvents
+      })).toBe(false);
+      expect(store.getState()).toBe(previousState);
+      expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    }
+
+    expect(store.getState().balance).toBe(-250);
+    expect(store.getState().transactionEvents).toEqual([]);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('accepts and restores fee corrections when sale, cashflow and canonical snapshots agree', () => {
     const store = new PortfolioStore();
     const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
