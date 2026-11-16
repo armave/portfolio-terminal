@@ -165,6 +165,7 @@ The additive event schema remains version 1. Existing events without the optiona
 
 - The client reports HTTP 409 as a distinct `conflict` state rather than a generic sync error.
 - After a portfolio snapshot receives 409, subsequent snapshot pushes are blocked until a later cloud pull is validated and persisted locally. A failed pull leaves the conflict visible and writes blocked.
+- The in-memory latch is scoped to the authenticated session credential so a session/account switch does not inherit another session's blocked state; the Worker revision guard remains authoritative for the shared owner workspace.
 - An authorized 404 (confirmed empty cloud state) and a successful validated 200 pull can establish the accepted base revision and clear the latch.
 - Settings exposes a persistent administrator recovery panel with explicit JSON export and confirmation-protected pull actions. The normal manual-sync control remains disabled until recovery; no financial changes are automatically merged.
 - The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
