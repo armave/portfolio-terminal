@@ -54,6 +54,38 @@ describe('Closed History fee correction audit', () => {
     expect(Object.isFrozen(correction.historyFeeCorrection?.after.cashflowAllocations)).toBe(true);
   });
 
+  it('rejects duplicate journal IDs while validating structured fee corrections', () => {
+    const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    const duplicateSale = { ...sale, ticker: 'MSFT' };
+    const parity = verifyClosedHistoryFeeCorrectionParity(
+      [...result.transactionEvents, duplicateSale], result.closedTrades, cashflows
+    );
+    expect(parity.matches).toBe(false);
+    expect(parity.discrepancies).toContain(`${sale.id}:duplicate-event-id`);
+  });
+
+  it('rejects correction history when its canonical closed-trade row is missing', () => {
+    const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    const parity = verifyClosedHistoryFeeCorrectionParity(result.transactionEvents, [], cashflows);
+    expect(parity.matches).toBe(false);
+    expect(parity.discrepancies).toContain('closed-trade-1:missing-canonical-trade');
+  });
+
+  it('preserves immutable fee audit history after an explicit portfolio reset', () => {
+    const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    const reset = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: Date.parse('2026-01-04T12:00:00.000Z')
+    }, {
+      eventId: 'reset-after-fee-correction',
+      actor: { type: 'user', id: 'admin' },
+      source: 'user-reset',
+      recordedAt: 1_800_000_000_100
+    }, 1_800_000_000_100);
+    const parity = verifyClosedHistoryFeeCorrectionParity([...result.transactionEvents, reset], [], []);
+    expect(parity.matches).toBe(true);
+  });
+
   it('chains successive fee revisions and rejects an unexpected before-state', () => {
     const first = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
     const next = {

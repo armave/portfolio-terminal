@@ -28,8 +28,10 @@ import {
   mergePortfolioTransactionEvents,
   freezePortfolioTransactionEventList,
   appendBrokerHistoryAuditEvents,
+  inspectPortfolioTransactionJournalReplayCoverage,
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
+import { verifyClosedHistoryFeeCorrectionParity } from '../domain/closedHistoryFeeAudit';
 import {
   adjustPositionForSplit,
   mergePortfolioCorporateActionEvents,
@@ -62,6 +64,40 @@ export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
 const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
+
+/**
+ * Structured closed-history fee corrections must retain valid sale links and
+ * revision lineage. Corrections after the latest reset must also reference
+ * current source cashflows and match exactly one canonical closed-trade row;
+ * pre-reset corrections remain archived audit history after reset.
+ * Other legacy rows retain their existing compatibility rules and are not
+ * upgraded to replayable financial events by this guard.
+ */
+function hasValidClosedHistoryFeeAuditHistory(
+  events: readonly PortfolioTransactionEvent[],
+  closedTrades: readonly ClosedTrade[],
+  cashflows: readonly { id: string }[]
+): boolean {
+  const hasFeeCorrectionPayload = events.some((event) =>
+    isRecord(event) && event.historyFeeCorrection !== undefined
+  );
+  if (!hasFeeCorrectionPayload) return true;
+  if (!isPortfolioTransactionEventList(events)) return false;
+
+  const corrections = events.filter((event) => Boolean(event.historyFeeCorrection));
+  if (!corrections.length) return false;
+
+  const sourceCashflows = cashflows
+    .filter((cashflow) => cashflow && typeof cashflow.id === 'string' && Boolean(cashflow.id.trim()))
+    .map((cashflow) => ({ id: cashflow.id }));
+  if (!verifyClosedHistoryFeeCorrectionParity(events, closedTrades, sourceCashflows).matches) return false;
+
+  const coverage = inspectPortfolioTransactionJournalReplayCoverage(events);
+  const findingsById = new Map(coverage.findings
+    .filter((finding) => finding.eventId)
+    .map((finding) => [finding.eventId as string, finding]));
+  return corrections.every((event) => findingsById.get(event.id)?.disposition === 'audit-only');
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -628,6 +664,11 @@ export class PortfolioStore {
         mergeFailed = true;
         return state;
       }
+      const candidateCashflows = changes.cashflows ?? state.cashflows ?? [];
+      if (!hasValidClosedHistoryFeeAuditHistory(mergedEvents, closedTrades, candidateCashflows)) {
+        mergeFailed = true;
+        return state;
+      }
       return {
         ...state,
         ...changes,
@@ -730,7 +771,12 @@ export class PortfolioStore {
    * which deliberately merges append-only journals.
    */
   public replaceWorkspace(newState: PortfolioState, persist = true): boolean {
-    if (!hasValidPortfolioImportShape(newState)) return false;
+    if (!hasValidPortfolioImportShape(newState) ||
+        !hasValidClosedHistoryFeeAuditHistory(
+          newState.transactionEvents || [],
+          newState.closedTrades || [],
+          newState.cashflows || []
+        )) return false;
     return this.update(() => ({ ...newState }), persist, 'derived');
   }
 
@@ -769,6 +815,12 @@ export class PortfolioStore {
       } catch {
         return false;
       }
+    }
+
+    const candidateClosedTrades = newState.closedTrades ?? this.state.closedTrades ?? [];
+    const candidateCashflows = newState.cashflows ?? this.state.cashflows ?? [];
+    if (!hasValidClosedHistoryFeeAuditHistory(mergedEvents, candidateClosedTrades, candidateCashflows)) {
+      return false;
     }
 
     return this.update((state) => ({
