@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { repairBrowserProfile } from './browserProfileRepairRuntime';
+import {
+  consumeAutomaticRepairAttemptMarker,
+  repairBrowserProfile
+} from './browserProfileRepairRuntime';
 
 function createRegistration(scope: string) {
   return {
@@ -101,5 +104,47 @@ describe('browser profile repair', () => {
       'workbox-precache-v2-https://example.test/portfolio-terminal/'
     );
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('automatic browser repair marker', () => {
+  it('adds a one-shot marker only to automatic repair reloads', async () => {
+    const reload = vi.fn();
+    await repairBrowserProfile({
+      automatic: true,
+      appBaseUrl: '/portfolio-terminal/',
+      origin: 'https://example.test',
+      getServiceWorkerRegistration: async () => undefined,
+      getCacheNames: async () => [],
+      deleteCache: vi.fn(),
+      reload,
+      now: () => 42
+    });
+
+    expect(reload).toHaveBeenCalledWith(
+      'https://example.test/portfolio-terminal/?_pt_repair=42&_pt_auto_repair=1'
+    );
+  });
+
+  it('consumes the marker while preserving unrelated query parameters and hash', () => {
+    const replaceUrl = vi.fn();
+    const attempted = consumeAutomaticRepairAttemptMarker(
+      'https://example.test/portfolio-terminal/?theme=dark&_pt_auto_repair=1#balance',
+      replaceUrl
+    );
+
+    expect(attempted).toBe(true);
+    expect(replaceUrl).toHaveBeenCalledWith('/portfolio-terminal/?theme=dark#balance');
+  });
+
+  it('does not alter a normal page URL without the one-shot marker', () => {
+    const replaceUrl = vi.fn();
+    const attempted = consumeAutomaticRepairAttemptMarker(
+      'https://example.test/portfolio-terminal/?theme=dark#balance',
+      replaceUrl
+    );
+
+    expect(attempted).toBe(false);
+    expect(replaceUrl).not.toHaveBeenCalled();
   });
 });
