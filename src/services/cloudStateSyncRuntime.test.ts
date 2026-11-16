@@ -258,6 +258,7 @@ describe('background cloud conflict reconciliation', () => {
       lastUpdated: 200
     };
     const { runtime, base, posted, counts } = createRuntime(remote);
+    const statuses: string[] = [];
     const options = {
       secret: 'test-secret',
       getState: () => ({
@@ -271,13 +272,16 @@ describe('background cloud conflict reconciliation', () => {
         return true;
       },
       showToast: () => {},
-      logAppMessage: () => {}
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
     };
 
     await runtime.pullCloudState(options);
+    statuses.length = 0;
     const result = await runtime.pushCloudState(options.getState(), options);
 
     expect(result).toBe(true);
+    expect(statuses).toEqual(['synced']);
     expect(applied).toMatchObject({
       positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
       balance: 300,
@@ -306,6 +310,7 @@ describe('background cloud conflict reconciliation', () => {
       lastUpdated: 200
     };
     const { runtime, base, posted, counts } = createRuntime(remote);
+    const statuses: string[] = [];
     const options = {
       secret: 'test-secret',
       getState: () => ({
@@ -316,11 +321,14 @@ describe('background cloud conflict reconciliation', () => {
       }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: () => { applied = true; return true; },
       showToast: () => {},
-      logAppMessage: () => {}
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
     };
 
     await runtime.pullCloudState(options);
+    statuses.length = 0;
     expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(statuses).toEqual(['conflict']);
     expect(applied).toBe(false);
     expect(posted).toHaveLength(1);
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });

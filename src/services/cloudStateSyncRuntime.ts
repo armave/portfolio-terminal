@@ -814,7 +814,6 @@ async function performPushCloudState(
     if (!res.ok) {
       if (res.status === 409) {
         cloudStateConflictSecret = currentSecret;
-        handlers.onStatusChange?.('conflict');
         const details = await responseError(res);
         const reconciled = await tryAutoReconcileCloudConflict(
           currentState,
@@ -824,6 +823,9 @@ async function performPushCloudState(
         );
         if (reconciled) return true;
 
+        // Report a visible conflict only after background recovery is declined
+        // or fails, so successful auto-reconciliation does not flicker the UI.
+        handlers.onStatusChange?.('conflict');
         const conflictMessage = translateText(
           'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
           getAppLanguage()

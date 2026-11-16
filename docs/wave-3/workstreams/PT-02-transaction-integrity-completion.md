@@ -169,7 +169,7 @@ The additive event schema remains version 1. Existing events without the optiona
 - Arrays are atomic and never concatenated. This intentionally avoids claiming transaction-level merge or exactly-once semantics while the snapshot remains canonical and PT-02 journal coverage is incomplete.
 - An HTTP 404 after a previously populated merge base is treated as a destructive reset, not an empty safe snapshot; the client leaves the conflict blocked for explicit recovery.
 - The merge base is held in memory per authenticated credential only; it is not persisted as another copy of financial data. If the app has no accepted base, cannot decrypt/validate the latest AES-GCM snapshot, cannot apply the candidate through the PortfolioStore integrity boundary, or loses a race on its single conditional retry, it falls back to the existing conflict recovery panel.
-- Successful background reconciliation applies without switching the user's current desk, scrolling, showing a modal or displaying a success toast. The server's conditional revision check remains authoritative.
+- Successful background reconciliation applies without switching the user's current desk, scrolling, showing a modal, displaying a success toast, or briefly flashing a conflict indicator. The conflict status is surfaced only when automatic recovery cannot complete; the server's conditional revision check remains authoritative.
 - [ ] Exact-head typecheck, Vitest, production build, browser journeys, dead-code and dependency audits after this change.
 - [ ] Manual authenticated multi-device conflict/recovery verification remains open.
 
