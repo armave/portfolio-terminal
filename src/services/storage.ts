@@ -110,6 +110,14 @@ function resetHistoryStorageCache(): void {
 }
 
 
+function isExplicitPortfolioReset(state: Record<string, unknown>): boolean {
+  const events = state.transactionEvents;
+  if (!Array.isArray(events) || events.length === 0) return false;
+  const latest = events[events.length - 1];
+  return Boolean(latest && typeof latest === 'object' &&
+    (latest as Record<string, unknown>).type === 'portfolio.reset');
+}
+
 function parseJsonRecord(raw: string | null): Record<string, unknown> | null {
   if (!raw) return null;
   try {
@@ -301,7 +309,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
   // initialization. Keep the in-memory recovered rows even if repair cannot save.
   if (snapshot && recoveryNeeded) {
     try {
-      await writeHistoryRecordToIndexedDB(snapshot, scope);
+      await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
     } catch (error) {
       console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
     }
@@ -309,7 +317,11 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
   return snapshot;
 }
 
-async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, scope = activePortfolioStorageScope): Promise<void> {
+async function writeHistoryRecordToIndexedDB(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope,
+  resetRecovery = false
+): Promise<void> {
   const db = await openHistoryDatabase(scope);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -343,6 +355,13 @@ async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, sco
       // history is retained as a recovery row before the replacement commits.
       const currentRequest = store.get(HISTORY_RECORD_KEY);
       currentRequest.onsuccess = () => {
+        if (resetRecovery) {
+          // An explicit user reset is a new known-good state, not a recoverable
+          // corruption candidate. Keep both rows blank so old history cannot return.
+          store.put(history, HISTORY_RECORD_RECOVERY_KEY);
+          store.put(history, HISTORY_RECORD_KEY);
+          return;
+        }
         const current = normalizeHistorySnapshot(currentRequest.result);
         if (current) {
           store.put(current, HISTORY_RECORD_RECOVERY_KEY);
@@ -373,7 +392,11 @@ async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, sco
   }
 }
 
-async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot, scope = activePortfolioStorageScope): Promise<boolean> {
+async function writeLegacyHistoryFallback(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope,
+  resetRecovery = false
+): Promise<boolean> {
   const storage = getBrowserStorage();
   if (!storage) return false;
   try {
@@ -384,9 +407,13 @@ async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot, scope 
     const sidecarKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope);
     const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
     try {
-      const previous = storage.getItem(sidecarKey);
-      if (previous && normalizeHistorySnapshot(JSON.parse(previous))) {
-        storage.setItem(recoveryKey, previous);
+      if (resetRecovery) {
+        storage.setItem(recoveryKey, serialized);
+      } else {
+        const previous = storage.getItem(sidecarKey);
+        if (previous && normalizeHistorySnapshot(JSON.parse(previous))) {
+          storage.setItem(recoveryKey, previous);
+        }
       }
     } catch {
       // A recovery copy is best-effort; never block the current history write.
@@ -596,7 +623,8 @@ export function activatePortfolioStorageScope(
 
 async function persistSavedHistorySnapshot(
   history: ClosedHistorySnapshot,
-  scope = activePortfolioStorageScope
+  scope = activePortfolioStorageScope,
+  options: { resetRecovery?: boolean } = {}
 ): Promise<boolean> {
   const snapshot: ClosedHistorySnapshot = {
     brokerExecutedTrades: Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [],
@@ -627,7 +655,7 @@ async function persistSavedHistorySnapshot(
       return true;
     } catch (indexedDbError) {
       console.warn('Could not persist closed history in IndexedDB; trying the bounded legacy fallback:', indexedDbError);
-      return await writeLegacyHistoryFallback(snapshot, scope);
+      return await writeLegacyHistoryFallback(snapshot, scope, options.resetRecovery === true);
     }
   });
 
@@ -1111,9 +1139,14 @@ function persistPortfolioSnapshot(
   }
   const stateChanged = previousComparable !== nextComparable;
 
-  if (stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
+  const resetRecovery = isExplicitPortfolioReset(state);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
+  if (resetRecovery) {
+    // Commit a reset marker's blank snapshot as the new recovery baseline.
+    writes.push({ key: recoveryKey, value: persistedStateJson });
+  } else if (stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
     try {
-      storage.setItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope), previousRaw);
+      storage.setItem(recoveryKey, previousRaw);
     } catch {
       // Recovery copies are best-effort; a full quota must not block the primary save.
     }
@@ -1154,13 +1187,14 @@ export async function savePortfolioSnapshot<TState extends object>(
     return false;
   }
   const scope = activePortfolioStorageScope;
+  const resetRecovery = isExplicitPortfolioReset(state as Record<string, unknown>);
   await initializeSavedHistoryStorage(scope);
   const previousHistory = loadSavedHistory();
-  if (!(await persistSavedHistorySnapshot(history, scope))) return false;
+  if (!(await persistSavedHistorySnapshot(history, scope, { resetRecovery }))) return false;
 
   const result = persistPortfolioSnapshot(state as Record<string, any>, options, scope);
   if (!result.success) {
-    const restored = await persistSavedHistorySnapshot(previousHistory, scope);
+    const restored = await persistSavedHistorySnapshot(previousHistory, scope, { resetRecovery });
     if (!restored) console.error('Failed to restore closed history after the portfolio snapshot could not be saved.');
     return false;
   }
@@ -1213,7 +1247,8 @@ export function saveState<TState extends object>(
   if (!result.success) return false;
 
   if (historyChanged) {
-    void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope).then((saved) => {
+    const resetRecovery = isExplicitPortfolioReset(mutableState);
+    void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope, { resetRecovery }).then((saved) => {
       if (!saved) console.warn('Portfolio state was saved, but its local closed-history cache could not be updated. Cloud history remains separate.');
     }).catch((error) => {
       console.warn('Portfolio state was saved, but the local closed-history cache update failed:', error);
