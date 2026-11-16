@@ -69,7 +69,8 @@ describe('financial title and KPI single-source presentation', () => {
     expect(renderBoardSource).toContain('dailyMovePercent:');
     expect(renderBoardSource).toContain('marginPtValue: formatUSD(pos.pt)');
     expect(renderBoardSource).toContain('marginPtReturnText:');
-    expect(renderBoardSource).toContain('metrics.netPct.toFixed(2)');
+    expect(renderBoardSource).toContain('formatMarginTargetDifference(pos.pt, pos.currentPrice)');
+    expect(renderBoardSource).not.toContain('metrics.netPct');
     expect(appSource).toContain("{activeDeskView === 'COMBINED' ? (");
     expect(appSource).toContain('id="boardTickerIdentity"');
     expect(appSource).toContain('id="boardTargetSection"');
