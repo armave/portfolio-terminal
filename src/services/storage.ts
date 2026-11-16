@@ -298,6 +298,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
       recoveryRequest.onerror = () => rejectTransaction(
         recoveryRequest.error || new Error('Could not read closed-history recovery storage')
       );
+      transaction.oncomplete = resolveTransaction;
       transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction failed'));
       transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction was aborted'));
     });
@@ -309,7 +310,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
   // initialization. Keep the in-memory recovered rows even if repair cannot save.
   if (snapshot && recoveryNeeded) {
     try {
-      await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
+      await writeHistoryRecordToIndexedDB(snapshot, scope, true);
     } catch (error) {
       console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
     }
