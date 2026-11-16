@@ -1143,16 +1143,12 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     store.setCashBalance(1_000);
     store.buyStock('AAPL', 2, 100, '2026-10-15');
-    store.update((state) => {
-      const position = state.positions.AAPL;
-      if (!position) return state;
-      return {
-        ...state,
-        positions: {
-          ...state.positions,
-          AAPL: { ...position, marginCharged: 10 }
-        }
-      };
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: { ...position, marginCharged: 10 }
+      }
     });
 
     store.sellStock('AAPL', 1, 110, '2026-10-16');
@@ -2298,6 +2294,17 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledWith(
       'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.'
     );
+  });
+
+  it('only restores a snapshot reference previously committed by this store', () => {
+    const store = new PortfolioStore();
+    const previous = store.getState();
+    expect(store.setState({ balance: -100 })).toBe(true);
+    expect(store.getState().balance).toBe(-100);
+
+    expect(store.restoreInMemorySnapshot(previous)).toBe(true);
+    expect(store.getState().balance).toBe(0);
+    expect(store.restoreInMemorySnapshot({ ...previous })).toBe(false);
   });
 
   it('writes the candidate snapshot before publishing it to subscribers', () => {
