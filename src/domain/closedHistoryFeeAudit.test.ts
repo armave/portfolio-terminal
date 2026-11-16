@@ -54,6 +54,16 @@ describe('Closed History fee correction audit', () => {
     expect(Object.isFrozen(correction.historyFeeCorrection?.after.cashflowAllocations)).toBe(true);
   });
 
+  it('rejects duplicate journal IDs while validating structured fee corrections', () => {
+    const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
+    const duplicateSale = { ...sale, ticker: 'MSFT' };
+    const parity = verifyClosedHistoryFeeCorrectionParity(
+      [...result.transactionEvents, duplicateSale], result.closedTrades, cashflows
+    );
+    expect(parity.matches).toBe(false);
+    expect(parity.discrepancies).toContain(`${sale.id}:duplicate-event-id`);
+  });
+
   it('rejects correction history when its canonical closed-trade row is missing', () => {
     const result = buildClosedHistoryFeeAuditUpdate([sale], [before], [after], cashflows, 1_800_000_000_000);
     const parity = verifyClosedHistoryFeeCorrectionParity(result.transactionEvents, [], cashflows);
