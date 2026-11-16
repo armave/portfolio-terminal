@@ -1803,6 +1803,13 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     gistSyncTimeout = null;
   },
   activateWorkspaceStorage: async (user) => {
+    // Remove the previous identity's in-memory portfolio before any asynchronous
+    // storage work. Do not persist this temporary blank over the outgoing scope.
+    if (!portfolioStore.replaceWorkspace(createBlankPortfolioState(), false)) {
+      throw new Error('The previous portfolio workspace could not be cleared safely.');
+    }
+    state = portfolioStore.getState();
+
     const scope = user.role === 'admin' ? 'owner' : 'guest:' + user.id;
     await activatePortfolioStorageScope(scope, { migrateLegacy: user.role === 'admin' });
 
