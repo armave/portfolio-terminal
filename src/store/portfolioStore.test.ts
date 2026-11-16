@@ -2464,6 +2464,34 @@ describe('portfolio import boundary validation', () => {
   });
 
 
+
+  it('accepts and restores fee corrections when sale, cashflow and canonical snapshots agree', () => {
+    const store = new PortfolioStore();
+    const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    expect(store.importState({ transactionEvents: [sale], closedTrades: [before], cashflows })).toBe(true);
+
+    const audit = buildClosedHistoryFeeAuditUpdate(
+      store.getState().transactionEvents || [], [before], [after], cashflows, 1_800_000_000_000
+    );
+    expect(audit.appendedCount).toBe(1);
+    expect(store.importState({
+      transactionEvents: audit.transactionEvents,
+      closedTrades: audit.closedTrades,
+      cashflows
+    })).toBe(true);
+
+    const correction = store.getState().transactionEvents?.find(event => event.historyFeeCorrection);
+    expect(correction).toBeDefined();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find(finding => finding.eventId === correction?.id))
+      .toMatchObject({ disposition: 'audit-only' });
+
+    const restored = new PortfolioStore();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(restored.getState().transactionEvents || [])
+      .findings.find(finding => finding.eventId === correction?.id))
+      .toMatchObject({ disposition: 'audit-only' });
+  });
+
   it('rejects restored fee corrections with broken revision links before committing any portfolio data', () => {
     const store = new PortfolioStore();
     const { sale, before, after, cashflows } = createClosedHistoryFeeAuditImportFixture();

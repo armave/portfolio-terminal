@@ -164,6 +164,7 @@ describe('transaction journal coverage visibility', () => {
       'Trade event requires an instrument, positive quantity and matching signed position delta.',
       'Cash-holding buy is missing a stable lot ID, acquisition date, price, fee evidence or matching quantity delta.',
       'Cash-holding sale is missing exact FIFO lot allocations or a matching negative quantity delta.',
+      'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics.',
       'Position adjustment requires an instrument and an explicit quantity delta.',
       'Snapshot reconciliation has no explicit state delta or complete audit-review contract.',
       'Cash adjustment requires an explicit free-cash or margin-debt delta.',

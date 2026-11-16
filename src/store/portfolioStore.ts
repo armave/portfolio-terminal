@@ -76,8 +76,14 @@ function hasValidClosedHistoryFeeAuditHistory(
   closedTrades: readonly ClosedTrade[],
   cashflows: readonly { id: string }[]
 ): boolean {
+  const hasFeeCorrectionPayload = events.some((event) =>
+    isRecord(event) && event.historyFeeCorrection !== undefined
+  );
+  if (!hasFeeCorrectionPayload) return true;
+  if (!isPortfolioTransactionEventList(events)) return false;
+
   const corrections = events.filter((event) => Boolean(event.historyFeeCorrection));
-  if (!corrections.length) return true;
+  if (!corrections.length) return false;
 
   const sourceCashflows = cashflows
     .filter((cashflow) => cashflow && typeof cashflow.id === 'string' && Boolean(cashflow.id.trim()))

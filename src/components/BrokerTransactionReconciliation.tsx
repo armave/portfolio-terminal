@@ -194,6 +194,7 @@ const RU_COPY: Record<string, string> = {
   'Trade event requires an instrument, positive quantity and matching signed position delta.': 'Событию сделки необходимы инструмент, положительное количество и соответствующее знаковое изменение позиции.',
   'Cash-holding buy is missing a stable lot ID, acquisition date, price, fee evidence or matching quantity delta.': 'Для покупки денежного актива отсутствуют стабильный ID лота, дата приобретения, цена, сведения о комиссии или соответствующее изменение количества.',
   'Cash-holding sale is missing exact FIFO lot allocations or a matching negative quantity delta.': 'Для продажи денежного актива отсутствуют точные FIFO-распределения по лотам или соответствующее отрицательное изменение количества.',
+  'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics.': 'Удаление денежного актива является корректировкой учёта без выручки от продажи или расчёта реализованной прибыли/убытка.',
   'Position adjustment requires an instrument and an explicit quantity delta.': 'Для корректировки позиции необходимы инструмент и явное изменение количества.',
   'Snapshot reconciliation has no explicit state delta or complete audit-review contract.': 'Для сверки снимка отсутствует явное изменение состояния или полный контракт аудиторской проверки.',
   'Cash adjustment requires an explicit free-cash or margin-debt delta.': 'Для корректировки денежных средств необходимо явное изменение свободных средств или маржинального долга.',
