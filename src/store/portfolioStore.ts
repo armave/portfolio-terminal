@@ -2583,7 +2583,15 @@ export class PortfolioStore {
         try {
           const replay = replayPortfolioTransactionLots(state.transactionEvents || []);
           const relatedEventIds = new Set((state.transactionEvents || [])
-            .filter(item => normalizeActionTicker(item.ticker || '') === actionTicker)
+            .filter(item =>
+              normalizeActionTicker(item.ticker || '') === actionTicker &&
+              (item.type === 'cash-holding.buy' ||
+                item.type === 'cash-holding.sell' ||
+                item.type === 'cash-holding.adjustment' ||
+                (item.type === 'corporate-action' &&
+                  (item.cashHoldingQuantityDelta !== undefined ||
+                    item.corporateActionLotAdjustments?.some(adjustment => adjustment.ledger === 'cash-holding'))))
+            )
             .map(item => item.id));
           if (replay.issues.some(issue => issue.eventId && relatedEventIds.has(issue.eventId))) return false;
           const replayLots = replay.cashHoldingOpenLots.filter(lot => normalizeActionTicker(lot.ticker) === actionTicker);
@@ -2728,7 +2736,10 @@ export class PortfolioStore {
           ? {
               ...holding,
               shares: adjustedCashHolding.shares,
+              averagePrice: adjustedCashHolding.averagePrice,
+              price: adjustedCashHolding.price,
               currentPrice: adjustedCashHolding.currentPrice,
+              ...(adjustedCashHolding.lots ? { lots: adjustedCashHolding.lots } : {}),
               ...(adjustedCashHolding.quoteDetails ? { quoteDetails: adjustedCashHolding.quoteDetails } : {})
             }
           : holding
