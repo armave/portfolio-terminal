@@ -34,6 +34,11 @@ describe('mobile footer workspace navigation', () => {
     expect(mobileRules).toContain('.workspace-nav-equity-badge--admin');
   });
 
+  it('stacks the administrator Margin prefix above its ticker symbol on mobile', () => {
+    expect(mobileRules).toMatch(/\.workspace-nav-button--ticker \.workspace-nav-button__label\s*\{[^}]*flex-direction:\s*column;/s);
+    expect(mobileRules).toContain('gap: 0.08rem;');
+  });
+
   it('keeps a long administrator ticker list independently horizontally scrollable', () => {
     expect(mobileRules).toMatch(/#tickerTabs\s*>\s*\.workspace-nav-ticker-list\s*\{[^}]*display:\s*flex;[^}]*flex:\s*1 1 0;[^}]*overflow-x:\s*auto;/s);
     expect(mobileRules).toContain('scroll-snap-type: x proximity;');

@@ -4900,6 +4900,12 @@ table tbody tr:hover {
     font-size: 0.55rem;
   }
 
+  /* Put the one-ticker admin prefix above its symbol instead of running them together. */
+  .workspace-nav-button--ticker .workspace-nav-button__label {
+    flex-direction: column;
+    gap: 0.08rem;
+  }
+
   .workspace-nav-equity-badge {
     min-height: 1.15rem;
     padding: 0.12rem 0.35rem;

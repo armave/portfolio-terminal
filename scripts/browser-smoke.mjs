@@ -569,6 +569,7 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
             icon: Boolean(icon?.getClientRects().length),
             labelText: label?.textContent?.trim() || '',
             labelDisplay: label ? getComputedStyle(label).display : 'missing',
+            labelFlexDirection: label ? getComputedStyle(label).flexDirection : 'missing',
             radius: getComputedStyle(button).borderRadius,
             kind: button.getAttribute('data-nav-kind')
           };
@@ -610,6 +611,11 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
     }
     if (width > 768 && navigation.dockPosition === 'fixed') {
       throw new Error('Desktop workspace navigation should remain in the header: ' + JSON.stringify(navigation));
+    }
+    if (role === 'admin' && width <= 768 && navigation.buttons.some(button =>
+      button.kind === 'margin-ticker' && button.labelFlexDirection !== 'column'
+    )) {
+      throw new Error('Admin Margin prefix and ticker should stack vertically in the mobile footer: ' + JSON.stringify(navigation));
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });
