@@ -49,7 +49,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'publish-user', 'secret:valid-secret',
+      'publish-user', 'load-rules', 'secret:valid-secret',
       'import-admin-workspace', 'rollover', 'pull-shared-cloud',
       'resolve-interval:admin', 'set-interval:admin-interval', 'rollover-timer:true',
       'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
@@ -64,7 +64,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'publish-user', 'secret:valid-secret', 'pull-guest-snapshot',
+      'publish-user', 'load-rules', 'secret:valid-secret', 'pull-guest-snapshot',
       'resolve-interval:guest', 'set-interval:guest-interval', 'rollover-timer:false',
       'quote-refresh-start', 'guest-balance', 'scroll', 'refresh-quotes',
       'quote-refresh-finish', 'guest-balance', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'
@@ -80,7 +80,7 @@ describe('portfolio authenticated startup runtime', () => {
     await fixture.start();
 
     expect(fixture.calls).toEqual([
-      'load-rules', 'clear-identity', 'secret:', 'import-admin-workspace', 'rollover',
+      'clear-identity', 'load-rules', 'secret:', 'import-admin-workspace', 'rollover',
       'resolve-interval:none', 'set-interval:admin-interval', 'rollover-timer:false',
       'quote-refresh-start', 'saved-admin-view', 'scroll', 'refresh-quotes',
       'quote-refresh-finish', 'analyst-consensus', 'recover-cloud-writes', 'hide-loading'

@@ -67,6 +67,7 @@ import {
   clearCloudEncryptionSecretCache
 } from './src/services/api';
 import {
+  activatePortfolioStorageScope,
   areHeaderCredentialsConfigured,
   clearBrokerRules,
   getGatewaySecret,
@@ -1800,8 +1801,31 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
   },
-  clearGuestWorkspace: () => {
-    portfolioStore.importState(createCleanWorkspaceState());
+  activateWorkspaceStorage: async (user) => {
+    const scope = user.role === 'admin' ? 'owner' : 'guest:' + user.id;
+    await activatePortfolioStorageScope(scope, { migrateLegacy: user.role === 'admin' });
+
+    const blank = createBlankPortfolioState();
+    const saved = loadSavedState(blank);
+    const history = loadSavedHistory();
+    const workspace: PortfolioState = {
+      ...blank,
+      ...saved,
+      brokerExecutedTrades: history.brokerExecutedTrades,
+      cashflows: history.cashflows
+    };
+    if (!portfolioStore.replaceWorkspace(workspace)) {
+      throw new Error('The authenticated portfolio workspace could not be loaded safely.');
+    }
+    state = portfolioStore.getState();
+  },
+  clearWorkspaceOnAuthFailure: async () => {
+    try {
+      await activatePortfolioStorageScope('offline');
+    } catch {
+      // Keep the authentication failure path available if storage is unavailable.
+    }
+    portfolioStore.replaceWorkspace(createBlankPortfolioState(), false);
     state = portfolioStore.getState();
   },
   emitUserChanged: (user) => emitUiEvent('auth:user-changed', { user }),

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+  activatePortfolioStorageScope,
   saveState,
   savePortfolioSnapshot,
   savePortfolioStateSnapshot,
@@ -52,9 +53,10 @@ describe('storage service', () => {
   };
 
   beforeEach(async () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    await activatePortfolioStorageScope('legacy');
     storageMap.clear();
     vi.clearAllMocks();
-    vi.stubGlobal('localStorage', localStorageMock);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -627,6 +629,64 @@ describe('storage service', () => {
         cashflows: []
       })).toBe(false);
     });
+  });
+
+  it('isolates owner, guest, and offline snapshots plus broker history and rules', async () => {
+    const legacyState = {
+      balance: -275,
+      apiKeys: { finnhub: 'owner-only-key' },
+      brokerExecutedTrades: [{ id: 'owner-trade-1' }],
+      cashflows: [{ id: 'owner-cashflow-1' }]
+    };
+    expect(saveState(legacyState)).toBe(true);
+    saveBrokerRules({ broker: 'owner-rules' } as never);
+    await flushSavedHistoryPersistence();
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+    expect(loadSavedState({})).toMatchObject({
+      balance: -275,
+      apiKeys: { finnhub: 'owner-only-key' }
+    });
+    expect(loadSavedHistory()).toEqual({
+      brokerExecutedTrades: [{ id: 'owner-trade-1' }],
+      cashflows: [{ id: 'owner-cashflow-1' }]
+    });
+    expect(loadBrokerRules()).toEqual({ broker: 'owner-rules' });
+
+    const pendingOwnerWrite = saveSavedHistory({
+      brokerExecutedTrades: [{ id: 'owner-trade-1' }, { id: 'owner-trade-2' }],
+      cashflows: [{ id: 'owner-cashflow-1' }]
+    });
+    const switchToGuest = activatePortfolioStorageScope('guest:guest-a');
+    await Promise.all([pendingOwnerWrite, switchToGuest]);
+    expect(loadSavedState({})).toEqual({});
+    expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+    expect(loadBrokerRules()).toBeNull();
+
+    expect(saveState({ balance: 25, apiKeys: { finnhub: 'guest-a-key' } })).toBe(true);
+    await activatePortfolioStorageScope('guest:guest-b');
+    expect(loadSavedState({})).toEqual({});
+    expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+
+    await activatePortfolioStorageScope('guest:guest-a');
+    expect(loadSavedState({})).toMatchObject({
+      balance: 25,
+      apiKeys: { finnhub: 'guest-a-key' }
+    });
+
+    await activatePortfolioStorageScope('owner');
+    expect(loadSavedState({})).toMatchObject({
+      balance: -275,
+      apiKeys: { finnhub: 'owner-only-key' }
+    });
+    expect(loadSavedHistory()).toEqual({
+      brokerExecutedTrades: [{ id: 'owner-trade-1' }, { id: 'owner-trade-2' }],
+      cashflows: [{ id: 'owner-cashflow-1' }]
+    });
+
+    await activatePortfolioStorageScope('offline');
+    expect(loadSavedState({})).toEqual({});
+    expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
   });
 
   describe('TradeNet history baseline markers', () => {

@@ -13,7 +13,8 @@ export interface PortfolioSessionRuntimeDependencies {
   cancelPendingApiReads: () => void;
   clearCloudEncryptionSecretCache: () => void;
   clearPendingCloudWrite: () => void;
-  clearGuestWorkspace: () => void;
+  activateWorkspaceStorage: (user: AuthUser) => Promise<void>;
+  clearWorkspaceOnAuthFailure: () => Promise<void>;
   emitUserChanged: (user: AuthUser | null) => void;
   showToast: (message: string, tone: 'error') => void;
   logoutAccount: () => Promise<void>;
@@ -47,31 +48,33 @@ export function createPortfolioSessionRuntime(
       if (identityChanged) {
         dependencies.cancelPendingApiReads();
         dependencies.clearCloudEncryptionSecretCache();
+        dependencies.clearPendingCloudWrite();
         dependencies.setSessionIdentity(`${user.role}:${user.id}`);
       }
 
-      // Permissions must change before guest workspace clearing can notify the
-      // store, otherwise a pending administrator subscription could enqueue a
-      // shared-workspace write for the guest session.
       dependencies.setAccountRole(user.role);
       dependencies.setAccountId(user.id);
-      dependencies.setCloudWritePermission(user.role === 'admin');
-
-      if (identityChanged && user.role === 'guest') {
-        // Clear a previously hydrated administrator workspace before the UI
-        // receives the guest identity event or renders the Balance screen.
-        dependencies.clearPendingCloudWrite();
-        dependencies.clearGuestWorkspace();
+      if (identityChanged) {
+        // Keep cloud writes disabled until the new local workspace has loaded.
+        dependencies.setCloudWritePermission(false);
+        await dependencies.activateWorkspaceStorage(user);
       }
+      if (user.role === 'admin') dependencies.setCloudWritePermission(true);
 
       dependencies.emitUserChanged(user);
       return user;
     } catch {
       dependencies.cancelPendingApiReads();
+      dependencies.clearPendingCloudWrite();
       dependencies.setAccountRole(null);
       dependencies.setAccountId(null);
       dependencies.setCloudWritePermission(false);
       dependencies.setSessionIdentity(null);
+      try {
+        await dependencies.clearWorkspaceOnAuthFailure();
+      } catch {
+        // Keep the invalid session blocked even if local cleanup is unavailable.
+      }
       dependencies.emitUserChanged(null);
       return null;
     }
