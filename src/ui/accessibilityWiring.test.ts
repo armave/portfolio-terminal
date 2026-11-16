@@ -185,8 +185,9 @@ describe('Stage 10 accessibility wiring', () => {
     const summary = readSource('../components/SummaryMetricsGrid.tsx');
 
     expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700 px-2 py-1 text-\[10px\] font-semibold text-cyan-300 disabled:opacity-50"/g)).toHaveLength(2);
-    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 text-[9px] text-cyan-300 disabled:opacity-40"');
+    expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
     expect(articleDialog).toContain('inline-flex min-h-11 items-center gap-2');
     expect(summary).toContain('class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90');
