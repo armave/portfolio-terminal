@@ -59,12 +59,15 @@ function initialPortfolioStorageScope(): string {
   let storage: Storage | null;
   try {
     storage = getBrowserStorage();
-    // Without localStorage there is no reliable legacy-state marker. Fail closed
-    // rather than hydrating an unscoped snapshot or history from another session.
-    if (!storage) return 'offline';
+    // Without localStorage in an actual browser there is no reliable legacy-state
+    // marker. Fail closed rather than hydrating history from a prior session.
+    // Non-browser runtimes retain the legacy default for deterministic tests/SSR.
+    if (!storage) {
+      return typeof window === 'undefined' ? LEGACY_PORTFOLIO_STORAGE_SCOPE : 'offline';
+    }
     if (storage.getItem(PORTFOLIO_STORAGE_SCOPE_MARKER) === '1') return 'offline';
   } catch {
-    return 'offline';
+    return typeof window === 'undefined' ? LEGACY_PORTFOLIO_STORAGE_SCOPE : 'offline';
   }
 
   try {
