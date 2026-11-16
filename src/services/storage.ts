@@ -1134,7 +1134,13 @@ function persistPortfolioSnapshot(
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
   }
   if (brokerRulesJson !== null) {
-    const previousRules = storage.getItem(brokerRulesKey);
+    let previousRules: string | null;
+    try {
+      previousRules = storage.getItem(brokerRulesKey);
+    } catch (err) {
+      console.error('Failed to inspect existing broker rules before saving:', err);
+      return { success: false, stateChanged: false, savedAt: null };
+    }
     if (previousRules && previousRules !== brokerRulesJson && parseJsonRecord(previousRules)) {
       writes.push({
         key: scopedStorageKey(STORAGE_KEY_RULES_RECOVERY, scope),
