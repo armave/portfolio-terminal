@@ -167,6 +167,203 @@ describe('cloud state sync options', () => {
 });
 
 
+describe('background cloud conflict reconciliation', () => {
+  const response = (status: number, payload: unknown, revision?: number) => new Response(
+    JSON.stringify(payload),
+    {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(revision === undefined ? {} : { ETag: `"${revision}"` })
+      }
+    }
+  );
+
+  function createRuntime(
+    remoteAfterConflict: Record<string, unknown>,
+    onApplied: (state: Record<string, unknown>) => void
+  ) {
+    let revision = 0;
+    let postCount = 0;
+    let getCount = 0;
+    const posted: Record<string, unknown>[] = [];
+    const base = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500,
+      transactionEvents: [{ id: 'buy-base' }],
+      activeView: 'AAPL',
+      selectedTicker: 'AAPL',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 100
+    };
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async (plaintext) => `encrypted:${plaintext}`,
+      decryptCloudPayload: async (payload) => ({
+        plaintext: payload.startsWith('encrypted:') ? payload.slice('encrypted:'.length) : payload,
+        legacy: false
+      }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async (_input, init) => {
+        const method = String(init?.method || 'GET').toUpperCase();
+        if (method === 'GET') {
+          getCount += 1;
+          if (getCount === 1) {
+            return response(200, { encryptedPayload: `encrypted:${JSON.stringify(base)}` }, 1);
+          }
+          return response(200, {
+            encryptedPayload: `encrypted:${JSON.stringify(remoteAfterConflict)}`
+          }, 2);
+        }
+        postCount += 1;
+        const body = JSON.parse(String(init?.body || '{}'));
+        const encrypted = String(body.encryptedPayload || '');
+        posted.push(JSON.parse(encrypted.slice('encrypted:'.length)));
+        return postCount === 1
+          ? response(409, { error: 'Stale revision.' }, 1)
+          : response(200, { success: true }, 3);
+      }
+    });
+    return {
+      runtime,
+      base,
+      posted,
+      counts: () => ({ getCount, postCount, revision })
+    };
+  }
+
+  it('auto-reconciles local financial edits with remote navigation changes in the background', async () => {
+    let applied: Record<string, unknown> | undefined;
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500,
+      transactionEvents: [{ id: 'buy-base' }],
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote, (state) => { applied = state; });
+    const options = {
+      secret: 'test-secret',
+      getState: () => ({
+        ...base,
+        positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+        balance: 300,
+        lastUpdated: 250
+      }),
+      applyAutoReconciledState: (state: Record<string, unknown>) => {
+        applied = state;
+        return true;
+      },
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    const result = await runtime.pushCloudState(options.getState(), options);
+
+    expect(result).toBe(true);
+    expect(applied).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastUpdated: 250
+    });
+    expect(posted).toHaveLength(2);
+    expect(posted[1]).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT'
+    });
+    expect(counts()).toEqual({ getCount: 2, postCount: 2, revision: 3 });
+  });
+
+  it('keeps a conflict blocked when both devices changed protected financial state differently', async () => {
+    let applied = false;
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 450,
+      transactionEvents: [{ id: 'buy-base' }, { id: 'cash-change-remote' }],
+      activeView: 'MSFT',
+      selectedTicker: 'AAPL',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote, () => { applied = true; });
+    const options = {
+      secret: 'test-secret',
+      getState: () => ({
+        ...base,
+        positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+        balance: 300,
+        transactionEvents: [{ id: 'buy-base' }, { id: 'buy-local' }],
+        lastUpdated: 250
+      }),
+      applyAutoReconciledState: () => { applied = true; return true; },
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(applied).toBe(false);
+    expect(posted).toHaveLength(1);
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(posted).toHaveLength(1);
+  });
+
+  it('does not attempt background reconciliation without an accepted base snapshot', async () => {
+    let requests = 0;
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'encrypted:local',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: () => 1,
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(0)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => {
+        requests += 1;
+        return response(409, { error: 'Stale revision.' }, 1);
+      }
+    });
+
+    expect(await runtime.pushCloudState({ activeView: 'AAPL' }, {
+      secret: 'test-secret',
+      applyAutoReconciledState: () => true,
+      showToast: () => {},
+      logAppMessage: () => {}
+    })).toBe(false);
+    expect(requests).toBe(1);
+  });
+});
+
 describe('cloud revision conflict recovery', () => {
   it('blocks stale retries until a successful cloud pull is accepted locally', async () => {
     let postCount = 0;

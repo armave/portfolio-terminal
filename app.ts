@@ -753,6 +753,18 @@ async function syncCloudState(mode = 'push') {
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
     pullCloudAndRewriteLocal,
+    applyAutoReconciledState: (parsedState) => {
+      // Apply a validated background merge without switching desks or scrolling
+      // the workspace; users can continue working while cloud state reconciles.
+      const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
+        parsedState as unknown as Partial<PortfolioState>,
+        state
+      );
+      const mergedState = { ...state, ...compatibleCloudState };
+      if (!portfolioStore.importState(loadSavedState(mergedState))) return false;
+      state = portfolioStore.getState();
+      return true;
+    },
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logAppMessage,
     onStatusChange: (status) => {

@@ -3,6 +3,7 @@ import { getAppLanguage, translateText } from './i18n';
 import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from './cloudPayloadValidation';
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
+import { reconcileCloudStateSnapshots } from './cloudSnapshotReconciliation';
 
 // The Worker accepts 20 MiB request bodies. AES-GCM's base64 envelope expands
 // plaintext by roughly 4/3, so keep enough headroom for the envelope and JSON wrapper.
@@ -46,6 +47,53 @@ function toCloudStateRecord(value?: CloudStateInput): CloudStateRecord {
   return { ...value };
 }
 
+function prepareCloudStateSnapshot(value?: CloudStateInput): CloudStateRecord {
+  const snapshot = toCloudStateRecord(value);
+  delete snapshot.gatewaySecret;
+  delete snapshot.marginBalance;
+  delete snapshot.brokerExecutedTrades;
+  delete snapshot.cashflows;
+  if (Array.isArray(snapshot.closedTrades)) {
+    snapshot.closedTrades = snapshot.closedTrades.map((value: unknown) => {
+      const trade = isRecord(value) ? value : {};
+      return {
+        id: trade.id,
+        transactionEventId: trade.transactionEventId,
+        ticker: trade.ticker,
+        shares: trade.shares,
+        avgBuyPrice: trade.avgBuyPrice,
+        entryPrice: trade.entryPrice,
+        sellPrice: trade.sellPrice,
+        exitPrice: trade.exitPrice,
+        buyDate: trade.buyDate,
+        purchaseDate: trade.purchaseDate,
+        sellDate: trade.sellDate,
+        exitDate: trade.exitDate,
+        date: trade.date,
+        closedAt: trade.closedAt,
+        grossProfit: trade.grossProfit,
+        commissions: trade.commissions,
+        feesAndCommissions: trade.feesAndCommissions,
+        totalCommissions: trade.totalCommissions,
+        marginInterest: trade.marginInterest,
+        marginFee: trade.marginFee,
+        marginFeeAllocations: trade.marginFeeAllocations,
+        netProfit: trade.netProfit,
+        netRealizedGain: trade.netRealizedGain,
+        holdingDays: trade.holdingDays
+      };
+    });
+  }
+  delete snapshot.closedHistory;
+  return JSON.parse(JSON.stringify(snapshot)) as CloudStateRecord;
+}
+
+function cloudStateFingerprint(snapshot: CloudStateRecord): string {
+  const fingerprintState = { ...snapshot };
+  delete fingerprintState.lastUpdated;
+  return JSON.stringify(fingerprintState);
+}
+
 export interface SyncOptions {
   state?: CloudStateInput;
   secret?: string;
@@ -57,6 +105,8 @@ export interface SyncOptions {
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
   onEncryptionMigrationFailure?: (error: Error) => void;
+  /** Apply a validated background reconciliation without changing the visible desk. */
+  applyAutoReconciledState?: (state: CloudStateRecord) => boolean | void;
 }
 export interface CloudStateSyncRuntimeDependencies {
   workerProxyUrl: string;
@@ -129,6 +179,9 @@ export function createCloudStateSyncRuntime({
     import('./cloudWriteRetry').then(m => m.fetchIdempotentCloudWrite(fetchImpl, ...args));
 
   const cloudStatePushFingerprints = new Map<string, string>();
+  // The encrypted snapshot itself is never persisted as a merge base; keep only the
+  // last accepted in-memory copy for this authenticated credential/session.
+  const cloudStateBaseSnapshots = new Map<string, CloudStateRecord>();
   // A revision conflict means the local snapshot is based on an obsolete cloud
   // revision. Block writes until a later pull is accepted locally.
   let cloudStateConflictSecret: string | null = null;
@@ -218,6 +271,7 @@ async function pullCloudState(
     if (res.status === 404) {
       // A 404 is a healthy, authorized KV response with no saved portfolio yet.
       if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
+      cloudStateBaseSnapshots.set(currentSecret, {});
       handlers.onStatusChange?.('synced');
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
@@ -334,6 +388,7 @@ async function pullCloudState(
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
+    cloudStateBaseSnapshots.set(currentSecret, prepareCloudStateSnapshot(parsedState));
     // The conflict clears only after decryption, validation and local persistence.
     if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
 
@@ -398,6 +453,101 @@ async function pullCloudState(
     showToast(`Cloud pull failed: ${message}`, 'error');
     logAppMessage(`[KV Cloud Error]: ${message}. Retaining local state.`);
     return loadSavedState(toCloudStateRecord(state));
+  }
+}
+
+
+/**
+ * Fetch the newest encrypted snapshot after a 409 and make one conservative
+ * three-way reconciliation attempt. This runs inside the current serialized
+ * write, so it deliberately posts directly instead of re-enqueueing a write.
+ */
+async function tryAutoReconcileCloudConflict(
+  conflictedState: CloudStateInput,
+  secret: string,
+  expectedRevision: number,
+  handlers: SyncOptions
+): Promise<boolean> {
+  const applyReconciledState = handlers.applyAutoReconciledState;
+  const base = cloudStateBaseSnapshots.get(secret);
+  if (!applyReconciledState || !base) return false;
+  const isCurrentSession = handlers.isCurrentSession || (() => true);
+
+  try {
+    const response = await fetchImpl(apiUrl('/api/state'), {
+      method: 'GET',
+      headers: authHeaders(secret),
+      cache: 'no-store'
+    });
+    if (!isCurrentSession()) return false;
+
+    const latestRevision = readCloudRevision(response.headers);
+    if (!Number.isSafeInteger(latestRevision) || latestRevision === null || latestRevision <= expectedRevision) {
+      return false;
+    }
+
+    let remoteState: CloudStateRecord;
+    if (response.status === 404) {
+      remoteState = {};
+    } else {
+      if (!response.ok) return false;
+      const body: unknown = await response.json();
+      if (!isCurrentSession() || !isRecord(body) || !hasAesGcmV2Envelope(body.encryptedPayload)) {
+        return false;
+      }
+      const decrypted = await decryptCloudPayload(body.encryptedPayload, secret);
+      if (!isCurrentSession() || decrypted.legacy) return false;
+      const parsed: unknown = JSON.parse(decrypted.plaintext);
+      assertValidCloudPortfolioPayload(parsed);
+      remoteState = prepareCloudStateSnapshot(parsed as CloudStateInput);
+    }
+
+    const latestLocal = handlers.getState?.() || conflictedState;
+    const localState = prepareCloudStateSnapshot(latestLocal);
+    const merged = reconcileCloudStateSnapshots(base, localState, remoteState);
+    if (!merged) return false;
+
+    if (!applyReconciledState(merged)) return false;
+    if (!isCurrentSession()) return false;
+
+    const mergedFingerprint = cloudStateFingerprint(merged);
+    const remoteFingerprint = cloudStateFingerprint(remoteState);
+    if (mergedFingerprint === remoteFingerprint) {
+      // A pull-only reconciliation still advances the revision generation so
+      // writes already queued against the old base cannot inherit this revision.
+      revisionCoordinator.recordPulledRevision(latestRevision);
+    } else {
+      const serialized = JSON.stringify(merged);
+      const serializedBytes = new TextEncoder().encode(serialized).byteLength;
+      if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) return false;
+      const encryptedPayload = await encryptCloudPayload(serialized, secret);
+      if (!isCurrentSession()) return false;
+
+      // Mark the refreshed base before the direct conditional write. The write
+      // is made against exactly the ETag returned by the latest background GET.
+      revisionCoordinator.recordPulledRevision(latestRevision);
+      const retry = await pushCloudWrite(apiUrl('/api/state'), {
+        method: 'POST',
+        headers: authHeaders(secret, `"${latestRevision}"`),
+        body: JSON.stringify({ encryptedPayload })
+      }, isCurrentSession);
+      if (!isCurrentSession() || !retry.ok) return false;
+      const savedRevision = readCloudRevision(retry.headers) ?? latestRevision + 1;
+      revisionCoordinator.setRevision(savedRevision);
+    }
+
+    cloudStateBaseSnapshots.set(secret, merged);
+    cloudStatePushFingerprints.set(secret, mergedFingerprint);
+    if (cloudStateConflictSecret === secret) cloudStateConflictSecret = null;
+    handlers.onStatusChange?.('synced');
+    (handlers.logAppMessage || ((message: string) => console.log(message)))(
+      '[Cloud Conflict]: Non-conflicting changes were reconciled and synchronized in the background.'
+    );
+    return true;
+  } catch {
+    // The original local snapshot remains available. Keep the conflict latch
+    // set and let the existing recovery panel handle ambiguous or failed cases.
+    return false;
   }
 }
 
@@ -630,49 +780,8 @@ async function performPushCloudState(
     // Closed history has its own record and is synchronized only by its data
     // owner when source history or calculated fee metadata actually changes.
     // Portfolio UI/state writes must never implicitly trigger history GET/POST pairs.
-    const stateToEncrypt: CloudStateRecord = { ...currentState };
-    delete stateToEncrypt.gatewaySecret;
-    delete stateToEncrypt.marginBalance;
-    delete stateToEncrypt.brokerExecutedTrades;
-    delete stateToEncrypt.cashflows;
-    // Persist closed trades as compact canonical records. Older builds could
-    // carry arbitrary broker/raw fields or duplicate the same records in
-    // closedHistory, inflating every cloud sync even when history was unchanged.
-    if (Array.isArray(stateToEncrypt.closedTrades)) {
-      stateToEncrypt.closedTrades = stateToEncrypt.closedTrades.map((value: unknown) => {
-        const trade = isRecord(value) ? value : {};
-        return {
-          id: trade.id,
-          transactionEventId: trade.transactionEventId,
-          ticker: trade.ticker,
-          shares: trade.shares,
-          avgBuyPrice: trade.avgBuyPrice,
-          entryPrice: trade.entryPrice,
-          sellPrice: trade.sellPrice,
-          exitPrice: trade.exitPrice,
-          buyDate: trade.buyDate,
-          purchaseDate: trade.purchaseDate,
-          sellDate: trade.sellDate,
-          exitDate: trade.exitDate,
-          date: trade.date,
-          closedAt: trade.closedAt,
-          grossProfit: trade.grossProfit,
-          commissions: trade.commissions,
-          feesAndCommissions: trade.feesAndCommissions,
-          totalCommissions: trade.totalCommissions,
-          marginInterest: trade.marginInterest,
-          marginFee: trade.marginFee,
-          marginFeeAllocations: trade.marginFeeAllocations,
-          netProfit: trade.netProfit,
-          netRealizedGain: trade.netRealizedGain,
-          holdingDays: trade.holdingDays
-        };
-      });
-    }
-    delete stateToEncrypt.closedHistory;
-    const fingerprintState = { ...stateToEncrypt };
-    delete fingerprintState.lastUpdated;
-    const stateFingerprint = JSON.stringify(fingerprintState);
+    const stateToEncrypt = prepareCloudStateSnapshot(currentState);
+    const stateFingerprint = cloudStateFingerprint(stateToEncrypt);
     if (cloudStatePushFingerprints.get(currentSecret) === stateFingerprint) {
       handlers.onStatusChange?.('synced');
       return true;
@@ -698,14 +807,23 @@ async function performPushCloudState(
 
     if (!res.ok) {
       if (res.status === 409) {
+        cloudStateConflictSecret = currentSecret;
+        handlers.onStatusChange?.('conflict');
+        const details = await responseError(res);
+        const reconciled = await tryAutoReconcileCloudConflict(
+          currentState,
+          currentSecret,
+          expectedRevision,
+          handlers
+        );
+        if (reconciled) return true;
+
         const conflictMessage = translateText(
           'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
           getAppLanguage()
         );
-        cloudStateConflictSecret = currentSecret;
-        handlers.onStatusChange?.('conflict');
         showToast(conflictMessage, 'error');
-        logAppMessage(`[Cloud Conflict]: ${await responseError(res)}`);
+        logAppMessage(`[Cloud Conflict]: ${details}`);
         return false;
       }
       throw new Error(await responseError(res));
@@ -714,6 +832,7 @@ async function performPushCloudState(
     const savedRevision = readCloudRevision(res.headers);
     if (savedRevision !== null) revisionCoordinator.setRevision(savedRevision);
     cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
+    cloudStateBaseSnapshots.set(currentSecret, stateToEncrypt);
 
     handlers.onStatusChange?.('synced');
     return true;
@@ -744,6 +863,7 @@ async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise
 }
   const clearRequestCache = (): void => {
     cloudStatePushFingerprints.clear();
+    cloudStateBaseSnapshots.clear();
   };
   return {
     pullCloudState, pushCloudState, syncCloudState,

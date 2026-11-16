@@ -161,6 +161,17 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 The additive event schema remains version 1. Existing events without the optional structured payload remain readable; `PortfolioState.positions` remains canonical. This is a closed-history audit slice, not PT-02 completion or a ledger cutover.
 
 
+## Background cloud conflict reconciliation — 2026-11-16
+
+- Following an HTTP 409, the client may fetch the latest encrypted snapshot once and compare it with the last accepted in-memory base snapshot and the latest local snapshot.
+- Only navigation/selection/refresh-cadence preferences are field-merged. Portfolio data, positions, cash/debt, lots, transaction and corporate-action journals, broker assumptions/snapshots, closed history and unknown fields are treated as protected state.
+- A one-sided protected-state change can be retained while independent navigation preferences from the other device are applied. If both devices changed protected state differently, the app keeps the conflict blocked and preserves local data for the existing backup/manual recovery flow.
+- Arrays are atomic and never concatenated. This intentionally avoids claiming transaction-level merge or exactly-once semantics while the snapshot remains canonical and PT-02 journal coverage is incomplete.
+- The merge base is held in memory per authenticated credential only; it is not persisted as another copy of financial data. If the app has no accepted base, cannot decrypt/validate the latest AES-GCM snapshot, cannot apply the candidate through the PortfolioStore integrity boundary, or loses a race on its single conditional retry, it falls back to the existing conflict recovery panel.
+- Successful background reconciliation applies without switching the user's current desk, scrolling, showing a modal or displaying a success toast. The server's conditional revision check remains authoritative.
+- [ ] Exact-head typecheck, Vitest, production build, browser journeys, dead-code and dependency audits after this change.
+- [ ] Manual authenticated multi-device conflict/recovery verification remains open.
+
 ## Cloud revision conflict recovery — 2026-11-16
 
 - The client reports HTTP 409 as a distinct `conflict` state rather than a generic sync error.
