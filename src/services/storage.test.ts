@@ -574,71 +574,82 @@ describe('storage service', () => {
 
     it('bounds stalled secure IndexedDB open requests and preserves encrypted credentials', async () => {
       vi.useFakeTimers();
-      setGatewaySecret('');
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
-      storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
-      vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn() } });
-      vi.stubGlobal('indexedDB', { open: vi.fn(() => ({})) } as unknown as IDBFactory);
+      try {
+        setGatewaySecret('');
+        const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
+        storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
+        vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn() } });
+        vi.stubGlobal('indexedDB', { open: vi.fn(() => ({})) } as unknown as IDBFactory);
 
-      const restoring = restoreGatewaySecret();
-      await vi.advanceTimersByTimeAsync(5_000);
-      await expect(restoring).resolves.toBe('');
-      expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
-      warning.mockRestore();
-      vi.useRealTimers();
+        const restoring = restoreGatewaySecret();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await expect(restoring).resolves.toBe('');
+        expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
+      } finally {
+        warning.mockRestore();
+        vi.useRealTimers();
+      }
     });
 
     it('does not mint a replacement device key when the saved key is missing', async () => {
       setGatewaySecret('');
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
-      storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
+      try {
+        const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
+        storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
 
-      const keyReadRequest = { result: undefined, onsuccess: null, onerror: null, error: null };
-      const readTransaction = {
-        objectStore: () => ({
-          get: () => {
-            queueMicrotask(() => {
-              keyReadRequest.onsuccess?.call(keyReadRequest, new Event('success'));
-              queueMicrotask(() => readTransaction.oncomplete?.call(readTransaction, new Event('complete')));
-            });
-            return keyReadRequest;
-          }
-        }),
-        abort: vi.fn(),
-        oncomplete: null,
-        onerror: null,
-        onabort: null,
-        error: null
-      };
-      const database = {
-        objectStoreNames: { contains: () => true },
-        transaction: () => readTransaction,
-        close: vi.fn()
-      };
-      const openRequest = {
-        result: database,
-        error: null,
-        onupgradeneeded: null,
-        onsuccess: null,
-        onerror: null,
-        onblocked: null
-      };
-      const generateKey = vi.fn();
-      vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn(), generateKey } });
-      vi.stubGlobal('indexedDB', {
-        open: vi.fn(() => {
-          queueMicrotask(() => openRequest.onsuccess?.call(openRequest, new Event('success')));
-          return openRequest;
-        })
-      } as unknown as IDBFactory);
+        const keyReadRequest = {
+          result: undefined,
+          onsuccess: null,
+          onerror: null,
+          error: null
+        } as unknown as IDBRequest<CryptoKey>;
+        const readTransaction = {
+          objectStore: () => ({
+            get: () => {
+              queueMicrotask(() => {
+                keyReadRequest.onsuccess?.call(keyReadRequest, new Event('success'));
+                queueMicrotask(() => readTransaction.oncomplete?.call(readTransaction, new Event('complete')));
+              });
+              return keyReadRequest;
+            }
+          }),
+          abort: vi.fn(),
+          oncomplete: null,
+          onerror: null,
+          onabort: null,
+          error: null
+        } as unknown as IDBTransaction;
+        const database = {
+          objectStoreNames: { contains: () => true },
+          transaction: () => readTransaction,
+          close: vi.fn()
+        } as unknown as IDBDatabase & { close: ReturnType<typeof vi.fn> };
+        const openRequest = {
+          result: database,
+          error: null,
+          onupgradeneeded: null,
+          onsuccess: null,
+          onerror: null,
+          onblocked: null
+        } as unknown as IDBOpenDBRequest;
+        const generateKey = vi.fn();
+        vi.stubGlobal('crypto', { subtle: { decrypt: vi.fn(), generateKey } });
+        vi.stubGlobal('indexedDB', {
+          open: vi.fn(() => {
+            queueMicrotask(() => openRequest.onsuccess?.call(openRequest, new Event('success')));
+            return openRequest;
+          })
+        } as unknown as IDBFactory);
 
-      await expect(restoreGatewaySecret()).resolves.toBe('');
-      expect(generateKey).not.toHaveBeenCalled();
-      expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
-      expect(database.close).toHaveBeenCalledTimes(1);
-      warning.mockRestore();
+        await expect(restoreGatewaySecret()).resolves.toBe('');
+        expect(generateKey).not.toHaveBeenCalled();
+        expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
+        expect(database.close).toHaveBeenCalledTimes(1);
+      } finally {
+        warning.mockRestore();
+      }
     });
 
     it('preserves encrypted device credentials when IndexedDB is temporarily unavailable', async () => {
