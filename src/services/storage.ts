@@ -223,19 +223,6 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
       let currentRead = false;
       let recoveryRead = false;
       let settled = false;
-      const finish = () => {
-        if (!currentRead || !recoveryRead || settled) return;
-        settled = true;
-        const current = normalizeHistorySnapshot(currentValue);
-        const recovery = normalizeHistorySnapshot(recoveryValue);
-        if (current) {
-          snapshot = current;
-          recoveryNeeded = !recovery;
-        } else if (recovery) {
-          snapshot = recovery;
-          recoveryNeeded = true;
-        }
-      };
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -247,8 +234,24 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
         }
       }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
       const resolveTransaction = () => {
+        if (settled) return;
+        if (!currentRead || !recoveryRead) {
+          settled = true;
+          clearTimeout(timeout);
+          reject(new Error('Closed-history read completed without all requested records.'));
+          return;
+        }
+        settled = true;
         clearTimeout(timeout);
-        finish();
+        const current = normalizeHistorySnapshot(currentValue);
+        const recovery = normalizeHistorySnapshot(recoveryValue);
+        if (current) {
+          snapshot = current;
+          recoveryNeeded = !recovery;
+        } else if (recovery) {
+          snapshot = recovery;
+          recoveryNeeded = true;
+        }
         resolve();
       };
       const rejectTransaction = (error: Error) => {
@@ -263,12 +266,10 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
       currentRequest.onsuccess = () => {
         currentValue = currentRequest.result;
         currentRead = true;
-        finish();
       };
       recoveryRequest.onsuccess = () => {
         recoveryValue = recoveryRequest.result;
         recoveryRead = true;
-        finish();
       };
       currentRequest.onerror = () => rejectTransaction(
         currentRequest.error || new Error('Could not read closed-history storage')
