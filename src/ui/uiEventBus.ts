@@ -15,6 +15,7 @@ export interface UiEventPayloads {
   'app:startup-repair': undefined;
   'app:startup-retry': undefined;
   'app:startup-state': { visible: boolean; failed: boolean };
+  'app:startup-overlay-dismissed': undefined;
   'app:scroll-workspace': undefined;
   'portfolio:set-active-view': { view: string };
   'portfolio:refresh-live-prices': { resolve: () => void };
