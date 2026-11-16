@@ -342,7 +342,6 @@ export function replayPortfolioTransactionLots(
         const acquisitionEffectiveAt = Date.parse(adjustment.acquisitionDate + 'T00:00:00.000Z');
         if (!lot || lot.ticker !== cleanTicker(event.ticker) ||
             !closeEnough(lot.openQuantity, adjustment.quantityBefore, 1e-8) ||
-            !closeEnough(lot.acquiredQuantity, adjustment.quantityBefore + (lot.acquiredQuantity - lot.openQuantity), 1e-8) ||
             !closeEnough(lot.acquisitionPrice, adjustment.priceBefore, 1e-8) ||
             lot.acquisitionDate !== adjustment.acquisitionDate ||
             !closeEnough(lot.acquiredAt, adjustment.acquiredAt, 1) ||
