@@ -37,6 +37,7 @@ import {
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import { verifyClosedHistoryFeeCorrectionParity } from '../domain/closedHistoryFeeAudit';
+import { replayPortfolioTransactionLots } from '../domain/portfolioLotJournal';
 import {
   adjustPositionForSplit,
   adjustCashHoldingForSplit,
@@ -2577,6 +2578,30 @@ export class PortfolioStore {
         Number.isFinite(Number(item.shares)) &&
         Math.abs(Number(item.shares) - cashShares) <= Math.max(1e-8, cashShares * 1e-8)
       );
+      const cashHoldingLotHistoryValid = (() => {
+        if (!cashHolding || !Array.isArray(cashHolding.lots) || cashHolding.lots.length === 0) return false;
+        try {
+          const replay = replayPortfolioTransactionLots(state.transactionEvents || []);
+          const relatedEventIds = new Set((state.transactionEvents || [])
+            .filter(item => normalizeActionTicker(item.ticker || '') === actionTicker)
+            .map(item => item.id));
+          if (replay.issues.some(issue => issue.eventId && relatedEventIds.has(issue.eventId))) return false;
+          const replayLots = replay.cashHoldingOpenLots.filter(lot => normalizeActionTicker(lot.ticker) === actionTicker);
+          if (replayLots.length !== cashHolding.lots.length) return false;
+          return cashHolding.lots.every(lot => {
+            const replayLot = replayLots.find(item => item.lotId === lot.lotId);
+            return Boolean(replayLot) &&
+              Math.abs(replayLot!.openQuantity - lot.qty) <= Math.max(1e-8, lot.qty * 1e-8) &&
+              Math.abs(replayLot!.acquisitionPrice - lot.price) <= Math.max(1e-8, lot.price * 1e-8) &&
+              replayLot!.acquisitionDate === lot.date &&
+              Math.abs(replayLot!.acquiredAt - lot.acquiredAt) <= 1 &&
+              replayLot!.openBuyCommission !== null &&
+              Math.abs(replayLot!.openBuyCommission - lot.buyCommission) <= 0.011;
+          });
+        } catch {
+          return false;
+        }
+      })();
       const adjusted = brokerIntegrityIssue || brokerSnapshotNotVerified ? {
         status: 'review_required' as const,
         reason: brokerIntegrityIssue
@@ -2589,10 +2614,14 @@ export class PortfolioStore {
         : cashHoldingMatches.length > 1 ? quoteUnavailable(
           'More than one cash holding matches this ticker; reconcile duplicate holding rows before applying the split.'
         )
-        : cashHolding ? brokerCashMirrorValid
-          ? adjustCashHoldingForSplit(cashHolding, event)
+        : cashHolding ? brokerCashMatches.length <= 1 && brokerCashMirrorValid
+          ? cashHoldingLotHistoryValid
+            ? adjustCashHoldingForSplit(cashHolding, event)
+            : quoteUnavailable(
+              'Cash-holding lots do not reconcile to the immutable buy/sale journal; restore or reconcile transaction history before applying the split.'
+            )
           : quoteUnavailable(
-            'The broker cash compatibility quantity does not match the app-owned cash lots; refresh and reconcile the account before applying the split.'
+            'The broker cash compatibility quantity is duplicated or does not match the app-owned cash lots; refresh and reconcile the account before applying the split.'
           )
         : brokerCashMatches.length > 0 ? quoteUnavailable(
           'Broker-only cash holdings have no app-recorded acquisition lots; add or reconcile exact lot evidence before applying the split.'
