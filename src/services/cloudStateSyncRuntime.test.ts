@@ -187,7 +187,6 @@ describe('background cloud conflict reconciliation', () => {
     const base = {
       positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
       balance: 500,
-      transactionEvents: [{ id: 'buy-base' }],
       activeView: 'AAPL',
       selectedTicker: 'AAPL',
       lastRolloverTimestamp: 100,
@@ -300,7 +299,6 @@ describe('background cloud conflict reconciliation', () => {
     const remote = {
       positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
       balance: 450,
-      transactionEvents: [{ id: 'buy-base' }, { id: 'cash-change-remote' }],
       activeView: 'MSFT',
       selectedTicker: 'AAPL',
       lastRolloverTimestamp: 100,
@@ -313,7 +311,6 @@ describe('background cloud conflict reconciliation', () => {
         ...base,
         positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
         balance: 300,
-        transactionEvents: [{ id: 'buy-base' }, { id: 'buy-local' }],
         lastUpdated: 250
       }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: () => { applied = true; return true; },
