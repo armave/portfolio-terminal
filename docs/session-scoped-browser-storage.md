@@ -52,11 +52,13 @@ Each closed-history IndexedDB open and transaction is bounded to five seconds. I
 
 A timeout does not delete the legacy migration source or replace the portfolio snapshot. If cached history cannot be read from either IndexedDB or the scoped localStorage fallback, the in-memory history cache starts empty for that session; the persisted source remains available for a later retry or recovery.
 
-## Browser app-shell repair
+## Automatic browser app-shell repair
 
-A startup watchdog exposes a **Repair this browser** action if initialization does not complete within 45 seconds. The repair unregisters only a service worker whose scope exactly matches this application and removes only this application's Workbox precache. It then reloads the app from a cache-busted URL.
+The app checks its service worker for updates on each page load and reloads once when an already-controlling worker is replaced. A first controller acquisition does not interrupt account creation or sign-in.
 
-This repair does not sign the user out and does not clear localStorage, IndexedDB, portfolio snapshots, broker assumptions, closed history, encrypted Gateway credentials, or caches belonging to another app. It is a shell/cache repair only; existing portfolio recovery remains governed by the account-scoped last-known-good rules above.
+If startup remains pending for 30 seconds, a watchdog automatically unregisters only a service worker whose scope exactly matches this application and removes only this application's Workbox precache, then reloads with a cache-busting URL. A one-shot URL marker prevents repeated automatic reloads. If the next startup also stalls, the app displays the manual recovery controls instead of looping.
+
+This repair does not sign the user out and does not clear localStorage, sessionStorage, IndexedDB, portfolio snapshots, broker assumptions, closed history, encrypted Gateway credentials, or caches belonging to another app. It is a shell/cache repair only; existing portfolio recovery remains governed by the account-scoped last-known-good rules below.
 
 ## Local recovery copies
 

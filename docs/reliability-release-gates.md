@@ -129,7 +129,9 @@ Telemetry collection, retention, sampling, and export must be documented and rev
 
 ## Stuck profile and service-worker recovery
 
-The app checks its registered service worker for updates on each page load and reloads once when a new controller takes over. If startup remains pending for 45 seconds, the UI exposes **Repair this browser**. This removes only the app-scoped service worker and its Workbox precache, then reloads with a cache-busting query. Portfolio localStorage, IndexedDB, device credentials, and other apps' caches are preserved. The recovery action is not a logout and does not reset the portfolio.
+The app checks its registered service worker for updates on each page load and reloads only when an existing controller is replaced. If startup remains pending for 30 seconds, the watchdog automatically removes only the app-scoped service worker and Workbox precache, then reloads with a cache-busting URL and a one-shot marker. The marker suppresses another automatic repair on the next load; if that load also stalls for 30 seconds, the manual recovery UI is shown instead of an automatic reload loop.
+
+Portfolio localStorage, IndexedDB, device credentials, account sessions, and other apps' caches are preserved. This is not a logout or portfolio reset.
 
 ## Browser cloud-sync request deadlines
 

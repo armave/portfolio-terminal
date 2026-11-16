@@ -1,4 +1,29 @@
+const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
+
+const BROWSER_REPAIR_OPERATION_TIMEOUT_MS = 3_000;
+
+function withOperationTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Browser repair operation timed out.')), timeoutMs);
+    operation.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
+
 export interface BrowserProfileRepairDependencies {
+  automatic?: boolean;
+  operationTimeoutMs?: number;
   appBaseUrl: string;
   origin: string;
   getServiceWorkerRegistration: (scope: string) => Promise<ServiceWorkerRegistration | undefined>;
@@ -6,6 +31,21 @@ export interface BrowserProfileRepairDependencies {
   deleteCache: (name: string) => Promise<boolean>;
   reload: (url: string) => void;
   now?: () => number;
+}
+
+/**
+ * Read and remove the one-shot marker from the URL after an automatic repair
+ * reload. It is intentionally kept in memory only; no local storage is touched.
+ */
+export function consumeAutomaticRepairAttemptMarker(
+  currentHref: string,
+  replaceUrl: (url: string) => void
+): boolean {
+  const currentUrl = new URL(currentHref);
+  if (currentUrl.searchParams.get(AUTOMATIC_REPAIR_ATTEMPT_QUERY) !== '1') return false;
+  currentUrl.searchParams.delete(AUTOMATIC_REPAIR_ATTEMPT_QUERY);
+  replaceUrl(currentUrl.pathname + currentUrl.search + currentUrl.hash);
+  return true;
 }
 
 export interface BrowserProfileRepairResult {
@@ -24,19 +64,23 @@ export interface BrowserProfileRepairResult {
 export async function repairBrowserProfile(
   dependencies: BrowserProfileRepairDependencies
 ): Promise<BrowserProfileRepairResult> {
+  const operationTimeoutMs = dependencies.operationTimeoutMs ?? BROWSER_REPAIR_OPERATION_TIMEOUT_MS;
   const appScope = new URL(dependencies.appBaseUrl, dependencies.origin);
   if (!appScope.pathname.endsWith('/')) appScope.pathname += '/';
 
   let serviceWorkerUnregistered = false;
   try {
-    const registration = await dependencies.getServiceWorkerRegistration(appScope.href);
+    const registration = await withOperationTimeout(
+      dependencies.getServiceWorkerRegistration(appScope.href),
+      operationTimeoutMs
+    );
     if (registration) {
       const registeredScope = new URL(registration.scope);
       const registrationMatchesApp =
         registeredScope.origin === appScope.origin &&
         (registeredScope.pathname.endsWith('/') ? registeredScope.pathname : registeredScope.pathname + '/') === appScope.pathname;
       if (registrationMatchesApp) {
-        serviceWorkerUnregistered = await registration.unregister();
+        serviceWorkerUnregistered = await withOperationTimeout(registration.unregister(), operationTimeoutMs);
       }
     }
   } catch (error) {
@@ -45,13 +89,13 @@ export async function repairBrowserProfile(
 
   let precacheCachesDeleted = 0;
   try {
-    const cacheNames = await dependencies.getCacheNames();
+    const cacheNames = await withOperationTimeout(dependencies.getCacheNames(), operationTimeoutMs);
     const appPrecacheNames = cacheNames.filter((name) =>
       name.startsWith('workbox-precache-') && name.includes(appScope.pathname)
     );
     for (const name of appPrecacheNames) {
       try {
-        if (await dependencies.deleteCache(name)) precacheCachesDeleted += 1;
+        if (await withOperationTimeout(dependencies.deleteCache(name), operationTimeoutMs)) precacheCachesDeleted += 1;
       } catch (error) {
         console.warn('[Browser Repair]: Could not remove an app precache.', error);
       }
@@ -62,6 +106,7 @@ export async function repairBrowserProfile(
 
   const reloadUrl = new URL(appScope.href);
   reloadUrl.searchParams.set('_pt_repair', String((dependencies.now ?? Date.now)()));
+  if (dependencies.automatic) reloadUrl.searchParams.set(AUTOMATIC_REPAIR_ATTEMPT_QUERY, '1');
   dependencies.reload(reloadUrl.href);
 
   return {
@@ -72,13 +117,16 @@ export async function repairBrowserProfile(
 }
 
 /** Repair the current Portfolio Terminal shell without touching saved portfolio data. */
-export async function repairCurrentBrowserAppCache(): Promise<BrowserProfileRepairResult> {
+export async function repairCurrentBrowserAppCache(
+  options: { automatic?: boolean } = {}
+): Promise<BrowserProfileRepairResult> {
   if (typeof window === 'undefined') {
     throw new Error('Browser profile repair is available only in a browser.');
   }
 
   return repairBrowserProfile({
     appBaseUrl: import.meta.env.BASE_URL,
+    automatic: options.automatic === true,
     origin: window.location.origin,
     getServiceWorkerRegistration: async (scope) => {
       if (!('serviceWorker' in navigator)) return undefined;
