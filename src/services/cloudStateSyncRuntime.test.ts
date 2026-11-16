@@ -290,6 +290,7 @@ describe('startup cloud pull local-edit protection', () => {
     const statuses: string[] = [];
     let preservedLocalChanges = 0;
     let revision = 0;
+    let latestLocal: Record<string, unknown> = base;
     const runtime = createCloudStateSyncRuntime({
       workerProxyUrl: 'https://portfolio.example.test',
       getActiveGatewaySecret: () => 'test-secret',
@@ -328,7 +329,6 @@ describe('startup cloud pull local-edit protection', () => {
       showToast: () => {},
       logAppMessage: () => {}
     };
-    let latestLocal: Record<string, unknown> = base;
     return {
       runtime, base, options, saved, applied, statuses, fetchStarted,
       resolveFetch, setLocal: (value: Record<string, unknown>) => { latestLocal = value; },
