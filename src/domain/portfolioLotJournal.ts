@@ -364,7 +364,7 @@ export function replayPortfolioTransactionLots(
       }
       if (!valid) continue;
       for (const update of pendingUpdates) {
-        update.lot.acquiredQuantity = Number((update.lot.acquiredQuantity * multiplier).toFixed(8));
+        update.lot.acquiredQuantity *= multiplier;
         update.lot.openQuantity = update.quantityAfter;
         update.lot.acquisitionPrice = update.priceAfter;
       }
