@@ -673,6 +673,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Could not finish initializing the app.": "Не удалось завершить инициализацию приложения.",
   "Initializing your portfolio…": "Инициализация портфеля…",
   "Check your connection, then retry or continue offline.": "Проверьте подключение, затем повторите попытку или продолжите без подключения.",
+  'Repair this browser': 'Восстановить работу браузера',
+  'Your saved portfolio and sign-in credentials will be kept.': 'Сохранённый портфель и данные входа останутся без изменений.',
   "Restoring saved data and market connections": "Восстановление сохранённых данных и подключений к рынку",
   "Freedom account data unavailable — saved portfolio data is being retained.": "Данные счёта Freedom недоступны — сохранённые данные портфеля остаются без изменений.",
   "Only an active purchase tranche can be linked to a guest.": "Гостю можно назначить только активный лот покупки.",

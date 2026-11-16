@@ -12,6 +12,7 @@ export interface UiEventPayloads {
   'scenario:exit-comparison-request': { ticker?: string };
   'scenario:buy-more-request': { ticker?: string };
   'app:startup-offline': undefined;
+  'app:startup-repair': undefined;
   'app:startup-retry': undefined;
   'app:startup-state': { visible: boolean; failed: boolean };
   'app:scroll-workspace': undefined;
