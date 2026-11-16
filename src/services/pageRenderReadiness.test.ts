@@ -102,12 +102,13 @@ describe('page render readiness', () => {
   it('cancels the fallback deadline after the active desk becomes ready', async () => {
     vi.useFakeTimers();
     const fixture = createReadinessWatcherFixture();
+    const root = createRoot();
     const onReady = vi.fn();
     const onTimeout = vi.fn();
 
     watchPageRenderReadiness({
       document: fixture.documentRef,
-      getRoot: () => createRoot(),
+      getRoot: () => root,
       onReady,
       onTimeout
     });
