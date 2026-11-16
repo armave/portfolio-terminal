@@ -88,6 +88,75 @@ describe('storage service', () => {
     }
   });
 
+  it('completes authenticated scope activation when IndexedDB open requests stall', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('indexedDB', {
+        open: vi.fn(() => ({}))
+      } as unknown as IDBFactory);
+
+      const activation = activatePortfolioStorageScope('owner', { migrateLegacy: true });
+      await vi.advanceTimersByTimeAsync(15_000);
+      await expect(activation).resolves.toBeUndefined();
+
+      expect(storageMap.get('portfolio_session_storage_v1')).toBe('1');
+      expect(saveState({ balance: 42 })).toBe(true);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('indexedDB', undefined);
+      await activatePortfolioStorageScope('legacy');
+    }
+  });
+
+  it('falls back to the scoped localStorage history when an IndexedDB read transaction stalls', async () => {
+    vi.useFakeTimers();
+    const expectedHistory = {
+      brokerExecutedTrades: [{ id: 'cached-trade' }],
+      cashflows: [{ id: 'cached-cashflow' }]
+    };
+    storageMap.set('portfolio_closed_history_v1', JSON.stringify(expectedHistory));
+    const historyRequest = {} as IDBRequest<unknown>;
+    const transaction = {
+      objectStore: () => ({ get: () => historyRequest }),
+      abort: vi.fn()
+    } as unknown as IDBTransaction;
+    const database = {
+      objectStoreNames: { contains: () => true },
+      transaction: () => transaction,
+      close: vi.fn()
+    } as unknown as IDBDatabase;
+    const openRequest = {
+      result: database,
+      error: null,
+      onupgradeneeded: null,
+      onsuccess: null,
+      onerror: null,
+      onblocked: null
+    } as unknown as IDBOpenDBRequest;
+
+    try {
+      vi.stubGlobal('indexedDB', {
+        open: vi.fn(() => {
+          void Promise.resolve().then(() => {
+            openRequest.onsuccess?.call(openRequest, new Event('success') as IDBVersionChangeEvent);
+          });
+          return openRequest;
+        })
+      } as unknown as IDBFactory);
+
+      const initialization = initializeSavedHistoryStorage('legacy');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(initialization).resolves.toBeUndefined();
+
+      expect(transaction.abort).toHaveBeenCalledTimes(1);
+      expect(loadSavedHistory()).toEqual(expectedHistory);
+    } finally {
+      vi.useRealTimers();
+      vi.stubGlobal('indexedDB', undefined);
+    }
+  });
+
   describe('saveState', () => {
     it('persists state to localStorage and updates lastUpdated', () => {
       const state = { activeView: 'AAPL', balance: 1200, lastUpdated: Date.now() };
