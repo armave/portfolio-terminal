@@ -179,10 +179,7 @@ describe('background cloud conflict reconciliation', () => {
     }
   );
 
-  function createRuntime(
-    remoteAfterConflict: Record<string, unknown>,
-    onApplied: (state: Record<string, unknown>) => void
-  ) {
+  function createRuntime(remoteAfterConflict: Record<string, unknown>) {
     let revision = 0;
     let postCount = 0;
     let getCount = 0;
@@ -199,9 +196,11 @@ describe('background cloud conflict reconciliation', () => {
     const runtime = createCloudStateSyncRuntime({
       workerProxyUrl: 'https://portfolio.example.test',
       getActiveGatewaySecret: () => 'test-secret',
-      encryptCloudPayload: async (plaintext) => `encrypted:${plaintext}`,
+      encryptCloudPayload: async (plaintext) => `aesgcm:v2:${encodeURIComponent(plaintext)}:nonce`,
       decryptCloudPayload: async (payload) => ({
-        plaintext: payload.startsWith('encrypted:') ? payload.slice('encrypted:'.length) : payload,
+        plaintext: payload.startsWith('aesgcm:v2:')
+          ? decodeURIComponent(payload.slice('aesgcm:v2:'.length, -':nonce'.length))
+          : payload,
         legacy: false
       }),
       readCloudRevision: (headers) => {
@@ -232,7 +231,8 @@ describe('background cloud conflict reconciliation', () => {
         postCount += 1;
         const body = JSON.parse(String(init?.body || '{}'));
         const encrypted = String(body.encryptedPayload || '');
-        posted.push(JSON.parse(encrypted.slice('encrypted:'.length)));
+        const encoded = encrypted.slice('aesgcm:v2:'.length, -':nonce'.length);
+        posted.push(JSON.parse(decodeURIComponent(encoded)));
         return postCount === 1
           ? response(409, { error: 'Stale revision.' }, 1)
           : response(200, { success: true }, 3);
@@ -257,7 +257,7 @@ describe('background cloud conflict reconciliation', () => {
       lastRolloverTimestamp: 100,
       lastUpdated: 200
     };
-    const { runtime, base, posted, counts } = createRuntime(remote, (state) => { applied = state; });
+    const { runtime, base, posted, counts } = createRuntime(remote);
     const options = {
       secret: 'test-secret',
       getState: () => ({
@@ -265,7 +265,7 @@ describe('background cloud conflict reconciliation', () => {
         positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
         balance: 300,
         lastUpdated: 250
-      }),
+      }) as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: (state: Record<string, unknown>) => {
         applied = state;
         return true;
@@ -306,7 +306,7 @@ describe('background cloud conflict reconciliation', () => {
       lastRolloverTimestamp: 100,
       lastUpdated: 200
     };
-    const { runtime, base, posted, counts } = createRuntime(remote, () => { applied = true; });
+    const { runtime, base, posted, counts } = createRuntime(remote);
     const options = {
       secret: 'test-secret',
       getState: () => ({
@@ -315,7 +315,7 @@ describe('background cloud conflict reconciliation', () => {
         balance: 300,
         transactionEvents: [{ id: 'buy-base' }, { id: 'buy-local' }],
         lastUpdated: 250
-      }),
+      }) as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
       applyAutoReconciledState: () => { applied = true; return true; },
       showToast: () => {},
       logAppMessage: () => {}

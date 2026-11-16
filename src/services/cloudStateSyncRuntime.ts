@@ -507,29 +507,32 @@ async function tryAutoReconcileCloudConflict(
     const merged = reconcileCloudStateSnapshots(base, localState, remoteState);
     if (!merged) return false;
 
-    if (!applyReconciledState(merged)) return false;
-    if (!isCurrentSession()) return false;
-
     const mergedFingerprint = cloudStateFingerprint(merged);
     const remoteFingerprint = cloudStateFingerprint(remoteState);
+    let encryptedMerged: string | null = null;
+    if (mergedFingerprint !== remoteFingerprint) {
+      const serialized = JSON.stringify(merged);
+      const serializedBytes = new TextEncoder().encode(serialized).byteLength;
+      if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) return false;
+      encryptedMerged = await encryptCloudPayload(serialized, secret);
+      if (!isCurrentSession()) return false;
+    }
+
+    const applied = applyReconciledState(merged);
+    if (applied === false || !isCurrentSession()) return false;
+
     if (mergedFingerprint === remoteFingerprint) {
       // A pull-only reconciliation still advances the revision generation so
       // writes already queued against the old base cannot inherit this revision.
       revisionCoordinator.recordPulledRevision(latestRevision);
     } else {
-      const serialized = JSON.stringify(merged);
-      const serializedBytes = new TextEncoder().encode(serialized).byteLength;
-      if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) return false;
-      const encryptedPayload = await encryptCloudPayload(serialized, secret);
-      if (!isCurrentSession()) return false;
-
       // Mark the refreshed base before the direct conditional write. The write
       // is made against exactly the ETag returned by the latest background GET.
       revisionCoordinator.recordPulledRevision(latestRevision);
       const retry = await pushCloudWrite(apiUrl('/api/state'), {
         method: 'POST',
         headers: authHeaders(secret, `"${latestRevision}"`),
-        body: JSON.stringify({ encryptedPayload })
+        body: JSON.stringify({ encryptedPayload: encryptedMerged })
       }, isCurrentSession);
       if (!isCurrentSession() || !retry.ok) return false;
       const savedRevision = readCloudRevision(retry.headers) ?? latestRevision + 1;
