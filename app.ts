@@ -746,7 +746,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
   emitUiEvent('app:scroll-workspace');
 }
 
-async function syncCloudState(mode = 'push') {
+async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') {
       await pullGuestPortfolioSnapshot();
@@ -760,6 +760,8 @@ async function syncCloudState(mode = 'push') {
     getState: () => state,
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
+    protectLocalEditsDuringPull: pullOptions.protectLocalEditsDuringPull === true,
+    onLocalChangesPreserved: () => { startupCloudWritePending = true; },
     pullCloudAndRewriteLocal,
     applyAutoReconciledState: (parsedState) => {
       // Apply a validated background merge without switching desks or scrolling
@@ -1929,7 +1931,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   applyOvernightRollover,
   pullSharedCloudState: async () => {
     setCloudStatus('syncing', 'CHECKING...');
-    await syncCloudState('pull');
+    await syncCloudState('pull', { protectLocalEditsDuringPull: true });
   },
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
