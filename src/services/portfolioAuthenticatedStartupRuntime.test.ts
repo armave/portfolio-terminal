@@ -85,10 +85,16 @@ describe('portfolio authenticated startup runtime', () => {
 
     expect(fixture.dependencies.hideStartupLoading).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.recoverPendingCloudWrites).not.toHaveBeenCalled();
+    expect(fixture.dependencies.refreshLivePrices).not.toHaveBeenCalled();
 
     finishCloudPull();
-    await vi.waitFor(() => expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => {
+      expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1);
+      expect(fixture.dependencies.refreshLivePrices).toHaveBeenCalledTimes(1);
+    });
 
+    expect(fixture.calls.indexOf('pull-shared-cloud-finished'))
+      .toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
     expect(fixture.calls.indexOf('pull-shared-cloud-finished'))
       .toBeLessThan(fixture.calls.indexOf('recover-cloud-writes'));
   });
