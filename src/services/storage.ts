@@ -315,6 +315,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
       console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
     }
   }
+  if (snapshot) writeLocalHistoryRecoverySnapshot(snapshot, scope);
   return snapshot;
 }
 
@@ -423,6 +424,23 @@ async function writeLegacyHistoryFallback(
     return true;
   } catch (error) {
     console.warn('Closed history could not be written to the legacy localStorage fallback:', error);
+    return false;
+  }
+}
+
+function writeLocalHistoryRecoverySnapshot(
+  history: ClosedHistorySnapshot,
+  scope = activePortfolioStorageScope
+): boolean {
+  const storage = getBrowserStorage();
+  if (!storage) return false;
+  try {
+    const serialized = JSON.stringify(history);
+    if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) return false;
+    storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope), serialized);
+    return true;
+  } catch (error) {
+    console.warn('Could not update the bounded local history recovery copy:', error);
     return false;
   }
 }
@@ -652,6 +670,7 @@ async function persistSavedHistorySnapshot(
   const nextWrite = previousQueue.catch(() => false).then(async () => {
     try {
       await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
+      writeLocalHistoryRecoverySnapshot(snapshot, scope);
       removeLegacyHistorySidecar(scope);
       return true;
     } catch (indexedDbError) {
@@ -1114,7 +1133,16 @@ function persistPortfolioSnapshot(
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
   }
-  if (brokerRulesJson !== null) writes.push({ key: brokerRulesKey, value: brokerRulesJson });
+  if (brokerRulesJson !== null) {
+    const previousRules = storage.getItem(brokerRulesKey);
+    if (previousRules && previousRules !== brokerRulesJson && parseJsonRecord(previousRules)) {
+      writes.push({
+        key: scopedStorageKey(STORAGE_KEY_RULES_RECOVERY, scope),
+        value: previousRules
+      });
+    }
+    writes.push({ key: brokerRulesKey, value: brokerRulesJson });
+  }
 
   const previousValues = new Map<string, string | null>();
   try {
@@ -1428,8 +1456,8 @@ export function loadBrokerRules(): unknown {
   try {
     const raw = storage.getItem(key);
     if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as unknown;
+      const parsed = parseJsonRecord(raw);
+      if (parsed) {
         try {
           if (!parseJsonRecord(storage.getItem(recoveryKey))) {
             storage.setItem(recoveryKey, raw);
@@ -1438,6 +1466,10 @@ export function loadBrokerRules(): unknown {
           // Seed the last-known-good settings copy best-effort.
         }
         return parsed;
+      }
+      try {
+        JSON.parse(raw);
+        console.warn('Saved broker rules have an invalid root shape; trying the recovery copy.');
       } catch (err) {
         console.warn('Failed to parse saved broker rules:', err);
       }
@@ -1445,7 +1477,8 @@ export function loadBrokerRules(): unknown {
 
     const recoveryRaw = storage.getItem(recoveryKey);
     if (!recoveryRaw) return null;
-    const recovered = JSON.parse(recoveryRaw) as unknown;
+    const recovered = parseJsonRecord(recoveryRaw);
+    if (!recovered) return null;
     try {
       storage.setItem(key, recoveryRaw);
       console.warn('Recovered broker assumptions from a scoped local recovery copy.');
@@ -1467,11 +1500,12 @@ export function saveBrokerRules(rules: BrokerAssumptions): void {
   try {
     const previous = storage.getItem(key);
     if (previous && previous !== JSON.stringify(rules)) {
-      try {
-        JSON.parse(previous);
-        storage.setItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY), previous);
-      } catch {
-        // Do not preserve malformed settings as a recovery candidate.
+      if (parseJsonRecord(previous)) {
+        try {
+          storage.setItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY), previous);
+        } catch {
+          // Do not block the current settings write when recovery storage is full.
+        }
       }
     }
     storage.setItem(key, JSON.stringify(rules));
