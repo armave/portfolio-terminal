@@ -12,6 +12,7 @@ const HISTORY_DATABASE_VERSION = 1;
 const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
+const HISTORY_DATABASE_OPERATION_TIMEOUT_MS = 5_000;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT = 'portfolio_tradenet_cashflow_trade_checkpoint_v1';
@@ -158,18 +159,39 @@ function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDa
       reject(new Error('IndexedDB is unavailable'));
       return;
     }
+
     const request = indexedDB.open(scopedHistoryDatabaseName(scope), HISTORY_DATABASE_VERSION);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Opening closed-history storage timed out.'));
+    }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+    const rejectRequest = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(HISTORY_OBJECT_STORE)) {
         request.result.createObjectStore(HISTORY_OBJECT_STORE);
       }
     };
     request.onsuccess = () => {
+      if (settled) {
+        // A request that completes after its deadline must not leak a connection.
+        request.result.close();
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
       request.result.onversionchange = () => request.result.close();
       resolve(request.result);
     };
-    request.onerror = () => reject(request.error || new Error('Could not open closed-history storage'));
-    request.onblocked = () => reject(new Error('Closed-history storage upgrade is blocked by another tab'));
+    request.onerror = () => rejectRequest(request.error || new Error('Could not open closed-history storage'));
+    request.onblocked = () => rejectRequest(new Error('Closed-history storage upgrade is blocked by another tab'));
   });
 }
 
@@ -180,13 +202,37 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
       const request = transaction.objectStore(HISTORY_OBJECT_STORE).get(HISTORY_RECORD_KEY);
       let snapshot: ClosedHistorySnapshot | null = null;
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Reading closed-history storage timed out.'));
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already be inactive.
+        }
+      }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+      const resolveTransaction = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(snapshot);
+      };
+      const rejectTransaction = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+
       request.onsuccess = () => {
         snapshot = normalizeHistorySnapshot(request.result);
       };
-      request.onerror = () => reject(request.error || new Error('Could not read closed-history storage'));
-      transaction.oncomplete = () => resolve(snapshot);
-      transaction.onerror = () => reject(transaction.error || new Error('Closed-history read transaction failed'));
-      transaction.onabort = () => reject(transaction.error || new Error('Closed-history read transaction was aborted'));
+      request.onerror = () => rejectTransaction(request.error || new Error('Could not read closed-history storage'));
+      transaction.oncomplete = resolveTransaction;
+      transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction failed'));
+      transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history read transaction was aborted'));
     });
   } finally {
     db.close();
@@ -199,9 +245,33 @@ async function writeHistoryRecordToIndexedDB(history: ClosedHistorySnapshot, sco
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
       transaction.objectStore(HISTORY_OBJECT_STORE).put(history, HISTORY_RECORD_KEY);
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error || new Error('Closed-history write transaction failed'));
-      transaction.onabort = () => reject(transaction.error || new Error('Closed-history write transaction was aborted'));
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Writing closed-history storage timed out.'));
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already be inactive.
+        }
+      }, HISTORY_DATABASE_OPERATION_TIMEOUT_MS);
+      const resolveTransaction = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      const rejectTransaction = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+
+      transaction.oncomplete = resolveTransaction;
+      transaction.onerror = () => rejectTransaction(transaction.error || new Error('Closed-history write transaction failed'));
+      transaction.onabort = () => rejectTransaction(transaction.error || new Error('Closed-history write transaction was aborted'));
     });
   } finally {
     db.close();
