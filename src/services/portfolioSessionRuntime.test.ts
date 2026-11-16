@@ -220,6 +220,37 @@ describe('portfolio session runtime', () => {
     expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(null);
   });
 
+  it('does not publish a stale auth failure after a newer login starts during offline cleanup', async () => {
+    const fixture = createFixture();
+    let lookupCount = 0;
+    fixture.dependencies.getCurrentUser = vi.fn(async () => {
+      lookupCount += 1;
+      if (lookupCount === 1) throw new Error('Authentication service unavailable');
+      return guestUser;
+    });
+
+    let finishCleanup: (() => void) | undefined;
+    fixture.dependencies.clearWorkspaceOnAuthFailure = vi.fn(async () => {
+      await new Promise<void>((resolve) => { finishCleanup = resolve; });
+    });
+    const runtime = createPortfolioSessionRuntime(fixture.dependencies);
+
+    const staleFailure = runtime.publishCurrentUser();
+    await vi.waitFor(() => expect(finishCleanup).toBeTypeOf('function'));
+
+    await expect(runtime.publishCurrentUser()).resolves.toEqual(guestUser);
+    finishCleanup?.();
+    await expect(staleFailure).resolves.toBeNull();
+
+    expect(fixture.getState()).toEqual({
+      role: 'guest',
+      accountId: 'guest-a',
+      canWriteCloudState: false
+    });
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.emitUserChanged).toHaveBeenCalledWith(guestUser);
+  });
+
   it('allows administrator-only operations for an admin session', async () => {
     const fixture = createFixture();
     fixture.dependencies.getCurrentUser = vi.fn(async () => adminUser);
