@@ -183,7 +183,14 @@ export function createCloudStateSyncRuntime({
     input,
     init ?? {},
     async (response) => {
-      const body = await response.json().catch(() => null);
+      let body: unknown = null;
+      // Some supported test/injected transports return a minimal response
+      // facade without a JSON body method (successful empty responses).
+      try {
+        if (typeof response.json === 'function') body = await response.json();
+      } catch {
+        body = null;
+      }
       // Cloud sync consumers need status/headers and JSON only. Return a small
       // response facade because the original body has already been consumed.
       return {
