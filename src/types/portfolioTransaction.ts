@@ -176,6 +176,9 @@ export interface PortfolioTransactionDraft {
   realizedPnl?: number;
   relatedEventId?: string;
   historyFeeCorrection?: PortfolioTransactionHistoryFeeCorrection;
+  /** Verified split ratio and exact lot conversions for shadow cost-basis replay. */
+  corporateActionMultiplier?: number;
+  corporateActionLotAdjustments?: PortfolioCorporateActionLotAdjustment[];
   note?: string;
 }
 
