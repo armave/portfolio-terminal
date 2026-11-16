@@ -134,17 +134,6 @@ const TRADERNET_RULES: BrokerAssumptions = { ...DEFAULT_TRADERNET_RULES };
 
 let state: PortfolioState = portfolioStore.getState();
 
-/** Clear workspace data without resetting device/account settings. */
-function createCleanWorkspaceState(now = Date.now()): PortfolioState {
-  const current = portfolioStore.getState();
-  return {
-    ...createBlankPortfolioState(now),
-    brokerAssumptions: current.brokerAssumptions,
-    apiKeys: current.apiKeys,
-    gatewaySecret: current.gatewaySecret,
-    autoRefreshInterval: current.autoRefreshInterval
-  };
-}
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
