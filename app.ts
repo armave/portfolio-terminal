@@ -27,6 +27,7 @@ import { launchBackgroundTask } from './src/services/launchBackgroundTask';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
+import { repairCurrentBrowserAppCache } from './src/services/browserProfileRepairRuntime';
 import { createPortfolioEquitySyncRuntime } from './src/services/portfolioEquitySyncRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
@@ -1688,6 +1689,7 @@ const portfolioStartupLifecycleRuntime = createPortfolioStartupLifecycleRuntime(
   setStartupState: (visible, failed) => emitUiEvent('app:startup-state', { visible, failed }),
   retryStartup: () => initApp(),
   continueStartupOffline: () => continueStartupOffline(),
+  repairBrowserAppCache: () => repairCurrentBrowserAppCache(),
   addVisibilityChangeListener: (listener) => {
     document.addEventListener('visibilitychange', listener);
     return () => document.removeEventListener('visibilitychange', listener);

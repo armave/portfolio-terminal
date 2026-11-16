@@ -11,6 +11,7 @@ export interface PortfolioStartupLifecycleDependencies {
   setStartupState: (visible: boolean, failed: boolean) => void;
   retryStartup: () => Promise<unknown> | void;
   continueStartupOffline: () => Promise<unknown> | void;
+  repairBrowserAppCache: () => Promise<unknown> | void;
   addVisibilityChangeListener: (listener: () => void) => () => void;
   scheduleInterval: (callback: () => void, delayMs: number) => StartupIntervalHandle;
   clearScheduledInterval: (handle: StartupIntervalHandle) => void;
@@ -57,7 +58,15 @@ export function createPortfolioStartupLifecycleRuntime(
   };
 
   const handleStartupOffline = (): void => {
+    dependencies.setStartupState(true, false);
     void dependencies.continueStartupOffline();
+  };
+
+  const handleStartupRepair = (): void => {
+    void Promise.resolve(dependencies.repairBrowserAppCache()).catch((error) => {
+      console.error('[Browser Repair]: Could not repair the app cache.', error);
+      dependencies.setStartupState(true, true);
+    });
   };
 
   const bind = (): (() => void) => {
@@ -66,6 +75,7 @@ export function createPortfolioStartupLifecycleRuntime(
     const removeVisibilityListener = dependencies.addVisibilityChangeListener(handleVisibilityChange);
     addUiEventListener('app:startup-retry', handleStartupRetry);
     addUiEventListener('app:startup-offline', handleStartupOffline);
+    addUiEventListener('app:startup-repair', handleStartupRepair);
 
     let disposed = false;
     return () => {
@@ -75,6 +85,7 @@ export function createPortfolioStartupLifecycleRuntime(
       removeVisibilityListener();
       removeUiEventListener('app:startup-retry', handleStartupRetry);
       removeUiEventListener('app:startup-offline', handleStartupOffline);
+      removeUiEventListener('app:startup-repair', handleStartupRepair);
       configureAdminRollover(false);
     };
   };

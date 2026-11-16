@@ -5,8 +5,60 @@ import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 import { initializeSavedHistoryStorage } from './services/storage';
+import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 
-registerSW({ immediate: true });
+let serviceWorkerReloadRequested = false;
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  // A first controller acquisition is normal PWA installation and can happen
+  // while the user is creating an account. Never reload that in-flight session.
+  // Only reload when an already-controlled page receives a replacement worker.
+  let hasExistingController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hasExistingController) {
+      hasExistingController = true;
+      return;
+    }
+    if (serviceWorkerReloadRequested) return;
+    serviceWorkerReloadRequested = true;
+    window.location.reload();
+  });
+}
+
+registerSW({
+  immediate: true,
+  onRegisteredSW: (_serviceWorkerUrl, registration) => {
+    // Do not rely on the browser's periodic update cadence for an installed PWA.
+    // A regular profile must check for the current app shell on every navigation.
+    void registration?.update().catch((error) => {
+      console.warn('[PWA]: Could not check for a newer Portfolio Terminal app shell.', error);
+    });
+  }
+});
+
+const STARTUP_WATCHDOG_MS = 45_000;
+let startupWatchdog: ReturnType<typeof setTimeout> | null = null;
+
+function clearStartupWatchdog(): void {
+  if (startupWatchdog !== null) clearTimeout(startupWatchdog);
+  startupWatchdog = null;
+}
+
+function armStartupWatchdog(): void {
+  clearStartupWatchdog();
+  startupWatchdog = setTimeout(() => {
+    startupWatchdog = null;
+    console.error('[Startup Watchdog]: Startup did not finish within the expected window.');
+    emitUiEvent('app:startup-state', { visible: true, failed: true });
+  }, STARTUP_WATCHDOG_MS);
+}
+
+addUiEventListener('app:startup-state', (event) => {
+  if (!event.detail.visible || event.detail.failed) {
+    clearStartupWatchdog();
+  } else {
+    armStartupWatchdog();
+  }
+});
 
 /**
  * Ask browser autofill and common password managers to ignore ordinary app
@@ -103,14 +155,20 @@ function mountPreactApplication() {
 }
 
 async function bootstrapApplication() {
-  // Hydrate the IndexedDB history cache before any mounted desk reads it.
-  // localStorage remains the compact portfolio snapshot store only.
+  // Mount the recovery-capable shell first. A blocked profile database must not
+  // prevent the app from rendering its retry/repair controls.
+  mountPreactApplication();
+  armStartupWatchdog();
+
+  // Hydrate the IndexedDB history cache before authenticated workspace consumers
+  // read it. The shell stays mounted, and the watchdog exposes safe repair if a
+  // stale browser profile prevents this promise from completing.
   try {
     await initializeSavedHistoryStorage();
   } catch (error) {
     console.warn('Closed-history cache initialization did not complete; legacy and cloud recovery remain available:', error);
   }
-  mountPreactApplication();
+
   // Let App effects register their runtime event subscriptions before startup emits events.
   window.requestAnimationFrame(() => { void initApp(); });
 }
