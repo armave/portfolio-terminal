@@ -8,6 +8,7 @@ import {
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_STATE_RECOVERY = 'margin_portfolio_state_dynamic_v2_recovery_v1';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
+const STORAGE_KEY_CLOSED_HISTORY_RECOVERY = 'portfolio_closed_history_v1_recovery_v1';
 const HISTORY_DATABASE_NAME = 'portfolio-terminal-history-cache';
 const HISTORY_DATABASE_VERSION = 1;
 const HISTORY_OBJECT_STORE = 'history';
@@ -136,17 +137,29 @@ function readLegacySavedHistorySnapshot(
 ): ClosedHistorySnapshot | null {
   const storage = getBrowserStorage();
   if (!storage) return null;
-  let raw: string | null = null;
-  try {
-    raw = storage.getItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
-  } catch (error) {
-    console.warn('Failed to read legacy closed history from localStorage:', error);
-  }
-  if (raw) {
+  const sidecarKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope);
+  const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
+  for (const key of [sidecarKey, recoveryKey]) {
+    let raw: string | null = null;
+    try {
+      raw = storage.getItem(key);
+    } catch (error) {
+      console.warn('Failed to read legacy closed history from localStorage:', error);
+      continue;
+    }
+    if (!raw) continue;
     try {
       const history = normalizeHistorySnapshot(JSON.parse(raw));
-      if (history) return history;
-      throw new Error('Saved closed history must contain history arrays.');
+      if (!history) throw new Error('Saved closed history must contain history arrays.');
+      if (key === recoveryKey) {
+        try {
+          storage.setItem(sidecarKey, raw);
+          console.warn('Recovered closed history from a scoped local recovery copy.');
+        } catch (error) {
+          console.warn('Recovered closed history in memory; browser storage repair is pending:', error);
+        }
+      }
+      return history;
     } catch (error) {
       console.warn('Failed to parse saved closed history:', error);
     }
@@ -368,7 +381,17 @@ async function writeLegacyHistoryFallback(history: ClosedHistorySnapshot, scope 
     if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) {
       throw new Error('Closed history is too large for the legacy localStorage fallback; IndexedDB is required.');
     }
-    storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope), serialized);
+    const sidecarKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope);
+    const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
+    try {
+      const previous = storage.getItem(sidecarKey);
+      if (previous && normalizeHistorySnapshot(JSON.parse(previous))) {
+        storage.setItem(recoveryKey, previous);
+      }
+    } catch {
+      // A recovery copy is best-effort; never block the current history write.
+    }
+    storage.setItem(sidecarKey, serialized);
     return true;
   } catch (error) {
     console.warn('Closed history could not be written to the legacy localStorage fallback:', error);
@@ -1257,6 +1280,17 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         }
       }
 
+      if (key === canonicalKey) {
+        try {
+          const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY);
+          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
+            storage.setItem(recoveryKey, raw);
+          }
+        } catch {
+          // Seeding a recovery copy is best-effort and must not block startup.
+        }
+      }
+
       const persistedState = { ...parsed };
       // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
@@ -1340,7 +1374,9 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
     }
   }
   try {
-    getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
+    const storage = getBrowserStorage();
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope));
   } catch (error) {
     console.warn('Could not clear legacy closed history:', error);
   }
@@ -1359,7 +1395,15 @@ export function loadBrokerRules(): unknown {
     const raw = storage.getItem(key);
     if (raw) {
       try {
-        return JSON.parse(raw) as unknown;
+        const parsed = JSON.parse(raw) as unknown;
+        try {
+          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
+            storage.setItem(recoveryKey, raw);
+          }
+        } catch {
+          // Seed the last-known-good settings copy best-effort.
+        }
+        return parsed;
       } catch (err) {
         console.warn('Failed to parse saved broker rules:', err);
       }
