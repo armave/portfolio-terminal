@@ -1,6 +1,6 @@
 # Wave 3 PT-02 — Complete transaction integrity, journal parity and recovery
 
-**Tracking issue:** #330  
+**Tracking issue:** [#507 — remaining PT-02 transaction journal coverage, parity and recovery](https://github.com/armave/portfolio-terminal/issues/507) (replacement for deleted issue #330)  
 **Merged foundation:** PR #357  
 **Dedicated branch:** feat/wave3-pt02-transaction-integrity-completion  
 **Target:** dev for client/domain; Worker/server-only work follows the direct-to-main deployment policy.
@@ -55,18 +55,16 @@ The current client store audit distinguishes app-owned financial commands from b
 | Cash-cushion holding add/sell/remove | `addCashHolding`, `sellCashHolding`, `removeCashStock` | Explicitly priced app additions create stable acquisition lots; sales use exact FIFO allocations and realized P&L only when app lots cover the full holding. Unpriced/broker-only quantities remain unmapped; removal remains a tracking correction without proceeds |
 | Tranche removal and closed-history cleanup | `removeTranche`, `deleteClosedTrade` | Explicit position/history correction evidence; cleanup does not reverse historical cash or realized P&L |
 | Broker executions and cashflows | Imported broker history normalized by `appendBrokerHistoryAuditEvents` | Stable provider references and source/actor attribution; evidence only, not posted again to canonical cash, debt or positions |
-| Closed History Sync fee enrichment | `app.ts` → `applyCashflowAllocationsToClosedTrades` → direct closed-history snapshot update | Recalculates broker margin-fee allocations and derived closed-trade fee/P&L metadata; it does not post cash, debt or position mutations and has no dedicated immutable transaction correction event yet |
+| Closed History Sync fee enrichment | `app.ts` → `applyCashflowAllocationsToClosedTrades` → `PortfolioStore.commitClosedHistoryFeeSync` | Preserves source cashflow IDs/allocations and commits the closed-trade fee projection with an immutable linked `history.correction`; audit-only, with no cash, debt, position or realized-margin delta. Legacy/unlinked rows and incomplete source evidence fail closed |
 | Imported cashflow categories | Dividend, deposit, withdrawal, transfer, fee/commission, margin interest and corporate-action/cash-in-lieu descriptions | Typed external-flow events retain signed source amount, currency and reference; no local cash delta, quantity, realized P&L or corporate-action basis adjustment is inferred |
 | Generic import, broker refresh/reclassification or legacy direct state edits | Validated `importState` / `setState` normalization and canonical parity check | Append observed position, cash-holding, free-cash and debt deltas as `portfolio.reconciliation`; quantity-only cash changes remain incomplete in lot replay and never receive guessed buy/sell, proceeds, fees or cost basis |
 | Quotes, target prices, active desk, pending confirmation, API keys and account credentials | Derived/display or configuration paths | Intentionally outside financial transaction journal |
 
 The expanded regression fixtures assert broker cashflow classification for dividend, deposit, withdrawal, transfer, fee, margin interest and corporate action, and verify that those source facts do not double-post into canonical balances. Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash, margin debt and the realized margin-charge total. App-owned rollover events distinguish interest capitalized into debt from charges recorded in `realizedMarginCharged`; older margin-interest events that lack that distinction remain incomplete in replay coverage.
 
-**Closed History Sync characterization — 2026-11-12:** the app-closed-trade fee allocator is the fallback branch used only when broker execution rows are unavailable; otherwise per-cashflow allocations are retained on broker sell rows. The app fallback currently retains only a per-trade aggregate, not the underlying cashflow IDs and allocated amounts. Its fee rewrite replaces the prior margin component (using `marginInterest || marginFee`), recomputes aggregate fee aliases, and adjusts known net P&L while preserving unknown net values. A focused regression now proves the closed-trade `id`, originating `transactionEventId`, unrelated row metadata and repeated-allocation idempotency survive this rewrite. This is characterization, not journal completion: until the app-side cashflow references and explicit before/after fee/P&L values are carried into a linked correction event and replay validates its prior state, closed-history fee enrichment remains incomplete for replay parity.
+**Closed History Sync fee-correction status — merged in PR #468:** app-side fallback fee revisions now retain exact source cashflow IDs and allocated amounts. A typed immutable `history.correction` is linked to the originating `trade.sell` event and records before/after margin fee, aggregate fees, known net P&L and source allocations. Subsequent revisions chain to their prior correction; unexpected before-state, competing revision heads, missing sources and legacy/unlinked rows fail closed. `PortfolioStore.commitClosedHistoryFeeSync` commits the history projection and journal evidence through one store boundary. These events are audit-only: they do not post cash, debt, positions, cost basis or realized-margin deltas. See implementation slice 3 for exact commit and CI evidence. This closes the earlier “future event contract” gap for supported linked closed-trade fee updates; it does not prove complete closed-trade P&L replay or authenticated broker correctness.
 
-**Future event contract requirements:** stable closed-trade ID + sale-event link; each source cashflow ID and allocated amount; prior/next margin fee, aggregate fee and known net-P&L values; deterministic replacement semantics for changed or removed source rows; and a fail-closed path for legacy/unlinked records. No cash, debt or position delta should be inferred from this history-only correction.
-
-**Explicit limits:** broker corporate-action rows remain external evidence only. This implementation does not apply split ratios, merger consideration, spin-off cost-basis allocations, tax treatment or cash-in-lieu settlement to canonical holdings. A successfully applied split records the active-position quantity delta, but full lot/cost-basis replay remains gated. Closed-trade removal is a history correction, not a reversal of the underlying position or cash transaction. The separate Closed History Sync may recalculate broker margin-fee allocations and derived closed-trade net P&L, but that rewrite has no dedicated immutable transaction correction event and remains incomplete for closed-history replay. Generic backup/cloud import reconciliation uses the system actor and `canonical-snapshot-reconciliation` source; a general import actor/posting contract is not implemented. No generic financial reversal command is claimed until its lot, cash, debt, fee and realized-P&L effects are specified and independently tested. Imported cashflows with unsupported or ambiguous descriptions remain source evidence rather than guessed local postings.
+**Explicit limits:** broker corporate-action rows remain external evidence unless they meet the separate app-owned application contract. PR #506 supports verified forward/reverse splits for complete app-owned cash-holding lots only when stable lot identities, acquisition dates, exact quantity coverage, immutable buy/sale replay, quote ordering and any broker compatibility quantity all match. It records immutable per-lot before/after lineage and preserves total acquisition cost and buy commissions; later FIFO sales replay against the transformed lots. It does not enable aggregate-broker-to-lot synthesis or broker auto-posting. Mergers, spin-offs, cash-in-lieu, short holdings, mixed margin/cash ledgers, ambiguous/fractional entitlements and unsupported imported actions remain review-required. Closed-trade removal remains a history correction, not a reversal of the underlying position or cash transaction. Generic backup/cloud import reconciliation continues to use the system actor and `canonical-snapshot-reconciliation`; a general import actor/posting contract is not implemented. Generic trade/lot/corporate-action reversal is not supported until inverse lot, FIFO cost basis, commissions, cash/debt and realized-P&L semantics are specified and independently tested. Imported cashflows with unsupported or ambiguous descriptions remain source evidence rather than guessed local postings.
 
 ## Cash-holding lot replay follow-on — 2026-11-11
 
@@ -121,9 +119,9 @@ The current snapshot remains authoritative. This plan describes the minimum gate
 
 The Worker deployment workflow required a test-fixture isolation correction for a concurrent Finnhub partial-feed test. No financial or market-data runtime behavior was changed by that fixture correction. Deterministic CI is not authenticated live account or multi-device QA.
 
-### Remaining PT-02 acceptance scope
+### Remaining PT-02 acceptance scope after implementation slice 1
 
-This implementation slice closes the lost-response retry gap; it does **not** close PT-02. Still required: end-to-end inventory of every financial mutation call path, explicit correction/reversal semantics and unsupported-path handling, full lifecycle/backup-import/restore/reload parity, cross-tab conflict UX under real multi-device use, and a reviewed versioned migration/rollback procedure. The event journal and `PortfolioState.positions` remain additive/canonical respectively.
+At the time of slice 1, the lost-response retry gap was closed but the broader PT-02 acceptance remained open. Subsequent slices #402, #468, #486, #504 and #506 closed additional bounded parts of that scope. The remaining acceptance is now tracked in [issue #507](https://github.com/armave/portfolio-terminal/issues/507): complete the supported mutation inventory; prove or explicitly classify each path's atomicity and replay disposition; finish the applicable lifecycle, import/restore/reset and conflict regression matrix; define supported versus unsupported correction/reversal boundaries; and complete authenticated backup, TradeNet and real multi-device release rehearsals. The portfolio snapshot remains canonical; the journal is additive evidence/replay support and no ledger cutover is authorized.
 
 
 ## Implementation slice 2 — auditable balance reversals and replay coverage
@@ -147,7 +145,9 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 
 ## Implementation slice 3 — linked Closed History fee corrections
 
-**Client PR:** pending review from branch `feat/pt02-closed-history-fee-audit-2026-11-14`.
+**Client PR:** [#468 — audit closed-history margin fee revisions](https://github.com/armave/portfolio-terminal/pull/468), merged into `dev` at `292cc59382f145db0821f0378140216571ee70a0`.
+**Exact tested PR head:** `0d6d9fc66cbfcba3df50c16efc95ff81695c3d5e`.
+**CI:** [Pull Request CI #4186](https://github.com/armave/portfolio-terminal/actions/runs/43629466718) and [Operations Browser Journey #1514](https://github.com/armave/portfolio-terminal/actions/runs/43629466802) passed on the exact tested head.
 
 - [x] Preserve exact broker cashflow IDs and per-trade allocated amounts in app-owned closed-trade fee metadata.
 - [x] Add a typed immutable `history.correction` payload linked to the original `trade.sell` event, capturing before/after margin fee, aggregate fees, known net P&L and source cashflow allocations.
@@ -155,8 +155,8 @@ This implementation slice closes the lost-response retry gap; it does **not** cl
 - [x] Keep corrections history-only: no cash, debt, position, cost-basis or realized-margin deltas.
 - [x] Commit closed-trade fee updates and journal evidence through an explicit PortfolioStore commit boundary.
 - [x] Fail closed for legacy/unlinked sale rows or missing source cashflows; retain prior fee projections and report a non-identifying sync warning.
-- [ ] Exact-head Vitest, typecheck, production build/bundle budget, browser journeys, dead-code and dependency audits.
-- [ ] Authenticated live-account and multi-device restore verification remains open.
+- [x] Exact-head Vitest, typecheck, production build/bundle budget, Operations Browser Journey, dead-code validation and dependency audits passed in the linked CI runs.
+- [ ] Authenticated live-account and multi-device backup/restore verification remains open; deterministic fixtures do not prove those manual paths.
 
 The additive event schema remains version 1. Existing events without the optional structured payload remain readable; `PortfolioState.positions` remains canonical. This is a closed-history audit slice, not PT-02 completion or a ledger cutover.
 
@@ -192,7 +192,11 @@ The additive event schema remains version 1. Existing events without the optiona
 
 ## Implementation slice 4 — fee-correction restore integrity and scoped journal coverage
 
-**Client PR:** PT-02 restore integrity and coverage visibility; target `dev`. No Worker/server or accounting-formula changes.
+**Client PR:** [#504 — Harden closed-history fee restore integrity and expose journal coverage](https://github.com/armave/portfolio-terminal/pull/504), merged into `dev` at `c37f4bd2e258ae3b3de16d5a2683cdefb540503f`.
+**Exact tested PR head:** `16d0eaa68923a8fcfc10e0ba38cd597111d13f6b` (the final PR head; earlier intermediate SHA `e681dba...` was not the final candidate).
+**CI:** [Pull Request CI #4434](https://github.com/armave/portfolio-terminal/actions/runs/43902637772) and [Security & Workflow Validation #240](https://github.com/armave/portfolio-terminal/actions/runs/43902637803) passed on the final PR head. The advisory full-history secret audit was skipped; the new-commit scan passed.
+
+**Scope:** Client/domain only; no Worker/server or accounting-formula changes.
 
 - [x] Validate structured closed-history fee-correction events at the backup/cloud `importState` boundary after merging with already-committed local journal events.
 - [x] Validate fee-correction lineage at explicit workspace replacement and the Closed History Sync commit boundary.
@@ -210,7 +214,11 @@ This slice does not alter accounting calculations, FIFO allocations, canonical s
 
 ## Implementation slice 5 — verified cash-holding corporate-action lot conversion
 
-**Client/domain PR:** PT-02 cash-holding split and reverse-split support; no Worker/server changes.
+**Client/domain PR:** [#506 — Support verified corporate-action splits for app-owned cash lots](https://github.com/armave/portfolio-terminal/pull/506), squash-merged into `dev` at `426c3568b308b23ee4a160fb2da91bd21eeff28f`.
+**Exact tested PR head:** `fc3b42b082f699fe769431f24b440bda7e767ae4`.
+**CI:** [Pull Request CI #4443](https://github.com/armave/portfolio-terminal/actions/runs/43912493765) and [Security & Workflow Validation #249](https://github.com/armave/portfolio-terminal/actions/runs/43912493947) passed on the exact PR head. The advisory full-history secret audit was skipped; the new-commit scan passed. A dedicated Trade Lifecycle Browser Smoke run was not present for this PR head.
+
+**Scope:** Client/domain only; no Worker/server changes.
 
 - [x] Add a deterministic cash-holding split helper that accepts only complete app-owned lots with unique stable identities, exact quantity coverage, valid acquisition dates/timestamps, positive cost prices and known non-negative buy commissions.
 - [x] Require every lot to predate the action. Post-action-only lots are not re-adjusted; mixed/effective-date lots, fractional aggregate entitlements, missing lots and unverified/future quotes remain review-required.
@@ -224,3 +232,10 @@ This slice does not alter accounting calculations, FIFO allocations, canonical s
 - [x] Update the market-events action label and Russian localization.
 
 This slice does not model dividends, mergers, spin-offs, cash-in-lieu, short holdings, mixed margin/cash splits, broker auto-posting, or settlement cash. Unresolved cases remain review-required and do not mutate quantities, cash or realized P&L. Authenticated TradeNet and backup/recovery QA remain release gates.
+
+
+## Current PT-02 status — 2026-11-16
+
+Merged client/domain slices now include linked Closed History fee corrections (#468), fee-correction restore integrity and scoped journal coverage (#504), and verified app-owned cash-lot split/reverse-split conversion (#506), alongside the earlier transaction, reversal, retry, lot-replay and cloud-conflict slices referenced above. The tracker for remaining acceptance is [#507](https://github.com/armave/portfolio-terminal/issues/507); the former broad issue #330 was deleted and is no longer a valid tracker.
+
+Automated validations are recorded against each exact PR head above. The following remain manual release gates where applicable: authenticated TradeNet refresh and corporate-action compatibility, authenticated backup export/import and cloud restore across multiple devices, and keyboard-only/responsive accessibility review. These are not satisfied by deterministic CI and are not claimed complete. `PortfolioState.positions` remains canonical and no ledger cutover has been authorized.
