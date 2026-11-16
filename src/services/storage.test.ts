@@ -96,7 +96,7 @@ describe('storage service', () => {
       } as unknown as IDBFactory);
 
       const activation = activatePortfolioStorageScope('owner', { migrateLegacy: true });
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(6_000);
       await expect(activation).resolves.toBeUndefined();
 
       expect(storageMap.get('portfolio_session_storage_v1')).toBe('1');
@@ -146,7 +146,7 @@ describe('storage service', () => {
       } as unknown as IDBFactory);
 
       const initialization = initializeSavedHistoryStorage('legacy');
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(2_000);
       await expect(initialization).resolves.toBeUndefined();
 
       expect(transaction.abort).toHaveBeenCalledTimes(1);
