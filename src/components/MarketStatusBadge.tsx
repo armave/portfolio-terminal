@@ -110,7 +110,7 @@ export function getCalendarMarketStatus(now = new Date()): MarketSessionStatus {
         : 'CLOSED';
 }
 
-/** Prefer a fresh TradeNet exchange state; the local New York calendar is fallback only. */
+/** Reconcile fresh provider phases with the New York exchange calendar. */
 export function resolveEffectiveMarketStatus(
   providerStatus: string | null | undefined,
   updatedAt: number | null | undefined,
@@ -119,7 +119,10 @@ export function resolveEffectiveMarketStatus(
   const normalized = normalizeMarketSessionStatus(providerStatus);
   const age = Number.isFinite(updatedAt) ? now.getTime() - Number(updatedAt) : Number.POSITIVE_INFINITY;
   if (normalized && age >= -MARKET_STATUS_FUTURE_TOLERANCE_MS && age <= MARKET_STATUS_MAX_AGE_MS) {
-    return normalized;
+    // Preserve genuinely mixed exchange reports, but do not let a fresh CLOSED
+    // flag hide a calendar-confirmed premarket or regular session.
+    if (normalized === 'MIXED') return normalized;
+    return reconcileMarketStatusWithCalendar(normalized, now) ?? getCalendarMarketStatus(now);
   }
   return getCalendarMarketStatus(now);
 }
