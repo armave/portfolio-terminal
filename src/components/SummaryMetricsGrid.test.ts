@@ -398,15 +398,24 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 
-  it('removes the visible Market Tools heading and centers the action buttons in their panel', () => {
+  it('groups Market Tools into descriptive scenario and intelligence cards', () => {
     const toolsStart = source.indexOf('function MarginMarketTools');
     const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
     const toolsComponent = source.slice(toolsStart, toolsEnd);
-    expect(toolsComponent).toContain('role="group" aria-label={translateText(\'Portfolio actions\', language)}');
-    expect(toolsComponent).not.toContain("translateText('MARKET TOOLS', language)");
-    expect(toolsComponent).not.toContain('portfolio-micro-heading');
-    expect(styles).toContain('.portfolio-market-tools .modal-tools-group {');
-    expect(styles).toContain('justify-content: center;');
-    expect(styles).toContain('width: 100%;');
+    expect(toolsComponent).toContain('role="group" aria-label={translateText(\\'Portfolio actions\\', language)}');
+    expect(toolsComponent).toContain("translateText('MARKET TOOLS', language)");
+    expect(toolsComponent).toContain("translateText('SCENARIO PLANNING', language)");
+    expect(toolsComponent).toContain("translateText('MARKET INTELLIGENCE', language)");
+    expect(toolsComponent).toContain("translateText('Simulate Buy', language)");
+    expect(toolsComponent).toContain("translateText('Compare Exits', language)");
+    expect(toolsComponent).toContain("translateText('AI Risk Review', language)");
+    expect(toolsComponent).toContain("translateText('AI Portfolio Review', language)");
+    expect(toolsComponent).toContain("translateText('Live Order Book', language)");
+    expect(toolsComponent).not.toContain("translateText('Add?', language)");
+    expect(toolsComponent).not.toContain("translateText('Exit?', language)");
+    expect(styles).toContain('.market-tools-grid {');
+    expect(styles).toContain('.market-tool-card:focus-visible {');
+    expect(styles).toContain('.market-tools-section--portfolio .market-tools-grid {');
+    expect(styles).toContain('@media (max-width: 767px)');
   });
 });
