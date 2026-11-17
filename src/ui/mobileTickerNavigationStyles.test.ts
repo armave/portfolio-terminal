@@ -10,6 +10,8 @@ describe('shared workspace navigation visual system', () => {
     expect(stylesheet).toContain('.workspace-header-controls {');
     expect(stylesheet).toContain('.workspace-header-destinations {');
     expect(stylesheet).toContain('.workspace-header-status {');
+    expect(stylesheet).toContain('@media (max-width: 1120px)');
+    expect(stylesheet).not.toMatch(/@media\s*\(max-width:\s*1023px\)\s*\{\s*\.workspace-header-controls/);
     expect(stylesheet).toContain('.workspace-nav-button {');
     expect(stylesheet).toContain('min-height: 2.75rem;');
     expect(stylesheet).toContain('.workspace-nav-button--active {');
