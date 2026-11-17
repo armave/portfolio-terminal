@@ -73,6 +73,16 @@ describe('tranche details rows', () => {
     expect(stylesheet).toContain('@container portfolio-health-summary (max-width: 30rem)');
   });
 
+  it('keeps the tranche dialog centered in the mobile viewport', () => {
+    const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    const modalStyles = stylesheet.slice(stylesheet.indexOf('/* Purchase tranche ledger modal'));
+    const mobileStyles = modalStyles.slice(modalStyles.indexOf('@media (max-width: 640px)'));
+    const backdropStyles = mobileStyles.slice(0, mobileStyles.indexOf('  .tranche-details-dialog'));
+
+    expect(backdropStyles).toContain('align-items: center;');
+    expect(backdropStyles).not.toContain('align-items: flex-end;');
+  });
+
   it('provides a scrollable table surface and a compact mobile dialog', () => {
     const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     expect(stylesheet).toContain('.tranche-details-backdrop');

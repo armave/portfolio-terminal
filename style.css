@@ -5980,7 +5980,7 @@ table tbody tr:hover {
 
 @media (max-width: 640px) {
   .tranche-details-backdrop {
-    align-items: flex-end;
+    align-items: center;
     padding: 0.5rem;
   }
 
