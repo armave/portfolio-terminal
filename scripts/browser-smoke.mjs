@@ -648,7 +648,7 @@ async function assertFinancialHeaderLayout(page, view) {
       const projectionTableBounds = projectionTable?.getBoundingClientRect();
       const projectionColumnWidths = Array.from(projectionTable?.querySelectorAll('thead th') || [])
         .map((cell) => cell.getBoundingClientRect().width);
-      const projectionHealthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
+      const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
       const summary = healthColumn?.querySelector('.portfolio-micro-summary');
       const health = healthColumn?.querySelector('.margin-risk-gauge-card');
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
