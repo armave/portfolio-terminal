@@ -563,6 +563,14 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
         </div>
       </section>
 
+      {ticker && (
+        <div class="market-tools-external" aria-label={translateText('External market research links', language)}>
+          <span class="market-tools-section-title">{translateText('EXTERNAL RESEARCH', language)}</span>
+          <div class="market-links-group">
+            <BoardExternalLinks />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1073,7 +1081,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
               <div class="portfolio-micro-row">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
-                <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
+                <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
                   {hiddenTrancheCount > 0 && (
                     <>
                       <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
@@ -1152,12 +1160,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             accountBalanceAvailable={accountBalanceAvailable}
             unpricedHoldings={positionUnpricedHoldingCount}
           />
-          <div class="market-tools-external market-tools-external--health" aria-label={translateText('External market research links', getAppLanguage())}>
-            <span class="market-tools-section-title">{translateText('EXTERNAL RESEARCH', getAppLanguage())}</span>
-            <div class="market-links-group">
-              <BoardExternalLinks />
-            </div>
-          </div>
         </div>
         <div class="portfolio-market-tools-row">
           <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />

@@ -53,6 +53,19 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.market-tools-section--scenario \.market-tools-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   });
 
+  it('stretches the health and Market Tools side blocks to the same desktop height', () => {
+    expect(stylesheet).toMatch(/@media\s*\(min-width:\s*768px\)[\s\S]*?\.portfolio-risk-tools-row\s*\{[^}]*align-items:\s*stretch;[^}]*grid-auto-rows:\s*minmax\(0,\s*1fr\);/s);
+    expect(stylesheet).toMatch(/\.portfolio-risk-tools-row\s*>\s*\.portfolio-health-summary-column,\s*\.portfolio-risk-tools-row\s*>\s*\.portfolio-market-tools-row\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(stylesheet).toMatch(/\.portfolio-risk-tools-row\s*\.portfolio-market-tools\s*\{[^}]*height:\s*100%;[^}]*align-content:\s*space-between;/s);
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.portfolio-risk-tools-row\s*>\s*\.portfolio-health-summary-column,[\s\S]*?height:\s*auto;/s);
+  });
+
+  it('aligns the Tranches row label and action control', () => {
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*>\s*\.portfolio-micro-row\s*\{[^}]*align-items:\s*center;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*\{[^}]*align-items:\s*flex-end;[^}]*text-align:\s*right;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
+  });
+
   it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer \.projection-table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\);[^}]*table-layout:\s*fixed;/s);

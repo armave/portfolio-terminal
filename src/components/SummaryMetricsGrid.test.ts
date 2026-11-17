@@ -446,7 +446,7 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('@media (max-width: 767px)');
   });
 
-  it('places External Research below Account Equity Health in the ticker health column', () => {
+  it('keeps External Research at the bottom of Market Tools, not in the health column', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     const healthColumn = singleTickerView.slice(
       singleTickerView.indexOf('class="portfolio-health-summary-column"'),
@@ -456,11 +456,21 @@ describe('cross-device financial header hierarchy', () => {
       source.indexOf('function MarginMarketTools'),
       source.indexOf('function SummaryMetricsGridView')
     );
-    expect(healthColumn.indexOf('<MarginRiskGaugeCard')).toBeLessThan(
-      healthColumn.indexOf('market-tools-external--health')
+    expect(toolsComponent.indexOf("translateText('MARKET INTELLIGENCE', language)")).toBeGreaterThan(-1);
+    expect(toolsComponent.indexOf('market-tools-external')).toBeGreaterThan(
+      toolsComponent.indexOf("translateText('MARKET INTELLIGENCE', language)")
     );
-    expect(healthColumn).toContain("translateText('EXTERNAL RESEARCH', getAppLanguage())");
-    expect(healthColumn).toContain('<BoardExternalLinks />');
-    expect(toolsComponent).not.toContain('External Research');
+    expect(toolsComponent).toContain("translateText('EXTERNAL RESEARCH', language)");
+    expect(toolsComponent).toContain('<BoardExternalLinks />');
+    expect(healthColumn).not.toContain('market-tools-external');
   });
+
+  it('aligns the ticker Tranches control to the right and vertically with its label', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(singleTickerView).toContain('id="boardTranches" class="portfolio-metric-value portfolio-tranches-value');
+    expect(styles).toContain('.portfolio-micro-basis > .portfolio-micro-row {');
+    expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
+    expect(styles).toContain('align-items: flex-end;');
+    expect(styles).toContain('align-items: center;');
+  });;
 });

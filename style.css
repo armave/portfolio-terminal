@@ -5334,3 +5334,69 @@ table tbody tr:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Keep the health stack and Market Tools panel as equal-height desktop columns. */
+@media (min-width: 768px) {
+  .portfolio-risk-tools-row {
+    align-items: stretch;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+
+  .portfolio-risk-tools-row > .portfolio-health-summary-column,
+  .portfolio-risk-tools-row > .portfolio-market-tools-row {
+    align-self: stretch;
+    height: 100%;
+    min-height: 100%;
+  }
+
+  .portfolio-risk-tools-row > .portfolio-market-tools-row {
+    display: flex;
+  }
+
+  .portfolio-risk-tools-row .portfolio-market-tools {
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 100%;
+    align-content: space-between;
+  }
+}
+
+/* Align the Tranches label with its right-edge control and match the row below. */
+.portfolio-micro-basis > .portfolio-micro-row {
+  align-items: center;
+}
+
+.portfolio-micro-basis .portfolio-tranches-value {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: right;
+}
+
+.portfolio-micro-basis .portfolio-tranches-value > button {
+  align-self: flex-end;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.portfolio-micro-basis .portfolio-tranches-value > #boardTranchesOverflow {
+  width: 100%;
+  text-align: right;
+}
+
+@media (max-width: 767px) {
+  .portfolio-risk-tools-row > .portfolio-health-summary-column,
+  .portfolio-risk-tools-row > .portfolio-market-tools-row,
+  .portfolio-risk-tools-row .portfolio-market-tools {
+    height: auto;
+    min-height: 0;
+  }
+
+  .portfolio-risk-tools-row .portfolio-market-tools {
+    align-content: start;
+  }
+}

@@ -655,9 +655,16 @@ async function assertFinancialHeaderLayout(page, view) {
       const actionGrid = marketPanel?.querySelector('.market-tools-section--scenario .market-tools-grid');
       const intelligenceGrid = marketPanel?.querySelector('.market-tools-section--intelligence .market-tools-grid');
       const intelligenceSection = marketPanel?.querySelector('.market-tools-section--intelligence');
-      const externalResearch = healthColumn?.querySelector('.market-tools-external--health');
+      const externalResearch = marketPanel?.querySelector('.market-tools-external');
       const actionBounds = actionGrid?.getBoundingClientRect();
       const externalResearchBounds = externalResearch?.getBoundingClientRect();
+      const tranchesValue = healthColumn?.querySelector('.portfolio-micro-basis #boardTranches');
+      const tranchesRow = tranchesValue?.closest('.portfolio-micro-row');
+      const tranchesLabel = tranchesRow?.querySelector('.portfolio-metric-label');
+      const tranchesButton = tranchesValue?.querySelector('button');
+      const tranchesValueBounds = tranchesValue?.getBoundingClientRect();
+      const tranchesLabelBounds = tranchesLabel?.getBoundingClientRect();
+      const tranchesButtonBounds = tranchesButton?.getBoundingClientRect();
       const actionButtonsCount = marketPanel?.querySelectorAll('.market-tool-card').length ?? 0;
       const marketPanelRole = marketPanel?.getAttribute('role') ?? null;
       const marketPanelLabel = marketPanel?.getAttribute('aria-label') ?? null;
@@ -719,9 +726,27 @@ async function assertFinancialHeaderLayout(page, view) {
         intelligenceColumns: intelligenceGrid ? getComputedStyle(intelligenceGrid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
         intelligenceCardCount: intelligenceSection?.querySelectorAll('.market-tool-card').length ?? 0,
         marketPanelWidth: panelBounds?.width ?? 0,
+        sideBlocksSameHeight: Boolean(
+          healthColumnBounds && panelBounds &&
+          Math.abs(healthColumnBounds.top - panelBounds.top) <= 2 &&
+          Math.abs(healthColumnBounds.height - panelBounds.height) <= 3
+        ),
         externalResearchVisible: Boolean(externalResearch?.getClientRects().length),
-        externalResearchInHealthColumn: Boolean(externalResearch && externalResearch.parentElement === healthColumn),
-        externalResearchBelowHealth: Boolean(externalResearchBounds && healthBounds && externalResearchBounds.top >= healthBounds.bottom - 1),
+        externalResearchInMarketTools: Boolean(externalResearch && externalResearch.parentElement === marketPanel),
+        externalResearchAfterIntelligence: Boolean(
+          externalResearchBounds && intelligenceSection &&
+          externalResearchBounds.top >= intelligenceSection.getBoundingClientRect().bottom - 1
+        ),
+        tranchesButtonPresent: Boolean(tranchesButton?.getClientRects().length),
+        tranchesButtonRightAligned: Boolean(
+          tranchesValueBounds && tranchesButtonBounds &&
+          Math.abs(tranchesValueBounds.right - tranchesButtonBounds.right) <= 3
+        ),
+        tranchesLabelCentered: Boolean(
+          tranchesLabelBounds && tranchesButtonBounds &&
+          Math.abs((tranchesLabelBounds.top + tranchesLabelBounds.bottom) / 2 -
+            (tranchesButtonBounds.top + tranchesButtonBounds.bottom) / 2) <= 3
+        ),
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
         summaryTop: summaryBounds?.top ?? null,
@@ -777,8 +802,18 @@ async function assertFinancialHeaderLayout(page, view) {
     if (layout.scenarioColumns !== expectedScenarioColumns || layout.intelligenceColumns !== expectedIntelligenceColumns) {
       throw new Error('Scenario Planning and Market Intelligence should use two columns when two actions fit: ' + JSON.stringify(layout));
     }
-    if (view === 'ticker' && (!layout.externalResearchVisible || !layout.externalResearchInHealthColumn || !layout.externalResearchBelowHealth)) {
-      throw new Error('External Research must appear below Account Equity Health in the ticker health column: ' + JSON.stringify(layout));
+    if (view === 'ticker' && (!layout.externalResearchVisible || !layout.externalResearchInMarketTools || !layout.externalResearchAfterIntelligence)) {
+      throw new Error('External Research must appear after Market Intelligence inside the Market Tools panel: ' + JSON.stringify(layout));
+    }
+    if (view === 'combined' && layout.externalResearchVisible) {
+      throw new Error('External Research should remain limited to ticker Market Tools.');
+    }
+    if (viewport.width >= 768 && !layout.sideBlocksSameHeight) {
+      throw new Error('The left health stack and right Market Tools panel must have matching desktop heights: ' + JSON.stringify(layout));
+    }
+    if (view === 'ticker' && viewport.width >= 768 && layout.tranchesButtonPresent &&
+        (!layout.tranchesButtonRightAligned || !layout.tranchesLabelCentered)) {
+      throw new Error('The Tranches control must align to the right and center vertically with its label: ' + JSON.stringify(layout));
     }
     if (view === 'combined' && layout.externalResearchVisible) {
       throw new Error('External Research should remain scoped to the ticker view after relocation.');
