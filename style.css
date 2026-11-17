@@ -4294,6 +4294,17 @@ table tbody tr:hover {
   width: 100%;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .market-tool-card {
+    transition: none;
+  }
+
+  .market-tool-card:hover,
+  .market-tool-card:active {
+    transform: none;
+  }
+}
+
 @media (max-width: 767px) {
   .portfolio-market-tools {
     gap: 0.75rem;
