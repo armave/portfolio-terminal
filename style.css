@@ -5529,9 +5529,6 @@ table tbody tr:hover {
    Keep the native table algorithm so each column takes the width its contents need. */
 #mainTerminalView #projectionTableContainer .projection-table,
 .desktop-workspace-grid #projectionTableContainer .projection-table {
-  width: max-content;
-  min-width: max-content;
-  max-width: none;
   table-layout: auto;
   margin: 0;
 }
@@ -5567,13 +5564,6 @@ table tbody tr:hover {
   white-space: nowrap;
   text-align: right;
   padding-inline: 0.35rem;
-}
-
-@media (max-width: 767px) {
-  #mainTerminalView #projectionTableContainer .projection-table {
-    width: max-content;
-    min-width: max-content;
-  }
 }
 
 /* Position financial summary redesign: valuation and purchase basis are peer cards;
