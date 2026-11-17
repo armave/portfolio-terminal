@@ -1207,7 +1207,34 @@ try {
 
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
-  await page.locator('#boardHeaderBanner #portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
+  try {
+    await page.locator('#boardHeaderBanner #portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
+  } catch {
+    const healthDebug = await page.locator('#boardHeaderBanner').evaluate((header) => {
+      const status = header.querySelector('.workspace-header-status');
+      const describe = (element) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        const computed = getComputedStyle(element);
+        return {
+          id: element.id,
+          className: typeof element.className === 'string' ? element.className : '',
+          text: element.textContent?.trim().slice(0, 180) || '',
+          display: computed.display,
+          visibility: computed.visibility,
+          width: rect.width,
+          height: rect.height
+        };
+      };
+      return {
+        health: describe(header.querySelector('#portfolioDataHealth')),
+        statusChildren: status ? Array.from(status.children).map(describe) : [],
+        headerText: header.textContent?.trim().slice(0, 500) || ''
+      };
+    });
+    throw new Error('Portfolio Data Health failed to mount after administrator sign-in: ' +
+      JSON.stringify({ pageErrors, healthDebug }));
+  }
   await page.locator('#portfolioDataHealthToggle').click();
   await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
   const adminHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
