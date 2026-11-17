@@ -1207,6 +1207,18 @@ try {
 
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('#boardHeaderBanner #portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('#portfolioDataHealthToggle').click();
+  await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
+  const adminHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
+  if (!adminHealthCopy.includes('Broker snapshot') ||
+      !adminHealthCopy.includes('Quote freshness') ||
+      !adminHealthCopy.includes('Cloud synchronization') ||
+      adminHealthCopy.includes('Assigned snapshot')) {
+    throw new Error('Administrator data health did not show its role-scoped broker, quote, and cloud sources: ' + adminHealthCopy);
+  }
+  await assertResponsiveSurface(page, '#portfolioDataHealthDetails', 'administrator portfolio data-health details');
+  await page.locator('#portfolioDataHealthToggle').click();
   await assertVisibleControlsHaveNames(page, 'administrator dashboard');
   if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
     await assertStandardizedWorkspaceNavigation(page, 'admin');
@@ -1217,6 +1229,7 @@ try {
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
+  await assertResponsiveSurface(page, '#portfolioDataHealthToggle', 'portfolio data-health trigger');
   // The authenticated startup may restore Balance. Select the Combined Portfolio
   // explicitly so this assertion exercises the Combined admin header, not the initial desk.
   const combinedPortfolioTab = page.locator('#tickerTabs [aria-label="COMBINED PORTFOLIO"]');
