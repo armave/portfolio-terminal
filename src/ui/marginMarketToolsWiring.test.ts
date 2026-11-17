@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+const marketToolsStyles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
 describe('Market Tools wiring', () => {
   it('keeps Market Insights and Margin Intelligence launchers in a separate tools row after Margin Health', () => {
@@ -16,8 +17,26 @@ describe('Market Tools wiring', () => {
     expect(summarySource).toContain("emitUiEvent('market:depth-request', { ticker })");
     expect(summarySource).toContain("emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})");
     expect(summarySource).toContain("emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})");
-    expect(summarySource).toContain("translateText('Buy More', language)");
+    expect(summarySource).toContain("translateText('Simulate Buy', language)");
     expect(summarySource).toContain("translateText('Compare Exits', language)");
+    expect(summarySource).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
+    expect(summarySource).toContain('aria-label={translateText(reviewLabel, language)}');
+    expect(summarySource).toContain("translateText('Live Order Book', language)");
+    expect(summarySource).toContain("ticker && isAdmin && marketDepthAvailable");
+  });
+
+  it('keeps card hover and pressed feedback independent from page-entry animation', () => {
+    const animationRuleStart = marketToolsStyles.indexOf('.closed-history-page-transition');
+    const animationRuleOpen = marketToolsStyles.indexOf('{', animationRuleStart);
+    const animationSelectors = marketToolsStyles.slice(animationRuleStart, animationRuleOpen).trim();
+    const cardRule = marketToolsStyles.match(/\.market-tool-card\s*\{([^}]*)\}/)?.[1] ?? '';
+    const hoverRule = marketToolsStyles.match(/\.market-tool-card:hover\s*\{([^}]*)\}/)?.[1] ?? '';
+    const activeRule = marketToolsStyles.match(/\.market-tool-card:active\s*\{([^}]*)\}/)?.[1] ?? '';
+
+    expect(animationSelectors).toBe('.closed-history-page-transition');
+    expect(cardRule).toContain('transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;');
+    expect(hoverRule).toContain('transform: translateY(-1px);');
+    expect(activeRule).toContain('transform: translateY(0);');
   });
 
   it('wires the read-only Market Tools dialogs through semantic app events', () => {

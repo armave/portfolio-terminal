@@ -109,6 +109,23 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes redesigned Market Tools sections and actions in Russian', () => {
+    const marketToolsCopy = [
+      'MARKET TOOLS', 'SCENARIO PLANNING', 'MARKET INTELLIGENCE', 'EXTERNAL RESEARCH',
+      'Model trades, compare exits and research market conditions.',
+      'Simulate Buy', 'Preview average entry, P&L and margin impact. No order is placed.',
+      'Compare hypothetical exit dates, prices and net proceeds.',
+      'AI Risk Review', 'AI Portfolio Review',
+      'Review recent news and margin-position risks with Gemini',
+      'Review recent news and risk across all margin positions with Gemini',
+      'Live Order Book', 'Inspect live TradeNet bids and asks. Read-only.'
+    ];
+    for (const copy of marketToolsCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
+
   it('localizes the Market Tools two-period exit comparison experience', () => {
     const exitComparisonCopy = [
       'In {days} days', 'In {duration}', 'Choose a valid date', 'Period A', 'Period B', 'BEST RESULT',
@@ -886,7 +903,7 @@ describe('new financial header copy localization', () => {
 });
 
 describe('portfolio action region accessibility copy', () => {
-  it('provides a localized accessible name after the visible Market Tools heading is removed', () => {
+  it('provides a localized accessible group name for Market Tools actions', () => {
     expect(translateText('Portfolio actions', 'ru')).toBe('Действия портфеля');
   });
 });
