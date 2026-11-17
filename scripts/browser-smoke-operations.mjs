@@ -1202,10 +1202,16 @@ try {
   await page.locator('#portfolioDataHealthToggle').click();
   await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
   const guestHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
-  if (!guestHealthCopy.includes('Assigned snapshot') ||
-      !guestHealthCopy.includes('Assigned data refresh') ||
-      guestHealthCopy.includes('Broker snapshot') ||
-      guestHealthCopy.includes('Cloud synchronization')) {
+  const hasAssignedSnapshotLabel = guestHealthCopy.includes('Assigned snapshot') ||
+    guestHealthCopy.includes('Назначенный портфель');
+  const hasAssignedRefreshLabel = guestHealthCopy.includes('Assigned data refresh') ||
+    guestHealthCopy.includes('Обновление назначенных данных');
+  const exposesOwnerBrokerData = guestHealthCopy.includes('Broker snapshot') ||
+    guestHealthCopy.includes('Снимок брокера');
+  const exposesOwnerCloudData = guestHealthCopy.includes('Cloud synchronization') ||
+    guestHealthCopy.includes('Облачная синхронизация');
+  if (!hasAssignedSnapshotLabel || !hasAssignedRefreshLabel ||
+      exposesOwnerBrokerData || exposesOwnerCloudData) {
     throw new Error('Guest data health exposed owner broker/cloud data or omitted the assigned projection status: ' + guestHealthCopy);
   }
   await page.locator('#portfolioDataHealthToggle').click();
