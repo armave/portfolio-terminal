@@ -25,11 +25,8 @@
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",
     "glob": "14.0.2",
     "minimatch": "11.0.1",
-    "picomatch@^4.0.2": "file:../../vendor/picomatch-v4",
-    "picomatch@^4.0.4": "file:../../vendor/picomatch-v4",
-    "picomatch@^4.0.7": "file:../../vendor/picomatch-v4",
     "@rollup/pluginutils@4.2.1": {
-      "picomatch@^2.2.2": "file:../../../../../../vendor/picomatch-v2"
+      "picomatch": "file:../../../../../../vendor/picomatch-v2"
     }
   },
   "devDependencies": {
@@ -44,7 +41,9 @@
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0",
     "@vitest/coverage-v8": "5.1.0",
-    "oxlint": "1.93.0"
+    "oxlint": "1.93.0",
+    "picomatch": "file:vendor/picomatch-v4",
+    "picomatch-v2": "file:vendor/picomatch-v2"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",
