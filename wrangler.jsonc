@@ -42,6 +42,6 @@
   ],
   "vars": {
     "AUTH_EDGE_LIMITER_REQUIRED": "true",
-    "MARGIN_DIGEST_ENCRYPTION_REQUIRED": "false"
+    "MARGIN_DIGEST_ENCRYPTION_REQUIRED": "true"
   }
 }
