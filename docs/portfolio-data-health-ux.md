@@ -6,9 +6,9 @@ The shared workspace header shows one compact Portfolio status control. Its stat
 
 The collapsed control reports one of three attention states:
 
-- **Data current** only when the applicable role-specific sources meet the current/verified contract below.
+- **Up to date** only when the applicable role-specific sources meet the current/verified contract below.
 - **Needs review** when a source explicitly reports stale, incomplete, delayed, unavailable, failed, or conflict state.
-- **Checking data status** when the evidence is missing, unknown, not yet synchronized, or insufficient to establish freshness.
+- **Status** is the neutral idle label when evidence is missing, unknown, not yet synchronized, or insufficient to establish freshness; it does not imply that data is current.
 
 Clicking the control opens a viewport-bounded modal with the role-scoped detail rows and existing sync/recovery actions. The shared ModalFrame and dialog-focus utilities provide focus containment, Escape/backdrop dismissal, background isolation, scroll locking, and focus restoration. The workspace bottom-navigation dock remains independently positioned.
 

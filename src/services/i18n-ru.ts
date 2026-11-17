@@ -1190,6 +1190,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Portfolio status': 'Состояние портфеля',
   'Needs review': 'Требуется проверка',
   'Data current': 'Данные актуальны',
+  'Up to date': 'Данные актуальны',
+  'Status': 'Состояние',
   'Checking data status': 'Проверка состояния данных',
   'Broker snapshot': 'Снимок брокера',
   'Assigned snapshot': 'Назначенный портфель',
