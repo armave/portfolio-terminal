@@ -263,6 +263,18 @@ All four CI/security pairs refer to the exact tested code-bearing PR heads. For 
 Automated validations are recorded against each exact PR head above. The following remain manual release gates where applicable: authenticated TradeNet refresh and corporate-action compatibility, authenticated backup export/import and cloud restore across multiple devices, and keyboard-only/responsive accessibility review. These are not satisfied by deterministic CI and are not claimed complete. `PortfolioState.positions` remains canonical and no ledger cutover has been authorized.
 
 
+## Implementation slice — read-only lot and closed-history parity (#518)
+
+[PR #518](https://github.com/armave/portfolio-terminal/pull/518) was squash-merged into `dev` at [`92106bf431794bfcf9a8c980e11825b20c3b5ac9`](https://github.com/armave/portfolio-terminal/commit/92106bf431794bfcf9a8c980e11825b20c3b5ac9). Final reviewed/tested PR head: `91eb985c012f0bda4c816e514d89111d7607086f`.
+
+- [x] Expose the existing FIFO lot and linked closed-trade replay parity as a separate read-only section in Trades reconciliation.
+- [x] Pass canonical positions, cash-holding lots and closed history into the shadow verifier; keep `PortfolioState.positions` canonical and retain explicit incomplete/unsupported classifications.
+- [x] Add English/Russian status, discrepancy and issue explanations with bounded visible finding lists.
+- [x] [Pull Request CI #4468](https://github.com/armave/portfolio-terminal/actions/runs/44019388156) — passed: TypeScript, full Vitest/Worker suite, Vite smoke, dead-code/dependency audits, production build, production browser smoke/performance and Operations Browser Journey.
+- [x] [Security & Workflow Validation #274](https://github.com/armave/portfolio-terminal/actions/runs/44019388061) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history scan skipped.
+
+This is parity visibility, not a ledger cutover or automatic correction. Authenticated TradeNet, backup/restore and real multi-device release checks remain manual gates.
+
 ## Read-only lot and closed-history parity visibility
 
 The Trades broker-reconciliation panel now exposes the existing `verifyPortfolioTransactionLotParity` shadow comparison separately from transaction-journal quantity/cash/debt coverage. It receives the current canonical `positions`, cash-holding lots and `closedTrades`; it never writes to the store or changes financial calculations.
