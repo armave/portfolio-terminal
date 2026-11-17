@@ -1,7 +1,7 @@
 import { createPortal } from 'preact/compat';
 import { useRef } from 'preact/hooks';
 import type { MarketNewsItem } from '../services/api';
-import { formatNewsRelativeTime } from '../features/quotes/marketInsightsContent';
+import { formatNewsRelativeTime, getSafeNewsArticleUrl } from '../features/quotes/marketInsightsContent';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
 
@@ -30,6 +30,7 @@ export function MarketNewsArticleDialog({
   });
 
   if (!article || typeof document === 'undefined') return null;
+  const safeArticleUrl = getSafeNewsArticleUrl(article.url);
 
   return createPortal(
     <ModalFrame
@@ -70,9 +71,9 @@ export function MarketNewsArticleDialog({
         <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
           {article.summary || article.description || article.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
         </div>
-        {article.url && (
+        {safeArticleUrl && (
           <a
-            href={article.url}
+            href={safeArticleUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="inline-flex min-h-11 items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
