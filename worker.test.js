@@ -2083,6 +2083,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
       '/api/auth/verify',
+      '/api/margin-digest',
       '/api/auth/verify',
       '/api/margin-digest',
       '/api/auth/verify',
