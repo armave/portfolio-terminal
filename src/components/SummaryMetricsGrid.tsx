@@ -855,17 +855,17 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
                 </div>
 
-  <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-  <div class="portfolio-micro-row">
-  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-  </div>
-  <div class="portfolio-micro-row">
-  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-  </div>
-  </div>
-            </div>
+                <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+                  <div class="portfolio-micro-row">
+                    <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+                    <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+                  </div>
+                  <div class="portfolio-micro-row">
+                    <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+                    <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+                  </div>
+                </div>
+              </div>
             </section>
             <MarginRiskGaugeCard
               scope="account"
@@ -1132,16 +1132,16 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
               </div>
 
-  <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-  <div class="portfolio-micro-row">
-  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-  </div>
-  <div class="portfolio-micro-row">
-  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-  </div>
-  </div>
+              <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+                  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+                </div>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+                  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+                </div>
+              </div>
             </div>
           </section>
           <MarginRiskGaugeCard

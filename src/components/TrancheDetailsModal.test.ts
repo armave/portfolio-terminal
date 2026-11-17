@@ -64,6 +64,7 @@ describe('tranche details rows', () => {
     expect(stylesheet).toContain('"market basis"');
     expect(stylesheet).not.toContain('"costs costs"');
     expect(stylesheet).toContain('grid-template-rows: minmax(0, 1fr);');
+    expect(stylesheet).toContain('align-items: stretch;');
     expect(stylesheet).toContain('margin-top: auto;');
     expect(stylesheet).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
     expect(stylesheet).toContain('@container portfolio-health-summary (max-width: 30rem)');
