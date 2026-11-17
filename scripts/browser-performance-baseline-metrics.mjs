@@ -56,3 +56,35 @@ export function summarizePerformanceViewport(samples) {
     resourceCount: summarizePerformanceSamples(samples, 'resourceCount')
   };
 }
+
+
+/** Preserve the environment that produced a browser sample without guessing unavailable fields. */
+export function buildPerformanceEnvironmentMetadata(input) {
+  const optionalString = (value) => (
+    typeof value === 'string' && value.trim() ? value.trim() : null
+  );
+  const logicalCpuCount = Number.isSafeInteger(input?.logicalCpuCount) && input.logicalCpuCount > 0
+    ? input.logicalCpuCount
+    : null;
+
+  return {
+    platform: optionalString(input?.platform),
+    osRelease: optionalString(input?.osRelease),
+    architecture: optionalString(input?.architecture),
+    nodeVersion: optionalString(input?.nodeVersion),
+    cpuModel: optionalString(input?.cpuModel),
+    logicalCpuCount,
+    runnerImageOS: optionalString(input?.runnerImageOS),
+    runnerImageVersion: optionalString(input?.runnerImageVersion),
+    browserName: optionalString(input?.browserName),
+    browserVersion: optionalString(input?.browserVersion),
+    headless: input?.headless === true,
+    viewports: Array.isArray(input?.viewports)
+      ? input.viewports.map((viewport) => ({
+        name: optionalString(viewport?.name),
+        width: Number.isSafeInteger(viewport?.width) && viewport.width > 0 ? viewport.width : null,
+        height: Number.isSafeInteger(viewport?.height) && viewport.height > 0 ? viewport.height : null
+      }))
+      : []
+  };
+}

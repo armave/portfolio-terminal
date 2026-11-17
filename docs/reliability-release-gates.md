@@ -63,7 +63,7 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 `scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic unauthenticated fixtures. It captures three cold samples of the unauthenticated application shell at desktop (1440×900) and mobile (390×844).
 
-The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. Each sample records:
+The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. The report also records reproducibility metadata: OS platform and release, architecture, Node.js version, CPU model and logical processor count, GitHub runner image identifiers when provided by the runner, Chromium name/version, headless mode, and exact viewport dimensions. Unavailable environment properties remain `null`; they are not replaced with guessed defaults. Each sample records:
 - first contentful paint (FCP);
 - largest contentful paint (LCP), where supported;
 - DOMContentLoaded and load event timing;
@@ -75,7 +75,9 @@ The CI artifact `browser-performance-baseline` (schema version 1) contains the u
 
 Initial application startup also has a bounded page-readiness gate: the full-screen overlay waits at most 12 seconds for the active desk. A timed-out lazy panel retains its local `DeskLoading` fallback, and the app-shell watchdog remains active until the overlay is actually removed. Vitest covers both readiness completion and timeout release.
 
-The current fixture does not measure authenticated dashboard hydration, large-portfolio rendering, transaction-history scale, real broker latency, or production network/provider availability. A future authenticated performance fixture must first seed a portfolio through a verified application-supported persistence/import path and prove that the same 100-position/200-tranche state survives authenticated startup and broker reconciliation before its measurements are treated as valid.
+The Operations Browser Journey also captures an authenticated synthetic-portfolio artifact through the application bootstrap flow, with a deterministic mocked Worker/broker and a local-only AAPL seed (5 shares, one tranche). It currently records three cold samples per viewport, so it proves the authenticated harness runs but is not a representative 100-position/200-tranche portfolio benchmark. Manual `workflow_dispatch` runs of the Operations Browser Journey now support 1–20 authenticated samples per viewport and default to 10; regular PR CI calls retain three samples to limit feedback time. The authenticated artifact records the same OS/runner/Node/CPU/Chromium/viewport environment metadata as the app-shell report, with unavailable values left null.
+
+The current synthetic seed does not measure representative large-portfolio rendering or transaction-history scale, real broker latency, or production provider availability. Before treating authenticated results as representative, expand the fixture using a verified application-supported persistence/import path and prove the same 100-position/200-tranche state plus representative closed-history/journal records survives authenticated startup and mocked broker reconciliation.
 
 ### Extended sample collection
 
