@@ -141,3 +141,31 @@ export function getQuoteFreshnessHealth(summary: QuoteFreshnessSummary): QuoteFr
   if (summary.fresh === summary.total) return 'fresh';
   return 'unknown';
 }
+
+export type PortfolioDataHealthTone = 'healthy' | 'warning' | 'unknown';
+
+export function resolvePortfolioDataHealthTone(input: {
+  role: 'admin' | 'guest';
+  brokerHealth?: BrokerSnapshotHealth;
+  quoteHealth: QuoteFreshnessHealth;
+  cloudTone?: 'neutral' | 'success' | 'pending' | 'warning' | 'conflict' | 'error';
+  assignedSnapshotAvailable?: boolean;
+  assignedRefreshStatus?: string;
+}): PortfolioDataHealthTone {
+  const quoteProblem = input.quoteHealth === 'stale' || input.quoteHealth === 'delayed';
+  if (quoteProblem) return 'warning';
+
+  if (input.role === 'admin') {
+    if (input.brokerHealth === 'partial' || input.brokerHealth === 'empty' ||
+        input.brokerHealth === 'stale' || input.brokerHealth === 'unavailable') return 'warning';
+    if (input.cloudTone === 'warning' || input.cloudTone === 'conflict' || input.cloudTone === 'error') return 'warning';
+    if (input.brokerHealth !== 'current' || input.quoteHealth === 'unknown' ||
+        input.quoteHealth === 'unavailable' || input.cloudTone !== 'success') return 'unknown';
+    return 'healthy';
+  }
+
+  if (input.assignedRefreshStatus === 'error') return 'warning';
+  if (!input.assignedSnapshotAvailable || input.assignedRefreshStatus !== 'synced' ||
+      input.quoteHealth === 'unknown' || input.quoteHealth === 'unavailable') return 'unknown';
+  return 'healthy';
+}
