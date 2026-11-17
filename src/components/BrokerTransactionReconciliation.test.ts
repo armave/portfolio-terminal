@@ -24,6 +24,13 @@ describe('broker reconciliation localization', () => {
     )).toContain('предварительными');
   });
 
+  it('localizes the unclassified cashflow explanation in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.',
+      'ru'
+    )).toBe('Не удалось безопасно классифицировать денежный поток брокера или определить допустимую сумму; запись исключена из сверки.');
+  });
+
   it('preserves English and unknown copy', () => {
     expect(translateBrokerReconciliationCopy('Matched', 'en')).toBe('Matched');
     expect(translateBrokerReconciliationCopy('A future copy key', 'ru')).toBe('A future copy key');
