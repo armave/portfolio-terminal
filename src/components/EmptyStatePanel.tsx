@@ -72,7 +72,7 @@ export function EmptyStatePanel() {
               emitUiEvent('portfolio:set-active-view', { view: 'SETTINGS' });
               emitUiEvent('app:scroll-workspace');
             }}
-            class="empty-state-panel__primary"
+            class="empty-state-panel__primary min-h-11 focus-visible:ring-2 focus-visible:ring-cyan-300"
           >{translateText('Review in Settings', getAppLanguage())}</button>
         ) : (
           <button
@@ -86,7 +86,7 @@ export function EmptyStatePanel() {
         <button
           type="button"
           onClick={() => emitUiEvent('settings:backup-import-request')}
-          class="empty-state-panel__secondary"
+          class="empty-state-panel__secondary min-h-11 focus-visible:ring-2 focus-visible:ring-cyan-300"
         >{translateText('Import Backup', getAppLanguage())}</button>
         <button
           type="button"
