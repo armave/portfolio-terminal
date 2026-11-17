@@ -72,6 +72,17 @@ describe('Margin projection and insights layout', () => {
     expect(appSource).toContain('id="tradingWorkspaceGrid" class="trading-workspace-grid"');
   });
 
+  it('uses explicit compact column widths and semantic numeric alignment in the projection table', () => {
+    expect(appSource).toContain('<colgroup>');
+    expect(appSource).toContain('<col class="projection-col-date" />');
+    expect(appSource).toContain('<col class="projection-col-net" />');
+    expect(appSource).toContain('<col class="projection-col-fees" />');
+    expect(appSource).toContain('<col class="projection-col-balance" />');
+    expect(appSource).toContain('projection-date-heading py-1 px-1 text-left');
+    expect(appSource).toContain('projection-number-heading py-1 px-1 text-right');
+    expect(projectionSource).toContain('projection-number-cell');
+  });
+
   it('combines the accrued fee total and daily margin interest in the Fee & Comm. column', () => {
     expect(appSource).toContain("translateText('Fee & Comm.', getAppLanguage())");
     expect(appSource).not.toContain("translateText('Margin fee', getAppLanguage())");
