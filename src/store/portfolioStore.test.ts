@@ -2818,15 +2818,16 @@ describe('confirmed cloud snapshot replacement', () => {
     expect(store.importState({ transactionEvents: [cloudEvent] })).toBe(false);
     expect(store.getState().transactionEvents).toEqual([localEvent]);
 
+    const previousBalance = store.getState().balance;
     const replacement: PortfolioState = {
       ...store.getState(),
       positions: {},
-      balance: 250,
+      balance: previousBalance,
       transactionEvents: [cloudEvent]
     };
     expect(store.replaceFromConfirmedCloudPull(replacement)).toBe(true);
     expect(store.getState().transactionEvents).toEqual([cloudEvent]);
-    expect(store.getState().balance).toBe(250);
+    expect(store.getState().balance).toBe(previousBalance);
   });
 });
 
