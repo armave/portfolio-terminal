@@ -3963,6 +3963,52 @@ describe('portfolio transaction journal integration', () => {
     expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
   });
 
+  it('does not suppress a new detail mutation merely because an old transaction already matches its candidate snapshot', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+
+    const first = store.getState();
+    const firstPosition = first.positions.AAPL;
+    expect(store.setState({
+      positions: {
+        ...first.positions,
+        AAPL: {
+          ...firstPosition,
+          tranches: (firstPosition.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price + 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const beforeRestoreEventCount = store.getState().transactionEvents?.length ?? 0;
+    const second = store.getState();
+    const secondPosition = second.positions.AAPL;
+    expect(store.setState({
+      positions: {
+        ...second.positions,
+        AAPL: {
+          ...secondPosition,
+          tranches: (secondPosition.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price - 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const newAudit = (store.getState().transactionEvents || []).slice(beforeRestoreEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-snapshot-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(newAudit?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === newAudit?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
   it('records same-quantity cash-holding lot and average-cost changes without inventing a sale', () => {
     const store = new PortfolioStore();
     expect(store.addCashHolding('MSFT', 2, 100)).toMatchObject({ ticker: 'MSFT', shares: 2 });
