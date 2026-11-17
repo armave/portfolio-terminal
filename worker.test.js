@@ -2262,7 +2262,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(
       Array.from({ length: 3 }, () => ['/api/auth/verify', '/api/state']).flat()
     );
-    expect(await store.ctx.storage.get('portfolio_state')).toBeUndefined();
+    expect(await store.ctx.storage.get('record')).toBeUndefined();
     expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
   });
 
