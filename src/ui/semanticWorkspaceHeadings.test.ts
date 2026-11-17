@@ -8,7 +8,7 @@ function readSource(path: string): string {
 describe('semantic workspace headings', () => {
   it('provides a primary heading for the Margin desk and empty state', () => {
     expect(readSource('../App.tsx')).toContain('<h1 class="board-title-text');
-    expect(readSource('../components/EmptyStatePanel.tsx')).toContain('<h1 class="text-lg font-black');
+    expect(readSource('../components/EmptyStatePanel.tsx')).toContain('<h1 id="emptyStateTitle">');
   });
 
   it('provides a primary heading for each standalone workspace destination through the shared header', () => {
