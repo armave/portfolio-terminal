@@ -4417,6 +4417,47 @@ describe('auditable balance adjustment reversals', () => {
     expect(cashStore.getState().transactionEvents).toHaveLength(2);
   });
 
+  it.each([
+    'trade.buy',
+    'trade.sell',
+    'cash-holding.buy',
+    'cash-holding.sell',
+    'cash-holding.adjustment',
+    'position.adjustment',
+    'history.correction',
+    'corporate-action',
+    'margin.interest',
+    'cash.deposit',
+    'cash.withdrawal',
+    'cash.transfer',
+    'dividend',
+    'fee',
+    'broker.execution',
+    'portfolio.reconciliation',
+    'portfolio.reset',
+    'correction'
+  ] as const)('rejects %s reversal without mutating the committed snapshot or journal', (type) => {
+    sharedTestStorage.clear();
+    const store = new PortfolioStore();
+    const original = createPortfolioTransactionEvent({
+      type,
+      effectiveAt: Date.parse('2026-11-17T08:00:00.000Z'),
+      ticker: 'AAPL'
+    }, { eventId: 'unsupported-reversal-' + type });
+    expect(store.importState({ transactionEvents: [original] })).toBe(true);
+
+    const before = store.getState();
+    const persistedBefore = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.reverseBalanceAdjustment(original.id, 'Unsupported inverse semantics')).toBe(false);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().transactionEvents).toEqual([original]);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(persistedBefore);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('does not publish or append a reversal when the snapshot commit fails', () => {
     const store = new PortfolioStore();
     expect(store.setFreeCash(500)).toBe(true);
