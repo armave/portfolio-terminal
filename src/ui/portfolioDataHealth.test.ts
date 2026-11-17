@@ -6,7 +6,8 @@ import {
   getQuoteFreshnessHealth,
   selectPortfolioDataHealthSource,
   summarizeAdminPortfolioQuoteFreshness,
-  summarizeGuestPortfolioQuoteFreshness
+  summarizeGuestPortfolioQuoteFreshness,
+  resolvePortfolioDataHealthTone
 } from './portfolioDataHealth';
 
 function brokerSnapshot(overrides: Partial<NonNullable<PortfolioState['brokerAccountInfo']>> = {}): NonNullable<PortfolioState['brokerAccountInfo']> {
@@ -33,7 +34,7 @@ describe('broker snapshot health', () => {
     expect(getBrokerSnapshotHealth(brokerSnapshot({ snapshotQuality: 'partial' }))).toBe('partial');
     expect(getBrokerSnapshotHealth(brokerSnapshot({ quality: 'empty' }))).toBe('empty');
     expect(getBrokerSnapshotHealth(brokerSnapshot({ observedAt: undefined }))).toBe('unknown');
-    expect(getBrokerSnapshotHealth(brokerSnapshot({ status: 'idle' as 'current' }))).toBe('unknown');
+    expect(getBrokerSnapshotHealth(brokerSnapshot({ loaded: false }))).toBe('unknown');
   });
 
   it('does not call a snapshot current while position integrity issues remain', () => {
@@ -143,5 +144,46 @@ describe('quote freshness health', () => {
       }]
     } as unknown as NonNullable<PortfolioState['guestPortfolioSnapshot']>, now);
     expect(unknownPrice.unavailable).toBe(1);
+  });
+});
+
+describe('overall portfolio data health tone', () => {
+  it('warns for stale, partial, unavailable, or conflicted administrator inputs', () => {
+    const base = {
+      role: 'admin' as const,
+      brokerHealth: 'current' as const,
+      quoteHealth: 'fresh' as const,
+      cloudTone: 'success' as const
+    };
+    expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'stale' })).toBe('warning');
+    expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'partial' })).toBe('warning');
+    expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'unavailable' })).toBe('warning');
+    expect(resolvePortfolioDataHealthTone({ ...base, cloudTone: 'conflict' })).toBe('warning');
+    expect(resolvePortfolioDataHealthTone({ ...base, quoteHealth: 'delayed' })).toBe('warning');
+  });
+
+  it('does not call unknown or offline administrator inputs current', () => {
+    const base = {
+      role: 'admin' as const,
+      brokerHealth: 'current' as const,
+      quoteHealth: 'fresh' as const,
+      cloudTone: 'success' as const
+    };
+    expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'unknown' })).toBe('unknown');
+    expect(resolvePortfolioDataHealthTone({ ...base, quoteHealth: 'unavailable' })).toBe('unknown');
+    expect(resolvePortfolioDataHealthTone({ ...base, cloudTone: 'neutral' })).toBe('unknown');
+  });
+
+  it('uses only the assigned snapshot and guest refresh status for guests', () => {
+    const base = {
+      role: 'guest' as const,
+      quoteHealth: 'fresh' as const,
+      assignedSnapshotAvailable: true,
+      assignedRefreshStatus: 'synced'
+    };
+    expect(resolvePortfolioDataHealthTone(base)).toBe('healthy');
+    expect(resolvePortfolioDataHealthTone({ ...base, assignedRefreshStatus: 'error' })).toBe('warning');
+    expect(resolvePortfolioDataHealthTone({ ...base, assignedSnapshotAvailable: false })).toBe('unknown');
+    expect(resolvePortfolioDataHealthTone({ ...base, quoteHealth: 'unknown' })).toBe('unknown');
   });
 });
