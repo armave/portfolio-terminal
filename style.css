@@ -6100,6 +6100,7 @@ table tbody tr:hover {
 
 .portfolio-data-health__details {
   display: grid;
+  box-sizing: border-box;
   gap: 0.625rem;
   width: min(29rem, calc(100vw - 2rem));
   max-width: 100%;
@@ -6222,7 +6223,9 @@ table tbody tr:hover {
 
 @media (max-width: 639px) {
   .portfolio-data-health__details {
+    box-sizing: border-box;
     width: min(29rem, calc(100vw - 1rem));
+    max-width: calc(100vw - 1rem);
   }
 
   .portfolio-data-health__row {
