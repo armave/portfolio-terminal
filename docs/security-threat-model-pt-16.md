@@ -1,7 +1,7 @@
 # PT-16 — Security, privacy, and data-lifecycle threat model
 
 **Status:** Initial code-informed threat model; not a penetration test or formal security certification.  
-**Related work:** [Umbrella roadmap PR #347](https://github.com/armave/portfolio-terminal/pull/347) · [PT-16 issue #344](https://github.com/armave/portfolio-terminal/issues/344)
+**Related work:** [PT-16 tracking issue #546](https://github.com/armave/portfolio-terminal/issues/546) · [tenant-key design #549](https://github.com/armave/portfolio-terminal/issues/549) · [data lifecycle #551](https://github.com/armave/portfolio-terminal/issues/551) · [browser security #552](https://github.com/armave/portfolio-terminal/issues/552)
 
 ## 1. Scope and security objectives
 
@@ -80,15 +80,25 @@ Before this change, `/api/margin-digest` accepted a digest object containing fie
 
 ### Rollout state and required release gate
 
-The encrypted client, encrypted-envelope validation, administrator-only inventory route, and bounded compare-and-swap migration are implemented. This PR changes the checked-in production Wrangler target to `MARGIN_DIGEST_ENCRYPTION_REQUIRED=true`. Until this change is merged and the Worker deployment succeeds, the currently deployed Worker remains in compatibility mode and can still accept validated legacy plaintext writes.
+### Production status as of 2026-11-17
 
-**Do not merge or deploy this configuration change until every prerequisite below is verified against the live production workspace:**
+- The production `main` Wrangler configuration sets `MARGIN_DIGEST_ENCRYPTION_REQUIRED=true`.
+- PT-16 records encrypted-only enforcement deployed at [Worker commit 9ea56f6](https://github.com/armave/portfolio-terminal/commit/9ea56f6b0b702e8ba25ae0d70c549c34b820181d).
+- The pre-deployment inventory recorded two total records, both AES-GCM v2, with zero plaintext, legacy-encrypted or unreadable records; the counts reconciled.
+- The operator confirmed active browser/device sessions were refreshed and old tabs closed.
+- [Issue #548](https://github.com/armave/portfolio-terminal/issues/548) remains open because the post-deployment authenticated protocol smoke and post-deployment inventory evidence have not yet been recorded.
 
-1. The encrypted client build is deployed and active users have had an opportunity to open and upgrade their saved digests.
-2. An administrator runs the inventory scan after migration. It must report `migrationReady=true`, `plaintextRecords=0`, `legacyEncryptedRecords=0`, and `unreadableRecords=0`. The classified record counts must reconcile to `totalRecords`.
-3. Any older encrypted records are opened and upgraded by an encrypted client. Unreadable records must be recovered or explicitly reviewed; they must not be silently deleted or counted as migrated.
-4. Operators separately confirm that active clients no longer send the legacy plaintext write format. The inventory is a point-in-time storage scan and **cannot prove client-version retirement or absence of concurrent legacy writers**.
-5. After the Worker deployment, verify that plaintext writes are rejected, encrypted writes and reads still work, and stale revision writes still return conflicts.
+### Remaining production release gate
+
+Do not describe the digest protocol as fully production-verified until an authorized test confirms:
+
+1. An authenticated plaintext write is rejected without creating a record or advancing its revision.
+2. An encrypted write/read succeeds through the public Worker boundary and the stored record remains ciphertext-only.
+3. A stale revision returns HTTP 409 without overwriting the newer record.
+4. The post-deployment inventory is rerun and all format counts reconcile.
+5. UTC timestamp, exact Worker version/commit and sanitized status/revision evidence are retained without tokens, ciphertext or financial content.
+
+The inventory endpoint returns format counts only. A pre-deployment inventory does not prove post-deployment protocol behavior or absence of concurrent legacy clients.
 
 The administrator inventory endpoint returns format counts only and never exposes digest contents. The bounded batch migration rewrites valid plaintext records with a compare-and-swap against the scanned payload and revision; it is safe to repeat after interruption and preserves the source record on failure. The batch operation does not migrate older encrypted records or repair malformed/unreadable records. The Settings migration panel explains these categories and retains a re-scan step.
 
