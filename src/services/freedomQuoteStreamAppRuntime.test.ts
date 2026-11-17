@@ -103,7 +103,7 @@ describe('Freedom quote stream app adapter', () => {
         bid: 280.51,
         ask: 280.6,
         freshness: 'fresh',
-        sourceTimestamp: quoteReceivedAt - 1_000,
+        sourceTimestamp: Math.floor((quoteReceivedAt - 1_000) / 1_000) * 1_000,
         requestSequence: 123
       }),
       quoteReceivedAt
@@ -146,7 +146,7 @@ describe('Freedom quote stream app adapter', () => {
         bid: 281.2,
         ask: 281.3,
         freshness: 'fresh',
-        sourceTimestamp: quoteReceivedAt - 59_000,
+        sourceTimestamp: Math.floor((quoteReceivedAt - 59_000) / 1_000) * 1_000,
         requestSequence: 124
       }),
       quoteReceivedAt + 1_000
