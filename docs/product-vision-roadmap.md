@@ -333,7 +333,7 @@ Each child task has a dedicated branch name and issue. Create the implementation
 | PT-01 | Financial correctness baseline | [#329](https://github.com/armave/portfolio-terminal/issues/329) | `feat/pt-01-financial-baseline` | — |
 | PT-02 | Transaction integrity & audit history | [#507](https://github.com/armave/portfolio-terminal/issues/507) | `feat/pt-02-transaction-integrity` | PT-01 |
 | PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | `feat/pt-03-broker-adapters` | PT-01; PT-02 semantics |
-| PT-04 | Broker reconciliation & provenance | [#537](https://github.com/armave/portfolio-terminal/issues/537) | `feat/pt-04-broker-reconciliation` | PT-01, PT-03 |
+| PT-04 | Broker reconciliation & provenance | [#567](https://github.com/armave/portfolio-terminal/issues/567) | `feat/pt-04-broker-reconciliation` | PT-01, PT-02, PT-03 |
 | PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
 | PT-06 | Performance & attribution | [#334](https://github.com/armave/portfolio-terminal/issues/334) | `feat/pt-06-performance-analytics` | PT-01, PT-02 |
 | PT-07 | Market/instrument data foundation | [#335](https://github.com/armave/portfolio-terminal/issues/335) | `feat/pt-07-market-data-foundation` | PT-01, PT-03 |
