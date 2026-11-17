@@ -24,7 +24,13 @@
   "overrides": {
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",
     "glob": "14.0.2",
-    "minimatch": "11.0.1"
+    "minimatch": "11.0.1",
+    "picomatch@^4.0.2": "file:../../vendor/picomatch-v4",
+    "picomatch@^4.0.4": "file:../../vendor/picomatch-v4",
+    "picomatch@^4.0.7": "file:../../vendor/picomatch-v4",
+    "@rollup/pluginutils@4.2.1": {
+      "picomatch@^2.2.2": "file:../../../../../../vendor/picomatch-v2"
+    }
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
