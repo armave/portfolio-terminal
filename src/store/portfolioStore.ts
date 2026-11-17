@@ -135,7 +135,7 @@ function getPositionAccountingDetails(position: PositionRecord | undefined): Rec
 
   const tranches = Array.isArray(position.tranches) && position.tranches.length
     ? position.tranches.map((tranche) => {
-        const lot = isRecord(tranche) ? tranche : {};
+        const lot: Record<string, unknown> = isRecord(tranche) ? tranche : {};
         return {
           lotId: lot.lotId,
           quantity: lot.qty,
@@ -171,8 +171,8 @@ function getPositionAccountingDetails(position: PositionRecord | undefined): Rec
 
 function getCashHoldingAccountingDetails(
   holdings: readonly CashStockHolding[] | undefined
-): Map<string, Record<string, unknown>[]> {
-  const result = new Map<string, Record<string, unknown>[]>();
+): Map<string, Record<string, unknown>> {
+  const result = new Map<string, Record<string, unknown>>();
   for (const holding of holdings || []) {
     if (!holding || typeof holding.ticker !== 'string') continue;
     const ticker = holding.ticker.trim().toUpperCase();
@@ -180,7 +180,7 @@ function getCashHoldingAccountingDetails(
 
     const lots = Array.isArray(holding.lots) && holding.lots.length
       ? holding.lots.map((lot) => {
-          const record = isRecord(lot) ? lot : {};
+          const record: Record<string, unknown> = isRecord(lot) ? lot : {};
           return {
             lotId: record.lotId,
             quantity: record.qty,
@@ -199,7 +199,10 @@ function getCashHoldingAccountingDetails(
       ...(lots ? { acquisitionLots: lots } : {}),
       ...(holding.averagePrice !== undefined ? { averageCost: holding.averagePrice } : {})
     };
-    result.set(ticker, [...(result.get(ticker) || []), detail]);
+    const previous = result.get(ticker);
+    result.set(ticker, previous
+      ? { holdingRows: [...(Array.isArray(previous.holdingRows) ? previous.holdingRows : [previous]), detail] }
+      : detail);
   }
   return result;
 }
@@ -258,8 +261,8 @@ function appendCanonicalSnapshotAccountingDetailEvents(
   const cashTickers = new Set([...previousCashHoldings.keys(), ...nextCashHoldings.keys()]);
   for (const ticker of Array.from(cashTickers).sort()) {
     const fields = getChangedAccountingDetailFields(
-      previousCashHoldings.has(ticker) ? { rows: previousCashHoldings.get(ticker) } : null,
-      nextCashHoldings.has(ticker) ? { rows: nextCashHoldings.get(ticker) } : null
+      previousCashHoldings.get(ticker) ?? null,
+      nextCashHoldings.get(ticker) ?? null
     );
     if (fields.length) changes.push({ ticker, scope: 'cash-holding', fields });
   }
