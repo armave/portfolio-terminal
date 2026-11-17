@@ -220,12 +220,7 @@ function getChangedAccountingDetailFields(
   );
 }
 
-/**
- * Record same-quantity accounting-detail changes made through snapshot update
- * paths that do not have a source-backed transaction command. The event has
- * no synthetic financial delta and is intentionally classified incomplete by
- * the shadow replay contract.
- */
+/** Normalize ticker aliases to the same instrument identity for audit matching. */
 function normalizeAccountingTicker(value: string): string {
   const ticker = value.trim().toUpperCase();
   return ticker.endsWith('.US') ? ticker.slice(0, -3) : ticker;
@@ -331,9 +326,9 @@ function hasCompleteAccountingLotParity(
 }
 
 /**
- * Record accounting-detail changes made through snapshot boundaries that do
- * not already have a newly imported source-backed transaction event. The
- * event has no synthetic financial delta and is intentionally classified
+ * Record accounting-detail changes that cannot be fully explained by a
+ * complete ticker-scoped lot replay of the candidate canonical snapshot.
+ * The event has no synthetic financial delta and is intentionally classified
  * incomplete by the shadow replay contract.
  */
 function appendCanonicalSnapshotAccountingDetailEvents(
