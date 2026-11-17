@@ -2111,6 +2111,67 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     ]);
   });
 
+  it('preserves encrypted cloud snapshot revisions and idempotent retries through the authenticated Worker route', async () => {
+    const { store, stateStub, namespace, env } = makeAuthenticatedDigestWorker();
+    const snapshot = { encryptedPayload: 'encrypted-cloud-snapshot-fixture' };
+    const write = (idempotencyKey, revision = 0) => worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: {
+        'X-App-Auth': 'admin-session',
+        'Content-Type': 'application/json',
+        'If-Match': `"${revision}"`,
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify(snapshot)
+    }), env);
+
+    const first = await write('worker-cloud-snapshot-retry-0001');
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+    await expect(first.json()).resolves.toMatchObject({ success: true, revision: 1 });
+
+    const retry = await write('worker-cloud-snapshot-retry-0001');
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    await expect(retry.json()).resolves.toMatchObject({
+      success: true,
+      revision: 1,
+      committedRevision: 1,
+      replayed: true
+    });
+
+    const stale = await write('worker-cloud-snapshot-stale-0001', 0);
+    expect(stale.status).toBe(409);
+    expect(stale.headers.get('ETag')).toBe('"1"');
+
+    const read = await worker.fetch(new Request('https://worker.test/api/state', {
+      headers: { 'X-App-Auth': 'admin-session' }
+    }), env);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"1"');
+    await expect(read.json()).resolves.toEqual(snapshot);
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:record');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      key: 'worker-cloud-snapshot-retry-0001',
+      revision: 1
+    });
+    expect(JSON.stringify(receipts)).not.toContain(snapshot.encryptedPayload);
+    expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify',
+      '/api/state',
+      '/api/auth/verify',
+      '/api/state',
+      '/api/auth/verify',
+      '/api/state',
+      '/api/auth/verify',
+      '/api/state'
+    ]);
+  });
+
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
     const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
