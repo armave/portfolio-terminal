@@ -2111,10 +2111,11 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     ]);
   });
 
-  it('preserves encrypted cloud snapshot revisions and idempotent retries through the authenticated Worker route', async () => {
+  it('preserves encrypted cloud snapshot revisions, idempotency conflicts and superseded retries through the authenticated Worker route', async () => {
     const { store, stateStub, namespace, env } = makeAuthenticatedDigestWorker();
     const snapshot = { encryptedPayload: 'encrypted-cloud-snapshot-fixture' };
-    const write = (idempotencyKey, revision = 0) => worker.fetch(new Request('https://worker.test/api/state', {
+    const newerSnapshot = { encryptedPayload: 'encrypted-cloud-snapshot-newer-fixture' };
+    const write = (idempotencyKey, body = snapshot, revision = 0) => worker.fetch(new Request('https://worker.test/api/state', {
       method: 'POST',
       headers: {
         'X-App-Auth': 'admin-session',
@@ -2122,7 +2123,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
         'If-Match': `"${revision}"`,
         'Idempotency-Key': idempotencyKey
       },
-      body: JSON.stringify(snapshot)
+      body: JSON.stringify(body)
     }), env);
 
     const first = await write('worker-cloud-snapshot-retry-0001');
@@ -2141,34 +2142,84 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       replayed: true
     });
 
-    const stale = await write('worker-cloud-snapshot-stale-0001', 0);
+    const keyReuse = await write('worker-cloud-snapshot-retry-0001', {
+      encryptedPayload: 'different-payload-must-not-reuse-key'
+    }, 1);
+    expect(keyReuse.status).toBe(409);
+    expect(keyReuse.headers.get('ETag')).toBe('"1"');
+    await expect(keyReuse.json()).resolves.toMatchObject({
+      conflict: true,
+      idempotencyConflict: true,
+      currentRevision: 1
+    });
+
+    const stale = await write('worker-cloud-snapshot-stale-0001', snapshot, 0);
     expect(stale.status).toBe(409);
     expect(stale.headers.get('ETag')).toBe('"1"');
+
+    const newer = await write('worker-cloud-snapshot-newer-0001', newerSnapshot, 1);
+    expect(newer.status).toBe(200);
+    expect(newer.headers.get('ETag')).toBe('"2"');
+    await expect(newer.json()).resolves.toMatchObject({ success: true, revision: 2 });
+
+    const delayedRetry = await write('worker-cloud-snapshot-retry-0001');
+    expect(delayedRetry.status).toBe(409);
+    expect(delayedRetry.headers.get('ETag')).toBe('"2"');
+    await expect(delayedRetry.json()).resolves.toMatchObject({
+      conflict: true,
+      idempotencySuperseded: true,
+      currentRevision: 2
+    });
 
     const read = await worker.fetch(new Request('https://worker.test/api/state', {
       headers: { 'X-App-Auth': 'admin-session' }
     }), env);
     expect(read.status).toBe(200);
-    expect(read.headers.get('ETag')).toBe('"1"');
-    await expect(read.json()).resolves.toEqual(snapshot);
+    expect(read.headers.get('ETag')).toBe('"2"');
+    await expect(read.json()).resolves.toEqual(newerSnapshot);
 
     const receipts = await store.ctx.storage.get('cloud-write-idempotency:record');
-    expect(receipts).toHaveLength(1);
-    expect(receipts[0]).toMatchObject({
-      key: 'worker-cloud-snapshot-retry-0001',
-      revision: 1
-    });
+    expect(receipts).toHaveLength(2);
+    expect(receipts.map(receipt => receipt.key)).toEqual([
+      'worker-cloud-snapshot-retry-0001',
+      'worker-cloud-snapshot-newer-0001'
+    ]);
     expect(JSON.stringify(receipts)).not.toContain(snapshot.encryptedPayload);
+    expect(JSON.stringify(receipts)).not.toContain(newerSnapshot.encryptedPayload);
     expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(
+      Array.from({ length: 7 }, () => ['/api/auth/verify', '/api/state']).flat()
+    );
+  });
+
+  it('rejects unauthenticated and guest cloud snapshot writes at the public Worker boundary', async () => {
+    const { stateStub, env } = makeAuthenticatedDigestWorker('guest');
+    const body = JSON.stringify({ encryptedPayload: 'must-not-be-written' });
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'guest-cloud-snapshot-0001'
+    };
+
+    const unauthenticated = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers,
+      body
+    }), env);
+    expect(unauthenticated.status).toBe(401);
+
+    const guest = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { ...headers, 'X-App-Auth': 'guest-session' },
+      body
+    }), env);
+    expect(guest.status).toBe(403);
+    await expect(guest.json()).resolves.toMatchObject({
+      error: 'Guest accounts have read-only access.'
+    });
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
       '/api/auth/verify',
-      '/api/state',
-      '/api/auth/verify',
-      '/api/state',
-      '/api/auth/verify',
-      '/api/state',
-      '/api/auth/verify',
-      '/api/state'
+      '/api/auth/verify'
     ]);
   });
 
