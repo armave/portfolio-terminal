@@ -64,11 +64,32 @@ jobs:
 
       - name: Audit all dependencies
         id: dependency_audit
+        if: ${{ always() && steps.install_dependencies.outcome == 'success' }}
+        continue-on-error: true
         run: npm run audit:dependencies
 
       - name: Audit production dependencies
         id: production_audit
+        if: ${{ always() && steps.install_dependencies.outcome == 'success' }}
+        continue-on-error: true
         run: npm run audit:production
+
+      - name: Enforce dependency audit results
+        if: ${{ always() && steps.install_dependencies.outcome == 'success' }}
+        env:
+          FULL_AUDIT_RESULT: ${{ steps.dependency_audit.outcome || 'not-run' }}
+          PRODUCTION_AUDIT_RESULT: ${{ steps.production_audit.outcome || 'not-run' }}
+        run: |
+          failed=0
+          if [[ "$FULL_AUDIT_RESULT" != "success" ]]; then
+            echo "::error::Full dependency audit did not pass (outcome: $FULL_AUDIT_RESULT)."
+            failed=1
+          fi
+          if [[ "$PRODUCTION_AUDIT_RESULT" != "success" ]]; then
+            echo "::error::Production dependency audit did not pass (outcome: $PRODUCTION_AUDIT_RESULT)."
+            failed=1
+          fi
+          exit "$failed"
 
       - name: Publish exact-head quality evidence
         if: always()
