@@ -119,7 +119,7 @@ export function CloudSyncIndicator({
         onClick={() => setDetailsOpen((open) => !open)}
       >
         <span class="cloud-sync-indicator__dot" aria-hidden="true" />
-        <span class="cloud-sync-indicator__primary">{translateText('Cloud', language)}</span>
+        <span class="cloud-sync-indicator__primary">{translateText('Cloud sync', language)}</span>
       </button>
       {detailsText && (
         <span id="cloudStatusExactTime" class="cloud-sync-indicator__timestamp" role="tooltip">
