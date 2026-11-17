@@ -1755,18 +1755,14 @@ async function importBackupFile(file: File) {
     }
 
     importedState.lastUpdated = Date.now();
-    const previousState = portfolioStore.getState();
     commitPortfolioBackupImport(
       importedState,
-      previousState,
-      (snapshot) => {
-        if (!portfolioStore.importState(snapshot as any)) {
-          throw new Error(translateText('Backup transaction history conflicts with this device or is not supported.', getAppLanguage()));
-        }
-        state = portfolioStore.getState();
-      },
-      () => saveState(state, pushStateToGist)
+      (snapshot) => portfolioStore.importState(snapshot as any),
+      translateText('Backup transaction history conflicts with this device or is not supported.', getAppLanguage())
     );
+    state = portfolioStore.getState();
+    // importState is already the atomic local commit; schedule cloud sync only
+    // after it succeeds instead of persisting the same snapshot a second time.
     await pushStateToGist(true);
     renderBoard();
     logAppMessage(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
