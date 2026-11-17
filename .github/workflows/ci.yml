@@ -7,6 +7,12 @@ on:
       - dev
       - main
   workflow_dispatch:
+    inputs:
+      performance_baseline_runs:
+        description: Samples per viewport for the browser performance baseline (use 10 for the extended PT-17 sample).
+        required: false
+        type: number
+        default: 10
 
 permissions:
   contents: read
@@ -252,6 +258,8 @@ jobs:
 
       - name: Capture desktop and mobile browser performance baseline
         id: browser_performance
+        env:
+          PERFORMANCE_BASELINE_RUNS: ${{ inputs.performance_baseline_runs || 3 }}
         run: node scripts/browser-performance-baseline.mjs
 
       - name: Upload browser performance baseline
