@@ -2157,6 +2157,48 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(stored.get('margin_portfolio_state_dynamic_v2')).toBe(previouslySavedState);
   });
 
+  it('restores the prior device desk when a reset cannot persist its portfolio snapshot', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 110,
+          pt: 125,
+          commBuy: 1,
+          tranches: [{ qty: 2, price: 100, date: '2026-10-01' }]
+        }
+      }
+    });
+    store.setActiveView('AAPL');
+
+    const committedState = store.getState();
+    const committedSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        if (key === 'margin_portfolio_state_dynamic_v2') {
+          throw new Error('quota exceeded');
+        }
+        sharedTestStorage.set(key, String(value));
+      },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.resetToBlankState(Date.parse('2026-10-31T00:00:00.000Z'))).toBe(false);
+
+    expect(store.getState()).toBe(committedState);
+    expect(store.getState().positions.AAPL?.shares).toBe(2);
+    expect(store.getState().transactionEvents).toEqual(committedState.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(committedSnapshot);
+    expect(sharedTestStorage.get('portfolio_active_view')).toBe('AAPL');
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('resets portfolio-owned and broker-history state while retaining account settings', () => {
     stored.set('portfolio_active_view', 'AAPL');
     vi.stubGlobal('localStorage', localStorageMock);
