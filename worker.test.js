@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 async function encryptMarginDigestFixture(digest, keyMaterial) {
   const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
@@ -33,6 +34,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
+
+describe('production Margin Intelligence digest enforcement', () => {
+  it('keeps encrypted-only digest writes enabled in the production Wrangler configuration', () => {
+    const config = readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8');
+    expect(config).toContain('"MARGIN_DIGEST_ENCRYPTION_REQUIRED": "true"');
+  });
+});
 
 describe('upstream timeout coverage', () => {
   afterEach(() => {
@@ -1996,6 +2004,226 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     return new PortfolioStateDO(ctx, env);
   }
 
+  function makeAuthenticatedDigestWorker(role = 'admin') {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: 'true' });
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'digest-test-user', role } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return store.fetch(request);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    return {
+      store,
+      stateStub,
+      namespace,
+      env: { PORTFOLIO_STATE_DO: namespace }
+    };
+  }
+
+  it('enforces encrypted digest writes through the authenticated Worker route and preserves read revisions', async () => {
+    const { store, stateStub, namespace, env } = makeAuthenticatedDigestWorker();
+    const adminHeaders = { 'X-App-Auth': 'admin-session' };
+    const post = (body, revision) => worker.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: {
+        ...adminHeaders,
+        'Content-Type': 'application/json',
+        'If-Match': `"${revision}"`
+      },
+      body: JSON.stringify(body)
+    }), env);
+
+    const plaintext = await post({
+      key: 'portfolio',
+      title: 'Legacy portfolio review',
+      analysis: 'must never be accepted',
+      articles: [],
+      syncedAt: '2026-11-17T00:00:00.000Z'
+    }, 0);
+    expect(plaintext.status).toBe(400);
+    await expect(plaintext.json()).resolves.toMatchObject({
+      error: 'Margin digest encryption is required.'
+    });
+
+    const envelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const encryptedWrite = await post(envelope, 0);
+    expect(encryptedWrite.status).toBe(200);
+    expect(encryptedWrite.headers.get('ETag')).toBe('"1"');
+
+    const read = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio',
+      { headers: adminHeaders }
+    ), env);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"1"');
+    await expect(read.json()).resolves.toEqual(envelope);
+
+    const staleWrite = await post({
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:BBBBBBBBBBBBBBBB:BBBBBBBBBBBBBBBBBBBBBBBB'
+    }, 0);
+    expect(staleWrite.status).toBe(409);
+    expect(staleWrite.headers.get('ETag')).toBe('"1"');
+
+    const latest = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    await expect(latest.json()).resolves.toEqual(envelope);
+    expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify',
+      '/api/margin-digest',
+      '/api/auth/verify',
+      '/api/margin-digest',
+      '/api/auth/verify',
+      '/api/margin-digest',
+      '/api/auth/verify',
+      '/api/margin-digest'
+    ]);
+  });
+
+  it('keeps Margin Intelligence digest reads administrator-only at the public Worker boundary', async () => {
+    const { stateStub, env } = makeAuthenticatedDigestWorker('guest');
+
+    const unauthenticated = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio'
+    ), env);
+    expect(unauthenticated.status).toBe(401);
+
+    const guest = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio',
+      { headers: { 'X-App-Auth': 'guest-session' } }
+    ), env);
+    expect(guest.status).toBe(403);
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify'
+    ]);
+  });
+
+  it('preserves encrypted cloud snapshot revisions, idempotency conflicts and superseded retries through the authenticated Worker route', async () => {
+    const { store, stateStub, namespace, env } = makeAuthenticatedDigestWorker();
+    const snapshot = { encryptedPayload: 'encrypted-cloud-snapshot-fixture' };
+    const newerSnapshot = { encryptedPayload: 'encrypted-cloud-snapshot-newer-fixture' };
+    const write = (idempotencyKey, body = snapshot, revision = 0) => worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: {
+        'X-App-Auth': 'admin-session',
+        'Content-Type': 'application/json',
+        'If-Match': `"${revision}"`,
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify(body)
+    }), env);
+
+    const first = await write('worker-cloud-snapshot-retry-0001');
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+    await expect(first.json()).resolves.toMatchObject({ success: true, revision: 1 });
+
+    const retry = await write('worker-cloud-snapshot-retry-0001');
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get('ETag')).toBe('"1"');
+    expect(retry.headers.get('Idempotency-Replayed')).toBe('true');
+    await expect(retry.json()).resolves.toMatchObject({
+      success: true,
+      revision: 1,
+      committedRevision: 1,
+      replayed: true
+    });
+
+    const keyReuse = await write('worker-cloud-snapshot-retry-0001', {
+      encryptedPayload: 'different-payload-must-not-reuse-key'
+    }, 1);
+    expect(keyReuse.status).toBe(409);
+    expect(keyReuse.headers.get('ETag')).toBe('"1"');
+    await expect(keyReuse.json()).resolves.toMatchObject({
+      conflict: true,
+      idempotencyConflict: true,
+      currentRevision: 1
+    });
+
+    const stale = await write('worker-cloud-snapshot-stale-0001', snapshot, 0);
+    expect(stale.status).toBe(409);
+    expect(stale.headers.get('ETag')).toBe('"1"');
+
+    const newer = await write('worker-cloud-snapshot-newer-0001', newerSnapshot, 1);
+    expect(newer.status).toBe(200);
+    expect(newer.headers.get('ETag')).toBe('"2"');
+    await expect(newer.json()).resolves.toMatchObject({ success: true, revision: 2 });
+
+    const delayedRetry = await write('worker-cloud-snapshot-retry-0001');
+    expect(delayedRetry.status).toBe(409);
+    expect(delayedRetry.headers.get('ETag')).toBe('"2"');
+    await expect(delayedRetry.json()).resolves.toMatchObject({
+      conflict: true,
+      idempotencySuperseded: true,
+      currentRevision: 2
+    });
+
+    const read = await worker.fetch(new Request('https://worker.test/api/state', {
+      headers: { 'X-App-Auth': 'admin-session' }
+    }), env);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"2"');
+    await expect(read.json()).resolves.toEqual(newerSnapshot);
+
+    const receipts = await store.ctx.storage.get('cloud-write-idempotency:record');
+    expect(receipts).toHaveLength(2);
+    expect(receipts.map(receipt => receipt.key)).toEqual([
+      'worker-cloud-snapshot-retry-0001',
+      'worker-cloud-snapshot-newer-0001'
+    ]);
+    expect(JSON.stringify(receipts)).not.toContain(snapshot.encryptedPayload);
+    expect(JSON.stringify(receipts)).not.toContain(newerSnapshot.encryptedPayload);
+    expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(
+      Array.from({ length: 7 }, () => ['/api/auth/verify', '/api/state']).flat()
+    );
+  });
+
+  it('rejects unauthenticated and guest cloud snapshot writes at the public Worker boundary', async () => {
+    const { stateStub, env } = makeAuthenticatedDigestWorker('guest');
+    const body = JSON.stringify({ encryptedPayload: 'must-not-be-written' });
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'guest-cloud-snapshot-0001'
+    };
+
+    const unauthenticated = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers,
+      body
+    }), env);
+    expect(unauthenticated.status).toBe(401);
+
+    const guest = await worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { ...headers, 'X-App-Auth': 'guest-session' },
+      body
+    }), env);
+    expect(guest.status).toBe(403);
+    await expect(guest.json()).resolves.toMatchObject({
+      error: 'Guest accounts have read-only access.'
+    });
+    // The unauthenticated request is rejected before session lookup; only
+    // the authenticated guest request reaches the auth verification route.
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify'
+    ]);
+  });
+
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
     const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
@@ -2309,6 +2537,17 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       articles: [],
       syncedAt: '2026-10-28T05:00:00.000Z'
     };
+    const retainedLegacyDigest = { ...legacyDigest, key: 'position:GOOGL' };
+    await store.ctx.storage.put('marginDigestRecord:position:GOOGL', {
+      payload: JSON.stringify(retainedLegacyDigest),
+      revision: 7
+    });
+    const legacyRead = await store.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=position%3AGOOGL'
+    ));
+    expect(legacyRead.status).toBe(200);
+    await expect(legacyRead.json()).resolves.toEqual(retainedLegacyDigest);
+
     const plaintextWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
