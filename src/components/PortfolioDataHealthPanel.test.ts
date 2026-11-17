@@ -31,6 +31,8 @@ describe('Portfolio Data Health panel', () => {
   it('keeps the data-health panel compact and mobile-width bounded', () => {
     expect(style).toContain('.portfolio-data-health__trigger');
     expect(style).toContain('.portfolio-data-health__details');
+    expect(style).toMatch(/\.portfolio-data-health__trigger\s*\{[^}]*min-height:\s*2\.75rem/s);
+    expect(style).toMatch(/\.portfolio-data-health__action,\s*\.empty-state-panel__actions button\s*\{[^}]*min-height:\s*2\.75rem/s);
     expect(style).toMatch(/width:\s*min\(29rem,\s*calc\(100vw\s*-\s*2rem\)\)/);
     expect(style).toContain('@media (max-width: 639px)');
   });
