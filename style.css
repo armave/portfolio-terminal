@@ -4756,7 +4756,7 @@ table tbody tr:hover {
   outline-offset: 2px;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1120px) {
   .workspace-header-controls {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
