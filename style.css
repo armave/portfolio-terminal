@@ -5199,3 +5199,138 @@ table tbody tr:hover {
     padding-top: 0.45rem;
   }
 }
+
+/* Grow the transferred financial summary into the available health-column space. */
+.portfolio-health-summary-column {
+  height: 100%;
+  min-height: 100%;
+  gap: 0.8rem;
+}
+
+.portfolio-health-summary-column > .portfolio-micro-summary {
+  flex: 1 1 auto;
+  min-height: clamp(15rem, 26vh, 22rem);
+  align-content: stretch;
+  padding: 0.85rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+  justify-content: space-evenly;
+  gap: 0.8rem;
+  padding: 0.8rem 0.7rem;
+}
+
+.portfolio-health-summary-column .portfolio-micro-row {
+  gap: 0.65rem;
+}
+
+.portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-label {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-value {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.portfolio-health-summary-column > .market-tools-external--health {
+  flex: 0 0 auto;
+  padding-top: 0.65rem;
+}
+
+@container portfolio-health-summary (max-width: 52rem) {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(7rem, 1.2fr) auto;
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+    grid-column: 1 / -1;
+  }
+}
+
+@container portfolio-health-summary (max-width: 30rem) {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
+    flex: 0 0 auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    padding: 0.5rem;
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+    justify-content: flex-start;
+    gap: 0.65rem;
+    padding: 0.7rem 0.6rem;
+  }
+
+  .portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-label {
+    font-size: 0.68rem;
+  }
+
+  .portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-value {
+    font-size: 0.8rem;
+  }
+}
+
+/* Two-up action grids for Scenario Planning and multi-action Market Intelligence. */
+.portfolio-market-tools {
+  container-type: inline-size;
+  container-name: portfolio-market-tools;
+}
+
+.market-tools-section--scenario .market-tools-grid,
+.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.market-tools-section--single-action .market-tools-grid,
+.market-tools-section--portfolio .market-tools-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.market-tools-section--scenario .market-tool-card,
+.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tool-card {
+  min-height: 6rem;
+  padding: 0.6rem;
+  gap: 0.45rem;
+}
+
+.market-tools-section--scenario .market-tool-card .market-tool-icon,
+.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tool-card .market-tool-icon {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+.market-tools-external--health {
+  width: 100%;
+  min-width: 0;
+}
+
+@container portfolio-market-tools (max-width: 22rem) {
+  .market-tools-section--scenario .market-tools-grid,
+  .market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .portfolio-health-summary-column {
+    height: auto;
+    min-height: 0;
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .market-tools-section--scenario .market-tools-grid,
+  .market-tools-section--intelligence .market-tools-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

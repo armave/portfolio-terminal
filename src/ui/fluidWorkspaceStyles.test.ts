@@ -35,6 +35,23 @@ describe('fluid workspace styles', () => {
     );
   });
 
+  it('gives the transferred financial summary more space and readable metric sizing', () => {
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*min-height:\s*clamp\(/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-label\s*\{[^}]*font-size:\s*0\.72rem;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-value\s*\{[^}]*font-size:\s*0\.88rem;/s);
+  });
+
+  it('uses two-column Market Tools grids when the panel has enough width', () => {
+    expect(stylesheet).toMatch(/\.portfolio-market-tools\s*\{[^}]*container-name:\s*portfolio-market-tools;/s);
+    expect(stylesheet).toContain('.market-tools-section--scenario .market-tools-grid');
+    expect(stylesheet).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
+    expect(stylesheet).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    expect(stylesheet).toMatch(/@container portfolio-market-tools \(max-width: 22rem\)/);
+    expect(stylesheet).toMatch(/\.market-tools-section--single-action \.market-tools-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.market-tools-section--scenario \.market-tools-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
+
   it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer \.projection-table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\);[^}]*table-layout:\s*fixed;/s);

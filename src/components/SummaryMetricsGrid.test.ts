@@ -423,24 +423,44 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 
-  it('groups Market Tools into descriptive scenario and intelligence cards', () => {
+  it('groups Market Tools into two-up scenario and intelligence sections', () => {
     const toolsStart = source.indexOf('function MarginMarketTools');
     const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
     const toolsComponent = source.slice(toolsStart, toolsEnd);
-    expect(toolsComponent).toContain('role="group" aria-label={translateText(\'Portfolio actions\', language)}');
+    expect(toolsComponent).toContain('Portfolio actions');
     expect(toolsComponent).toContain("translateText('MARKET TOOLS', language)");
+    expect(toolsComponent).toContain('market-tools-section--scenario');
+    expect(toolsComponent).toContain('market-tools-section--intelligence');
+    expect(toolsComponent).toContain('market-tools-section--single-action');
     expect(toolsComponent).toContain("translateText('SCENARIO PLANNING', language)");
     expect(toolsComponent).toContain("translateText('MARKET INTELLIGENCE', language)");
     expect(toolsComponent).toContain("translateText('Simulate Buy', language)");
     expect(toolsComponent).toContain("translateText('Compare Exits', language)");
     expect(toolsComponent).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
-    expect(toolsComponent).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(toolsComponent).toContain("translateText('Live Order Book', language)");
-    expect(toolsComponent).not.toContain("translateText('Add?', language)");
-    expect(toolsComponent).not.toContain("translateText('Exit?', language)");
-    expect(styles).toContain('.market-tools-grid {');
+    expect(toolsComponent).not.toContain('market-tools-external');
+    expect(styles).toContain('.market-tools-section--scenario .market-tools-grid');
+    expect(styles).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
     expect(styles).toContain('.market-tool-card:focus-visible {');
     expect(styles).toContain('.market-tools-section--portfolio .market-tools-grid {');
     expect(styles).toContain('@media (max-width: 767px)');
+  });
+
+  it('places External Research below Account Equity Health in the ticker health column', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    const healthColumn = singleTickerView.slice(
+      singleTickerView.indexOf('class="portfolio-health-summary-column"'),
+      singleTickerView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    const toolsComponent = source.slice(
+      source.indexOf('function MarginMarketTools'),
+      source.indexOf('function SummaryMetricsGridView')
+    );
+    expect(healthColumn.indexOf('<MarginRiskGaugeCard')).toBeLessThan(
+      healthColumn.indexOf('market-tools-external--health')
+    );
+    expect(healthColumn).toContain("translateText('EXTERNAL RESEARCH', getAppLanguage())");
+    expect(healthColumn).toContain('<BoardExternalLinks />');
+    expect(toolsComponent).not.toContain('External Research');
   });
 });

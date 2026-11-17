@@ -488,7 +488,7 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
         </div>
       </header>
 
-      <section class="market-tools-section" aria-label={translateText('SCENARIO PLANNING', language)}>
+      <section class="market-tools-section market-tools-section--scenario" aria-label={translateText('SCENARIO PLANNING', language)}>
         <h3 class="market-tools-section-title">{translateText('SCENARIO PLANNING', language)}</h3>
         <div class="market-tools-grid">
           <button
@@ -523,7 +523,9 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
       </section>
 
       <section
-        class={ticker ? 'market-tools-section' : 'market-tools-section market-tools-section--portfolio'}
+        class={ticker
+          ? `market-tools-section market-tools-section--intelligence${isAdmin && marketDepthAvailable ? '' : ' market-tools-section--single-action'}`
+          : 'market-tools-section market-tools-section--intelligence market-tools-section--portfolio market-tools-section--single-action'}
         aria-label={translateText('MARKET INTELLIGENCE', language)}
       >
         <h3 class="market-tools-section-title">{translateText('MARKET INTELLIGENCE', language)}</h3>
@@ -561,14 +563,6 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
         </div>
       </section>
 
-      {ticker && (
-        <div class="market-tools-external" aria-label={translateText('External market research links', language)}>
-          <span class="market-tools-section-title">{translateText('EXTERNAL RESEARCH', language)}</span>
-          <div class="market-links-group">
-            <BoardExternalLinks />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1158,6 +1152,12 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             accountBalanceAvailable={accountBalanceAvailable}
             unpricedHoldings={positionUnpricedHoldingCount}
           />
+          <div class="market-tools-external market-tools-external--health" aria-label={translateText('External market research links', getAppLanguage())}>
+            <span class="market-tools-section-title">{translateText('EXTERNAL RESEARCH', getAppLanguage())}</span>
+            <div class="market-links-group">
+              <BoardExternalLinks />
+            </div>
+          </div>
         </div>
         <div class="portfolio-market-tools-row">
           <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
