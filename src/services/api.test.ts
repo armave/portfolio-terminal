@@ -574,7 +574,7 @@ describe('cloud state sync', () => {
       cashCushion: expect.objectContaining({ freeCash: 800 }),
       balance: -5,
       realizedMarginCharged: 5
-    }));
+    }), false);
     expect(verifyPortfolioTransactionParity(restored.transactionEvents ?? [], restored).matches).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -699,7 +699,7 @@ describe('cloud state sync', () => {
 
     expect(showToast).not.toHaveBeenCalled();
     expect(result.activeView).toBe('AAPL');
-    expect(rewriteLocal).toHaveBeenCalledWith(expect.objectContaining({ activeView: 'AAPL' }));
+    expect(rewriteLocal).toHaveBeenCalledWith(expect.objectContaining({ activeView: 'AAPL' }), false);
     expect(reportResult).toHaveBeenCalledWith(true);
     expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit)?.method || 'GET')).toEqual(['GET', 'GET']);
   });
@@ -889,17 +889,24 @@ describe('cloud pull persistence failures', () => {
     vi.spyOn(storage, 'saveState').mockReturnValue(false);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const rewriteLocal = vi.fn();
+    const applyCloudSnapshot = vi.fn((snapshot: Record<string, unknown>) => {
+      if (!storage.saveState(snapshot)) {
+        throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
+      }
+      rewriteLocal(snapshot);
+    });
     const showToast = vi.fn();
     const reportResult = vi.fn();
 
     await pullCloudState({
       state: { activeView: 'MSFT', balance: 1000 },
       secret,
-      pullCloudAndRewriteLocal: rewriteLocal,
+      pullCloudAndRewriteLocal: applyCloudSnapshot,
       showToast,
       logAppMessage: vi.fn()
     }, reportResult);
 
+    expect(applyCloudSnapshot).toHaveBeenCalledTimes(1);
     expect(reportResult).toHaveBeenCalledWith(false);
     expect(rewriteLocal).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(

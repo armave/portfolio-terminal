@@ -1,4 +1,5 @@
 import { h } from 'preact';
+import { RU_TRANSLATIONS } from './i18n-ru';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './i18n';
 import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourcesHeading } from '../features/ai/marginIntelligenceCopy';
@@ -6,6 +7,16 @@ import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourc
 afterEach(() => setAppLanguage('en'));
 
 describe('app localization', () => {
+  it('keeps Russian dictionary entries non-empty and interpolation placeholders aligned', () => {
+    const placeholders = (value: string): string[] =>
+      Array.from(value.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g), match => match[1]).sort();
+
+    for (const [english, russian] of Object.entries(RU_TRANSLATIONS)) {
+      expect(russian.trim(), `Russian translation is empty for "${english}"`).not.toBe('');
+      expect(placeholders(russian), `Interpolation placeholders differ for "${english}"`)
+        .toEqual(placeholders(english));
+    }
+  });
   it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
     const marginRiskCopy = [
       'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit', 'Equity ratio',
@@ -113,6 +124,7 @@ describe('app localization', () => {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
     }
   });
+
 
   it('localizes the Market Tools two-period exit comparison experience', () => {
     const exitComparisonCopy = [
@@ -891,7 +903,7 @@ describe('new financial header copy localization', () => {
 });
 
 describe('portfolio action region accessibility copy', () => {
-  it('provides a localized accessible name after the visible Market Tools heading is removed', () => {
+  it('provides a localized accessible group name for Market Tools actions', () => {
     expect(translateText('Portfolio actions', 'ru')).toBe('Действия портфеля');
   });
 });

@@ -39,6 +39,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.': 'Данные в облаке изменились на другом устройстве. Экспортируйте резервную копию этого устройства, загрузите последнюю общую версию, согласуйте изменения и повторите синхронизацию.',
   'Conflict': 'Конфликт',
   'Cloud data changed elsewhere': 'Облачные данные изменились на другом устройстве',
+  'Cloud snapshot could not be applied to this device. The local portfolio was preserved.': 'Не удалось применить облачную копию на этом устройстве. Локальный портфель сохранён.',
   'Cloud sync needs recovery': 'Требуется восстановление синхронизации',
   'Cloud sync conflict — recovery required': 'Конфликт облачной синхронизации — требуется восстановление',
   'The shared portfolio has a newer revision. Local changes on this device have not been confirmed as saved to the cloud.': 'В общей версии портфеля появились более новые изменения. Сохранение локальных изменений с этого устройства в облаке не подтверждено.',

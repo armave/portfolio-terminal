@@ -33,8 +33,9 @@ A failed identity lookup invalidates the session, moves to the offline namespace
 
 ## Import and replacement semantics
 
-- `PortfolioStore.importState()` remains the same-workspace restore path. It preserves append-only transaction, corporate-action, and market-history journals and rejects conflicting history.
+- `PortfolioStore.importState()` remains the normal same-workspace restore path. It preserves append-only transaction, corporate-action, and market-history journals and rejects conflicting history.
 - `PortfolioStore.replaceWorkspace()` is reserved for switching authenticated local storage scopes. It replaces the in-memory state and its journals instead of merging events from the previous identity.
+- `PortfolioStore.replaceFromConfirmedCloudPull()` is a separate, user-confirmed same-workspace recovery boundary. Settings shows the backup warning/confirmation before invoking it; the validated cloud snapshot replaces the local snapshot and journals instead of merging conflicting event identities. Ordinary startup/background pulls must continue using `importState()`.
 - Portfolio reset semantics are unchanged: reset within a workspace retains that workspace's append-only transaction journal and writes its reset marker.
 - Pending history writes retain their captured storage scope and are drained before the active scope changes. They cannot be redirected into the next account's history database.
 - Concurrent storage activations are serialized; an older authentication response cannot reactivate a prior workspace or re-enable administrator cloud writes after a newer login.

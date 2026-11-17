@@ -108,7 +108,10 @@ function cloudStateFingerprint(snapshot: CloudStateRecord): string {
 export interface SyncOptions {
   state?: CloudStateInput;
   secret?: string;
-  pullCloudAndRewriteLocal?: (state: CloudStateRecord) => void;
+  /** Apply and persist a validated pull; this callback is the local commit boundary. */
+  pullCloudAndRewriteLocal?: (state: CloudStateRecord, replaceLocalState?: boolean) => void;
+  /** Set only for a user-confirmed Settings pull after the backup warning. */
+  replaceLocalState?: boolean;
   getState?: () => CloudStateInput;
   showToast?: (msg: string, type: string) => void;
   logAppMessage?: (msg: string) => void;
@@ -129,7 +132,8 @@ export interface CloudStateSyncRuntimeDependencies {
   encryptCloudPayload: (plaintext: string, sessionToken: string) => Promise<string>;
   decryptCloudPayload: (payload: string, sessionToken: string) => Promise<{ plaintext: string; legacy: boolean }>;
   readCloudRevision: (headers?: Headers | null) => number | null;
-  revisionCoordinator: Pick<CloudRevisionCoordinator, 'recordPulledRevision' | 'setRevision' | 'enqueueWrite'>;
+  revisionCoordinator: Pick<CloudRevisionCoordinator, 'recordPulledRevision' | 'setRevision' | 'enqueueWrite'> &
+    Partial<Pick<CloudRevisionCoordinator, 'getRevision'>>;
   processRollovers: (state: CloudStateRecord) => boolean;
   loadSavedState: (fallback: CloudStateRecord) => CloudStateRecord;
   loadSavedHistory: () => { brokerExecutedTrades: unknown[]; cashflows: unknown[] };
@@ -321,7 +325,28 @@ async function pullCloudState(
     const pulledRevision = readCloudRevision(res.headers);
 
     if (res.status === 404) {
-      // A 404 is a healthy, authorized KV response with no saved portfolio yet.
+      // A missing record is an empty baseline only when this device has never
+      // accepted a populated snapshot/revision. Otherwise it may be a destructive
+      // reset on another device; preserve local state and keep recovery blocked.
+      const acceptedBase = cloudStateBaseSnapshots.get(currentSecret);
+      const knownRevision = revisionCoordinator.getRevision?.() ?? 0;
+      const previouslyPopulated = Boolean(
+        (acceptedBase && Object.keys(acceptedBase).length > 0) ||
+        (Number.isSafeInteger(knownRevision) && knownRevision > 0)
+      );
+      if (previouslyPopulated) {
+        cloudStateConflictSecret = currentSecret;
+        const conflictMessage = translateText(
+          'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
+          getAppLanguage()
+        );
+        handlers.onStatusChange?.('conflict');
+        showToast(conflictMessage, 'error');
+        logAppMessage('[Cloud Conflict]: The shared cloud record is missing after a previously accepted revision. The local workspace was preserved.');
+        reportResult?.(false);
+        return loadSavedState(toCloudStateRecord(state));
+      }
+
       if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
       cloudStateBaseSnapshots.set(currentSecret, {});
       handlers.onStatusChange?.('synced');
@@ -461,19 +486,31 @@ async function pullCloudState(
       preservedLocalChanges = cloudStateFingerprint(reconciledSnapshot) !== cloudStateFingerprint(remoteSnapshot);
       stateToPersist = reconciledSnapshot;
     }
-    if (!saveState(stateToPersist)) {
+    // A supplied application callback owns the local commit (and journal
+    // validation). Never persist the raw remote snapshot before it succeeds:
+    // a rejected import must leave the current device's saved portfolio intact.
+    if (typeof pullCloudAndRewriteLocal === 'function') {
+      try {
+        pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true);
+      } catch (applicationError) {
+        cloudStateConflictSecret = currentSecret;
+        throw applicationError;
+      }
+    } else if (!saveState(stateToPersist)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
+    if (!isCurrentSession()) return stalePullFallback();
+
     // Keep the merge base equal to what the server actually returned. If a
     // local edit was preserved, the follow-up push must compare against this
     // remote snapshot rather than pretending the server already has that edit.
     cloudStateBaseSnapshots.set(currentSecret, remoteSnapshot);
-    // The conflict clears only after decryption, validation and local persistence.
+    // Clear a previous conflict only after the local store accepted the snapshot.
     if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
 
     cloudStatePushFingerprints.delete(currentSecret);
-    // Only trust the cloud revision after its payload was decrypted, validated,
-    // and persisted locally. A failed pull must not authorize a later overwrite.
+    // Only trust the cloud revision after decryption, validation and local
+    // application/persistence. A failed pull must not authorize a later overwrite.
     if (pulledRevision !== null) {
       revisionCoordinator.recordPulledRevision(pulledRevision);
     }
@@ -516,9 +553,6 @@ async function pullCloudState(
       });
     }
 
-    if (typeof pullCloudAndRewriteLocal === 'function' && isCurrentSession()) {
-      pullCloudAndRewriteLocal(stateToPersist);
-    }
     if (preservedLocalChanges) handlers.onLocalChangesPreserved?.();
 
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'synced');

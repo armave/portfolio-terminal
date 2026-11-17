@@ -291,7 +291,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(settings).toContain("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.");
     expect(settings).toContain("Export a JSON backup before pulling cloud state or resetting the portfolio.");
     expect(app).toContain("if (!window.confirm(translateText(\"Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?\"))) return;");
-    expect(app).toContain("void syncCloudState('pull');");
+    expect(app).toContain("void syncCloudState('pull', { replaceLocalState: true });");
   });
 
   it('gives new user credentials explicit accessible names', () => {

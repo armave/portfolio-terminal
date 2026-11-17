@@ -61,7 +61,10 @@ The current client store audit distinguishes app-owned financial commands from b
 | Generic import, broker refresh/reclassification or legacy direct state edits | Validated `importState` / `setState` normalization and canonical parity check | Append observed position, cash-holding, free-cash and debt deltas as `portfolio.reconciliation`; quantity-only cash changes remain incomplete in lot replay and never receive guessed buy/sell, proceeds, fees or cost basis |
 | Quotes, target prices, active desk, pending confirmation, API keys and account credentials | Derived/display or configuration paths | Intentionally outside financial transaction journal |
 
-The expanded regression fixtures assert broker cashflow classification for dividend, deposit, withdrawal, transfer, fee, margin interest and corporate action, and verify that those source facts do not double-post into canonical balances. Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash, margin debt and the realized margin-charge total. App-owned rollover events distinguish interest capitalized into debt from charges recorded in `realizedMarginCharged`; older margin-interest events that lack that distinction remain incomplete in replay coverage.
+The expanded regression fixtures assert broker cashflow classification for dividend, deposit, withdrawal, transfer, fee, margin interest and corporate action, and verify that those source facts do not double-post into canonical balances.
+
+Manual free-cash, cash-balance and margin-debt setters (`setFreeCash`, `setCashBalance`, `setMarginDebt`) share the `updateFinancialMutation` commit boundary. Each derives a stable request fingerprint from the command and requested balance, records the caller-supplied idempotency key where present, and defaults actor/source to user/manual-cash-adjustment or user/manual-margin-adjustment. Effective and recorded timestamps are retained on the event. Identical-key retries return an idempotent success without publishing a second snapshot/event; conflicting reuse is rejected. The regression matrix now explicitly verifies these retry/conflict rules and proves that failure to persist any of the three commands preserves the prior in-memory snapshot, stored snapshot, journal and subscriber stream.
+Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash, margin debt and the realized margin-charge total. App-owned rollover events distinguish interest capitalized into debt from charges recorded in `realizedMarginCharged`; older margin-interest events that lack that distinction remain incomplete in replay coverage.
 
 **Closed History Sync fee-correction status — merged in PR #468:** app-side fallback fee revisions now retain exact source cashflow IDs and allocated amounts. A typed immutable `history.correction` is linked to the originating `trade.sell` event and records before/after margin fee, aggregate fees, known net P&L and source allocations. Subsequent revisions chain to their prior correction; unexpected before-state, competing revision heads, missing sources and legacy/unlinked rows fail closed. `PortfolioStore.commitClosedHistoryFeeSync` commits the history projection and journal evidence through one store boundary. These events are audit-only: they do not post cash, debt, positions, cost basis or realized-margin deltas. See implementation slice 3 for exact commit and CI evidence. This closes the earlier “future event contract” gap for supported linked closed-trade fee updates; it does not prove complete closed-trade P&L replay or authenticated broker correctness.
 
@@ -186,6 +189,9 @@ The additive event schema remains version 1. Existing events without the optiona
 - The in-memory latch and merge base are scoped to the authenticated credential; a session/account switch does not inherit another session's local state. The Worker revision guard remains authoritative for the shared owner workspace.
 - An authorized 404 establishes an empty baseline only when there was no previously populated base. A missing cloud record after a populated base requires explicit recovery.
 - Settings retains the administrator-only recovery panel with JSON backup export and the confirmation-protected cloud pull action. The normal manual-sync control remains disabled while a conflict requires recovery.
+- The confirmed Settings pull is an explicit same-workspace replacement: it validates the cloud snapshot, then replaces the local snapshot/journal through a dedicated store boundary after the backup warning. Ordinary startup/background pulls continue using journal-merging import semantics.
+- The local store application is the pull commit boundary. The runtime does not persist the raw remote snapshot or accept its revision/clear the conflict latch until the application callback succeeds; a rejected journal import preserves local persistence and keeps the conflict blocked.
+- A 404 establishes an empty baseline only when there is no previously accepted populated snapshot or positive cloud revision. A missing record after a populated baseline remains a recovery conflict; it is not silently treated as an empty portfolio.
 - The header indicator and English/Russian copy distinguish revision conflicts from connectivity failures.
 - Vitest and the Operations Browser Journey cover the conflict latch, background reconciliation, ambiguous/divergent financial changes, backup export and fallback recovery.
 - Client-only change: no Worker, Durable Object, API, authorization, encryption, ETag or idempotency contract changes. Canonical snapshot and journal ownership remain unchanged.
@@ -258,3 +264,55 @@ Merged client/domain slices now include linked Closed History fee corrections (#
 All four CI/security pairs refer to the exact tested code-bearing PR heads. For PR #512, authenticated TradeNet, backup/restore and real multi-device checks remain manual gates and are not marked complete by automated browser tests.
 
 Automated validations are recorded against each exact PR head above. The following remain manual release gates where applicable: authenticated TradeNet refresh and corporate-action compatibility, authenticated backup export/import and cloud restore across multiple devices, and keyboard-only/responsive accessibility review. These are not satisfied by deterministic CI and are not claimed complete. `PortfolioState.positions` remains canonical and no ledger cutover has been authorized.
+
+
+## Implementation slice — read-only lot and closed-history parity (#518)
+
+[PR #518](https://github.com/armave/portfolio-terminal/pull/518) was squash-merged into `dev` at [`92106bf431794bfcf9a8c980e11825b20c3b5ac9`](https://github.com/armave/portfolio-terminal/commit/92106bf431794bfcf9a8c980e11825b20c3b5ac9). Final reviewed/tested PR head: `91eb985c012f0bda4c816e514d89111d7607086f`.
+
+- [x] Expose the existing FIFO lot and linked closed-trade replay parity as a separate read-only section in Trades reconciliation.
+- [x] Pass canonical positions, cash-holding lots and closed history into the shadow verifier; keep `PortfolioState.positions` canonical and retain explicit incomplete/unsupported classifications.
+- [x] Add English/Russian status, discrepancy and issue explanations with bounded visible finding lists.
+- [x] [Pull Request CI #4468](https://github.com/armave/portfolio-terminal/actions/runs/44019388156) — passed: TypeScript, full Vitest/Worker suite, Vite smoke, dead-code/dependency audits, production build, production browser smoke/performance and Operations Browser Journey.
+- [x] [Security & Workflow Validation #274](https://github.com/armave/portfolio-terminal/actions/runs/44019388061) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history scan skipped.
+
+This is parity visibility, not a ledger cutover or automatic correction. Authenticated TradeNet, backup/restore and real multi-device release checks remain manual gates.
+
+## Completed follow-up — PR #520 cash/debt setter idempotency and atomicity
+
+[PR #520](https://github.com/armave/portfolio-terminal/pull/520) was squash-merged into `dev` at [`b076ac194c30fae5c81ce05b0edc4d354fcbd2d5`](https://github.com/armave/portfolio-terminal/commit/b076ac194c30fae5c81ce05b0edc4d354fcbd2d5). Final tested PR head: `75558f00d43bad33173b1c3f9ae9a7e626ec0fa8`.
+
+- [x] Verify identical-key retries and conflicting-key rejection for `setFreeCash`, `setCashBalance` and `setMarginDebt`.
+- [x] Verify event actor/source/effective/recorded metadata on manual and AI-confirmed adjustment paths.
+- [x] Verify failed persistence retains the prior in-memory snapshot, persisted state, event journal and subscribers.
+- [x] [Pull Request CI #4476](https://github.com/armave/portfolio-terminal/actions/runs/44020795563) and [Security & Workflow Validation #282](https://github.com/armave/portfolio-terminal/actions/runs/44020795313) passed all blocking checks.
+
+This slice added regression coverage only; accounting and runtime command behavior were unchanged.
+
+## Completed follow-up — atomic backup import and journal-preserving restore (#523)
+
+[PR #523](https://github.com/armave/portfolio-terminal/pull/523) was squash-merged into `dev` at [`599e3d476bb2fba9e445ca775c44dc46a1a425bc`](https://github.com/armave/portfolio-terminal/commit/599e3d476bb2fba9e445ca775c44dc46a1a425bc). Final tested PR head: `a4bd4f5e1afa7fa0e3957357e2837bb593147363`.
+
+- [x] Route JSON restore through one `PortfolioStore.importState()` commit and request cloud sync only after local success.
+- [x] Cover transaction, linked closed-history, cash-holding FIFO, corporate-action and market-correction data through export/import/reload.
+- [x] Prove persistence failure preserves the prior active snapshot, journal, persisted record and subscribers.
+- [x] [Pull Request CI #4489](https://github.com/armave/portfolio-terminal/actions/runs/44024116292), [Financial Integrity Regression #6](https://github.com/armave/portfolio-terminal/actions/runs/44024116448) and [Security & Workflow Validation #294](https://github.com/armave/portfolio-terminal/actions/runs/44024116254) passed all blocking checks.
+
+Authenticated cloud restore, account-scope switching and real multi-device recovery remain manual release gates; deterministic JSON/local-storage tests do not certify those scenarios.
+
+## Completed follow-up — safe cloud conflict pull recovery (#522)
+
+[PR #522](https://github.com/armave/portfolio-terminal/commit/34710d117ff36927a3e343d58e4abb4b45c19169) is now part of `dev`. The runtime preserves local state when applying a pulled cloud snapshot fails, requires explicit same-workspace replacement intent for confirmed recovery, and treats a missing cloud record after an accepted revision as a conflict. The associated runtime tests prove that rejected pulls keep the conflict latched and do not authorize stale retries or silently adopt a missing remote record.
+
+## In progress — protected cloud financial-array conflict coverage
+
+The three-way cloud reconciler must merge only the explicit UI-preference allowlist. The added table-driven tests exercise divergent updates to transaction events, corporate-action events, market-history corrections, closed trades, broker executions, external cashflows, canonical position/tranche snapshots and cash-holding/FIFO-lot snapshots. Divergent protected projections must block reconciliation rather than append or combine arrays; identical outcomes may be retained exactly once while disjoint allowlisted navigation preferences still merge. This is regression coverage only; no cloud merge policy or financial runtime behavior changes.
+
+
+## Read-only lot and closed-history parity visibility
+
+The Trades broker-reconciliation panel now exposes the existing `verifyPortfolioTransactionLotParity` shadow comparison separately from transaction-journal quantity/cash/debt coverage. It receives the current canonical `positions`, cash-holding lots and `closedTrades`; it never writes to the store or changes financial calculations.
+
+The report displays replayed open-lot and closed-sale counts, discrepancy counts, and bounded explanations for up to five lot/closed-trade differences and five incomplete or unsupported findings. A complete supported history with differences is shown as a difference state; incomplete and unsupported history are never presented as a match. Replay and canonical values are shown as read-only evidence.
+
+This visibility does not upgrade legacy/unmapped lots to replayable records, infer acquisition cost from broker average prices, or claim that unsupported history has been reconciled. In particular, it remains a shadow comparison: `PortfolioState.positions` and the canonical closed-history snapshot remain authoritative. No automatic repair, posting, reversal, schema migration, Worker change or ledger cutover is introduced. The existing authenticated backup/restore, live TradeNet and real multi-device checks remain manual release gates.

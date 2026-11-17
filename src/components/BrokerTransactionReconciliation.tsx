@@ -1,9 +1,10 @@
 import { useState } from 'preact/hooks';
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
-import type { ClosedTrade } from '../types/portfolio';
+import type { CashStockHolding, ClosedTrade, PositionRecord } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { reconcileBrokerActivity, type ReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import { inspectPortfolioTransactionJournalReplayCoverage } from '../domain/portfolioTransactionJournal';
+import { verifyPortfolioTransactionLotParity, type PortfolioLotParityResult } from '../domain/portfolioLotJournal';
 import { getAppLanguage } from '../services/i18n';
 import {
   reconcileBrokerQuotePrices,
@@ -207,11 +208,157 @@ const RU_COPY: Record<string, string> = {
   'Only cash/debt balance-adjustment reversals are currently supported; trade, lot and corporate-action reversals remain gated.': 'Сейчас поддерживается отмена только корректировок денежных средств и долга; отмена сделок, лотов и корпоративных действий пока недоступна.',
   'Correction state deltas must be the exact inverse of the linked original balance adjustment.': 'Изменения состояния в корректировке должны точно отменять изменения исходной корректировки баланса.',
   'Financial posting has neither an app-owned state delta nor a complete external evidence reference.': 'Финансовая запись не содержит ни изменения состояния приложения, ни полной ссылки на внешнее подтверждение.',
-  'Event type is not supported by the current quantity/cash/debt replay contract.': 'Тип события не поддерживается текущим контрактом воспроизведения количества активов, денежных средств и долга.'
+  'Event type is not supported by the current quantity/cash/debt replay contract.': 'Тип события не поддерживается текущим контрактом воспроизведения количества активов, денежных средств и долга.',
+  'Lot and closed-trade replay parity': 'Сверка воспроизведения лотов и закрытых сделок',
+  'Matched within supported history': 'Совпадение в пределах поддерживаемой истории',
+  'Open lots replayed': 'Воспроизведённые открытые лоты',
+  'Closed sales replayed': 'Воспроизведённые закрытые продажи',
+  'Differences': 'Расхождения',
+  'Compares app-owned acquisition lots, FIFO sale allocations and linked closed-trade values. Legacy or unmapped history remains incomplete; no portfolio data is changed.': 'Сверяются лоты приобретения приложения, распределение продаж по FIFO и связанные значения закрытых сделок. История старого формата или без сопоставления остаётся неполной; данные портфеля не изменяются.',
+  'Replay and canonical values are shown only as read-only evidence.': 'Значения воспроизведения и канонического состояния показаны только как справочные данные.',
+  'No lot or closed-trade replay differences were detected for the supplied history.': 'В предоставленной истории не обнаружено расхождений при воспроизведении лотов и закрытых сделок.',
+  'Showing first 5 lot replay differences': 'Показаны первые 5 расхождений воспроизведения лотов',
+  'Showing first 5 lot replay issues': 'Показаны первые 5 замечаний воспроизведения лотов',
+  'Replay': 'Воспроизведение',
+  'Canonical': 'Каноническое состояние',
+  'Identity': 'Идентификатор',
+  'Open lot missing': 'Отсутствует открытый лот',
+  'Open lot quantity differs': 'Количество открытого лота отличается',
+  'Open lot cost basis differs': 'Себестоимость открытого лота отличается',
+  'Open lot acquisition date differs': 'Дата приобретения открытого лота отличается',
+  'Open lot buy commission differs': 'Комиссия покупки открытого лота отличается',
+  'Cash-holding lot missing': 'Отсутствует лот денежного актива',
+  'Cash-holding lot quantity differs': 'Количество лота денежного актива отличается',
+  'Cash-holding lot cost basis differs': 'Себестоимость лота денежного актива отличается',
+  'Cash-holding lot acquisition date differs': 'Дата приобретения лота денежного актива отличается',
+  'Cash-holding lot buy commission differs': 'Комиссия покупки лота денежного актива отличается',
+  'Position lot quantity differs': 'Количество лотов позиции отличается',
+  'Position buy commission differs': 'Комиссия покупки позиции отличается',
+  'Closed trade missing': 'Отсутствует закрытая сделка',
+  'Duplicate closed trade link': 'Повторная ссылка на закрытую сделку',
+  'Closed trade ticker differs': 'Тикер закрытой сделки отличается',
+  'Closed trade quantity differs': 'Количество закрытой сделки отличается',
+  'Closed trade cost basis differs': 'Себестоимость закрытой сделки отличается',
+  'Closed trade sale price differs': 'Цена продажи в закрытой сделке отличается',
+  'Closed trade gross profit differs': 'Валовая прибыль закрытой сделки отличается',
+  'Closed trade commissions differ': 'Комиссии закрытой сделки отличаются',
+  'Closed trade financing differs': 'Расходы на финансирование закрытой сделки отличаются',
+  'Closed trade net profit differs': 'Чистая прибыль закрытой сделки отличается',
+  'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics; removed cost basis is not treated as a sale.': 'Удаление денежного актива является корректировкой учёта без выручки от продажи и реализованной прибыли/убытка; удалённая себестоимость не считается продажей.',
+  'Buy event does not contain a stable lot ID, ticker, exact acquisition date, positive quantity, acquisition price and matching quantity delta.': 'Событие покупки не содержит стабильный ID лота, тикер, точную дату приобретения, положительное количество, цену покупки и соответствующее изменение количества.',
+  'A stable acquisition lot ID is reused by more than one buy event.': 'Стабильный ID лота приобретения повторно используется в нескольких событиях покупки.',
+  'Buy event predates exact acquisition-date capture; source date was not inferred from the event timestamp.': 'Для события покупки не сохранена точная дата приобретения; дата не выводилась из временной метки события.',
+  'Buy event does not contain a verifiable non-negative commission amount.': 'Событие покупки не содержит проверяемую неотрицательную сумму комиссии.',
+  'Sale event has no exact FIFO lot allocations; no acquisition lot was inferred.': 'Событие продажи не содержит точного распределения лотов по FIFO; лоты приобретения не выводились предположительно.',
+  'Sale contains legacy-unmapped acquisition slices; those slices remain unlinked and are not reconstructed.': 'Продажа содержит не сопоставленные с лотами фрагменты старой истории; они остаются несвязанными и не восстанавливаются.',
+  'Sale references a stable lot ID that is absent from the available buy-event history.': 'Продажа ссылается на стабильный ID лота, отсутствующий в доступной истории покупок.',
+  'Sale allocation conflicts with the referenced acquisition lot identity, price, date or remaining quantity.': 'Распределение продажи противоречит идентификатору, цене, дате или оставшемуся количеству указанного лота приобретения.',
+  'Sale allocation consumes more buy commission than remains on the referenced lot.': 'Распределение продажи использует комиссию покупки сверх остатка по указанному лоту.',
+  'Sale allocations do not consume the known open acquisition lots in FIFO order.': 'Распределение продажи не использует известные открытые лоты приобретения в порядке FIFO.',
+  'Stable lot sale allocations do not agree with the sale event price and gross proceeds.': 'Распределение продажи по стабильным лотам не соответствует цене события продажи и валовой выручке.',
+  'Corporate-action lot conversion does not include every open app-owned lot for the affected ticker.': 'Преобразование лотов в рамках корпоративного действия не включает все открытые лоты приложения для затронутого тикера.',
+  'Corporate-action lot conversion conflicts with the recorded lot identity, remaining quantity, price, acquisition date or commission.': 'Преобразование лотов в рамках корпоративного действия противоречит записанному идентификатору лота, оставшемуся количеству, цене, дате приобретения или комиссии.',
+  'Position quantity changed without an exact acquisition-lot adjustment; lot identity was not inferred.': 'Количество позиции изменилось без точной корректировки лотов приобретения; идентификаторы лотов не выводились предположительно.',
+  'Cash-holding quantity changed without exact acquisition-lot or disposal allocations; cost basis was not inferred.': 'Количество денежного актива изменилось без точного распределения лотов приобретения или выбытия; себестоимость не выводилась предположительно.',
+  'Trade or cash-holding lot quantity corrections are not supported by the current reversal contract.': 'Корректировки количества торговых или денежных лотов не поддерживаются текущим контрактом отмены.',
+  'Closed-history correction has no linked lot-level correction projection.': 'Корректировка истории закрытых сделок не имеет связанного проецируемого изменения на уровне лотов.',
+  'A closed-trade replay item is missing required financial data.': 'Для воспроизведения закрытой сделки не хватает необходимых финансовых данных.',
+  'Stable sale event has no linked canonical closed-trade record.': 'Для стабильного события продажи отсутствует связанная каноническая запись закрытой сделки.'
+};
+
+const LOT_PARITY_DISCREPANCY_LABELS: Record<PortfolioLotParityResult['discrepancies'][number]['field'], string> = {
+  'open-lot-missing': 'Open lot missing',
+  'open-lot-quantity': 'Open lot quantity differs',
+  'open-lot-cost': 'Open lot cost basis differs',
+  'open-lot-acquisition-date': 'Open lot acquisition date differs',
+  'open-lot-buy-commission': 'Open lot buy commission differs',
+  'cash-holding-lot-missing': 'Cash-holding lot missing',
+  'cash-holding-lot-quantity': 'Cash-holding lot quantity differs',
+  'cash-holding-lot-cost': 'Cash-holding lot cost basis differs',
+  'cash-holding-lot-acquisition-date': 'Cash-holding lot acquisition date differs',
+  'cash-holding-lot-buy-commission': 'Cash-holding lot buy commission differs',
+  'position-lot-quantity': 'Position lot quantity differs',
+  'position-buy-commission': 'Position buy commission differs',
+  'closed-trade-missing': 'Closed trade missing',
+  'closed-trade-duplicate': 'Duplicate closed trade link',
+  'closed-trade-ticker': 'Closed trade ticker differs',
+  'closed-trade-quantity': 'Closed trade quantity differs',
+  'closed-trade-cost': 'Closed trade cost basis differs',
+  'closed-trade-price': 'Closed trade sale price differs',
+  'closed-trade-gross-profit': 'Closed trade gross profit differs',
+  'closed-trade-commissions': 'Closed trade commissions differ',
+  'closed-trade-financing': 'Closed trade financing differs',
+  'closed-trade-net-profit': 'Closed trade net profit differs'
 };
 
 export function translateBrokerReconciliationCopy(value: string, language = getAppLanguage()): string {
   return language === 'ru' ? RU_COPY[value] || value : value;
+}
+
+export function getPortfolioLotParityHeadline(
+  status: PortfolioLotParityResult['status'],
+  discrepancyCount: number
+): string {
+  if (status === 'unsupported') return 'Unsupported';
+  if (status === 'incomplete') return 'Incomplete';
+  return discrepancyCount > 0 ? 'Differences found' : 'Matched within supported history';
+}
+
+export function getPortfolioLotParityDiscrepancyLabel(
+  field: PortfolioLotParityResult['discrepancies'][number]['field']
+): string {
+  return LOT_PARITY_DISCREPANCY_LABELS[field];
+}
+
+export function translatePortfolioLotParityIssueReason(
+  reason: string,
+  language = getAppLanguage()
+): string {
+  if (language !== 'ru') return reason;
+  const exact = RU_COPY[reason];
+  if (exact) return exact;
+
+  let match = reason.match(/^Canonical (.+) position has no acquisition lots\.$/);
+  if (match) return 'В позиции ' + match[1] + ' отсутствуют лоты приобретения.';
+  match = reason.match(/^Canonical (.+) contains a legacy lot without stable identity; it was not assigned a synthetic ID\.$/);
+  if (match) return 'Позиция ' + match[1] + ' содержит старый лот без стабильного идентификатора; синтетический ID не назначался.';
+  match = reason.match(/^Canonical snapshot reuses acquisition lot ID (.+)\.$/);
+  if (match) return 'В каноническом снимке повторно используется ID лота приобретения ' + match[1] + '.';
+  match = reason.match(/^Canonical (.+) position has a lot whose remaining buy commission cannot be replayed\.$/);
+  if (match) return 'Для лота позиции ' + match[1] + ' невозможно воспроизвести оставшуюся комиссию покупки.';
+  match = reason.match(/^Canonical lot (.+) cannot be checked against a source acquisition date\.$/);
+  if (match) return 'Лот ' + match[1] + ' невозможно проверить по исходной дате приобретения.';
+  match = reason.match(/^Canonical lot (.+) does not expose its remaining buy commission\.$/);
+  if (match) return 'Для канонического лота ' + match[1] + ' не указана оставшаяся комиссия покупки.';
+  match = reason.match(/^Replay cannot verify remaining buy commission for lot (.+)\.$/);
+  if (match) return 'Воспроизведение не может проверить оставшуюся комиссию покупки для лота ' + match[1] + '.';
+  match = reason.match(/^Canonical cash holding (.+) has no app-recorded acquisition lots; broker average prices were not converted into synthetic lots\.$/);
+  if (match) return 'Для денежного актива ' + match[1] + ' нет записанных приложением лотов приобретения; средние цены брокера не преобразовывались в синтетические лоты.';
+  match = reason.match(/^Canonical cash holding (.+) contains an invalid or incomplete acquisition lot\.$/);
+  if (match) return 'Денежный актив ' + match[1] + ' содержит некорректный или неполный лот приобретения.';
+  match = reason.match(/^Canonical portfolio reuses acquisition lot ID (.+)\.$/);
+  if (match) return 'В каноническом портфеле повторно используется ID лота приобретения ' + match[1] + '.';
+  match = reason.match(/^Canonical cash holding (.+) has (.+) shares but only (.+) shares with app-recorded cost basis; remaining quantity is unmapped\.$/);
+  if (match) return 'Для денежного актива ' + match[1] + ' указано ' + match[2] + ' акций, но себестоимость известна только для ' + match[3] + '; оставшееся количество не сопоставлено.';
+  match = reason.match(/^Legacy closed trade (.+) has no source sale-event link\.$/);
+  if (match) return 'Для старой закрытой сделки ' + match[1] + ' отсутствует ссылка на исходное событие продажи.';
+  match = reason.match(/^Closed trade links to sale event (.+), but that event has no complete stable-lot replay projection\.$/);
+  if (match) return 'Закрытая сделка ссылается на событие продажи ' + match[1] + ', но для него нет полного воспроизведения по стабильным лотам.';
+  match = reason.match(/^Closed trade linked to (.+) has no recorded average entry price\.$/);
+  if (match) return 'Для закрытой сделки, связанной с ' + match[1] + ', не записана средняя цена входа.';
+  match = reason.match(/^Closed trade linked to (.+) has no recorded sale price\.$/);
+  if (match) return 'Для закрытой сделки, связанной с ' + match[1] + ', не записана цена продажи.';
+  match = reason.match(/^Closed trade linked to (.+) lacks (.+) data\.$/);
+  if (match) {
+    const fieldLabels: Record<string, string> = {
+      'gross-profit': 'валовой прибыли',
+      'commissions': 'комиссий',
+      'financing': 'расходов на финансирование',
+      'net-profit': 'чистой прибыли'
+    };
+    return 'Для закрытой сделки, связанной с ' + match[1] + ', отсутствуют данные: ' + (fieldLabels[match[2]] || match[2]) + '.';
+  }
+  return 'Описание замечания воспроизведения лотов недоступно на русском языке.';
 }
 
 export function getBrokerReconciliationHeadline(
@@ -258,6 +405,9 @@ interface BrokerTransactionReconciliationProps {
   appQuotes?: readonly AppQuoteHolding[];
   /** Passing null explicitly renders an unavailable broker-price state. */
   brokerQuoteSnapshot?: BrokerQuoteSnapshot | null;
+  /** Canonical snapshot inputs used only for read-only lot and closed-trade parity. */
+  positions: Record<string, Pick<PositionRecord, 'shares' | 'commBuy' | 'tranches'>>;
+  cashHoldings: readonly Pick<CashStockHolding, 'ticker' | 'shares' | 'lots'>[];
   /** Records an audit-only note; must not mutate financial data. */
   onRecordReview?: RecordBrokerReconciliationReview;
 }
@@ -299,7 +449,7 @@ function formatTimestamp(value?: number): string {
 export function BrokerTransactionReconciliation({
   executions, cashflows, appEvents, executionStatus, cashflowStatus,
   appHistoryStatus = 'partial', legacyClosedTrades = [],
-  appQuotes = [], brokerQuoteSnapshot, onRecordReview
+  positions, cashHoldings, appQuotes = [], brokerQuoteSnapshot, onRecordReview
 }: BrokerTransactionReconciliationProps) {
   const [reviewReasonByKey, setReviewReasonByKey] = useState<Record<string, string>>({});
   const [reviewOpenKey, setReviewOpenKey] = useState<string | null>(null);
@@ -315,6 +465,18 @@ export function BrokerTransactionReconciliation({
   const labelClass = report.status === 'matched' ? 'text-emerald-300' :
     report.status === 'differences' ? 'text-amber-300' : 'text-slate-300';
   const journalCoverage = inspectPortfolioTransactionJournalReplayCoverage(appEvents);
+  const lotParity = verifyPortfolioTransactionLotParity(appEvents, {
+    positions,
+    cashHoldings,
+    closedTrades: legacyClosedTrades
+  });
+  const lotParityHeadline = getPortfolioLotParityHeadline(lotParity.status, lotParity.discrepancies.length);
+  const lotParityStatusClass = lotParity.status === 'unsupported'
+    ? 'text-rose-300'
+    : lotParity.status === 'incomplete' || lotParity.discrepancies.length > 0
+      ? 'text-amber-300' : 'text-emerald-300';
+  const replayedOpenLotCount = lotParity.replay.openLots.length + lotParity.replay.cashHoldingOpenLots.length;
+  const replayedClosedSaleCount = lotParity.replay.sales.length + lotParity.replay.cashHoldingSales.length;
   const journalCoverageStatusLabel = journalCoverage.status === 'complete'
     ? 'Complete within scope'
     : journalCoverage.status === 'unsupported' ? 'Unsupported' : 'Incomplete';
@@ -442,6 +604,59 @@ export function BrokerTransactionReconciliation({
           <p class="text-emerald-300">{translateBrokerReconciliationCopy('No journal replay issues were detected for the current coverage scope.')}</p>
         )}
         {journalCoverage.issues.length > 5 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 5 coverage findings')}.</p>}
+      </section>
+      <section class="mt-3 space-y-2 rounded border border-slate-800 bg-slate-950/30 p-3" aria-label={translateBrokerReconciliationCopy('Lot and closed-trade replay parity')}>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="font-semibold text-slate-200">{translateBrokerReconciliationCopy('Lot and closed-trade replay parity')}</h3>
+          <strong class={lotParityStatusClass}>{translateBrokerReconciliationCopy(lotParityHeadline)}</strong>
+        </div>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Open lots replayed')}</div><strong>{replayedOpenLotCount}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Closed sales replayed')}</div><strong>{replayedClosedSaleCount}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Differences')}</div><strong>{lotParity.discrepancies.length}</strong></div>
+          <div><div class="text-slate-500">{translateBrokerReconciliationCopy('Items needing review')}</div><strong>{lotParity.issues.length}</strong></div>
+        </div>
+        <p class="text-slate-500">{translateBrokerReconciliationCopy('Compares app-owned acquisition lots, FIFO sale allocations and linked closed-trade values. Legacy or unmapped history remains incomplete; no portfolio data is changed.')}</p>
+        <p class="text-slate-500">{translateBrokerReconciliationCopy('Replay and canonical values are shown only as read-only evidence.')}</p>
+        {lotParity.discrepancies.length > 0 && (
+          <div class="space-y-1">
+            <h4 class="font-semibold text-amber-200">{translateBrokerReconciliationCopy('Differences')}</h4>
+            <ul class="list-disc space-y-2 pl-4 text-amber-100">
+              {lotParity.discrepancies.slice(0, 5).map((finding, index) => (
+                <li key={finding.field + '-' + finding.identity + '-' + index}>
+                  <div class="flex flex-wrap gap-x-2 gap-y-1">
+                    <strong>{translateBrokerReconciliationCopy(getPortfolioLotParityDiscrepancyLabel(finding.field))}</strong>
+                    <span class="font-mono text-slate-400">{translateBrokerReconciliationCopy('Identity')}: {finding.identity}</span>
+                  </div>
+                  <div class="font-mono text-xs text-slate-400">
+                    {translateBrokerReconciliationCopy('Replay')}: {typeof finding.replayed === 'number' ? formatValue(finding.replayed) : finding.replayed}
+                    {' · '}{translateBrokerReconciliationCopy('Canonical')}: {typeof finding.canonical === 'number' ? formatValue(finding.canonical) : finding.canonical}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {lotParity.discrepancies.length > 5 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 5 lot replay differences')}.</p>}
+          </div>
+        )}
+        {lotParity.issues.length > 0 ? (
+          <div class="space-y-1">
+            <h4 class="font-semibold text-amber-200">{translateBrokerReconciliationCopy('Items needing review')}</h4>
+            <ul class="list-disc space-y-1 pl-4 text-amber-100">
+              {lotParity.issues.slice(0, 5).map((finding, index) => (
+                <li key={(finding.eventId || 'lot-parity-issue') + '-' + index}>
+                  <span class={finding.disposition === 'unsupported' ? 'text-rose-300' : 'text-amber-300'}>
+                    {translateBrokerReconciliationCopy(finding.disposition === 'unsupported' ? 'Unsupported' : 'Incomplete')}
+                  </span>
+                  {' · '}{finding.eventId && <span class="font-mono text-slate-400">{finding.eventId}: </span>}
+                  {translatePortfolioLotParityIssueReason(finding.reason)}
+                </li>
+              ))}
+            </ul>
+            {lotParity.issues.length > 5 && <p class="text-slate-500">{translateBrokerReconciliationCopy('Showing first 5 lot replay issues')}.</p>}
+          </div>
+        ) : lotParity.discrepancies.length === 0 ? (
+          <p class="text-emerald-300">{translateBrokerReconciliationCopy('No lot or closed-trade replay differences were detected for the supplied history.')}</p>
+        ) : null}
       </section>
       {report.legacyClosedSaleCount > 0 && (
         <p class="text-slate-500">

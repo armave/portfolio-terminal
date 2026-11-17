@@ -369,3 +369,13 @@ describe('closed history summary model', () => {
     });
   });
 });
+
+
+describe('Trades lot and closed-history parity wiring', () => {
+  it('passes canonical position lots, cash-holding lots and closed history to the read-only parity report', () => {
+    const source = readSource();
+    expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
+    expect(source).toContain('positions={state.positions || {}}');
+    expect(source).toContain('cashHoldings={state.cashCushion?.holdings || []}');
+  });
+});

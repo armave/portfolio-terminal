@@ -17,15 +17,35 @@ permissions:
 
 concurrency:
   group: cloudflare-worker
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Validate and deploy Worker
+  validate-production-ref:
+    name: Validate production deployment target
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 2
     permissions:
       contents: read
+    steps:
+      - name: Reject deployments from non-production refs
+        env:
+          DEPLOYMENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$DEPLOYMENT_REF" != "refs/heads/main" ]]; then
+            echo "::error::Cloudflare Worker deployment is restricted to refs/heads/main (received $DEPLOYMENT_REF)."
+            exit 1
+          fi
+
+  deploy:
+    name: Validate and deploy Worker
+    needs: validate-production-ref
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    environment:
+      name: cloudflare-production
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,7 +55,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -53,10 +73,38 @@ jobs:
       - name: Audit production dependencies
         run: npm run audit:production
 
+      - name: Validate Worker bundle and Wrangler configuration
+        id: worker_dry_run
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.156.0'
+          command: deploy --dry-run
+
       - name: Deploy Worker with pinned Wrangler
+        id: deploy_worker
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.156.0'
           command: deploy
+
+      - name: Publish exact-ref deployment evidence
+        if: always()
+        env:
+          DRY_RUN_RESULT: ${{ steps.worker_dry_run.outcome || 'not-run' }}
+          DEPLOY_RESULT: ${{ steps.deploy_worker.outcome || 'not-run' }}
+        run: |
+          {
+            echo "## Cloudflare Worker deployment evidence"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Deployed commit candidate | $(git rev-parse HEAD) |"
+            echo "| Ref | $GITHUB_REF |"
+            echo "| Dry-run validation | $DRY_RUN_RESULT |"
+            echo "| Deployment | $DEPLOY_RESULT |"
+            echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
+          } >> "$GITHUB_STEP_SUMMARY"
