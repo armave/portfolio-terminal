@@ -711,6 +711,7 @@ async function assertFinancialHeaderLayout(page, view) {
         healthColumnBottom: healthColumnBounds?.bottom ?? null,
         healthColumnWidth: healthColumnBounds?.width ?? null,
         summaryColumnCount: summary ? getComputedStyle(summary).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        summaryHeight: summaryBounds?.height ?? 0,
         summaryValueFontSize: summary?.querySelector('.portfolio-metric-value')
           ? Number.parseFloat(getComputedStyle(summary.querySelector('.portfolio-metric-value')).fontSize)
           : 0,
@@ -767,6 +768,9 @@ async function assertFinancialHeaderLayout(page, view) {
     }
     if (viewport.width >= 1024 && layout.summaryValueFontSize < 13) {
       throw new Error('Transferred financial values should use the larger, more readable metric scale: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.healthColumnWidth > 30 * 16 && layout.summaryHeight < 220) {
+      throw new Error('The transferred financial summary should expand to use the available desktop health-column space: ' + JSON.stringify(layout));
     }
     const expectedScenarioColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 ? 2 : 1;
     const expectedIntelligenceColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 && layout.intelligenceCardCount > 1 ? 2 : 1;
