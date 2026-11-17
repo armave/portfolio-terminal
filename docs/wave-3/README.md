@@ -41,7 +41,7 @@ The Wave 2 foundation PRs are merged:
 
 There were no open implementation PRs at the time of the audit. The current dev head includes the latest performance optimization.
 
-The important tracking issues for Wave 3 are #507 (PT-02 continuation), #332 (PT-04), #333 (PT-05), #334 (PT-06) and #365 (PT-07). The broad PT-02 issue #330 was deleted; #507 now tracks the remaining transaction-journal acceptance criteria. The merged foundation PRs and subsequent bounded implementation slices do not mean every broader workstream acceptance criterion is complete.
+The important tracking issues for Wave 3 are #507 (PT-02 continuation), [#537](https://github.com/armave/portfolio-terminal/issues/537) (PT-04 replacement for deleted #332), [#539](https://github.com/armave/portfolio-terminal/issues/539) (PT-05 replacement for deleted #333), #334 (PT-06) and #365 (PT-07). The broad PT-02 issue #330 was deleted; #507 now tracks the remaining transaction-journal acceptance criteria. The merged foundation PRs and subsequent bounded implementation slices do not mean every broader workstream acceptance criterion is complete.
 
 See current-state-audit.md for code-level observations and limitations.
 
@@ -52,8 +52,8 @@ All five branches have been created from the same dev baseline above. Do not cre
 | Stream | Existing issue | Dedicated branch | Primary outcome |
 |---|---:|---|---|
 | PT-02 — Transaction integrity completion | [#507](https://github.com/armave/portfolio-terminal/issues/507) | feat/wave3-pt02-transaction-integrity-completion | Complete journal coverage, replay/parity, idempotency boundaries and recovery |
-| PT-04 — Reconciliation completion | #332 | feat/wave3-pt04-reconciliation-completion | Match executions, cashflows, fees, prices and timestamps with reviewable evidence |
-| PT-05 — Multi-portfolio ownership | #333 | feat/wave3-pt05-portfolio-tenancy | Implement server-authoritative tenant/portfolio isolation and safe migration |
+| PT-04 — Reconciliation completion | [#537](https://github.com/armave/portfolio-terminal/issues/537) | feat/wave3-pt04-reconciliation-completion | Match executions, cashflows, fees, prices and timestamps with reviewable evidence |
+| PT-05 — Multi-portfolio ownership | [#539](https://github.com/armave/portfolio-terminal/issues/539) | feat/wave3-pt05-portfolio-tenancy | Implement server-authoritative tenant/portfolio isolation and safe migration |
 | PT-06 — Performance integration | #334 | feat/wave3-pt06-performance-integration | Wire deterministic TWR/MWR and attribution to actual source events/valuations |
 | PT-07 — Market-data lifecycle | #365 | feat/wave3-pt07-market-data-lifecycle | Complete aliases, provider resilience, additional history, calendars and typed events |
 

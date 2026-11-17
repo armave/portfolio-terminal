@@ -1,6 +1,6 @@
 # Wave 3 PT-04 — Full broker reconciliation and reviewed discrepancy workflows
 
-**Tracking issue:** #332  
+**Tracking issue:** [#537 — Keep unclassified broker cashflows out of adjustment matching](https://github.com/armave/portfolio-terminal/issues/537) (replacement for deleted #332)  
 **Merged foundation:** PR #358  
 **Dedicated branch:** feat/wave3-pt04-reconciliation-completion  
 **Target:** dev client/domain PR; Worker-only changes follow the direct-to-main policy.
@@ -40,6 +40,17 @@ Extend the merged read-only position-quantity comparison into a reproducible com
 ## Required tests and QA
 
 Vitest known-answer fixtures for exact-ID match, fallback match, duplicates, partial fills, reordered/out-of-order events, reversals, fee mismatch, cashflow mismatch, currency mismatch, stale/missing observation timestamps, incomplete history and retry behavior. Test explicit correction authorization and audit event. English/Russian discrepancy copy tests. Browser journey for viewing a discrepancy and declining/confirming a proposed action. Authenticated live TradeNet verification is a separate manual gate.
+
+## Cashflow classification hardening
+
+Issue [#537](https://github.com/armave/portfolio-terminal/issues/537) tracks a fail-closed normalization rule for broker cashflows:
+
+- Explicit dividend, interest/financing, fee/commission/tax, transfer, withdrawal/debit, deposit/funding/credit and adjustment/correction labels retain their typed mappings.
+- Unknown or provider-specific labels are not coerced to `cash.adjustment`. They become provisional `cashflow_unclassified` evidence and are excluded from matching.
+- An unknown row cannot be counted as a matched app balance adjustment, even when its amount, currency and timestamp happen to align.
+- The comparison remains read-only. No cash, debt, position, fee, cost-basis or journal state is changed.
+
+This is a classification-safety fix only; it does not change provider payload contracts, sign conventions for recognized deposits/withdrawals, or accounting calculations.
 
 ## Branch ownership
 
