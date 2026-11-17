@@ -2675,10 +2675,7 @@ table tbody tr:hover {
 
 
 /* Tables: keep page changes, pagination controls, and dense data surfaces composed. */
-.closed-history-page-transition,
-  .market-tool-card,
-  .market-tool-card:hover,
-  .market-tool-card:active {
+.closed-history-page-transition {
   transform-origin: top center;
   animation: closed-history-page-enter 190ms var(--motion-fluid, cubic-bezier(0.2, 0.75, 0.25, 1)) both;
 }
