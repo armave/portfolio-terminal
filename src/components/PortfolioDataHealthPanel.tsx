@@ -13,7 +13,8 @@ import {
   getQuoteFreshnessHealth,
   selectPortfolioDataHealthSource,
   summarizeAdminPortfolioQuoteFreshness,
-  summarizeGuestPortfolioQuoteFreshness
+  summarizeGuestPortfolioQuoteFreshness,
+  resolvePortfolioDataHealthTone
 } from '../ui/portfolioDataHealth';
 import {
   formatExactSyncTimestamp,
@@ -93,23 +94,19 @@ export function PortfolioDataHealthPanel({
   const quoteHealth = getQuoteFreshnessHealth(quoteSummary);
   const cloudTone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
   const hasCloudConflict = isAdmin && (cloudStatus.status === 'conflict' || cloudSyncStatus.status === 'conflict');
-  const syncProblem = isAdmin
-    ? ['conflict', 'error', 'warning'].includes(cloudTone)
-    : cloudSyncStatus.status === 'error';
-  const brokerProblem = brokerHealth === 'stale' || brokerHealth === 'partial' || brokerHealth === 'unavailable';
-  const quoteProblem = quoteHealth === 'stale' || quoteHealth === 'delayed';
-  const needsReview = brokerProblem || quoteProblem || syncProblem;
-  const guestSnapshotAvailable = Boolean(
-    guestSnapshot &&
-    Number.isSafeInteger(guestSnapshot.updatedAt) &&
-    guestSnapshot.updatedAt > 0
+  const overallTone = resolvePortfolioDataHealthTone({
+    role: isAdmin ? 'admin' : 'guest',
+    brokerHealth: brokerHealth || undefined,
+    quoteHealth,
+    cloudTone,
+    assignedSnapshotAvailable: guestSnapshotAvailable,
+    assignedRefreshStatus: cloudSyncStatus.status
+  });
+  const overallLabel = translateText(
+    overallTone === 'warning' ? 'Needs review' : overallTone === 'healthy' ? 'Data current' : 'Checking data status',
+    language
   );
-  const quoteUnknown = quoteHealth === 'unknown' || quoteHealth === 'unavailable';
-  const cloudUnknown = isAdmin ? cloudTone !== 'success' && !syncProblem : cloudSyncStatus.status !== 'synced';
-  const isCurrent = isAdmin
-    ? brokerHealth === 'current' && !quoteProblem && !quoteUnknown && !cloudUnknown
-    : guestSnapshotAvailable && !quoteProblem && !quoteUnknown && !cloudUnknown;
-  const overallTone = needsReview ? 'warning' : isCurrent ? 'healthy' : 'unknown';
+
   const overallLabel = translateText(
     needsReview ? 'Needs review' : isCurrent ? 'Data current' : 'Checking data status',
     language
