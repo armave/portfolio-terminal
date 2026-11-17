@@ -399,7 +399,7 @@ describe('cross-device financial header hierarchy', () => {
     expect(source).toContain('<MarginMarketTools');
     expect(styles).toContain('.portfolio-health-summary-column {');
     expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
-    expect(styles).toContain('.portfolio-risk-tools-row > .portfolio-market-tools-row');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-risk-tools-row>.portfolio-market-tools-row');
     expect(styles).toContain('@media (min-width: 768px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
     expect(styles).toContain('@media (max-width: 767px)');

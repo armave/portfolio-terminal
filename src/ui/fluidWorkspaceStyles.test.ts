@@ -97,7 +97,7 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 52rem\)/);
     expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
-    expect(stylesheet).toContain('.portfolio-health-summary-column > .margin-risk-gauge-card {');
+    expect(stylesheet.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
     expect(stylesheet).toMatch(
       /@container portfolio-health-summary \(max-width: 52rem\)[\s\S]*?\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s
     );
