@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPerformanceEnvironmentMetadata,
   parsePerformanceSampleCount,
   summarizePerformanceSamples,
   summarizePerformanceViewport
@@ -68,5 +69,58 @@ describe('summarizePerformanceSamples', () => {
     expect(summary.firstContentfulPaintMs.sampleCount).toBe(1);
     expect(summary.largestContentfulPaintMs.sampleCount).toBe(0);
     expect(summary.totalResourceTransferBytes.median).toBe(1_100);
+  });
+});
+
+
+describe('buildPerformanceEnvironmentMetadata', () => {
+  it('records host, browser, runner, and viewport details for reproducibility', () => {
+    expect(buildPerformanceEnvironmentMetadata({
+      platform: 'linux',
+      osRelease: '6.8.0',
+      architecture: 'x64',
+      nodeVersion: 'v22.12.0',
+      cpuModel: 'Example CPU',
+      logicalCpuCount: 4,
+      runnerImageOS: 'ubuntu24',
+      runnerImageVersion: '20261101.1',
+      browserName: 'Chromium',
+      browserVersion: '140.0',
+      headless: true,
+      viewports: [{ name: 'desktop', width: 1440, height: 900 }]
+    })).toEqual({
+      platform: 'linux',
+      osRelease: '6.8.0',
+      architecture: 'x64',
+      nodeVersion: 'v22.12.0',
+      cpuModel: 'Example CPU',
+      logicalCpuCount: 4,
+      runnerImageOS: 'ubuntu24',
+      runnerImageVersion: '20261101.1',
+      browserName: 'Chromium',
+      browserVersion: '140.0',
+      headless: true,
+      viewports: [{ name: 'desktop', width: 1440, height: 900 }]
+    });
+  });
+
+  it('retains unavailable environment facts as null rather than inventing defaults', () => {
+    expect(buildPerformanceEnvironmentMetadata({
+      logicalCpuCount: 0,
+      viewports: [{ name: 'mobile', width: 390, height: undefined }]
+    })).toEqual({
+      platform: null,
+      osRelease: null,
+      architecture: null,
+      nodeVersion: null,
+      cpuModel: null,
+      logicalCpuCount: null,
+      runnerImageOS: null,
+      runnerImageVersion: null,
+      browserName: null,
+      browserVersion: null,
+      headless: false,
+      viewports: [{ name: 'mobile', width: 390, height: null }]
+    });
   });
 });
