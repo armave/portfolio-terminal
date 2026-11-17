@@ -58,11 +58,13 @@ describe('tranche details rows', () => {
     expect(rows[0].buyCommission).toBe(0);
   });
 
-  it('styles the two-card position summary and full-width cost strip', () => {
+  it('styles equal-height Share and Tranches panels with costs nested inside Tranches', () => {
     const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     expect(stylesheet).toContain('portfolio-micro-summary--redesigned');
     expect(stylesheet).toContain('"market basis"');
-    expect(stylesheet).toContain('"costs costs"');
+    expect(stylesheet).not.toContain('"costs costs"');
+    expect(stylesheet).toContain('grid-template-rows: minmax(0, 1fr);');
+    expect(stylesheet).toContain('margin-top: auto;');
     expect(stylesheet).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
     expect(stylesheet).toContain('@container portfolio-health-summary (max-width: 30rem)');
   });

@@ -845,7 +845,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
                 </span>
               </div>
-<div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+              <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
                 <div class="portfolio-micro-row">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
                   <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
@@ -854,17 +854,17 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
                   <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
                 </div>
-              
-              <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-                <div class="portfolio-micro-row">
-                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-                  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-                </div>
-                <div class="portfolio-micro-row">
-                  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-                  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-                </div>
-              </div>
+
+  <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+  <div class="portfolio-micro-row">
+  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+  </div>
+  <div class="portfolio-micro-row">
+  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+  </div>
+  </div>
             </div>
             </section>
             <MarginRiskGaugeCard
@@ -1103,7 +1103,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 {translateText('Volume', getAppLanguage())} {volume ?? '—'}
               </span>
             </div>
-<div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+            <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
               <div class="portfolio-micro-row">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
                 <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
@@ -1131,17 +1131,17 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
                 <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
               </div>
-            
-              <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-              <div class="portfolio-micro-row">
-                <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-                <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-              </div>
-              <div class="portfolio-micro-row">
-                <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-                <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-              </div>
-            </div>
+
+  <div class="portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+  <div class="portfolio-micro-row">
+  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+  </div>
+  <div class="portfolio-micro-row">
+  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+  </div>
+  </div>
             </div>
           </section>
           <MarginRiskGaugeCard
