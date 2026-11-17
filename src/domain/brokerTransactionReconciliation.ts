@@ -221,7 +221,13 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
             ? 'cash.withdrawal'
             : /deposit|funding|credit/.test(description)
               ? 'cash.deposit'
-              : 'cash.adjustment';
+              : /\\badjustment\\b|\\bcorrection\\b/.test(description)
+                ? 'cash.adjustment'
+                : null;
+  // A generic/unknown provider cashflow must not be guessed to be an account
+  // adjustment: that could falsely reconcile an unrelated operation with a
+  // manual balance adjustment in the app journal.
+  if (!type) return null;
   // Some broker cashflow feeds encode withdrawals as positive magnitudes and
   // rely on the operation type for direction. Normalize deposits/withdrawals
   // to signed account movement before comparing them with the app journal.
@@ -784,7 +790,7 @@ export function reconcileBrokerActivity(
       appValue: null,
       brokerReferences: ref ? [ref] : [],
       appEventIds: [],
-      explanation: 'The broker cashflow has no usable amount and was excluded from matching.'
+      explanation: 'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.'
     }, 'provisional'));
   });
 
