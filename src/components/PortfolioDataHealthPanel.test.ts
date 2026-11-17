@@ -37,7 +37,8 @@ describe('Portfolio Data Health panel', () => {
   it('distinguishes client receipt time from unavailable provider observation time', () => {
     expect(source).toContain("translateText('Observation time unavailable', language)");
     expect(source).toContain("translateText('Received', language)");
-    expect(source).toContain('formatSnapshotTime(brokerSnapshot?.receivedAt, language, now)');
+    expect(source).toContain('formatSnapshotTime(receivedAt, language, now)');
+    expect(source).toContain('Number.isSafeInteger(receivedAt)');
     expect(source).toContain("typeof observedAt === 'number'");
   });
 

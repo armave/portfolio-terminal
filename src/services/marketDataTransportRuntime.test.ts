@@ -175,7 +175,7 @@ describe('market data transport runtime', () => {
     const proxyFetch = vi.fn().mockResolvedValue({
       close: '101.5',
       previous_close: '100',
-      timestamp: '1_768_204_680',
+      timestamp: '1768204680',
       datetime: '2026-01-12 07:58:00'
     });
     const { runtime } = createRuntime(proxyFetch);
