@@ -1,5 +1,19 @@
 import { formatRelativeTime } from '../../utils/relativeTime';
 
+/** Return an absolute HTTP(S) article URL; reject script and non-web schemes. */
+export function getSafeNewsArticleUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim() || value.length > 2_048) return null;
+
+  try {
+    const url = new URL(value.trim());
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:') ||
+        !url.hostname || url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function formatNewsRelativeTime(datetime: unknown, now = Date.now()): string {
   if ((typeof datetime !== 'number' && typeof datetime !== 'string') ||
       (typeof datetime === 'string' && !datetime.trim())) {
