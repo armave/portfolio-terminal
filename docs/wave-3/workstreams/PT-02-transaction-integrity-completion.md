@@ -286,9 +286,22 @@ This is parity visibility, not a ledger cutover or automatic correction. Authent
 
 This slice added regression coverage only; accounting and runtime command behavior were unchanged.
 
-## In progress — atomic backup import and journal-preserving restore
+## Validated follow-up — atomic backup import and journal-preserving restore (#523)
 
-The current restore path imported through `PortfolioStore.importState()` (which already validates, persists atomically and publishes the new snapshot), then redundantly called `saveState()` a second time. A failure in that second call invoked a compensating restore through `importState(previousState)`; that same-workspace API intentionally merges append-only transaction, corporate-action and market-history journals, so it cannot remove the just-imported events as a true rollback. The follow-up replaces the two-phase wrapper with one validated/persisted store commit, and adds export/import/reload coverage for all three structured journals plus linked closed history and cash-holding lots. A failed store persistence is asserted to leave the original snapshot, journal, persisted record and subscribers unchanged.
+[PR #523](https://github.com/armave/portfolio-terminal/pull/523) routes JSON file restore through `PortfolioStore.importState()` exactly once. That existing store command validates the snapshot and append-only journal inputs, persists the resulting state atomically, and only then publishes it. The duplicate post-import `saveState` call and the compensating `importState(previousState)` path have been removed; cloud sync is requested only after the local commit succeeds.
+
+- [x] Replace the two-phase helper with a single atomic commit callback; rejection or persistence failure does not attempt a second import or journal merge.
+- [x] Add file-import wiring coverage proving the single local commit precedes cloud sync.
+- [x] Add export/import/reload coverage for transaction events, linked closed history, cash-holding FIFO lots, sourced corporate-action events and market-history corrections.
+- [x] Add persistence-failure coverage proving the active state reference, committed journal, persisted snapshot and subscribers remain unchanged.
+- [x] Align fixtures with canonical snapshot/event parity so tests account for the store's explicit reconciliation events rather than treating them as unexpected loss.
+- [x] Preserve the existing legacy-backup path and the append-only same-workspace restore semantics.
+- [x] [Pull Request CI #4487](https://github.com/armave/portfolio-terminal/actions/runs/44023790629) — passed: typecheck, full Vitest/Worker suite, Vite smoke, dead-code validation, both dependency audits, production build, production browser smoke/performance and Operations Browser Journey.
+- [x] [Financial Integrity Regression #5](https://github.com/armave/portfolio-terminal/actions/runs/44023790718) — passed: transactions, persistence and authorization regression suite.
+- [x] [Security & Workflow Validation #293](https://github.com/armave/portfolio-terminal/actions/runs/44023790687) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history secret audit skipped.
+
+The CI results above were run against candidate head `212f477677fe75eff642cd85d0fbd64b9e7d69dc`; this documentation update will receive its own exact-head CI run. The automated tests prove local browser-storage commit and JSON round-trip behavior, not authenticated cloud restore or recovery on multiple real devices. Those manual release gates remain open.
+
 
 ## Read-only lot and closed-history parity visibility
 
