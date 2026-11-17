@@ -3719,7 +3719,7 @@ describe('portfolio transaction journal integration', () => {
 
     const events = store.getState().transactionEvents || [];
     const reconciliations = events.filter((event) => event.type === 'portfolio.reconciliation');
-    expect(reconciliations).toHaveLength(5);
+    expect(reconciliations).toHaveLength(6);
     expect(reconciliations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ticker: 'NVDA',
@@ -3747,6 +3747,12 @@ describe('portfolio transaction journal integration', () => {
         realizedMarginChargeDelta: 7,
         actor: { type: 'system' },
         source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        ticker: 'NVDA',
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-detail-reconciliation',
+        note: expect.stringContaining('acquisitionLots')
       })
     ]));
     for (const event of reconciliations) {
@@ -3755,6 +3761,430 @@ describe('portfolio transaction journal integration', () => {
       expect(event.fees).toBeUndefined();
     }
     expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+  });
+
+  it('records same-quantity accounting detail changes during backup import when no new command event explains them', () => {
+    const source = new PortfolioStore();
+    expect(source.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const store = new PortfolioStore();
+    expect(store.importState(source.getState())).toBe(true);
+
+    const before = store.getState();
+    const previousEventCount = before.transactionEvents?.length ?? 0;
+    const position = before.positions.AAPL;
+    expect(store.importState({
+      positions: {
+        ...before.positions,
+        AAPL: {
+          ...position,
+          commBuy: position.commBuy + 0.5,
+          tranches: (position.tranches || []).map((tranche) => ({
+            ...tranche,
+            buyCommission: (tranche.buyCommission || 0) + 0.5
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(previousEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('buyCommissionTotal');
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('does not mark backup-imported lots incomplete when a new trade event explains the imported position', () => {
+    const source = new PortfolioStore();
+    expect(source.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const sourceState = source.getState();
+    const store = new PortfolioStore();
+
+    expect(store.importState(sourceState)).toBe(true);
+
+    expect(store.getState().transactionEvents?.some((event) =>
+      event.source === 'canonical-import-detail-reconciliation'
+    )).toBe(false);
+    expect(store.getState().transactionEvents).toEqual(sourceState.transactionEvents);
+    expect(verifyPortfolioTransactionParity(
+      store.getState().transactionEvents || [],
+      store.getState()
+    ).matches).toBe(true);
+  });
+
+  it('keeps an unexplained old-lot rewrite visible when the same import contains a valid new trade', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-10')).toBe(true);
+
+    const backupSource = new PortfolioStore();
+    expect(backupSource.importState(store.getState())).toBe(true);
+    expect(backupSource.buyStock('AAPL', 1, 200, '2026-11-17')).toBe(true);
+    const backedUp = backupSource.getState();
+    const position = backedUp.positions.AAPL;
+    const beforeEventCount = store.getState().transactionEvents?.length ?? 0;
+
+    expect(store.importState({
+      ...backedUp,
+      positions: {
+        ...backedUp.positions,
+        AAPL: {
+          ...position,
+          tranches: (position.tranches || []).map((tranche, index) =>
+            index === 0 ? { ...tranche, price: tranche.price + 1 } : tranche
+          )
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('keeps an unexplained cash-holding average-cost change visible beside a valid imported buy', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('MSFT', 1, 100, {
+      eventId: 'cash-buy-before-import',
+      effectiveAt: Date.parse('2026-11-10T12:00:00.000Z')
+    })).toMatchObject({ ticker: 'MSFT', shares: 1 });
+
+    const backupSource = new PortfolioStore();
+    expect(backupSource.importState(store.getState())).toBe(true);
+    expect(backupSource.addCashHolding('MSFT', 1, 200, {
+      eventId: 'cash-buy-imported',
+      effectiveAt: Date.parse('2026-11-17T12:00:00.000Z')
+    })).toMatchObject({ ticker: 'MSFT', shares: 1 });
+    const backedUp = backupSource.getState();
+    const beforeEventCount = store.getState().transactionEvents?.length ?? 0;
+
+    expect(store.importState({
+      ...backedUp,
+      cashCushion: {
+        ...backedUp.cashCushion,
+        holdings: backedUp.cashCushion.holdings.map((holding) => ({
+          ...holding,
+          averagePrice: Number(holding.averagePrice) + 10
+        }))
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'MSFT'
+    );
+    expect(detailEvent?.note).toContain('averageCost');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('records same-quantity detail changes from an explicitly confirmed same-workspace cloud pull', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const current = store.getState();
+    const beforeEventCount = current.transactionEvents?.length ?? 0;
+    const position = current.positions.AAPL;
+
+    expect(store.replaceFromConfirmedCloudPull({
+      ...current,
+      positions: {
+        ...current.positions,
+        AAPL: {
+          ...position,
+          tranches: (position.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price + 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'confirmed-cloud-pull-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('records same-quantity position lot and commission changes as incomplete reconciliation evidence', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const position = before.positions.AAPL;
+    const previousEventCount = before.transactionEvents?.length ?? 0;
+    const nextPosition = {
+      ...position,
+      commBuy: position.commBuy + 1,
+      tranches: (position.tranches || []).map((tranche) => ({
+        ...tranche,
+        buyCommission: (tranche.buyCommission || 0) + 1
+      }))
+    };
+
+    expect(store.setState({
+      positions: { ...before.positions, AAPL: nextPosition }
+    })).toBe(true);
+
+    const events = store.getState().transactionEvents || [];
+    const detailEvent = events.slice(previousEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-snapshot-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent).toMatchObject({
+      type: 'portfolio.reconciliation',
+      ticker: 'AAPL',
+      actor: { type: 'system' },
+      source: 'canonical-snapshot-detail-reconciliation'
+    });
+    expect(detailEvent?.note).toContain('buyCommissionTotal');
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(detailEvent?.positionQuantityDelta).toBeUndefined();
+    expect(detailEvent?.fees).toBeUndefined();
+    expect(detailEvent?.realizedPnl).toBeUndefined();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
+      (finding) => finding.eventId === detailEvent?.id
+    )).toMatchObject({ disposition: 'incomplete' });
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+  });
+
+  it('does not suppress a new detail mutation merely because an old transaction already matches its candidate snapshot', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+
+    const first = store.getState();
+    const firstPosition = first.positions.AAPL;
+    expect(store.setState({
+      positions: {
+        ...first.positions,
+        AAPL: {
+          ...firstPosition,
+          tranches: (firstPosition.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price + 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const beforeRestoreEventCount = store.getState().transactionEvents?.length ?? 0;
+    const second = store.getState();
+    const secondPosition = second.positions.AAPL;
+    expect(store.setState({
+      positions: {
+        ...second.positions,
+        AAPL: {
+          ...secondPosition,
+          tranches: (secondPosition.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price - 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const newAudit = (store.getState().transactionEvents || []).slice(beforeRestoreEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-snapshot-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(newAudit?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === newAudit?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('records same-quantity cash-holding lot and average-cost changes without inventing a sale', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('MSFT', 2, 100)).toMatchObject({ ticker: 'MSFT', shares: 2 });
+    const before = store.getState();
+    const holding = before.cashCushion.holdings[0];
+    const previousEventCount = before.transactionEvents?.length ?? 0;
+    const nextHolding = {
+      ...holding,
+      averagePrice: 95,
+      lots: (holding.lots || []).map((lot) => ({ ...lot, price: 95 }))
+    };
+
+    expect(store.setState({
+      cashCushion: {
+        ...before.cashCushion,
+        holdings: [nextHolding]
+      }
+    })).toBe(true);
+
+    const events = store.getState().transactionEvents || [];
+    const detailEvent = events.slice(previousEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-snapshot-detail-reconciliation' &&
+      event.ticker === 'MSFT'
+    );
+    expect(detailEvent).toMatchObject({
+      type: 'portfolio.reconciliation',
+      ticker: 'MSFT',
+      actor: { type: 'system' },
+      source: 'canonical-snapshot-detail-reconciliation'
+    });
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(detailEvent?.note).toContain('averageCost');
+    expect(detailEvent?.cashHoldingQuantityDelta).toBeUndefined();
+    expect(detailEvent?.netAmount).toBeUndefined();
+    expect(detailEvent?.realizedPnl).toBeUndefined();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
+      (finding) => finding.eventId === detailEvent?.id
+    )).toMatchObject({ disposition: 'incomplete' });
+    expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
+  });
+
+  it('records open broker-fee allocation changes made by Closed History Sync separately from closed-trade corrections', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const previousEventCount = before.transactionEvents?.length ?? 0;
+    const position = before.positions.AAPL;
+    const nextPositions = {
+      ...before.positions,
+      AAPL: {
+        ...position,
+        brokerMarginFeeAllocations: { 'open-fee-cashflow-1': 0.75 },
+        brokerMarginFee: 0.75
+      }
+    };
+
+    expect(store.commitClosedHistoryFeeSync(
+      { positions: nextPositions },
+      before.closedTrades || [],
+      before.transactionEvents || [],
+      true
+    )).toBe(true);
+
+    const events = store.getState().transactionEvents || [];
+    const detailEvent = events.slice(previousEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'closed-history-sync-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent).toBeDefined();
+    expect(detailEvent?.note).toContain('openBrokerFeeAllocations');
+    expect(detailEvent?.note).toContain('openBrokerFeeTotal');
+    expect(detailEvent?.fees).toBeUndefined();
+    expect(detailEvent?.realizedPnl).toBeUndefined();
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
+      (finding) => finding.eventId === detailEvent?.id
+    )).toMatchObject({ disposition: 'incomplete' });
+    expect(store.getState().positions.AAPL.brokerMarginFeeAllocations).toEqual({
+      'open-fee-cashflow-1': 0.75
+    });
+  });
+
+  it('keeps Closed History Sync open-fee detail and its audit event atomic when persistence fails', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const persistedBefore = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const position = before.positions.AAPL;
+    const nextPositions = {
+      ...before.positions,
+      AAPL: {
+        ...position,
+        brokerMarginFeeAllocations: { 'open-fee-cashflow-2': 0.5 },
+        brokerMarginFee: 0.5
+      }
+    };
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.commitClosedHistoryFeeSync(
+      { positions: nextPositions },
+      before.closedTrades || [],
+      before.transactionEvents || [],
+      true
+    )).toBe(false);
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(persistedBefore);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not classify quote or target-price refreshes as accounting-detail mutations', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const detailEventsBefore = (before.transactionEvents || []).filter((event) =>
+      event.source === 'canonical-snapshot-detail-reconciliation'
+    ).length;
+    const position = before.positions.AAPL;
+
+    expect(store.setState({
+      positions: {
+        ...before.positions,
+        AAPL: {
+          ...position,
+          currentPrice: 125,
+          pt: 140
+        }
+      }
+    })).toBe(true);
+
+    const detailEventsAfter = (store.getState().transactionEvents || []).filter((event) =>
+      event.source === 'canonical-snapshot-detail-reconciliation'
+    ).length;
+    expect(detailEventsAfter).toBe(detailEventsBefore);
+  });
+
+  it('keeps accounting-detail changes and their incomplete audit event atomic when persistence fails', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const persistedBefore = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const position = before.positions.AAPL;
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.setState({
+      positions: {
+        ...before.positions,
+        AAPL: {
+          ...position,
+          commBuy: position.commBuy + 1,
+          tranches: (position.tranches || []).map((tranche) => ({
+            ...tranche,
+            buyCommission: (tranche.buyCommission || 0) + 1
+          }))
+        }
+      }
+    })).toBe(false);
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(persistedBefore);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('does not publish a financial mutation or append its event when persistence fails', () => {
