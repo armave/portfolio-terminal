@@ -438,7 +438,7 @@ describe('cross-device financial header hierarchy', () => {
     expect(toolsComponent).toContain("translateText('Compare Exits', language)");
     expect(toolsComponent).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
     expect(toolsComponent).toContain("translateText('Live Order Book', language)");
-    expect(toolsComponent).not.toContain('market-tools-external');
+    expect(toolsComponent).toContain('market-tools-external');
     expect(styles).toContain('.market-tools-section--scenario .market-tools-grid');
     expect(styles).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
     expect(styles).toContain('.market-tool-card:focus-visible {');
