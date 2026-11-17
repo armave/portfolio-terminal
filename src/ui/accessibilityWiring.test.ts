@@ -183,6 +183,7 @@ describe('Stage 10 accessibility wiring', () => {
     const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
     const articleDialog = readSource('../components/MarketNewsArticleDialog.tsx');
     const summary = readSource('../components/SummaryMetricsGrid.tsx');
+    const summaryStyles = readSource('../../style.css');
 
     expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700 px-2 py-1 text-\[10px\] font-semibold text-cyan-300 disabled:opacity-50"/g)).toHaveLength(2);
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"');
@@ -194,7 +195,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(summary).toContain('class="market-tool-card market-tool-card--exit"');
     expect(summary).toContain('class="market-tool-card market-tool-card--ai"');
     expect(summary).toContain('class="market-tool-card market-tool-card--depth"');
-    expect(summary).toContain('min-height: 5.15rem;');
+    expect(summaryStyles).toContain('.market-tool-card {');
+    expect(summaryStyles).toContain('min-height: 5.15rem;');
     expect(summary).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
   });
