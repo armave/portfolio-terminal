@@ -1251,9 +1251,9 @@ try {
   }
   await assertResponsiveSurface(page, '#portfolioDataHealthDetails', 'administrator portfolio data-health details');
   await page.locator('#portfolioDataHealthToggle').click();
-  await assertVisibleControlsHaveNames(page, 'administrator dashboard');
   }
 
+  await assertVisibleControlsHaveNames(page, 'administrator dashboard');
   if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
     await assertStandardizedWorkspaceNavigation(page, 'admin');
   }
