@@ -48,6 +48,59 @@ function numeric(record: Record<string, unknown>, keys: string[]): number | null
   return null;
 }
 
+/** Normalize TradeNet last-trade time without treating client receipt or server time as market observation. */
+function parseTradeNetQuoteTimestamp(value: unknown, utcOffsetValue: unknown): number | null {
+  if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && /^[-+]?[0-9]+(?:[.][0-9]+)?$/.test(value.trim()))) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) return null;
+    return numericValue < 1e12 ? numericValue * 1000 : numericValue;
+  }
+  if (typeof value !== 'string') return null;
+
+  const timestamp = value.trim();
+  if (!timestamp) return null;
+
+  // An explicit ISO zone is stronger than the exchange offset metadata.
+  if (/(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(timestamp)) {
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  // TradeNet also sends local ISO ltt strings. They are only absolute when the
+  // same quote includes its UTCOffset (minutes east/west of UTC).
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:[.]([0-9]{1,3}))?$/.exec(timestamp);
+  if (!match) return null;
+  const offsetMinutes = typeof utcOffsetValue === 'number'
+    ? utcOffsetValue
+    : typeof utcOffsetValue === 'string' && utcOffsetValue.trim() !== ''
+      ? Number(utcOffsetValue)
+      : Number.NaN;
+  if (!Number.isInteger(offsetMinutes) || Math.abs(offsetMinutes) > 14 * 60) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fractionText = '0'] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const millisecond = Number(fractionText.padEnd(3, '0'));
+  const localAsUtc = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+  const validation = new Date(localAsUtc);
+
+  if (
+    validation.getUTCFullYear() !== year ||
+    validation.getUTCMonth() !== month - 1 ||
+    validation.getUTCDate() !== day ||
+    validation.getUTCHours() !== hour ||
+    validation.getUTCMinutes() !== minute ||
+    validation.getUTCSeconds() !== second
+  ) return null;
+
+  const parsed = localAsUtc - offsetMinutes * 60_000;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function normalizeFreedomQuote(payload: unknown, symbol: string): FreedomQuote | null {
   const record = firstObject(payload);
   if (!record) return null;
@@ -58,8 +111,15 @@ export function normalizeFreedomQuote(payload: unknown, symbol: string): Freedom
   const suppliedPercent = numeric(record, ["changePercent", "change_percent", "changePct", "change_pct", "dp", "pcp"]);
   const change = suppliedChange ?? (previousClose !== null ? price - previousClose : null);
   const changePercent = suppliedPercent ?? (previousClose !== null && change !== null && previousClose !== 0 ? change / previousClose * 100 : null);
-  const timestampRaw = numeric(record, ["time", "timestamp", "lastTradeTime", "last_trade_time", "trade_time", "ltt"]);
-  const sourceTimestamp = timestampRaw === null ? null : timestampRaw < 1e12 ? timestampRaw * 1000 : timestampRaw;
+  const timestampKeys = ["time", "timestamp", "lastTradeTime", "last_trade_time", "trade_time", "ltt"];
+  let sourceTimestamp: number | null = null;
+  for (const key of timestampKeys) {
+    const parsed = parseTradeNetQuoteTimestamp(record[key], record.UTCOffset ?? record.utcOffset);
+    if (parsed !== null) {
+      sourceTimestamp = parsed;
+      break;
+    }
+  }
   const rawMarketState = typeof record.marketStatus === "string"
     ? record.marketStatus.trim().toUpperCase()
     : typeof record.marketState === "string" ? record.marketState.trim().toUpperCase() : "";

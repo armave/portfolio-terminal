@@ -50,6 +50,10 @@ describe('Freedom quote stream app adapter', () => {
     const frameQueue = createScheduledFrameQueue();
     let currentSessionKey = 'admin:account-1';
     let requestSequence = 122;
+    const quoteReceivedAt = Date.now();
+    const quoteUtcOffsetMinutes = -300;
+    const firstTradeTime = new Date(quoteReceivedAt - 1_000 + quoteUtcOffsetMinutes * 60_000).toISOString().slice(0, 19);
+    const secondTradeTime = new Date(quoteReceivedAt - 59_000 + quoteUtcOffsetMinutes * 60_000).toISOString().slice(0, 19);
     const runtime = createFreedomQuoteStreamAppRuntime({
       createTicket: vi.fn(async () => ({ ticket: 'a'.repeat(64) })),
       buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
@@ -80,11 +84,11 @@ describe('Freedom quote stream app adapter', () => {
         bbp: 280.51,
         bap: 280.6,
         vol: 123456,
-        ltt: '2026-11-03T10:00:00',
-        UTCOffset: -300,
+        ltt: firstTradeTime,
+        UTCOffset: quoteUtcOffsetMinutes,
         owner_login: 'must-not-forward'
       },
-      receivedAt: 1_800_000_000_000
+      receivedAt: quoteReceivedAt
     });
 
     expect(recordQuote).toHaveBeenCalledTimes(1);
@@ -92,16 +96,17 @@ describe('Freedom quote stream app adapter', () => {
       'GOOGL',
       280.55,
       'Freedom TradeNet',
-      1_800_000_000_000,
+      quoteReceivedAt,
       expect.objectContaining({
         transport: 'websocket',
         price: 280.55,
         bid: 280.51,
         ask: 280.6,
-        freshness: 'unknown',
+        freshness: 'fresh',
+        sourceTimestamp: quoteReceivedAt - 1_000,
         requestSequence: 123
       }),
-      1_800_000_000_000
+      quoteReceivedAt
     );
     expect(renderAfterUpdate).not.toHaveBeenCalled();
     expect(frameQueue.frames).toHaveLength(1);
@@ -122,10 +127,10 @@ describe('Freedom quote stream app adapter', () => {
         bbp: 281.2,
         bap: 281.3,
         vol: 123999,
-        ltt: '2026-11-03T09:59:00',
-        UTCOffset: -300
+        ltt: secondTradeTime,
+        UTCOffset: quoteUtcOffsetMinutes
       },
-      receivedAt: 1_800_000_001_000
+      receivedAt: quoteReceivedAt + 1_000
     });
 
     expect(recordQuote).toHaveBeenCalledTimes(2);
@@ -134,15 +139,17 @@ describe('Freedom quote stream app adapter', () => {
       'GOOGL',
       281.25,
       'Freedom TradeNet',
-      1_800_000_001_000,
+      quoteReceivedAt + 1_000,
       expect.objectContaining({
         transport: 'websocket',
         price: 281.25,
         bid: 281.2,
         ask: 281.3,
+        freshness: 'fresh',
+        sourceTimestamp: quoteReceivedAt - 59_000,
         requestSequence: 124
       }),
-      1_800_000_001_000
+      quoteReceivedAt + 1_000
     );
     expect(renderAfterUpdate).toHaveBeenCalledTimes(1);
     expect(frameQueue.frames).toHaveLength(1);

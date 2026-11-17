@@ -155,7 +155,12 @@ export function PortfolioDataHealthPanel({
     brokerSnapshot?.provider,
     brokerSnapshot?.source
   ].filter((value): value is string => Boolean(value)).join(' · ');
-  const brokerTimestamp = formatSnapshotTime(observedAt, language, now);
+  const brokerTimestamp = typeof observedAt === 'number' && Number.isFinite(observedAt) && observedAt > 0
+    ? formatSnapshotTime(observedAt, language, now)
+    : [
+        translateText('Observation time unavailable', language),
+        `${translateText('Received', language)} ${formatSnapshotTime(brokerSnapshot?.receivedAt, language, now)}`
+      ].join(' · ');
   const guestSnapshotTime = formatSnapshotTime(guestSnapshot?.updatedAt, language, now);
 
   const handleSync = async (): Promise<void> => {

@@ -164,14 +164,16 @@ describe("normalizeFreedomQuote", () => {
         pp: "274.00",
         chg: "5.84",
         pcp: "2.1314",
-        ltt: "2026-10-31T16:54:00"
+        ltt: "2026-10-31T16:54:00",
+        UTCOffset: -300
       }]
     }, "GOOGL")).toMatchObject({
       symbol: "GOOGL",
       price: 279.84,
       previousClose: 274,
       change: 5.84,
-      changePercent: 2.1314
+      changePercent: 2.1314,
+      sourceTimestamp: Date.UTC(2026, 9, 31, 21, 54)
     });
   });
 
@@ -278,7 +280,7 @@ describe("normalizeFreedomQuote", () => {
     await expect(fetchFreedomQuoteWebSocket("AAPL")).rejects.toThrow("unsupported quote payload");
   });
 
-  it("normalizes a close market state without guessing a source timestamp from ISO local time", () => {
+  it("normalizes a local ISO last-trade time using the quote's explicit UTC offset", () => {
     const quote = normalizeFreedomQuote({
       q: [{
         c: "GOOGL.US", ltp: 280.55, pp: 279.84, chg: 0.72, pcp: 0.26,
@@ -290,11 +292,28 @@ describe("normalizeFreedomQuote", () => {
     expect(quote).toMatchObject({
       price: 280.55,
       marketState: "CLOSED",
-      sourceTimestamp: null,
+      sourceTimestamp: Date.UTC(2026, 10, 3, 0, 19, 38),
       lastTradeTime: "2026-11-02T19:19:38",
       utcOffset: -300,
       serverTime: "2026-11-03 10:30:50.880"
     });
+  });
+
+  it("keeps local ISO timestamps unknown when TradeNet omits a valid UTC offset", () => {
+    const quote = normalizeFreedomQuote({
+      q: [{ c: "GOOGL.US", ltp: 280.55, ltt: "2026-11-02T19:19:38" }]
+    }, "GOOGL");
+
+    expect(quote?.sourceTimestamp).toBeNull();
+    expect(quote?.lastTradeTime).toBe("2026-11-02T19:19:38");
+  });
+
+  it("uses an explicit ISO timezone suffix without applying UTCOffset twice", () => {
+    const quote = normalizeFreedomQuote({
+      q: [{ c: "GOOGL.US", ltp: 280.55, ltt: "2026-11-02T19:19:38Z", UTCOffset: -300 }]
+    }, "GOOGL");
+
+    expect(quote?.sourceTimestamp).toBe(Date.UTC(2026, 10, 2, 19, 19, 38));
   });
 
   it("rejects empty, malformed, and non-positive prices", () => {

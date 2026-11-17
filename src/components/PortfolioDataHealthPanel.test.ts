@@ -31,6 +31,13 @@ describe('Portfolio Data Health panel', () => {
     expect(source).toContain('isSyncPending');
   });
 
+  it('distinguishes client receipt time from unavailable provider observation time', () => {
+    expect(source).toContain("translateText('Observation time unavailable', language)");
+    expect(source).toContain("translateText('Received', language)");
+    expect(source).toContain('formatSnapshotTime(brokerSnapshot?.receivedAt, language, now)');
+    expect(source).toContain("typeof observedAt === 'number'");
+  });
+
   it('opens an accessible modal and restores keyboard focus to the header trigger', () => {
     expect(source).toContain("import { createPortal } from 'preact/compat'");
     expect(source).toContain("import { useDialogFocus } from '../ui/dialogFocus'");

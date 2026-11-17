@@ -44,11 +44,11 @@ The application remains a shared administrator owner workspace with guest projec
 - `stale` and `unavailable` remain explicit states.
 - Missing status, quality, or observation-time evidence is `unknown`.
 
-The broker's receive time is not substituted for its provider observation time.
+The broker's receive time is not substituted for its provider observation time. The modal displays the client receipt time separately when the provider timestamp is absent; the broker observation status remains unknown. TradeNet's documented portfolio event does not define a provider observation timestamp for the whole snapshot.
 
 ### Quotes
 
-The panel reuses `getQuoteFreshness`, `summarizeQuoteFreshness`, and `formatQuoteFreshnessSummary` from `src/utils/formatters.ts`. It follows the role-specific refresh interval already used by the application. Missing prices remain unavailable/not fetched; unknown observation times remain unknown. Delayed and stale classifications are not promoted to fresh.
+The panel reuses `getQuoteFreshness`, `summarizeQuoteFreshness`, and `formatQuoteFreshnessSummary` from `src/utils/formatters.ts`. It follows the role-specific refresh interval already used by the application. TradeNet local ISO `ltt` values are converted only when the quote includes a valid `UTCOffset`; explicit timezone suffixes are used directly. Missing offsets, timestamps, and prices remain unknown/unavailable. Delayed and stale classifications are not promoted to fresh.
 
 For administrators, the summary covers margin positions and positive-share cash holdings, matching the existing Margin summary's quote-coverage inputs. For guests, it covers only the assigned tranche projection.
 
