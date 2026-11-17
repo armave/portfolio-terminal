@@ -9,5 +9,6 @@
     "posix.js",
     "lib"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "types": "index.d.ts"
 }
