@@ -66,15 +66,20 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
   });
 
-  it('uses a paired-card financial summary with a full-width costs footer', () => {
-    expect(stylesheet).toContain('.portfolio-micro-summary--redesigned');
-    expect(stylesheet).toContain('grid-template-areas:');
-    expect(stylesheet).toContain('"market basis"');
-    expect(stylesheet).toContain('"costs costs"');
-    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-market\s*\{[^}]*grid-area:\s*market;/s);
-    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-basis\s*\{[^}]*grid-area:\s*basis;/s);
-    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-costs\s*\{[^}]*grid-area:\s*costs;/s);
-    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
+  it('keeps Share and Tranches as equal-height panels with costs nested inside Tranches', () => {
+    const redesignedStyles = stylesheet.slice(
+      stylesheet.indexOf('.portfolio-health-summary-column > .portfolio-micro-summary--redesigned'),
+      stylesheet.indexOf('/* Purchase tranche ledger modal;')
+    );
+    expect(redesignedStyles).toContain('.portfolio-micro-summary--redesigned');
+    expect(redesignedStyles).toContain('"market basis"');
+    expect(redesignedStyles).not.toContain('"costs costs"');
+    expect(redesignedStyles).toMatch(/grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-market\s*\{[^}]*grid-area:\s*market;/s);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-basis\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s+\.portfolio-micro-costs\s*\{(?=[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\))(?=[^}]*margin-top:\s*auto;)[^}]*\}/s);
+    expect(redesignedStyles).not.toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-costs/);
+    expect(redesignedStyles).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)[\s\S]*?grid-template-areas:[\s\S]*?"market"[\s\S]*?"basis"/);
   });
 
   it('styles the tranche details modal and keeps the lot table independently scrollable', () => {

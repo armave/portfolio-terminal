@@ -362,6 +362,14 @@ describe('cross-device financial header hierarchy', () => {
     expect(healthColumn).toContain(`role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}`);
     expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
     expect(healthColumn).toContain(`role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}`);
+    const combinedTranchesPanel = healthColumn.slice(
+      healthColumn.indexOf('class="portfolio-micro-column portfolio-micro-basis"'),
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(combinedTranchesPanel).toContain('class="portfolio-micro-costs"');
+    expect(combinedTranchesPanel).toContain('id="boardComms"');
+    expect(combinedTranchesPanel).toContain('id="boardMarginCharged"');
+    expect(healthColumn).not.toContain('class="portfolio-micro-column portfolio-micro-costs"');
     expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-column {');
     expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-value {');
     expect(source).not.toContain('class="portfolio-micro-heading"');
@@ -390,6 +398,14 @@ describe('cross-device financial header hierarchy', () => {
       healthColumn.indexOf('<MarginRiskGaugeCard')
     );
     expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
+    const tickerTranchesPanel = healthColumn.slice(
+      healthColumn.indexOf('class="portfolio-micro-column portfolio-micro-basis"'),
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(tickerTranchesPanel).toContain('class="portfolio-micro-costs"');
+    expect(tickerTranchesPanel).toContain('id="boardComms"');
+    expect(tickerTranchesPanel).toContain('id="boardMarginCharged"');
+    expect(healthColumn).not.toContain('class="portfolio-micro-column portfolio-micro-costs"');
   });
 
   it('keeps the financial summary and Account Equity Health in the first column beside Market Tools', () => {

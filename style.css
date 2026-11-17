@@ -5569,14 +5569,14 @@ table tbody tr:hover {
   padding-inline: 0.35rem;
 }
 
-/* Position financial summary redesign: valuation and purchase basis are peer cards;
-   commissions and accrued interest form a separate footer across the full width. */
+/* Position financial summary: Share and Tranches are equal-height peer panels;
+   commissions and accrued interest live inside the Tranches panel. */
 .portfolio-health-summary-column > .portfolio-micro-summary--redesigned {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-areas:
-    "market basis"
-    "costs costs";
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "market basis";
+  align-items: stretch;
   gap: 0.7rem;
   padding: 0.7rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -5588,7 +5588,12 @@ table tbody tr:hover {
 }
 
 .portfolio-micro-summary--redesigned > .portfolio-micro-column {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 0.75rem;
   background: rgba(15, 23, 42, 0.46);
@@ -5606,17 +5611,20 @@ table tbody tr:hover {
 .portfolio-micro-summary--redesigned > .portfolio-micro-basis {
   grid-area: basis;
   order: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   border-left: 0 !important;
   box-shadow: inset 2px 0 0 rgba(52, 211, 153, 0.45);
 }
 
-.portfolio-micro-summary--redesigned > .portfolio-micro-costs {
-  grid-area: costs;
-  order: 3;
+.portfolio-micro-summary--redesigned .portfolio-micro-costs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   gap: 0.75rem;
+  margin-top: auto;
+  min-width: 0;
   border: 0 !important;
   border-top: 1px solid rgba(148, 163, 184, 0.17) !important;
   border-radius: 0;
@@ -5719,15 +5727,15 @@ table tbody tr:hover {
 @container portfolio-health-summary (max-width: 30rem) {
   .portfolio-health-summary-column > .portfolio-micro-summary--redesigned {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     grid-template-areas:
       "market"
-      "basis"
-      "costs";
+      "basis";
   }
 }
 
 @container portfolio-health-summary (max-width: 24rem) {
-  .portfolio-micro-summary--redesigned > .portfolio-micro-costs {
+  .portfolio-micro-summary--redesigned .portfolio-micro-costs {
     grid-template-columns: minmax(0, 1fr);
   }
 }

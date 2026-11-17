@@ -652,6 +652,11 @@ async function assertFinancialHeaderLayout(page, view) {
         .map((cell) => cell.getBoundingClientRect().width);
       const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
       const summary = healthColumn?.querySelector('.portfolio-micro-summary');
+      const marketSection = summary?.querySelector('.portfolio-micro-market');
+      const basisSection = summary?.querySelector('.portfolio-micro-basis');
+      const feesSection = basisSection?.querySelector('.portfolio-micro-costs');
+      const marketSectionBounds = marketSection?.getBoundingClientRect();
+      const basisSectionBounds = basisSection?.getBoundingClientRect();
       const health = healthColumn?.querySelector('.margin-risk-gauge-card');
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
       const healthColumnBounds = healthColumn?.getBoundingClientRect();
@@ -730,6 +735,12 @@ async function assertFinancialHeaderLayout(page, view) {
         healthColumnBottom: healthColumnBounds?.bottom ?? null,
         healthColumnWidth: healthColumnBounds?.width ?? null,
         summaryColumnCount: summary ? getComputedStyle(summary).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        costsInsideTranches: Boolean(feesSection && feesSection.parentElement === basisSection),
+        costsRowCount: feesSection?.querySelectorAll('.portfolio-micro-row').length ?? 0,
+        marketAndTranchesSameHeight: Boolean(
+          marketSectionBounds && basisSectionBounds &&
+          Math.abs(marketSectionBounds.height - basisSectionBounds.height) <= 3
+        ),
         summaryHeight: summaryBounds?.height ?? 0,
         summaryValueFontSize: summary?.querySelector('.portfolio-metric-value')
           ? Number.parseFloat(getComputedStyle(summary.querySelector('.portfolio-metric-value')).fontSize)
@@ -773,6 +784,12 @@ async function assertFinancialHeaderLayout(page, view) {
     }
     if (layout.targetReturnCount !== (view === 'combined' ? 1 : 0)) {
       throw new Error('Ticker target return is duplicated or the Combined KPI is missing: ' + JSON.stringify(layout));
+    }
+    if (!layout.costsInsideTranches || layout.costsRowCount !== 2) {
+      throw new Error('Total commission and accrued margin interest must be inside the Tranches panel: ' + JSON.stringify(layout));
+    }
+    if (layout.summaryColumnCount > 1 && !layout.marketAndTranchesSameHeight) {
+      throw new Error('Share/Market Valuation and Tranches panels must have equal heights when side-by-side: ' + JSON.stringify(layout));
     }
     if (view === 'ticker') {
       const target = layout.marginTargetBounds;
