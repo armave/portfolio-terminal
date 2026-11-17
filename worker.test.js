@@ -2004,6 +2004,112 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     return new PortfolioStateDO(ctx, env);
   }
 
+  function makeAuthenticatedDigestWorker(role = 'admin') {
+    const store = makeDurableObject(null, { MARGIN_DIGEST_ENCRYPTION_REQUIRED: 'true' });
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'digest-test-user', role } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return store.fetch(request);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    return {
+      store,
+      stateStub,
+      namespace,
+      env: { PORTFOLIO_STATE_DO: namespace }
+    };
+  }
+
+  it('enforces encrypted digest writes through the authenticated Worker route and preserves read revisions', async () => {
+    const { store, stateStub, namespace, env } = makeAuthenticatedDigestWorker();
+    const adminHeaders = { 'X-App-Auth': 'admin-session' };
+    const post = (body, revision) => worker.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: {
+        ...adminHeaders,
+        'Content-Type': 'application/json',
+        'If-Match': `"${revision}"`
+      },
+      body: JSON.stringify(body)
+    }), env);
+
+    const plaintext = await post({
+      key: 'portfolio',
+      title: 'Legacy portfolio review',
+      analysis: 'must never be accepted',
+      articles: [],
+      syncedAt: '2026-11-17T00:00:00.000Z'
+    }, 0);
+    expect(plaintext.status).toBe(400);
+    await expect(plaintext.json()).resolves.toMatchObject({
+      error: 'Margin digest encryption is required.'
+    });
+
+    const envelope = {
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAA'
+    };
+    const encryptedWrite = await post(envelope, 0);
+    expect(encryptedWrite.status).toBe(200);
+    expect(encryptedWrite.headers.get('ETag')).toBe('"1"');
+
+    const read = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio',
+      { headers: adminHeaders }
+    ), env);
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"1"');
+    await expect(read.json()).resolves.toEqual(envelope);
+
+    const staleWrite = await post({
+      key: 'portfolio',
+      encryptedPayload: 'aesgcm:v2:BBBBBBBBBBBBBBBB:BBBBBBBBBBBBBBBBBBBBBBBB'
+    }, 0);
+    expect(staleWrite.status).toBe(409);
+    expect(staleWrite.headers.get('ETag')).toBe('"1"');
+
+    const latest = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    await expect(latest.json()).resolves.toEqual(envelope);
+    expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify',
+      '/api/auth/verify',
+      '/api/margin-digest',
+      '/api/auth/verify',
+      '/api/margin-digest',
+      '/api/auth/verify',
+      '/api/margin-digest'
+    ]);
+  });
+
+  it('keeps Margin Intelligence digest reads administrator-only at the public Worker boundary', async () => {
+    const { stateStub, env } = makeAuthenticatedDigestWorker('guest');
+
+    const unauthenticated = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio'
+    ), env);
+    expect(unauthenticated.status).toBe(401);
+
+    const guest = await worker.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=portfolio',
+      { headers: { 'X-App-Auth': 'guest-session' } }
+    ), env);
+    expect(guest.status).toBe(403);
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify'
+    ]);
+  }
+
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
     const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
