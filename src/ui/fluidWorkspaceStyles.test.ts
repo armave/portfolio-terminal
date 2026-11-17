@@ -66,6 +66,26 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
   });
 
+  it('uses a paired-card financial summary with a full-width costs footer', () => {
+    expect(stylesheet).toContain('.portfolio-micro-summary--redesigned');
+    expect(stylesheet).toContain('grid-template-areas:');
+    expect(stylesheet).toContain('"market basis"');
+    expect(stylesheet).toContain('"costs costs"');
+    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-market\s*\{[^}]*grid-area:\s*market;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-basis\s*\{[^}]*grid-area:\s*basis;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-costs\s*\{[^}]*grid-area:\s*costs;/s);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
+  });
+
+  it('styles the tranche details modal and keeps the lot table independently scrollable', () => {
+    expect(stylesheet).toContain('.tranche-details-backdrop');
+    expect(stylesheet).toContain('.tranche-details-dialog');
+    expect(stylesheet).toContain('.tranche-details-table-scroll');
+    expect(stylesheet).toContain('overflow: auto;');
+    expect(stylesheet).toContain('.tranche-details-table thead th');
+    expect(stylesheet).toContain('@media (max-width: 640px)');
+  });
+
   it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-table,\s*\.desktop-workspace-grid #projectionTableContainer \.projection-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*max-content;[^}]*table-layout:\s*auto;/s);

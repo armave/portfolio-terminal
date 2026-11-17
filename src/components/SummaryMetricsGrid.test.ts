@@ -465,4 +465,5 @@ describe('cross-device financial header hierarchy', () => {
     expect(singleTickerView).toContain('<TrancheDetailsModal');
     expect(singleTickerView).not.toContain('boardTranchesOverflow');
     expect(singleTickerView).not.toContain('expandedTrancheTicker');
-  });});
+  });
+});

@@ -432,6 +432,46 @@ async function captureUxReviewScreenshots(page, surface) {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+
+  if (view === 'ticker') {
+    const trigger = page.locator('[data-tranche-details-trigger]');
+    await trigger.waitFor({ state: 'visible', timeout: 10_000 });
+    const expectedCount = Number(await trigger.getAttribute('data-tranche-count'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await trigger.click();
+    const dialog = page.locator('#trancheDetailsDialog');
+    await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+    const modalState = await dialog.evaluate((element) => {
+      const content = element.querySelector('.tranche-details-content');
+      const scroll = element.querySelector('.tranche-details-table-scroll');
+      const table = scroll?.querySelector('table');
+      const rect = element.getBoundingClientRect();
+      return {
+        role: element.getAttribute('role'),
+        modal: element.getAttribute('aria-modal'),
+        labelledBy: element.getAttribute('aria-labelledby'),
+        count: Number(content?.getAttribute('data-tranche-count')),
+        rows: element.querySelectorAll('[data-tranche-row]').length,
+        headers: Array.from(element.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() || ''),
+        scrollable: Boolean(scroll && table && table.scrollWidth > scroll.clientWidth),
+        dialogWithinViewport: rect.left >= -1 && rect.right <= document.documentElement.clientWidth + 1 &&
+          rect.top >= -1 && rect.bottom <= window.innerHeight + 1
+      };
+    });
+    const requiredHeaders = ['Tranche', 'Date', 'Quantity', 'Entry price', 'Cost basis', 'Buy commission'];
+    if (modalState.role !== 'dialog' || modalState.modal !== 'true' ||
+        modalState.labelledBy !== 'trancheDetailsTitle' ||
+        modalState.count !== expectedCount || modalState.rows !== expectedCount ||
+        requiredHeaders.some((header) => !modalState.headers.includes(header)) ||
+        !modalState.scrollable || !modalState.dialogWithinViewport) {
+      throw new Error('The tranche details modal must show every lot in an accessible, scrollable responsive table: ' + JSON.stringify(modalState));
+    }
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached', timeout: 5_000 });
+    const focusRestored = await trigger.evaluate((element) => document.activeElement === element);
+    if (!focusRestored) throw new Error('Closing the tranche details modal must restore focus to its trigger.');
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
 }
 
 async function assertResponsiveLayout(page, width) {
