@@ -34,6 +34,8 @@ This directory contains maintained product and engineering references, current o
 
 ## Delivery workstreams
 
+- [Remaining work implementation plan](remaining-work-implementation-plan.md) — dependency-ordered plan for active PT-02, PT-04, PT-05, PT-16 and PT-17 issues, including manual approval and production-verification gates.
+
 - [Wave 2 delivery record](wave-2/README.md) — completed foundation streams and their integration history.
 - [Wave 2 performance methodology](wave-2/performance-methodology.md) — deterministic performance-calculation input and quality contract.
 - [Wave 2.5 transparency slice](wave-2.5/README.md) — investor-facing explanations of existing calculations and data quality.
