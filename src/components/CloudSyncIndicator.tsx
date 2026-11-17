@@ -97,7 +97,7 @@ export function CloudSyncIndicator({
       ? `${translateText('Last synced', language)}: ${exactTime}`
       : translateText(cloudSyncStatus.text || cloudStatus.text || 'Offline', language);
   const accessibleText = [
-    'KV',
+    translateText('Cloud sync', language),
     statusLabel,
     relativeTime,
     exactTime ? `${translateText('Last synced', language)}: ${exactTime}` : ''
@@ -119,7 +119,7 @@ export function CloudSyncIndicator({
         onClick={() => setDetailsOpen((open) => !open)}
       >
         <span class="cloud-sync-indicator__dot" aria-hidden="true" />
-        <span class="cloud-sync-indicator__primary">KV</span>
+        <span class="cloud-sync-indicator__primary">{translateText('Cloud', language)}</span>
       </button>
       {detailsText && (
         <span id="cloudStatusExactTime" class="cloud-sync-indicator__timestamp" role="tooltip">
