@@ -220,6 +220,12 @@ The project uses **Vitest** for test execution and TypeScript for static type va
 # Run automated tests
 npm test
 
+# Run JavaScript/TypeScript correctness lint
+npm run lint
+
+# Run financial-domain/store/Worker coverage with enforced thresholds
+npm run test:coverage
+
 # Run focused financial, transaction, persistence, and Worker integrity regressions
 npm run test:financial
 

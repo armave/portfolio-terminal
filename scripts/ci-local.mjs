@@ -53,7 +53,9 @@ function node(...args) {
 const steps = [
   ...(!skipInstall ? [{ label: 'Install exact lockfile dependencies', run: () => npm('ci') }] : []),
   { label: 'TypeScript typecheck', run: () => npm('run', 'typecheck') },
+  { label: 'Oxlint JavaScript, TypeScript and JSX', run: () => npm('run', 'lint') },
   { label: 'Vitest unit and Worker suite', run: () => npm('test') },
+  { label: 'Vitest financial-domain and Worker coverage', run: () => npm('run', 'test:coverage') },
   { label: 'Vite development server smoke', run: () => npm('run', 'test:dev-server') },
   { label: 'Production build', run: () => npm('run', 'build') },
   { label: 'Install pinned Playwright runner', run: () => npm('run', 'setup:browser-tests') },

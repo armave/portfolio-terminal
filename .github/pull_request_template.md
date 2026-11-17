@@ -20,6 +20,8 @@ Describe the user-visible or operational outcome and why this change is needed.
 
 - [ ] `npm run typecheck`
 - [ ] `npm test`
+- [ ] `npm run lint`
+- [ ] `npm run test:coverage` (review threshold and per-module coverage report)
 - [ ] `npm run test:financial` (or confirm the path-filtered Financial Integrity Regression workflow ran when applicable)
 - [ ] `npm run build`
 - [ ] `npm run validate:dead-code`

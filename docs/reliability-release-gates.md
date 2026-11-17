@@ -254,7 +254,11 @@ The first full-history scan reported nine historic matches. Source inspection fo
 
 ### Coverage status
 
-This CI hardening slice does not add a numeric Vitest coverage threshold or coverage artifact. The current lockfile does not include a Vitest coverage provider, and no measured module-level baseline is recorded. Add a version-matched coverage provider and focused domain/store/Worker thresholds in a follow-up that updates and validates `package.json` and `package-lock.json` together; do not introduce arbitrary global thresholds.
+Vitest uses the version-matched V8 provider and uploads JSON/JSON-summary reports as a CI artifact. Coverage is scoped to selected financial-domain, portfolio-store, Worker and Durable Object modules rather than UI files or generated code. The measured aggregate baseline is 84.17% lines, 80.91% statements, 88.36% functions and 75.45% branches. Enforced floors are 80%, 80%, 85% and 70%, respectively. The detailed per-module baseline and measurement method are recorded in `docs/ci/coverage-baseline-2026-11-17.md`. Raise these floors only after reviewing the report and adding tests; do not lower them to mask a regression.
+
+### Lint status
+
+Oxlint is integrated into PR CI and `npm run ci:local`. The initial enforced policy deliberately covers a small set of correctness defects (duplicate object keys, unreachable code, constant binary expressions and unsafe `finally` control flow). Test files are excluded because the repository's existing Vitest patterns use conditional assertions and flexible mock signatures that are validated by Vitest and TypeScript instead. Expand the lint rules in small, reviewed increments; do not enable broad style/pedantic presets without first auditing their impact.
 
 
 ## 9. CI and configuration refinements — 2026-11-17
@@ -273,4 +277,11 @@ Committed workflow files cannot configure GitHub branch rules or environment pro
 2. Add a corresponding `dev` ruleset requiring pull requests and the appropriate CI/security checks. The Financial Integrity Regression workflow is path-filtered, so do not make it a globally required check unless it is changed to report a successful no-op for unrelated paths.
 3. Configure `cloudflare-production` with the intended deployment branch restriction (`main`) and required reviewer(s); keep the Cloudflare API token and account ID in the protected secret scope used by the deployment.
 
-Coverage thresholds and a lint framework are intentionally not introduced in this change: the repository has no coverage provider or measured module-level baseline, and changing tooling requires a generated and verified lockfile. Establish coverage with a Vitest-version-matched provider and evidence-based module thresholds rather than an arbitrary global percentage.
+At the time this section was written, a coverage provider, measured baseline and lint framework were deferred. Those items have since been implemented and verified as described in section 10 below.
+
+
+## 10. Coverage, lint and repository protection follow-up — 2026-11-17
+
+The CI baseline is now measured and enforced. GitHub rulesets and environment-review configuration remain repository-administration settings, not file-level workflow configuration. Importable ruleset payload examples are stored in `docs/ci/github-rulesets/`; review the exact check contexts in GitHub's ruleset editor before saving.
+
+Production coverage is intentionally separated from test-file lint. Coverage thresholds use aggregate coverage across the explicit financial/store/Worker source set; individual module percentages are reported for prioritization, not yet independently gated. The weakest measured selected module is `src/store/portfolioSubscriptions.ts` at 46.66% lines, followed by `state-store.js` at 77.29% and `worker.js` at 78.92%. Improve those with focused tests rather than lowering the aggregate floors.
