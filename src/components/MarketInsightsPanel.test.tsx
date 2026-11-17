@@ -4,6 +4,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import {
   formatNewsRelativeTime,
   getClosestDatedMarketEvents,
+  getSafeNewsArticleUrl,
   getStocktwitsCashtags,
   getVisibleStocktwitsMessages,
   hasStocktwitsCommentary,
@@ -219,5 +220,34 @@ describe('earnings and daily history request wiring', () => {
     expect(source).toContain('portfolioStore.recordMarketHistoryCorrection(event)');
     expect(source).toContain('createMarketHistoryCorrectionEvent({');
     expect(source).toContain("marketEventLabel('Manual corrections affect this history list only; saved portfolio valuations and P&L are not rewritten.')");
+  });
+});
+
+
+describe('getSafeNewsArticleUrl', () => {
+  it('keeps absolute HTTP and HTTPS article links', () => {
+    expect(getSafeNewsArticleUrl('https://example.com/article?id=1')).toBe('https://example.com/article?id=1');
+    expect(getSafeNewsArticleUrl('http://example.com/story')).toBe('http://example.com/story');
+  });
+
+  it('rejects script, data, file, and other non-web schemes', () => {
+    for (const value of [
+      'javascript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'file:///etc/passwd',
+      'ftp://example.com/article',
+      '//example.com/article',
+      '/relative/article'
+    ]) {
+      expect(getSafeNewsArticleUrl(value)).toBeNull();
+    }
+  });
+
+  it('rejects malformed, credential-bearing, missing, and oversized URLs', () => {
+    expect(getSafeNewsArticleUrl('not a url')).toBeNull();
+    expect(getSafeNewsArticleUrl('https://user:pass@example.com/article')).toBeNull();
+    expect(getSafeNewsArticleUrl('')).toBeNull();
+    expect(getSafeNewsArticleUrl(null)).toBeNull();
+    expect(getSafeNewsArticleUrl('https://example.com/' + 'x'.repeat(2_050))).toBeNull();
   });
 });

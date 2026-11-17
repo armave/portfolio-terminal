@@ -23,6 +23,10 @@ This directory contains maintained product and engineering references, current o
 
 ## Security and release quality
 
+- [PT-16 tenant-key lifecycle ADR](pt16-tenant-key-lifecycle-adr.md) — proposed DEK/KEK ownership, versioned envelopes, unwrap boundary and rotation/recovery state machine.
+- [PT-16 data lifecycle inventory](pt16-data-lifecycle-inventory.md) — observed financial-data storage surfaces and proposed retention/export/deletion controls.
+- [PT-16 browser security review](pt16-browser-security-review.md) — GitHub Pages CSP boundary, XSS surfaces and credential-exposure test plan.
+
 - [PT-16 security and data-lifecycle threat model](security-threat-model-pt-16.md) — observed controls and residual risks; not a penetration test.
 - [Reliability, performance, observability, and release gates](reliability-release-gates.md) — exact-head CI, browser evidence, and operational limits.
 - [CI coverage baseline — 2026-11-17](ci/coverage-baseline-2026-11-17.md) — measured V8 coverage, selected financial/store/Worker modules, and aggregate regression floors.
