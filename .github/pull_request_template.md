@@ -20,6 +20,7 @@ Describe the user-visible or operational outcome and why this change is needed.
 
 - [ ] `npm run typecheck`
 - [ ] `npm test`
+- [ ] `npm run test:financial` (or confirm the path-filtered Financial Integrity Regression workflow ran when applicable)
 - [ ] `npm run build`
 - [ ] `npm run validate:dead-code`
 - [ ] `npm run audit:dependencies`
@@ -37,7 +38,7 @@ Describe the user-visible or operational outcome and why this change is needed.
 
 - [ ] English strings updated where needed.
 - [ ] Russian strings updated where needed.
-- [ ] Translation parity tests pass.
+- [ ] Translation parity tests pass, including Russian dictionary interpolation-placeholder parity.
 - [ ] Keyboard navigation, accessible names, focus behavior, and responsive layouts reviewed where UI changed.
 - [ ] No user-facing changes; localization/accessibility are not applicable.
 
