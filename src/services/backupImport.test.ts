@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalizePortfolioBackup } from '../domain/portfolio';
 import { commitPortfolioBackupImport } from './backupImport';
@@ -5,30 +6,22 @@ import { commitPortfolioBackupImport } from './backupImport';
 describe('commitPortfolioBackupImport', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('rejects an invalid backup before replacing or persisting the active portfolio', () => {
-    const previous = { activeView: 'AAPL', balance: 100 };
-    let active = previous;
-    const replaceState = vi.fn((next: typeof previous) => { active = next; });
-    const persistState = vi.fn(() => true);
+  it('rejects an invalid backup before invoking the atomic store commit', () => {
+    const commitState = vi.fn(() => true);
 
     expect(() => {
       const imported = normalizePortfolioBackup({
         positions: null,
         holdings: [{ ticker: 'AAPL' }]
       }, 10_000);
-      commitPortfolioBackupImport(imported, previous, replaceState, persistState);
+      commitPortfolioBackupImport(imported, commitState);
     }).toThrow('Invalid positions in portfolio backup: expected an object keyed by ticker.');
 
-    expect(active).toBe(previous);
-    expect(replaceState).not.toHaveBeenCalled();
-    expect(persistState).not.toHaveBeenCalled();
+    expect(commitState).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed closed-history rows before replacing or persisting the active portfolio', () => {
-    const previous = { activeView: 'AAPL', balance: 100 };
-    let active = previous;
-    const replaceState = vi.fn((next: typeof previous) => { active = next; });
-    const persistState = vi.fn(() => true);
+  it('rejects malformed closed-history rows before invoking the atomic store commit', () => {
+    const commitState = vi.fn(() => true);
 
     expect(() => {
       const imported = normalizePortfolioBackup({
@@ -40,15 +33,13 @@ describe('commitPortfolioBackupImport', () => {
           netProfit: 25
         }, null]
       }, 10_000);
-      commitPortfolioBackupImport(imported, previous, replaceState, persistState);
+      commitPortfolioBackupImport(imported, commitState);
     }).toThrow('Invalid closedTrades in portfolio backup: each history row must be an object.');
 
-    expect(active).toBe(previous);
-    expect(replaceState).not.toHaveBeenCalled();
-    expect(persistState).not.toHaveBeenCalled();
+    expect(commitState).not.toHaveBeenCalled();
   });
 
-  it('normalizes and commits a legacy holdings backup as canonical positions', () => {
+  it('passes a normalized legacy holdings backup to the atomic commit exactly once', () => {
     const previous = { activeView: 'COMBINED', balance: 0 };
     let active: unknown = previous;
     let persisted: unknown = null;
@@ -61,14 +52,17 @@ describe('commitPortfolioBackupImport', () => {
         tranches: [{ id: 'legacy-wdc', shares: 30, entryPrice: 11.5, purchaseDate: '2026-10-15' }]
       }]
     }, 10_000);
+    const commitState = vi.fn((next: unknown) => {
+      // Models the store's atomic persist-before-publish contract.
+      persisted = structuredClone(next);
+      active = next;
+      return true;
+    });
 
-    commitPortfolioBackupImport(
-      imported,
-      previous,
-      (next) => { active = next; },
-      () => { persisted = structuredClone(active); return true; }
-    );
+    commitPortfolioBackupImport(imported, commitState);
 
+    expect(commitState).toHaveBeenCalledTimes(1);
+    expect(commitState).toHaveBeenCalledWith(imported);
     expect((active as ReturnType<typeof normalizePortfolioBackup>).positions.WDC).toMatchObject({
       ticker: 'WDC',
       shares: 30,
@@ -78,7 +72,7 @@ describe('commitPortfolioBackupImport', () => {
     expect(previous).toEqual({ activeView: 'COMBINED', balance: 0 });
   });
 
-  it('preserves broker position evidence and integrity warnings across backup import', () => {
+  it('preserves broker position evidence and integrity warnings through the atomic commit', () => {
     const brokerAccountInfo = {
       loaded: true,
       receivedAt: 1_800_000_000_000,
@@ -118,13 +112,12 @@ describe('commitPortfolioBackupImport', () => {
       cashCushion: { freeCash: 0, holdings: [] },
       brokerAccountInfo
     }, 10_000);
-    const previous = normalizePortfolioBackup({
-      balance: 0,
-      positions: {},
-      cashCushion: { freeCash: 0, holdings: [] }
-    }, 9_999);
-    let active: unknown = previous;
-    commitPortfolioBackupImport(imported, previous, (next) => { active = next; }, () => true);
+    let active: unknown = null;
+
+    commitPortfolioBackupImport(imported, (next) => {
+      active = next;
+      return true;
+    });
 
     expect((active as any).brokerAccountInfo).toMatchObject({
       quality: 'partial',
@@ -134,38 +127,44 @@ describe('commitPortfolioBackupImport', () => {
     });
   });
 
-  it('persists the replacement only after activating it', () => {
-    const previous = { activeView: 'AAPL', balance: 100 };
-    const imported = { activeView: 'MSFT', balance: 250 };
-    let active = previous;
-    const replaceState = vi.fn((next: typeof previous) => { active = next; });
-    const persistState = vi.fn(() => active === imported);
+  it('wires the application file-import flow to one local store commit before cloud sync', () => {
+    const appSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+    const importStart = appSource.indexOf('async function importBackupFile(file: File) {');
+    const importEnd = appSource.indexOf('\nlet appInitialized', importStart);
+    expect(importStart).toBeGreaterThanOrEqual(0);
+    expect(importEnd).toBeGreaterThan(importStart);
 
-    expect(() => commitPortfolioBackupImport(imported, previous, replaceState, persistState)).not.toThrow();
-    expect(active).toBe(imported);
-    expect(persistState).toHaveBeenCalledTimes(1);
+    const importFlow = appSource.slice(importStart, importEnd);
+    expect(importFlow).toContain('commitPortfolioBackupImport(');
+    expect(importFlow).toContain('(snapshot) => portfolioStore.importState(snapshot as any)');
+    expect(importFlow).not.toContain('previousState');
+    expect(importFlow).not.toContain('saveState(state, pushStateToGist)');
+    expect(importFlow.indexOf('commitPortfolioBackupImport('))
+      .toBeLessThan(importFlow.indexOf('await pushStateToGist(true)'));
   });
 
-  it('restores the previous snapshot when local persistence returns false', () => {
+  it('reports a failed atomic store commit without attempting a compensating import', () => {
     const previous = { activeView: 'AAPL', balance: 100 };
     const imported = { activeView: 'MSFT', balance: 250 };
     let active = previous;
-    const replaceState = (next: typeof previous) => { active = next; };
+    const commitState = vi.fn(() => false);
 
-    expect(() => commitPortfolioBackupImport(imported, previous, replaceState, () => false))
-      .toThrow('Could not persist the imported backup to browser storage.');
+    expect(() => commitPortfolioBackupImport(
+      imported,
+      commitState,
+      'Backup transaction history conflicts with this device or is not supported.'
+    )).toThrow('Backup transaction history conflicts with this device or is not supported.');
+
     expect(active).toBe(previous);
+    expect(commitState).toHaveBeenCalledTimes(1);
   });
 
-  it('restores the previous snapshot when persistence throws', () => {
-    const previous = { activeView: 'AAPL', balance: 100 };
+  it('propagates an atomic commit error without attempting a second persistence or rollback call', () => {
     const imported = { activeView: 'MSFT', balance: 250 };
-    let active = previous;
-    const replaceState = (next: typeof previous) => { active = next; };
     const storageError = new Error('storage unavailable');
+    const commitState = vi.fn(() => { throw storageError; });
 
-    expect(() => commitPortfolioBackupImport(imported, previous, replaceState, () => { throw storageError; }))
-      .toThrow(storageError);
-    expect(active).toBe(previous);
+    expect(() => commitPortfolioBackupImport(imported, commitState)).toThrow(storageError);
+    expect(commitState).toHaveBeenCalledTimes(1);
   });
 });
