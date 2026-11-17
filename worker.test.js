@@ -2217,8 +2217,9 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     await expect(guest.json()).resolves.toMatchObject({
       error: 'Guest accounts have read-only access.'
     });
+    // The unauthenticated request is rejected before session lookup; only
+    // the authenticated guest request reaches the auth verification route.
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
-      '/api/auth/verify',
       '/api/auth/verify'
     ]);
   });
