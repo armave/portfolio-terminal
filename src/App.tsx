@@ -7,6 +7,7 @@ import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
+import { PortfolioDataHealthPanel } from './components/PortfolioDataHealthPanel';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
@@ -329,6 +330,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             <div class="workspace-header-status" role="group" aria-label={translateText('Market and sync status', getAppLanguage())}>
               <MarketStatusBadge isAdmin={permissions.isAdmin} />
               {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+              {currentUser && <PortfolioDataHealthPanel isAdmin={permissions.isAdmin} cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
             </div>
           </div>
         </div>
