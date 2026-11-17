@@ -334,7 +334,7 @@ Each child task has a dedicated branch name and issue. Create the implementation
 | PT-02 | Transaction integrity & audit history | [#507](https://github.com/armave/portfolio-terminal/issues/507) | `feat/pt-02-transaction-integrity` | PT-01 |
 | PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | `feat/pt-03-broker-adapters` | PT-01; PT-02 semantics |
 | PT-04 | Broker reconciliation & provenance | [#332](https://github.com/armave/portfolio-terminal/issues/332) | `feat/pt-04-broker-reconciliation` | PT-01, PT-03 |
-| PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
+| PT-05 | Multi-portfolio tenancy & sharing | [#539](https://github.com/armave/portfolio-terminal/issues/539) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
 | PT-06 | Performance & attribution | [#334](https://github.com/armave/portfolio-terminal/issues/334) | `feat/pt-06-performance-analytics` | PT-01, PT-02 |
 | PT-07 | Market/instrument data foundation | [#335](https://github.com/armave/portfolio-terminal/issues/335) | `feat/pt-07-market-data-foundation` | PT-01, PT-03 |
 | PT-08 | Portfolio risk engine | [#336](https://github.com/armave/portfolio-terminal/issues/336) | `feat/pt-08-portfolio-risk` | PT-01, PT-06, PT-07 |
@@ -481,7 +481,7 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 
 Wave 1 implementation PRs #348–#352 are merged into `dev`. PT-03's identified P1 broker snapshot correctness gap was fixed in #354 and PT-03 issue #331 is closed. The remaining items below are not resolved by the five merged streams and must not be marked complete merely to close the release PR:
 
-- **PT-05 / #333:** architecture and topology foundation delivered by #348; tenant runtime, signed authorization, per-tenant key lifecycle, migration/rollback, and adversarial isolation tests are still unimplemented. Keep #333 open.
+- **PT-05 / #539:** architecture and topology foundation delivered by #348; the tenant directory remains metadata-only (`financialDataEnabled=false`). Tenant data runtime, signed authorization, per-tenant key lifecycle, migration/rollback, and adversarial isolation tests are still unimplemented. PT-02 #507 and PT-16 #536 security/release gates remain prerequisites before independent financial writes. Keep #539 open.
 - **PT-16 / #344:** client-side encrypted digest support delivered by #351. The paired Worker change is deployed directly to `main` in [commit `f49343d`](https://github.com/armave/portfolio-terminal/commit/f49343d8d6b6327f4bd0c0d94e398f8e32a2eb31), but `MARGIN_DIGEST_ENCRYPTION_REQUIRED=false` remains the compatibility setting. Strict enforcement, legacy-record migration, per-tenant keys, and the broader privacy/data-lifecycle acceptance criteria remain open. Keep #344 open.
 - **PT-17 / #345:** exact-head CI, browser journeys, shell performance sampling, and release-gate documentation delivered by #350. The 10-run baseline, authenticated portfolio performance fixture, privacy-approved production telemetry, live TradeNet/Market Depth verification, and required branch-protection enforcement remain open. Keep #345 open.
 - **PT-01 / #329:** completed and closed.

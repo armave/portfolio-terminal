@@ -1,6 +1,6 @@
 # Wave 3 PT-05 — Implement tenant and portfolio ownership boundaries
 
-**Tracking issue:** #333  
+**Tracking issue:** [#539 — Complete tenant-owned portfolio storage, authorization and migration](https://github.com/armave/portfolio-terminal/issues/539) (replacement for deleted #333)  
 **Merged architecture foundation:** PR #348  
 **Dedicated branch:** feat/wave3-pt05-portfolio-tenancy  
 **Client PR target:** dev; Worker/server-only deployment slices must be committed directly to main.
@@ -11,7 +11,7 @@ Move from one shared administrator workspace plus read-only guest projections to
 
 ## Hard prerequisite
 
-Issue #333 explicitly records that PT-05B still requires completion of the PT-02 transaction/audit ownership and mutation contracts in issue #330. Wave 3 includes PT-02 completion for this reason.
+Issue #539 records that tenant-owned financial writes remain gated on PT-02's transaction/audit ownership and mutation contracts in issue #507, plus PT-16's encryption rollout and key-lifecycle review. Metadata-only directory operations do not enable financial data access.
 
 PT-05 may work in parallel on tenant directory schemas, scoped identity, server authorization for safe reads and isolated topology proof. It must **not enable independent tenant financial writes or live cutover** until PT-02 acceptance, PT-16 security/key review, adversarial isolation tests and migration/rollback gates pass.
 
