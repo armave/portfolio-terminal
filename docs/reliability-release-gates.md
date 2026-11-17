@@ -63,7 +63,7 @@ The CI workflows execute these commands on pull requests. The main validation wo
 
 `scripts/browser-performance-baseline.mjs` launches the built production preview, blocks service workers to avoid cross-run cache contamination, and intercepts the Worker API with deterministic unauthenticated fixtures. It captures three cold samples of the unauthenticated application shell at desktop (1440×900) and mobile (390×844).
 
-The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. Each sample records:
+The CI artifact `browser-performance-baseline` (schema version 1) contains the unauthenticated-shell measurements for each viewport. The report also records reproducibility metadata: OS platform and release, architecture, Node.js version, CPU model and logical processor count, GitHub runner image identifiers when provided by the runner, Chromium name/version, headless mode, and exact viewport dimensions. Unavailable environment properties remain `null`; they are not replaced with guessed defaults. Each sample records:
 - first contentful paint (FCP);
 - largest contentful paint (LCP), where supported;
 - DOMContentLoaded and load event timing;
