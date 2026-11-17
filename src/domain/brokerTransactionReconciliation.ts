@@ -209,7 +209,7 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
   const amount = number(row.amount);
   if (amount === null) return null;
   const description = `${text(row.type)} ${text(row.description)}`.toLowerCase();
-  const type: PortfolioTransactionEvent['type'] = /dividend|distribution|coupon/.test(description)
+  const type: PortfolioTransactionEvent['type'] | null = /dividend|distribution|coupon/.test(description)
     ? 'dividend'
     : /margin|interest|financing|borrow fee/.test(description)
       ? 'margin.interest'
@@ -221,7 +221,7 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
             ? 'cash.withdrawal'
             : /deposit|funding|credit/.test(description)
               ? 'cash.deposit'
-              : /\\badjustment\\b|\\bcorrection\\b/.test(description)
+              : /\badjustment\b|\bcorrection\b/.test(description)
                 ? 'cash.adjustment'
                 : null;
   // A generic/unknown provider cashflow must not be guessed to be an account
