@@ -38,7 +38,7 @@ import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.
 describe('production Margin Intelligence digest enforcement', () => {
   it('keeps encrypted-only digest writes enabled in the production Wrangler configuration', () => {
     const config = readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8');
-    expect(config).toMatch(/"MARGIN_DIGEST_ENCRYPTION_REQUIRED"\\s*:\\s*"true"/);
+    expect(config).toContain('"MARGIN_DIGEST_ENCRYPTION_REQUIRED": "true"');
   });
 });
 
