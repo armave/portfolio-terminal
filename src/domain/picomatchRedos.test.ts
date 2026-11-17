@@ -60,7 +60,7 @@ describe('single-branch repeated-extglob ReDoS regressions', () => {
         "for (const pattern of ['+(*a)', '*(*a)', '+(*a)c', 'x+(*a)']) {",
         "  assert.equal(matcher.isMatch(input, pattern), false, pattern);",
         "}"
-      ].join('\\n');
+      ].join('\n');
       expect(() => execFileSync(process.execPath, ['-e', code], { timeout: 2500 })).not.toThrow();
     });
 
