@@ -17,7 +17,9 @@
     "setup:git-hooks": "git config core.hooksPath .githooks",
     "ci:local": "node scripts/ci-local.mjs",
     "audit:complexity": "node scripts/source-complexity-audit.mjs",
-    "test:financial": "vitest run src/domain/financialReferenceFixtures.test.ts src/domain/portfolio.test.ts src/domain/portfolioTransactions.test.ts src/domain/portfolioTransactionJournal.test.ts src/domain/portfolioLotJournal.test.ts src/domain/saleCostBasis.test.ts src/domain/closedHistoryFees.test.ts src/domain/closedHistoryFeeAudit.test.ts src/domain/closedTradeAllocation.test.ts src/domain/closedTradeAttribution.test.ts src/domain/freedomCashflows.test.ts src/domain/brokerTransactionReconciliation.test.ts src/store/portfolioStore.test.ts src/store/portfolioTradeBoundary.test.ts src/services/backupImport.test.ts src/services/cloudSnapshotReconciliation.test.ts src/services/cloudStateSecurity.test.ts worker.test.js user-auth.test.js"
+    "test:financial": "vitest run src/domain/financialReferenceFixtures.test.ts src/domain/portfolio.test.ts src/domain/portfolioTransactions.test.ts src/domain/portfolioTransactionJournal.test.ts src/domain/portfolioLotJournal.test.ts src/domain/saleCostBasis.test.ts src/domain/closedHistoryFees.test.ts src/domain/closedHistoryFeeAudit.test.ts src/domain/closedTradeAllocation.test.ts src/domain/closedTradeAttribution.test.ts src/domain/freedomCashflows.test.ts src/domain/brokerTransactionReconciliation.test.ts src/store/portfolioStore.test.ts src/store/portfolioTradeBoundary.test.ts src/services/backupImport.test.ts src/services/cloudSnapshotReconciliation.test.ts src/services/cloudStateSecurity.test.ts worker.test.js user-auth.test.js",
+    "lint": "oxlint",
+    "test:coverage": "vitest run --coverage"
   },
   "overrides": {
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",
@@ -34,7 +36,9 @@
     "typescript": "^7.0.2",
     "vite": "8.3.8",
     "vite-plugin-pwa": "^2.0.0",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "@vitest/coverage-v8": "5.1.0",
+    "oxlint": "1.93.0"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",

@@ -25,6 +25,8 @@ This directory contains maintained product and engineering references, current o
 
 - [PT-16 security and data-lifecycle threat model](security-threat-model-pt-16.md) — observed controls and residual risks; not a penetration test.
 - [Reliability, performance, observability, and release gates](reliability-release-gates.md) — exact-head CI, browser evidence, and operational limits.
+- [CI coverage baseline — 2026-11-17](ci/coverage-baseline-2026-11-17.md) — measured V8 coverage, selected financial/store/Worker modules, and aggregate regression floors.
+- [GitHub repository settings follow-up](ci/github-settings-follow-up.md) — manual branch-ruleset and Cloudflare production-environment steps that cannot be represented by workflow files.
 
 ## Delivery workstreams
 
