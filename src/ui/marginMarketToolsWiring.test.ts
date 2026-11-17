@@ -16,8 +16,12 @@ describe('Market Tools wiring', () => {
     expect(summarySource).toContain("emitUiEvent('market:depth-request', { ticker })");
     expect(summarySource).toContain("emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})");
     expect(summarySource).toContain("emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})");
-    expect(summarySource).toContain("translateText('Buy More', language)");
+    expect(summarySource).toContain("translateText('Simulate Buy', language)");
     expect(summarySource).toContain("translateText('Compare Exits', language)");
+    expect(summarySource).toContain("translateText('AI Risk Review', language)");
+    expect(summarySource).toContain("translateText('AI Portfolio Review', language)");
+    expect(summarySource).toContain("translateText('Live Order Book', language)");
+    expect(summarySource).toContain("ticker && isAdmin && marketDepthAvailable");
   });
 
   it('wires the read-only Market Tools dialogs through semantic app events', () => {
