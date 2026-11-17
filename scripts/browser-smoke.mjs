@@ -899,6 +899,8 @@ async function assertFinancialHeaderLayout(page, view) {
       const scroll = element.querySelector('.tranche-details-table-scroll');
       const table = scroll?.querySelector('table');
       const rect = element.getBoundingClientRect();
+      const backdrop = element.parentElement;
+      const backdropRect = backdrop?.getBoundingClientRect();
       return {
         role: element.getAttribute('role'),
         modal: element.getAttribute('aria-modal'),
@@ -908,7 +910,13 @@ async function assertFinancialHeaderLayout(page, view) {
         headers: Array.from(element.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() || ''),
         scrollable: Boolean(scroll && table && table.scrollWidth > scroll.clientWidth),
         dialogWithinViewport: rect.left >= -1 && rect.right <= document.documentElement.clientWidth + 1 &&
-          rect.top >= -1 && rect.bottom <= window.innerHeight + 1
+          rect.top >= -1 && rect.bottom <= window.innerHeight + 1,
+        horizontalCenterOffset: backdropRect
+          ? Math.abs((rect.left + rect.right) / 2 - (backdropRect.left + backdropRect.right) / 2)
+          : Number.POSITIVE_INFINITY,
+        verticalCenterOffset: backdropRect
+          ? Math.abs((rect.top + rect.bottom) / 2 - (backdropRect.top + backdropRect.bottom) / 2)
+          : Number.POSITIVE_INFINITY
       };
     });
     const requiredHeaders = ['Tranche', 'Date', 'Quantity', 'Entry price', 'Cost basis', 'Buy commission'];
@@ -916,7 +924,8 @@ async function assertFinancialHeaderLayout(page, view) {
         modalState.labelledBy !== 'trancheDetailsTitle' ||
         modalState.count !== expectedCount || modalState.rows !== expectedCount ||
         requiredHeaders.some((header) => !modalState.headers.includes(header)) ||
-        !modalState.scrollable || !modalState.dialogWithinViewport) {
+        !modalState.scrollable || !modalState.dialogWithinViewport ||
+        modalState.horizontalCenterOffset > 2 || modalState.verticalCenterOffset > 2) {
       throw new Error('The tranche details modal must show every lot in an accessible, scrollable responsive table: ' + JSON.stringify(modalState));
     }
     await page.keyboard.press('Escape');
