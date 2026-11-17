@@ -325,7 +325,7 @@ describe('startup cloud pull local-edit protection', () => {
       getState: () => latestLocal,
       protectLocalEditsDuringPull: true,
       pullCloudAndRewriteLocal: (value: Record<string, unknown>) => {
-        if (!saveState(value)) throw new Error('Local workspace persistence failed.');
+        saved.push(structuredClone(value));
         applied.push(value);
       },
       onLocalChangesPreserved: () => { preservedLocalChanges += 1; },
@@ -698,6 +698,17 @@ describe('background cloud conflict reconciliation', () => {
 });
 
 describe('cloud revision conflict recovery', () => {
+  const response = (status: number, payload: unknown, revision?: number) => new Response(
+    JSON.stringify(payload),
+    {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(revision === undefined ? {} : { ETag: `"${revision}"` })
+      }
+    }
+  );
+
   it('blocks stale retries until a successful cloud pull is accepted locally', async () => {
     let postCount = 0;
     let getCount = 0;
