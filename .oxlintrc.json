@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript"
+  ],
+  "env": {
+    "browser": true,
+    "node": true,
+    "serviceworker": true
+  },
+  "ignorePatterns": [
+    "coverage/**",
+    "dist/**",
+    "node_modules/**",
+    "artifacts/**",
+    ".wrangler/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.js",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.spec.js"
+  ],
+  "categories": {
+    "correctness": "off",
+    "suspicious": "off",
+    "perf": "off",
+    "pedantic": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "eslint/no-dupe-keys": "error",
+    "eslint/no-unreachable": "error",
+    "eslint/no-constant-binary-expression": "error",
+    "eslint/no-unsafe-finally": "error"
+  }
+}

@@ -183,6 +183,7 @@ describe('Stage 10 accessibility wiring', () => {
     const marketInsights = readSource('../components/MarketInsightsPanel.tsx');
     const articleDialog = readSource('../components/MarketNewsArticleDialog.tsx');
     const summary = readSource('../components/SummaryMetricsGrid.tsx');
+    const summaryStyles = readSource('../../style.css');
 
     expect(marketInsights.match(/class="min-h-11 rounded border border-slate-700 px-2 py-1 text-\[10px\] font-semibold text-cyan-300 disabled:opacity-50"/g)).toHaveLength(2);
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"');
@@ -190,9 +191,16 @@ describe('Stage 10 accessibility wiring', () => {
     expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
     expect(articleDialog).toContain('inline-flex min-h-11 items-center gap-2');
-    expect(summary).toContain('class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90');
-    expect(summary).toContain('class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90');
-    expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
+    expect(summary).toContain('class="market-tool-card market-tool-card--buy"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--exit"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--ai"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--depth"');
+    expect(summaryStyles).toContain('.market-tool-card {');
+    expect(summaryStyles).toContain('min-height: 5.15rem;');
+    expect(summary).toContain('aria-label={translateText(reviewLabel, language)}');
+    expect(summary).toContain('data-tranche-details-trigger');
+    expect(summary).toContain('aria-haspopup="dialog"');
+    expect(summaryStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.tranche-details-trigger{display:inline-flex;min-height:2.75rem;');
   });
 
   it('keeps Guest LOTS filters and broker reconciliation actions touch-sized', () => {
@@ -285,7 +293,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(settings).toContain("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.");
     expect(settings).toContain("Export a JSON backup before pulling cloud state or resetting the portfolio.");
     expect(app).toContain("if (!window.confirm(translateText(\"Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?\"))) return;");
-    expect(app).toContain("void syncCloudState('pull');");
+    expect(app).toContain("void syncCloudState('pull', { replaceLocalState: true });");
   });
 
   it('gives new user credentials explicit accessible names', () => {

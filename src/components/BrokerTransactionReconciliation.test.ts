@@ -6,6 +6,9 @@ import {
   getBrokerReconciliationEmptyMessage,
   getBrokerReconciliationHeadline,
   getBrokerQuoteReconciliationHeadline,
+  getPortfolioLotParityHeadline,
+  getPortfolioLotParityDiscrepancyLabel,
+  translatePortfolioLotParityIssueReason,
   getBrokerReconciliationReviewIdempotencyKey,
   findBrokerReconciliationReview,
   translateBrokerReconciliationCopy
@@ -178,6 +181,123 @@ describe('transaction journal coverage visibility', () => {
       'Correction state deltas must be the exact inverse of the linked original balance adjustment.',
       'Financial posting has neither an app-owned state delta nor a complete external evidence reference.',
       'Event type is not supported by the current quantity/cash/debt replay contract.'
+    ];
+    for (const value of copy) {
+      expect(translateBrokerReconciliationCopy(value, 'ru'), value).not.toBe(value);
+    }
+  });
+});
+
+
+describe('lot and closed-trade replay parity visibility', () => {
+  it('keeps incomplete and unsupported history distinct from detected differences and a complete match', () => {
+    expect(getPortfolioLotParityHeadline('complete', 0)).toBe('Matched within supported history');
+    expect(getPortfolioLotParityHeadline('complete', 2)).toBe('Differences found');
+    expect(getPortfolioLotParityHeadline('incomplete', 0)).toBe('Incomplete');
+    expect(getPortfolioLotParityHeadline('unsupported', 0)).toBe('Unsupported');
+  });
+
+  it('provides localized labels for every supported lot and closed-trade discrepancy field', () => {
+    const fields = [
+      'open-lot-missing', 'open-lot-quantity', 'open-lot-cost', 'open-lot-acquisition-date',
+      'open-lot-buy-commission', 'cash-holding-lot-missing', 'cash-holding-lot-quantity',
+      'cash-holding-lot-cost', 'cash-holding-lot-acquisition-date', 'cash-holding-lot-buy-commission',
+      'position-lot-quantity', 'position-buy-commission', 'closed-trade-missing',
+      'closed-trade-duplicate', 'closed-trade-ticker', 'closed-trade-quantity', 'closed-trade-cost',
+      'closed-trade-price', 'closed-trade-gross-profit', 'closed-trade-commissions',
+      'closed-trade-financing', 'closed-trade-net-profit'
+    ] as const;
+    for (const field of fields) {
+      const label = getPortfolioLotParityDiscrepancyLabel(field);
+      expect(label.length, field).toBeGreaterThan(0);
+      expect(translateBrokerReconciliationCopy(label, 'ru'), field).not.toBe(label);
+    }
+  });
+
+  it('localizes fixed and data-bearing replay explanations without dropping ticker or event identity', () => {
+    expect(translatePortfolioLotParityIssueReason(
+      'Sale event has no exact FIFO lot allocations; no acquisition lot was inferred.', 'ru'
+    )).toContain('FIFO');
+    expect(translatePortfolioLotParityIssueReason(
+      'Canonical AAPL contains a legacy lot without stable identity; it was not assigned a synthetic ID.', 'ru'
+    )).toContain('AAPL');
+    expect(translatePortfolioLotParityIssueReason(
+      'Canonical cash holding MSFT has 8 shares but only 5 shares with app-recorded cost basis; remaining quantity is unmapped.', 'ru'
+    )).toContain('MSFT');
+    expect(translatePortfolioLotParityIssueReason(
+      'Closed trade linked to sale-event-123 lacks net-profit data.', 'ru'
+    )).toContain('sale-event-123');
+  });
+
+  it('wires parity to canonical positions, cash lots and closed trades as a separate read-only report', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('verifyPortfolioTransactionLotParity(appEvents, {');
+    expect(source).toContain('positions,');
+    expect(source).toContain('cashHoldings,');
+    expect(source).toContain('closedTrades: legacyClosedTrades');
+    expect(source).toContain('lotParity.discrepancies.slice(0, 5)');
+    expect(source).toContain('lotParity.issues.slice(0, 5)');
+    expect(source).toContain("aria-label={translateBrokerReconciliationCopy('Lot and closed-trade replay parity')}");
+    expect(source).toContain('Replay and canonical values are shown only as read-only evidence.');
+  });
+
+  it('localizes the parity panel, statuses, metrics and limitations in Russian', () => {
+    const copy = [
+      'Lot and closed-trade replay parity',
+      'Matched within supported history',
+      'Open lots replayed',
+      'Closed sales replayed',
+      'Differences',
+      'Compares app-owned acquisition lots, FIFO sale allocations and linked closed-trade values. Legacy or unmapped history remains incomplete; no portfolio data is changed.',
+      'Replay and canonical values are shown only as read-only evidence.',
+      'No lot or closed-trade replay differences were detected for the supplied history.',
+      'Showing first 5 lot replay differences',
+      'Showing first 5 lot replay issues',
+      'Replay',
+      'Canonical',
+      'Identity',
+      'Cash-holding removal is a tracking correction without sale proceeds or realized-P&L semantics; removed cost basis is not treated as a sale.',
+      'Buy event does not contain a stable lot ID, ticker, exact acquisition date, positive quantity, acquisition price and matching quantity delta.',
+      'A stable acquisition lot ID is reused by more than one buy event.',
+      'Buy event predates exact acquisition-date capture; source date was not inferred from the event timestamp.',
+      'Buy event does not contain a verifiable non-negative commission amount.',
+      'Sale event has no exact FIFO lot allocations; no acquisition lot was inferred.',
+      'Sale contains legacy-unmapped acquisition slices; those slices remain unlinked and are not reconstructed.',
+      'Sale references a stable lot ID that is absent from the available buy-event history.',
+      'Sale allocation conflicts with the referenced acquisition lot identity, price, date or remaining quantity.',
+      'Sale allocation consumes more buy commission than remains on the referenced lot.',
+      'Sale allocations do not consume the known open acquisition lots in FIFO order.',
+      'Stable lot sale allocations do not agree with the sale event price and gross proceeds.',
+      'Corporate-action lot conversion does not include every open app-owned lot for the affected ticker.',
+      'Corporate-action lot conversion conflicts with the recorded lot identity, remaining quantity, price, acquisition date or commission.',
+      'Position quantity changed without an exact acquisition-lot adjustment; lot identity was not inferred.',
+      'Cash-holding quantity changed without exact acquisition-lot or disposal allocations; cost basis was not inferred.',
+      'Trade or cash-holding lot quantity corrections are not supported by the current reversal contract.',
+      'Closed-history correction has no linked lot-level correction projection.',
+      'A closed-trade replay item is missing required financial data.',
+      'Stable sale event has no linked canonical closed-trade record.',
+      'Open lot missing',
+      'Open lot quantity differs',
+      'Open lot cost basis differs',
+      'Open lot acquisition date differs',
+      'Open lot buy commission differs',
+      'Cash-holding lot missing',
+      'Cash-holding lot quantity differs',
+      'Cash-holding lot cost basis differs',
+      'Cash-holding lot acquisition date differs',
+      'Cash-holding lot buy commission differs',
+      'Position lot quantity differs',
+      'Position buy commission differs',
+      'Closed trade missing',
+      'Duplicate closed trade link',
+      'Closed trade ticker differs',
+      'Closed trade quantity differs',
+      'Closed trade cost basis differs',
+      'Closed trade sale price differs',
+      'Closed trade gross profit differs',
+      'Closed trade commissions differ',
+      'Closed trade financing differs',
+      'Closed trade net profit differs'
     ];
     for (const value of copy) {
       expect(translateBrokerReconciliationCopy(value, 'ru'), value).not.toBe(value);

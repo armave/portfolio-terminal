@@ -26,6 +26,7 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
     - `npm ci`
     - `npm run typecheck`
     - `npm test`
+    - `npm run test:financial` when financial, persistence, backup/reconciliation, or Worker authorization paths change
     - `npm run validate:dead-code`
     - `npm run audit:dependencies`
     - `npm run audit:production`
@@ -42,8 +43,12 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 
 - `.github/workflows/ci.yml` is the single PR validation entry point. Static checks/unit tests and the production build run independently; browser journeys consume the exact production artifact produced by that run.
 - `.github/workflows/operations-browser.yml` is reusable by PR CI and remains manually runnable. It does not repeat unit tests, typecheck, dead-code validation, dependency audits, or the production build when called by PR CI.
+- `.github/workflows/financial-regression.yml` runs the focused transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication test subset only when relevant high-risk paths change; the standard PR workflow still runs the complete Vitest suite.
+- `vitest.config.ts` collects V8 coverage for the financial domain, portfolio store, Worker and Durable Object. Aggregate floors are lines 80%, statements 80%, functions 85%, and branches 70%; these floors are anchored to the measured baseline in `docs/ci/coverage-baseline-2026-11-17.md` and must not be lowered to conceal regressions.
+- `.oxlintrc.json` enables a small correctness-focused Oxlint baseline for production JavaScript/TypeScript. Vitest files remain governed by Vitest assertions and TypeScript's `noUnusedLocals`/`noUnusedParameters`; expand lint rules incrementally only after checking the existing codebase.
 - `.github/workflows/security.yml` runs CodeQL for JavaScript/TypeScript, a blocking Gitleaks scan over commits introduced by each PR/push, actionlint, and zizmor. A separate scheduled/manual full-history Gitleaks audit is advisory so legacy findings remain visible without hiding new leaks. Treat new-commit findings as merge blockers; do not add broad secret-scan suppressions.
-- `.github/dependabot.yml` keeps npm and GitHub Actions dependencies on a weekly update cadence. Review major-version updates separately; do not automatically accept breaking changes. Version-update PRs target `dev` for both ecosystems; Dependabot security-update PRs continue to target the repository default branch (`main`).
+- `.github/dependabot.yml` keeps npm and GitHub Actions dependencies on a weekly update cadence. Review major-version updates separately; do not automatically accept breaking changes. Version-update PRs target `dev` for both ecosystems; Dependabot security-update PRs continue to target the repository default branch (`main`). The weekly security workflow also runs full and production-only `npm audit` checks.
+- `.nvmrc` is the shared Node.js version source for CI; `package.json` and `package-lock.json` declare the supported Node.js 22.x and npm 10.x ranges. Keep the README and development environment aligned with that contract.
 - Third-party GitHub Actions must be pinned to immutable commit SHAs and annotated with the corresponding release version. Keep those SHAs current through Dependabot.
 - Pages deployment must validate the exact production build with a browser smoke test before publishing. Worker deployment remains a separate `main`-only lane and must typecheck plus run Worker/authentication tests and dependency audits before deployment.
 - Require the PR CI quality, production-build, browser-smoke, operations-browser, workflow-security, secret-scan, and CodeQL checks in repository branch protection. Branch-protection settings live in GitHub repository settings and are not enforceable by workflow YAML alone.

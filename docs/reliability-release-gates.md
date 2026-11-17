@@ -20,14 +20,14 @@ The repository currently provides these scripts:
 | `npm run audit:dependencies` | Full dependency audit, including tooling; blocks high and critical advisories |
 | `npm run audit:production` | Production dependency audit; blocks high and critical advisories |
 
-The primary PR CI workflow runs the production browser smoke for the application shell. Dependabot npm and GitHub Actions version-update PRs target `dev`; security-update PRs remain on the default `main` branch. The dedicated, path-filtered Trade Lifecycle Browser Smoke workflow exercises the complete transaction lifecycle when application source or its supporting build/test configuration changes. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
+The primary PR CI workflow runs the production browser smoke for the application shell. Dependabot npm and GitHub Actions version-update PRs target `dev`; security-update PRs remain on the default `main` branch. The path-filtered Financial Integrity Regression workflow runs focused deterministic reference-fixture, transaction-journal, cost-basis, portfolio-store, backup/reconciliation, and Worker/authentication tests when financial, persistence, or authorization paths change. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
 
 The PT-17 changes extend this baseline by:
 - validating merged `dev` commits as well as pull-request candidates and `main` commits;
-- keeping the general CI browser journey focused on the app shell/operations surface while the path-filtered Trade Lifecycle workflow owns the full trade lifecycle journey, avoiding a redundant second run of the same stateful browser script in one job;
+- keeping the general CI browser journey focused on the app shell/operations surface while adding a targeted Vitest financial-integrity gate for financial, persistence, and authorization changes;
 - recording the candidate commit, source PR head/base where applicable, workflow run, and each validation step's outcome in the GitHub Actions run summary;
 - collecting repeatable desktop/mobile browser-shell performance samples as a CI artifact;
-- running the path-filtered trade lifecycle smoke workflow on PRs and merged commits targeting `dev`, as well as `main`.
+- running the path-filtered Financial Integrity Regression workflow on PRs and merged commits targeting `dev` and `main` when its high-risk paths change.
 
 These automated journeys use deterministic mocked API responses. They do not prove authenticated production TradeNet behavior or live Market Depth behavior.
 
@@ -212,7 +212,7 @@ Use the repository PR template to record:
 - [x] Add repeatable desktop/mobile unauthenticated-shell performance sampling with commit-attributed CI artifact output.
 - [x] Run the primary validation workflow on pull requests and merged `dev`/ `main` commits.
 - [x] Record exact candidate SHA, PR head/base, workflow URL, and individual check outcomes in the CI summary.
-- [x] Run targeted trade lifecycle browser checks in the dedicated path-filtered workflow for PRs and merges to `dev` as well as `main`; avoid running the same stateful journey twice in general CI.
+- [x] Run the production app-shell and Operations Browser Journey checks using the same production build artifact; retain deterministic mock limitations.
 - [x] Document privacy-safe telemetry dimensions and prohibited portfolio/user fields.
 - [x] Document authenticated TradeNet, real Market Depth, responsive/accessibility, recovery, and deployment release gates.
 - [x] Add an authenticated synthetic-portfolio browser benchmark using the application's bootstrap flow and local-only Quick Buy paper-trade seed; CI records three cold samples each at desktop and mobile with mocked Worker/broker responses. This does not certify live broker behavior.
@@ -254,4 +254,34 @@ The first full-history scan reported nine historic matches. Source inspection fo
 
 ### Coverage status
 
-This CI hardening slice does not add a numeric Vitest coverage threshold or coverage artifact. The current lockfile does not include a Vitest coverage provider, and no measured module-level baseline is recorded. Add a version-matched coverage provider and focused domain/store/Worker thresholds in a follow-up that updates and validates `package.json` and `package-lock.json` together; do not introduce arbitrary global thresholds.
+Vitest uses the version-matched V8 provider and uploads JSON/JSON-summary reports as a CI artifact. Coverage is scoped to selected financial-domain, portfolio-store, Worker and Durable Object modules rather than UI files or generated code. The measured aggregate baseline is 84.17% lines, 80.91% statements, 88.36% functions and 75.45% branches. Enforced floors are 80%, 80%, 85% and 70%, respectively. The detailed per-module baseline and measurement method are recorded in `docs/ci/coverage-baseline-2026-11-17.md`. Raise these floors only after reviewing the report and adding tests; do not lower them to mask a regression.
+
+### Lint status
+
+Oxlint is integrated into PR CI and `npm run ci:local`. The initial enforced policy deliberately covers a small set of correctness defects (duplicate object keys, unreachable code, constant binary expressions and unsafe `finally` control flow). Test files are excluded because the repository's existing Vitest patterns use conditional assertions and flexible mock signatures that are validated by Vitest and TypeScript instead. Expand the lint rules in small, reviewed increments; do not enable broad style/pedantic presets without first auditing their impact.
+
+
+## 9. CI and configuration refinements — 2026-11-17
+
+- `.nvmrc` is the shared Node.js 22 version source for GitHub Actions; `package.json` and the lockfile declare Node.js 22.x and npm 10.x as the supported runtime.
+- The path-filtered **Financial Integrity Regression** workflow gives transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication tests a dedicated status and exact-head evidence when relevant paths change. The standard PR workflow continues to run the complete Vitest suite on every PR.
+- Localization tests now validate that every Russian dictionary value is non-empty and that interpolation placeholders match the corresponding English key. Unknown dynamic copy continues to use the established fallback behavior.
+- The weekly security workflow runs full and production-only npm dependency audits on scheduled and manual runs, in addition to per-PR audits.
+- Cloudflare Worker deployment rejects non-main refs, serializes production deployments without canceling an in-progress deployment, validates the Wrangler bundle with a dry run, and targets the `cloudflare-production` GitHub environment before deploying.
+
+### Repository settings still required
+
+Committed workflow files cannot configure GitHub branch rules or environment protection. In repository settings:
+
+1. Add required status checks to the active `main` ruleset (including existing CI quality, build, browser, operations, workflow-security, secret-scan, and CodeQL checks).
+2. Add a corresponding `dev` ruleset requiring pull requests and the appropriate CI/security checks. The Financial Integrity Regression workflow is path-filtered, so do not make it a globally required check unless it is changed to report a successful no-op for unrelated paths.
+3. Configure `cloudflare-production` with the intended deployment branch restriction (`main`) and required reviewer(s); keep the Cloudflare API token and account ID in the protected secret scope used by the deployment.
+
+At the time this section was written, a coverage provider, measured baseline and lint framework were deferred. Those items have since been implemented and verified as described in section 10 below.
+
+
+## 10. Coverage, lint and repository protection follow-up — 2026-11-17
+
+The CI baseline is now measured and enforced. GitHub rulesets and environment-review configuration remain repository-administration settings, not file-level workflow configuration. Importable ruleset payload examples are stored in `docs/ci/github-rulesets/`; review the exact check contexts in GitHub's ruleset editor before saving.
+
+Production coverage is intentionally separated from test-file lint. Coverage thresholds use aggregate coverage across the explicit financial/store/Worker source set; individual module percentages are reported for prioritization, not yet independently gated. The weakest measured selected module is `src/store/portfolioSubscriptions.ts` at 46.66% lines, followed by `state-store.js` at 77.29% and `worker.js` at 78.92%. Improve those with focused tests rather than lowering the aggregate floors.

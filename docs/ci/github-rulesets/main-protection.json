@@ -1,0 +1,79 @@
+{
+  "name": "main-protection",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "merge",
+          "squash",
+          "rebase"
+        ]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "Static validation and unit tests"
+          },
+          {
+            "context": "Production build and artifact"
+          },
+          {
+            "context": "Production browser smoke and performance"
+          },
+          {
+            "context": "Operations Browser Journey / Account, Settings and guest browser journey"
+          },
+          {
+            "context": "Workflow lint and security analysis"
+          },
+          {
+            "context": "New-commit secret scan"
+          },
+          {
+            "context": "CodeQL JavaScript and TypeScript"
+          },
+          {
+            "context": "Coverage baseline and thresholds"
+          }
+        ]
+      }
+    },
+    {
+      "type": "update"
+    }
+  ],
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ]
+}

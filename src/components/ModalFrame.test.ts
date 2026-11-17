@@ -39,7 +39,8 @@ describe('shared modal frame', () => {
       './ExitComparisonModal.tsx',
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',
-      './MarginRiskOverviewModal.tsx'
+      './MarginRiskOverviewModal.tsx',
+      './TrancheDetailsModal.tsx'
     ];
 
     for (const path of modalPaths) {
@@ -63,6 +64,7 @@ describe('shared modal frame', () => {
       './MarginIntelligenceModal.tsx',
       './MarketDepthModal.tsx',
       './MarginRiskOverviewModal.tsx',
+      './TrancheDetailsModal.tsx',
       './MarketNewsArticleDialog.tsx'
     ];
 
@@ -80,6 +82,7 @@ describe('shared modal frame', () => {
     for (const path of [
       './ExitComparisonModal.tsx',
       './MarginRiskOverviewModal.tsx',
+      './TrancheDetailsModal.tsx',
       './MarketNewsArticleDialog.tsx'
     ]) {
       const source = readSource(path);

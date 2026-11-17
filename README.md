@@ -56,7 +56,7 @@ Administrator accounts share the owner's workspace across devices. Guest account
 
 ### Local Development
 
-**Prerequisites:** Node.js (v18+) and npm.
+**Prerequisites:** Node.js 22.x and npm 10.x. The supported Node version is recorded in `.nvmrc` and enforced by CI.
 
 ```sh
 # Clone repository
@@ -219,6 +219,15 @@ The project uses **Vitest** for test execution and TypeScript for static type va
 ```sh
 # Run automated tests
 npm test
+
+# Run JavaScript/TypeScript correctness lint
+npm run lint
+
+# Run financial-domain/store/Worker coverage with enforced thresholds
+npm run test:coverage
+
+# Run focused financial, transaction, persistence, and Worker integrity regressions
+npm run test:financial
 
 # Verify TypeScript types without building
 npm run typecheck
