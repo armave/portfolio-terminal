@@ -1,21 +1,18 @@
 /**
- * Replace the active portfolio snapshot only when the replacement can be
- * persisted. If persistence fails or throws, restore the previous snapshot
- * before propagating the failure to the caller.
+ * Commit a validated backup through the store's single atomic import boundary.
+ *
+ * The callback must validate, persist, and publish the imported state as one
+ * operation (for example, PortfolioStore.importState). Do not split this into
+ * an in-memory replacement followed by a second persistence call: same-workspace
+ * imports intentionally merge append-only journals and cannot undo that merge
+ * by importing the previous snapshot again.
  */
 export function commitPortfolioBackupImport<TState>(
   importedState: TState,
-  previousState: TState,
-  replaceState: (state: TState) => void,
-  persistState: () => boolean
+  commitState: (state: TState) => boolean,
+  failureMessage = 'Could not commit the imported portfolio backup.'
 ): void {
-  replaceState(importedState);
-  try {
-    if (!persistState()) {
-      throw new Error('Could not persist the imported backup to browser storage.');
-    }
-  } catch (error) {
-    replaceState(previousState);
-    throw error;
+  if (!commitState(importedState)) {
+    throw new Error(failureMessage);
   }
 }
