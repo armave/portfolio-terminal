@@ -474,54 +474,99 @@ function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: bool
     const intervalId = window.setInterval(refreshMarketSession, 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
-  const reviewLabel = ticker ? 'Analyze' : 'Portfolio Review';
+  const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';
   const reviewTitle = ticker
     ? 'Review recent news and margin-position risks with Gemini'
     : 'Review recent news and risk across all margin positions with Gemini';
 
   return (
     <div class="portfolio-market-tools" role="group" aria-label={translateText('Portfolio actions', language)}>
-      <div class="modal-tools-group">
-        <button
-          type="button"
-          title={translateText('Preview how a hypothetical purchase changes average entry, P&L and margin exposure. No order is placed.', language)}
-          aria-label={translateText('Buy More', language)}
-          onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-purple-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-purple-200 transition hover:bg-purple-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
-        >
-          ⇧<br />{translateText('Add?', language)}
-        </button>
-        <button
-          type="button"
-          title={translateText('Compare two hypothetical exit periods by date and price.', language)}
-          aria-label={translateText('Compare Exits', language)}
-          onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
-        >
-          ⇄<br />{translateText('Exit?', language)}
-        </button>
-        <button
-          type="button"
-          title={translateText(reviewTitle, language)}
-          aria-label={translateText(reviewLabel, language)}
-          onClick={() => emitUiEvent('margin:intelligence-request', ticker ? { ticker } : {})}
-          class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
-        >
-          ✦<br />{translateText(reviewLabel, language)}
-        </button>
-        {ticker && isAdmin && marketDepthAvailable && <button
-          type="button"
-          title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
-          aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
-          onClick={() => emitUiEvent('market:depth-request', { ticker })}
-          class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50 ${marketDepthAvailable ? 'four-market-tools' : ''}`}
-        >
-          ▤<br />{translateText('Depth', language)}
-        </button>}
-      </div>
+      <header class="market-tools-header">
+        <div class="market-tools-header-copy">
+          <span class="market-tools-kicker">{translateText('MARKET TOOLS', language)}</span>
+          <p>{translateText('Model trades, compare exits and research market conditions.', language)}</p>
+        </div>
+      </header>
+
+      <section class="market-tools-section" aria-label={translateText('SCENARIO PLANNING', language)}>
+        <h3 class="market-tools-section-title">{translateText('SCENARIO PLANNING', language)}</h3>
+        <div class="market-tools-grid">
+          <button
+            type="button"
+            class="market-tool-card market-tool-card--buy"
+            title={translateText('Preview average entry, P&L and margin impact. No order is placed.', language)}
+            aria-label={translateText('Simulate Buy', language)}
+            onClick={() => emitUiEvent('scenario:buy-more-request', ticker ? { ticker } : {})}
+          >
+            <span class="market-tool-icon" aria-hidden="true">⇧</span>
+            <span class="market-tool-copy">
+              <strong>{translateText('Simulate Buy', language)}</strong>
+              <span>{translateText('Preview average entry, P&L and margin impact. No order is placed.', language)}</span>
+            </span>
+            <span class="market-tool-affordance" aria-hidden="true">↗</span>
+          </button>
+          <button
+            type="button"
+            class="market-tool-card market-tool-card--exit"
+            title={translateText('Compare hypothetical exit dates, prices and net proceeds.', language)}
+            aria-label={translateText('Compare Exits', language)}
+            onClick={() => emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})}
+          >
+            <span class="market-tool-icon" aria-hidden="true">⇄</span>
+            <span class="market-tool-copy">
+              <strong>{translateText('Compare Exits', language)}</strong>
+              <span>{translateText('Compare hypothetical exit dates, prices and net proceeds.', language)}</span>
+            </span>
+            <span class="market-tool-affordance" aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </section>
+
+      <section
+        class={ticker ? 'market-tools-section' : 'market-tools-section market-tools-section--portfolio'}
+        aria-label={translateText('MARKET INTELLIGENCE', language)}
+      >
+        <h3 class="market-tools-section-title">{translateText('MARKET INTELLIGENCE', language)}</h3>
+        <div class="market-tools-grid">
+          <button
+            type="button"
+            class="market-tool-card market-tool-card--ai"
+            title={translateText(reviewTitle, language)}
+            aria-label={translateText(reviewLabel, language)}
+            onClick={() => emitUiEvent('margin:intelligence-request', ticker ? { ticker } : {})}
+          >
+            <span class="market-tool-icon" aria-hidden="true">✦</span>
+            <span class="market-tool-copy">
+              <strong>{translateText(reviewLabel, language)}</strong>
+              <span>{translateText(reviewTitle, language)}</span>
+            </span>
+            <span class="market-tool-affordance" aria-hidden="true">↗</span>
+          </button>
+          {ticker && isAdmin && marketDepthAvailable && (
+            <button
+              type="button"
+              class="market-tool-card market-tool-card--depth"
+              title={translateText('View live market depth for {ticker}', language).replace('{ticker}', ticker)}
+              aria-label={translateText('Market Depth for {ticker}', language).replace('{ticker}', ticker)}
+              onClick={() => emitUiEvent('market:depth-request', { ticker })}
+            >
+              <span class="market-tool-icon" aria-hidden="true">▤</span>
+              <span class="market-tool-copy">
+                <strong>{translateText('Live Order Book', language)}</strong>
+                <span>{translateText('Inspect live TradeNet bids and asks. Read-only.', language)}</span>
+              </span>
+              <span class="market-tool-affordance" aria-hidden="true">↗</span>
+            </button>
+          )}
+        </div>
+      </section>
+
       {ticker && (
-        <div class="flex flex-wrap items-center gap-1.5 market-links-group" aria-label={translateText('External market research links', language)}>
-          <BoardExternalLinks />
+        <div class="market-tools-external" aria-label={translateText('External market research links', language)}>
+          <span class="market-tools-section-title">{translateText('EXTERNAL RESEARCH', language)}</span>
+          <div class="market-links-group">
+            <BoardExternalLinks />
+          </div>
         </div>
       )}
     </div>
