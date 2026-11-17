@@ -6,7 +6,7 @@ const source = readFileSync(new URL('./PortfolioDataHealthPanel.tsx', import.met
 const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const style = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const englishCopy = [
-  'Data & sync', 'Portfolio status', 'Needs review', 'Data current', 'Checking data status',
+  'Data & sync', 'Portfolio status', 'Needs review', 'Up to date', 'Status',
   'Broker snapshot', 'Assigned snapshot', 'Quote freshness',
   'Cloud synchronization', 'Assigned data refresh', 'Review in Settings'
 ];
@@ -21,6 +21,14 @@ describe('Portfolio Data Health panel', () => {
     expect(source).toContain('aria-controls="portfolioDataHealthDialog"');
     expect(source).toContain('class="portfolio-data-health__label"');
     expect(source).toContain('class="portfolio-data-health__state"');
+  });
+
+  it('uses a neutral idle label for unknown data and reserves Up to date for verified health', () => {
+    expect(source).toContain("? 'Up to date'");
+    expect(source).toContain(": 'Status'");
+    expect(source).not.toContain('Checking data status');
+    expect(source).toContain("overallTone === 'warning'");
+    expect(source).toContain('isSyncPending');
   });
 
   it('opens an accessible modal and restores keyboard focus to the header trigger', () => {

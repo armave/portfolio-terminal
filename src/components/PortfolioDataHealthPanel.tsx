@@ -137,8 +137,8 @@ export function PortfolioDataHealthPanel({
       : isSyncPending
         ? 'Syncing…'
         : overallTone === 'healthy'
-          ? 'Data current'
-          : 'Checking data status',
+          ? 'Up to date'
+          : 'Status',
     language
   );
   const triggerTone = isSyncPending && overallTone !== 'warning' ? 'pending' : overallTone;
