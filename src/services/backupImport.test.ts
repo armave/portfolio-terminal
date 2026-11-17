@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalizePortfolioBackup } from '../domain/portfolio';
 import { commitPortfolioBackupImport } from './backupImport';
@@ -124,6 +125,22 @@ describe('commitPortfolioBackupImport', () => {
       positions: [{ quantity: -2, direction: 'unknown', rawQuantity: -2, rawSide: 'S' }],
       positionIntegrityIssues: [{ ticker: 'GOOGL', code: 'negative_quantity_sign_unverified', rawQuantity: -2 }]
     });
+  });
+
+  it('wires the application file-import flow to one local store commit before cloud sync', () => {
+    const appSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+    const importStart = appSource.indexOf('async function importBackupFile(file: File) {');
+    const importEnd = appSource.indexOf('\nlet appInitialized', importStart);
+    expect(importStart).toBeGreaterThanOrEqual(0);
+    expect(importEnd).toBeGreaterThan(importStart);
+
+    const importFlow = appSource.slice(importStart, importEnd);
+    expect(importFlow).toContain('commitPortfolioBackupImport(');
+    expect(importFlow).toContain('(snapshot) => portfolioStore.importState(snapshot as any)');
+    expect(importFlow).not.toContain('previousState');
+    expect(importFlow).not.toContain('saveState(state, pushStateToGist)');
+    expect(importFlow.indexOf('commitPortfolioBackupImport('))
+      .toBeLessThan(importFlow.indexOf('await pushStateToGist(true)'));
   });
 
   it('reports a failed atomic store commit without attempting a compensating import', () => {
