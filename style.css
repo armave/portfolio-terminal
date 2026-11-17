@@ -615,7 +615,7 @@ summary:hover {
   overflow-wrap: normal;
 }
 
-#projectionTableContainer .projection-date-cell > span {
+#projectionTableContainer .projection-date-cell>span {
   display: block;
   line-height: 1.2;
 }
@@ -1289,7 +1289,7 @@ summary:hover {
   align-items: stretch;
 }
 
-.portfolio-health-summary-column > .portfolio-micro-summary {
+.portfolio-health-summary-column>.portfolio-micro-summary {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -1376,13 +1376,13 @@ summary:hover {
   container-name: portfolio-health-summary;
 }
 
-.portfolio-health-summary-column > .margin-risk-gauge-card {
+.portfolio-health-summary-column>.margin-risk-gauge-card {
   min-width: 0;
   width: 100%;
 }
 
 @media (max-width: 767px) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0.125rem 0.25rem;
   }
@@ -1423,7 +1423,7 @@ summary:hover {
 }
 
 @media (max-width: 420px) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -3914,6 +3914,7 @@ table tbody tr:hover {
 
 /* Mobile shell: stretch the workspace across narrow viewports. */
 @media (max-width: 767px) {
+
   html,
   body {
     width: 100%;
@@ -4010,7 +4011,7 @@ table tbody tr:hover {
   min-width: 0;
 }
 
-#settingsDesk .settings-data-grid > .settings-toolbar__card {
+#settingsDesk .settings-data-grid>.settings-toolbar__card {
   min-width: 0;
   padding: clamp(0.75rem, 1.2cqw, 1rem);
   border: 1px solid var(--border-card, rgb(51 65 85 / 0.8));
@@ -4026,8 +4027,8 @@ table tbody tr:hover {
   background: rgba(15, 23, 42, 0.28);
 }
 
-#settingsDesk .settings-subsection > summary,
-#settingsDesk .settings-device-details > summary {
+#settingsDesk .settings-subsection>summary,
+#settingsDesk .settings-device-details>summary {
   display: flex;
   align-items: center;
   min-height: 2.25rem;
@@ -4038,8 +4039,8 @@ table tbody tr:hover {
   list-style-position: inside;
 }
 
-#settingsDesk .settings-subsection[open] > summary,
-#settingsDesk .settings-device-details[open] > summary {
+#settingsDesk .settings-subsection[open]>summary,
+#settingsDesk .settings-device-details[open]>summary {
   color: rgb(103 232 249);
 }
 
@@ -4049,11 +4050,11 @@ table tbody tr:hover {
   border-top: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
 }
 
-#settingsDesk .settings-device-details > summary {
+#settingsDesk .settings-device-details>summary {
   font-size: 0.6875rem;
 }
 
-#settingsDesk .settings-account-actions > button {
+#settingsDesk .settings-account-actions>button {
   width: 100%;
   min-height: 2.5rem;
 }
@@ -4066,12 +4067,12 @@ table tbody tr:hover {
     scrollbar-width: thin;
   }
 
-  #settingsDesk .settings-data-actions > button {
+  #settingsDesk .settings-data-actions>button {
     flex: 1 1 auto;
     min-height: 2.75rem;
   }
 
-  #settingsDesk .settings-backup-actions > button {
+  #settingsDesk .settings-backup-actions>button {
     min-height: 2.75rem;
     padding-inline: 0.35rem;
   }
@@ -4144,10 +4145,25 @@ table tbody tr:hover {
 .portfolio-micro-summary {
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
 }
-.portfolio-micro-column + .portfolio-micro-column { border-left: 0; }
-.portfolio-micro-market { order: 1; border-left: 0; }
-.portfolio-micro-basis { order: 2; border-left: 1px solid rgba(148, 163, 184, 0.12); }
-.portfolio-micro-costs { order: 3; border-left: 1px solid rgba(148, 163, 184, 0.12); }
+
+.portfolio-micro-column+.portfolio-micro-column {
+  border-left: 0;
+}
+
+.portfolio-micro-market {
+  order: 1;
+  border-left: 0;
+}
+
+.portfolio-micro-basis {
+  order: 2;
+  border-left: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.portfolio-micro-costs {
+  order: 3;
+  border-left: 1px solid rgba(148, 163, 184, 0.12);
+}
 
 .portfolio-market-tools-row {
   display: flex;
@@ -4307,7 +4323,7 @@ table tbody tr:hover {
   line-height: 1.3;
 }
 
-.market-tool-copy > span {
+.market-tool-copy>span {
   color: #94a3b8;
   font-size: 0.66rem;
   line-height: 1.4;
@@ -4350,13 +4366,27 @@ table tbody tr:hover {
   }
 }
 
-.guest-tranche-details > summary::-webkit-details-marker { display: none; }
-.guest-tranche-details > summary::marker { content: ''; }
+.guest-tranche-details>summary::-webkit-details-marker {
+  display: none;
+}
+
+.guest-tranche-details>summary::marker {
+  content: '';
+}
 
 @container portfolio-health-summary (max-width: 52rem) {
-  .portfolio-micro-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .portfolio-micro-market { border-left: 0 !important; }
-  .portfolio-micro-basis { border-left: 1px solid rgba(148, 163, 184, 0.12); }
+  .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-micro-market {
+    border-left: 0 !important;
+  }
+
+  .portfolio-micro-basis {
+    border-left: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
   .portfolio-micro-costs {
     grid-column: 1 / -1;
     border-left: 0 !important;
@@ -4364,37 +4394,67 @@ table tbody tr:hover {
     padding-top: 0.75rem;
   }
 }
+
 @container portfolio-health-summary (max-width: 30rem) {
-  .portfolio-micro-summary { grid-template-columns: minmax(0, 1fr); }
+  .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .portfolio-micro-market,
   .portfolio-micro-basis,
   .portfolio-micro-costs {
     grid-column: 1;
     border-left: 0 !important;
   }
-  .portfolio-micro-market { border-top: 0; }
+
+  .portfolio-micro-market {
+    border-top: 0;
+  }
+
   .portfolio-micro-basis,
   .portfolio-micro-costs {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
   }
 }
+
 @media (max-width: 767px) {
-  .portfolio-micro-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .portfolio-micro-market { border-left: 0 !important; }
-  .portfolio-micro-basis { border-left: 1px solid rgba(148, 163, 184, 0.12); }
+  .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-micro-market {
+    border-left: 0 !important;
+  }
+
+  .portfolio-micro-basis {
+    border-left: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
   .portfolio-micro-costs {
     grid-column: 1 / -1;
     border-left: 0 !important;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
-  .portfolio-market-tools-row { justify-content: stretch; }
-  .portfolio-market-tools { justify-content: center; }
+
+  .portfolio-market-tools-row {
+    justify-content: stretch;
+  }
+
+  .portfolio-market-tools {
+    justify-content: center;
+  }
 }
+
 @media (max-width: 420px) {
-  .portfolio-micro-summary { grid-template-columns: minmax(0, 1fr); }
+  .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .portfolio-micro-basis,
-  .portfolio-micro-costs { border-left: 0 !important; }
+  .portfolio-micro-costs {
+    border-left: 0 !important;
+  }
 }
 
 /* Decision-focused financial header and paired equity/tools workspace. */
@@ -4440,11 +4500,25 @@ table tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
-.portfolio-header-metric-value.is-positive { color: #4ade80; }
-.portfolio-header-metric-value.is-negative { color: #f87171; }
-.portfolio-header-metric-value.is-muted { color: #94a3b8; }
-.portfolio-header-metric-value.is-carry { color: #6ee7b7; }
-.portfolio-header-metric-value.is-warning { color: #fbbf24; }
+.portfolio-header-metric-value.is-positive {
+  color: #4ade80;
+}
+
+.portfolio-header-metric-value.is-negative {
+  color: #f87171;
+}
+
+.portfolio-header-metric-value.is-muted {
+  color: #94a3b8;
+}
+
+.portfolio-header-metric-value.is-carry {
+  color: #6ee7b7;
+}
+
+.portfolio-header-metric-value.is-warning {
+  color: #fbbf24;
+}
 
 .portfolio-header-metric-detail {
   min-width: 0;
@@ -4463,13 +4537,13 @@ table tbody tr:hover {
   width: 100%;
 }
 
-.portfolio-risk-tools-row > .portfolio-health-summary-column {
+.portfolio-risk-tools-row>.portfolio-health-summary-column {
   grid-column: auto;
   min-width: 0;
   width: 100%;
 }
 
-.portfolio-risk-tools-row > .portfolio-market-tools-row {
+.portfolio-risk-tools-row>.portfolio-market-tools-row {
   display: flex;
   align-items: stretch;
   min-width: 0;
@@ -4550,7 +4624,9 @@ table tbody tr:hover {
   font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
 }
 
-#tickerTabs > * { flex: 0 0 auto; }
+#tickerTabs>* {
+  flex: 0 0 auto;
+}
 
 .workspace-nav-button {
   display: inline-flex;
@@ -4644,7 +4720,9 @@ table tbody tr:hover {
   font-variant-numeric: tabular-nums;
 }
 
-#boardHeaderBanner #cloudStatus { margin-top: 0; }
+#boardHeaderBanner #cloudStatus {
+  margin-top: 0;
+}
 
 .workspace-header-status-pill {
   min-height: 2.75rem;
@@ -4689,7 +4767,9 @@ table tbody tr:hover {
     width: 100%;
   }
 
-  #tickerTabs { justify-content: center; }
+  #tickerTabs {
+    justify-content: center;
+  }
 }
 
 @media (max-width: 768px) {
@@ -4700,7 +4780,7 @@ table tbody tr:hover {
     padding: 0.125rem 0;
   }
 
-  #tickerTabs > .workspace-nav-ticker-list {
+  #tickerTabs>.workspace-nav-ticker-list {
     display: flex;
     flex: 1 1 100%;
     width: 100%;
@@ -4710,8 +4790,14 @@ table tbody tr:hover {
     overflow-x: auto;
   }
 
-  .workspace-nav-ticker-list > * { flex: 0 0 auto; }
-  .workspace-header-status { flex-wrap: wrap; gap: 0.4rem; }
+  .workspace-nav-ticker-list>* {
+    flex: 0 0 auto;
+  }
+
+  .workspace-header-status {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -4724,10 +4810,17 @@ table tbody tr:hover {
     padding: 0.45rem 0.6rem;
   }
 
-  .workspace-nav-button__context { display: none; }
-  .workspace-nav-equity-badge--admin { display: none; }
+  .workspace-nav-button__context {
+    display: none;
+  }
 
-  .workspace-header-status { justify-content: center; }
+  .workspace-nav-equity-badge--admin {
+    display: none;
+  }
+
+  .workspace-header-status {
+    justify-content: center;
+  }
 
   .workspace-header-status-pill {
     flex-wrap: nowrap;
@@ -4747,6 +4840,7 @@ table tbody tr:hover {
   background: rgba(2, 6, 23, 0.48);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
+
 .instrument-target-segment {
   display: flex;
   min-width: 0;
@@ -4756,9 +4850,11 @@ table tbody tr:hover {
   gap: 0.25rem 0.65rem;
   padding: 0.55rem 0.8rem;
 }
-.instrument-target-segment + .instrument-target-segment {
+
+.instrument-target-segment+.instrument-target-segment {
   border-left: 1px solid rgba(100, 116, 139, 0.38);
 }
+
 .instrument-target-label {
   color: #94a3b8;
   font-size: 0.625rem;
@@ -4767,6 +4863,7 @@ table tbody tr:hover {
   line-height: 1.2;
   text-transform: uppercase;
 }
+
 .instrument-target-value {
   color: #67e8f9;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -4775,6 +4872,7 @@ table tbody tr:hover {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+
 .instrument-target-return {
   color: #34d399;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -4783,30 +4881,36 @@ table tbody tr:hover {
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
+
 .board-title-row {
   display: block;
   width: 100%;
   min-width: 0;
 }
-.board-title-row > #boardTitle {
+
+.board-title-row>#boardTitle {
   display: block;
   flex: none;
   min-width: 0;
   width: 100%;
   text-align: left;
 }
+
 .board-target-section {
   width: 100%;
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.94fr) minmax(0, 1fr);
 }
+
 .board-target-section:not(.has-analyst-target) {
   grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
 }
+
 .board-ticker-identity {
   align-items: center;
   gap: 0.5rem 0.65rem;
   flex-wrap: wrap;
 }
+
 .board-ticker-identity #boardTitle {
   flex: 0 1 auto;
   min-width: 0;
@@ -4817,6 +4921,7 @@ table tbody tr:hover {
   text-align: left;
   overflow-wrap: anywhere;
 }
+
 .ticker-share-count,
 .ticker-daily-move {
   display: inline-flex;
@@ -4832,25 +4937,30 @@ table tbody tr:hover {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
 .ticker-share-count {
   background: rgba(30, 41, 59, 0.68);
   color: #cbd5e1;
 }
+
 .ticker-daily-move--positive {
   border-color: rgba(5, 150, 105, 0.55);
   background: rgba(6, 78, 59, 0.32);
   color: #34d399;
 }
+
 .ticker-daily-move--negative {
   border-color: rgba(190, 24, 93, 0.55);
   background: rgba(76, 5, 25, 0.32);
   color: #fb7185;
 }
+
 .ticker-daily-move--neutral {
   border-color: rgba(100, 116, 139, 0.45);
   background: rgba(15, 23, 42, 0.6);
   color: #cbd5e1;
 }
+
 .board-target-section #boardAnalystConsensus {
   display: flex;
   flex: 1 1 auto;
@@ -4869,42 +4979,63 @@ table tbody tr:hover {
   text-align: left;
   white-space: normal;
 }
+
 .board-analyst-consensus__status {
   color: #cbd5e1;
   font-size: 0.7rem;
   font-weight: 700;
 }
-.board-target-upside--positive { color: #34d399; }
-.board-target-upside--negative { color: #fb7185; }
-.board-target-upside--neutral { color: #cbd5e1; }
+
+.board-target-upside--positive {
+  color: #34d399;
+}
+
+.board-target-upside--negative {
+  color: #fb7185;
+}
+
+.board-target-upside--neutral {
+  color: #cbd5e1;
+}
+
 .guest-stock-value-section {
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
 }
+
 .guest-stock-market-value {
   justify-content: flex-start;
   align-items: flex-start;
 }
+
 .guest-stock-analyst-target {
   justify-content: flex-start;
   align-items: center;
 }
+
 @media (max-width: 767px) {
   .instrument-target-section {
     grid-template-columns: minmax(0, 1fr);
   }
-  .instrument-target-segment + .instrument-target-segment {
+
+  .instrument-target-segment+.instrument-target-segment {
     border-left: 0;
     border-top: 1px solid rgba(100, 116, 139, 0.38);
   }
+
   .instrument-target-segment {
     padding: 0.55rem 0.7rem;
   }
-  .board-ticker-identity { align-items: center; }
+
+  .board-ticker-identity {
+    align-items: center;
+  }
 }
+
 .instrument-target-section.hidden,
 .board-target-section.hidden {
   display: none !important;
 }
+
 .board-target-section #boardAnalystConsensus.hidden {
   display: none !important;
 }
@@ -4991,19 +5122,19 @@ table tbody tr:hover {
    The ID-qualified selector intentionally overrides the older generic mobile
    two-column rule when the summary's available width is below 767px. */
 @media (max-width: 767px) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column {
     grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
     border-left: 0 !important;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column+.portfolio-micro-column {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 }
@@ -5049,12 +5180,12 @@ table tbody tr:hover {
     overflow: hidden;
   }
 
-  #tickerTabs > button[data-nav-tab="true"] {
+  #tickerTabs>button[data-nav-tab="true"] {
     flex: 1 1 0;
     min-width: 0;
   }
 
-  #tickerTabs > .workspace-nav-ticker-list {
+  #tickerTabs>.workspace-nav-ticker-list {
     display: flex;
     flex: 1 1 0;
     align-items: stretch;
@@ -5081,7 +5212,7 @@ table tbody tr:hover {
     white-space: normal;
   }
 
-  #tickerTabs > .workspace-nav-ticker-list > * {
+  #tickerTabs>.workspace-nav-ticker-list>* {
     min-width: 3.5rem;
     min-height: 52px;
     flex: 0 0 auto;
@@ -5132,8 +5263,9 @@ table tbody tr:hover {
 }
 
 @media (min-width: 540px) and (max-width: 768px) {
-  #tickerTabs > button[data-nav-tab="true"],
-  #tickerTabs > .workspace-nav-ticker-list > * {
+
+  #tickerTabs>button[data-nav-tab="true"],
+  #tickerTabs>.workspace-nav-ticker-list>* {
     min-height: 56px;
   }
 
@@ -5157,16 +5289,16 @@ table tbody tr:hover {
    At desktop/tablet widths, Market Valuation and Position Basis sit side-by-side;
    Fees & accrued interest spans the row below. Only narrow columns stack all groups. */
 @container portfolio-health-summary (max-width: 52rem) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column {
     width: 100%;
     min-width: 0;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-costs {
     grid-column: 1 / -1;
     border-left: 0 !important;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
@@ -5175,22 +5307,22 @@ table tbody tr:hover {
 }
 
 @container portfolio-health-summary (max-width: 30rem) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column {
     grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
     border-left: 0 !important;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column+.portfolio-micro-column {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-costs {
     padding-top: 0.45rem;
   }
 }
@@ -5202,7 +5334,7 @@ table tbody tr:hover {
   gap: 0.8rem;
 }
 
-.portfolio-health-summary-column > .portfolio-micro-summary {
+.portfolio-health-summary-column>.portfolio-micro-summary {
   flex: 1 1 auto;
   min-height: clamp(15rem, 26vh, 22rem);
   align-content: stretch;
@@ -5210,7 +5342,7 @@ table tbody tr:hover {
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
 }
 
-.portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+.portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column {
   gap: 0.8rem;
   padding: 0.8rem 0.7rem;
 }
@@ -5231,24 +5363,24 @@ table tbody tr:hover {
   font-weight: 750;
 }
 
-.portfolio-health-summary-column > .market-tools-external--health {
+.portfolio-health-summary-column>.market-tools-external--health {
   flex: 0 0 auto;
   padding-top: 0.65rem;
 }
 
 @container portfolio-health-summary (max-width: 52rem) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(7rem, 1.2fr) auto;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-costs {
     grid-column: 1 / -1;
   }
 }
 
 @container portfolio-health-summary (max-width: 30rem) {
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     flex: 0 0 auto;
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
@@ -5256,7 +5388,7 @@ table tbody tr:hover {
     padding: 0.5rem;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+  .portfolio-health-summary-column>.portfolio-micro-summary>.portfolio-micro-column {
     justify-content: flex-start;
     gap: 0.65rem;
     padding: 0.7rem 0.6rem;
@@ -5302,6 +5434,7 @@ table tbody tr:hover {
 
 
 @container portfolio-market-tools (max-width: 22rem) {
+
   .market-tools-section--scenario .market-tools-grid,
   .market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -5314,7 +5447,7 @@ table tbody tr:hover {
     min-height: 0;
   }
 
-  .portfolio-health-summary-column > .portfolio-micro-summary {
+  .portfolio-health-summary-column>.portfolio-micro-summary {
     flex: 0 0 auto;
     min-height: 0;
   }
@@ -5332,14 +5465,14 @@ table tbody tr:hover {
     grid-auto-rows: minmax(0, 1fr);
   }
 
-  .portfolio-risk-tools-row > .portfolio-health-summary-column,
-  .portfolio-risk-tools-row > .portfolio-market-tools-row {
+  .portfolio-risk-tools-row>.portfolio-health-summary-column,
+  .portfolio-risk-tools-row>.portfolio-market-tools-row {
     align-self: stretch;
     height: 100%;
     min-height: 100%;
   }
 
-  .portfolio-risk-tools-row > .portfolio-market-tools-row {
+  .portfolio-risk-tools-row>.portfolio-market-tools-row {
     display: flex;
   }
 
@@ -5352,7 +5485,7 @@ table tbody tr:hover {
 }
 
 /* Align the Tranches label with its right-edge control and match the row below. */
-.portfolio-micro-basis > .portfolio-micro-row {
+.portfolio-micro-basis>.portfolio-micro-row {
   align-items: center;
 }
 
@@ -5367,20 +5500,21 @@ table tbody tr:hover {
   text-align: right;
 }
 
-.portfolio-micro-basis .portfolio-tranches-value > button {
+.portfolio-micro-basis .portfolio-tranches-value>button {
   align-self: flex-end;
   margin-left: auto;
   white-space: nowrap;
 }
 
-.portfolio-micro-basis .portfolio-tranches-value > #boardTranchesOverflow {
+.portfolio-micro-basis .portfolio-tranches-value>#boardTranchesOverflow {
   width: 100%;
   text-align: right;
 }
 
 @media (max-width: 767px) {
-  .portfolio-risk-tools-row > .portfolio-health-summary-column,
-  .portfolio-risk-tools-row > .portfolio-market-tools-row,
+
+  .portfolio-risk-tools-row>.portfolio-health-summary-column,
+  .portfolio-risk-tools-row>.portfolio-market-tools-row,
   .portfolio-risk-tools-row .portfolio-market-tools {
     height: auto;
     min-height: 0;
@@ -5395,9 +5529,8 @@ table tbody tr:hover {
    Keep the native table algorithm so each column takes the width its contents need. */
 #mainTerminalView #projectionTableContainer .projection-table,
 .desktop-workspace-grid #projectionTableContainer .projection-table {
-  width: max-content;
+  width: -webkit-fill-available;
   min-width: max-content;
-  max-width: none;
   table-layout: auto;
   margin: 0;
 }
@@ -5406,6 +5539,7 @@ table tbody tr:hover {
 #mainTerminalView #projectionTableContainer .projection-table td {
   padding: 0.25rem 0.35rem;
   white-space: nowrap;
+  text-align: center;
 }
 
 #mainTerminalView #projectionTableContainer .projection-date-cell {
