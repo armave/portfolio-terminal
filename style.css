@@ -5306,10 +5306,6 @@ table tbody tr:hover {
   height: 1.9rem;
 }
 
-.market-tools-external--health {
-  width: 100%;
-  min-width: 0;
-}
 
 @container portfolio-market-tools (max-width: 22rem) {
   .market-tools-section--scenario .market-tools-grid,

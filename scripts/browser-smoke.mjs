@@ -811,9 +811,9 @@ async function assertFinancialHeaderLayout(page, view) {
     if (viewport.width >= 768 && !layout.sideBlocksSameHeight) {
       throw new Error('The left health stack and right Market Tools panel must have matching desktop heights: ' + JSON.stringify(layout));
     }
-    if (view === 'ticker' && viewport.width >= 768 && layout.tranchesButtonPresent &&
-        (!layout.tranchesButtonRightAligned || !layout.tranchesLabelCentered)) {
-      throw new Error('The Tranches control must align to the right and center vertically with its label: ' + JSON.stringify(layout));
+    if (view === 'ticker' && viewport.width >= 768 &&
+        (!layout.tranchesButtonPresent || !layout.tranchesButtonRightAligned || !layout.tranchesLabelCentered)) {
+      throw new Error('The Tranches control must be visible, right-aligned, and centered vertically with its label: ' + JSON.stringify(layout));
     }
     if (view === 'combined' && layout.externalResearchVisible) {
       throw new Error('External Research should remain scoped to the ticker view after relocation.');

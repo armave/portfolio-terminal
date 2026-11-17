@@ -472,5 +472,5 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
-  });;
+  });
 });
