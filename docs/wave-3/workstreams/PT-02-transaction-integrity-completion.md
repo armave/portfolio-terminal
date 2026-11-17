@@ -315,11 +315,20 @@ Authenticated cloud restore, account-scope switching and real multi-device recov
 
 The regression suite proves the deterministic three-way reconciler contract. It does not certify simultaneous real-device recovery.
 
-## In progress — concurrent same-key cloud idempotency replay
+## Completed follow-up — concurrent same-key cloud idempotency replay (#527)
 
-The Worker serializes revision writes and atomically stores the encrypted snapshot with a bounded idempotency receipt. Existing tests cover sequential ambiguous retries, conflicting reuse, superseded retries and two simultaneous writes with the same revision but different request identities. The remaining gap is two simultaneous identical requests carrying the same `Idempotency-Key`, request fingerprint and `If-Match` revision. The added Worker regression asserts that both callers receive success at the same committed revision, exactly one response is marked as a replay, and only one receipt/snapshot revision is stored.
+[PR #527](https://github.com/armave/portfolio-terminal/pull/527) was squash-merged into `dev` at [`6ce2d5e8ca476e720ec91f1fc9b0152024943234`](https://github.com/armave/portfolio-terminal/commit/6ce2d5e8ca476e720ec91f1fc9b0152024943234). Final tested PR head: `250e90b7fa4d81c9a786827a4c9b634200ba2892`.
 
-This verifies request-level deduplication within the Worker receipt retention window (100 receipts per record, seven days). It does not establish unbounded/global exactly-once delivery, browser-tab mutual exclusion, or real multi-device behavior. No Worker runtime code or deployment behavior is changed by this test-only slice.
+- [x] Race two identical cloud state writes with the same expected revision, idempotency key and request fingerprint.
+- [x] Assert both responses succeed at revision 1, with exactly one idempotency-replay response.
+- [x] Assert one receipt and one stored encrypted snapshot; receipt storage does not include encrypted payload content.
+- [x] [Pull Request CI #4502](https://github.com/armave/portfolio-terminal/actions/runs/44027294517), [Financial Integrity Regression #15](https://github.com/armave/portfolio-terminal/actions/runs/44027294484) and [Security & Workflow Validation #308](https://github.com/armave/portfolio-terminal/actions/runs/44027294429) passed all blocking checks.
+
+The test verifies request deduplication within the Worker receipt retention window (100 receipts per record, seven days). It does not claim global/unbounded exactly-once delivery or real browser/device recovery.
+
+## In progress — unsupported financial reversal boundary coverage
+
+The supported inverse contract remains deliberately narrow: `reverseBalanceAdjustment` accepts only manual `cash.adjustment` and `margin.adjustment` events, with an exact linked correction and safe non-negative resulting balances. Trade buys/sales, cash-holding buy/sale/removal, position-lot tracking corrections, closed-history corrections, corporate actions, margin interest, external flows and generic audit/reset events remain unsupported for reversal. The new table-driven store regression verifies that each unsupported event type is rejected without changing the active snapshot, persisted snapshot, journal or subscribers. This is contract coverage only; it does not add an inverse operation or reinterpret financial history.
 
 
 ## Read-only lot and closed-history parity visibility
