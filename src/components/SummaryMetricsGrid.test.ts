@@ -376,9 +376,11 @@ describe('cross-device financial header hierarchy', () => {
     expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
       healthColumn.indexOf('<MarginRiskGaugeCard')
     );
-    expect(healthColumn).toContain("role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}");
-    expect(healthColumn).toContain("role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}");
-    expect(healthColumn).toContain("role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}");
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}`);
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}`);
+    expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-column {');
+    expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-value {');
     expect(source).not.toContain('class="portfolio-micro-heading"');
     expect(source).toContain('id={valueId}');
     expect(combinedView).toContain('valueId="boardNetTargetReturn"');
@@ -404,7 +406,7 @@ describe('cross-device financial header hierarchy', () => {
     expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
       healthColumn.indexOf('<MarginRiskGaugeCard')
     );
-    expect(healthColumn).toContain("role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}");
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
   });
 
   it('keeps the financial summary and Account Equity Health in the first column beside Market Tools', () => {

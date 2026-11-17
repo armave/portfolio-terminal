@@ -793,7 +793,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <div class="portfolio-health-summary-column">
             <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
               <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-                
                 <div class="portfolio-micro-row">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
                   <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
@@ -804,7 +803,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 </div>
               </div>
               <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
-                
                 <div class="portfolio-micro-row portfolio-micro-market-primary">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Market Value / Return', getAppLanguage())}</span>
                   <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
@@ -855,7 +853,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 </span>
               </div>
               <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-                
                 <div class="portfolio-micro-row">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
                   <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
@@ -1080,7 +1077,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         <div class="portfolio-health-summary-column">
           <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
             <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-              
               <div class="portfolio-micro-row">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
                 <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
@@ -1116,7 +1112,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               </div>
             </div>
             <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
-              
               <div class="portfolio-micro-row portfolio-micro-market-primary">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
                 <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
@@ -1142,7 +1137,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               </span>
             </div>
             <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
-              
               <div class="portfolio-micro-row">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
                 <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
