@@ -398,7 +398,7 @@ describe('cross-device financial header hierarchy', () => {
     expect(source).toContain('<MarginRiskGaugeCard');
     expect(source).toContain('<MarginMarketTools');
     expect(styles).toContain('.portfolio-health-summary-column {');
-    expect(styles.replace(/\\s+/g, '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
     expect(styles).toContain('.portfolio-risk-tools-row > .portfolio-market-tools-row');
     expect(styles).toContain('@media (min-width: 768px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
@@ -451,7 +451,7 @@ describe('cross-device financial header hierarchy', () => {
   it('aligns the ticker Tranches control to the right and vertically with its label', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(singleTickerView).toContain('id="boardTranches" class="portfolio-metric-value portfolio-tranches-value');
-    expect(styles.replace(/\\s+/g, '')).toContain('.portfolio-micro-basis>.portfolio-micro-row{');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-micro-basis>.portfolio-micro-row{');
     expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
