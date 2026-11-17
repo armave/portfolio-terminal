@@ -231,12 +231,44 @@ function hasCompleteAccountingLotParity(
   scope: 'position' | 'cash-holding',
   changedFields: readonly string[],
   next: Pick<PortfolioState, 'positions' | 'cashCushion' | 'closedTrades'>,
+  previousEvents: readonly PortfolioTransactionEvent[] | undefined,
   transactionEvents: readonly PortfolioTransactionEvent[]
 ): boolean {
   const explainableFields = scope === 'position'
     ? new Set(['acquisitionLots', 'buyCommissionTotal'])
     : new Set(['acquisitionLots', 'averageCost']);
   if (changedFields.some((field) => !explainableFields.has(field))) return false;
+
+  const previousIds = new Set((previousEvents || []).map((event) => event.id));
+  const hasNewResetMarker = transactionEvents.some((event) =>
+    !previousIds.has(event.id) && event.type === 'portfolio.reset'
+  );
+  const hasNewTickerCommand = transactionEvents.some((event) => {
+    if (previousIds.has(event.id) || typeof event.ticker !== 'string' ||
+      normalizeAccountingTicker(event.ticker) !== ticker) return false;
+    if (scope === 'position') {
+      return event.type === 'trade.buy' || event.type === 'trade.sell' ||
+        event.type === 'position.adjustment' ||
+        (event.type === 'portfolio.reconciliation' && event.positionQuantityDelta !== undefined) ||
+        (event.type === 'correction' && event.positionQuantityDelta !== undefined) ||
+        (event.type === 'corporate-action' && (
+          event.positionQuantityDelta !== undefined ||
+          event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'position') === true
+        ));
+    }
+    return event.type === 'cash-holding.buy' || event.type === 'cash-holding.sell' ||
+      event.type === 'cash-holding.adjustment' ||
+      (event.type === 'portfolio.reconciliation' && event.cashHoldingQuantityDelta !== undefined) ||
+      (event.type === 'correction' && event.cashHoldingQuantityDelta !== undefined) ||
+      (event.type === 'corporate-action' && (
+        event.cashHoldingQuantityDelta !== undefined ||
+        event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'cash-holding') === true
+      ));
+  });
+  // An old transaction that happens to match a rewritten snapshot is not an
+  // explanation for a new snapshot mutation. Require a new command/reset marker
+  // and then prove complete parity against the candidate canonical state.
+  if (!hasNewResetMarker && !hasNewTickerCommand) return false;
 
   const relevantEvents = transactionEvents.filter((event) => {
     if (event.type === 'portfolio.reset') return true;
@@ -363,6 +395,7 @@ function appendCanonicalSnapshotAccountingDetailEvents(
       'position',
       fields,
       next,
+      previous.transactionEvents,
       transactionEvents
     )) changes.push({ ticker, scope: 'position', fields });
   }
@@ -380,6 +413,7 @@ function appendCanonicalSnapshotAccountingDetailEvents(
       'cash-holding',
       fields,
       next,
+      previous.transactionEvents,
       transactionEvents
     )) changes.push({ ticker, scope: 'cash-holding', fields });
   }
