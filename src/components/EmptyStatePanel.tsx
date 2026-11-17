@@ -1,13 +1,16 @@
 import { useRef, useState } from 'preact/hooks';
 import { getBrokerSnapshotHealth } from '../ui/portfolioDataHealth';
 import { usePortfolioSelector } from '../store/portfolioStore';
+import { useCloudSyncStatus } from '../ui/uiStateStore';
 import { emitUiEvent } from '../ui/uiEventBus';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { getAppLanguage, translateText } from '../services/i18n';
 
 export function EmptyStatePanel() {
   const brokerSnapshot = usePortfolioSelector((state) => state.brokerAccountInfo);
+  const cloudSyncStatus = useCloudSyncStatus();
   const brokerHealth = getBrokerSnapshotHealth(brokerSnapshot);
+  const cloudConflict = cloudSyncStatus.status === 'conflict';
   const [syncing, setSyncing] = useState(false);
   const syncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
 
@@ -59,15 +62,27 @@ export function EmptyStatePanel() {
       <div class="empty-state-panel__copy">
         <h1 id="emptyStateTitle">{translateText(copy.title, getAppLanguage())}</h1>
         <p>{translateText(copy.description, getAppLanguage())}</p>
+        {cloudConflict && <p role="alert">{translateText('Resolve the cloud conflict before syncing', getAppLanguage())}</p>}
       </div>
       <div class="empty-state-panel__actions">
-        <button
-          type="button"
-          onClick={() => void handleSync()}
-          disabled={syncing}
-          aria-busy={syncing}
-          class="empty-state-panel__primary"
-        >{translateText(syncing ? 'Syncing…' : 'Sync portfolio', getAppLanguage())}</button>
+        {cloudConflict ? (
+          <button
+            type="button"
+            onClick={() => {
+              emitUiEvent('portfolio:set-active-view', { view: 'SETTINGS' });
+              emitUiEvent('app:scroll-workspace');
+            }}
+            class="empty-state-panel__primary"
+          >{translateText('Review in Settings', getAppLanguage())}</button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handleSync()}
+            disabled={syncing}
+            aria-busy={syncing}
+            class="empty-state-panel__primary"
+          >{translateText(syncing ? 'Syncing…' : 'Sync portfolio', getAppLanguage())}</button>
+        )}
         <button
           type="button"
           onClick={() => emitUiEvent('settings:backup-import-request')}
