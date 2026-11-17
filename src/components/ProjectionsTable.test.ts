@@ -11,4 +11,11 @@ describe('Projection Table account balance', () => {
     expect(source).toContain('Number(state.balance ?? 0), freeCash, netSaleProceeds, dailyRate, daysFromToday');
     expect(source).toContain('{formatUSD(projectedAccountBalance)}');
   });
+
+  it('uses compact, right-aligned financial cells while keeping the date column separate', () => {
+    expect(source).toContain('projection-value-cell');
+    expect(source).toContain('projection-date-cell');
+    expect(source).toContain('tabular-nums');
+    expect(source).not.toContain('marginFee');
+  });
 });

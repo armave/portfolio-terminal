@@ -139,11 +139,11 @@ function ProjectionsTableView() {
               <span>{dateFormatted}</span>
               <span class={badgeClass}>{badgeText}</span>
             </td>
-            <td class={`py-1 px-2 ${netClass} font-semibold`}>
+            <td class={`projection-value-cell py-1 px-2 text-right tabular-nums ${netClass} font-semibold`}>
               {netSign}{formatUSD(net)}
             </td>
-            <td class="py-1 px-2 text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
-            <td class={`py-1 px-2 ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
+            <td class="projection-value-cell py-1 px-2 text-right tabular-nums text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
+            <td class={`projection-value-cell py-1 px-2 text-right tabular-nums ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
               {formatUSD(projectedAccountBalance)}
             </td>
           </tr>

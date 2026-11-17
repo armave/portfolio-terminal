@@ -434,14 +434,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   id="projectionTableContainer"
                   className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
                 >
-                  <table aria-label={translateText('Portfolio projection by date', getAppLanguage())} class="w-full min-w-[300px] text-xs border-collapse">
+                  <table aria-label={translateText('Portfolio projection by date', getAppLanguage())} class="projection-table w-full min-w-[300px] text-xs border-collapse table-fixed">
                     <caption class="sr-only">{translateText('Projected portfolio net value, fees and commissions (including accrued margin interest), daily margin interest, and balance by date.', getAppLanguage())}</caption>
+                    <colgroup>
+                      <col class="projection-col-date" />
+                      <col class="projection-col-net" />
+                      <col class="projection-col-fees" />
+                      <col class="projection-col-balance" />
+                    </colgroup>
                     <thead>
                       <tr class="border-b border-slate-800 text-slate-400">
-                        <th scope="col" class="py-2 px-3">{translateText('Date', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Net', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Fee & Comm.', getAppLanguage())}</th>
-                        <th scope="col" class="py-2 px-3">{translateText('Balance', getAppLanguage())}</th>
+                        <th scope="col" class="projection-date-heading py-2 px-2 text-left">{translateText('Date', getAppLanguage())}</th>
+                        <th scope="col" class="projection-number-heading py-2 px-2 text-right">{translateText('Net', getAppLanguage())}</th>
+                        <th scope="col" class="projection-number-heading py-2 px-2 text-right">{translateText('Fee & Comm.', getAppLanguage())}</th>
+                        <th scope="col" class="projection-number-heading py-2 px-2 text-right">{translateText('Balance', getAppLanguage())}</th>
                       </tr>
                     </thead>
                     <tbody

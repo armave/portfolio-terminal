@@ -34,9 +34,19 @@ describe('fluid workspace styles', () => {
     );
   });
 
-  it('keeps desktop detail tables scrollable and contains card-table overflow on mobile', () => {
+  it('keeps projection columns compact, financial values aligned, and narrow layouts scrollable', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);
+    expect(appSource).toContain('<colgroup>');
+    expect(appSource).toContain('<col class="projection-col-date" />');
+    expect(appSource).toContain('<col class="projection-col-fees" />');
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-date\s*\{\s*width:\s*18%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-net\s*\{\s*width:\s*22%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-fees\s*\{\s*width:\s*35%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-balance\s*\{\s*width:\s*25%;\s*\}/);
+    expect(stylesheet).toMatch(/\.projection-value-cell\s*\{[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);
+    expect(stylesheet).toMatch(/\.projection-date-cell\s*\{[^}]*display:\s*table-cell;[^}]*min-width:\s*0;/s);
+    expect(stylesheet).toMatch(/\.projection-page-row>td:first-child\s*\{\s*min-width:\s*0;/);
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
     expect(stylesheet).toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*hidden;/);
     expect(stylesheet).not.toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*visible;/);
