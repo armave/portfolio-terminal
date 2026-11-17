@@ -722,7 +722,7 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
 
 const pushStateToGist = pushStateToCloud;
 
-function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
+function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceLocalState = false) {
   const currentView = state.activeView;
   // The cloud validator checks safe containers; this migration helper owns legacy field normalization.
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
@@ -737,8 +737,14 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
   } else if (!parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
-  if (!portfolioStore.importState(loadSavedState(mergedState))) {
-    throw new Error(translateText('Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.', getAppLanguage()));
+  const applied = replaceLocalState
+    ? portfolioStore.replaceFromConfirmedCloudPull(mergedState)
+    : portfolioStore.importState(mergedState);
+  if (!applied) {
+    const message = replaceLocalState
+      ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
+      : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
+    throw new Error(translateText(message, getAppLanguage()));
   }
   state = portfolioStore.getState();
   switchView(state.activeView);
@@ -746,7 +752,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>) {
   emitUiEvent('app:scroll-workspace');
 }
 
-async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean } = {}) {
+async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') {
       await pullGuestPortfolioSnapshot();
@@ -761,6 +767,7 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
     protectLocalEditsDuringPull: pullOptions.protectLocalEditsDuringPull === true,
+    replaceLocalState: pullOptions.replaceLocalState === true,
     onLocalChangesPreserved: () => { startupCloudWritePending = true; },
     pullCloudAndRewriteLocal,
     applyAutoReconciledState: (parsedState) => {
@@ -2069,7 +2076,7 @@ function bindStartupActions() {
   portfolioSessionRuntime.bindLogout();
   addUiEventListener('settings:pull-cloud-state', () => {
     if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
-    void syncCloudState('pull');
+    void syncCloudState('pull', { replaceLocalState: true });
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
     const normalizedIntervalMs = setQuoteRefreshInterval(event.detail.intervalMs);
