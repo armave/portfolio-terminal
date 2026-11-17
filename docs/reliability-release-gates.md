@@ -20,6 +20,8 @@ The repository currently provides these scripts:
 | `npm run audit:dependencies` | Full dependency audit, including tooling; blocks high and critical advisories |
 | `npm run audit:production` | Production dependency audit; blocks high and critical advisories |
 
+The quality job runs the full and production-only audits independently after dependency installation. Each result is recorded separately and a final enforcement step fails the job if either audit fails; a full-tooling advisory therefore cannot silently skip the production-only audit.
+
 The primary PR CI workflow runs the production browser smoke for the application shell. Dependabot npm and GitHub Actions version-update PRs target `dev`; security-update PRs remain on the default `main` branch. The path-filtered Financial Integrity Regression workflow runs focused deterministic reference-fixture, transaction-journal, cost-basis, portfolio-store, backup/reconciliation, and Worker/authentication tests when financial, persistence, or authorization paths change. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
 
 The PT-17 changes extend this baseline by:
