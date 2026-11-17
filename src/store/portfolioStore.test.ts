@@ -3774,6 +3774,79 @@ describe('portfolio transaction journal integration', () => {
     ).matches).toBe(true);
   });
 
+  it('keeps an unexplained old-lot rewrite visible when the same import contains a valid new trade', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-10')).toBe(true);
+
+    const backupSource = new PortfolioStore();
+    expect(backupSource.importState(store.getState())).toBe(true);
+    expect(backupSource.buyStock('AAPL', 1, 200, '2026-11-17')).toBe(true);
+    const backedUp = backupSource.getState();
+    const position = backedUp.positions.AAPL;
+    const beforeEventCount = store.getState().transactionEvents?.length ?? 0;
+
+    expect(store.importState({
+      ...backedUp,
+      positions: {
+        ...backedUp.positions,
+        AAPL: {
+          ...position,
+          tranches: (position.tranches || []).map((tranche, index) =>
+            index === 0 ? { ...tranche, price: tranche.price + 1 } : tranche
+          )
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('keeps an unexplained cash-holding average-cost change visible beside a valid imported buy', () => {
+    const store = new PortfolioStore();
+    expect(store.addCashHolding('MSFT', 1, 100, {
+      eventId: 'cash-buy-before-import',
+      effectiveAt: Date.parse('2026-11-10T12:00:00.000Z')
+    })).toMatchObject({ ticker: 'MSFT', shares: 1 });
+
+    const backupSource = new PortfolioStore();
+    expect(backupSource.importState(store.getState())).toBe(true);
+    expect(backupSource.addCashHolding('MSFT', 1, 200, {
+      eventId: 'cash-buy-imported',
+      effectiveAt: Date.parse('2026-11-17T12:00:00.000Z')
+    })).toMatchObject({ ticker: 'MSFT', shares: 1 });
+    const backedUp = backupSource.getState();
+    const beforeEventCount = store.getState().transactionEvents?.length ?? 0;
+
+    expect(store.importState({
+      ...backedUp,
+      cashCushion: {
+        ...backedUp.cashCushion,
+        holdings: backedUp.cashCushion.holdings.map((holding) => ({
+          ...holding,
+          averagePrice: Number(holding.averagePrice) + 10
+        }))
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'MSFT'
+    );
+    expect(detailEvent?.note).toContain('averageCost');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
   it('records same-quantity detail changes from an explicitly confirmed same-workspace cloud pull', () => {
     const store = new PortfolioStore();
     expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
