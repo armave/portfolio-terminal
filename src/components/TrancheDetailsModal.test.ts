@@ -73,7 +73,6 @@ describe('tranche details rows', () => {
     expect(stylesheet).toContain('@container portfolio-health-summary (max-width: 30rem)');
   });
 
-
   it('keeps the tranche dialog centered in the mobile viewport', () => {
     const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     const modalStyles = stylesheet.slice(stylesheet.indexOf('/* Purchase tranche ledger modal'));
