@@ -31,7 +31,12 @@ function positiveFinite(value: unknown): number | null {
 }
 
 function optionalFinite(value: unknown): number | null {
-  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'boolean' ||
+    (typeof value === 'string' && value.trim() === '')
+  ) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }

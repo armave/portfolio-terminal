@@ -45,6 +45,9 @@ describe('tranche details rows', () => {
     expect(rows[1].entryPrice).toBeNull();
     expect(rows[1].costBasis).toBeNull();
     expect(rows[1].buyCommission).toBeNull();
+    expect(buildTrancheDetailsRows([
+      { qty: 1, price: 10, buyCommission: '   ' as unknown as number }
+    ], [1], 'en')[0].buyCommission).toBeNull();
     expect(rows[2].date).toBe('Date unavailable');
   });
 
