@@ -408,8 +408,8 @@ describe('cross-device financial header hierarchy', () => {
     expect(toolsComponent).toContain("translateText('MARKET INTELLIGENCE', language)");
     expect(toolsComponent).toContain("translateText('Simulate Buy', language)");
     expect(toolsComponent).toContain("translateText('Compare Exits', language)");
-    expect(toolsComponent).toContain("translateText('AI Risk Review', language)");
-    expect(toolsComponent).toContain("translateText('AI Portfolio Review', language)");
+    expect(toolsComponent).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
+    expect(toolsComponent).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(toolsComponent).toContain("translateText('Live Order Book', language)");
     expect(toolsComponent).not.toContain("translateText('Add?', language)");
     expect(toolsComponent).not.toContain("translateText('Exit?', language)");
