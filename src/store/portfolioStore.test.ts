@@ -3677,7 +3677,7 @@ describe('portfolio transaction journal integration', () => {
 
     const events = store.getState().transactionEvents || [];
     const reconciliations = events.filter((event) => event.type === 'portfolio.reconciliation');
-    expect(reconciliations).toHaveLength(5);
+    expect(reconciliations).toHaveLength(6);
     expect(reconciliations).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ticker: 'NVDA',
@@ -3705,6 +3705,12 @@ describe('portfolio transaction journal integration', () => {
         realizedMarginChargeDelta: 7,
         actor: { type: 'system' },
         source: 'canonical-snapshot-reconciliation'
+      }),
+      expect.objectContaining({
+        ticker: 'NVDA',
+        actor: { type: 'system' },
+        source: 'canonical-snapshot-detail-reconciliation',
+        note: expect.stringContaining('acquisitionLots')
       })
     ]));
     for (const event of reconciliations) {
@@ -3751,7 +3757,7 @@ describe('portfolio transaction journal integration', () => {
     expect(detailEvent?.positionQuantityDelta).toBeUndefined();
     expect(detailEvent?.fees).toBeUndefined();
     expect(detailEvent?.realizedPnl).toBeUndefined();
-    expect(inspectPortfolioTransactionJournalReplayCoverage(events).find(
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
       (finding) => finding.eventId === detailEvent?.id
     )).toMatchObject({ disposition: 'incomplete' });
     expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
@@ -3793,7 +3799,7 @@ describe('portfolio transaction journal integration', () => {
     expect(detailEvent?.cashHoldingQuantityDelta).toBeUndefined();
     expect(detailEvent?.netAmount).toBeUndefined();
     expect(detailEvent?.realizedPnl).toBeUndefined();
-    expect(inspectPortfolioTransactionJournalReplayCoverage(events).find(
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
       (finding) => finding.eventId === detailEvent?.id
     )).toMatchObject({ disposition: 'incomplete' });
     expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
@@ -3832,7 +3838,7 @@ describe('portfolio transaction journal integration', () => {
     expect(detailEvent?.note).toContain('openBrokerFeeTotal');
     expect(detailEvent?.fees).toBeUndefined();
     expect(detailEvent?.realizedPnl).toBeUndefined();
-    expect(inspectPortfolioTransactionJournalReplayCoverage(events).find(
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).findings.find(
       (finding) => finding.eventId === detailEvent?.id
     )).toMatchObject({ disposition: 'incomplete' });
     expect(store.getState().positions.AAPL.brokerMarginFeeAllocations).toEqual({
