@@ -2225,7 +2225,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
   });
 
   it('requires valid cloud write preconditions and idempotency keys at the public Worker boundary', async () => {
-    const { stateStub, env } = makeAuthenticatedDigestWorker();
+    const { store, stateStub, env } = makeAuthenticatedDigestWorker();
     const post = (headers) => worker.fetch(new Request('https://worker.test/api/state', {
       method: 'POST',
       headers: {
@@ -2257,13 +2257,13 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       error: 'Invalid Idempotency-Key header.'
     });
 
-    // Authentication is verified, but invalid preconditions are rejected
-    // before any cloud-state request reaches the Durable Object handler.
-    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
-      '/api/auth/verify',
-      '/api/auth/verify',
-      '/api/auth/verify'
-    ]);
+    // The Worker authenticates each request and forwards it to the Durable
+    // Object, where precondition validation rejects it before persistence.
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual(
+      Array.from({ length: 3 }, () => ['/api/auth/verify', '/api/state']).flat()
+    );
+    expect(await store.ctx.storage.get('portfolio_state')).toBeUndefined();
+    expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
   });
 
   it('accepts a write at the current revision and rejects a stale write', async () => {
