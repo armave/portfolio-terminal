@@ -5525,10 +5525,11 @@ table tbody tr:hover {
   }
 }
 
-/* The projection is a content-sized financial table, not a four-way stretched grid.
-   Keep the native table algorithm so each column takes the width its contents need. */
+/* Fill the available desktop panel while preserving intrinsic column sizing.
+   The intrinsic minimum keeps the table horizontally scrollable when content cannot fit. */
 #mainTerminalView #projectionTableContainer .projection-table,
 .desktop-workspace-grid #projectionTableContainer .projection-table {
+  width: 100%;
   min-width: max-content;
   table-layout: auto;
   margin: 0;

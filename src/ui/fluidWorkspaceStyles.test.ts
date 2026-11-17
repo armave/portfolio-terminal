@@ -91,9 +91,9 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toContain('@media (max-width: 640px)');
   });
 
-  it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
+  it('fills available desktop width while retaining intrinsic column sizing and narrow-screen scrolling', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-table,\s*\.desktop-workspace-grid #projectionTableContainer \.projection-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*max-content;[^}]*table-layout:\s*auto;/s);
+    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-table,\s*\.desktop-workspace-grid #projectionTableContainer \.projection-table\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*max-content;[^}]*table-layout:\s*auto;/s);
     expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-entry-description\s*\{[^}]*max-width:\s*16rem;[^}]*white-space:\s*normal;/s);
     expect(stylesheet).not.toMatch(/#projectionTableContainer \.projection-col-(date|net|fees|balance)\s*\{\s*width:\s*\d+%;/);
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-number-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);

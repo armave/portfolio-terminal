@@ -816,8 +816,9 @@ async function assertFinancialHeaderLayout(page, view) {
 
     if (layout.projectionTableWidth > 0 && viewport.width >= 1024) {
       if (layout.projectionTableLayout !== 'auto' ||
-          layout.projectionTableWidth >= layout.projectionWrapperWidth * 0.92) {
-        throw new Error('The desktop projection table should use intrinsic content width instead of stretching columns across the full panel: ' + JSON.stringify(layout));
+          layout.projectionWrapperWidth <= 0 ||
+          layout.projectionTableWidth < layout.projectionWrapperWidth * 0.92) {
+        throw new Error('The desktop projection table should fill the available panel width while preserving intrinsic column sizing: ' + JSON.stringify(layout));
       }
       const [dateWidth, netWidth, feesWidth, balanceWidth] = layout.projectionColumnWidths;
       const columnTotal = dateWidth + netWidth + feesWidth + balanceWidth;
