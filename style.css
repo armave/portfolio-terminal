@@ -5529,8 +5529,9 @@ table tbody tr:hover {
    Keep the native table algorithm so each column takes the width its contents need. */
 #mainTerminalView #projectionTableContainer .projection-table,
 .desktop-workspace-grid #projectionTableContainer .projection-table {
-  width: -webkit-fill-available;
+  width: max-content;
   min-width: max-content;
+  max-width: none;
   table-layout: auto;
   margin: 0;
 }
@@ -5696,7 +5697,7 @@ table tbody tr:hover {
 
 .tranche-details-trigger {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
