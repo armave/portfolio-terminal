@@ -2224,6 +2224,48 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     ]);
   });
 
+  it('requires valid cloud write preconditions and idempotency keys at the public Worker boundary', async () => {
+    const { stateStub, env } = makeAuthenticatedDigestWorker();
+    const post = (headers) => worker.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: {
+        'X-App-Auth': 'admin-session',
+        'Content-Type': 'application/json',
+        ...headers
+      },
+      body: JSON.stringify({ encryptedPayload: 'encrypted-cloud-precondition-fixture' })
+    }), env);
+
+    const missingRevision = await post({});
+    expect(missingRevision.status).toBe(428);
+    await expect(missingRevision.json()).resolves.toMatchObject({
+      error: 'If-Match revision is required for cloud writes.'
+    });
+
+    const invalidRevision = await post({ 'If-Match': 'not-a-revision' });
+    expect(invalidRevision.status).toBe(400);
+    await expect(invalidRevision.json()).resolves.toMatchObject({
+      error: 'Invalid If-Match revision.'
+    });
+
+    const invalidIdempotencyKey = await post({
+      'If-Match': '"0"',
+      'Idempotency-Key': 'contains spaces'
+    });
+    expect(invalidIdempotencyKey.status).toBe(400);
+    await expect(invalidIdempotencyKey.json()).resolves.toMatchObject({
+      error: 'Invalid Idempotency-Key header.'
+    });
+
+    // Authentication is verified, but invalid preconditions are rejected
+    // before any cloud-state request reaches the Durable Object handler.
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify',
+      '/api/auth/verify',
+      '/api/auth/verify'
+    ]);
+  });
+
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
     const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
