@@ -1,0 +1,12 @@
+{
+  "name": "@armave/picomatch-v2",
+  "version": "2.3.3",
+  "private": true,
+  "description": "Internal backport of picomatch 2.3.2 with single-branch repeated-extglob ReDoS hardening.",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "lib"
+  ],
+  "license": "MIT"
+}
