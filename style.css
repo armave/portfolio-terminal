@@ -577,19 +577,24 @@ summary:hover {
   overflow-wrap: anywhere;
 }
 
-#projectionTableContainer table th:nth-child(2),
-#projectionTableContainer table td:nth-child(2) {
-  width: 17%;
+#projectionTableContainer .projection-col-date { width: 16%; }
+#projectionTableContainer .projection-col-net { width: 20%; }
+#projectionTableContainer .projection-col-fees { width: 42%; }
+#projectionTableContainer .projection-col-balance { width: 22%; }
+
+#projectionTableContainer .projection-table th:nth-child(n + 2) {
+  text-align: right;
 }
 
-#projectionTableContainer table th:nth-child(3),
-#projectionTableContainer table td:nth-child(3) {
-  width: 30%;
+#projectionTableContainer .projection-number-cell {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
-#projectionTableContainer table th:nth-child(4),
-#projectionTableContainer table td:nth-child(4) {
-  width: 22%;
+#projectionTableContainer .projection-date-heading {
+  text-align: left;
 }
 
 #projectionTableContainer tbody td[colspan="4"] {
@@ -604,13 +609,20 @@ summary:hover {
   white-space: nowrap;
 }
 
-.projection-date-cell {
+#projectionTableContainer .projection-date-cell {
+  display: table-cell;
+  width: 16%;
+  min-width: 0;
+  max-width: none;
+  padding-inline: 0.35rem !important;
   white-space: normal;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  max-width: fit-content;
+  vertical-align: middle;
+  overflow-wrap: normal;
+}
+
+#projectionTableContainer .projection-date-cell > span {
+  display: block;
+  line-height: 1.2;
 }
 
 @media (max-width: 768px) {
@@ -1282,7 +1294,7 @@ summary:hover {
   align-items: stretch;
 }
 
-.portfolio-metrics-grid>.portfolio-micro-summary {
+.portfolio-health-summary-column > .portfolio-micro-summary {
   min-width: 0;
   width: 100%;
   display: grid;
@@ -1300,23 +1312,15 @@ summary:hover {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.625rem 0.75rem;
+  gap: 0.3rem;
+  padding: 0.4rem 0.45rem;
 }
 
 .portfolio-micro-column+.portfolio-micro-column {
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.portfolio-micro-heading {
-  display: block;
-  margin-bottom: 0.125rem;
-  color: #94a3b8;
-  font-size: 0.625rem;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: 0.075em;
-}
+
 
 .portfolio-micro-row {
   min-width: 0;
@@ -1327,10 +1331,14 @@ summary:hover {
 }
 
 .portfolio-micro-row .portfolio-metric-label {
-  flex: 0 1 auto;
+  flex: 0 1 44%;
+  max-width: 44%;
   margin: 0;
-  line-height: 1.45;
-  white-space: nowrap;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: normal;
+  font-size: 0.6rem;
+  letter-spacing: 0;
 }
 
 .portfolio-micro-row .portfolio-metric-value {
@@ -1363,8 +1371,23 @@ summary:hover {
   color: #22c55e;
 }
 
+.portfolio-health-summary-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  width: 100%;
+  container-type: inline-size;
+  container-name: portfolio-health-summary;
+}
+
+.portfolio-health-summary-column > .margin-risk-gauge-card {
+  min-width: 0;
+  width: 100%;
+}
+
 @media (max-width: 767px) {
-  .portfolio-metrics-grid>.portfolio-micro-summary {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0.125rem 0.25rem;
   }
@@ -1405,7 +1428,7 @@ summary:hover {
 }
 
 @media (max-width: 420px) {
-  .portfolio-metrics-grid>.portfolio-micro-summary {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2527,7 +2550,7 @@ summary:focus-visible {
   text-wrap: pretty;
 }
 
-@container portfolio-metrics (max-width: 52rem) {
+@container portfolio-health-summary (max-width: 52rem) {
   .portfolio-micro-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2549,7 +2572,7 @@ summary:focus-visible {
   }
 }
 
-@container portfolio-metrics (max-width: 36rem) {
+@container portfolio-health-summary (max-width: 36rem) {
   .portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2588,9 +2611,10 @@ summary:focus-visible {
   max-width: none;
 }
 
-#projectionTableContainer table {
+#projectionTableContainer .projection-table {
+  width: 100%;
   min-width: max(100%, 30rem);
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 #projectionTableContainer th,
@@ -3026,8 +3050,8 @@ table tbody tr:hover {
   animation: projection-page-swap 160ms ease-out both;
 }
 
-.projection-page-row>td:nth-child(1) {
-  min-width: 5.5rem;
+.projection-page-row>td:first-child {
+  min-width: 0;
 }
 
 .projection-page-row:nth-child(odd)>td:nth-child(1) {
@@ -4312,7 +4336,7 @@ table tbody tr:hover {
 .guest-tranche-details > summary::-webkit-details-marker { display: none; }
 .guest-tranche-details > summary::marker { content: ''; }
 
-@container portfolio-metrics (max-width: 52rem) {
+@container portfolio-health-summary (max-width: 52rem) {
   .portfolio-micro-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .portfolio-micro-market { border-left: 0 !important; }
   .portfolio-micro-basis { border-left: 1px solid rgba(148, 163, 184, 0.12); }
@@ -4323,7 +4347,7 @@ table tbody tr:hover {
     padding-top: 0.75rem;
   }
 }
-@container portfolio-metrics (max-width: 36rem) {
+@container portfolio-health-summary (max-width: 36rem) {
   .portfolio-micro-summary { grid-template-columns: minmax(0, 1fr); }
   .portfolio-micro-market,
   .portfolio-micro-basis,
@@ -4950,19 +4974,19 @@ table tbody tr:hover {
    The ID-qualified selector intentionally overrides the older generic mobile
    two-column rule when the summary's available width is below 767px. */
 @media (max-width: 767px) {
-  #portfolioMetricsGrid > .portfolio-micro-summary {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
   }
 
-  #portfolioMetricsGrid > .portfolio-micro-summary > .portfolio-micro-column {
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
     grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
     border-left: 0 !important;
   }
 
-  #portfolioMetricsGrid > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 }

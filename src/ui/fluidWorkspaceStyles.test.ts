@@ -34,9 +34,20 @@ describe('fluid workspace styles', () => {
     );
   });
 
-  it('keeps desktop detail tables scrollable and contains card-table overflow on mobile', () => {
+  it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);
+    expect(fluidStyles).toMatch(/#projectionTableContainer \.projection-table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\);[^}]*table-layout:\s*fixed;/s);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-date\s*\{\s*width:\s*16%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-net\s*\{\s*width:\s*20%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-fees\s*\{\s*width:\s*42%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-balance\s*\{\s*width:\s*22%;\s*\}/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-number-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-date-cell\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 40rem\)/);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(stylesheet).toContain('.portfolio-health-summary-column > .margin-risk-gauge-card {');
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
     expect(stylesheet).toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*hidden;/);
     expect(stylesheet).not.toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*visible;/);

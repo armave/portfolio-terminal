@@ -358,7 +358,7 @@ describe('cross-device financial header hierarchy', () => {
   const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
-  it('renders the proposed Combined Portfolio decision KPIs above the supporting financial detail', () => {
+  it('keeps decision KPIs and stacks the compact financial summary above Account Equity Health', () => {
     expect(source).toContain('data-header-metric={metric}');
     const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
     expect(combinedView).toContain('metric="net-target-return"');
@@ -367,15 +367,26 @@ describe('cross-device financial header hierarchy', () => {
     expect(combinedView).toContain('metric="margin-debt"');
     expect(combinedView).toContain('metric="margin-risk"');
     expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
-      combinedView.indexOf('class="portfolio-micro-summary"')
+      combinedView.indexOf('class="portfolio-risk-tools-row"')
     );
+    const healthColumn = combinedView.slice(
+      combinedView.indexOf('class="portfolio-health-summary-column"'),
+      combinedView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(healthColumn).toContain("role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}");
+    expect(healthColumn).toContain("role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}");
+    expect(healthColumn).toContain("role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}");
+    expect(source).not.toContain('class="portfolio-micro-heading"');
     expect(source).toContain('id={valueId}');
     expect(combinedView).toContain('valueId="boardNetTargetReturn"');
     expect(combinedView).toContain('valueId="daysToBreakeven"');
     expect(combinedView).toContain('valueId="boardMargin"');
   });
 
-  it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
+  it('keeps ticker PT in its title and stacks compact financial details above ticker equity health', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
     expect(singleTickerView).toContain('metric="carry-break-even"');
@@ -386,12 +397,24 @@ describe('cross-device financial header hierarchy', () => {
     expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
     expect(singleTickerView).not.toContain('Your PT / Net return at target');
     expect(singleTickerView).not.toContain('calculatePositionMetrics');
+    const healthColumn = singleTickerView.slice(
+      singleTickerView.indexOf('class="portfolio-health-summary-column"'),
+      singleTickerView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(healthColumn).toContain("role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}");
   });
 
-  it('places Account Equity Health and Market Tools in one non-mobile row and stacks them on mobile', () => {
+  it('keeps the financial summary and Account Equity Health in the first column beside Market Tools', () => {
     expect(source).toContain('<div class="portfolio-risk-tools-row">');
+    expect(source).toContain('<div class="portfolio-health-summary-column">');
     expect(source).toContain('<MarginRiskGaugeCard');
     expect(source).toContain('<MarginMarketTools');
+    expect(styles).toContain('.portfolio-health-summary-column {');
+    expect(styles).toContain('.portfolio-health-summary-column > .margin-risk-gauge-card {');
+    expect(styles).toContain('.portfolio-risk-tools-row > .portfolio-market-tools-row');
     expect(styles).toContain('@media (min-width: 768px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
     expect(styles).toContain('@media (max-width: 767px)');

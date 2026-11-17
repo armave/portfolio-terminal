@@ -642,8 +642,12 @@ async function assertFinancialHeaderLayout(page, view) {
       const marginTarget = targetSection?.querySelector('#boardMarginTarget');
       const analystTarget = targetSection?.querySelector('#boardAnalystConsensus');
       const boardTitle = document.querySelector('#boardTitle');
-      const health = document.querySelector('.portfolio-risk-tools-row > .margin-risk-gauge-card');
+      const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
+      const summary = healthColumn?.querySelector('.portfolio-micro-summary');
+      const health = healthColumn?.querySelector('.margin-risk-gauge-card');
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
+      const healthColumnBounds = healthColumn?.getBoundingClientRect();
+      const summaryBounds = summary?.getBoundingClientRect();
       const healthBounds = health?.getBoundingClientRect();
       const toolsBounds = tools?.getBoundingClientRect();
       const marketPanel = tools?.querySelector('.portfolio-market-tools');
@@ -686,6 +690,9 @@ async function assertFinancialHeaderLayout(page, view) {
         targetReturnCount: document.querySelectorAll('#boardNetTargetReturn').length,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
+        healthColumnVisible: Boolean(healthColumn?.getClientRects().length),
+        summaryVisible: Boolean(summary?.getClientRects().length),
+        summaryBeforeHealth: Boolean(summaryBounds && healthBounds && summaryBounds.bottom <= healthBounds.top + 1),
         healthVisible: Boolean(health?.getClientRects().length),
         toolsVisible: Boolean(tools?.getClientRects().length),
         actionButtonsCount,
@@ -696,10 +703,14 @@ async function assertFinancialHeaderLayout(page, view) {
           panelBounds && actionBounds &&
           Math.abs((panelBounds.left + panelBounds.right) / 2 - (actionBounds.left + actionBounds.right) / 2) <= 3
         ),
+        healthColumnTop: healthColumnBounds?.top ?? null,
+        healthColumnBottom: healthColumnBounds?.bottom ?? null,
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
+        summaryTop: summaryBounds?.top ?? null,
+        summaryBottom: summaryBounds?.bottom ?? null,
         toolsTop: toolsBounds?.top ?? null,
-        sameRow: Boolean(healthBounds && toolsBounds && Math.abs(healthBounds.top - toolsBounds.top) <= 2)
+        sameRow: Boolean(healthColumnBounds && toolsBounds && Math.abs(healthColumnBounds.top - toolsBounds.top) <= 2)
       };
     });
 
@@ -732,8 +743,8 @@ async function assertFinancialHeaderLayout(page, view) {
       throw new Error('Combined Portfolio must not show an individual ticker target section.');
     }
 
-    if (!layout.healthVisible || !layout.toolsVisible) {
-      throw new Error('Account Equity Health or Market Tools is missing at ' + viewport.width + 'px.');
+    if (!layout.healthColumnVisible || !layout.summaryVisible || !layout.healthVisible || !layout.toolsVisible || !layout.summaryBeforeHealth) {
+      throw new Error('The compact financial summary must stay above visible Account Equity Health at ' + viewport.width + 'px: ' + JSON.stringify(layout));
     }
     if (!layout.visibleMarketToolsHeading) {
       throw new Error('The redesigned Market Tools panel must show its section heading.');
@@ -750,8 +761,8 @@ async function assertFinancialHeaderLayout(page, view) {
     if (viewport.width >= 768 && !layout.sameRow) {
       throw new Error('Account Equity Health and Market Tools must share one row above mobile width: ' + JSON.stringify(layout));
     }
-    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthBottom - 1)) {
-      throw new Error('Account Equity Health and Market Tools must stack on mobile: ' + JSON.stringify(layout));
+    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthColumnBottom - 1)) {
+      throw new Error('The financial summary/health column and Market Tools must stack on mobile: ' + JSON.stringify(layout));
     }
   }
 

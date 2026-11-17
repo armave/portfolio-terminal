@@ -787,94 +787,97 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             detail={getHeaderRiskDetail(risk)}
           />
         </section>
-        <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
-          <div class="portfolio-micro-column portfolio-micro-basis">
-            <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
-              <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
-            </div>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
-              <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
-            </div>
-          </div>
-          <div class="portfolio-micro-column portfolio-micro-market">
-            <span class="portfolio-micro-heading">{translateText('MARKET VALUATION', getAppLanguage())}</span>
-            <div class="portfolio-micro-row portfolio-micro-market-primary">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Market Value / Return', getAppLanguage())}</span>
-              <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
-                {unpricedMarginPositionCount > 0 ? (
-                  <>
-                    {pricedMarginPositionCount > 0 ? `≥${formatUSD(totalMarketValue)} · ${translateText('Priced market value', getAppLanguage())}` : '—'}
-                    <br></br><span class="block text-amber-300">
-                      {translateText('Unrealized return unavailable', getAppLanguage())} ({translateText('Unpriced positions', getAppLanguage())}: {unpricedMarginPositionCount})
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {formatUSD(totalMarketValue)} -{' '}
-                    <span class={totalUnrealized !== null && totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                      {unSign}{formatUSD(totalUnrealized ?? 0)} ({unSign}{unrealizedPct.toFixed(2)}%)
-                    </span>
-                  </>
-                )}
-              </span>
-            </div>
-            {tickers.length > 0 && (
-              <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2" aria-label={translateText('Ticker market context', getAppLanguage())}>
-                {tickers.map((ticker) => {
-                  const position = state.positions![ticker];
-                  const volume = formatQuoteVolume(position.quoteDetails?.volume);
-                  const dailyMeta = getDailyQuoteMeta(position.quoteDetails);
-                  const marketPrice = getUsableMarketPrice(position.currentPrice);
-                  return (
-                    <div key={ticker} class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
-                      <span class="font-semibold text-slate-300">
-                        {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
-                        {dailyMeta && <span class={`ml-1 ${dailyMeta.className}`}>{dailyMeta.text}</span>}
-                      </span>
-                      <span class="text-slate-500">
-                        <span title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-                          {translateText('Volume', getAppLanguage())} {volume ?? '—'}
-                        </span>
-                        {' · '}{formatQuoteMetadata(position, refreshIntervalMs)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
-            <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
-              <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
-            </span>
-          </div>
-          <div class="portfolio-micro-column portfolio-micro-costs">
-            <span class="portfolio-micro-heading">{translateText('Fees & accrued interest', getAppLanguage())}</span>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-              <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-            </div>
-            <div class="portfolio-micro-row">
-              <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-              <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-            </div>
-          </div>
-        </section>
+
 
         <div class="portfolio-risk-tools-row">
-          <MarginRiskGaugeCard
-            scope="account"
-            equityPct={equityPct}
-            risk={risk}
-            equityText={equityText}
-            collateralText={formatUSD(valuation.cashBalance)}
-            rules={rules}
-            valuationStatus={valuationStatus}
-            accountBalanceAvailable={valuation.accountBalanceAvailable}
-            unpricedHoldings={valuation.unpricedHoldings}
-          />
+          <div class="portfolio-health-summary-column">
+            <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
+              <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+                
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
+                  <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
+                </div>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
+                  <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+                </div>
+              </div>
+              <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
+                
+                <div class="portfolio-micro-row portfolio-micro-market-primary">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Market Value / Return', getAppLanguage())}</span>
+                  <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
+                    {unpricedMarginPositionCount > 0 ? (
+                      <>
+                        {pricedMarginPositionCount > 0 ? `≥${formatUSD(totalMarketValue)} · ${translateText('Priced market value', getAppLanguage())}` : '—'}
+                        <br></br><span class="block text-amber-300">
+                          {translateText('Unrealized return unavailable', getAppLanguage())} ({translateText('Unpriced positions', getAppLanguage())}: {unpricedMarginPositionCount})
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {formatUSD(totalMarketValue)} -{' '}
+                        <span class={totalUnrealized !== null && totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {unSign}{formatUSD(totalUnrealized ?? 0)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                {tickers.length > 0 && (
+                  <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2" aria-label={translateText('Ticker market context', getAppLanguage())}>
+                    {tickers.map((ticker) => {
+                      const position = state.positions![ticker];
+                      const volume = formatQuoteVolume(position.quoteDetails?.volume);
+                      const dailyMeta = getDailyQuoteMeta(position.quoteDetails);
+                      const marketPrice = getUsableMarketPrice(position.currentPrice);
+                      return (
+                        <div key={ticker} class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
+                          <span class="font-semibold text-slate-300">
+                            {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
+                            {dailyMeta && <span class={`ml-1 ${dailyMeta.className}`}>{dailyMeta.text}</span>}
+                          </span>
+                          <span class="text-slate-500">
+                            <span title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
+                              {translateText('Volume', getAppLanguage())} {volume ?? '—'}
+                            </span>
+                            {' · '}{formatQuoteMetadata(position, refreshIntervalMs)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
+                <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
+                  <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
+                </span>
+              </div>
+              <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+                
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+                  <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+                </div>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+                  <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+                </div>
+              </div>
+            </section>
+            <MarginRiskGaugeCard
+              scope="account"
+              equityPct={equityPct}
+              risk={risk}
+              equityText={equityText}
+              collateralText={formatUSD(valuation.cashBalance)}
+              rules={rules}
+              valuationStatus={valuationStatus}
+              accountBalanceAvailable={valuation.accountBalanceAvailable}
+              unpricedHoldings={valuation.unpricedHoldings}
+            />
+          </div>
           <div class="portfolio-market-tools-row">
             <MarginMarketTools isAdmin={isAdmin} />
           </div>
@@ -1071,94 +1074,97 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           detail={getHeaderRiskDetail(risk)}
         />
       </section>
-      <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
-        <div class="portfolio-micro-column portfolio-micro-basis">
-          <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
-            <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
-              {hiddenTrancheCount > 0 && (
-                <>
-                  <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
-                    <div class="expandable-motion__inner">
-                      <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
-                        {visibleTranches.map((tranche, index) => {
-                          const quantity = trancheQuantities[index];
-                          const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
-                          const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
-                          const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
-                          return (
-                            <span key={`${pos.ticker}-overflow-${index}`}>
-                              {quantity !== null ? `${quantity.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                  <button type="button" class="inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
-                    {tranchesExpanded ? translateText('Show less', getAppLanguage()) : translateText('Show {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
-            <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
-          </div>
-        </div>
-        <div class="portfolio-micro-column portfolio-micro-market">
-          <span class="portfolio-micro-heading">{translateText('MARKET VALUATION', getAppLanguage())}</span>
-          <div class="portfolio-micro-row portfolio-micro-market-primary">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
-            <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
-              {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}<br></br>
-              {unrealized !== null && unrealizedPct !== null ? (
-                <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                  {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
-                </span>
-              ) : (
-                <span class="text-amber-300">{translateText('Unrealized return unavailable', getAppLanguage())}</span>
-              )}
-            </span>
-          </div>
-          <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
-            {dailyQuoteMeta?.text || ''}
-            <span class="text-slate-400"> · </span>
-            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
-              <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
-            </span>
-          </span>
-          <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-            {translateText('Volume', getAppLanguage())} {volume ?? '—'}
-          </span>
-        </div>
-        <div class="portfolio-micro-column portfolio-micro-costs">
-          <span class="portfolio-micro-heading">{translateText('Fees & accrued interest', getAppLanguage())}</span>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
-            <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
-          </div>
-          <div class="portfolio-micro-row">
-            <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
-            <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
-          </div>
-        </div>
-      </section>
+
 
       <div class="portfolio-risk-tools-row">
-        <MarginRiskGaugeCard
-          scope="allocated-ticker"
-          equityPct={equityPct}
-          risk={risk}
-          equityText={equityText}
-          collateralText={formatUSD(allocatedCashBalance)}
-          rules={rules}
-          valuationStatus={positionValuationStatus}
-          accountBalanceAvailable={accountBalanceAvailable}
-          unpricedHoldings={positionUnpricedHoldingCount}
-        />
+        <div class="portfolio-health-summary-column">
+          <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
+            <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+              
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
+                <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
+                  {hiddenTrancheCount > 0 && (
+                    <>
+                      <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
+                        <div class="expandable-motion__inner">
+                          <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
+                            {visibleTranches.map((tranche, index) => {
+                              const quantity = trancheQuantities[index];
+                              const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
+                              const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
+                              const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
+                              return (
+                                <span key={`${pos.ticker}-overflow-${index}`}>
+                                  {quantity !== null ? `${quantity.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" class="inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
+                        {tranchesExpanded ? translateText('Show less', getAppLanguage()) : translateText('Show {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
+                <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+              </div>
+            </div>
+            <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
+              
+              <div class="portfolio-micro-row portfolio-micro-market-primary">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
+                <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
+                  {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}<br></br>
+                  {unrealized !== null && unrealizedPct !== null ? (
+                    <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                      {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                    </span>
+                  ) : (
+                    <span class="text-amber-300">{translateText('Unrealized return unavailable', getAppLanguage())}</span>
+                  )}
+                </span>
+              </div>
+              <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
+                {dailyQuoteMeta?.text || ''}
+                <span class="text-slate-400"> · </span>
+                <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
+                  <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
+                </span>
+              </span>
+              <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
+                {translateText('Volume', getAppLanguage())} {volume ?? '—'}
+              </span>
+            </div>
+            <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
+              
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Total Comm.', getAppLanguage())}</span>
+                <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+              </div>
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Accrued Margin Interest', getAppLanguage())}</span>
+                <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+              </div>
+            </div>
+          </section>
+          <MarginRiskGaugeCard
+            scope="allocated-ticker"
+            equityPct={equityPct}
+            risk={risk}
+            equityText={equityText}
+            collateralText={formatUSD(allocatedCashBalance)}
+            rules={rules}
+            valuationStatus={positionValuationStatus}
+            accountBalanceAvailable={accountBalanceAvailable}
+            unpricedHoldings={positionUnpricedHoldingCount}
+          />
+        </div>
         <div class="portfolio-market-tools-row">
           <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
         </div>
