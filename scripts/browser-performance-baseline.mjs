@@ -2,13 +2,14 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
 
 const host = '127.0.0.1';
 const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
 const appUrl = `http://${host}:${port}/portfolio-terminal/`;
 const workerOrigin = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 const outputPath = 'artifacts/browser-performance-baseline.json';
-const runsPerViewport = 3;
+const runsPerViewport = parsePerformanceSampleCount(process.env.PERFORMANCE_BASELINE_RUNS, 3);
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 }
@@ -162,15 +163,17 @@ try {
       serviceWorkers: 'blocked to avoid cross-run cache contamination'
     },
     runsPerViewport,
+    statistics: Object.fromEntries(Object.entries(results).map(([name, samples]) => [name, summarizePerformanceViewport(samples)])),
     viewports: results
   };
   await mkdir('artifacts', { recursive: true });
   await writeFile(outputPath, JSON.stringify(report, null, 2) + '\n', 'utf8');
   console.log(`Browser performance baseline written to ${outputPath}`);
   for (const [name, samples] of Object.entries(results)) {
-    const fcp = samples.map((sample) => sample.firstContentfulPaintMs).filter(Number.isFinite);
-    const auth = samples.map((sample) => sample.elapsedToAuthReadyMs);
-    console.log(`${name}: median FCP ${fcp.length ? Math.round(fcp.sort((a,b)=>a-b)[Math.floor(fcp.length / 2)]) : 'n/a'}ms; median auth-shell readiness ${Math.round(auth.sort((a,b)=>a-b)[Math.floor(auth.length / 2)])}ms`);
+    const statistics = summarizePerformanceViewport(samples);
+    const fcp = statistics.firstContentfulPaintMs;
+    const auth = statistics.elapsedToAuthReadyMs;
+    console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples)`);
   }
 } finally {
   await browser?.close();
