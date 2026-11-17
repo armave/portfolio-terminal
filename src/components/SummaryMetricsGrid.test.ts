@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getHeaderBreakevenValue, getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
+import { getHeaderBreakevenValue, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin risk confidence and scope disclosures', () => {
   it('keeps provisional risk styling while avoiding redundant status and period labels', () => {
@@ -45,7 +45,7 @@ describe('Margin hardcode centralization', () => {
     expect(source).toContain("translateText('STOP-OUT BUFFER', language)");
     expect(source).toContain("translateText('Account equity percentage', language)");
     expect(source).toContain("translateText('Across {count} assets', getAppLanguage())");
-    expect(source).toContain("translateText('Show {count} tranches', getAppLanguage())");
+    expect(source).toContain("translateText('View {count} tranches', getAppLanguage())");
   });
 });
 
@@ -114,23 +114,6 @@ describe('portfolio metric quote updates', () => {
     expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
     expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
-  });
-});
-
-describe('margin tranche preview', () => {
-  it('hides every individual tranche by default', () => {
-    expect(getMarginTranchePreview(['oldest', 'second', 'third', 'fourth'])).toEqual([]);
-  });
-
-  it('shows every tranche when expanded, without a three-lot cutoff', () => {
-    const tranches = ['oldest', 'second', 'third', 'fourth', 'newest'];
-    expect(getMarginTranchePreview(tranches, true)).toEqual(tranches);
-  });
-
-  it('does not mutate the stored tranche array', () => {
-    const tranches = [1, 2, 3, 4];
-    getMarginTranchePreview(tranches, true);
-    expect(tranches).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -473,4 +456,13 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
   });
-});
+
+
+  it('opens all ticker purchase lots in the lazy tranche details dialog instead of expanding inline', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(singleTickerView).toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('aria-haspopup="dialog"');
+    expect(singleTickerView).toContain('<TrancheDetailsModal');
+    expect(singleTickerView).not.toContain('boardTranchesOverflow');
+    expect(singleTickerView).not.toContain('expandedTrancheTicker');
+  });});
