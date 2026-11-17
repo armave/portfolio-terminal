@@ -275,6 +275,21 @@ Automated validations are recorded against each exact PR head above. The followi
 
 This is parity visibility, not a ledger cutover or automatic correction. Authenticated TradeNet, backup/restore and real multi-device release checks remain manual gates.
 
+## Completed follow-up — PR #520 cash/debt setter idempotency and atomicity
+
+[PR #520](https://github.com/armave/portfolio-terminal/pull/520) was squash-merged into \`dev\` at [\`b076ac194c30fae5c81ce05b0edc4d354fcbd2d5\`](https://github.com/armave/portfolio-terminal/commit/b076ac194c30fae5c81ce05b0edc4d354fcbd2d5). Final tested PR head: \`75558f00d43bad33173b1c3f9ae9a7e626ec0fa8\`.
+
+- [x] Verify identical-key retries and conflicting-key rejection for \`setFreeCash\`, \`setCashBalance\` and \`setMarginDebt\`.
+- [x] Verify event actor/source/effective/recorded metadata on manual and AI-confirmed adjustment paths.
+- [x] Verify failed persistence retains the prior in-memory snapshot, persisted state, event journal and subscribers.
+- [x] [Pull Request CI #4476](https://github.com/armave/portfolio-terminal/actions/runs/44020795563) and [Security & Workflow Validation #282](https://github.com/armave/portfolio-terminal/actions/runs/44020795313) passed all blocking checks.
+
+This slice added regression coverage only; accounting and runtime command behavior were unchanged.
+
+## In progress — atomic backup import and journal-preserving restore
+
+The current restore path imported through \`PortfolioStore.importState()\` (which already validates, persists atomically and publishes the new snapshot), then redundantly called \`saveState()\` a second time. A failure in that second call invoked a compensating restore through \`importState(previousState)\`; that same-workspace API intentionally merges append-only transaction, corporate-action and market-history journals, so it cannot remove the just-imported events as a true rollback. The follow-up replaces the two-phase wrapper with one validated/persisted store commit, and adds export/import/reload coverage for all three structured journals plus linked closed history and cash-holding lots. A failed store persistence is asserted to leave the original snapshot, journal, persisted record and subscribers unchanged.
+
 ## Read-only lot and closed-history parity visibility
 
 The Trades broker-reconciliation panel now exposes the existing `verifyPortfolioTransactionLotParity` shadow comparison separately from transaction-journal quantity/cash/debt coverage. It receives the current canonical `positions`, cash-holding lots and `closedTrades`; it never writes to the store or changes financial calculations.
