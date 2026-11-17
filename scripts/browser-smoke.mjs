@@ -1168,7 +1168,11 @@ async function assertVisibleControlsHaveNames(page, surface) {
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  // This smoke test navigates repeatedly across viewport sizes and must exercise
+  // the exact checked-out production artifact, not an older service-worker cache.
+  // PWA lifecycle behavior is validated separately from this UI/browser journey.
+  const context = await browser.newContext({ serviceWorkers: 'block' });
+  const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const worker = await mockWorkerApi(page);
