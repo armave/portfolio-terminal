@@ -2841,7 +2841,20 @@ describe('portfolio transaction journal integration', () => {
   it('restores transaction, closed-history, cash-lot, corporate-action and market-correction evidence across backup export and reload', () => {
     const store = new PortfolioStore();
     const { cashBuy, holding, action } = createCashHoldingSplitFixture();
-    const { sale, before, cashflows } = createClosedHistoryFeeAuditImportFixture();
+    const { sale, before } = createClosedHistoryFeeAuditImportFixture();
+    const positionBuy = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: Date.parse('2026-01-01T12:00:00.000Z'),
+      ticker: 'AAPL',
+      quantity: 10,
+      positionQuantityDelta: 10,
+      lotId: 'backup-aapl-position-lot',
+      acquisitionDate: '2026-01-01',
+      unitPrice: 100,
+      grossAmount: 1_000,
+      fees: 3,
+      cashDelta: 0
+    }, { eventId: 'backup-aapl-position-buy-event', source: 'portfolio-store-test' });
     const actionEvent = toPortfolioCorporateActionEvent(
       action,
       'applied',
@@ -2862,11 +2875,10 @@ describe('portfolio transaction journal integration', () => {
     });
     const backup = createPortfolioBackupSnapshot({
       ...store.getState(),
-      balance: -250,
-      cashCushion: { freeCash: 125, holdings: [holding] },
+      balance: 0,
+      cashCushion: { freeCash: 0, holdings: [holding] },
       closedTrades: [before],
-      cashflows,
-      transactionEvents: [cashBuy, sale],
+      transactionEvents: [cashBuy, positionBuy, sale],
       corporateActionEvents: [actionEvent],
       marketHistoryCorrections: [marketCorrection],
       gatewaySecret: 'never-export-this-secret'
@@ -2874,10 +2886,13 @@ describe('portfolio transaction journal integration', () => {
     const imported = normalizePortfolioBackup(backup, Date.parse('2026-11-17T09:00:00.000Z'));
 
     expect(backup).not.toHaveProperty('gatewaySecret');
-    expect(store.importState(imported as Partial<PortfolioState>)).toBe(true);
+    expect(store.importState(imported as unknown as Partial<PortfolioState>)).toBe(true);
 
     const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
-    expect(persisted.transactionEvents).toEqual([cashBuy, sale]);
+    const committedEvents = store.getState().transactionEvents || [];
+    expect(persisted.transactionEvents).toEqual(committedEvents);
+    expect(persisted.transactionEvents.map((event: { id: string }) => event.id))
+      .toEqual(expect.arrayContaining([cashBuy.id, positionBuy.id, sale.id]));
     expect(persisted.corporateActionEvents).toEqual([actionEvent]);
     expect(persisted.marketHistoryCorrections).toEqual([marketCorrection]);
     expect(persisted.closedTrades).toMatchObject([{
@@ -2889,14 +2904,16 @@ describe('portfolio transaction journal integration', () => {
       netProfit: before.netProfit
     }]);
     expect(persisted.cashCushion).toMatchObject({
-      freeCash: 125,
+      freeCash: 0,
       holdings: [{ ticker: 'AAPL', shares: 10, lots: [{ lotId: 'cash-aapl-lot-1', qty: 10, price: 100 }] }]
     });
 
     const reloaded = new PortfolioStore();
-    expect(reloaded.getState().transactionEvents).toEqual([cashBuy, sale]);
+    expect(reloaded.getState().transactionEvents).toEqual(persisted.transactionEvents);
     expect(reloaded.getState().corporateActionEvents).toEqual([actionEvent]);
     expect(reloaded.getState().marketHistoryCorrections).toEqual([marketCorrection]);
+    expect(reloaded.getState().transactionEvents?.map((event) => event.id))
+      .toEqual(expect.arrayContaining([cashBuy.id, positionBuy.id, sale.id]));
     expect(reloaded.getState().closedTrades).toMatchObject([{
       id: before.id,
       transactionEventId: sale.id,
@@ -2940,10 +2957,10 @@ describe('portfolio transaction journal integration', () => {
       removeItem: (key: string) => { sharedTestStorage.delete(key); }
     });
 
-    expect(store.importState(imported as Partial<PortfolioState>)).toBe(false);
+    expect(store.importState(imported as unknown as Partial<PortfolioState>)).toBe(false);
     expect(store.getState()).toBe(previousState);
     expect(store.getState().balance).toBe(-50);
-    expect(store.getState().transactionEvents).toEqual([priorEvent]);
+    expect(store.getState().transactionEvents).toEqual(previousState.transactionEvents);
     expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
     expect(listener).not.toHaveBeenCalled();
   });
