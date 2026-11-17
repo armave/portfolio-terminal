@@ -41,7 +41,7 @@ The Wave 2 foundation PRs are merged:
 
 There were no open implementation PRs at the time of the audit. The current dev head includes the latest performance optimization.
 
-The important tracking issues for Wave 3 are #507 (PT-02 continuation), [#537](https://github.com/armave/portfolio-terminal/issues/537) (PT-04 replacement for deleted #332), [#539](https://github.com/armave/portfolio-terminal/issues/539) (PT-05 replacement for deleted #333), #334 (PT-06) and #365 (PT-07). The broad PT-02 issue #330 was deleted; #507 now tracks the remaining transaction-journal acceptance criteria. The merged foundation PRs and subsequent bounded implementation slices do not mean every broader workstream acceptance criterion is complete.
+The important tracking issues for Wave 3 are [#507](https://github.com/armave/portfolio-terminal/issues/507) (PT-02 continuation), [#567](https://github.com/armave/portfolio-terminal/issues/567) (PT-04 transaction-level reconciliation), [#539](https://github.com/armave/portfolio-terminal/issues/539) (PT-05 tenancy). PT-04 issue #537 remains the completed narrow unclassified-cashflow guard, not the parent reconciliation tracker. The legacy PT-06 and PT-07 issue references are under separate tracking repair. The broad PT-02 issue #330 was deleted; #507 now tracks the remaining transaction-journal acceptance criteria. The merged foundation PRs and subsequent bounded implementation slices do not mean every broader workstream acceptance criterion is complete.
 
 See current-state-audit.md for code-level observations and limitations.
 
