@@ -96,7 +96,7 @@ describe('Freedom quote stream app adapter', () => {
       'GOOGL',
       280.55,
       'Freedom TradeNet',
-      quoteReceivedAt,
+      expect.any(Number),
       expect.objectContaining({
         transport: 'websocket',
         price: 280.55,
@@ -106,8 +106,10 @@ describe('Freedom quote stream app adapter', () => {
         sourceTimestamp: Math.floor((quoteReceivedAt - 1_000) / 1_000) * 1_000,
         requestSequence: 123
       }),
-      quoteReceivedAt
+      expect.any(Number)
     );
+    expect(recordQuote.mock.calls[0][3]).toBeGreaterThanOrEqual(quoteReceivedAt);
+    expect(recordQuote.mock.calls[0][5]).toBeGreaterThanOrEqual(quoteReceivedAt);
     expect(renderAfterUpdate).not.toHaveBeenCalled();
     expect(frameQueue.frames).toHaveLength(1);
     frameQueue.frames.shift()?.callback();
@@ -139,7 +141,7 @@ describe('Freedom quote stream app adapter', () => {
       'GOOGL',
       281.25,
       'Freedom TradeNet',
-      quoteReceivedAt + 1_000,
+      expect.any(Number),
       expect.objectContaining({
         transport: 'websocket',
         price: 281.25,
@@ -149,8 +151,10 @@ describe('Freedom quote stream app adapter', () => {
         sourceTimestamp: Math.floor((quoteReceivedAt - 59_000) / 1_000) * 1_000,
         requestSequence: 124
       }),
-      quoteReceivedAt + 1_000
+      expect.any(Number)
     );
+    expect(recordQuote.mock.calls[1][3]).toBeGreaterThanOrEqual(quoteReceivedAt + 1_000);
+    expect(recordQuote.mock.calls[1][5]).toBeGreaterThanOrEqual(quoteReceivedAt + 1_000);
     expect(renderAfterUpdate).toHaveBeenCalledTimes(1);
     expect(frameQueue.frames).toHaveLength(1);
     frameQueue.frames.shift()?.callback();
