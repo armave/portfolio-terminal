@@ -2675,7 +2675,10 @@ table tbody tr:hover {
 
 
 /* Tables: keep page changes, pagination controls, and dense data surfaces composed. */
-.closed-history-page-transition {
+.closed-history-page-transition,
+  .market-tool-card,
+  .market-tool-card:hover,
+  .market-tool-card:active {
   transform-origin: top center;
   animation: closed-history-page-enter 190ms var(--motion-fluid, cubic-bezier(0.2, 0.75, 0.25, 1)) both;
 }
@@ -4292,17 +4295,6 @@ table tbody tr:hover {
   align-items: center;
   gap: 0.4rem;
   width: 100%;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .market-tool-card {
-    transition: none;
-  }
-
-  .market-tool-card:hover,
-  .market-tool-card:active {
-    transform: none;
-  }
 }
 
 @media (max-width: 767px) {
