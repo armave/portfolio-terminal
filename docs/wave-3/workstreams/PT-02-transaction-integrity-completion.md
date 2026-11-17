@@ -258,3 +258,12 @@ Merged client/domain slices now include linked Closed History fee corrections (#
 All four CI/security pairs refer to the exact tested code-bearing PR heads. For PR #512, authenticated TradeNet, backup/restore and real multi-device checks remain manual gates and are not marked complete by automated browser tests.
 
 Automated validations are recorded against each exact PR head above. The following remain manual release gates where applicable: authenticated TradeNet refresh and corporate-action compatibility, authenticated backup export/import and cloud restore across multiple devices, and keyboard-only/responsive accessibility review. These are not satisfied by deterministic CI and are not claimed complete. `PortfolioState.positions` remains canonical and no ledger cutover has been authorized.
+
+
+## Read-only lot and closed-history parity visibility
+
+The Trades broker-reconciliation panel now exposes the existing \`verifyPortfolioTransactionLotParity\` shadow comparison separately from transaction-journal quantity/cash/debt coverage. It receives the current canonical \`positions\`, cash-holding lots and \`closedTrades\`; it never writes to the store or changes financial calculations.
+
+The report displays replayed open-lot and closed-sale counts, discrepancy counts, and bounded explanations for up to five lot/closed-trade differences and five incomplete or unsupported findings. A complete supported history with differences is shown as a difference state; incomplete and unsupported history are never presented as a match. Replay and canonical values are shown as read-only evidence.
+
+This visibility does not upgrade legacy/unmapped lots to replayable records, infer acquisition cost from broker average prices, or claim that unsupported history has been reconciled. In particular, it remains a shadow comparison: \`PortfolioState.positions\` and the canonical closed-history snapshot remain authoritative. No automatic repair, posting, reversal, schema migration, Worker change or ledger cutover is introduced. The existing authenticated backup/restore, live TradeNet and real multi-device checks remain manual release gates.
