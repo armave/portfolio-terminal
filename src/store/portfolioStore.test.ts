@@ -3721,6 +3721,91 @@ describe('portfolio transaction journal integration', () => {
     expect(verifyPortfolioTransactionParity(events, store.getState()).matches).toBe(true);
   });
 
+  it('records same-quantity accounting detail changes during backup import when no new command event explains them', () => {
+    const source = new PortfolioStore();
+    expect(source.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const store = new PortfolioStore();
+    expect(store.importState(source.getState())).toBe(true);
+
+    const before = store.getState();
+    const previousEventCount = before.transactionEvents?.length ?? 0;
+    const position = before.positions.AAPL;
+    expect(store.importState({
+      positions: {
+        ...before.positions,
+        AAPL: {
+          ...position,
+          commBuy: position.commBuy + 0.5,
+          tranches: (position.tranches || []).map((tranche) => ({
+            ...tranche,
+            buyCommission: (tranche.buyCommission || 0) + 0.5
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(previousEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'canonical-import-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('buyCommissionTotal');
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
+  it('does not mark backup-imported lots incomplete when a new trade event explains the imported position', () => {
+    const source = new PortfolioStore();
+    expect(source.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const sourceState = source.getState();
+    const store = new PortfolioStore();
+
+    expect(store.importState(sourceState)).toBe(true);
+
+    expect(store.getState().transactionEvents?.some((event) =>
+      event.source === 'canonical-import-detail-reconciliation'
+    )).toBe(false);
+    expect(store.getState().transactionEvents).toEqual(sourceState.transactionEvents);
+    expect(verifyPortfolioTransactionParity(
+      store.getState().transactionEvents || [],
+      store.getState()
+    ).matches).toBe(true);
+  });
+
+  it('records same-quantity detail changes from an explicitly confirmed same-workspace cloud pull', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const current = store.getState();
+    const beforeEventCount = current.transactionEvents?.length ?? 0;
+    const position = current.positions.AAPL;
+
+    expect(store.replaceFromConfirmedCloudPull({
+      ...current,
+      positions: {
+        ...current.positions,
+        AAPL: {
+          ...position,
+          tranches: (position.tranches || []).map((tranche) => ({
+            ...tranche,
+            price: tranche.price + 1
+          }))
+        }
+      }
+    })).toBe(true);
+
+    const detailEvent = (store.getState().transactionEvents || []).slice(beforeEventCount).find((event) =>
+      event.type === 'portfolio.reconciliation' &&
+      event.source === 'confirmed-cloud-pull-detail-reconciliation' &&
+      event.ticker === 'AAPL'
+    );
+    expect(detailEvent?.note).toContain('acquisitionLots');
+    expect(inspectPortfolioTransactionJournalReplayCoverage(store.getState().transactionEvents || [])
+      .findings.find((finding) => finding.eventId === detailEvent?.id)
+    ).toMatchObject({ disposition: 'incomplete' });
+  });
+
   it('records same-quantity position lot and commission changes as incomplete reconciliation evidence', () => {
     const store = new PortfolioStore();
     expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
