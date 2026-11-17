@@ -281,7 +281,6 @@ export function PortfolioDataHealthPanel({
         <span class="portfolio-data-health__dot" aria-hidden="true" />
         <span class="portfolio-data-health__label">{translateText('Data & sync', language)}</span>
         <strong class="portfolio-data-health__state" aria-live="polite">{overallLabel}</strong>
-        <span class="portfolio-data-health__chevron" aria-hidden="true">{dialogOpen ? '⌃' : '⌄'}</span>
       </button>
       {modal}
     </div>

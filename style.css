@@ -5902,12 +5902,6 @@ table tbody tr:hover {
   white-space: nowrap;
 }
 
-.portfolio-data-health__chevron {
-  color: var(--text-muted, #94a3b8);
-  font-size: 0.8rem;
-  line-height: 1;
-}
-
 .portfolio-data-health__trigger:focus-visible,
 .portfolio-data-health__action:focus-visible {
   outline: 2px solid var(--border-focus, #22d3ee);
