@@ -738,7 +738,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
     return (
       <>
-        
+
         <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
           <div class="portfolio-micro-column portfolio-micro-basis">
             <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
@@ -1020,7 +1020,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
-      
+
       <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
         <div class="portfolio-micro-column portfolio-micro-basis">
           <span class="portfolio-micro-heading">{translateText('POSITION BASIS', getAppLanguage())}</span>
