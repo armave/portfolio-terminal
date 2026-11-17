@@ -358,7 +358,7 @@ describe('cross-device financial header hierarchy', () => {
   const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
-  it('keeps only distinct Combined Portfolio KPIs in a compact strip directly above Account Equity Health', () => {
+  it('places compact, non-redundant KPIs below the financial detail summary', () => {
     expect(source).toContain('data-header-metric={metric}');
     const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
     expect(combinedView).toContain('metric="net-target-return"');
@@ -367,54 +367,50 @@ describe('cross-device financial header hierarchy', () => {
     expect(combinedView).not.toContain('metric="account-equity"');
     expect(combinedView).not.toContain('metric="margin-risk"');
     expect(combinedView.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
-      combinedView.indexOf('class="portfolio-health-stack"')
+      combinedView.indexOf('class="portfolio-header-kpis text-center"')
     );
-    const healthStack = combinedView.slice(
-      combinedView.indexOf('class="portfolio-health-stack"'),
+    expect(combinedView.indexOf('class="portfolio-header-kpis text-center"')).toBeLessThan(
+      combinedView.indexOf('class="portfolio-risk-tools-row"')
+    );
+    const healthToolsRow = combinedView.slice(
+      combinedView.indexOf('class="portfolio-risk-tools-row"'),
       combinedView.indexOf('<div class="portfolio-market-tools-row">')
     );
-    expect(healthStack.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
-      healthStack.indexOf('<MarginRiskGaugeCard')
-    );
+    expect(healthToolsRow).toContain('<MarginRiskGaugeCard');
     expect(source).toContain('id={valueId}');
     expect(combinedView).toContain('valueId="boardNetTargetReturn"');
     expect(combinedView).toContain('valueId="daysToBreakeven"');
     expect(combinedView).toContain('valueId="boardMargin"');
   });
-
-  it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
+  it('keeps ticker PT and net target return in the ticker title while compact metrics follow financial details', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
     expect(singleTickerView).toContain('metric="carry-break-even"');
-    expect(singleTickerView).not.toContain('metric="allocated-equity"');
     expect(singleTickerView).toContain('metric="margin-debt"');
+    expect(singleTickerView).not.toContain('metric="allocated-equity"');
     expect(singleTickerView).not.toContain('metric="margin-risk"');
-    const tickerHealthStack = singleTickerView.slice(
-      singleTickerView.indexOf('class="portfolio-health-stack"'),
-      singleTickerView.indexOf('<div class="portfolio-market-tools-row">')
-    );
-    expect(tickerHealthStack.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
-      tickerHealthStack.indexOf('<MarginRiskGaugeCard')
-    );
     expect(singleTickerView).not.toContain('metric="net-target-return"');
     expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
     expect(singleTickerView).not.toContain('Your PT / Net return at target');
     expect(singleTickerView).not.toContain('calculatePositionMetrics');
+    expect(singleTickerView.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
+      singleTickerView.indexOf('class="portfolio-header-kpis text-center"')
+    );
+    expect(singleTickerView.indexOf('class="portfolio-header-kpis text-center"')).toBeLessThan(
+      singleTickerView.indexOf('class="portfolio-risk-tools-row"')
+    );
   });
-
-  it('stacks compact KPIs above Account Equity Health and keeps Market Tools beside the health stack on desktop', () => {
+  it('keeps Account Equity Health and Market Tools as direct siblings after the standalone KPI strip', () => {
+    expect(source).not.toContain('portfolio-health-stack');
     expect(source).toContain('<div class="portfolio-risk-tools-row">');
-    expect(source.match(/<div class="portfolio-health-stack">/g)).toHaveLength(2);
     expect(source).toContain('<MarginRiskGaugeCard');
     expect(source).toContain('<MarginMarketTools');
-    expect(styles).toContain('.portfolio-health-stack {');
-    expect(styles).toContain('gap: 0.5rem;');
+    expect(styles).toContain('.portfolio-risk-tools-row > .margin-risk-gauge-card {');
     expect(styles).toContain('@media (min-width: 768px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
     expect(styles).toContain('@media (max-width: 767px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
   });
-
   it('groups Market Tools into descriptive scenario and intelligence cards', () => {
     const toolsStart = source.indexOf('function MarginMarketTools');
     const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);

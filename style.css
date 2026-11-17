@@ -4366,14 +4366,6 @@ table tbody tr:hover {
 }
 
 /* Decision-focused financial header and paired equity/tools workspace. */
-.portfolio-health-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
-  width: 100%;
-}
-
 .portfolio-header-kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.25rem), 1fr));
@@ -4445,12 +4437,8 @@ table tbody tr:hover {
   width: 100%;
 }
 
-.portfolio-risk-tools-row > .portfolio-health-stack {
-  min-width: 0;
-  width: 100%;
-}
-
-.portfolio-health-stack > .margin-risk-gauge-card {
+.portfolio-risk-tools-row > .margin-risk-gauge-card {
+  grid-column: auto;
   min-width: 0;
   width: 100%;
 }

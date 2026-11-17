@@ -624,8 +624,8 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
 
 async function assertFinancialHeaderLayout(page, view) {
   const expectedMetrics = view === 'combined'
-    ? ['net-target-return', 'carry-break-even', 'account-equity', 'margin-debt', 'margin-risk']
-    : ['carry-break-even', 'allocated-equity', 'margin-debt', 'margin-risk'];
+    ? ['net-target-return', 'carry-break-even', 'margin-debt']
+    : ['carry-break-even', 'margin-debt'];
 
   for (const viewport of [
     { width: 390, height: 844 },
