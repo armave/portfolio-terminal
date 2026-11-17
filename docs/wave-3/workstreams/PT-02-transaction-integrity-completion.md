@@ -326,10 +326,24 @@ The regression suite proves the deterministic three-way reconciler contract. It 
 
 The test verifies request deduplication within the Worker receipt retention window (100 receipts per record, seven days). It does not claim global/unbounded exactly-once delivery or real browser/device recovery.
 
-## In progress — unsupported financial reversal boundary coverage
+## Completed — unsupported financial reversal boundary coverage
 
 The supported inverse contract remains deliberately narrow: `reverseBalanceAdjustment` accepts only manual `cash.adjustment` and `margin.adjustment` events, with an exact linked correction and safe non-negative resulting balances. Trade buys/sales, cash-holding buy/sale/removal, position-lot tracking corrections, closed-history corrections, corporate actions, margin interest, external flows and generic audit/reset events remain unsupported for reversal. The new table-driven store regression verifies that each unsupported event type is rejected without changing the active snapshot, persisted snapshot, journal or subscribers. This is contract coverage only; it does not add an inverse operation or reinterpret financial history.
 
+
+## Completed — authenticated public Worker cloud-snapshot protocol regressions
+
+Test-only main commits `493c7dcc`, `b5fa5878` and corrected follow-up `f240547d` extend the cloud snapshot and digest tests through the public `worker.fetch` authentication/routing boundary, backed by isolated Durable Object fixtures.
+
+- [x] Unauthenticated requests are rejected before Durable Object session lookup; authenticated guest requests cannot write shared cloud snapshots.
+- [x] Encrypted snapshot writes preserve ETag/revision; an identical idempotent retry returns the original committed revision without a second snapshot write.
+- [x] Reusing an idempotency key with a different request fingerprint is rejected with `409`.
+- [x] A stale `If-Match` revision is rejected with `409`.
+- [x] A delayed retry whose original receipt has since been superseded is rejected with `409` and identifies the current revision rather than restoring the older snapshot.
+- [x] The committed encrypted snapshot is returned by the authenticated read route; idempotency receipts retain only the request fingerprint/key/revision metadata, not the encrypted payload.
+- [x] [Pull Request CI #4594](https://github.com/armave/portfolio-terminal/actions/runs/44112353610), [Financial Integrity Regression #35](https://github.com/armave/portfolio-terminal/actions/runs/44112353832), [Security & Workflow Validation #400](https://github.com/armave/portfolio-terminal/actions/runs/44112353689), and [GitHub Pages #1103](https://github.com/armave/portfolio-terminal/actions/runs/44112353564) passed on exact main head `f240547dc5098c8d9f7c36396e1dc9a938831490`.
+
+This is deterministic public Worker-boundary coverage with a test session and Durable Object fixture. It does **not** replace authenticated production requests, restore rehearsal against a real account, or simultaneous recovery across physical devices. No Worker runtime behavior changed in these test-only commits.
 
 ## Read-only lot and closed-history parity visibility
 
