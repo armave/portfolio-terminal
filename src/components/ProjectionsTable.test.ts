@@ -12,9 +12,11 @@ describe('Projection Table account balance', () => {
     expect(source).toContain('{formatUSD(projectedAccountBalance)}');
   });
 
-  it('renders compact, right-aligned financial cells next to a narrow date cell', () => {
+  it('renders content-sized financial columns and a constrained spanning entry description', () => {
     expect(source).toContain('projection-date-cell');
     expect(source).toContain('projection-number-cell');
+    expect(source).toContain('projection-entry-cell');
+    expect(source).toContain('projection-entry-description');
     expect(source).toContain('tabular-nums');
     expect(source).not.toContain('marginFee');
   });

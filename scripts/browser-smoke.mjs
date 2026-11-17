@@ -642,7 +642,13 @@ async function assertFinancialHeaderLayout(page, view) {
       const marginTarget = targetSection?.querySelector('#boardMarginTarget');
       const analystTarget = targetSection?.querySelector('#boardAnalystConsensus');
       const boardTitle = document.querySelector('#boardTitle');
-      const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
+      const projectionWrapper = document.querySelector('#projectionTableContainer');
+      const projectionTable = projectionWrapper?.querySelector('.projection-table');
+      const projectionWrapperBounds = projectionWrapper?.getBoundingClientRect();
+      const projectionTableBounds = projectionTable?.getBoundingClientRect();
+      const projectionColumnWidths = Array.from(projectionTable?.querySelectorAll('thead th') || [])
+        .map((cell) => cell.getBoundingClientRect().width);
+      const projectionHealthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
       const summary = healthColumn?.querySelector('.portfolio-micro-summary');
       const health = healthColumn?.querySelector('.margin-risk-gauge-card');
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
@@ -673,6 +679,10 @@ async function assertFinancialHeaderLayout(page, view) {
       );
       return {
         metrics,
+        projectionTableLayout: projectionTable ? getComputedStyle(projectionTable).tableLayout : null,
+        projectionTableWidth: projectionTableBounds?.width ?? 0,
+        projectionWrapperWidth: projectionWrapperBounds?.width ?? 0,
+        projectionColumnWidths,
         targetSectionVisible: Boolean(targetSection?.getClientRects().length),
         targetSegmentsShareSection: Boolean(
           tickerIdentity && marginTarget && analystTarget &&
@@ -785,6 +795,21 @@ async function assertFinancialHeaderLayout(page, view) {
       throw new Error('Combined Portfolio must not show an individual ticker target section.');
     }
 
+    if (projectionTable && viewport.width >= 1024) {
+      if (layout.projectionTableLayout !== 'auto' ||
+          layout.projectionTableWidth >= layout.projectionWrapperWidth * 0.92) {
+        throw new Error('The desktop projection table should use intrinsic content width instead of stretching columns across the full panel: ' + JSON.stringify(layout));
+      }
+      const [dateWidth, netWidth, feesWidth, balanceWidth] = layout.projectionColumnWidths;
+      const columnTotal = dateWidth + netWidth + feesWidth + balanceWidth;
+      if (!columnTotal ||
+          dateWidth / columnTotal > 0.3 ||
+          netWidth / columnTotal > 0.3 ||
+          feesWidth / columnTotal > 0.45 ||
+          balanceWidth / columnTotal > 0.3) {
+        throw new Error('Projection columns should stay close to their required content widths: ' + JSON.stringify(layout));
+      }
+    }
     if (!layout.healthColumnVisible || !layout.summaryVisible || !layout.healthVisible || !layout.toolsVisible || !layout.summaryBeforeHealth) {
       throw new Error('The compact financial summary must stay above visible Account Equity Health at ' + viewport.width + 'px: ' + JSON.stringify(layout));
     }

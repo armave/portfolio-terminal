@@ -68,11 +68,9 @@ describe('fluid workspace styles', () => {
 
   it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(fluidStyles).toMatch(/#projectionTableContainer \.projection-table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\);[^}]*table-layout:\s*fixed;/s);
-    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-date\s*\{\s*width:\s*16%;\s*\}/);
-    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-net\s*\{\s*width:\s*20%;\s*\}/);
-    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-fees\s*\{\s*width:\s*42%;\s*\}/);
-    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-col-balance\s*\{\s*width:\s*22%;\s*\}/);
+    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-table,\s*\.desktop-workspace-grid #projectionTableContainer \.projection-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*max-content;[^}]*table-layout:\s*auto;/s);
+    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-entry-description\s*\{[^}]*max-width:\s*16rem;[^}]*white-space:\s*normal;/s);
+    expect(stylesheet).not.toMatch(/#projectionTableContainer \.projection-col-(date|net|fees|balance)\s*\{\s*width:\s*\d+%;/);
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-number-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-date-cell\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);

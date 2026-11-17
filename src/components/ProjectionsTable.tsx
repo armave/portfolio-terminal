@@ -91,8 +91,10 @@ function ProjectionsTableView() {
                 <span class="text-[10px] font-medium text-slate-400">{translateText('Entry', getAppLanguage())}</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
-              <td colSpan={3} class="py-1 px-1 text-[10px] italic text-center">
-                {translateText('Position opened · projection values start today', getAppLanguage())}
+              <td colSpan={3} class="projection-entry-cell py-1 px-1 text-[10px] italic text-center">
+                <span class="projection-entry-description">
+                  {translateText('Position opened · projection values start today', getAppLanguage())}
+                </span>
               </td>
             </tr>
           );

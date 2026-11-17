@@ -563,11 +563,11 @@ summary:hover {
 }
 
 #projectionTableContainer table {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
   margin: 0;
-  table-layout: fixed;
+  table-layout: auto;
   font-size: 11px;
 }
 
@@ -576,11 +576,6 @@ summary:hover {
   padding: 0.25rem 0.3rem;
   overflow-wrap: anywhere;
 }
-
-#projectionTableContainer .projection-col-date { width: 16%; }
-#projectionTableContainer .projection-col-net { width: 20%; }
-#projectionTableContainer .projection-col-fees { width: 42%; }
-#projectionTableContainer .projection-col-balance { width: 22%; }
 
 #projectionTableContainer .projection-table th:nth-child(n + 2) {
   text-align: right;
@@ -611,7 +606,7 @@ summary:hover {
 
 #projectionTableContainer .projection-date-cell {
   display: table-cell;
-  width: 16%;
+  width: auto;
   min-width: 0;
   max-width: none;
   padding-inline: 0.35rem !important;
@@ -5393,5 +5388,55 @@ table tbody tr:hover {
 
   .portfolio-risk-tools-row .portfolio-market-tools {
     align-content: start;
+  }
+}
+
+/* The projection is a content-sized financial table, not a four-way stretched grid.
+   Keep the native table algorithm so each column takes the width its contents need. */
+#mainTerminalView #projectionTableContainer .projection-table,
+.desktop-workspace-grid #projectionTableContainer .projection-table {
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  table-layout: auto;
+  margin: 0;
+}
+
+#mainTerminalView #projectionTableContainer .projection-table th,
+#mainTerminalView #projectionTableContainer .projection-table td {
+  padding: 0.25rem 0.35rem;
+  white-space: nowrap;
+}
+
+#mainTerminalView #projectionTableContainer .projection-date-cell {
+  width: auto;
+  min-width: 0;
+  white-space: normal;
+}
+
+#mainTerminalView #projectionTableContainer .projection-entry-cell {
+  white-space: normal;
+  text-align: center;
+}
+
+#mainTerminalView #projectionTableContainer .projection-entry-description {
+  display: block;
+  width: fit-content;
+  max-width: 16rem;
+  margin-inline: auto;
+  white-space: normal;
+  text-align: center;
+}
+
+#mainTerminalView #projectionTableContainer .projection-number-cell {
+  white-space: nowrap;
+  text-align: right;
+  padding-inline: 0.35rem;
+}
+
+@media (max-width: 767px) {
+  #mainTerminalView #projectionTableContainer .projection-table {
+    width: max-content;
+    min-width: max-content;
   }
 }
