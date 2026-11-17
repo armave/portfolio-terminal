@@ -37,7 +37,7 @@ import {
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import { verifyClosedHistoryFeeCorrectionParity } from '../domain/closedHistoryFeeAudit';
-import { replayPortfolioTransactionLots } from '../domain/portfolioLotJournal';
+import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import {
   adjustPositionForSplit,
   adjustCashHoldingForSplit,
@@ -108,6 +108,301 @@ function hasValidClosedHistoryFeeAuditHistory(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeAccountingDetailForComparison(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeAccountingDetailForComparison);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [
+      key,
+      normalizeAccountingDetailForComparison(value[key])
+    ])
+  );
+}
+
+function serializeAccountingDetail(value: unknown): string {
+  return JSON.stringify(normalizeAccountingDetailForComparison(value)) ?? 'undefined';
+}
+
+/**
+ * Extract only position fields that can affect acquisition cost, financing or
+ * source-linked open fee attribution. Quote, target-price and presentation
+ * metadata deliberately remain outside this audit comparison.
+ */
+function getPositionAccountingDetails(position: PositionRecord | undefined): Record<string, unknown> | null {
+  if (!position) return null;
+
+  const tranches = Array.isArray(position.tranches) && position.tranches.length
+    ? position.tranches.map((tranche) => {
+        const lot: Record<string, unknown> = isRecord(tranche) ? tranche : {};
+        return {
+          lotId: lot.lotId,
+          quantity: lot.qty,
+          acquisitionPrice: lot.price,
+          acquisitionDate: lot.date,
+          acquiredAt: lot.acquiredAt,
+          buyCommission: lot.buyCommission
+        };
+      })
+    : undefined;
+  const brokerFeeAllocations = isRecord(position.brokerMarginFeeAllocations) &&
+      Object.keys(position.brokerMarginFeeAllocations).length
+    ? Object.fromEntries(
+        Object.entries(position.brokerMarginFeeAllocations).sort(([left], [right]) =>
+          left.localeCompare(right)
+        )
+      )
+    : undefined;
+  const hasMaterialDetail = Boolean(tranches?.length || brokerFeeAllocations) ||
+    (typeof position.commBuy === 'number' && Number.isFinite(position.commBuy) && position.commBuy !== 0) ||
+    (typeof position.marginCharged === 'number' && Number.isFinite(position.marginCharged) && position.marginCharged !== 0) ||
+    (typeof position.brokerMarginFee === 'number' && Number.isFinite(position.brokerMarginFee) && position.brokerMarginFee !== 0);
+  if (!hasMaterialDetail) return null;
+
+  return {
+    ...(position.commBuy !== undefined ? { buyCommissionTotal: position.commBuy } : {}),
+    ...(position.marginCharged !== undefined ? { modeledFinancingCharge: position.marginCharged } : {}),
+    ...(position.brokerMarginFee !== undefined ? { openBrokerFeeTotal: position.brokerMarginFee } : {}),
+    ...(brokerFeeAllocations ? { openBrokerFeeAllocations: brokerFeeAllocations } : {}),
+    ...(tranches ? { acquisitionLots: tranches } : {})
+  };
+}
+
+function getCashHoldingAccountingDetails(
+  holdings: readonly CashStockHolding[] | undefined
+): Map<string, Record<string, unknown>> {
+  const result = new Map<string, Record<string, unknown>>();
+  for (const holding of holdings || []) {
+    if (!holding || typeof holding.ticker !== 'string') continue;
+    const ticker = holding.ticker.trim().toUpperCase();
+    if (!ticker) continue;
+
+    const lots = Array.isArray(holding.lots) && holding.lots.length
+      ? holding.lots.map((lot) => {
+          const record: Record<string, unknown> = isRecord(lot) ? lot : {};
+          return {
+            lotId: record.lotId,
+            quantity: record.qty,
+            acquisitionPrice: record.price,
+            acquisitionDate: record.date,
+            acquiredAt: record.acquiredAt,
+            buyCommission: record.buyCommission
+          };
+        })
+      : undefined;
+    const hasAverageCost = typeof holding.averagePrice === 'number' &&
+      Number.isFinite(holding.averagePrice) && holding.averagePrice > 0;
+    if (!lots && !hasAverageCost) continue;
+
+    const detail = {
+      ...(lots ? { acquisitionLots: lots } : {}),
+      ...(holding.averagePrice !== undefined ? { averageCost: holding.averagePrice } : {})
+    };
+    const previous = result.get(ticker);
+    result.set(ticker, previous
+      ? { holdingRows: [...(Array.isArray(previous.holdingRows) ? previous.holdingRows : [previous]), detail] }
+      : detail);
+  }
+  return result;
+}
+
+function getChangedAccountingDetailFields(
+  previous: Record<string, unknown> | null,
+  next: Record<string, unknown> | null
+): string[] {
+  const keys = new Set([
+    ...Object.keys(previous || {}),
+    ...Object.keys(next || {})
+  ]);
+  return Array.from(keys).filter((key) =>
+    serializeAccountingDetail(previous?.[key]) !== serializeAccountingDetail(next?.[key])
+  );
+}
+
+/** Normalize ticker aliases to the same instrument identity for audit matching. */
+function normalizeAccountingTicker(value: string): string {
+  const ticker = value.trim().toUpperCase();
+  return ticker.endsWith('.US') ? ticker.slice(0, -3) : ticker;
+}
+
+function hasCompleteAccountingLotParity(
+  ticker: string,
+  scope: 'position' | 'cash-holding',
+  changedFields: readonly string[],
+  next: Pick<PortfolioState, 'positions' | 'cashCushion' | 'closedTrades'>,
+  transactionEvents: readonly PortfolioTransactionEvent[]
+): boolean {
+  const explainableFields = scope === 'position'
+    ? new Set(['acquisitionLots', 'buyCommissionTotal'])
+    : new Set(['acquisitionLots', 'averageCost']);
+  if (changedFields.some((field) => !explainableFields.has(field))) return false;
+
+  const relevantEvents = transactionEvents.filter((event) => {
+    if (event.type === 'portfolio.reset') return true;
+    const eventTicker = typeof event.ticker === 'string'
+      ? normalizeAccountingTicker(event.ticker)
+      : '';
+    if (eventTicker !== ticker) return false;
+
+    if (scope === 'position') {
+      return event.type === 'trade.buy' ||
+        event.type === 'trade.sell' ||
+        event.type === 'position.adjustment' ||
+        (event.type === 'portfolio.reconciliation' && event.positionQuantityDelta !== undefined) ||
+        (event.type === 'correction' && event.positionQuantityDelta !== undefined) ||
+        (event.type === 'corporate-action' && (
+          event.positionQuantityDelta !== undefined ||
+          event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'position') === true
+        ));
+    }
+    return event.type === 'cash-holding.buy' ||
+      event.type === 'cash-holding.sell' ||
+      event.type === 'cash-holding.adjustment' ||
+      (event.type === 'portfolio.reconciliation' && event.cashHoldingQuantityDelta !== undefined) ||
+      (event.type === 'correction' && event.cashHoldingQuantityDelta !== undefined) ||
+      (event.type === 'corporate-action' && (
+        event.cashHoldingQuantityDelta !== undefined ||
+        event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'cash-holding') === true
+      ));
+  });
+
+  if (scope === 'position') {
+    const positions = new Map<string, PositionRecord>();
+    for (const [key, position] of Object.entries(next.positions || {})) {
+      if (!position || typeof position !== 'object') continue;
+      const positionTicker = normalizeAccountingTicker(String(position.ticker || key));
+      if (positionTicker) positions.set(positionTicker, position);
+    }
+    const position = positions.get(ticker);
+    const saleEventIds = new Set(relevantEvents
+      .filter((event) => event.type === 'trade.sell')
+      .map((event) => event.id));
+    const linkedClosedTrades = (next.closedTrades || []).filter((trade) =>
+      Boolean(trade.transactionEventId && saleEventIds.has(trade.transactionEventId))
+    );
+    const parity = verifyPortfolioTransactionLotParity(relevantEvents, {
+      positions: position ? { [ticker]: position } : {},
+      closedTrades: linkedClosedTrades
+    });
+    if (!parity.matches) return false;
+
+    const replayById = new Map(parity.replay.openLots.map((lot) => [lot.lotId, lot]));
+    for (const tranche of position?.tranches || []) {
+      if (tranche.acquiredAt === undefined) continue;
+      const replayedLot = tranche.lotId ? replayById.get(tranche.lotId) : undefined;
+      if (!replayedLot || !Number.isFinite(tranche.acquiredAt) ||
+        Math.abs(replayedLot.acquiredAt - tranche.acquiredAt) > 1) return false;
+    }
+    return true;
+  }
+
+  const holdings = (next.cashCushion?.holdings || []).filter((holding) =>
+    normalizeAccountingTicker(holding.ticker) === ticker
+  );
+  const parity = verifyPortfolioTransactionLotParity(relevantEvents, { cashHoldings: holdings });
+  if (!parity.matches) return false;
+
+  const replayById = new Map(parity.replay.cashHoldingOpenLots.map((lot) => [lot.lotId, lot]));
+  for (const holding of holdings) {
+    const lots = Array.isArray(holding.lots) ? holding.lots : [];
+    let quantity = 0;
+    let totalCost = 0;
+    for (const lot of lots) {
+      const replayedLot = lot.lotId ? replayById.get(lot.lotId) : undefined;
+      if (!replayedLot || !Number.isFinite(lot.acquiredAt) ||
+        Math.abs(replayedLot.acquiredAt - lot.acquiredAt) > 1) return false;
+      quantity += lot.qty;
+      totalCost += lot.qty * lot.price;
+    }
+    const shares = Number(holding.shares);
+    const averagePrice = Number(holding.averagePrice);
+    if (!lots.length || !Number.isFinite(shares) || shares <= 0 ||
+      Math.abs(quantity - shares) > 1e-8 ||
+      !Number.isFinite(averagePrice) || averagePrice <= 0 ||
+      Math.abs(Number((totalCost / quantity).toFixed(8)) - averagePrice) > 1e-7) return false;
+  }
+  return true;
+}
+
+/**
+ * Record accounting-detail changes that cannot be fully explained by a
+ * complete ticker-scoped lot replay of the candidate canonical snapshot.
+ * The event has no synthetic financial delta and is intentionally classified
+ * incomplete by the shadow replay contract.
+ */
+function appendCanonicalSnapshotAccountingDetailEvents(
+  previous: Pick<PortfolioState, 'positions' | 'cashCushion' | 'transactionEvents' | 'closedTrades'>,
+  next: Pick<PortfolioState, 'positions' | 'cashCushion' | 'closedTrades'>,
+  transactionEvents: PortfolioTransactionEvent[],
+  source: string
+): PortfolioTransactionEvent[] {
+  if (!isPortfolioTransactionEventList(transactionEvents)) return transactionEvents;
+
+  const changes: Array<{ ticker: string; scope: 'position' | 'cash-holding'; fields: string[] }> = [];
+  const collectPositions = (positions: Record<string, PositionRecord> | undefined) => {
+    const result = new Map<string, PositionRecord>();
+    for (const [key, position] of Object.entries(positions || {})) {
+      if (!position || typeof position !== 'object') continue;
+      const ticker = normalizeAccountingTicker(String(position.ticker || key));
+      if (ticker) result.set(ticker, position);
+    }
+    return result;
+  };
+
+  const previousPositions = collectPositions(previous.positions);
+  const nextPositions = collectPositions(next.positions);
+  const positionTickers = new Set([...previousPositions.keys(), ...nextPositions.keys()]);
+  for (const ticker of Array.from(positionTickers).sort()) {
+    const fields = getChangedAccountingDetailFields(
+      getPositionAccountingDetails(previousPositions.get(ticker)),
+      getPositionAccountingDetails(nextPositions.get(ticker))
+    );
+    if (fields.length && !hasCompleteAccountingLotParity(
+      ticker,
+      'position',
+      fields,
+      next,
+      transactionEvents
+    )) changes.push({ ticker, scope: 'position', fields });
+  }
+
+  const previousCashHoldings = getCashHoldingAccountingDetails(previous.cashCushion?.holdings);
+  const nextCashHoldings = getCashHoldingAccountingDetails(next.cashCushion?.holdings);
+  const cashTickers = new Set([...previousCashHoldings.keys(), ...nextCashHoldings.keys()]);
+  for (const ticker of Array.from(cashTickers).sort()) {
+    const fields = getChangedAccountingDetailFields(
+      previousCashHoldings.get(ticker) ?? null,
+      nextCashHoldings.get(ticker) ?? null
+    );
+    if (fields.length && !hasCompleteAccountingLotParity(
+      ticker,
+      'cash-holding',
+      fields,
+      next,
+      transactionEvents
+    )) changes.push({ ticker, scope: 'cash-holding', fields });
+  }
+
+  if (!changes.length) return transactionEvents;
+
+  let events = transactionEvents;
+  for (const change of changes) {
+    const observedAt = Date.now();
+    const scope = change.scope === 'position' ? 'Position' : 'Cash-holding';
+    const event = createPortfolioTransactionEvent({
+      type: 'portfolio.reconciliation',
+      effectiveAt: observedAt,
+      ticker: change.ticker,
+      note: `Canonical ${scope.toLowerCase()} accounting details changed through a snapshot update (${change.fields.join(', ')}). The canonical snapshot remains authoritative; no execution, settlement, cost-basis adjustment, fee posting or realized P&L was inferred. Shadow replay remains incomplete pending source-backed transaction evidence.`
+    }, {
+      actor: { type: 'system' },
+      source,
+      recordedAt: observedAt
+    }, observedAt);
+    events = appendPortfolioTransactionEvent(events, event).events;
+  }
+  return events;
 }
 
 let fallbackTransactionIdSequence = 0;
@@ -689,12 +984,21 @@ export class PortfolioStore {
         mergeFailed = true;
         return state;
       }
-      return {
+      const candidate = {
         ...state,
         ...changes,
         closedTrades,
         transactionEvents: mergedEvents
       };
+      const auditedEvents = appendCanonicalSnapshotAccountingDetailEvents(
+        state,
+        candidate,
+        mergedEvents,
+        'closed-history-sync-detail-reconciliation'
+      );
+      return auditedEvents === mergedEvents
+        ? candidate
+        : { ...candidate, transactionEvents: auditedEvents };
     }, persist);
     return committed && !mergeFailed;
   }
@@ -776,10 +1080,24 @@ export class PortfolioStore {
         Object.prototype.hasOwnProperty.call(partial, 'transactionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'corporateActionEvents') ||
         Object.prototype.hasOwnProperty.call(partial, 'marketHistoryCorrections')) return false;
-    return this.update((state) => ({
-      ...state,
-      ...partial
-    }), persist, source);
+    return this.update((state) => {
+      const candidate = {
+        ...state,
+        ...partial
+      };
+      const transactionEvents = Array.isArray(state.transactionEvents)
+        ? state.transactionEvents
+        : [];
+      const auditedEvents = appendCanonicalSnapshotAccountingDetailEvents(
+        state,
+        candidate,
+        transactionEvents,
+        'canonical-snapshot-detail-reconciliation'
+      );
+      return auditedEvents === transactionEvents
+        ? candidate
+        : { ...candidate, transactionEvents: auditedEvents };
+    }, persist, source);
   }
 
   /** Update derived display values without making them a new durable mutation. */
@@ -815,7 +1133,21 @@ export class PortfolioStore {
           newState.closedTrades || [],
           newState.cashflows || []
         )) return false;
-    return this.update(() => ({ ...newState }), true, 'derived');
+    return this.update((state) => {
+      const candidate = { ...newState };
+      const transactionEvents = Array.isArray(candidate.transactionEvents)
+        ? candidate.transactionEvents
+        : [];
+      const auditedEvents = appendCanonicalSnapshotAccountingDetailEvents(
+        state,
+        candidate,
+        transactionEvents,
+        'confirmed-cloud-pull-detail-reconciliation'
+      );
+      return auditedEvents === transactionEvents
+        ? candidate
+        : { ...candidate, transactionEvents: auditedEvents };
+    }, true, 'derived');
   }
 
   public importState(newState: Partial<PortfolioState>): boolean {
@@ -861,15 +1193,26 @@ export class PortfolioStore {
       return false;
     }
 
-    return this.update((state) => ({
-      ...state,
-      ...newState,
-      // Imports append/merge history; an older backup may never erase events
-      // already committed on this device.
-      transactionEvents: mergedEvents,
-      corporateActionEvents: mergedCorporateActions,
-      marketHistoryCorrections: mergedHistoryCorrections
-    }));
+    return this.update((state) => {
+      const candidate = {
+        ...state,
+        ...newState,
+        // Imports append/merge history; an older backup may never erase events
+        // already committed on this device.
+        transactionEvents: mergedEvents,
+        corporateActionEvents: mergedCorporateActions,
+        marketHistoryCorrections: mergedHistoryCorrections
+      };
+      const auditedEvents = appendCanonicalSnapshotAccountingDetailEvents(
+        state,
+        candidate,
+        mergedEvents,
+        'canonical-import-detail-reconciliation'
+      );
+      return auditedEvents === mergedEvents
+        ? candidate
+        : { ...candidate, transactionEvents: auditedEvents };
+    });
   }
 
   /**
