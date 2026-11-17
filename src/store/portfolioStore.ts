@@ -802,6 +802,22 @@ export class PortfolioStore {
     return this.update(() => ({ ...newState }), persist, 'derived');
   }
 
+  /**
+   * Replace the same-workspace snapshot after the user explicitly confirms a
+   * backup-protected Pull cloud action. Unlike importState(), this deliberately
+   * replaces append-only journals from the cloud instead of merging conflicting
+   * local event identities. Keep this behind the Settings confirmation flow.
+   */
+  public replaceFromConfirmedCloudPull(newState: PortfolioState): boolean {
+    if (!hasValidPortfolioImportShape(newState) ||
+        !hasValidClosedHistoryFeeAuditHistory(
+          newState.transactionEvents || [],
+          newState.closedTrades || [],
+          newState.cashflows || []
+        )) return false;
+    return this.update(() => ({ ...newState }), true, 'derived');
+  }
+
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 

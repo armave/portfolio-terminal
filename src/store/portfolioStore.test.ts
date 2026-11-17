@@ -2795,6 +2795,42 @@ describe('explicit workspace replacement', () => {
 
 
 
+describe('confirmed cloud snapshot replacement', () => {
+  beforeEach(() => {
+    sharedTestStorage.clear();
+    vi.stubGlobal('localStorage', sharedLocalStorage);
+  });
+
+  it('replaces a conflicting local journal only through the confirmed cloud-pull boundary', () => {
+    const store = new PortfolioStore();
+    const localEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 1_000,
+      note: 'Local event'
+    }, { eventId: 'shared-cloud-conflict-event', recordedAt: 1_001 });
+    const cloudEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 2_000,
+      note: 'Cloud event'
+    }, { eventId: 'shared-cloud-conflict-event', recordedAt: 2_001 });
+
+    expect(store.importState({ transactionEvents: [localEvent] })).toBe(true);
+    expect(store.importState({ transactionEvents: [cloudEvent] })).toBe(false);
+    expect(store.getState().transactionEvents).toEqual([localEvent]);
+
+    const previousBalance = store.getState().balance;
+    const replacement: PortfolioState = {
+      ...store.getState(),
+      positions: {},
+      balance: previousBalance,
+      transactionEvents: [cloudEvent]
+    };
+    expect(store.replaceFromConfirmedCloudPull(replacement)).toBe(true);
+    expect(store.getState().transactionEvents).toEqual([cloudEvent]);
+    expect(store.getState().balance).toBe(previousBalance);
+  });
+});
+
 describe('portfolio transaction journal integration', () => {
   beforeEach(() => {
     sharedTestStorage.clear();

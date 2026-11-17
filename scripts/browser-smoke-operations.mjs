@@ -44,7 +44,9 @@ async function mockWorkerApi(page) {
   let currentToken = '';
   let nextUserId = 1;
   let stateRevision = 0;
+  let cloudStatePayload = null;
   let failNextStateConflict = false;
+  let failNextConflictPull = false;
   let historyRevision = 0;
   let newsRequestCount = 0;
   let tenantDirectoryRevision = 0;
@@ -422,11 +424,21 @@ async function mockWorkerApi(page) {
         return;
       }
       if (method === 'GET') {
-        await json(route, 404, { error: 'No cloud workspace has been saved yet.' }, { ETag: `"${stateRevision}"` }, call);
+        if (failNextConflictPull) {
+          failNextConflictPull = false;
+          await json(route, 503, { error: 'Temporary conflict-reconciliation read failure.' }, {}, call);
+          return;
+        }
+        if (!cloudStatePayload) {
+          await json(route, 404, { error: 'No cloud workspace has been saved yet.' }, { ETag: `"${stateRevision}"` }, call);
+          return;
+        }
+        await json(route, 200, { encryptedPayload: cloudStatePayload }, { ETag: `"${stateRevision}"` }, call);
         return;
       }
       if (method === 'POST' && failNextStateConflict) {
         failNextStateConflict = false;
+        failNextConflictPull = true;
         await json(route, 409, {
           error: 'Cloud portfolio changed since this device last synced.',
           conflict: true,
@@ -434,6 +446,7 @@ async function mockWorkerApi(page) {
         }, { ETag: `"${stateRevision}"` }, call);
         return;
       }
+      if (typeof body.encryptedPayload === 'string') cloudStatePayload = body.encryptedPayload;
       stateRevision += 1;
       await json(route, 200, { success: true, revision: stateRevision }, { ETag: `"${stateRevision}"` }, call);
       return;

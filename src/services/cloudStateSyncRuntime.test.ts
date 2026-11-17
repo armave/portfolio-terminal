@@ -324,7 +324,10 @@ describe('startup cloud pull local-edit protection', () => {
       state: base,
       getState: () => latestLocal,
       protectLocalEditsDuringPull: true,
-      pullCloudAndRewriteLocal: (value: Record<string, unknown>) => { applied.push(value); },
+      pullCloudAndRewriteLocal: (value: Record<string, unknown>) => {
+        saved.push(structuredClone(value));
+        applied.push(value);
+      },
       onLocalChangesPreserved: () => { preservedLocalChanges += 1; },
       onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status),
       showToast: () => {},
@@ -695,6 +698,17 @@ describe('background cloud conflict reconciliation', () => {
 });
 
 describe('cloud revision conflict recovery', () => {
+  const response = (status: number, payload: unknown, revision?: number) => new Response(
+    JSON.stringify(payload),
+    {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(revision === undefined ? {} : { ETag: `"${revision}"` })
+      }
+    }
+  );
+
   it('blocks stale retries until a successful cloud pull is accepted locally', async () => {
     let postCount = 0;
     let getCount = 0;
@@ -769,5 +783,167 @@ describe('cloud revision conflict recovery', () => {
     expect(await runtime.pushCloudState({ activeView: 'NVDA' }, options)).toBe(true);
     expect(postCount).toBe(2);
     expect(statuses.at(-1)).toBe('synced');
+  });
+
+  it('keeps the conflict latched when the local store rejects a pulled snapshot', async () => {
+    let revision = 0;
+    let postCount = 0;
+    let getCount = 0;
+    let saveCount = 0;
+    const statuses: string[] = [];
+    const localState = { positions: { AAPL: { ticker: 'AAPL', shares: 10 } }, balance: 500 };
+    const remoteState = { positions: { AAPL: { ticker: 'AAPL', shares: 8 } }, balance: 600 };
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'encrypted-local',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        getRevision: () => revision,
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => { saveCount += 1; return true; },
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async (_input, init) => {
+        const method = String(init?.method || 'GET').toUpperCase();
+        if (method === 'GET') {
+          getCount += 1;
+          return response(200, { encryptedPayload: JSON.stringify(remoteState) }, 2);
+        }
+        postCount += 1;
+        return response(409, { error: 'Stale revision.' }, 1);
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      state: localState,
+      getState: () => localState,
+      pullCloudAndRewriteLocal: () => { throw new Error('The transaction journal conflicts with this device.'); },
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
+    };
+
+    expect(await runtime.pushCloudState(localState, options)).toBe(false);
+    expect(statuses.at(-1)).toBe('conflict');
+    expect(postCount).toBe(1);
+
+    await runtime.pullCloudState(options);
+    expect(statuses.at(-1)).toBe('conflict');
+    expect(saveCount).toBe(0);
+    expect(revision).toBe(0);
+
+    expect(await runtime.pushCloudState({ ...localState, activeView: 'NVDA' }, options)).toBe(false);
+    expect(postCount).toBe(1);
+  });
+
+  it('keeps a populated cloud baseline blocked when a later pull returns 404', async () => {
+    let revision = 0;
+    let getCount = 0;
+    let postCount = 0;
+    let saveCount = 0;
+    const statuses: string[] = [];
+    const cloudState = { positions: { AAPL: { ticker: 'AAPL', shares: 10 } }, balance: 500 };
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'encrypted-local',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        getRevision: () => revision,
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => { saveCount += 1; return true; },
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async (_input, init) => {
+        const method = String(init?.method || 'GET').toUpperCase();
+        if (method === 'GET') {
+          getCount += 1;
+          return getCount === 1
+            ? response(200, { encryptedPayload: JSON.stringify(cloudState) }, 1)
+            : response(404, { error: 'Cloud state was removed.' }, 2);
+        }
+        postCount += 1;
+        return response(200, { success: true }, 3);
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      state: cloudState,
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
+    };
+
+    await runtime.pullCloudState(options);
+    expect(statuses.at(-1)).toBe('synced');
+    expect(revision).toBe(1);
+    expect(saveCount).toBe(1);
+
+    await runtime.pullCloudState(options);
+    expect(statuses.at(-1)).toBe('conflict');
+    expect(revision).toBe(1);
+    expect(saveCount).toBe(1);
+    expect(await runtime.pushCloudState(cloudState, options)).toBe(false);
+    expect(postCount).toBe(0);
+  });
+
+  it('forwards confirmed replacement intent to the local commit callback', async () => {
+    let revision = 0;
+    let saveCount = 0;
+    let replacementRequested: boolean | undefined;
+    const cloudState = { positions: {}, balance: 250 };
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'encrypted-local',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        getRevision: () => revision,
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => { saveCount += 1; return true; },
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => response(200, { encryptedPayload: JSON.stringify(cloudState) }, 7)
+    });
+
+    await runtime.pullCloudState({
+      secret: 'test-secret',
+      replaceLocalState: true,
+      pullCloudAndRewriteLocal: (_state, replace) => { replacementRequested = replace; },
+      showToast: () => {},
+      logAppMessage: () => {}
+    });
+
+    expect(replacementRequested).toBe(true);
+    expect(saveCount).toBe(0);
+    expect(revision).toBe(7);
   });
 });
