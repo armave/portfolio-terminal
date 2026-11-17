@@ -34,8 +34,9 @@ describe('Portfolio Data Health panel', () => {
     expect(style).toMatch(/\.portfolio-data-health__trigger\s*\{[^}]*min-height:\s*2\.75rem/s);
     expect(style).toMatch(/\.portfolio-data-health__action,\s*\.empty-state-panel__actions button\s*\{[^}]*min-height:\s*2\.75rem/s);
     expect(style).toMatch(/\.portfolio-data-health__details\s*\{[^}]*box-sizing:\s*border-box/s);
-    expect(style).toMatch(/@media\s*\(max-width:\s*639px\)[\s\S]*?\.portfolio-data-health__details\s*\{[^}]*max-width:\s*calc\(100vw\s*-\s*1rem\)/);
-    expect(style).toMatch(/width:\s*min\(29rem,\s*calc\(100vw\s*-\s*2rem\)\)/);
+    expect(style).toMatch(/@media\s*\(max-width:\s*639px\)[\s\S]*?\.portfolio-data-health__details\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;/);
+    expect(style).toMatch(/\.portfolio-data-health\s*\{[^}]*width:\s*min\(100%,\s*29rem\)/s);
+    expect(style).toMatch(/\.portfolio-data-health__details\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;/s);
     expect(style).toContain('@media (max-width: 639px)');
   });
 
