@@ -306,7 +306,7 @@ Authenticated cloud restore, account-scope switching and real multi-device recov
 
 ## Completed follow-up — protected cloud financial-array conflict coverage (#526)
 
-[PR #526](https://github.com/armave/portfolio-terminal/pull/526) was squash-merged into \`dev\` at [\`9d26ad422d5712262a24049d92c4d1836c84e75b\`](https://github.com/armave/portfolio-terminal/commit/9d26ad422d5712262a24049d92c4d1836c84e75b). Final tested PR head: \`be6a05fd80e7d717d042c4e7d50930f12d176717\`.
+[PR #526](https://github.com/armave/portfolio-terminal/pull/526) was squash-merged into `dev` at [`9d26ad422d5712262a24049d92c4d1836c84e75b`](https://github.com/armave/portfolio-terminal/commit/9d26ad422d5712262a24049d92c4d1836c84e75b). Final tested PR head: `be6a05fd80e7d717d042c4e7d50930f12d176717`.
 
 - [x] Cover eight protected groups: transaction events, corporate-action events, market-history corrections, closed trades, broker executions, cashflows, position/FIFO tranches and cash-holding/FIFO lots.
 - [x] Divergent protected financial projections block reconciliation; arrays are not appended or merged.
@@ -317,7 +317,7 @@ The regression suite proves the deterministic three-way reconciler contract. It 
 
 ## In progress — concurrent same-key cloud idempotency replay
 
-The Worker serializes revision writes and atomically stores the encrypted snapshot with a bounded idempotency receipt. Existing tests cover sequential ambiguous retries, conflicting reuse, superseded retries and two simultaneous writes with the same revision but different request identities. The remaining gap is two simultaneous identical requests carrying the same \`Idempotency-Key\`, request fingerprint and \`If-Match\` revision. The added Worker regression asserts that both callers receive success at the same committed revision, exactly one response is marked as a replay, and only one receipt/snapshot revision is stored.
+The Worker serializes revision writes and atomically stores the encrypted snapshot with a bounded idempotency receipt. Existing tests cover sequential ambiguous retries, conflicting reuse, superseded retries and two simultaneous writes with the same revision but different request identities. The remaining gap is two simultaneous identical requests carrying the same `Idempotency-Key`, request fingerprint and `If-Match` revision. The added Worker regression asserts that both callers receive success at the same committed revision, exactly one response is marked as a replay, and only one receipt/snapshot revision is stored.
 
 This verifies request-level deduplication within the Worker receipt retention window (100 receipts per record, seven days). It does not establish unbounded/global exactly-once delivery, browser-tab mutual exclusion, or real multi-device behavior. No Worker runtime code or deployment behavior is changed by this test-only slice.
 
