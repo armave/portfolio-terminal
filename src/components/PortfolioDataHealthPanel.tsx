@@ -59,7 +59,7 @@ function HealthRow({ label, value, detail }: { label: string; value: string; det
     <div class="portfolio-data-health__row">
       <dt>{label}</dt>
       <dd>{value}</dd>
-      {detail && <span class="portfolio-data-health__detail">{detail}</span>}
+      {detail && <dd class="portfolio-data-health__detail">{detail}</dd>}
     </div>
   );
 }
@@ -93,7 +93,8 @@ export function PortfolioDataHealthPanel({
     : summarizeGuestPortfolioQuoteFreshness(guestSnapshot, Date.now(), refreshIntervalMs);
   const quoteHealth = getQuoteFreshnessHealth(quoteSummary);
   const cloudTone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
-  const hasCloudConflict = isAdmin && (cloudStatus.status === 'conflict' || cloudSyncStatus.status === 'conflict');
+  const hasCloudConflict = isAdmin && cloudSyncStatus.status === 'conflict';
+  const guestSnapshotAvailable = Boolean(guestSnapshot && Number.isSafeInteger(guestSnapshot.updatedAt) && guestSnapshot.updatedAt > 0);
   const overallTone = resolvePortfolioDataHealthTone({
     role: isAdmin ? 'admin' : 'guest',
     brokerHealth: brokerHealth || undefined,
@@ -104,11 +105,6 @@ export function PortfolioDataHealthPanel({
   });
   const overallLabel = translateText(
     overallTone === 'warning' ? 'Needs review' : overallTone === 'healthy' ? 'Data current' : 'Checking data status',
-    language
-  );
-
-  const overallLabel = translateText(
-    needsReview ? 'Needs review' : isCurrent ? 'Data current' : 'Checking data status',
     language
   );
 
@@ -151,8 +147,9 @@ export function PortfolioDataHealthPanel({
   };
 
   return (
-    <div class={'portfolio-data-health portfolio-data-health--' + overallTone}>
+    <div id="portfolioDataHealth" class={'portfolio-data-health portfolio-data-health--' + overallTone}>
       <button
+        id="portfolioDataHealthToggle"
         type="button"
         class="portfolio-data-health__trigger"
         aria-expanded={expanded}
