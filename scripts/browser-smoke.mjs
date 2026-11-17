@@ -705,6 +705,8 @@ async function assertFinancialHeaderLayout(page, view) {
         ),
         healthColumnTop: healthColumnBounds?.top ?? null,
         healthColumnBottom: healthColumnBounds?.bottom ?? null,
+        healthColumnWidth: healthColumnBounds?.width ?? null,
+        summaryColumnCount: summary ? getComputedStyle(summary).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
         summaryTop: summaryBounds?.top ?? null,
@@ -745,6 +747,9 @@ async function assertFinancialHeaderLayout(page, view) {
 
     if (!layout.healthColumnVisible || !layout.summaryVisible || !layout.healthVisible || !layout.toolsVisible || !layout.summaryBeforeHealth) {
       throw new Error('The compact financial summary must stay above visible Account Equity Health at ' + viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.healthColumnWidth >= 30 * 16 && layout.summaryColumnCount < 2) {
+      throw new Error('The financial summary should use a two-column desktop layout when the health column has at least 30rem available: ' + JSON.stringify(layout));
     }
     if (!layout.visibleMarketToolsHeading) {
       throw new Error('The redesigned Market Tools panel must show its section heading.');

@@ -46,9 +46,15 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-date-cell\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
     expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 52rem\)/);
-    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 36rem\)/);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
     expect(stylesheet).toContain('.portfolio-health-summary-column > .margin-risk-gauge-card {');
+    expect(stylesheet).toMatch(
+      /@container portfolio-health-summary \(max-width: 52rem\)[\s\S]*?\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s
+    );
+    expect(stylesheet).toMatch(
+      /\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-costs\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s
+    );
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
     expect(stylesheet).toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*hidden;/);
     expect(stylesheet).not.toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*visible;/);

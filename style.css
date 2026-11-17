@@ -2594,7 +2594,7 @@ summary:focus-visible {
   }
 }
 
-@container portfolio-health-summary (max-width: 36rem) {
+@container portfolio-health-summary (max-width: 30rem) {
   .portfolio-micro-summary {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -4369,7 +4369,7 @@ table tbody tr:hover {
     padding-top: 0.75rem;
   }
 }
-@container portfolio-health-summary (max-width: 36rem) {
+@container portfolio-health-summary (max-width: 30rem) {
   .portfolio-micro-summary { grid-template-columns: minmax(0, 1fr); }
   .portfolio-micro-market,
   .portfolio-micro-basis,
@@ -5154,5 +5154,48 @@ table tbody tr:hover {
 
   .workspace-nav-equity-badge--admin {
     display: inline-flex;
+  }
+}
+
+
+/* Use the available left-column width instead of collapsing the summary too early.
+   At desktop/tablet widths, Market Valuation and Position Basis sit side-by-side;
+   Fees & accrued interest spans the row below. Only narrow columns stack all groups. */
+@container portfolio-health-summary (max-width: 52rem) {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+    grid-column: 1 / -1;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    padding-top: 0.45rem;
+  }
+}
+
+@container portfolio-health-summary (max-width: 30rem) {
+  .portfolio-health-summary-column > .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    border-left: 0 !important;
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-column + .portfolio-micro-column {
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .portfolio-health-summary-column > .portfolio-micro-summary > .portfolio-micro-costs {
+    padding-top: 0.45rem;
   }
 }
