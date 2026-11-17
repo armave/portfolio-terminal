@@ -286,7 +286,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'BEST': 'ЛУЧШИЙ',
   'No active position to project.': 'Нет активных позиций для построения прогноза.',
   'Entry': 'Вход',
-  'Position opened · projection values start today': 'Позиция открыта · значения прогноза рассчитаны с сегодняшнего дня',
+  'Position opened': 'Позиция открыта',
   'Previous': 'Назад',
   'Next': 'Далее',
   'Checking account setup…': 'Проверка настроек учётной записи…',

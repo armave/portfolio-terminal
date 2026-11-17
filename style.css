@@ -617,7 +617,7 @@ summary:hover {
 
 #projectionTableContainer .projection-date-cell>span {
   display: block;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 @media (max-width: 768px) {

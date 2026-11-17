@@ -251,7 +251,7 @@ describe('Margin desk localization', () => {
     for (const label of [
       'No active position to project.',
       'Entry',
-      'Position opened · projection values start today',
+      'Position opened',
       'TODAY',
       'BREAKEVEN',
       'EOW · +{days}d',

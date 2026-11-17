@@ -93,7 +93,7 @@ function ProjectionsTableView() {
               </td>
               <td colSpan={3} class="projection-entry-cell py-1 px-1 text-[10px] italic text-center">
                 <span class="projection-entry-description">
-                  {translateText('Position opened · projection values start today', getAppLanguage())}
+                  {translateText('Position opened', getAppLanguage())}
                 </span>
               </td>
             </tr>
