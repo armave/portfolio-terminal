@@ -5529,6 +5529,9 @@ table tbody tr:hover {
    Keep the native table algorithm so each column takes the width its contents need. */
 #mainTerminalView #projectionTableContainer .projection-table,
 .desktop-workspace-grid #projectionTableContainer .projection-table {
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
   table-layout: auto;
   margin: 0;
 }
