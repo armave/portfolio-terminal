@@ -18,8 +18,8 @@ describe('Market Tools wiring', () => {
     expect(summarySource).toContain("emitUiEvent('scenario:exit-comparison-request', ticker ? { ticker } : {})");
     expect(summarySource).toContain("translateText('Simulate Buy', language)");
     expect(summarySource).toContain("translateText('Compare Exits', language)");
-    expect(summarySource).toContain("translateText('AI Risk Review', language)");
-    expect(summarySource).toContain("translateText('AI Portfolio Review', language)");
+    expect(summarySource).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
+    expect(summarySource).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(summarySource).toContain("translateText('Live Order Book', language)");
     expect(summarySource).toContain("ticker && isAdmin && marketDepthAvailable");
   });
