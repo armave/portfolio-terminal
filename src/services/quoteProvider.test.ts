@@ -323,6 +323,29 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.quoteDetails).not.toHaveProperty('changePercent');
   });
 
+  it('uses a fallback provider timestamp to classify quote freshness without promoting receipt time', async () => {
+    const sourceTimestamp = Date.now() - 30_000;
+    vi.mocked(fetchFallbackQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 42,
+      previousClose: 40,
+      change: 2,
+      changePercent: 5,
+      sourceTimestamp,
+      sourceName: 'Finnhub'
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.sourceName).toBe('Finnhub');
+    expect(result.quoteDetails).toMatchObject({
+      sourceTimestamp,
+      freshness: 'fresh',
+      delayClass: 'live',
+      receivedAt: expect.any(Number)
+    });
+  });
+
   it('does not turn missing fallback daily-change data into zero', async () => {
     vi.mocked(fetchYahooQuoteData).mockRejectedValue(new Error('Yahoo unavailable'));
     vi.mocked(fetchFallbackQuote).mockResolvedValue({

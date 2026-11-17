@@ -326,9 +326,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
               </div>
             </div>
-            <div class="workspace-header-status" role="group" aria-label={translateText('Market and sync status', getAppLanguage())}>
+            <div class="workspace-header-status" role="group" aria-label={translateText(permissions.isAdmin ? 'Market and sync status' : 'Market status', getAppLanguage())}>
               <MarketStatusBadge isAdmin={permissions.isAdmin} />
-              {currentUser && <PortfolioDataHealthPanel isAdmin={permissions.isAdmin} cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
+              {permissions.isAdmin && currentUser && <PortfolioDataHealthPanel isAdmin={permissions.isAdmin} cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
             </div>
           </div>
         </div>

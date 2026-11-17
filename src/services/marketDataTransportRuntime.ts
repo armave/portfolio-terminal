@@ -13,6 +13,8 @@ export interface NormalizedFallbackQuote {
   previousClose: number | null;
   change: number | null;
   changePercent: number | null;
+  /** Provider observation time as Unix milliseconds, when returned by the endpoint. */
+  sourceTimestamp?: number;
   sourceName: 'Finnhub' | 'Twelve Data';
 }
 export interface MarketDataTransportRuntimeDependencies {
@@ -258,6 +260,12 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
+  const parseProviderTimestamp = (value: unknown): number | undefined => {
+    const numeric = parseProviderNumber(value);
+    if (numeric === null || numeric <= 0) return undefined;
+    const milliseconds = numeric < 1e12 ? numeric * 1000 : numeric;
+    return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
+  };
   const fetchFallbackQuote = async (
     ticker: string,
     provider: FallbackQuoteProvider,
@@ -286,6 +294,9 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const previousValue = provider === 'finnhub' ? data.pc : data.previous_close;
     const changeValue = provider === 'finnhub' ? data.d : data.change;
     const percentValue = provider === 'finnhub' ? data.dp : data.percent_change;
+    // Finnhub uses `t`; Twelve Data uses `timestamp`. Both are Unix seconds
+    // in their quote responses. Do not infer a time from a date-only label.
+    const sourceTimestamp = parseProviderTimestamp(provider === 'finnhub' ? data.t : data.timestamp);
     const price = parseProviderNumber(currentValue);
     const previous = parseProviderNumber(previousValue);
     const suppliedChange = parseProviderNumber(changeValue);
@@ -301,6 +312,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       symbol, price,
       previousClose: hasPrevious ? previous : null,
       change, changePercent,
+      ...(sourceTimestamp === undefined ? {} : { sourceTimestamp }),
       sourceName: provider === 'finnhub' ? 'Finnhub' : 'Twelve Data'
     };
   };

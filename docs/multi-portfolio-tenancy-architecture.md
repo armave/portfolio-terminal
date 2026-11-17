@@ -1,7 +1,7 @@
 # PT-05 — Multi-portfolio ownership, tenant isolation, and sharing architecture
 
 **Status:** Architecture/design foundation; implementation is deliberately gated  
-**Tracking issue:** [#333](https://github.com/armave/portfolio-terminal/issues/333)  
+**Tracking issue:** [#539](https://github.com/armave/portfolio-terminal/issues/539) (replacement for deleted #333)  
 **Umbrella product roadmap:** [PR #347](https://github.com/armave/portfolio-terminal/pull/347)  
 **Target implementation PR branch:** `feat/pt-05-portfolio-tenancy` → `dev`  
 **Scope of this change:** Architecture and migration specification only. It does not enable tenant creation, alter authorization, change Worker routes, migrate stored portfolios, or change encryption keys.
@@ -395,7 +395,7 @@ This PT-05 workstream is intentionally staged. The present PR defines architectu
 
 - This design document is delivered as a client/docs PR to `dev`.
 - Any later Worker/Durable Object/server-only implementation must follow the repository policy and be committed/pushed directly to `main` for immediate deployment.
-- A mixed feature must split server deployment and client presentation into compatible slices, with both commits/PRs cross-linked to issue #333 and the umbrella roadmap.
+- A mixed feature must split server deployment and client presentation into compatible slices, with both commits/PRs cross-linked to issue #539 and the umbrella roadmap.
 - Do not merge a client that assumes a server capability which has not been deployed. Keep feature flags disabled until the server contract is live and verified.
 
 ## 11. Decision register
@@ -414,7 +414,7 @@ This PT-05 workstream is intentionally staged. The present PR defines architectu
 
 ## 12. Completion criteria for the PT-05 workstream
 
-The parent issue #333 may be closed only when all of the following are demonstrated:
+The parent issue #539 may be closed only when all of the following are demonstrated:
 
 - Each portfolio has canonical tenant/workspace ownership and an enforceable server-side policy.
 - Every protected read, write, export, report, AI tool, and streaming path checks authenticated ownership/grants.
@@ -426,4 +426,4 @@ The parent issue #333 may be closed only when all of the following are demonstra
 - Role-aware client views work against deployed server authorization and preserve English/Russian localization.
 - Exact-head CI, browser flows, security review, and production smoke evidence are attached to implementation PRs.
 
-**This design PR completes the PT-05A architecture foundation and records the PT-05C Durable Object topology decision only.** It does not close issue #333 or enable multi-tenant runtime behavior. PT-01's financial baseline is merged; PT-02's transaction/audit ownership contract, the per-tenant key service, server-side isolation implementation, migration, rollback, and security sign-off remain required before independent tenant financial writes.
+**This design PR completes the PT-05A architecture foundation and records the PT-05C Durable Object topology decision only.** It does not close issue #539 or enable multi-tenant runtime behavior. PT-01's financial baseline is merged; PT-02's transaction/audit ownership contract, the per-tenant key service, server-side isolation implementation, migration, rollback, and security sign-off remain required before independent tenant financial writes.

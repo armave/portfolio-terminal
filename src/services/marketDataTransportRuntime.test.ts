@@ -160,6 +160,38 @@ describe('market data transport runtime', () => {
     expect(proxyFetch).toHaveBeenCalledWith('provider-quote', { symbol: 'AAPL', provider: 'finnhub' }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
+  it('preserves Finnhub Unix observation time as provider provenance', async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({
+      c: '101.5', pc: '100', d: 1.5, dp: 1.5, t: 1_793_450_000
+    });
+    const { runtime } = createRuntime(proxyFetch);
+    await expect(runtime.fetchFallbackQuote('AAPL', 'finnhub')).resolves.toMatchObject({
+      price: 101.5,
+      sourceTimestamp: 1_793_450_000_000
+    });
+  });
+
+  it('preserves Twelve Data Unix observation time without parsing its local datetime label', async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({
+      close: '101.5',
+      previous_close: '100',
+      timestamp: '1_768_204_680',
+      datetime: '2026-01-12 07:58:00'
+    });
+    const { runtime } = createRuntime(proxyFetch);
+    await expect(runtime.fetchFallbackQuote('AAPL', 'twelvedata')).resolves.toMatchObject({
+      price: 101.5,
+      sourceTimestamp: 1_768_204_680_000
+    });
+  });
+
+  it('leaves fallback observation time unknown when providers omit their Unix timestamp', async () => {
+    const proxyFetch = vi.fn().mockResolvedValue({ c: '101.5', pc: '100' });
+    const { runtime } = createRuntime(proxyFetch);
+    const quote = await runtime.fetchFallbackQuote('AAPL', 'finnhub');
+    expect(quote).not.toHaveProperty('sourceTimestamp');
+  });
+
   it('retries transient fallback-provider transport errors but not invalid quote data', async () => {
     const proxyFetch = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))

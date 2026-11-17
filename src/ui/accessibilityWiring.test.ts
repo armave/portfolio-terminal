@@ -24,6 +24,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(app).toContain("aria-label={translateText('Workspace navigation', getAppLanguage())}");
     expect(app).toContain('class="workspace-header-controls"');
     expect(app).toContain('class="workspace-header-destinations"');
+    expect(app).toContain("aria-label={translateText(permissions.isAdmin ? 'Market and sync status' : 'Market status', getAppLanguage())}");
     expect(app).toContain('class="workspace-header-status" role="group"');
     expect(app).toContain('id="tickerTabs" role="group"');
     expect(ticker).toContain("scrollIntoView({ block: 'nearest', inline: 'nearest' })");

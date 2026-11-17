@@ -1,7 +1,7 @@
 import type { PortfolioState } from '../types/portfolio';
 import { summarizeQuoteFreshness, type QuoteFreshnessSummary } from '../utils/formatters';
 
-export type BrokerSnapshotHealth = 'current' | 'partial' | 'empty' | 'stale' | 'unavailable' | 'unknown';
+export type BrokerSnapshotHealth = 'current' | 'received' | 'partial' | 'empty' | 'stale' | 'unavailable' | 'unknown';
 export type QuoteFreshnessHealth = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable' | 'none';
 
 type BrokerAccountSnapshot = NonNullable<PortfolioState['brokerAccountInfo']>;
@@ -74,11 +74,18 @@ export function getBrokerSnapshotHealth(
       (snapshot.positionIntegrityIssues?.length || 0) > 0) return 'partial';
   if (quality !== 'complete' || sourceQuality !== 'complete') return 'unknown';
 
-  if (typeof snapshot.observedAt !== 'number' ||
-      !Number.isSafeInteger(snapshot.observedAt) ||
-      snapshot.observedAt <= 0) return 'unknown';
+  if (typeof snapshot.observedAt === 'number' &&
+      Number.isSafeInteger(snapshot.observedAt) &&
+      snapshot.observedAt > 0) return 'current';
 
-  return 'current';
+  // TradeNet does not publish a portfolio observation timestamp. A complete,
+  // current snapshot with a real client receipt is distinguishable from a
+  // missing snapshot, but is not mislabeled as provider-time verified.
+  if (typeof snapshot.receivedAt === 'number' &&
+      Number.isSafeInteger(snapshot.receivedAt) &&
+      snapshot.receivedAt > 0) return 'received';
+
+  return 'unknown';
 }
 
 function hasUsablePositivePrice(value: unknown): boolean {
@@ -159,8 +166,9 @@ export function resolvePortfolioDataHealthTone(input: {
     if (input.brokerHealth === 'partial' || input.brokerHealth === 'empty' ||
         input.brokerHealth === 'stale' || input.brokerHealth === 'unavailable') return 'warning';
     if (input.cloudTone === 'warning' || input.cloudTone === 'conflict' || input.cloudTone === 'error') return 'warning';
-    if (input.brokerHealth !== 'current' || input.quoteHealth === 'unknown' ||
-        input.quoteHealth === 'unavailable' || input.cloudTone !== 'success') return 'unknown';
+    if ((input.brokerHealth !== 'current' && input.brokerHealth !== 'received') ||
+        input.quoteHealth === 'unknown' || input.quoteHealth === 'unavailable' ||
+        input.cloudTone !== 'success') return 'unknown';
     return 'healthy';
   }
 

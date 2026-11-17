@@ -6,8 +6,8 @@ const source = readFileSync(new URL('./PortfolioDataHealthPanel.tsx', import.met
 const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const style = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const englishCopy = [
-  'Data & sync', 'Portfolio status', 'Needs review', 'Up to date', 'Status',
-  'Broker snapshot', 'Assigned snapshot', 'Quote freshness',
+  'Data & sync', 'Portfolio status', 'Needs review', 'Up to date', 'Check data',
+  'Snapshot received', 'Broker snapshot', 'Assigned snapshot', 'Quote freshness',
   'Cloud synchronization', 'Assigned data refresh', 'Review in Settings'
 ];
 
@@ -15,6 +15,7 @@ describe('Portfolio Data Health panel', () => {
   it('mounts one compact combined health and sync control in the workspace header', () => {
     expect(app).not.toContain('CloudSyncIndicator');
     expect(app).toContain('<PortfolioDataHealthPanel');
+    expect(app).toContain('{permissions.isAdmin && currentUser && <PortfolioDataHealthPanel');
     expect(source).toContain('resolveCloudSyncTone(cloudStatus, cloudSyncStatus)');
     expect(source).toContain('aria-haspopup="dialog"');
     expect(source).toContain('aria-expanded={dialogOpen}');
@@ -25,7 +26,9 @@ describe('Portfolio Data Health panel', () => {
 
   it('uses a neutral idle label for unknown data and reserves Up to date for verified health', () => {
     expect(source).toContain("? 'Up to date'");
-    expect(source).toContain(": 'Status'");
+    expect(source).toContain(": 'Check data'");
+    expect(source).toContain("if (!isAdmin || overallTone === 'healthy') return null");
+    expect(source).not.toContain('portfolio-data-health-modal__subtitle');
     expect(source).not.toContain('Checking data status');
     expect(source).toContain("overallTone === 'warning'");
     expect(source).toContain('isSyncPending');

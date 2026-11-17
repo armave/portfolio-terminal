@@ -53,6 +53,7 @@ function getGuestRefreshLabel(status: string, language: ReturnType<typeof getApp
 function getBrokerHealthLabel(status: ReturnType<typeof getBrokerSnapshotHealth>, language: ReturnType<typeof getAppLanguage>): string {
   switch (status) {
     case 'current': return translateText('Current', language);
+    case 'received': return translateText('Snapshot received', language);
     case 'partial': return translateText('Partial snapshot', language);
     case 'empty': return translateText('Empty snapshot', language);
     case 'stale': return translateText('Stale snapshot', language);
@@ -138,10 +139,14 @@ export function PortfolioDataHealthPanel({
         ? 'Syncing…'
         : overallTone === 'healthy'
           ? 'Up to date'
-          : 'Status',
+          : 'Check data',
     language
   );
   const triggerTone = isSyncPending && overallTone !== 'warning' ? 'pending' : overallTone;
+
+  // The compact entry point is an administrator attention surface, not a
+  // permanent dashboard badge. Hide it when all monitored inputs are healthy.
+  if (!isAdmin || overallTone === 'healthy') return null;
 
   const quoteLabel = quoteSummary.total > 0
     ? formatQuoteFreshnessSummary(quoteSummary)
@@ -155,12 +160,16 @@ export function PortfolioDataHealthPanel({
     brokerSnapshot?.provider,
     brokerSnapshot?.source
   ].filter((value): value is string => Boolean(value)).join(' · ');
-  const brokerTimestamp = typeof observedAt === 'number' && Number.isFinite(observedAt) && observedAt > 0
+  const hasProviderObservationTime = typeof observedAt === 'number' &&
+    Number.isSafeInteger(observedAt) && observedAt > 0;
+  const receivedAt = brokerSnapshot?.receivedAt;
+  const hasValidReceiptTime = typeof receivedAt === 'number' &&
+    Number.isSafeInteger(receivedAt) && receivedAt > 0;
+  const brokerTimestamp = hasProviderObservationTime
     ? formatSnapshotTime(observedAt, language, now)
-    : [
-        translateText('Observation time unavailable', language),
-        `${translateText('Received', language)} ${formatSnapshotTime(brokerSnapshot?.receivedAt, language, now)}`
-      ].join(' · ');
+    : hasValidReceiptTime
+      ? `${translateText('Received', language)} ${formatSnapshotTime(receivedAt, language, now)}`
+      : translateText('Observation time unavailable', language);
   const guestSnapshotTime = formatSnapshotTime(guestSnapshot?.updatedAt, language, now);
 
   const handleSync = async (): Promise<void> => {
@@ -202,7 +211,6 @@ export function PortfolioDataHealthPanel({
             <div class="portfolio-data-health-modal__heading">
               <p class="portfolio-data-health-modal__eyebrow">{translateText('Data & sync', language)}</p>
               <h2 id="portfolioDataHealthTitle">{translateText('Portfolio status', language)}</h2>
-              <p class="portfolio-data-health-modal__subtitle">{overallLabel}</p>
             </div>
             <button
               id="portfolioDataHealthClose"

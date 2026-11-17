@@ -1190,33 +1190,20 @@ try {
     'restore administrator language for remaining browser assertions'
   );
 
-  // A guest sees the account preference and manual sync controls, never admin-only user,
-  // backup or broker-rule management. The shared owner workspace is not read.
+  // Guests do not receive the administrator-only Data & sync attention control.
+  // The shared owner workspace is not read, and no owner status is rendered in the guest header.
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   const userDirectoryReadsBeforeGuest = worker.count('GET', '/api/auth/users');
   await visibleSettingsDesk().getByRole('button', { name: 'Sign out' }).click();
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
   await waitForAuthOverlay(page, false);
-  await page.locator('#portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
-  await page.locator('#portfolioDataHealthToggle').click();
-  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'visible', timeout: 5_000 });
-  await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
-  const guestHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
-  const hasAssignedSnapshotLabel = guestHealthCopy.includes('Assigned snapshot') ||
-    guestHealthCopy.includes('Назначенный портфель');
-  const hasAssignedRefreshLabel = guestHealthCopy.includes('Assigned data refresh') ||
-    guestHealthCopy.includes('Обновление назначенных данных');
-  const exposesOwnerBrokerData = guestHealthCopy.includes('Broker snapshot') ||
-    guestHealthCopy.includes('Снимок брокера');
-  const exposesOwnerCloudData = guestHealthCopy.includes('Cloud synchronization') ||
-    guestHealthCopy.includes('Облачная синхронизация');
-  if (!hasAssignedSnapshotLabel || !hasAssignedRefreshLabel ||
-      exposesOwnerBrokerData || exposesOwnerCloudData) {
-    throw new Error('Guest data health exposed owner broker/cloud data or omitted the assigned projection status: ' + guestHealthCopy);
+  if (await page.locator('#portfolioDataHealth').count() !== 0 ||
+      await page.locator('#portfolioDataHealthToggle').count() !== 0 ||
+      await page.locator('#portfolioDataHealthDialog').count() !== 0 ||
+      await page.locator('#cloudStatus').count() !== 0) {
+    throw new Error('Guest account must not render the administrator Data & sync status or owner cloud status.');
   }
-  await page.locator('#portfolioDataHealthClose').click();
-  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'hidden', timeout: 5_000 });
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');

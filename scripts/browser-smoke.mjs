@@ -594,10 +594,14 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
     }
     const expectsCombinedStatus = process.env.UX_EXPECT_NEW_HEADER !== 'false';
     const hasExpectedStatus = expectsCombinedStatus
-      ? navigation.portfolioStatus
+      ? role === 'admin'
+        ? navigation.portfolioStatus
+        : !navigation.portfolioStatus && !navigation.cloudStatus
       : role !== 'admin' || navigation.cloudStatus;
     if (!navigation.statusOutsideNavigation || !navigation.marketStatus || !hasExpectedStatus) {
-      throw new Error('Market status and the single portfolio health/sync control must stay in the shared header status group.');
+      throw new Error(role === 'guest'
+        ? 'Guest headers must omit administrator Data & sync and cloud status controls.'
+        : 'Administrator warning state must use the combined Data & sync control in the shared header status group.');
     }
     if (role === 'admin' && !['margin', 'margin-ticker', 'portfolio'].some(kind => navigation.kinds.includes(kind))) {
       throw new Error('Administrator navigation must retain its Margin workspace destination.');

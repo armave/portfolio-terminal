@@ -235,6 +235,65 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings).toEqual([]);
   });
 
+  it('keeps unknown broker cashflow categories unclassified instead of matching app balance adjustments', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'provider-unknown-activity',
+      date: new Date(at).toISOString(),
+      type: 'Other',
+      amount: 25,
+      currency: 'USD',
+      description: 'Provider-specific account activity',
+      raw: {}
+    };
+    const appAdjustment = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: at,
+      currency: 'USD',
+      cashDelta: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-cash-adjustment', recordedAt: at });
+
+    const report = reconcile([], [appAdjustment], { brokerCashflows: [brokerCashflow] });
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'cashflow_unclassified',
+        brokerReferences: ['provider-unknown-activity'],
+        confidence: 'provisional'
+      }),
+      expect.objectContaining({
+        type: 'cashflow_missing_in_broker',
+        appEventIds: ['app-cash-adjustment'],
+        confidence: 'provisional'
+      })
+    ]));
+  });
+
+  it('matches a broker cash adjustment only when the provider explicitly labels an adjustment', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'provider-cash-adjustment',
+      date: new Date(at).toISOString(),
+      type: 'Cash Adjustment',
+      amount: 25,
+      currency: 'USD',
+      description: 'Balance adjustment',
+      raw: {}
+    };
+    const appAdjustment = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: at,
+      currency: 'USD',
+      cashDelta: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-explicit-cash-adjustment', recordedAt: at });
+
+    const report = reconcile([], [appAdjustment], { brokerCashflows: [brokerCashflow] });
+
+    expect(report.status).toBe('matched');
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
   it('normalizes positive broker withdrawal magnitudes to negative account movement', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'withdraw-positive-magnitude',

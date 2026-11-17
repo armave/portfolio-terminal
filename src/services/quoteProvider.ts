@@ -36,15 +36,20 @@ async function fetchFallbackPrice(symbol: string, force = false) {
         throw new Error('Provider returned an invalid fallback quote.');
       }
       marketDataProviderHealth.recordSuccess(provider);
+      const receivedAt = Date.now();
+      const provenance = fallback.sourceTimestamp === undefined
+        ? { freshness: 'unknown' as const, sourceTimestamp: undefined }
+        : resolveQuoteProvenance('UNKNOWN', fallback.sourceTimestamp / 1000, receivedAt);
+      const delayClass: MarketDelayClass = provenance.freshness === 'fresh' || provenance.freshness === 'stale'
+        ? 'live'
+        : 'unknown';
       return {
         price: fallback.price,
         sourceName: fallback.sourceName,
         quoteDetails: withMarketMetadata({
-          // These providers do not reliably return a market-session label or
-          // source observation timestamp. Do not present a fallback as live.
           marketState: 'UNKNOWN' as const,
-          freshness: 'unknown' as const,
-          receivedAt: Date.now(),
+          ...provenance,
+          receivedAt,
           price: fallback.price,
           ...(typeof fallback.change === 'number' && Number.isFinite(fallback.change)
             ? { change: fallback.change }
@@ -56,8 +61,9 @@ async function fetchFallbackPrice(symbol: string, force = false) {
           symbol,
           provider: fallback.sourceName,
           price: fallback.price,
-          receivedAt: Date.now(),
-          delayClass: 'unknown',
+          observedAt: provenance.sourceTimestamp ?? null,
+          receivedAt,
+          delayClass,
           requestSequence: 0
         })
       };

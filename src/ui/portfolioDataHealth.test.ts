@@ -33,7 +33,8 @@ describe('broker snapshot health', () => {
     expect(getBrokerSnapshotHealth(brokerSnapshot({ quality: 'partial' }))).toBe('partial');
     expect(getBrokerSnapshotHealth(brokerSnapshot({ snapshotQuality: 'partial' }))).toBe('partial');
     expect(getBrokerSnapshotHealth(brokerSnapshot({ quality: 'empty' }))).toBe('empty');
-    expect(getBrokerSnapshotHealth(brokerSnapshot({ observedAt: undefined }))).toBe('unknown');
+    expect(getBrokerSnapshotHealth(brokerSnapshot({ observedAt: undefined }))).toBe('received');
+    expect(getBrokerSnapshotHealth(brokerSnapshot({ observedAt: undefined, receivedAt: undefined }))).toBe('unknown');
     expect(getBrokerSnapshotHealth(brokerSnapshot({ loaded: false }))).toBe('unknown');
   });
 
@@ -169,6 +170,7 @@ describe('overall portfolio data health tone', () => {
       cloudTone: 'success' as const
     };
     expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'unknown' })).toBe('unknown');
+    expect(resolvePortfolioDataHealthTone({ ...base, brokerHealth: 'received' })).toBe('healthy');
     expect(resolvePortfolioDataHealthTone({ ...base, quoteHealth: 'unavailable' })).toBe('unknown');
     expect(resolvePortfolioDataHealthTone({ ...base, cloudTone: 'neutral' })).toBe('unknown');
   });
