@@ -2561,7 +2561,7 @@ summary:focus-visible {
 }
 
 .portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-label {
-  max-width: 44%;
+  max-width: none;
   font-size: 0.6rem;
   line-height: 1.25;
   letter-spacing: 0;

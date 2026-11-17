@@ -17,20 +17,21 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/#boardTitle\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*width:\s*auto;/s);
     expect(fluidStyles).toMatch(/#boardAnalystConsensus\s*\{[^}]*white-space:\s*nowrap;/s);
     expect(fluidStyles).toMatch(/container-name:\s*portfolio-metrics;/);
-    expect(fluidStyles).toMatch(/\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
     expect(fluidStyles).toMatch(/\.portfolio-micro-costs,\s*\.portfolio-micro-actions\s*\{[^}]*grid-column:\s*auto;/s);
-    expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*52rem\)/);
-    expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*36rem\)/);
+    expect(stylesheet).toMatch(/@container\s+portfolio-health-summary\s*\(max-width:\s*52rem\)/);
+    expect(stylesheet).toMatch(/@container\s+portfolio-health-summary\s*\(max-width:\s*36rem\)/);
     expect(fluidStyles).toMatch(/overflow-wrap:\s*anywhere;/);
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
   it('keeps each financial summary group full-width on mobile', () => {
-    expect(fluidStyles).toMatch(
-      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
+    expect(stylesheet).toMatch(
+      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
     );
-    expect(fluidStyles).toMatch(
-      /#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
+    expect(stylesheet).toMatch(
+      /\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
     );
   });
 
