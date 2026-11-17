@@ -87,12 +87,14 @@ function ProjectionsTableView() {
         if (kind === 'entry') {
           return (
             <tr key={`entry-${daysFromToday}-${idx}`} class="projection-page-row border-b border-slate-800/50 text-slate-500">
-              <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-left projection-date-cell">
+              <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-1 text-left projection-date-cell">
                 <span class="text-[10px] font-medium text-slate-400">{translateText('Entry', getAppLanguage())}</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
-              <td colSpan={3} class="py-1 px-2 text-[10px] italic text-center">
-                {translateText('Position opened · projection values start today', getAppLanguage())}
+              <td colSpan={3} class="projection-entry-cell py-1 px-1 text-[10px] italic text-center">
+                <span class="projection-entry-description">
+                  {translateText('Position opened', getAppLanguage())}
+                </span>
               </td>
             </tr>
           );
@@ -135,15 +137,15 @@ function ProjectionsTableView() {
 
         return (
           <tr key={`${kind}-${daysFromToday}-${idx}`} class={`${rowClass} projection-page-row`}>
-            <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-slate-300 font-semibold projection-date-cell">
+            <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-1 text-slate-300 font-semibold projection-date-cell">
               <span>{dateFormatted}</span>
               <span class={badgeClass}>{badgeText}</span>
             </td>
-            <td class={`py-1 px-2 ${netClass} font-semibold`}>
+            <td class={`projection-number-cell py-1 px-1 text-right tabular-nums ${netClass} font-semibold`}>
               {netSign}{formatUSD(net)}
             </td>
-            <td class="py-1 px-2 text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
-            <td class={`py-1 px-2 ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
+            <td class="projection-number-cell py-1 px-1 text-right tabular-nums text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
+            <td class={`projection-number-cell py-1 px-1 text-right tabular-nums ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
               {formatUSD(projectedAccountBalance)}
             </td>
           </tr>

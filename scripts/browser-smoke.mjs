@@ -432,6 +432,8 @@ async function captureUxReviewScreenshots(page, surface) {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+
+
 }
 
 async function assertResponsiveLayout(page, width) {
@@ -642,14 +644,40 @@ async function assertFinancialHeaderLayout(page, view) {
       const marginTarget = targetSection?.querySelector('#boardMarginTarget');
       const analystTarget = targetSection?.querySelector('#boardAnalystConsensus');
       const boardTitle = document.querySelector('#boardTitle');
-      const health = document.querySelector('.portfolio-risk-tools-row > .margin-risk-gauge-card');
+      const projectionWrapper = document.querySelector('#projectionTableContainer');
+      const projectionTable = projectionWrapper?.querySelector('.projection-table');
+      const projectionWrapperBounds = projectionWrapper?.getBoundingClientRect();
+      const projectionTableBounds = projectionTable?.getBoundingClientRect();
+      const projectionColumnWidths = Array.from(projectionTable?.querySelectorAll('thead th') || [])
+        .map((cell) => cell.getBoundingClientRect().width);
+      const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
+      const summary = healthColumn?.querySelector('.portfolio-micro-summary');
+      const marketSection = summary?.querySelector('.portfolio-micro-market');
+      const basisSection = summary?.querySelector('.portfolio-micro-basis');
+      const feesSection = basisSection?.querySelector('.portfolio-micro-costs');
+      const marketSectionBounds = marketSection?.getBoundingClientRect();
+      const basisSectionBounds = basisSection?.getBoundingClientRect();
+      const health = healthColumn?.querySelector('.margin-risk-gauge-card');
       const tools = document.querySelector('.portfolio-risk-tools-row > .portfolio-market-tools-row');
+      const healthColumnBounds = healthColumn?.getBoundingClientRect();
+      const summaryBounds = summary?.getBoundingClientRect();
       const healthBounds = health?.getBoundingClientRect();
       const toolsBounds = tools?.getBoundingClientRect();
       const marketPanel = tools?.querySelector('.portfolio-market-tools');
       const panelBounds = marketPanel?.getBoundingClientRect();
-      const actionGrid = marketPanel?.querySelector('.market-tools-grid');
+      const actionGrid = marketPanel?.querySelector('.market-tools-section--scenario .market-tools-grid');
+      const intelligenceGrid = marketPanel?.querySelector('.market-tools-section--intelligence .market-tools-grid');
+      const intelligenceSection = marketPanel?.querySelector('.market-tools-section--intelligence');
+      const externalResearch = marketPanel?.querySelector('.market-tools-external');
       const actionBounds = actionGrid?.getBoundingClientRect();
+      const externalResearchBounds = externalResearch?.getBoundingClientRect();
+      const tranchesValue = healthColumn?.querySelector('.portfolio-micro-basis #boardTranches');
+      const tranchesRow = tranchesValue?.closest('.portfolio-micro-row');
+      const tranchesLabel = tranchesRow?.querySelector('.portfolio-metric-label');
+      const tranchesButton = tranchesValue?.querySelector('button');
+      const tranchesValueBounds = tranchesValue?.getBoundingClientRect();
+      const tranchesLabelBounds = tranchesLabel?.getBoundingClientRect();
+      const tranchesButtonBounds = tranchesButton?.getBoundingClientRect();
       const actionButtonsCount = marketPanel?.querySelectorAll('.market-tool-card').length ?? 0;
       const marketPanelRole = marketPanel?.getAttribute('role') ?? null;
       const marketPanelLabel = marketPanel?.getAttribute('aria-label') ?? null;
@@ -658,6 +686,10 @@ async function assertFinancialHeaderLayout(page, view) {
       );
       return {
         metrics,
+        projectionTableLayout: projectionTable ? getComputedStyle(projectionTable).tableLayout : null,
+        projectionTableWidth: projectionTableBounds?.width ?? 0,
+        projectionWrapperWidth: projectionWrapperBounds?.width ?? 0,
+        projectionColumnWidths,
         targetSectionVisible: Boolean(targetSection?.getClientRects().length),
         targetSegmentsShareSection: Boolean(
           tickerIdentity && marginTarget && analystTarget &&
@@ -686,6 +718,9 @@ async function assertFinancialHeaderLayout(page, view) {
         targetReturnCount: document.querySelectorAll('#boardNetTargetReturn').length,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
+        healthColumnVisible: Boolean(healthColumn?.getClientRects().length),
+        summaryVisible: Boolean(summary?.getClientRects().length),
+        summaryBeforeHealth: Boolean(summaryBounds && healthBounds && summaryBounds.bottom <= healthBounds.top + 1),
         healthVisible: Boolean(health?.getClientRects().length),
         toolsVisible: Boolean(tools?.getClientRects().length),
         actionButtonsCount,
@@ -696,10 +731,51 @@ async function assertFinancialHeaderLayout(page, view) {
           panelBounds && actionBounds &&
           Math.abs((panelBounds.left + panelBounds.right) / 2 - (actionBounds.left + actionBounds.right) / 2) <= 3
         ),
+        healthColumnTop: healthColumnBounds?.top ?? null,
+        healthColumnBottom: healthColumnBounds?.bottom ?? null,
+        healthColumnWidth: healthColumnBounds?.width ?? null,
+        summaryColumnCount: summary ? getComputedStyle(summary).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        costsInsideTranches: Boolean(feesSection && feesSection.parentElement === basisSection),
+        costsRowCount: feesSection?.querySelectorAll('.portfolio-micro-row').length ?? 0,
+        marketAndTranchesSameHeight: Boolean(
+          marketSectionBounds && basisSectionBounds &&
+          Math.abs(marketSectionBounds.height - basisSectionBounds.height) <= 3
+        ),
+        summaryHeight: summaryBounds?.height ?? 0,
+        summaryValueFontSize: summary?.querySelector('.portfolio-metric-value')
+          ? Number.parseFloat(getComputedStyle(summary.querySelector('.portfolio-metric-value')).fontSize)
+          : 0,
+        scenarioColumns: actionGrid ? getComputedStyle(actionGrid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        intelligenceColumns: intelligenceGrid ? getComputedStyle(intelligenceGrid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        intelligenceCardCount: intelligenceSection?.querySelectorAll('.market-tool-card').length ?? 0,
+        marketPanelWidth: panelBounds?.width ?? 0,
+        sideBlocksSameHeight: Boolean(
+          healthColumnBounds && panelBounds &&
+          Math.abs(healthColumnBounds.top - panelBounds.top) <= 2 &&
+          Math.abs(healthColumnBounds.height - panelBounds.height) <= 3
+        ),
+        externalResearchVisible: Boolean(externalResearch?.getClientRects().length),
+        externalResearchInMarketTools: Boolean(externalResearch && externalResearch.parentElement === marketPanel),
+        externalResearchAfterIntelligence: Boolean(
+          externalResearchBounds && intelligenceSection &&
+          externalResearchBounds.top >= intelligenceSection.getBoundingClientRect().bottom - 1
+        ),
+        tranchesButtonPresent: Boolean(tranchesButton?.getClientRects().length),
+        tranchesButtonRightAligned: Boolean(
+          tranchesValueBounds && tranchesButtonBounds &&
+          Math.abs(tranchesValueBounds.right - tranchesButtonBounds.right) <= 3
+        ),
+        tranchesLabelCentered: Boolean(
+          tranchesLabelBounds && tranchesButtonBounds &&
+          Math.abs((tranchesLabelBounds.top + tranchesLabelBounds.bottom) / 2 -
+            (tranchesButtonBounds.top + tranchesButtonBounds.bottom) / 2) <= 3
+        ),
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
+        summaryTop: summaryBounds?.top ?? null,
+        summaryBottom: summaryBounds?.bottom ?? null,
         toolsTop: toolsBounds?.top ?? null,
-        sameRow: Boolean(healthBounds && toolsBounds && Math.abs(healthBounds.top - toolsBounds.top) <= 2)
+        sameRow: Boolean(healthColumnBounds && toolsBounds && Math.abs(healthColumnBounds.top - toolsBounds.top) <= 2)
       };
     });
 
@@ -708,6 +784,12 @@ async function assertFinancialHeaderLayout(page, view) {
     }
     if (layout.targetReturnCount !== (view === 'combined' ? 1 : 0)) {
       throw new Error('Ticker target return is duplicated or the Combined KPI is missing: ' + JSON.stringify(layout));
+    }
+    if (!layout.costsInsideTranches || layout.costsRowCount !== 2) {
+      throw new Error('Total commission and accrued margin interest must be inside the Tranches panel: ' + JSON.stringify(layout));
+    }
+    if (layout.summaryColumnCount > 1 && !layout.marketAndTranchesSameHeight) {
+      throw new Error('Share/Market Valuation and Tranches panels must have equal heights when side-by-side: ' + JSON.stringify(layout));
     }
     if (view === 'ticker') {
       const target = layout.marginTargetBounds;
@@ -732,8 +814,53 @@ async function assertFinancialHeaderLayout(page, view) {
       throw new Error('Combined Portfolio must not show an individual ticker target section.');
     }
 
-    if (!layout.healthVisible || !layout.toolsVisible) {
-      throw new Error('Account Equity Health or Market Tools is missing at ' + viewport.width + 'px.');
+    if (layout.projectionTableWidth > 0 && viewport.width >= 1024) {
+      if (layout.projectionTableLayout !== 'auto' ||
+          layout.projectionTableWidth >= layout.projectionWrapperWidth * 0.92) {
+        throw new Error('The desktop projection table should use intrinsic content width instead of stretching columns across the full panel: ' + JSON.stringify(layout));
+      }
+      const [dateWidth, netWidth, feesWidth, balanceWidth] = layout.projectionColumnWidths;
+      const columnTotal = dateWidth + netWidth + feesWidth + balanceWidth;
+      if (!columnTotal ||
+          dateWidth / columnTotal > 0.3 ||
+          netWidth / columnTotal > 0.3 ||
+          feesWidth / columnTotal > 0.45 ||
+          balanceWidth / columnTotal > 0.3) {
+        throw new Error('Projection columns should stay close to their required content widths: ' + JSON.stringify(layout));
+      }
+    }
+    if (!layout.healthColumnVisible || !layout.summaryVisible || !layout.healthVisible || !layout.toolsVisible || !layout.summaryBeforeHealth) {
+      throw new Error('The compact financial summary must stay above visible Account Equity Health at ' + viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.healthColumnWidth >= 30 * 16 && layout.summaryColumnCount < 2) {
+      throw new Error('The financial summary should use a multi-column desktop layout when the health column has enough width: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.summaryValueFontSize < 13) {
+      throw new Error('Transferred financial values should use the larger, more readable metric scale: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.healthColumnWidth > 30 * 16 && layout.summaryHeight < 220) {
+      throw new Error('The transferred financial summary should expand to use the available desktop health-column space: ' + JSON.stringify(layout));
+    }
+    const expectedScenarioColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 ? 2 : 1;
+    const expectedIntelligenceColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 && layout.intelligenceCardCount > 1 ? 2 : 1;
+    if (layout.scenarioColumns !== expectedScenarioColumns || layout.intelligenceColumns !== expectedIntelligenceColumns) {
+      throw new Error('Scenario Planning and Market Intelligence should use two columns when two actions fit: ' + JSON.stringify(layout));
+    }
+    if (view === 'ticker' && (!layout.externalResearchVisible || !layout.externalResearchInMarketTools || !layout.externalResearchAfterIntelligence)) {
+      throw new Error('External Research must appear after Market Intelligence inside the Market Tools panel: ' + JSON.stringify(layout));
+    }
+    if (view === 'combined' && layout.externalResearchVisible) {
+      throw new Error('External Research should remain limited to ticker Market Tools.');
+    }
+    if (viewport.width >= 768 && !layout.sideBlocksSameHeight) {
+      throw new Error('The left health stack and right Market Tools panel must have matching desktop heights: ' + JSON.stringify(layout));
+    }
+    if (view === 'ticker' && viewport.width >= 768 &&
+        (!layout.tranchesButtonPresent || !layout.tranchesButtonRightAligned || !layout.tranchesLabelCentered)) {
+      throw new Error('The Tranches control must be visible, right-aligned, and centered vertically with its label: ' + JSON.stringify(layout));
+    }
+    if (view === 'combined' && layout.externalResearchVisible) {
+      throw new Error('External Research should remain scoped to the ticker view after relocation.');
     }
     if (!layout.visibleMarketToolsHeading) {
       throw new Error('The redesigned Market Tools panel must show its section heading.');
@@ -750,13 +877,54 @@ async function assertFinancialHeaderLayout(page, view) {
     if (viewport.width >= 768 && !layout.sameRow) {
       throw new Error('Account Equity Health and Market Tools must share one row above mobile width: ' + JSON.stringify(layout));
     }
-    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthBottom - 1)) {
-      throw new Error('Account Equity Health and Market Tools must stack on mobile: ' + JSON.stringify(layout));
+    if (viewport.width < 768 && !(layout.toolsTop >= layout.healthColumnBottom - 1)) {
+      throw new Error('The financial summary/health column and Market Tools must stack on mobile: ' + JSON.stringify(layout));
     }
   }
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+
+  if (view === 'ticker') {
+    const trigger = page.locator('[data-tranche-details-trigger]');
+    await trigger.waitFor({ state: 'visible', timeout: 10_000 });
+    const expectedCount = Number(await trigger.getAttribute('data-tranche-count'));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await trigger.click();
+    const dialog = page.locator('#trancheDetailsDialog');
+    await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+    const modalState = await dialog.evaluate((element) => {
+      const content = element.querySelector('.tranche-details-content');
+      const scroll = element.querySelector('.tranche-details-table-scroll');
+      const table = scroll?.querySelector('table');
+      const rect = element.getBoundingClientRect();
+      return {
+        role: element.getAttribute('role'),
+        modal: element.getAttribute('aria-modal'),
+        labelledBy: element.getAttribute('aria-labelledby'),
+        count: Number(content?.getAttribute('data-tranche-count')),
+        rows: element.querySelectorAll('[data-tranche-row]').length,
+        headers: Array.from(element.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() || ''),
+        scrollable: Boolean(scroll && table && table.scrollWidth > scroll.clientWidth),
+        dialogWithinViewport: rect.left >= -1 && rect.right <= document.documentElement.clientWidth + 1 &&
+          rect.top >= -1 && rect.bottom <= window.innerHeight + 1
+      };
+    });
+    const requiredHeaders = ['Tranche', 'Date', 'Quantity', 'Entry price', 'Cost basis', 'Buy commission'];
+    if (modalState.role !== 'dialog' || modalState.modal !== 'true' ||
+        modalState.labelledBy !== 'trancheDetailsTitle' ||
+        modalState.count !== expectedCount || modalState.rows !== expectedCount ||
+        requiredHeaders.some((header) => !modalState.headers.includes(header)) ||
+        !modalState.scrollable || !modalState.dialogWithinViewport) {
+      throw new Error('The tranche details modal must show every lot in an accessible, scrollable responsive table: ' + JSON.stringify(modalState));
+    }
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached', timeout: 5_000 });
+    const focusRestored = await trigger.evaluate((element) => document.activeElement === element);
+    if (!focusRestored) throw new Error('Closing the tranche details modal must restore focus to its trigger.');
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
+
 }
 
 async function assertNewsDialogTouchTargets(page) {

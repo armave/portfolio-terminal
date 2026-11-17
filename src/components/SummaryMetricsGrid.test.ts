@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getHeaderBreakevenValue, getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
+import { getHeaderBreakevenValue, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice, shouldShowMarketDepthControls } from './SummaryMetricsGrid';
 
 describe('Margin risk confidence and scope disclosures', () => {
   it('keeps provisional risk styling while avoiding redundant status and period labels', () => {
@@ -45,7 +45,7 @@ describe('Margin hardcode centralization', () => {
     expect(source).toContain("translateText('STOP-OUT BUFFER', language)");
     expect(source).toContain("translateText('Account equity percentage', language)");
     expect(source).toContain("translateText('Across {count} assets', getAppLanguage())");
-    expect(source).toContain("translateText('Show {count} tranches', getAppLanguage())");
+    expect(source).toContain("translateText('View {count} tranches', getAppLanguage())");
   });
 });
 
@@ -114,23 +114,6 @@ describe('portfolio metric quote updates', () => {
     expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
     expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
-  });
-});
-
-describe('margin tranche preview', () => {
-  it('hides every individual tranche by default', () => {
-    expect(getMarginTranchePreview(['oldest', 'second', 'third', 'fourth'])).toEqual([]);
-  });
-
-  it('shows every tranche when expanded, without a three-lot cutoff', () => {
-    const tranches = ['oldest', 'second', 'third', 'fourth', 'newest'];
-    expect(getMarginTranchePreview(tranches, true)).toEqual(tranches);
-  });
-
-  it('does not mutate the stored tranche array', () => {
-    const tranches = [1, 2, 3, 4];
-    getMarginTranchePreview(tranches, true);
-    expect(tranches).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -358,7 +341,7 @@ describe('cross-device financial header hierarchy', () => {
   const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
-  it('renders the proposed Combined Portfolio decision KPIs above the supporting financial detail', () => {
+  it('keeps decision KPIs and stacks the compact financial summary above Account Equity Health', () => {
     expect(source).toContain('data-header-metric={metric}');
     const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
     expect(combinedView).toContain('metric="net-target-return"');
@@ -367,15 +350,36 @@ describe('cross-device financial header hierarchy', () => {
     expect(combinedView).toContain('metric="margin-debt"');
     expect(combinedView).toContain('metric="margin-risk"');
     expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
-      combinedView.indexOf('class="portfolio-micro-summary"')
+      combinedView.indexOf('class="portfolio-risk-tools-row"')
     );
+    const healthColumn = combinedView.slice(
+      combinedView.indexOf('class="portfolio-health-summary-column"'),
+      combinedView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}`);
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}`);
+    const combinedTranchesPanel = healthColumn.slice(
+      healthColumn.indexOf('class="portfolio-micro-column portfolio-micro-basis"'),
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(combinedTranchesPanel).toContain('class="portfolio-micro-costs"');
+    expect(combinedTranchesPanel).toContain('id="boardComms"');
+    expect(combinedTranchesPanel).toContain('id="boardMarginCharged"');
+    expect(healthColumn).not.toContain('class="portfolio-micro-column portfolio-micro-costs"');
+    expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-column {');
+    expect(styles).toContain('.portfolio-health-summary-column .portfolio-micro-row .portfolio-metric-value {');
+    expect(source).not.toContain('class="portfolio-micro-heading"');
     expect(source).toContain('id={valueId}');
     expect(combinedView).toContain('valueId="boardNetTargetReturn"');
     expect(combinedView).toContain('valueId="daysToBreakeven"');
     expect(combinedView).toContain('valueId="boardMargin"');
   });
 
-  it('keeps ticker PT and net target return in the ticker title instead of repeating them in the KPI strip', () => {
+  it('keeps ticker PT in its title and stacks compact financial details above ticker equity health', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(source).toContain("translateText('Shares / Your PT', getAppLanguage())");
     expect(singleTickerView).toContain('metric="carry-break-even"');
@@ -386,36 +390,102 @@ describe('cross-device financial header hierarchy', () => {
     expect(singleTickerView).not.toContain('id="boardNetTargetReturn"');
     expect(singleTickerView).not.toContain('Your PT / Net return at target');
     expect(singleTickerView).not.toContain('calculatePositionMetrics');
+    const healthColumn = singleTickerView.slice(
+      singleTickerView.indexOf('class="portfolio-health-summary-column"'),
+      singleTickerView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    expect(healthColumn.indexOf('class="portfolio-micro-summary"')).toBeLessThan(
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(healthColumn).toContain(`role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}`);
+    const tickerTranchesPanel = healthColumn.slice(
+      healthColumn.indexOf('class="portfolio-micro-column portfolio-micro-basis"'),
+      healthColumn.indexOf('<MarginRiskGaugeCard')
+    );
+    expect(tickerTranchesPanel).toContain('class="portfolio-micro-costs"');
+    expect(tickerTranchesPanel).toContain('id="boardComms"');
+    expect(tickerTranchesPanel).toContain('id="boardMarginCharged"');
+    expect(healthColumn).not.toContain('class="portfolio-micro-column portfolio-micro-costs"');
   });
 
-  it('places Account Equity Health and Market Tools in one non-mobile row and stacks them on mobile', () => {
+  it('keeps the financial summary and Account Equity Health in the first column beside Market Tools', () => {
     expect(source).toContain('<div class="portfolio-risk-tools-row">');
+    expect(source).toContain('<div class="portfolio-health-summary-column">');
     expect(source).toContain('<MarginRiskGaugeCard');
     expect(source).toContain('<MarginMarketTools');
+    expect(styles).toContain('.portfolio-health-summary-column {');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-risk-tools-row>.portfolio-market-tools-row');
     expect(styles).toContain('@media (min-width: 768px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.95fr)');
     expect(styles).toContain('@media (max-width: 767px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 
-  it('groups Market Tools into descriptive scenario and intelligence cards', () => {
+  it('groups Market Tools into two-up scenario and intelligence sections', () => {
     const toolsStart = source.indexOf('function MarginMarketTools');
     const toolsEnd = source.indexOf('function SummaryMetricsGridView', toolsStart);
     const toolsComponent = source.slice(toolsStart, toolsEnd);
-    expect(toolsComponent).toContain('role="group" aria-label={translateText(\'Portfolio actions\', language)}');
+    expect(toolsComponent).toContain('Portfolio actions');
     expect(toolsComponent).toContain("translateText('MARKET TOOLS', language)");
+    expect(toolsComponent).toContain('market-tools-section--scenario');
+    expect(toolsComponent).toContain('market-tools-section--intelligence');
+    expect(toolsComponent).toContain('market-tools-section--single-action');
     expect(toolsComponent).toContain("translateText('SCENARIO PLANNING', language)");
     expect(toolsComponent).toContain("translateText('MARKET INTELLIGENCE', language)");
     expect(toolsComponent).toContain("translateText('Simulate Buy', language)");
     expect(toolsComponent).toContain("translateText('Compare Exits', language)");
     expect(toolsComponent).toContain("const reviewLabel = ticker ? 'AI Risk Review' : 'AI Portfolio Review';");
-    expect(toolsComponent).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(toolsComponent).toContain("translateText('Live Order Book', language)");
-    expect(toolsComponent).not.toContain("translateText('Add?', language)");
-    expect(toolsComponent).not.toContain("translateText('Exit?', language)");
-    expect(styles).toContain('.market-tools-grid {');
+    expect(toolsComponent).toContain('market-tools-external');
+    expect(styles).toContain('.market-tools-section--scenario .market-tools-grid');
+    expect(styles).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
     expect(styles).toContain('.market-tool-card:focus-visible {');
     expect(styles).toContain('.market-tools-section--portfolio .market-tools-grid {');
     expect(styles).toContain('@media (max-width: 767px)');
+  });
+
+  it('keeps External Research at the bottom of Market Tools, not in the health column', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    const healthColumn = singleTickerView.slice(
+      singleTickerView.indexOf('class="portfolio-health-summary-column"'),
+      singleTickerView.indexOf('<div class="portfolio-market-tools-row">')
+    );
+    const toolsComponent = source.slice(
+      source.indexOf('function MarginMarketTools'),
+      source.indexOf('function SummaryMetricsGridView')
+    );
+    expect(toolsComponent.indexOf("translateText('MARKET INTELLIGENCE', language)")).toBeGreaterThan(-1);
+    expect(toolsComponent.indexOf('market-tools-external')).toBeGreaterThan(
+      toolsComponent.indexOf("translateText('MARKET INTELLIGENCE', language)")
+    );
+    expect(toolsComponent).toContain("translateText('EXTERNAL RESEARCH', language)");
+    expect(toolsComponent).toContain('<BoardExternalLinks />');
+    expect(healthColumn).not.toContain('market-tools-external');
+  });
+
+  it('aligns the ticker Tranches control to the right and vertically with its label', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(singleTickerView).toContain('id="boardTranches" class="portfolio-metric-value portfolio-tranches-value');
+    expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-micro-basis>.portfolio-micro-row{');
+    expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
+    expect(styles).toContain('align-items: flex-end;');
+    expect(styles).toContain('align-items: center;');
+    expect(styles).toContain('.portfolio-micro-basis .portfolio-micro-row > .portfolio-tranches-value {');
+    expect(styles).toContain('box-sizing: border-box;');
+    expect(styles).toContain('justify-self: stretch;');
+    expect(styles).toContain('.portfolio-micro-basis #boardTranches > .tranche-details-trigger {');
+    expect(styles).toContain('width: max-content;');
+    expect(styles).toContain('justify-self: end;');
+  });
+
+
+  it('opens all ticker purchase lots in the lazy tranche details dialog instead of expanding inline', () => {
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(singleTickerView).toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('aria-haspopup="dialog"');
+    expect(singleTickerView).toContain('<TrancheDetailsModal');
+    expect(singleTickerView).not.toContain('boardTranchesOverflow');
+    expect(singleTickerView).not.toContain('expandedTrancheTicker');
   });
 });

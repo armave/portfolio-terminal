@@ -16,7 +16,7 @@ The app's data tables use a shared pagination preference and control layer while
 4. Keep the table body ID stable and pass it as `controlsId` to `TablePagination`.
 5. Render `TablePagination` below the table, supplying the returned page, range, and callbacks.
 
-The supported page sizes are 10, 25, 50, and 100. The preference is stored per logical table in localStorage under the versioned `portfolio-table-page-size:v1:` prefix. Storage failures fall back safely to the default. Page position itself is not persisted; changing page size resets to page 1 and shrinking data clamps the current page.
+The supported page sizes are 5, 8, 10, 12, 25, 50, and 100 rows; the default is 10. The preference is stored per logical table in localStorage under the versioned `portfolio-table-page-size:v1:` prefix. Storage failures fall back safely to the default. Page position itself is not persisted; changing page size resets to page 1 and shrinking data clamps the current page.
 
 ## Table-specific row behavior
 

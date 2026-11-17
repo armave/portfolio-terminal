@@ -198,7 +198,9 @@ describe('Stage 10 accessibility wiring', () => {
     expect(summaryStyles).toContain('.market-tool-card {');
     expect(summaryStyles).toContain('min-height: 5.15rem;');
     expect(summary).toContain('aria-label={translateText(reviewLabel, language)}');
-    expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
+    expect(summary).toContain('data-tranche-details-trigger');
+    expect(summary).toContain('aria-haspopup="dialog"');
+    expect(summaryStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.tranche-details-trigger{display:inline-flex;min-height:2.75rem;');
   });
 
   it('keeps Guest LOTS filters and broker reconciliation actions touch-sized', () => {

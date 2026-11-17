@@ -17,26 +17,98 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/#boardTitle\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*width:\s*auto;/s);
     expect(fluidStyles).toMatch(/#boardAnalystConsensus\s*\{[^}]*white-space:\s*nowrap;/s);
     expect(fluidStyles).toMatch(/container-name:\s*portfolio-metrics;/);
-    expect(fluidStyles).toMatch(/\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
     expect(fluidStyles).toMatch(/\.portfolio-micro-costs,\s*\.portfolio-micro-actions\s*\{[^}]*grid-column:\s*auto;/s);
-    expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*52rem\)/);
-    expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*36rem\)/);
+    expect(stylesheet).toMatch(/@container\s+portfolio-health-summary\s*\(max-width:\s*52rem\)/);
+    expect(stylesheet).toMatch(/@container\s+portfolio-health-summary\s*\(max-width:\s*30rem\)/);
     expect(fluidStyles).toMatch(/overflow-wrap:\s*anywhere;/);
     expect(fluidStyles).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums;/);
   });
 
   it('keeps each financial summary group full-width on mobile', () => {
-    expect(fluidStyles).toMatch(
-      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
+    expect(stylesheet).toMatch(
+      /@media\s*\(max-width:\s*767px\)\s*\{[^}]*\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
     );
-    expect(fluidStyles).toMatch(
-      /#portfolioMetricsGrid\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
+    expect(stylesheet).toMatch(
+      /\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-column\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*width:\s*100%;/s
     );
   });
 
-  it('keeps desktop detail tables scrollable and contains card-table overflow on mobile', () => {
+  it('gives the transferred financial summary more space and readable metric sizing', () => {
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*min-height:\s*clamp\(/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-label\s*\{[^}]*font-size:\s*0\.72rem;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-value\s*\{[^}]*font-size:\s*0\.88rem;/s);
+  });
+
+  it('uses two-column Market Tools grids when the panel has enough width', () => {
+    expect(stylesheet).toMatch(/\.portfolio-market-tools\s*\{[^}]*container-name:\s*portfolio-market-tools;/s);
+    expect(stylesheet).toContain('.market-tools-section--scenario .market-tools-grid');
+    expect(stylesheet).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
+    expect(stylesheet).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    expect(stylesheet).toMatch(/@container portfolio-market-tools \(max-width: 22rem\)/);
+    expect(stylesheet).toContain('.market-tools-section--single-action .market-tools-grid,');
+    expect(stylesheet).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.market-tools-section--scenario \.market-tools-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
+
+  it('stretches the health and Market Tools side blocks to the same desktop height', () => {
+    expect(stylesheet).toMatch(/@media\s*\(min-width:\s*768px\)[\s\S]*?\.portfolio-risk-tools-row\s*\{[^}]*align-items:\s*stretch;[^}]*grid-auto-rows:\s*minmax\(0,\s*1fr\);/s);
+    expect(stylesheet).toMatch(/\.portfolio-risk-tools-row\s*>\s*\.portfolio-health-summary-column,\s*\.portfolio-risk-tools-row\s*>\s*\.portfolio-market-tools-row\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(stylesheet).toMatch(/\.portfolio-risk-tools-row\s*\.portfolio-market-tools\s*\{[^}]*height:\s*100%;[^}]*align-content:\s*space-between;/s);
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.portfolio-risk-tools-row\s*>\s*\.portfolio-health-summary-column,[\s\S]*?height:\s*auto;/s);
+  });
+
+  it('aligns the Tranches row label and action control', () => {
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*>\s*\.portfolio-micro-row\s*\{[^}]*align-items:\s*center;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*\{[^}]*align-items:\s*flex-end;[^}]*text-align:\s*right;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
+  });
+
+  it('keeps Share and Tranches as equal-height panels with costs nested inside Tranches', () => {
+    const redesignedStyles = stylesheet.slice(
+      stylesheet.indexOf('.portfolio-health-summary-column > .portfolio-micro-summary--redesigned'),
+      stylesheet.indexOf('/* Purchase tranche ledger modal;')
+    );
+    expect(redesignedStyles).toContain('.portfolio-micro-summary--redesigned');
+    expect(redesignedStyles).toContain('"market basis"');
+    expect(redesignedStyles).not.toContain('"costs costs"');
+    expect(redesignedStyles).toMatch(/grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-market\s*\{[^}]*grid-area:\s*market;/s);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-basis\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
+    expect(redesignedStyles).toMatch(/\.portfolio-micro-summary--redesigned\s+\.portfolio-micro-costs\s*\{(?=[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\))(?=[^}]*margin-top:\s*auto;)[^}]*\}/s);
+    expect(redesignedStyles).not.toMatch(/\.portfolio-micro-summary--redesigned\s*>\s*\.portfolio-micro-costs/);
+    expect(redesignedStyles).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)[\s\S]*?grid-template-areas:[\s\S]*?"market"[\s\S]*?"basis"/);
+  });
+
+  it('styles the tranche details modal and keeps the lot table independently scrollable', () => {
+    expect(stylesheet).toContain('.tranche-details-backdrop');
+    expect(stylesheet).toContain('.tranche-details-dialog');
+    expect(stylesheet).toContain('.tranche-details-table-scroll');
+    expect(stylesheet).toContain('overflow: auto;');
+    expect(stylesheet).toContain('.tranche-details-table thead th');
+    expect(stylesheet).toContain('@media (max-width: 640px)');
+  });
+
+  it('keeps projection columns compact, aligned, and horizontally contained on narrow screens', () => {
     expect(fluidStyles).toMatch(/\.table-scroll-wrapper,\s*#projectionTableContainer\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(fluidStyles).toMatch(/#projectionTableContainer table\s*\{[^}]*min-width:\s*max\(100%,\s*30rem\)/s);
+    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-table,\s*\.desktop-workspace-grid #projectionTableContainer \.projection-table\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*max-content;[^}]*table-layout:\s*auto;/s);
+    expect(stylesheet).toMatch(/#mainTerminalView #projectionTableContainer \.projection-entry-description\s*\{[^}]*max-width:\s*16rem;[^}]*white-space:\s*normal;/s);
+    expect(stylesheet).not.toMatch(/#projectionTableContainer \.projection-col-(date|net|fees|balance)\s*\{\s*width:\s*\d+%;/);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-number-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);
+    expect(stylesheet).toMatch(/#projectionTableContainer \.projection-date-cell\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 52rem\)/);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
+    expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(stylesheet.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-health-summary-column>.margin-risk-gauge-card{');
+    expect(stylesheet).toMatch(
+      /@container portfolio-health-summary \(max-width: 52rem\)[\s\S]*?\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s
+    );
+    expect(stylesheet).toMatch(
+      /\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*>\s*\.portfolio-micro-costs\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s
+    );
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
     expect(stylesheet).toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*hidden;/);
     expect(stylesheet).not.toMatch(/#activeTranches \.table-scroll-wrapper,\s*#cashCushionContainer \.table-scroll-wrapper\s*\{\s*overflow-x:\s*visible;/);
@@ -58,6 +130,17 @@ describe('Margin projection and insights layout', () => {
     expect(insights).toBeGreaterThan(projection);
     expect(workspaceEnd).toBeGreaterThan(insights);
     expect(appSource).toContain('id="tradingWorkspaceGrid" class="trading-workspace-grid"');
+  });
+
+  it('uses explicit compact column widths and semantic numeric alignment in the projection table', () => {
+    expect(appSource).toContain('<colgroup>');
+    expect(appSource).toContain('<col class="projection-col-date" />');
+    expect(appSource).toContain('<col class="projection-col-net" />');
+    expect(appSource).toContain('<col class="projection-col-fees" />');
+    expect(appSource).toContain('<col class="projection-col-balance" />');
+    expect(appSource).toContain('projection-date-heading py-1 px-1 text-left');
+    expect(appSource).toContain('projection-number-heading py-1 px-1 text-right');
+    expect(projectionSource).toContain('projection-number-cell');
   });
 
   it('combines the accrued fee total and daily margin interest in the Fee & Comm. column', () => {
@@ -127,7 +210,7 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
     expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
-    expect(fluidStyles).toContain('#settingsDesk .settings-subsection > summary');
+    expect(fluidStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('#settingsDesk.settings-subsection>summary');
     expect(fluidStyles).toMatch(/@container\s+settings-workspace\s*\(min-width:\s*54rem\)/);
     expect(fluidStyles).toMatch(/#settingsDesk \.settings-table-scroll table\s*\{[^}]*min-width:\s*49rem/s);
   });
@@ -193,7 +276,7 @@ describe('Margin desk localization', () => {
     for (const label of [
       'No active position to project.',
       'Entry',
-      'Position opened · projection values start today',
+      'Position opened',
       'TODAY',
       'BREAKEVEN',
       'EOW · +{days}d',
