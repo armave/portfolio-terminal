@@ -1186,6 +1186,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Loading analyst target…": "Загрузка цели аналитиков…",
   "Margin PT": "Целевая цена маржинальной позиции",
   'Data health': 'Состояние данных',
+  'Data & sync': 'Данные и синхр.',
+  'Portfolio status': 'Состояние портфеля',
   'Needs review': 'Требуется проверка',
   'Data current': 'Данные актуальны',
   'Checking data status': 'Проверка состояния данных',

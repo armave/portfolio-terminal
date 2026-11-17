@@ -3162,163 +3162,6 @@ table tbody tr:hover {
 }
 
 
-/* Compact cloud status stays beside workspace navigation and exposes exact time on hover/tap. */
-#cloudStatus.cloud-sync-indicator {
-  position: relative;
-  z-index: 30;
-  margin-top: 0;
-}
-
-.cloud-sync-indicator {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.625rem;
-  background: rgba(15, 23, 42, 0.72);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1.2;
-}
-
-.cloud-sync-indicator__trigger {
-  display: inline-flex;
-  font: inherit;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 1.9rem;
-  padding: 0.3rem 0.55rem;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.cloud-sync-indicator__trigger:focus-visible {
-  outline: 2px solid var(--color-info);
-  outline-offset: 2px;
-}
-
-.cloud-sync-indicator__dot {
-  width: 0.48rem;
-  height: 0.48rem;
-  flex: 0 0 auto;
-  border-radius: 9999px;
-  background: #64748b;
-}
-
-.cloud-sync-indicator__primary {
-  color: var(--text-primary);
-  font-weight: 800;
-}
-
-.cloud-sync-indicator__state {
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.cloud-sync-indicator__time {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.cloud-sync-indicator--success .cloud-sync-indicator__dot {
-  background: var(--color-profit);
-}
-
-.cloud-sync-indicator--success .cloud-sync-indicator__state,
-.cloud-sync-indicator--success .cloud-sync-indicator__time {
-  color: var(--color-profit);
-}
-
-.cloud-sync-indicator--pending .cloud-sync-indicator__dot {
-  background: var(--color-info);
-  animation: cloud-sync-pulse 1.2s ease-in-out infinite;
-}
-
-.cloud-sync-indicator--pending .cloud-sync-indicator__state {
-  color: var(--color-info);
-}
-
-.cloud-sync-indicator--warning .cloud-sync-indicator__dot,
-.cloud-sync-indicator--conflict .cloud-sync-indicator__dot {
-  background: var(--color-warning);
-}
-
-.cloud-sync-indicator--warning .cloud-sync-indicator__state,
-.cloud-sync-indicator--conflict .cloud-sync-indicator__state {
-  color: var(--color-warning);
-}
-
-.cloud-sync-indicator--conflict {
-  border-color: rgba(251, 191, 36, 0.42);
-  background: rgba(66, 46, 5, 0.22);
-}
-
-.cloud-sync-indicator--error {
-  border-color: rgba(251, 113, 133, 0.38);
-  background: rgba(76, 5, 25, 0.28);
-}
-
-.cloud-sync-indicator--error .cloud-sync-indicator__dot {
-  background: var(--color-loss);
-}
-
-.cloud-sync-indicator--error .cloud-sync-indicator__state {
-  color: #fecdd3;
-}
-
-.cloud-sync-indicator__timestamp {
-  position: absolute;
-  top: calc(100% + 0.45rem);
-  right: 0;
-  z-index: 90;
-  display: none;
-  max-width: min(19rem, calc(100vw - 2rem));
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.45rem;
-  background: #0f172a;
-  color: var(--text-primary);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
-  font-size: 0.65rem;
-  line-height: 1.35;
-  white-space: normal;
-}
-
-@media (hover: hover) {
-
-  .cloud-sync-indicator:hover .cloud-sync-indicator__timestamp,
-  .cloud-sync-indicator:focus-within .cloud-sync-indicator__timestamp {
-    display: block;
-  }
-}
-
-.cloud-sync-indicator--details-open .cloud-sync-indicator__timestamp {
-  display: block;
-}
-
-@keyframes cloud-sync-pulse {
-  50% {
-    opacity: 0.4;
-  }
-}
-
-@media (max-width: 640px) {
-  .cloud-sync-indicator__trigger {
-    gap: 0.32rem;
-    min-height: 1.8rem;
-    padding: 0.28rem 0.45rem;
-    font-size: 0.65rem;
-  }
-}
-
-
-
 /* Stage 3: keep summary labels readable without competing with primary values. */
 .portfolio-micro-heading {
   color: var(--text-muted);
@@ -4720,40 +4563,11 @@ table tbody tr:hover {
   font-variant-numeric: tabular-nums;
 }
 
-#boardHeaderBanner #cloudStatus {
-  margin-top: 0;
-}
-
 .workspace-header-status-pill {
   min-height: 2.75rem;
   justify-content: center;
   border-radius: 0.7rem;
   white-space: nowrap;
-}
-
-.workspace-header-sync {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-}
-
-.workspace-header-sync .cloud-sync-indicator__trigger {
-  display: inline-flex;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.65rem;
-  border: 1px solid rgba(100, 116, 139, 0.55);
-  border-radius: 0.7rem;
-  background: rgba(15, 23, 42, 0.74);
-  color: #cbd5e1;
-}
-
-.workspace-header-sync .cloud-sync-indicator__trigger:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 @media (max-width: 1120px) {
@@ -6044,32 +5858,54 @@ table tbody tr:hover {
 
 /* Portfolio data health: compact, role-scoped status and recovery summary. */
 .portfolio-data-health {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  width: min(100%, 29rem);
-  gap: 0.45rem;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  width: auto;
   min-width: 0;
   max-width: 100%;
   font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
 }
 
 .portfolio-data-health__trigger {
-  display: flex;
-  width: 100%;
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
   min-width: 0;
   min-height: 2.75rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding: 0.35rem 0.65rem;
+  padding: 0.4rem 0.7rem;
   border: 1px solid var(--border-subtle, rgb(71 85 105 / 0.8));
-  border-radius: 0.625rem;
+  border-radius: 0.7rem;
   background: rgb(15 23 42 / 0.76);
   color: var(--text-primary, #e2e8f0);
   font-size: 0.6875rem;
   font-weight: 750;
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+.portfolio-data-health__label {
+  color: var(--text-muted, #94a3b8);
+  font-weight: 700;
+}
+
+.portfolio-data-health__state {
+  max-width: min(9rem, 36vw);
+  overflow: hidden;
+  color: var(--text-primary, #e2e8f0);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-data-health__chevron {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.8rem;
+  line-height: 1;
 }
 
 .portfolio-data-health__trigger:focus-visible,
@@ -6103,19 +5939,39 @@ table tbody tr:hover {
   background: #94a3b8;
 }
 
+.portfolio-data-health--pending .portfolio-data-health__dot {
+  background: var(--color-info, #38bdf8);
+  animation: portfolio-health-pulse 1.2s ease-in-out infinite;
+}
+
+.portfolio-data-health--pending .portfolio-data-health__state {
+  color: var(--color-info, #38bdf8);
+}
+
+.portfolio-data-health--warning .portfolio-data-health__state {
+  color: #fcd34d;
+}
+
+@keyframes portfolio-health-pulse {
+  50% { opacity: 0.4; }
+}
+
 .portfolio-data-health__details {
   display: grid;
   box-sizing: border-box;
-  gap: 0.625rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.8rem;
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--border-card, rgb(71 85 105 / 0.8));
-  border-radius: 0.75rem;
-  background: #0b1220;
+  overflow-y: auto;
+  padding: 1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary, #e2e8f0);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  box-shadow: none;
   font-size: 0.6875rem;
 }
 
@@ -6229,13 +6085,20 @@ table tbody tr:hover {
 
 @media (max-width: 639px) {
   .portfolio-data-health {
-    width: 100%;
+    width: auto;
+  }
+
+  .portfolio-data-health__trigger {
+    gap: 0.35rem;
+    padding-inline: 0.55rem;
+  }
+
+  .portfolio-data-health__state {
+    max-width: min(8rem, 34vw);
   }
 
   .portfolio-data-health__details {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 100%;
+    padding: 0.85rem;
   }
 
   .portfolio-data-health__row {
@@ -6244,5 +6107,133 @@ table tbody tr:hover {
 
   .empty-state-panel__actions {
     width: 100%;
+  }
+}
+
+
+/* The combined portfolio health/sync entry point opens a shared accessible modal. */
+.portfolio-data-health-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.portfolio-data-health-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(40rem, 100%);
+  max-height: min(44rem, calc(100dvh - 1.5rem));
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(100, 116, 139, 0.46);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.075), transparent 22rem),
+    linear-gradient(145deg, #0b1220, #111827 58%, #0c1420);
+  color: #e2e8f0;
+  box-shadow: 0 2rem 5rem rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.portfolio-data-health-modal__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 1rem 1.1rem;
+}
+
+.portfolio-data-health-modal__heading {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.portfolio-data-health-modal__eyebrow {
+  margin: 0;
+  color: #67e8f9;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.portfolio-data-health-modal__header h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.2rem;
+  font-weight: 850;
+}
+
+.portfolio-data-health-modal__subtitle {
+  margin: 0.1rem 0 0;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.portfolio-data-health-modal__close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.65rem;
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  font-size: 1.2rem;
+}
+
+.portfolio-data-health-modal__close:hover {
+  border-color: rgba(34, 211, 238, 0.5);
+  color: #f8fafc;
+}
+
+.portfolio-data-health-modal__close:focus-visible {
+  outline: 2px solid var(--border-focus, #22d3ee);
+  outline-offset: 2px;
+}
+
+.portfolio-data-health-modal .portfolio-data-health__row {
+  grid-template-columns: minmax(8rem, 0.9fr) minmax(0, 1.4fr);
+}
+
+.portfolio-data-health-modal .portfolio-data-health__actions {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 0.8rem;
+}
+
+@media (max-width: 639px) {
+  .portfolio-data-health-modal-backdrop {
+    padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .portfolio-data-health-modal {
+    width: 100%;
+    max-height: calc(100dvh - 1rem);
+    border-radius: 0.9rem;
+  }
+
+  .portfolio-data-health-modal__header {
+    padding: 0.8rem;
+  }
+
+  .portfolio-data-health-modal .portfolio-data-health__details {
+    padding: 0.85rem;
+  }
+
+  .portfolio-data-health-modal .portfolio-data-health__row {
+    grid-template-columns: minmax(6rem, 0.75fr) minmax(0, 1.25fr);
   }
 }

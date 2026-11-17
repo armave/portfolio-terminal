@@ -1,4 +1,5 @@
-import { useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CloudStatus } from '../ui/uiStateStore';
 import { usePortfolioSelector } from '../store/portfolioStore';
 import { emitUiEvent } from '../ui/uiEventBus';
@@ -7,6 +8,7 @@ import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } from '../services/portfolioAutoRefresh';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { formatQuoteFreshnessSummary } from '../utils/formatters';
+import { useDialogFocus } from '../ui/dialogFocus';
 import {
   arePortfolioDataHealthSourcesEqual,
   getBrokerSnapshotHealth,
@@ -21,7 +23,8 @@ import {
   formatRelativeSyncTime,
   resolveCloudSyncLabel,
   resolveCloudSyncTone
-} from './CloudSyncIndicator';
+} from '../ui/cloudSyncStatus';
+import { ModalFrame } from './ModalFrame';
 
 interface PortfolioDataHealthPanelProps {
   isAdmin: boolean;
@@ -29,8 +32,12 @@ interface PortfolioDataHealthPanelProps {
   cloudSyncStatus: CloudStatus;
 }
 
-function formatSnapshotTime(timestamp: number | null | undefined, language: ReturnType<typeof getAppLanguage>): string {
-  const relative = formatRelativeSyncTime(timestamp, Date.now(), language);
+function formatSnapshotTime(
+  timestamp: number | null | undefined,
+  language: ReturnType<typeof getAppLanguage>,
+  now: number
+): string {
+  const relative = formatRelativeSyncTime(timestamp, now, language);
   const exact = formatExactSyncTimestamp(timestamp, language);
   if (!relative) return translateText('Observation time unavailable', language);
   return exact ? relative + ' · ' + exact : relative;
@@ -78,9 +85,27 @@ export function PortfolioDataHealthPanel({
     (state) => selectPortfolioDataHealthSource(state, isAdmin),
     arePortfolioDataHealthSourcesEqual
   );
-  const [expanded, setExpanded] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeRef = useRef<(() => void) | null>(null);
   const syncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
+  const requestClose = () => closeRef.current?.();
+
+  useDialogFocus(dialogRef, {
+    active: dialogOpen,
+    initialFocusRef: closeButtonRef,
+    restoreFocusRef: triggerRef,
+    onEscape: requestClose
+  });
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const brokerSnapshot = source.role === 'admin' ? source.brokerAccountInfo : undefined;
   const guestSnapshot = source.role === 'guest' ? source.guestSnapshot : undefined;
@@ -89,8 +114,8 @@ export function PortfolioDataHealthPanel({
     ? summarizeAdminPortfolioQuoteFreshness({
         positions: source.positions,
         cashHoldings: source.cashHoldings
-      }, Date.now(), refreshIntervalMs)
-    : summarizeGuestPortfolioQuoteFreshness(guestSnapshot, Date.now(), refreshIntervalMs);
+      }, now, refreshIntervalMs)
+    : summarizeGuestPortfolioQuoteFreshness(guestSnapshot, now, refreshIntervalMs);
   const quoteHealth = getQuoteFreshnessHealth(quoteSummary);
   const cloudTone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
   const hasCloudConflict = isAdmin && cloudSyncStatus.status === 'conflict';
@@ -103,10 +128,20 @@ export function PortfolioDataHealthPanel({
     assignedSnapshotAvailable: guestSnapshotAvailable,
     assignedRefreshStatus: cloudSyncStatus.status
   });
+  const isSyncPending = syncing || (isAdmin
+    ? cloudTone === 'pending'
+    : cloudSyncStatus.status === 'syncing' || cloudSyncStatus.status === 'pending');
   const overallLabel = translateText(
-    overallTone === 'warning' ? 'Needs review' : overallTone === 'healthy' ? 'Data current' : 'Checking data status',
+    overallTone === 'warning'
+      ? 'Needs review'
+      : isSyncPending
+        ? 'Syncing…'
+        : overallTone === 'healthy'
+          ? 'Data current'
+          : 'Checking data status',
     language
   );
+  const triggerTone = isSyncPending && overallTone !== 'warning' ? 'pending' : overallTone;
 
   const quoteLabel = quoteSummary.total > 0
     ? formatQuoteFreshnessSummary(quoteSummary)
@@ -114,14 +149,14 @@ export function PortfolioDataHealthPanel({
   const cloudLabel = isAdmin
     ? resolveCloudSyncLabel(cloudStatus, cloudTone, language)
     : getGuestRefreshLabel(cloudSyncStatus.status, language);
-  const lastSuccessfulSync = formatSnapshotTime(cloudSyncStatus.lastSyncedAt, language);
+  const lastSuccessfulSync = formatSnapshotTime(cloudSyncStatus.lastSyncedAt, language, now);
   const observedAt = brokerSnapshot?.observedAt;
   const brokerDetail = [
     brokerSnapshot?.provider,
     brokerSnapshot?.source
   ].filter((value): value is string => Boolean(value)).join(' · ');
-  const brokerTimestamp = formatSnapshotTime(observedAt, language);
-  const guestSnapshotTime = formatSnapshotTime(guestSnapshot?.updatedAt, language);
+  const brokerTimestamp = formatSnapshotTime(observedAt, language, now);
+  const guestSnapshotTime = formatSnapshotTime(guestSnapshot?.updatedAt, language, now);
 
   const handleSync = async (): Promise<void> => {
     if (syncPromise.current) {
@@ -142,83 +177,113 @@ export function PortfolioDataHealthPanel({
   };
 
   const openRecoverySettings = () => {
+    requestClose();
     emitUiEvent('portfolio:set-active-view', { view: 'SETTINGS' });
     emitUiEvent('app:scroll-workspace');
   };
 
+  const modal = dialogOpen && typeof document !== 'undefined'
+    ? createPortal(
+        <ModalFrame
+          backdropClassName="portfolio-data-health-modal-backdrop"
+          dialogClassName="portfolio-data-health-modal"
+          dialogRef={dialogRef}
+          dialogId="portfolioDataHealthDialog"
+          ariaLabelledBy="portfolioDataHealthTitle"
+          closeRef={closeRef}
+          onClose={() => setDialogOpen(false)}
+        >
+          <header class="portfolio-data-health-modal__header">
+            <div class="portfolio-data-health-modal__heading">
+              <p class="portfolio-data-health-modal__eyebrow">{translateText('Data & sync', language)}</p>
+              <h2 id="portfolioDataHealthTitle">{translateText('Portfolio status', language)}</h2>
+              <p class="portfolio-data-health-modal__subtitle">{overallLabel}</p>
+            </div>
+            <button
+              id="portfolioDataHealthClose"
+              ref={closeButtonRef}
+              type="button"
+              class="portfolio-data-health-modal__close"
+              aria-label={translateText('Close', language)}
+              onClick={requestClose}
+            >
+              ×
+            </button>
+          </header>
+          <div id="portfolioDataHealthDetails" class="portfolio-data-health__details">
+            <dl class="portfolio-data-health__rows">
+              {isAdmin ? (
+                <HealthRow
+                  label={translateText('Broker snapshot', language)}
+                  value={getBrokerHealthLabel(brokerHealth || 'unknown', language)}
+                  detail={[brokerDetail, brokerTimestamp].filter(Boolean).join(' · ') || undefined}
+                />
+              ) : (
+                <HealthRow
+                  label={translateText('Assigned snapshot', language)}
+                  value={guestSnapshotAvailable ? translateText('Current', language) : translateText('Status unknown', language)}
+                  detail={guestSnapshot ? guestSnapshotTime : translateText('Observation time unavailable', language)}
+                />
+              )}
+              <HealthRow
+                label={translateText('Quote freshness', language)}
+                value={quoteLabel}
+              />
+              <HealthRow
+                label={translateText(isAdmin ? 'Cloud synchronization' : 'Assigned data refresh', language)}
+                value={cloudLabel}
+                detail={lastSuccessfulSync}
+              />
+              {isAdmin && (brokerSnapshot?.positionIntegrityIssues?.length || 0) > 0 && (
+                <HealthRow
+                  label={translateText('Position integrity issues', language)}
+                  value={String(brokerSnapshot?.positionIntegrityIssues?.length || 0)}
+                />
+              )}
+            </dl>
+            <div class="portfolio-data-health__actions">
+              {!hasCloudConflict && (
+                <button
+                  type="button"
+                  class="portfolio-data-health__action portfolio-data-health__action--primary"
+                  onClick={() => void handleSync()}
+                  disabled={syncing}
+                  aria-busy={syncing}
+                >{translateText(syncing ? 'Syncing…' : 'Sync portfolio', language)}</button>
+              )}
+              {hasCloudConflict && (
+                <button
+                  type="button"
+                  class="portfolio-data-health__action"
+                  onClick={openRecoverySettings}
+                >{translateText('Review in Settings', language)}</button>
+              )}
+            </div>
+          </div>
+        </ModalFrame>,
+        document.body
+      )
+    : null;
+
   return (
-    <div id="portfolioDataHealth" class={'portfolio-data-health portfolio-data-health--' + overallTone}>
+    <div id="portfolioDataHealth" class={'portfolio-data-health portfolio-data-health--' + triggerTone}>
       <button
         id="portfolioDataHealthToggle"
+        ref={triggerRef}
         type="button"
         class="portfolio-data-health__trigger"
-        aria-expanded={expanded}
-        aria-controls="portfolioDataHealthDetails"
-        aria-label={translateText('Data health', language) + ': ' + overallLabel}
-        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={dialogOpen}
+        aria-haspopup="dialog"
+        aria-controls="portfolioDataHealthDialog"
+        aria-label={translateText('Portfolio status', language) + ': ' + overallLabel}
+        onClick={() => setDialogOpen(true)}
       >
         <span class="portfolio-data-health__dot" aria-hidden="true" />
-        <span>{translateText('Data health', language)}</span>
-        <strong>{overallLabel}</strong>
-        <span aria-hidden="true">{expanded ? '−' : '+'}</span>
+        <span class="portfolio-data-health__label">{translateText('Data & sync', language)}</span>
+        <strong class="portfolio-data-health__state" aria-live="polite">{overallLabel}</strong>
+        <span class="portfolio-data-health__chevron" aria-hidden="true">{dialogOpen ? '⌃' : '⌄'}</span>
       </button>
-      {expanded && (
-        <section
-          id="portfolioDataHealthDetails"
-          class="portfolio-data-health__details"
-          role="region"
-          aria-label={translateText('Data health', language)}
-        >
-          <dl class="portfolio-data-health__rows">
-            {isAdmin ? (
-              <HealthRow
-                label={translateText('Broker snapshot', language)}
-                value={getBrokerHealthLabel(brokerHealth || 'unknown', language)}
-                detail={[brokerDetail, brokerTimestamp].filter(Boolean).join(' · ') || undefined}
-              />
-            ) : (
-              <HealthRow
-                label={translateText('Assigned snapshot', language)}
-                value={guestSnapshotAvailable ? translateText('Current', language) : translateText('Status unknown', language)}
-                detail={guestSnapshot ? guestSnapshotTime : translateText('Observation time unavailable', language)}
-              />
-            )}
-            <HealthRow
-              label={translateText('Quote freshness', language)}
-              value={quoteLabel}
-            />
-            <HealthRow
-              label={translateText(isAdmin ? 'Cloud synchronization' : 'Assigned data refresh', language)}
-              value={cloudLabel}
-              detail={lastSuccessfulSync}
-            />
-            {isAdmin && (brokerSnapshot?.positionIntegrityIssues?.length || 0) > 0 && (
-              <HealthRow
-                label={translateText('Position integrity issues', language)}
-                value={String(brokerSnapshot?.positionIntegrityIssues?.length || 0)}
-              />
-            )}
-          </dl>
-          <div class="portfolio-data-health__actions">
-            {!hasCloudConflict && (
-              <button
-                type="button"
-                class="portfolio-data-health__action portfolio-data-health__action--primary"
-                onClick={() => void handleSync()}
-                disabled={syncing}
-                aria-busy={syncing}
-              >{translateText(syncing ? 'Syncing…' : 'Sync portfolio', language)}</button>
-            )}
-            {hasCloudConflict && (
-              <button
-                type="button"
-                class="portfolio-data-health__action"
-                onClick={openRecoverySettings}
-              >{translateText('Review in Settings', language)}</button>
-            )}
-          </div>
-        </section>
-      )}
+      {modal}
     </div>
   );
 }

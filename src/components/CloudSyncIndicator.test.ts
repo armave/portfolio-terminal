@@ -5,7 +5,7 @@ import {
   formatRelativeSyncTime,
   resolveCloudSyncLabel,
   resolveCloudSyncTone
-} from './CloudSyncIndicator';
+} from '../ui/cloudSyncStatus';
 
 const status = (value: string, text = '') => ({ status: value, text });
 
@@ -80,10 +80,13 @@ describe('formatExactSyncTimestamp', () => {
   });
 });
 
-describe('cloud sync indicator wording', () => {
-  it('uses plain Cloud sync terminology rather than the internal KV label', () => {
-    const source = readFileSync(new URL('./CloudSyncIndicator.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("translateText('Cloud sync', language)");
-    expect(source).not.toContain('cloud-sync-indicator__primary">KV');
+describe('shared cloud sync status helpers', () => {
+  it('keeps cloud status and timestamp formatting reusable by the combined header control', () => {
+    const source = readFileSync(new URL('../ui/cloudSyncStatus.ts', import.meta.url), 'utf8');
+    expect(source).toContain('resolveCloudSyncTone');
+    expect(source).toContain('resolveCloudSyncLabel');
+    expect(source).toContain('formatRelativeSyncTime');
+    expect(source).toContain('formatExactSyncTimestamp');
+    expect(source).not.toContain('cloud-sync-indicator');
   });
 });

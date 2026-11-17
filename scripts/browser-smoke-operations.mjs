@@ -1200,6 +1200,7 @@ try {
   await waitForAuthOverlay(page, false);
   await page.locator('#portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
   await page.locator('#portfolioDataHealthToggle').click();
+  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'visible', timeout: 5_000 });
   await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
   const guestHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
   const hasAssignedSnapshotLabel = guestHealthCopy.includes('Assigned snapshot') ||
@@ -1214,7 +1215,7 @@ try {
       exposesOwnerBrokerData || exposesOwnerCloudData) {
     throw new Error('Guest data health exposed owner broker/cloud data or omitted the assigned projection status: ' + guestHealthCopy);
   }
-  await page.locator('#portfolioDataHealthToggle').click();
+  await page.locator('#portfolioDataHealthClose').click();
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');

@@ -581,6 +581,7 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
         statusOutsideNavigation: Boolean(status && nav && !nav.contains(status)),
         marketStatus: Boolean(status?.querySelector('[data-market-status-role]')),
         cloudStatus: Boolean(status?.querySelector('#cloudStatus')),
+        portfolioStatus: Boolean(status?.querySelector('#portfolioDataHealth')),
         hasPortfolioPtCopy: document.querySelector('#cashCushionContainer')?.innerText.includes('Margin PT') ?? false
       };
     });
@@ -591,9 +592,12 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
         throw new Error(role + ' navigation is missing ' + expected + ' at ' + width + 'px: ' + JSON.stringify(navigation));
       }
     }
-    if (!navigation.statusOutsideNavigation || !navigation.marketStatus ||
-        (role === 'admin' && !navigation.cloudStatus)) {
-      throw new Error('Market status and role-permitted KV sync must stay in the separate shared header status group.');
+    const expectsCombinedStatus = process.env.UX_EXPECT_NEW_HEADER !== 'false';
+    const hasExpectedStatus = expectsCombinedStatus
+      ? navigation.portfolioStatus
+      : role === 'admin' && navigation.cloudStatus;
+    if (!navigation.statusOutsideNavigation || !navigation.marketStatus || !hasExpectedStatus) {
+      throw new Error('Market status and the single portfolio health/sync control must stay in the shared header status group.');
     }
     if (role === 'admin' && !['margin', 'margin-ticker', 'portfolio'].some(kind => navigation.kinds.includes(kind))) {
       throw new Error('Administrator navigation must retain its Margin workspace destination.');
@@ -1210,8 +1214,11 @@ try {
   await waitForAuthOverlay(page, false);
 
   // Verify page geometry rather than treating successful mounting as responsive QA.
-  await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
-  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+  const expectsCombinedHeader = process.env.UX_EXPECT_NEW_HEADER !== 'false';
+  await page.locator(expectsCombinedHeader
+    ? '#boardHeaderBanner #portfolioDataHealth'
+    : '#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
+  if (expectsCombinedHeader) {
   try {
     await page.locator('#boardHeaderBanner #portfolioDataHealth').waitFor({ state: 'visible', timeout: 10_000 });
   } catch {
@@ -1241,6 +1248,7 @@ try {
       JSON.stringify({ pageErrors, healthDebug }));
   }
   await page.locator('#portfolioDataHealthToggle').click();
+  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'visible', timeout: 5_000 });
   await page.locator('#portfolioDataHealthDetails').waitFor({ state: 'visible', timeout: 5_000 });
   const adminHealthCopy = await page.locator('#portfolioDataHealthDetails').innerText();
   if (!adminHealthCopy.includes('Broker snapshot') ||
@@ -1249,22 +1257,28 @@ try {
       adminHealthCopy.includes('Assigned snapshot')) {
     throw new Error('Administrator data health did not show its role-scoped broker, quote, and cloud sources: ' + adminHealthCopy);
   }
-  await assertResponsiveSurface(page, '#portfolioDataHealthDetails', 'administrator portfolio data-health details');
-  await page.locator('#portfolioDataHealthToggle').click();
+  await assertResponsiveSurface(page, '#portfolioDataHealthDialog', 'combined administrator portfolio status modal');
+  await page.locator('#portfolioDataHealthClose').click();
+  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'hidden', timeout: 5_000 });
+  if (await page.locator('#cloudStatus').count() !== 0) {
+    throw new Error('The combined header must not render a second standalone cloud status indicator.');
+  }
   }
 
   await assertVisibleControlsHaveNames(page, 'administrator dashboard');
-  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+  if (expectsCombinedHeader) {
     await assertStandardizedWorkspaceNavigation(page, 'admin');
-  }
-  if (await page.locator('#cloudStatus').count() !== 1) {
-    throw new Error('Cloud synchronization health must have one persistent header indicator.');
+    if (await page.locator('#portfolioDataHealth').count() !== 1 || await page.locator('#cloudStatus').count() !== 0) {
+      throw new Error('Expected one combined portfolio health and sync header control.');
+    }
+  } else if (await page.locator('#cloudStatus').count() !== 1) {
+    throw new Error('The baseline header must retain its standalone cloud status indicator.');
   }
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
-  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
-    await assertResponsiveSurface(page, '#portfolioDataHealthToggle', 'portfolio data-health trigger');
+  if (expectsCombinedHeader) {
+    await assertResponsiveSurface(page, '#portfolioDataHealthToggle', 'combined portfolio status trigger');
   }
   // The authenticated startup may restore Balance. Select the Combined Portfolio
   // explicitly so this assertion exercises the Combined admin header, not the initial desk.
