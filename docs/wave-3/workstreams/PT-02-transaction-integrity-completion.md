@@ -304,9 +304,22 @@ Authenticated cloud restore, account-scope switching and real multi-device recov
 
 [PR #522](https://github.com/armave/portfolio-terminal/commit/34710d117ff36927a3e343d58e4abb4b45c19169) is now part of `dev`. The runtime preserves local state when applying a pulled cloud snapshot fails, requires explicit same-workspace replacement intent for confirmed recovery, and treats a missing cloud record after an accepted revision as a conflict. The associated runtime tests prove that rejected pulls keep the conflict latched and do not authorize stale retries or silently adopt a missing remote record.
 
-## In progress — protected cloud financial-array conflict coverage
+## Completed follow-up — protected cloud financial-array conflict coverage (#526)
 
-The three-way cloud reconciler must merge only the explicit UI-preference allowlist. The added table-driven tests exercise divergent updates to transaction events, corporate-action events, market-history corrections, closed trades, broker executions, external cashflows, canonical position/tranche snapshots and cash-holding/FIFO-lot snapshots. Divergent protected projections must block reconciliation rather than append or combine arrays; identical outcomes may be retained exactly once while disjoint allowlisted navigation preferences still merge. This is regression coverage only; no cloud merge policy or financial runtime behavior changes.
+[PR #526](https://github.com/armave/portfolio-terminal/pull/526) was squash-merged into \`dev\` at [\`9d26ad422d5712262a24049d92c4d1836c84e75b\`](https://github.com/armave/portfolio-terminal/commit/9d26ad422d5712262a24049d92c4d1836c84e75b). Final tested PR head: \`be6a05fd80e7d717d042c4e7d50930f12d176717\`.
+
+- [x] Cover eight protected groups: transaction events, corporate-action events, market-history corrections, closed trades, broker executions, cashflows, position/FIFO tranches and cash-holding/FIFO lots.
+- [x] Divergent protected financial projections block reconciliation; arrays are not appended or merged.
+- [x] Identical protected outcomes are preserved once while disjoint allowlisted navigation preferences can still merge.
+- [x] [Pull Request CI #4500](https://github.com/armave/portfolio-terminal/actions/runs/44026131349) and [Security & Workflow Validation #305](https://github.com/armave/portfolio-terminal/actions/runs/44026131395) passed all blocking checks.
+
+The regression suite proves the deterministic three-way reconciler contract. It does not certify simultaneous real-device recovery.
+
+## In progress — concurrent same-key cloud idempotency replay
+
+The Worker serializes revision writes and atomically stores the encrypted snapshot with a bounded idempotency receipt. Existing tests cover sequential ambiguous retries, conflicting reuse, superseded retries and two simultaneous writes with the same revision but different request identities. The remaining gap is two simultaneous identical requests carrying the same \`Idempotency-Key\`, request fingerprint and \`If-Match\` revision. The added Worker regression asserts that both callers receive success at the same committed revision, exactly one response is marked as a replay, and only one receipt/snapshot revision is stored.
+
+This verifies request-level deduplication within the Worker receipt retention window (100 receipts per record, seven days). It does not establish unbounded/global exactly-once delivery, browser-tab mutual exclusion, or real multi-device behavior. No Worker runtime code or deployment behavior is changed by this test-only slice.
 
 
 ## Read-only lot and closed-history parity visibility
