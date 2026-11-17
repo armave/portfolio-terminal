@@ -288,9 +288,9 @@ This slice added regression coverage only; accounting and runtime command behavi
 
 ## Completed follow-up — atomic backup import and journal-preserving restore (#523)
 
-[PR #523](https://github.com/armave/portfolio-terminal/pull/523) was squash-merged into \`dev\` at [\`599e3d476bb2fba9e445ca775c44dc46a1a425bc\`](https://github.com/armave/portfolio-terminal/commit/599e3d476bb2fba9e445ca775c44dc46a1a425bc). Final tested PR head: \`a4bd4f5e1afa7fa0e3957357e2837bb593147363\`.
+[PR #523](https://github.com/armave/portfolio-terminal/pull/523) was squash-merged into `dev` at [`599e3d476bb2fba9e445ca775c44dc46a1a425bc`](https://github.com/armave/portfolio-terminal/commit/599e3d476bb2fba9e445ca775c44dc46a1a425bc). Final tested PR head: `a4bd4f5e1afa7fa0e3957357e2837bb593147363`.
 
-- [x] Route JSON restore through a single \`PortfolioStore.importState()\` commit and request cloud sync only after local success.
+- [x] Route JSON restore through a single `PortfolioStore.importState()` commit and request cloud sync only after local success.
 - [x] Cover transaction, closed-history, cash-holding FIFO, corporate-action and market-correction data through export/import/reload.
 - [x] Prove persistence failure leaves the prior active snapshot, journal, persisted record and subscribers unchanged.
 - [x] [Pull Request CI #4489](https://github.com/armave/portfolio-terminal/actions/runs/44024116292), [Financial Integrity Regression #6](https://github.com/armave/portfolio-terminal/actions/runs/44024116448) and [Security & Workflow Validation #294](https://github.com/armave/portfolio-terminal/actions/runs/44024116254) passed all blocking checks.
