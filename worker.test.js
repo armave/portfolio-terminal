@@ -2158,6 +2158,59 @@ describe('PortfolioStateDO optimistic concurrency', () => {
   });
 
 
+  it('replays simultaneous same-key cloud writes as one committed revision and one receipt', async () => {
+    const values = new Map();
+    let transactionQueue = Promise.resolve();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
+      transaction: (callback) => {
+        const transaction = transactionQueue.then(() => callback({
+          get: async (key) => values.get(key),
+          put: async (key, value) => values.set(key, value),
+          delete: async (key) => values.delete(key)
+        }));
+        transactionQueue = transaction.then(() => undefined, () => undefined);
+        return transaction;
+      }
+    };
+    const store = new PortfolioStateDO({ storage }, {});
+    const body = JSON.stringify({ encryptedPayload: 'same-tab-retry-snapshot' });
+    const write = () => store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"0"',
+        'Idempotency-Key': 'cloud-write-concurrent-replay-0001'
+      },
+      body
+    }));
+
+    const responses = await Promise.all([write(), write()]);
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(responses.map((response) => response.headers.get('ETag'))).toEqual(['"1"', '"1"']);
+    expect(responses.filter((response) => response.headers.get('Idempotency-Replayed') === 'true')).toHaveLength(1);
+    const responseBodies = await Promise.all(responses.map((response) => response.json()));
+    expect(responseBodies).toEqual(expect.arrayContaining([
+      { success: true, revision: 1 },
+      { success: true, revision: 1, committedRevision: 1, replayed: true }
+    ]));
+
+    const receipts = values.get('cloud-write-idempotency:record');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      key: 'cloud-write-concurrent-replay-0001',
+      revision: 1
+    });
+    expect(JSON.stringify(receipts)).not.toContain('same-tab-retry-snapshot');
+
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'same-tab-retry-snapshot' });
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
   it('stores margin digests as ciphertext-only envelopes and preserves per-key revisions', async () => {
     const store = makeDurableObject();
     const envelope = {
