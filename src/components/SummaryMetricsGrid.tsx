@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '../utils/relativeTime';
-import { memo } from 'preact/compat';
-import { useEffect, useState } from 'preact/hooks';
+import { lazy, memo, Suspense } from 'preact/compat';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
@@ -34,6 +34,10 @@ import { BoardExternalLinks } from './BoardExternalLinks';
 import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
+
+const TrancheDetailsModal = lazy(() =>
+  import('./TrancheDetailsModal').then(({ TrancheDetailsModal }) => ({ default: TrancheDetailsModal }))
+);
 
 export function getUsableMarketPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -365,10 +369,6 @@ export function getHeaderBreakevenValue(value: string): string {
   return displayValue || '—';
 }
 
-export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[] {
-  return expanded ? tranches : [];
-}
-
 function getStoredMarginTrancheQuantity(tranche: unknown): number | null {
   if (!tranche || typeof tranche !== 'object') return null;
   const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
@@ -581,7 +581,8 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const rules = state.brokerAssumptions;
   const refreshIntervalMs = useQuoteRefreshInterval();
   const breakevenText = useBreakevenText();
-  const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
+  const [trancheModalOpen, setTrancheModalOpen] = useState(false);
+  const trancheButtonRef = useRef<HTMLButtonElement | null>(null);
   const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
@@ -793,17 +794,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
         <div class="portfolio-risk-tools-row">
           <div class="portfolio-health-summary-column">
-            <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
-              <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-                <div class="portfolio-micro-row">
-                  <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
-                  <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
-                </div>
-                <div class="portfolio-micro-row">
-                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
-                  <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
-                </div>
-              </div>
+            <section class="portfolio-micro-summary portfolio-micro-summary--redesigned" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
               <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
                 <div class="portfolio-micro-row portfolio-micro-market-primary">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Market Value / Return', getAppLanguage())}</span>
@@ -853,6 +844,16 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
                   <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
                 </span>
+              </div>
+<div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
+                  <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
+                </div>
+                <div class="portfolio-micro-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
+                  <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+                </div>
               </div>
               <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
                 <div class="portfolio-micro-row">
@@ -937,8 +938,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     false
   );
   const trancheQuantities = getMarginTrancheQuantities(positionTranches, brokerOpenLots, pos.ticker);
-  const tranchesExpanded = expandedTrancheTicker === pos.ticker;
-  const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
   const hiddenTrancheCount = positionTranches.length;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
@@ -1077,42 +1076,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
 
       <div class="portfolio-risk-tools-row">
         <div class="portfolio-health-summary-column">
-          <section class="portfolio-micro-summary" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
-            <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-              <div class="portfolio-micro-row">
-                <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
-                <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
-                  {hiddenTrancheCount > 0 && (
-                    <>
-                      <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
-                        <div class="expandable-motion__inner">
-                          <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
-                            {visibleTranches.map((tranche, index) => {
-                              const quantity = trancheQuantities[index];
-                              const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
-                              const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
-                              const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
-                              return (
-                                <span key={`${pos.ticker}-overflow-${index}`}>
-                                  {quantity !== null ? `${quantity.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                      <button type="button" class="inline-flex min-h-11 items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
-                        {tranchesExpanded ? translateText('Show less', getAppLanguage()) : translateText('Show {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div class="portfolio-micro-row">
-                <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
-                <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
-              </div>
-            </div>
+          <section class="portfolio-micro-summary portfolio-micro-summary--redesigned" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
             <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
               <div class="portfolio-micro-row portfolio-micro-market-primary">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Share Price / Market Value', getAppLanguage())}</span>
@@ -1137,6 +1101,35 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
                 {translateText('Volume', getAppLanguage())} {volume ?? '—'}
               </span>
+            </div>
+<div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
+                <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
+                  {hiddenTrancheCount > 0 ? (
+                    <button
+                      ref={trancheButtonRef}
+                      type="button"
+                      class="tranche-details-trigger"
+                      aria-haspopup="dialog"
+                      aria-controls="trancheDetailsDialog"
+                      aria-label={translateText('View {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
+                      data-tranche-details-trigger
+                      data-tranche-count={hiddenTrancheCount}
+                      onClick={() => setTrancheModalOpen(true)}
+                    >
+                      <span>{translateText('View {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}</span>
+                      <span class="tranche-details-trigger-icon" aria-hidden="true">↗</span>
+                    </button>
+                  ) : (
+                    <span class="text-slate-500">—</span>
+                  )}
+                </div>
+              </div>
+              <div class="portfolio-micro-row">
+                <span class="portfolio-metric-label text-[10px]">{translateText('Invested / Avg. Entry', getAppLanguage())}</span>
+                <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+              </div>
             </div>
             <div class="portfolio-micro-column portfolio-micro-costs" role="group" aria-label={translateText('Fees & accrued interest', getAppLanguage())}>
               <div class="portfolio-micro-row">
@@ -1165,6 +1158,20 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
         </div>
       </div>
+      {trancheModalOpen && (
+        <Suspense fallback={null}>
+          <TrancheDetailsModal
+            ticker={pos.ticker}
+            tranches={positionTranches}
+            quantities={trancheQuantities}
+            positionShares={pos.shares}
+            totalInvested={totalInvested}
+            averageEntry={avgPrice}
+            restoreFocusRef={trancheButtonRef}
+            onClose={() => setTrancheModalOpen(false)}
+          />
+        </Suspense>
+      )}
     </>
   );
 }
