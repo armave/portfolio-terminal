@@ -45,8 +45,8 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-number-cell\s*\{[^}]*white-space:\s*nowrap;[^}]*text-align:\s*right;[^}]*font-variant-numeric:\s*tabular-nums lining-nums;/s);
     expect(stylesheet).toMatch(/#projectionTableContainer \.projection-date-cell\s*\{[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\{[^}]*container-name:\s*portfolio-health-summary;/s);
-    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 40rem\)/);
-    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 30rem\)/);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 52rem\)/);
+    expect(stylesheet).toMatch(/@container portfolio-health-summary \(max-width: 36rem\)/);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
     expect(stylesheet).toContain('.portfolio-health-summary-column > .margin-risk-gauge-card {');
     expect(fluidStyles).toMatch(/#marketInsightsPanel\s*\{[^}]*min-width:\s*0;/s);
