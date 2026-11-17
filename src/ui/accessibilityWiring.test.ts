@@ -30,10 +30,11 @@ describe('Stage 10 accessibility wiring', () => {
   });
 
 
-  it('keeps the cloud indicator visually limited to its status dot and KV label', () => {
+  it('uses a clear Cloud sync label beside the status dot', () => {
     const source = readSource('../components/CloudSyncIndicator.tsx');
     expect(source).toContain('<span class="cloud-sync-indicator__dot" aria-hidden="true" />');
-    expect(source).toContain('<span class="cloud-sync-indicator__primary">KV</span>');
+    expect(source).toContain(`<span class="cloud-sync-indicator__primary">{translateText('Cloud sync', language)}</span>`);
+    expect(source).not.toContain('cloud-sync-indicator__primary">KV');
     expect(source).not.toContain('cloud-sync-indicator__state');
     expect(source).not.toMatch(/class="cloud-sync-indicator__time"/);
     expect(source).toContain('aria-label={accessibleText}');
