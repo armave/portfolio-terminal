@@ -704,6 +704,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
               cashflowStatus={cashflowHistoryReady && cashflowSyncReady ? 'complete' : 'partial'}
               appHistoryStatus="partial"
               legacyClosedTrades={state.closedTrades || []}
+              positions={state.positions || {}}
+              cashHoldings={state.cashCushion?.holdings || []}
               onRecordReview={(section, findingId, findingType, subject, reason) =>
                 isSessionCurrent() &&
                 portfolioStore.recordReconciliationReview(section, findingId, findingType, subject, reason)
