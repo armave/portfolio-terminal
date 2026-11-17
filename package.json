@@ -42,8 +42,7 @@
     "vitest": "^5.1.0",
     "@vitest/coverage-v8": "5.1.0",
     "oxlint": "1.93.0",
-    "picomatch": "file:vendor/picomatch-v4",
-    "picomatch-v2": "file:vendor/picomatch-v2"
+    "picomatch": "file:vendor/picomatch-v4"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",
