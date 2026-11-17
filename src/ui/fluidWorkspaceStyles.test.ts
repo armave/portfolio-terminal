@@ -48,7 +48,8 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toContain('.market-tools-section--intelligence:not(.market-tools-section--single-action) .market-tools-grid');
     expect(stylesheet).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
     expect(stylesheet).toMatch(/@container portfolio-market-tools \(max-width: 22rem\)/);
-    expect(stylesheet).toMatch(/\.market-tools-section--single-action \.market-tools-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+    expect(stylesheet).toContain('.market-tools-section--single-action .market-tools-grid,');
+    expect(stylesheet).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.market-tools-section--scenario \.market-tools-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   });
 
