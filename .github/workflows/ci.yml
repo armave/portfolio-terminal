@@ -259,7 +259,7 @@ jobs:
       - name: Capture desktop and mobile browser performance baseline
         id: browser_performance
         env:
-          PERFORMANCE_BASELINE_RUNS: ${{ inputs.performance_baseline_runs || 3 }}
+          PERFORMANCE_BASELINE_RUNS: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.performance_baseline_runs) || '3' }}
         run: node scripts/browser-performance-baseline.mjs
 
       - name: Upload browser performance baseline
