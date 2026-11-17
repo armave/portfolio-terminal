@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   formatExactSyncTimestamp,
@@ -76,5 +77,13 @@ describe('formatExactSyncTimestamp', () => {
     const timestamp = Date.UTC(2026, 10, 8, 19, 55, 34);
     expect(formatExactSyncTimestamp(timestamp, 'en')).toContain('Nov 8, 2026');
     expect(formatExactSyncTimestamp(null, 'en')).toBe('');
+  });
+});
+
+describe('cloud sync indicator wording', () => {
+  it('uses plain Cloud sync terminology rather than the internal KV label', () => {
+    const source = readFileSync(new URL('./CloudSyncIndicator.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateText('Cloud sync', language)");
+    expect(source).not.toContain('cloud-sync-indicator__primary">KV');
   });
 });
