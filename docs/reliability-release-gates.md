@@ -77,6 +77,12 @@ Initial application startup also has a bounded page-readiness gate: the full-scr
 
 The current fixture does not measure authenticated dashboard hydration, large-portfolio rendering, transaction-history scale, real broker latency, or production network/provider availability. A future authenticated performance fixture must first seed a portfolio through a verified application-supported persistence/import path and prove that the same 100-position/200-tranche state survives authenticated startup and broker reconciliation before its measurements are treated as valid.
 
+### Extended sample collection
+
+The regular PR browser job keeps a short three-sample-per-viewport run to limit feedback time. A manual `workflow_dispatch` run of Pull Request CI defaults to 10 samples per viewport; the input may be set from 1 to 20. The script records sample count and per-metric minimum, median, nearest-rank p95, maximum, mean, population variance, and standard deviation in the JSON artifact.
+
+A 10-sample p95 is descriptive (nearest-rank p95 is the maximum at this sample size), not a statistically stable production percentile. Compare the resulting artifact across at least 10 successful workflow runs on the same runner/browser profile before setting performance thresholds. These runs still measure the unauthenticated app shell with mocked Worker responses; they do not satisfy the authenticated large-portfolio fixture requirement in issue #559.
+
 ### Baseline protocol
 
 1. Collect at least 10 successful workflow runs on the same runner/browser configuration before proposing automated performance thresholds.
