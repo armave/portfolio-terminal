@@ -4321,3 +4321,134 @@ describe('auditable balance adjustment reversals', () => {
     expect(store.reverseBalanceAdjustment(tradeId!, 'Trade reversal is not supported')).toBe(false);
   });
 });
+
+
+describe('cash and margin setter idempotency contract', () => {
+  it('deduplicates identical free-cash commands and rejects conflicting reuse of their key', () => {
+    const store = new PortfolioStore();
+    const effectiveAt = Date.parse('2026-11-17T08:00:00.000Z');
+    const recordedAt = effectiveAt + 250;
+    const context = {
+      idempotencyKey: 'cash-free-set-2026-11-17-01',
+      actor: { type: 'user' as const },
+      source: 'manual-cash-adjustment-test',
+      effectiveAt,
+      recordedAt
+    };
+
+    expect(store.setFreeCash(250, context)).toBe(true);
+    const committed = store.getState();
+    const event = committed.transactionEvents?.at(-1);
+    expect(event).toMatchObject({
+      type: 'cash.adjustment',
+      idempotencyKey: context.idempotencyKey,
+      actor: context.actor,
+      source: context.source,
+      effectiveAt,
+      recordedAt,
+      cashDelta: 250
+    });
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.setFreeCash(250, context)).toBe(true);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
+
+    expect(store.setFreeCash(300, context)).toBe(false);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates cash-balance commands across debt settlement without replaying balance deltas', () => {
+    const store = new PortfolioStore();
+    const effectiveAt = Date.parse('2026-11-17T08:10:00.000Z');
+    const context = {
+      idempotencyKey: 'cash-balance-set-2026-11-17-01',
+      actor: { type: 'user' as const },
+      source: 'manual-cash-balance-test',
+      effectiveAt,
+      recordedAt: effectiveAt + 500
+    };
+
+    expect(store.setCashBalance(-125, context)).toBe(true);
+    const committed = store.getState();
+    expect(committed.balance).toBe(-125);
+    expect(committed.cashCushion.freeCash).toBe(0);
+    expect(committed.transactionEvents?.at(-1)).toMatchObject({
+      type: 'cash.adjustment',
+      idempotencyKey: context.idempotencyKey,
+      actor: context.actor,
+      source: context.source,
+      effectiveAt,
+      recordedAt: effectiveAt + 500,
+      cashDelta: 0,
+      marginDebtDelta: 125
+    });
+
+    expect(store.setCashBalance(-125, context)).toBe(true);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+
+    expect(store.setCashBalance(-80, context)).toBe(false);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+  });
+
+  it('deduplicates margin-debt commands and preserves explicit actor/source metadata', () => {
+    const store = new PortfolioStore();
+    const effectiveAt = Date.parse('2026-11-17T08:20:00.000Z');
+    const context = {
+      idempotencyKey: 'margin-debt-set-2026-11-17-01',
+      actor: { type: 'ai' as const },
+      source: 'ai-confirmed-margin-adjustment-test',
+      effectiveAt,
+      recordedAt: effectiveAt + 750
+    };
+
+    expect(store.setMarginDebt(75, context)).toBe(true);
+    const committed = store.getState();
+    expect(committed.balance).toBe(-75);
+    expect(committed.transactionEvents?.at(-1)).toMatchObject({
+      type: 'margin.adjustment',
+      idempotencyKey: context.idempotencyKey,
+      actor: context.actor,
+      source: context.source,
+      effectiveAt,
+      recordedAt: effectiveAt + 750,
+      marginDebtDelta: 75
+    });
+
+    expect(store.setMarginDebt(75, context)).toBe(true);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+
+    expect(store.setMarginDebt(100, context)).toBe(false);
+    expect(store.getState()).toBe(committed);
+    expect(store.getState().transactionEvents).toHaveLength(1);
+  });
+
+  it('keeps all three balance commands atomic when local snapshot persistence fails', () => {
+    const store = new PortfolioStore();
+    const before = store.getState();
+    const persistedBefore = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.setFreeCash(100, { idempotencyKey: 'failed-free-cash-01' })).toBe(false);
+    expect(store.setCashBalance(-100, { idempotencyKey: 'failed-cash-balance-01' })).toBe(false);
+    expect(store.setMarginDebt(50, { idempotencyKey: 'failed-margin-debt-01' })).toBe(false);
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(persistedBefore);
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
