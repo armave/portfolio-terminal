@@ -132,3 +132,58 @@ Before implementing #550 or enabling #557:
 7. Obtain security review and record the accepted decision and tested SHAs.
 
 **No production key migration, independent tenant financial writes, or tenant cutover is authorized by this proposal.**
+
+## 10. Decision alternatives and explicit trade-offs
+
+This section is a review packet for [#549](https://github.com/armave/portfolio-terminal/issues/549), not an approval. The options below are intentionally left open; the proposed hierarchy in sections 3–7 must not be treated as an accepted implementation choice.
+
+### Key custody and cryptographic boundary
+
+| Option | Security boundary | Benefits | Costs and residual risks | Decision required |
+|---|---|---|---|---|
+| Managed key service / KMS-backed KEK | The provider protects and unwraps the platform KEK; the Worker is an authenticated caller | Dedicated key custody, provider audit controls and managed rotation facilities where supported | Provider availability and account configuration become production dependencies; pricing, recovery, residency and access policy vary by provider | Select provider, region, access policy, recovery owner and outage behavior |
+| Worker-held KEK secret | A versioned secret is available to the production Worker runtime | Fewer external components and a simpler deployment boundary | Secret access is tied to Worker deployment/operations; custody, rotation, audit and recovery become operator responsibilities; no assumption of HSM-backed custody | Identify custodians, reviewer approvals, rotation cadence and emergency recovery process |
+| Server-mediated data encryption | Browser sends validated plaintext to an authenticated Worker boundary; the server performs encryption/decryption | Tenant DEKs need not be returned to browser memory | The server processes plaintext; changes the current client-side encryption trust model and increases server responsibility, request size and availability coupling | Explicitly accept the new server trust boundary and prove logs, errors and operational tooling cannot expose plaintext |
+
+No provider or custody model is selected by this ADR. A Worker secret is not automatically equivalent to a managed HSM/KMS boundary, and a KMS integration must not be assumed available until its account, permissions and recovery path are verified.
+
+### Where encryption and plaintext may exist
+
+| Option | Browser access | Server access | Guest/projection implication |
+|---|---|---|---|
+| Short-lived scoped DEK grant | An authorized client can observe the granted DEK while it is in memory | Worker/key service unwraps and authorizes grants | Guest must use a separate projection key or a separately encrypted projection; never grant the tenant-wide DEK |
+| Server-mediated encryption | Browser sees only the plaintext records it is authorized to display, not the DEK | Worker/DO necessarily sees plaintext during the operation | The server constructs the projection after validating the guest grant; key scope remains server-owned |
+
+A non-extractable IndexedDB device key protects its existing stored-secret use; it does not prevent an active-origin script from reading plaintext or a DEK deliberately delivered to that origin. Revocation can deny future requests and grants but cannot erase a key or plaintext already copied by an authorized or compromised client.
+
+### Required decision record
+
+Before implementation, reviewers must record a decision for each item. An unchecked row is a blocker, not an implicit default.
+
+| Decision | Required evidence |
+|---|---|
+| KEK custody | Provider/secret boundary, owner, approvers, access policy, backup and emergency recovery |
+| Client versus server encryption | Threat-model comparison, plaintext exposure map, operational impact and accepted residual risk |
+| Guest projection encryption | Proof that a guest grant cannot unwrap or infer the tenant-wide DEK |
+| Envelope and AAD | Canonical byte serialization, field ordering, versioning, allowlisted algorithms and wrong-context failure tests |
+| Nonce and key usage | Provider/algorithm-approved nonce generation, uniqueness enforcement and per-key usage limits; do not invent limits in application code |
+| Rotation | Separate KEK re-wrap and DEK re-encryption procedures, resumable cursors, CAS/revision checks and rollback |
+| Revocation | New-request denial, stream invalidation and explicit disclosure that copied plaintext cannot be remotely erased |
+| Backup and deletion | Matched ciphertext/wrapped-key restore, replica inventory, external-copy limits and honest erasure claims |
+| Telemetry | Captured-log proof that keys, wrapped bytes, grants, credentials and financial content are excluded |
+
+### Security review evidence and sign-off
+
+The security review should include: (1) data-flow and trust-boundary diagrams; (2) compromise scenarios for the browser origin, administrator session, Worker, Durable Object, key service and backups; (3) cross-tenant and wrong-context negative tests; (4) interrupted rotation and restore exercises using synthetic data; (5) failure-mode behavior when key custody is unavailable; and (6) a documented rollback owner.
+
+Record approvals without attaching secrets or key material:
+
+| Reviewer role | Required decision | Status |
+|---|---|---|
+| Security reviewer | Approve threat model, cryptographic envelope and residual risks | Pending |
+| Platform/operations owner | Approve custody, permissions, deployment and recovery responsibilities | Pending |
+| Data owner | Approve tenant/guest scope, backup and deletion semantics | Pending |
+| PT-02 owner | Confirm journal/snapshot restore and recovery compatibility | Pending |
+| Product/authorization owner | Confirm guest projection and revocation contract | Pending |
+
+**Implementation remains blocked** until the required decisions are explicitly accepted and referenced by #549. This review packet does not provision keys, change production secrets, migrate encrypted records, or enable PT-05 tenant financial writes.
