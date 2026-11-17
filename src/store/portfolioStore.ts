@@ -37,7 +37,7 @@ import {
   verifyPortfolioTransactionParity
 } from '../domain/portfolioTransactionJournal';
 import { verifyClosedHistoryFeeCorrectionParity } from '../domain/closedHistoryFeeAudit';
-import { replayPortfolioTransactionLots } from '../domain/portfolioLotJournal';
+import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
 import {
   adjustPositionForSplit,
   adjustCashHoldingForSplit,
@@ -231,15 +231,19 @@ function normalizeAccountingTicker(value: string): string {
   return ticker.endsWith('.US') ? ticker.slice(0, -3) : ticker;
 }
 
-function hasNewSourceBackedAccountingEvent(
+function hasCompleteAccountingLotParity(
   ticker: string,
   scope: 'position' | 'cash-holding',
-  previousEvents: readonly PortfolioTransactionEvent[] | undefined,
-  nextEvents: readonly PortfolioTransactionEvent[]
+  changedFields: readonly string[],
+  next: Pick<PortfolioState, 'positions' | 'cashCushion' | 'closedTrades'>,
+  transactionEvents: readonly PortfolioTransactionEvent[]
 ): boolean {
-  const previousIds = new Set((previousEvents || []).map((event) => event.id));
-  return nextEvents.some((event) => {
-    if (previousIds.has(event.id)) return false;
+  const explainableFields = scope === 'position'
+    ? new Set(['acquisitionLots', 'buyCommissionTotal'])
+    : new Set(['acquisitionLots', 'averageCost']);
+  if (changedFields.some((field) => !explainableFields.has(field))) return false;
+
+  const relevantEvents = transactionEvents.filter((event) => {
     if (event.type === 'portfolio.reset') return true;
     const eventTicker = typeof event.ticker === 'string'
       ? normalizeAccountingTicker(event.ticker)
@@ -250,6 +254,8 @@ function hasNewSourceBackedAccountingEvent(
       return event.type === 'trade.buy' ||
         event.type === 'trade.sell' ||
         event.type === 'position.adjustment' ||
+        (event.type === 'portfolio.reconciliation' && event.positionQuantityDelta !== undefined) ||
+        (event.type === 'correction' && event.positionQuantityDelta !== undefined) ||
         (event.type === 'corporate-action' && (
           event.positionQuantityDelta !== undefined ||
           event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'position') === true
@@ -258,11 +264,70 @@ function hasNewSourceBackedAccountingEvent(
     return event.type === 'cash-holding.buy' ||
       event.type === 'cash-holding.sell' ||
       event.type === 'cash-holding.adjustment' ||
+      (event.type === 'portfolio.reconciliation' && event.cashHoldingQuantityDelta !== undefined) ||
+      (event.type === 'correction' && event.cashHoldingQuantityDelta !== undefined) ||
       (event.type === 'corporate-action' && (
         event.cashHoldingQuantityDelta !== undefined ||
         event.corporateActionLotAdjustments?.some((adjustment) => adjustment.ledger === 'cash-holding') === true
       ));
   });
+
+  if (scope === 'position') {
+    const positions = new Map<string, PositionRecord>();
+    for (const [key, position] of Object.entries(next.positions || {})) {
+      if (!position || typeof position !== 'object') continue;
+      const positionTicker = normalizeAccountingTicker(String(position.ticker || key));
+      if (positionTicker) positions.set(positionTicker, position);
+    }
+    const position = positions.get(ticker);
+    const saleEventIds = new Set(relevantEvents
+      .filter((event) => event.type === 'trade.sell')
+      .map((event) => event.id));
+    const linkedClosedTrades = (next.closedTrades || []).filter((trade) =>
+      Boolean(trade.transactionEventId && saleEventIds.has(trade.transactionEventId))
+    );
+    const parity = verifyPortfolioTransactionLotParity(relevantEvents, {
+      positions: position ? { [ticker]: position } : {},
+      closedTrades: linkedClosedTrades
+    });
+    if (!parity.matches) return false;
+
+    const replayById = new Map(parity.replay.openLots.map((lot) => [lot.lotId, lot]));
+    for (const tranche of position?.tranches || []) {
+      if (tranche.acquiredAt === undefined) continue;
+      const replayedLot = tranche.lotId ? replayById.get(tranche.lotId) : undefined;
+      if (!replayedLot || !Number.isFinite(tranche.acquiredAt) ||
+        Math.abs(replayedLot.acquiredAt - tranche.acquiredAt) > 1) return false;
+    }
+    return true;
+  }
+
+  const holdings = (next.cashCushion?.holdings || []).filter((holding) =>
+    normalizeAccountingTicker(holding.ticker) === ticker
+  );
+  const parity = verifyPortfolioTransactionLotParity(relevantEvents, { cashHoldings: holdings });
+  if (!parity.matches) return false;
+
+  const replayById = new Map(parity.replay.cashHoldingOpenLots.map((lot) => [lot.lotId, lot]));
+  for (const holding of holdings) {
+    const lots = Array.isArray(holding.lots) ? holding.lots : [];
+    let quantity = 0;
+    let totalCost = 0;
+    for (const lot of lots) {
+      const replayedLot = lot.lotId ? replayById.get(lot.lotId) : undefined;
+      if (!replayedLot || !Number.isFinite(lot.acquiredAt) ||
+        Math.abs(replayedLot.acquiredAt - lot.acquiredAt) > 1) return false;
+      quantity += lot.qty;
+      totalCost += lot.qty * lot.price;
+    }
+    const shares = Number(holding.shares);
+    const averagePrice = Number(holding.averagePrice);
+    if (!lots.length || !Number.isFinite(shares) || shares <= 0 ||
+      Math.abs(quantity - shares) > 1e-8 ||
+      !Number.isFinite(averagePrice) || averagePrice <= 0 ||
+      Math.abs(Number((totalCost / quantity).toFixed(8)) - averagePrice) > 1e-7) return false;
+  }
+  return true;
 }
 
 /**
@@ -272,8 +337,8 @@ function hasNewSourceBackedAccountingEvent(
  * incomplete by the shadow replay contract.
  */
 function appendCanonicalSnapshotAccountingDetailEvents(
-  previous: Pick<PortfolioState, 'positions' | 'cashCushion' | 'transactionEvents'>,
-  next: Pick<PortfolioState, 'positions' | 'cashCushion'>,
+  previous: Pick<PortfolioState, 'positions' | 'cashCushion' | 'transactionEvents' | 'closedTrades'>,
+  next: Pick<PortfolioState, 'positions' | 'cashCushion' | 'closedTrades'>,
   transactionEvents: PortfolioTransactionEvent[],
   source: string
 ): PortfolioTransactionEvent[] {
@@ -298,10 +363,11 @@ function appendCanonicalSnapshotAccountingDetailEvents(
       getPositionAccountingDetails(previousPositions.get(ticker)),
       getPositionAccountingDetails(nextPositions.get(ticker))
     );
-    if (fields.length && !hasNewSourceBackedAccountingEvent(
+    if (fields.length && !hasCompleteAccountingLotParity(
       ticker,
       'position',
-      previous.transactionEvents,
+      fields,
+      next,
       transactionEvents
     )) changes.push({ ticker, scope: 'position', fields });
   }
@@ -314,10 +380,11 @@ function appendCanonicalSnapshotAccountingDetailEvents(
       previousCashHoldings.get(ticker) ?? null,
       nextCashHoldings.get(ticker) ?? null
     );
-    if (fields.length && !hasNewSourceBackedAccountingEvent(
+    if (fields.length && !hasCompleteAccountingLotParity(
       ticker,
       'cash-holding',
-      previous.transactionEvents,
+      fields,
+      next,
       transactionEvents
     )) changes.push({ ticker, scope: 'cash-holding', fields });
   }
