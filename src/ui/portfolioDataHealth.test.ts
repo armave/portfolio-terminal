@@ -95,7 +95,6 @@ describe('quote freshness health', () => {
 
   it('summarizes margin and positive cash-backed holdings without promoting missing prices to fresh', () => {
     const fresh = { sourceTimestamp: now - 30_000, freshness: 'fresh' as const };
-    const stale = { sourceTimestamp: now - 900_000, freshness: 'stale' as const };
     const summary = summarizeAdminPortfolioQuoteFreshness({
       positions: {
         AAPL: { ticker: 'AAPL', shares: 1, currentPrice: 10, pt: 12, commBuy: 0, quoteSource: 'Yahoo', quoteUpdatedAt: now, quoteDetails: fresh },
