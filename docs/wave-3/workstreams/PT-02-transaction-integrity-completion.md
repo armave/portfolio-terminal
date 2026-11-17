@@ -64,7 +64,7 @@ The current client store audit distinguishes app-owned financial commands from b
 The expanded regression fixtures assert broker cashflow classification for dividend, deposit, withdrawal, transfer, fee, margin interest and corporate action, and verify that those source facts do not double-post into canonical balances.
 
 Manual free-cash, cash-balance and margin-debt setters (`setFreeCash`, `setCashBalance`, `setMarginDebt`) share the `updateFinancialMutation` commit boundary. Each derives a stable request fingerprint from the command and requested balance, records the caller-supplied idempotency key where present, and defaults actor/source to user/manual-cash-adjustment or user/manual-margin-adjustment. Effective and recorded timestamps are retained on the event. Identical-key retries return an idempotent success without publishing a second snapshot/event; conflicting reuse is rejected. The regression matrix now explicitly verifies these retry/conflict rules and proves that failure to persist any of the three commands preserves the prior in-memory snapshot, stored snapshot, journal and subscriber stream.
- Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash, margin debt and the realized margin-charge total. App-owned rollover events distinguish interest capitalized into debt from charges recorded in `realizedMarginCharged`; older margin-interest events that lack that distinction remain incomplete in replay coverage.
+Direct snapshot edits are checked for reconciliation deltas across positions, cash-holding quantities, free cash, margin debt and the realized margin-charge total. App-owned rollover events distinguish interest capitalized into debt from charges recorded in `realizedMarginCharged`; older margin-interest events that lack that distinction remain incomplete in replay coverage.
 
 **Closed History Sync fee-correction status — merged in PR #468:** app-side fallback fee revisions now retain exact source cashflow IDs and allocated amounts. A typed immutable `history.correction` is linked to the originating `trade.sell` event and records before/after margin fee, aggregate fees, known net P&L and source allocations. Subsequent revisions chain to their prior correction; unexpected before-state, competing revision heads, missing sources and legacy/unlinked rows fail closed. `PortfolioStore.commitClosedHistoryFeeSync` commits the history projection and journal evidence through one store boundary. These events are audit-only: they do not post cash, debt, positions, cost basis or realized-margin deltas. See implementation slice 3 for exact commit and CI evidence. This closes the earlier “future event contract” gap for supported linked closed-trade fee updates; it does not prove complete closed-trade P&L replay or authenticated broker correctness.
 
@@ -274,6 +274,34 @@ Automated validations are recorded against each exact PR head above. The followi
 - [x] [Security & Workflow Validation #274](https://github.com/armave/portfolio-terminal/actions/runs/44019388061) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history scan skipped.
 
 This is parity visibility, not a ledger cutover or automatic correction. Authenticated TradeNet, backup/restore and real multi-device release checks remain manual gates.
+
+## Completed follow-up — PR #520 cash/debt setter idempotency and atomicity
+
+[PR #520](https://github.com/armave/portfolio-terminal/pull/520) was squash-merged into `dev` at [`b076ac194c30fae5c81ce05b0edc4d354fcbd2d5`](https://github.com/armave/portfolio-terminal/commit/b076ac194c30fae5c81ce05b0edc4d354fcbd2d5). Final tested PR head: `75558f00d43bad33173b1c3f9ae9a7e626ec0fa8`.
+
+- [x] Verify identical-key retries and conflicting-key rejection for `setFreeCash`, `setCashBalance` and `setMarginDebt`.
+- [x] Verify event actor/source/effective/recorded metadata on manual and AI-confirmed adjustment paths.
+- [x] Verify failed persistence retains the prior in-memory snapshot, persisted state, event journal and subscribers.
+- [x] [Pull Request CI #4476](https://github.com/armave/portfolio-terminal/actions/runs/44020795563) and [Security & Workflow Validation #282](https://github.com/armave/portfolio-terminal/actions/runs/44020795313) passed all blocking checks.
+
+This slice added regression coverage only; accounting and runtime command behavior were unchanged.
+
+## Validated follow-up — atomic backup import and journal-preserving restore (#523)
+
+[PR #523](https://github.com/armave/portfolio-terminal/pull/523) routes JSON file restore through `PortfolioStore.importState()` exactly once. That existing store command validates the snapshot and append-only journal inputs, persists the resulting state atomically, and only then publishes it. The duplicate post-import `saveState` call and the compensating `importState(previousState)` path have been removed; cloud sync is requested only after the local commit succeeds.
+
+- [x] Replace the two-phase helper with a single atomic commit callback; rejection or persistence failure does not attempt a second import or journal merge.
+- [x] Add file-import wiring coverage proving the single local commit precedes cloud sync.
+- [x] Add export/import/reload coverage for transaction events, linked closed history, cash-holding FIFO lots, sourced corporate-action events and market-history corrections.
+- [x] Add persistence-failure coverage proving the active state reference, committed journal, persisted snapshot and subscribers remain unchanged.
+- [x] Align fixtures with canonical snapshot/event parity so tests account for the store's explicit reconciliation events rather than treating them as unexpected loss.
+- [x] Preserve the existing legacy-backup path and the append-only same-workspace restore semantics.
+- [x] [Pull Request CI #4487](https://github.com/armave/portfolio-terminal/actions/runs/44023790629) — passed: typecheck, full Vitest/Worker suite, Vite smoke, dead-code validation, both dependency audits, production build, production browser smoke/performance and Operations Browser Journey.
+- [x] [Financial Integrity Regression #5](https://github.com/armave/portfolio-terminal/actions/runs/44023790718) — passed: transactions, persistence and authorization regression suite.
+- [x] [Security & Workflow Validation #293](https://github.com/armave/portfolio-terminal/actions/runs/44023790687) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history secret audit skipped.
+
+The CI results above were run against candidate head `212f477677fe75eff642cd85d0fbd64b9e7d69dc`; this documentation update will receive its own exact-head CI run. The automated tests prove local browser-storage commit and JSON round-trip behavior, not authenticated cloud restore or recovery on multiple real devices. Those manual release gates remain open.
+
 
 ## Read-only lot and closed-history parity visibility
 

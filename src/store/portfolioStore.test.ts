@@ -11,8 +11,9 @@ import {
 import type { CashStockHolding, ClosedTrade, Holding, PositionRecord } from '../types/portfolio';
 import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { createPortfolioTransactionEvent, inspectPortfolioTransactionJournalReplayCoverage, verifyPortfolioTransactionParity } from '../domain/portfolioTransactionJournal';
+import { createPortfolioBackupSnapshot, normalizePortfolioBackup } from '../domain/portfolio';
 import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } from '../domain/portfolioLotJournal';
-import { normalizeFinnhubStockSplits } from '../services/corporateActions';
+import { normalizeFinnhubStockSplits, toPortfolioCorporateActionEvent } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
 import { flushSavedHistoryPersistence } from '../services/storage';
@@ -2835,6 +2836,133 @@ describe('portfolio transaction journal integration', () => {
     const reloaded = new PortfolioStore();
     expect(reloaded.getState().activeView).toBe('SETTINGS');
     expect(reloaded.getState().transactionEvents?.map((event) => event.id)).toEqual(expectedIds);
+  });
+
+  it('restores transaction, closed-history, cash-lot, corporate-action and market-correction evidence across backup export and reload', () => {
+    const store = new PortfolioStore();
+    const { cashBuy, holding, action } = createCashHoldingSplitFixture();
+    const { sale, before } = createClosedHistoryFeeAuditImportFixture();
+    const positionBuy = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: Date.parse('2026-01-01T12:00:00.000Z'),
+      ticker: 'AAPL',
+      quantity: 10,
+      positionQuantityDelta: 10,
+      lotId: 'backup-aapl-position-lot',
+      acquisitionDate: '2026-01-01',
+      unitPrice: 100,
+      grossAmount: 1_000,
+      fees: 3,
+      cashDelta: 0
+    }, { eventId: 'backup-aapl-position-buy-event', source: 'portfolio-store-test' });
+    const actionEvent = toPortfolioCorporateActionEvent(
+      action,
+      'applied',
+      Date.parse('2026-11-10T10:00:00.000Z'),
+      'Verified app-owned cash-holding split.'
+    );
+    const correctionAt = Date.parse('2026-11-16T12:00:00.000Z');
+    const marketCorrection = createMarketHistoryCorrectionEvent({
+      symbol: 'AAPL',
+      interval: '1D',
+      timestamp: correctionAt,
+      provider: 'FINNHUB',
+      receivedAt: correctionAt + 100,
+      recordedAt: correctionAt + 200,
+      previous: { timestamp: correctionAt, price: 100 },
+      corrected: { timestamp: correctionAt, price: 101 },
+      reason: 'Backup restore fixture correction.'
+    });
+    const backup = createPortfolioBackupSnapshot({
+      ...store.getState(),
+      balance: 0,
+      cashCushion: { freeCash: 0, holdings: [holding] },
+      closedTrades: [before],
+      transactionEvents: [cashBuy, positionBuy, sale],
+      corporateActionEvents: [actionEvent],
+      marketHistoryCorrections: [marketCorrection],
+      gatewaySecret: 'never-export-this-secret'
+    });
+    const imported = normalizePortfolioBackup(backup, Date.parse('2026-11-17T09:00:00.000Z'));
+
+    expect(backup).not.toHaveProperty('gatewaySecret');
+    expect(store.importState(imported as unknown as Partial<PortfolioState>)).toBe(true);
+
+    const persisted = JSON.parse(sharedTestStorage.get('margin_portfolio_state_dynamic_v2') || '{}');
+    const committedEvents = store.getState().transactionEvents || [];
+    expect(persisted.transactionEvents).toEqual(committedEvents);
+    expect(persisted.transactionEvents.map((event: { id: string }) => event.id))
+      .toEqual(expect.arrayContaining([cashBuy.id, positionBuy.id, sale.id]));
+    expect(persisted.corporateActionEvents).toEqual([actionEvent]);
+    expect(persisted.marketHistoryCorrections).toEqual([marketCorrection]);
+    expect(persisted.closedTrades).toMatchObject([{
+      id: before.id,
+      transactionEventId: sale.id,
+      ticker: before.ticker,
+      shares: before.shares,
+      feesAndCommissions: before.feesAndCommissions,
+      netProfit: before.netProfit
+    }]);
+    expect(persisted.cashCushion).toMatchObject({
+      freeCash: 0,
+      holdings: [{ ticker: 'AAPL', shares: 10, lots: [{ lotId: 'cash-aapl-lot-1', qty: 10, price: 100 }] }]
+    });
+
+    const reloaded = new PortfolioStore();
+    expect(reloaded.getState().transactionEvents).toEqual(persisted.transactionEvents);
+    expect(reloaded.getState().corporateActionEvents).toEqual([actionEvent]);
+    expect(reloaded.getState().marketHistoryCorrections).toEqual([marketCorrection]);
+    expect(reloaded.getState().transactionEvents?.map((event) => event.id))
+      .toEqual(expect.arrayContaining([cashBuy.id, positionBuy.id, sale.id]));
+    expect(reloaded.getState().closedTrades).toMatchObject([{
+      id: before.id,
+      transactionEventId: sale.id,
+      netProfit: before.netProfit
+    }]);
+    expect(reloaded.getState().cashCushion.holdings).toMatchObject([
+      { ticker: 'AAPL', shares: 10, lots: [{ lotId: 'cash-aapl-lot-1', qty: 10, price: 100 }] }
+    ]);
+  });
+
+  it('keeps the active snapshot, journals, persisted backup and subscribers unchanged when an imported backup cannot be persisted', () => {
+    const store = new PortfolioStore();
+    const priorEvent = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: Date.parse('2026-11-16T10:00:00.000Z'),
+      cashDelta: 50,
+      note: 'Existing local cash adjustment.'
+    }, { eventId: 'backup-restore-local-event' });
+    expect(store.importState({ balance: -50, transactionEvents: [priorEvent] })).toBe(true);
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const incomingEvent = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: Date.parse('2026-11-17T08:00:00.000Z'),
+      cashDelta: 125,
+      note: 'Incoming backup cash adjustment.'
+    }, { eventId: 'backup-restore-incoming-event' });
+    const imported = normalizePortfolioBackup(createPortfolioBackupSnapshot({
+      ...previousState,
+      balance: -900,
+      transactionEvents: [incomingEvent]
+    }), Date.parse('2026-11-17T09:00:00.000Z'));
+
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded during backup import'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.importState(imported as unknown as Partial<PortfolioState>)).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().balance).toBe(-50);
+    expect(store.getState().transactionEvents).toEqual(previousState.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('rejects a conflicting restored event without replacing or persisting local state', () => {
