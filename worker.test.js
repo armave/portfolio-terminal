@@ -2109,7 +2109,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
       '/api/auth/verify'
     ]);
-  }
+  });
 
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
