@@ -286,21 +286,20 @@ This is parity visibility, not a ledger cutover or automatic correction. Authent
 
 This slice added regression coverage only; accounting and runtime command behavior were unchanged.
 
-## Validated follow-up — atomic backup import and journal-preserving restore (#523)
+## Completed follow-up — atomic backup import and journal-preserving restore (#523)
 
-[PR #523](https://github.com/armave/portfolio-terminal/pull/523) routes JSON file restore through `PortfolioStore.importState()` exactly once. That existing store command validates the snapshot and append-only journal inputs, persists the resulting state atomically, and only then publishes it. The duplicate post-import `saveState` call and the compensating `importState(previousState)` path have been removed; cloud sync is requested only after the local commit succeeds.
+[PR #523](https://github.com/armave/portfolio-terminal/pull/523) was squash-merged into \`dev\` at [\`599e3d476bb2fba9e445ca775c44dc46a1a425bc\`](https://github.com/armave/portfolio-terminal/commit/599e3d476bb2fba9e445ca775c44dc46a1a425bc). Final tested PR head: \`a4bd4f5e1afa7fa0e3957357e2837bb593147363\`.
 
-- [x] Replace the two-phase helper with a single atomic commit callback; rejection or persistence failure does not attempt a second import or journal merge.
-- [x] Add file-import wiring coverage proving the single local commit precedes cloud sync.
-- [x] Add export/import/reload coverage for transaction events, linked closed history, cash-holding FIFO lots, sourced corporate-action events and market-history corrections.
-- [x] Add persistence-failure coverage proving the active state reference, committed journal, persisted snapshot and subscribers remain unchanged.
-- [x] Align fixtures with canonical snapshot/event parity so tests account for the store's explicit reconciliation events rather than treating them as unexpected loss.
-- [x] Preserve the existing legacy-backup path and the append-only same-workspace restore semantics.
-- [x] [Pull Request CI #4487](https://github.com/armave/portfolio-terminal/actions/runs/44023790629) — passed: typecheck, full Vitest/Worker suite, Vite smoke, dead-code validation, both dependency audits, production build, production browser smoke/performance and Operations Browser Journey.
-- [x] [Financial Integrity Regression #5](https://github.com/armave/portfolio-terminal/actions/runs/44023790718) — passed: transactions, persistence and authorization regression suite.
-- [x] [Security & Workflow Validation #293](https://github.com/armave/portfolio-terminal/actions/runs/44023790687) — passed: workflow lint/security, new-commit secret scan and CodeQL; advisory full-history secret audit skipped.
+- [x] Route JSON restore through a single \`PortfolioStore.importState()\` commit and request cloud sync only after local success.
+- [x] Cover transaction, closed-history, cash-holding FIFO, corporate-action and market-correction data through export/import/reload.
+- [x] Prove persistence failure leaves the prior active snapshot, journal, persisted record and subscribers unchanged.
+- [x] [Pull Request CI #4489](https://github.com/armave/portfolio-terminal/actions/runs/44024116292), [Financial Integrity Regression #6](https://github.com/armave/portfolio-terminal/actions/runs/44024116448) and [Security & Workflow Validation #294](https://github.com/armave/portfolio-terminal/actions/runs/44024116254) passed all blocking checks.
 
-The CI results above were run against candidate head `212f477677fe75eff642cd85d0fbd64b9e7d69dc`; this documentation update will receive its own exact-head CI run. The automated tests prove local browser-storage commit and JSON round-trip behavior, not authenticated cloud restore or recovery on multiple real devices. Those manual release gates remain open.
+The automated tests prove local storage restore semantics. Authenticated cloud restore, real account-scope switching and multi-device recovery remain manual release gates.
+
+## In progress — protected cloud financial-array conflict coverage
+
+The cloud three-way reconciler must merge only the explicit UI-preference allowlist. This regression slice exercises divergent updates to transaction events, corporate-action events, market-history corrections, closed trades, broker executions, external cashflows, canonical position/tranche snapshots and cash-holding/FIFO-lot snapshots. Divergent protected projections must block reconciliation rather than append or combine arrays; identical outcomes may be retained exactly once while disjoint allowlisted navigation preferences still merge. No cloud merge policy or financial runtime behavior is changed.
 
 
 ## Read-only lot and closed-history parity visibility
