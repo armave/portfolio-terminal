@@ -652,8 +652,12 @@ async function assertFinancialHeaderLayout(page, view) {
       const toolsBounds = tools?.getBoundingClientRect();
       const marketPanel = tools?.querySelector('.portfolio-market-tools');
       const panelBounds = marketPanel?.getBoundingClientRect();
-      const actionGrid = marketPanel?.querySelector('.market-tools-grid');
+      const actionGrid = marketPanel?.querySelector('.market-tools-section--scenario .market-tools-grid');
+      const intelligenceGrid = marketPanel?.querySelector('.market-tools-section--intelligence .market-tools-grid');
+      const intelligenceSection = marketPanel?.querySelector('.market-tools-section--intelligence');
+      const externalResearch = healthColumn?.querySelector('.market-tools-external--health');
       const actionBounds = actionGrid?.getBoundingClientRect();
+      const externalResearchBounds = externalResearch?.getBoundingClientRect();
       const actionButtonsCount = marketPanel?.querySelectorAll('.market-tool-card').length ?? 0;
       const marketPanelRole = marketPanel?.getAttribute('role') ?? null;
       const marketPanelLabel = marketPanel?.getAttribute('aria-label') ?? null;
@@ -707,6 +711,16 @@ async function assertFinancialHeaderLayout(page, view) {
         healthColumnBottom: healthColumnBounds?.bottom ?? null,
         healthColumnWidth: healthColumnBounds?.width ?? null,
         summaryColumnCount: summary ? getComputedStyle(summary).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        summaryValueFontSize: summary?.querySelector('.portfolio-metric-value')
+          ? Number.parseFloat(getComputedStyle(summary.querySelector('.portfolio-metric-value')).fontSize)
+          : 0,
+        scenarioColumns: actionGrid ? getComputedStyle(actionGrid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        intelligenceColumns: intelligenceGrid ? getComputedStyle(intelligenceGrid).gridTemplateColumns.split(/\s+/).filter(Boolean).length : 0,
+        intelligenceCardCount: intelligenceSection?.querySelectorAll('.market-tool-card').length ?? 0,
+        marketPanelWidth: panelBounds?.width ?? 0,
+        externalResearchVisible: Boolean(externalResearch?.getClientRects().length),
+        externalResearchInHealthColumn: Boolean(externalResearch && externalResearch.parentElement === healthColumn),
+        externalResearchBelowHealth: Boolean(externalResearchBounds && healthBounds && externalResearchBounds.top >= healthBounds.bottom - 1),
         healthTop: healthBounds?.top ?? null,
         healthBottom: healthBounds?.bottom ?? null,
         summaryTop: summaryBounds?.top ?? null,
@@ -749,7 +763,21 @@ async function assertFinancialHeaderLayout(page, view) {
       throw new Error('The compact financial summary must stay above visible Account Equity Health at ' + viewport.width + 'px: ' + JSON.stringify(layout));
     }
     if (viewport.width >= 1024 && layout.healthColumnWidth >= 30 * 16 && layout.summaryColumnCount < 2) {
-      throw new Error('The financial summary should use a two-column desktop layout when the health column has at least 30rem available: ' + JSON.stringify(layout));
+      throw new Error('The financial summary should use a multi-column desktop layout when the health column has enough width: ' + JSON.stringify(layout));
+    }
+    if (viewport.width >= 1024 && layout.summaryValueFontSize < 13) {
+      throw new Error('Transferred financial values should use the larger, more readable metric scale: ' + JSON.stringify(layout));
+    }
+    const expectedScenarioColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 ? 2 : 1;
+    const expectedIntelligenceColumns = viewport.width >= 768 && layout.marketPanelWidth > 22 * 16 && layout.intelligenceCardCount > 1 ? 2 : 1;
+    if (layout.scenarioColumns !== expectedScenarioColumns || layout.intelligenceColumns !== expectedIntelligenceColumns) {
+      throw new Error('Scenario Planning and Market Intelligence should use two columns when two actions fit: ' + JSON.stringify(layout));
+    }
+    if (view === 'ticker' && (!layout.externalResearchVisible || !layout.externalResearchInHealthColumn || !layout.externalResearchBelowHealth)) {
+      throw new Error('External Research must appear below Account Equity Health in the ticker health column: ' + JSON.stringify(layout));
+    }
+    if (view === 'combined' && layout.externalResearchVisible) {
+      throw new Error('External Research should remain scoped to the ticker view after relocation.');
     }
     if (!layout.visibleMarketToolsHeading) {
       throw new Error('The redesigned Market Tools panel must show its section heading.');
