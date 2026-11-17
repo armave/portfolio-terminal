@@ -1192,7 +1192,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Broker snapshot': 'Снимок брокера',
   'Assigned snapshot': 'Назначенный портфель',
   'Quote freshness': 'Актуальность котировок',
-  'Cloud synchronization': 'Облачная синхронизация',
   'Assigned data refresh': 'Обновление назначенных данных',
   'Partial snapshot': 'Неполный снимок',
   'Empty snapshot': 'Пустой снимок',
