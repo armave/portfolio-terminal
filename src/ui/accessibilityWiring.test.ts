@@ -190,8 +190,12 @@ describe('Stage 10 accessibility wiring', () => {
     expect(marketInsights).toContain('class="min-h-11 rounded border border-cyan-700 px-2 py-1 text-[10px] font-semibold text-cyan-300 disabled:opacity-40"');
     expect(marketInsights).toContain('class="min-h-11 rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-300"');
     expect(articleDialog).toContain('inline-flex min-h-11 items-center gap-2');
-    expect(summary).toContain('class={`min-h-11 rounded border border-cyan-800/70 bg-slate-900/90');
-    expect(summary).toContain('class={`min-h-11 rounded border border-emerald-800/70 bg-slate-900/90');
+    expect(summary).toContain('class="market-tool-card market-tool-card--buy"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--exit"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--ai"');
+    expect(summary).toContain('class="market-tool-card market-tool-card--depth"');
+    expect(summary).toContain('min-height: 5.15rem;');
+    expect(summary).toContain('aria-label={translateText(reviewLabel, language)}');
     expect(summary).toContain('inline-flex min-h-11 items-center rounded border border-slate-700/80');
   });
 
