@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { arch, cpus, platform, release } from 'node:os';
+import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount } from './browser-performance-baseline-metrics.mjs';
 
 const host = '127.0.0.1';
 const port = Number(process.env.OPERATIONS_SMOKE_PORT || 4174);
@@ -657,7 +659,7 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
     { name: 'desktop', width: 1440, height: 900 },
     { name: 'mobile', width: 390, height: 844 }
   ];
-  const runsPerViewport = 3;
+  const runsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_BASELINE_RUNS, 3);
   const samples = [];
 
   for (const viewport of viewports) {
@@ -761,6 +763,20 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
   await mkdir('artifacts', { recursive: true });
   await writeFile('artifacts/authenticated-portfolio-performance.json', JSON.stringify({
     schemaVersion: 1,
+    environment: buildPerformanceEnvironmentMetadata({
+      platform: platform(),
+      osRelease: release(),
+      architecture: arch(),
+      nodeVersion: process.version,
+      cpuModel: cpus()[0]?.model,
+      logicalCpuCount: cpus().length,
+      runnerImageOS: process.env.ImageOS,
+      runnerImageVersion: process.env.ImageVersion,
+      browserName: 'Chromium',
+      browserVersion: browser.version(),
+      headless: true,
+      viewports
+    }),
     fixture: {
       authentication: 'Application bootstrap flow with a deterministic mocked Worker API',
       portfolioSeed: 'Direct local-only synthetic portfolio fixture; no order is placed',
