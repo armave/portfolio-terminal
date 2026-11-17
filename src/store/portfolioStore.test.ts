@@ -3840,6 +3840,41 @@ describe('portfolio transaction journal integration', () => {
     });
   });
 
+  it('keeps Closed History Sync open-fee detail and its audit event atomic when persistence fails', () => {
+    const store = new PortfolioStore();
+    expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
+    const before = store.getState();
+    const persistedBefore = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const position = before.positions.AAPL;
+    const nextPositions = {
+      ...before.positions,
+      AAPL: {
+        ...position,
+        brokerMarginFeeAllocations: { 'open-fee-cashflow-2': 0.5 },
+        brokerMarginFee: 0.5
+      }
+    };
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+      setItem: () => { throw new Error('quota exceeded'); },
+      removeItem: (key: string) => { sharedTestStorage.delete(key); }
+    });
+
+    expect(store.commitClosedHistoryFeeSync(
+      { positions: nextPositions },
+      before.closedTrades || [],
+      before.transactionEvents || [],
+      true
+    )).toBe(false);
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState().transactionEvents).toEqual(before.transactionEvents);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(persistedBefore);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('does not classify quote or target-price refreshes as accounting-detail mutations', () => {
     const store = new PortfolioStore();
     expect(store.buyStock('AAPL', 2, 100, '2026-11-17')).toBe(true);
