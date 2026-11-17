@@ -39,8 +39,9 @@ This plan sequences the remaining work. It does not mark manual, security-review
 **#559 — desktop/mobile performance**
 - Merge the environment metadata/reporting improvement, then manually dispatch Pull Request CI with 10 samples per viewport and retain the exact artifact and SHA.
 - Confirm runner/browser/viewport metadata and compare repeated samples on like-for-like runner configurations; treat the 10-sample nearest-rank p95 as descriptive, not a stable production percentile.
-- Implement a deterministic synthetic authenticated portfolio fixture through the supported auth/import path. Validate that representative holdings, lots, closed trades and history survive startup and broker reconciliation before measuring it.
-- Measure cold/warm shell, authenticated desk navigation, portfolio calculation/rendering, refresh/reconciliation and memory at desktop/mobile profiles. Keep the unauthenticated app-shell baseline clearly separated.
+- Reuse the existing authenticated synthetic benchmark in `scripts/browser-smoke-operations.mjs`: it already bootstraps an admin through the application flow, seeds local-only synthetic portfolio state, receives a deterministic mocked broker snapshot and captures three desktop plus three mobile samples. It is not a real account or broker test.
+- Extend that existing benchmark rather than building a duplicate harness: expand the seed beyond its current single AAPL position (5 shares, one tranche) to representative multi-position, multi-tranche, closed-history and transaction-journal tiers using the supported schema/import path; prove exact seed parity after startup and mocked broker reconciliation before timing.
+- Add environment metadata to the authenticated artifact, run at least 10 samples per viewport under a reproducible runner/browser profile, and measure authenticated startup, desk navigation, portfolio calculation/rendering, refresh/reconciliation and memory where available. Keep this artifact separate from the unauthenticated app-shell baseline.
 
 **#560 — privacy-approved telemetry**
 - First inventory all browser, Pages, Worker, Durable Object and third-party logging/telemetry sinks.
