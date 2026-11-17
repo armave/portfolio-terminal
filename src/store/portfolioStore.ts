@@ -134,14 +134,17 @@ function getPositionAccountingDetails(position: PositionRecord | undefined): Rec
   if (!position) return null;
 
   const tranches = Array.isArray(position.tranches) && position.tranches.length
-    ? position.tranches.map((tranche) => ({
-        lotId: tranche.lotId,
-        quantity: tranche.qty,
-        acquisitionPrice: tranche.price,
-        acquisitionDate: tranche.date,
-        acquiredAt: tranche.acquiredAt,
-        buyCommission: tranche.buyCommission
-      }))
+    ? position.tranches.map((tranche) => {
+        const lot = isRecord(tranche) ? tranche : {};
+        return {
+          lotId: lot.lotId,
+          quantity: lot.qty,
+          acquisitionPrice: lot.price,
+          acquisitionDate: lot.date,
+          acquiredAt: lot.acquiredAt,
+          buyCommission: lot.buyCommission
+        };
+      })
     : undefined;
   const brokerFeeAllocations = isRecord(position.brokerMarginFeeAllocations) &&
       Object.keys(position.brokerMarginFeeAllocations).length
@@ -176,14 +179,17 @@ function getCashHoldingAccountingDetails(
     if (!ticker) continue;
 
     const lots = Array.isArray(holding.lots) && holding.lots.length
-      ? holding.lots.map((lot) => ({
-          lotId: lot.lotId,
-          quantity: lot.qty,
-          acquisitionPrice: lot.price,
-          acquisitionDate: lot.date,
-          acquiredAt: lot.acquiredAt,
-          buyCommission: lot.buyCommission
-        }))
+      ? holding.lots.map((lot) => {
+          const record = isRecord(lot) ? lot : {};
+          return {
+            lotId: record.lotId,
+            quantity: record.qty,
+            acquisitionPrice: record.price,
+            acquisitionDate: record.date,
+            acquiredAt: record.acquiredAt,
+            buyCommission: record.buyCommission
+          };
+        })
       : undefined;
     const hasAverageCost = typeof holding.averagePrice === 'number' &&
       Number.isFinite(holding.averagePrice) && holding.averagePrice > 0;
