@@ -795,7 +795,7 @@ async function assertFinancialHeaderLayout(page, view) {
       throw new Error('Combined Portfolio must not show an individual ticker target section.');
     }
 
-    if (projectionTable && viewport.width >= 1024) {
+    if (layout.projectionTableWidth > 0 && viewport.width >= 1024) {
       if (layout.projectionTableLayout !== 'auto' ||
           layout.projectionTableWidth >= layout.projectionWrapperWidth * 0.92) {
         throw new Error('The desktop projection table should use intrinsic content width instead of stretching columns across the full panel: ' + JSON.stringify(layout));
