@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { translateText } from '../services/i18n';
 
 const source = readFileSync(new URL('./PortfolioDataHealthPanel.tsx', import.meta.url), 'utf8');
 const style = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
@@ -37,5 +38,14 @@ describe('Portfolio Data Health panel', () => {
   it('keeps all newly introduced health labels in the application translation flow', () => {
     for (const copy of englishCopy) expect(source).toContain(copy);
     expect(source).not.toContain('Cloud status details from Worker payload');
+  });
+
+  it('provides Russian translations for the complete health-panel vocabulary', () => {
+    for (const copy of [
+      ...englishCopy, 'Cloud', 'Current', 'Partial snapshot', 'Empty snapshot',
+      'Stale snapshot', 'Status unknown', 'No tracked quotes', 'No assigned holdings'
+    ]) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
   });
 });
