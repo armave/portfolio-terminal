@@ -595,7 +595,7 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
     const expectsCombinedStatus = process.env.UX_EXPECT_NEW_HEADER !== 'false';
     const hasExpectedStatus = expectsCombinedStatus
       ? navigation.portfolioStatus
-      : role === 'admin' && navigation.cloudStatus;
+      : role !== 'admin' || navigation.cloudStatus;
     if (!navigation.statusOutsideNavigation || !navigation.marketStatus || !hasExpectedStatus) {
       throw new Error('Market status and the single portfolio health/sync control must stay in the shared header status group.');
     }

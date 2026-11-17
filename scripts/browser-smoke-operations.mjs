@@ -1216,6 +1216,7 @@ try {
     throw new Error('Guest data health exposed owner broker/cloud data or omitted the assigned projection status: ' + guestHealthCopy);
   }
   await page.locator('#portfolioDataHealthClose').click();
+  await page.locator('#portfolioDataHealthDialog').waitFor({ state: 'hidden', timeout: 5_000 });
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   const guestTenantPanel = visibleSettingsDesk().locator('section[aria-labelledby="tenantDirectoryTitle"]');
