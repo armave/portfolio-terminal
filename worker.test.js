@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 async function encryptMarginDigestFixture(digest, keyMaterial) {
   const keyDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(keyMaterial));
@@ -33,6 +34,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
+
+describe('production Margin Intelligence digest enforcement', () => {
+  it('keeps encrypted-only digest writes enabled in the production Wrangler configuration', () => {
+    const config = readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8');
+    expect(config).toMatch(/"MARGIN_DIGEST_ENCRYPTION_REQUIRED"\\s*:\\s*"true"/);
+  });
+});
 
 describe('upstream timeout coverage', () => {
   afterEach(() => {
@@ -2309,6 +2317,17 @@ describe('PortfolioStateDO optimistic concurrency', () => {
       articles: [],
       syncedAt: '2026-10-28T05:00:00.000Z'
     };
+    const retainedLegacyDigest = { ...legacyDigest, key: 'position:GOOGL' };
+    await store.ctx.storage.put('marginDigestRecord:position:GOOGL', {
+      payload: JSON.stringify(retainedLegacyDigest),
+      revision: 7
+    });
+    const legacyRead = await store.fetch(new Request(
+      'https://worker.test/api/margin-digest?key=position%3AGOOGL'
+    ));
+    expect(legacyRead.status).toBe(200);
+    await expect(legacyRead.json()).resolves.toEqual(retainedLegacyDigest);
+
     const plaintextWrite = await store.fetch(new Request('https://worker.test/api/margin-digest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },

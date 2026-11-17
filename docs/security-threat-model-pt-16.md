@@ -78,19 +78,21 @@ Before this change, `/api/margin-digest` accepted a digest object containing fie
 - Existing plaintext digest records remain readable during the rollout. The upgraded client attempts a compare-and-swap rewrite using the record's ETag/revision the first time it reads a legacy record. If the migration write fails or another device wins the revision race, the read remains available and a later read can retry.
 - An administrator-only `/api/margin-digest-migration` Worker route inventories record-format counts only (it never returns digest contents) and migrates valid legacy plaintext records in bounded batches. The Durable Object encrypts with the existing shared workspace key and commits each update only if the stored payload and revision still match the scanned version. Conflicts are reported for a later retry. Legacy ciphertext and malformed/unreadable records remain separately counted.
 
-### Rollout state and limitation
+### Rollout state and required release gate
 
-`MARGIN_DIGEST_ENCRYPTION_REQUIRED` is initially configured as `false` to preserve compatibility with already deployed clients. This means old clients can still write plaintext during the release/migration window. The durable target is to:
+The encrypted client, encrypted-envelope validation, administrator-only inventory route, and bounded compare-and-swap migration are implemented. This PR changes the checked-in production Wrangler target to `MARGIN_DIGEST_ENCRYPTION_REQUIRED=true`. Until this change is merged and the Worker deployment succeeds, the currently deployed Worker remains in compatibility mode and can still accept validated legacy plaintext writes.
 
-1. Deploy the encrypted client.
-2. Observe that active users have read/migrated their existing digests.
-3. Confirm no legacy clients are still writing plaintext.
-4. Set `MARGIN_DIGEST_ENCRYPTION_REQUIRED=true` through a Worker deployment.
-5. Verify the Worker rejects plaintext writes while encrypted writes, reads, and revision conflicts continue to work.
+**Do not merge or deploy this configuration change until every prerequisite below is verified against the live production workspace:**
 
-The administrator inventory endpoint can enumerate stored digest records without exposing their contents; the batch operation migrates valid plaintext records and is safe to repeat after an interruption. It does not migrate legacy ciphertext or malformed records, which remain visible in the inventory as separate categories. An inventory showing zero plaintext is necessary but not sufficient: confirm upgraded clients are deployed and no old client can still write plaintext before enabling enforcement.
+1. The encrypted client build is deployed and active users have had an opportunity to open and upgrade their saved digests.
+2. An administrator runs the inventory scan after migration. It must report `migrationReady=true`, `plaintextRecords=0`, `legacyEncryptedRecords=0`, and `unreadableRecords=0`. The classified record counts must reconcile to `totalRecords`.
+3. Any older encrypted records are opened and upgraded by an encrypted client. Unreadable records must be recovered or explicitly reviewed; they must not be silently deleted or counted as migrated.
+4. Operators separately confirm that active clients no longer send the legacy plaintext write format. The inventory is a point-in-time storage scan and **cannot prove client-version retirement or absence of concurrent legacy writers**.
+5. After the Worker deployment, verify that plaintext writes are rejected, encrypted writes and reads still work, and stale revision writes still return conflicts.
 
-Do not mark the plaintext-at-rest migration complete until the enforcement flag is enabled and residual legacy records are handled. Existing records that are never opened by an upgraded client remain plaintext until an explicit migration or retention/deletion action is performed.
+The administrator inventory endpoint returns format counts only and never exposes digest contents. The bounded batch migration rewrites valid plaintext records with a compare-and-swap against the scanned payload and revision; it is safe to repeat after interruption and preserves the source record on failure. The batch operation does not migrate older encrypted records or repair malformed/unreadable records. The Settings migration panel explains these categories and retains a re-scan step.
+
+This enforcement change closes the **new plaintext-write** path; it does not by itself prove that all historical data has been migrated, provide per-tenant encryption keys, or complete the broader PT-16 privacy/data-lifecycle work. Keep issue #344 open until those remaining criteria have their own evidence.
 
 ## 6. Residual risks and required follow-up
 
