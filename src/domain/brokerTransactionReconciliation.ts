@@ -432,7 +432,13 @@ export function reconcileBrokerActivity(
     const broker = uniqueBrokerRows[brokerIndex];
     const candidates = [...unmatchedApp]
       .map(index => ({ index, event: appExecutions[index] }))
-      .filter(candidate => compareCandidate(broker, candidate.event))
+      .filter(candidate => {
+        if (!compareCandidate(broker, candidate.event)) return false;
+        const appOrderReference = text(candidate.event.externalOrderReferenceId);
+        return !appOrderReference ||
+          broker.orderId === appOrderReference ||
+          text(candidate.event.externalReferenceId) === broker.id;
+      })
       .map(candidate => {
         const event = candidate.event;
         const quantity = number(event.quantity);
@@ -484,11 +490,13 @@ export function reconcileBrokerActivity(
         const multipleFillsForOrder = Boolean(broker.orderId) && sameGroup.length > 1;
         const partialFillAggregateMatch = multipleFillsForOrder &&
           quantity !== null && Math.abs(groupedQuantity - quantity) <= quantityTolerance;
+        const appOrderReference = text(event.externalOrderReferenceId);
         const otherCandidateExecutions = uniqueBrokerRows.filter(other =>
           other.id !== broker.id &&
           other.ticker === broker.ticker &&
           other.side === broker.side &&
           (!broker.currency || !other.currency || other.currency === broker.currency) &&
+          (!appOrderReference || other.orderId === appOrderReference) &&
           (other.at === null || Math.abs(other.at - eventAt) <= maxTimingDifference)
         );
         const ambiguousUnlinkedFill = quantity !== null &&
