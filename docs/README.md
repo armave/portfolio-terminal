@@ -16,6 +16,7 @@ This directory contains maintained product and engineering references, current o
 - [Portfolio planning settings](portfolio-settings.md) — admin-managed app guardrails, defaults, scope, and validation boundaries.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces and authenticated workspace transitions.
+- [Progressive Web App](pwa.md) — install metadata, safe app-shell caching, offline limitations, reconnect checks and production smoke coverage.
 - [Freedom TradeNet market-data integration](FREEDOM_MARKET_DATA.md) — Worker-backed read-only quote, market-status, order, and depth paths.
 - [TradeNet account risk controls](TRADE_NET_ACCOUNT_CONTROLS_IMPLEMENTATION.md) — read-only integration specification for account and instrument constraints.
 - [REST and socket request audit](request-optimization-audit-2026-11-12.md) — request families and startup/refresh behavior.

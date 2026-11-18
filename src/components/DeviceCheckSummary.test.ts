@@ -7,7 +7,8 @@ import {
   getDeviceHealth,
   getDeviceTypeLabel,
   getOperatingSystemLabel,
-  getPortfolioSyncLabel
+  getPortfolioSyncLabel,
+  hasCompleteAppShellPrecache
 } from './DeviceCheckSummary';
 
 describe('Device Check summary diagnostics', () => {
@@ -67,6 +68,36 @@ describe('Device Check summary diagnostics', () => {
     expect(getPortfolioSyncLabel({ status: 'synced', text: 'Assigned data refreshed' })).toBe('Synced');
   });
 
+  it('recognizes a complete app-scoped document, script and stylesheet precache', () => {
+    const scope = 'https://example.test/portfolio-terminal/';
+    const completeCache = {
+      name: 'workbox-precache-v2',
+      urls: [
+        'https://example.test/portfolio-terminal/index.html',
+        'https://example.test/portfolio-terminal/assets/index-abc123.js',
+        'https://example.test/portfolio-terminal/assets/index-abc123.css'
+      ]
+    };
+
+    expect(hasCompleteAppShellPrecache([completeCache], scope)).toBe(true);
+    expect(hasCompleteAppShellPrecache([{
+      name: 'workbox-precache-v2',
+      urls: [
+        'https://example.test/another-app/index.html',
+        'https://example.test/another-app/assets/index-abc123.js',
+        'https://example.test/another-app/assets/index-abc123.css'
+      ]
+    }], scope)).toBe(false);
+    expect(hasCompleteAppShellPrecache([{
+      ...completeCache,
+      urls: completeCache.urls.slice(0, 2)
+    }], scope)).toBe(false);
+    expect(hasCompleteAppShellPrecache([
+      { name: 'workbox-precache-v2-document', urls: [completeCache.urls[0]] },
+      { name: 'workbox-precache-v2-assets', urls: completeCache.urls.slice(1) }
+    ], scope)).toBe(false);
+  });
+
   it('shows checking while device diagnostics have not loaded', () => {
     expect(getDeviceHealth(null, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('checking');
   });
@@ -98,5 +129,6 @@ describe('Device Check progressive disclosure', () => {
     expect(source).toContain("label('Technical details')");
     expect(source).toContain("['Cloud storage', getCloudStorageLabel(cloudStatus)]");
     expect(source).toContain("['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]");
+    expect(source).toContain("['App shell cache', appShellCacheLabel(diagnostics.appShellCache)]");
   });
 });

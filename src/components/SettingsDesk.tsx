@@ -20,6 +20,7 @@ import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { PortfolioMethodologyPanel } from './PortfolioMethodologyPanel';
 import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
+import { PwaUpdateStatus } from './PwaUpdateStatus';
 import { MarginDigestSecurityPanel } from './MarginDigestSecurityPanel';
 
 
@@ -629,6 +630,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <h2 id="settingsMaintenanceTitle">{translateText('Diagnostics & Maintenance')}</h2>
           <p>{translateText('Check this device and open advanced security maintenance when needed.')}</p>
         </div>
+        <PwaUpdateStatus />
         <DeviceCheckSummary />
         {account?.role === 'admin' && <details
           class="settings-subsection settings-maintenance-advanced"

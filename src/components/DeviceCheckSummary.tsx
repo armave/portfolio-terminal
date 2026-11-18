@@ -3,6 +3,7 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { useCloudStatus, useCloudSyncStatus } from '../ui/uiStateStore';
 
 type ServiceWorkerState = 'active' | 'registered' | 'not_registered' | 'unsupported' | 'error';
+type AppShellCacheState = 'available' | 'incomplete' | 'not_registered' | 'unsupported' | 'error';
 type DeviceHealth = 'ready' | 'offline' | 'attention' | 'checking';
 
 export interface DeviceDiagnostics {
@@ -19,6 +20,7 @@ export interface DeviceDiagnostics {
   secureContext: boolean;
   standalone: boolean;
   serviceWorker: ServiceWorkerState;
+  appShellCache: AppShellCacheState;
   checkedAt: number;
 }
 
@@ -122,6 +124,60 @@ async function readServiceWorkerState(): Promise<ServiceWorkerState> {
   }
 }
 
+
+/** Require one Workbox precache to include this app's document, entry JS and CSS. */
+export function hasCompleteAppShellPrecache(
+  cacheEntries: Array<{ name: string; urls: string[] }>,
+  scopeUrl: string
+): boolean {
+  try {
+    const scope = new URL(scopeUrl);
+    const scopePath = scope.pathname.endsWith('/') ? scope.pathname : scope.pathname + '/';
+
+    return cacheEntries.some(({ name, urls }) => {
+      if (!name.startsWith('workbox-precache-')) return false;
+      const paths = urls.map((url) => new URL(url, scopeUrl).pathname);
+      const hasDocument = paths.some((path) =>
+        path === scopePath || path === scopePath + 'index.html'
+      );
+      const hasEntryScript = paths.some((path) =>
+        path.startsWith(scopePath + 'assets/') && /\/index-[\w-]+\.js$/.test(path)
+      );
+      const hasStylesheet = paths.some((path) =>
+        path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
+      );
+      return hasDocument && hasEntryScript && hasStylesheet;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function readAppShellCacheState(): Promise<AppShellCacheState> {
+  if (!('serviceWorker' in navigator) || !('caches' in window)) return 'unsupported';
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/portfolio-terminal/');
+    if (!registration) return 'not_registered';
+
+    const cacheNames = await window.caches.keys();
+    const appCacheNames = cacheNames.filter((name) => name.startsWith('workbox-precache-'));
+    if (appCacheNames.length === 0) return 'incomplete';
+
+    const cacheEntries: Array<{ name: string; urls: string[] }> = [];
+    for (const name of appCacheNames) {
+      const cache = await window.caches.open(name);
+      const requests = await cache.keys();
+      cacheEntries.push({ name, urls: requests.map((request) => request.url) });
+    }
+
+    return hasCompleteAppShellPrecache(cacheEntries, registration.scope)
+      ? 'available'
+      : 'incomplete';
+  } catch {
+    return 'error';
+  }
+}
+
 async function collectDeviceDiagnostics(): Promise<DeviceDiagnostics> {
   const userAgent = navigator.userAgent || '';
   const screenWidth = window.screen?.width || 0;
@@ -145,6 +201,7 @@ async function collectDeviceDiagnostics(): Promise<DeviceDiagnostics> {
     secureContext: window.isSecureContext === true,
     standalone,
     serviceWorker: await readServiceWorkerState(),
+    appShellCache: await readAppShellCacheState(),
     checkedAt: Date.now()
   };
 }
@@ -195,6 +252,10 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'An active service worker does not guarantee that every page or data source works offline.': 'Активный Service Worker не гарантирует, что все страницы и источники данных доступны без сети.',
   'Device diagnostics stay in this browser and are not uploaded as a device identifier.': 'Диагностика остаётся в этом браузере и не отправляется в виде идентификатора устройства.',
   'Installed app mode': 'Режим установленного приложения',
+  'App shell cache': 'Кэш оболочки приложения',
+  'Cached app shell available': 'Оболочка приложения сохранена в кэше',
+  'App shell cache incomplete': 'Кэш оболочки приложения неполный',
+  'Service worker not registered': 'Service worker не зарегистрирован',
   'Installed': 'Установлено',
   'Browser tab': 'Вкладка браузера',
   'Last checked': 'Последняя проверка',
@@ -239,14 +300,22 @@ function healthTone(health: DeviceHealth): string {
 }
 
 function diagnosticTone(value: string): string {
-  if (['Available', 'Secure', 'Active', 'Synced', 'Online (browser-reported)', 'Installed'].includes(value)) {
+  if (['Available', 'Secure', 'Active', 'Synced', 'Online (browser-reported)', 'Installed', 'Cached app shell available'].includes(value)) {
     return 'text-emerald-300';
   }
   if (['Unavailable', 'Not secure', 'Error', 'Failed'].includes(value)) return 'text-rose-300';
-  if (['Offline', 'Setup required', 'Not checked', 'No recent sync result', 'Not registered', 'Registered, not active'].includes(value)) {
+  if (['Offline', 'Setup required', 'Not checked', 'No recent sync result', 'Not registered', 'Registered, not active', 'App shell cache incomplete', 'Service worker not registered'].includes(value)) {
     return 'text-amber-200';
   }
   return 'text-slate-200';
+}
+
+function appShellCacheLabel(value: AppShellCacheState): string {
+  if (value === 'available') return 'Cached app shell available';
+  if (value === 'incomplete') return 'App shell cache incomplete';
+  if (value === 'not_registered') return 'Service worker not registered';
+  if (value === 'unsupported') return 'Unsupported';
+  return 'Error';
 }
 
 function serviceWorkerLabel(value: ServiceWorkerState): string {
@@ -324,6 +393,7 @@ export function DeviceCheckSummary() {
     ['Time zone', diagnostics.timeZone],
     ['Secure context', diagnostics.secureContext ? 'Secure' : 'Not secure'],
     ['Service worker', serviceWorkerLabel(diagnostics.serviceWorker)],
+    ['App shell cache', appShellCacheLabel(diagnostics.appShellCache)],
     ['Installed app mode', diagnostics.standalone ? 'Installed' : 'Browser tab']
   ] : [];
 

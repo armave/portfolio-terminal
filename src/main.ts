@@ -1,12 +1,13 @@
 import '../style.css';
 import { h, render } from 'preact';
-import { App } from './App';
+import { PwaShell } from './PwaShell';
 import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
 import { createStartupPwaUpdateGate } from './services/startupPwaUpdateGate';
+import { pwaUpdateRuntime } from './services/pwaUpdateRuntime';
 import {
   consumeAutomaticRepairAttemptMarker,
   repairCurrentBrowserAppCache
@@ -29,12 +30,17 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   });
 }
 
+if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+  pwaUpdateRuntime.markUnsupported();
+}
+
 const startupPwaUpdateGate = createStartupPwaUpdateGate();
 let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => undefined;
 
 updateServiceWorker = registerSW({
   immediate: true,
   onNeedRefresh: () => {
+    pwaUpdateRuntime.markUpdateAvailable();
     // Apply updates automatically while the initial loader is active. Once the
     // user is in the workspace, leave the worker waiting until the next launch.
     const applied = startupPwaUpdateGate.applyDuringStartup(() => {
@@ -47,10 +53,20 @@ updateServiceWorker = registerSW({
     }
   },
   onRegisteredSW: (_serviceWorkerUrl, registration) => {
-    // Check on every navigation instead of relying on the browser's periodic cadence.
-    void registration?.update().catch((error) => {
+    if (!registration) {
+      pwaUpdateRuntime.markUnsupported();
+      return;
+    }
+    // Check after registration and every 30 minutes while the page is visible.
+    // Returning to a visible tab catches up if the interval elapsed in the background.
+    pwaUpdateRuntime.start(() => registration.update().catch((error) => {
       console.warn('[PWA]: Could not check for a newer Portfolio Terminal app shell.', error);
-    });
+      throw error;
+    }));
+  },
+  onRegisterError: (error) => {
+    pwaUpdateRuntime.markError();
+    console.warn('[PWA]: Could not register the Portfolio Terminal service worker.', error);
   }
 });
 
@@ -186,7 +202,7 @@ if (typeof window !== 'undefined') {
 function mountPreactApplication() {
   const root = document.getElementById('root');
   if (!root) throw new Error('Missing #root mount element');
-  render(h(App, { onSaveGatewaySecret: handleSaveGatewaySecret }), root);
+  render(h(PwaShell, { onSaveGatewaySecret: handleSaveGatewaySecret }), root);
 }
 
 async function bootstrapApplication() {
