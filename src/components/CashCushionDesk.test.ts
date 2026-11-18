@@ -236,9 +236,9 @@ describe('guest stock subheader daily move formatting', () => {
 describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('places provider-reported daily share-volume badges beside the daily move in both Balance presentations', () => {
-    expect(deskSource).toContain('<QuoteVolumeBadge volume={holding.quoteDetails?.volume} />');
-    expect(deskSource).toContain('<QuoteVolumeBadge volume={h.quoteDetails?.volume} />');
+  it('places provider-reported USD turnover badges beside the daily move in both Balance presentations', () => {
+    expect(deskSource).toContain('<QuoteVolumeBadge volumeValue={holding.quoteDetails?.volumeValue} currency={holding.quoteDetails?.currency} isAdmin={isAdmin} />');
+    expect(deskSource).toContain('<QuoteVolumeBadge volumeValue={h.quoteDetails?.volumeValue} currency={h.quoteDetails?.currency} isAdmin={isAdmin} />');
     expect(deskSource).not.toContain('formatQuoteVolume');
     expect(deskSource).toContain('Number.isFinite(h.quoteDetails?.changePercent)');
     expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');

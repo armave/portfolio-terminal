@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatQuoteTurnover, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -42,6 +42,19 @@ describe('display formatters', () => {
     expect(formatQuoteVolume('1234')).toBeNull();
     expect(formatQuoteVolume(-1)).toBeNull();
     expect(formatQuoteVolume(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  it('formats provider-reported USD monetary turnover without estimating or inferring currency', () => {
+    expect(formatQuoteTurnover(9_100_000_000, 'USD')).toBe('$9.1B');
+    expect(formatQuoteTurnover(0, 'USD')).toBe('$0');
+    expect(formatQuoteTurnover(9_100_000_000, 'usd')).toBe('$9.1B');
+    expect(formatQuoteTurnover(9_100_000_000, 'EUR')).toBeNull();
+    expect(formatQuoteTurnover(9_100_000_000)).toBeNull();
+    expect(formatQuoteTurnover(null, 'USD')).toBeNull();
+    expect(formatQuoteTurnover('9100000000', 'USD')).toBeNull();
+    expect(formatQuoteTurnover(-1, 'USD')).toBeNull();
+    expect(formatQuoteTurnover(Number.NaN, 'USD')).toBeNull();
+    expect(formatQuoteTurnover(Number.POSITIVE_INFINITY, 'USD')).toBeNull();
   });
 
   it('formats supported tranche date inputs', () => {

@@ -252,6 +252,8 @@ describe('app localization', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
     expect(translateText('Vol.', 'ru')).toBe('Объём');
     expect(translateText('Daily volume', 'ru')).toBe('Дневной объём торгов');
+    expect(translateText('Daily traded value reported by the data provider in USD.', 'ru'))
+      .toBe('Денежный объём торгов за день в USD по данным поставщика.');
     expect(translateText('shares', 'ru')).toBe('акций');
     expect(translateText('Daily share volume reported by the data provider.', 'ru'))
       .toBe('Количество акций, проторгованных за день, по данным поставщика.');

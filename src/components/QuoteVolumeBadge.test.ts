@@ -5,27 +5,48 @@ import { QuoteVolumeBadge } from './QuoteVolumeBadge';
 afterEach(() => setAppLanguage('en'));
 
 describe('QuoteVolumeBadge', () => {
-  it('shows the provider-reported daily share count, not monetary turnover', () => {
-    const badge = QuoteVolumeBadge({ volume: 32_176_544 });
+  it('shows provider-reported USD monetary turnover instead of the share count', () => {
+    const badge = QuoteVolumeBadge({
+      volumeValue: 9_100_000_000,
+      volume: 32_176_544,
+      currency: 'USD'
+    });
     expect(badge).not.toBeNull();
     expect(badge?.props.class).toContain('quote-volume-badge');
-    expect(badge?.props['aria-label']).toBe('Daily volume 32.2M shares');
-    expect(badge?.props.title).toBe('Daily share volume reported by the data provider.');
+    expect(badge?.props['aria-label']).toBe('Daily volume $9.1B');
+    expect(badge?.props.title).toBe('Daily traded value reported by the data provider in USD.');
   });
 
-  it('does not manufacture a volume figure when the provider count is missing or invalid', () => {
-    expect(QuoteVolumeBadge({ volume: null })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: undefined })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: '32176544' })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: -1 })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: Number.NaN })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: Number.POSITIVE_INFINITY })).toBeNull();
+  it('uses the shorter Vol. label for administrators', () => {
+    const badge = QuoteVolumeBadge({
+      volumeValue: 9_100_000_000,
+      currency: 'USD',
+      isAdmin: true
+    });
+    expect(badge?.props['aria-label']).toBe('Vol. $9.1B');
+    expect(badge?.props.children[0].props.children).toBe('Vol.');
+    expect(badge?.props.children[1].props.children).toBe('$9.1B');
   });
 
-  it('localizes the count and accessible description in Russian', () => {
+  it('requires provider-reported monetary turnover and explicit USD currency', () => {
+    expect(QuoteVolumeBadge({ volume: 32_176_544, currency: 'USD' })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: null, currency: 'USD' })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: 9_100_000_000 })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: 9_100_000_000, currency: 'EUR' })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: '9100000000', currency: 'USD' })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: -1, currency: 'USD' })).toBeNull();
+    expect(QuoteVolumeBadge({ volumeValue: Number.NaN, currency: 'USD' })).toBeNull();
+  });
+
+  it('localizes the turnover label and accessible description in Russian', () => {
     setAppLanguage('ru');
-    const badge = QuoteVolumeBadge({ volume: 32_176_544 });
-    expect(badge?.props['aria-label']).toBe('Дневной объём торгов 32,2 млн акций');
-    expect(badge?.props.title).toBe('Количество акций, проторгованных за день, по данным поставщика.');
+    const badge = QuoteVolumeBadge({
+      volumeValue: 9_100_000_000,
+      currency: 'USD',
+      isAdmin: true
+    });
+    expect(badge?.props['aria-label']).toMatch(/^Объём/);
+    expect(badge?.props['aria-label']).toContain('$');
+    expect(badge?.props.title).toBe('Денежный объём торгов за день в USD по данным поставщика.');
   });
 });

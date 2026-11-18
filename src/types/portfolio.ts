@@ -33,7 +33,7 @@ export interface QuoteDetails {
   low?: number;
   /** Provider-reported daily share/unit count; TradeNet supplies this as vol (pieces). */
   volume?: number;
-  /** Separate provider-reported daily traded value; TradeNet supplies vlt in the quote currency. */
+  /** Provider-reported daily monetary turnover; TradeNet supplies vlt in the quote currency. */
   volumeValue?: number;
   marketState?: string;
   price?: number;
