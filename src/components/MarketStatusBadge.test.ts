@@ -154,15 +154,15 @@ describe('US-equities market status presentation', () => {
 
   it('shows the next transition and includes days for waits longer than 24 hours', () => {
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-02T07:00:00.000Z')))
-      .toBe('Premarket in 2h');
+      .toBe('Pre-market in 2h');
     expect(getMarketStatusCountdown('PRE', new Date('2026-11-02T13:00:00.000Z')))
       .toBe('Opens in 1h 30m');
     expect(getMarketStatusCountdown('MARKET', new Date('2026-11-02T14:30:00.000Z')))
       .toBe('Closes in 6h 30m');
     expect(getMarketStatusCountdown('POST', new Date('2026-11-02T22:00:00.000Z')))
-      .toBe('Closes in 3h');
+      .toBe('Session ends in 3h');
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
-      .toBe('Premarket in 2d 11h');
+      .toBe('Pre-market in 2d 11h');
     expect(getMarketStatusCountdown('UNKNOWN', new Date('2026-11-02T13:00:00.000Z'))).toBeNull();
   });
 
@@ -184,7 +184,7 @@ describe('US-equities market status presentation', () => {
   it('separates the countdown label from its time value for brighter time styling', () => {
     const now = new Date('2026-11-07T22:00:00.000Z');
     expect(getMarketStatusCountdownParts('CLOSED', now)).toEqual({
-      label: 'Premarket in ',
+      label: 'Pre-market in ',
       time: '1d 11h'
     });
     expect(getEffectiveMarketStatusCountdownParts('CLOSED', now.getTime(), now)).toEqual({
@@ -200,6 +200,8 @@ describe('US-equities market status presentation', () => {
     setAppLanguage('ru');
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
       .toBe('До премаркета: 2 дн 11 ч');
+    expect(getMarketStatusCountdown('POST', new Date('2026-11-02T22:00:00.000Z')))
+      .toBe('До конца сессии: 3 ч');
   });
 
   it('does not mount a duplicate status badge inside the Balance desk', () => {
