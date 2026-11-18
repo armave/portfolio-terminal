@@ -21,7 +21,7 @@ describe('financial target and carry-break-even scope', () => {
   it('uses the portfolio-wide target-price post-sale balance floor horizon', () => {
     expect(runtimeSource).not.toContain("translateText('BE', getAppLanguage())");
     expect(summarySource).toContain("translateText('Post-sale balance floor', getAppLanguage())");
-    expect(runtimeSource).toContain('getPortfolioNetSaleProceeds(state, TRADERNET_RULES)');
+    expect(runtimeSource).toContain('getPortfolioNetSaleProceeds(state, TRADERNET_RULES, getPortfolioProjectionTickers(state))');
     expect(runtimeSource).toContain('calculatePostSaleBalanceFloorHorizon');
     expect(runtimeSource).toContain("translateText('Post-sale balance estimate unavailable', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('Already below floor', getAppLanguage())");
