@@ -4,6 +4,7 @@ import {
   getTotalPortfolioInvested,
   getPortfolioNetSaleProceeds,
   getPortfolioProjectionInputs,
+  getPortfolioProjectionTickers,
   getMarketInsightsTicker,
   isCurrentMarketInsightsTicker,
   resolvePositionEntryDate
@@ -153,6 +154,21 @@ describe('portfolio projection selectors', () => {
     commissionPerShare: 0,
     commissionRatePct: 0
   };
+
+  it('uses the same active ticker or combined ticker scope for post-sale estimates', () => {
+    const positions = {
+      AAPL: { ticker: 'AAPL', shares: 10, pt: 15 },
+      MSFT: { ticker: 'MSFT', shares: 5, pt: 20 }
+    };
+    expect(getPortfolioProjectionTickers({ activeView: 'COMBINED', positions } as unknown as BoardState))
+      .toEqual(['AAPL', 'MSFT']);
+    expect(getPortfolioProjectionTickers({ activeView: 'AAPL', positions } as unknown as BoardState))
+      .toEqual(['AAPL']);
+    expect(getPortfolioProjectionTickers({ activeView: 'MSFT', positions } as unknown as BoardState))
+      .toEqual(['MSFT']);
+    expect(getPortfolioProjectionTickers({ activeView: 'SETTINGS', positions } as unknown as BoardState))
+      .toEqual(['AAPL', 'MSFT']);
+  });
 
   it('sums net target-sale proceeds consistently for combined and selected positions', () => {
     const state = {
