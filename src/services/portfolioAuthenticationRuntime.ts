@@ -52,6 +52,12 @@ export function createPortfolioAuthenticationRuntime(
     // Close the refresh gate before publishing the next account: a same-role
     // account switch must not let the previous scheduler cycle touch the new scope.
     dependencies.beginWorkspaceSync();
+    let workspaceSyncCompleted = false;
+    const completeWorkspaceSync = (): void => {
+      if (workspaceSyncCompleted) return;
+      workspaceSyncCompleted = true;
+      completeWorkspaceSync();
+    };
     try {
       dependencies.saveGatewaySecret(submittedSecret);
     // Resolve the account role before any store update can trigger the cloud-write subscriber.
@@ -82,7 +88,7 @@ export function createPortfolioAuthenticationRuntime(
         if (refreshScope === 'guest') await dependencies.pullGuestPortfolioSnapshot();
         else await dependencies.pullAdminPortfolioSnapshot();
       } finally {
-        dependencies.completeWorkspaceSync();
+        completeWorkspaceSync();
       }
       await dependencies.refreshAllLivePrices();
     }
