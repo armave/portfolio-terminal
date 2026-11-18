@@ -1939,7 +1939,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   getAccountRole: () => currentAccountRole,
   pullGuestPortfolioSnapshot: async () => {
     try {
-      await pullGuestPortfolioSnapshot();
+      return await pullGuestPortfolioSnapshot();
     } finally {
       initialWorkspaceSyncSettled = true;
     }
@@ -1952,7 +1952,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   pullSharedCloudState: async () => {
     try {
       setCloudStatus('syncing', 'CHECKING...');
-      await syncCloudState('pull', { protectLocalEditsDuringPull: true });
+      return await syncCloudState('pull', { protectLocalEditsDuringPull: true });
     } finally {
       initialWorkspaceSyncSettled = true;
     }
