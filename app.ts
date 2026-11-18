@@ -1,3 +1,4 @@
+import { logSafeDiagnostic } from './src/services/safeDiagnostics';
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
@@ -167,7 +168,7 @@ const guestPortfolioAssignmentRuntime = createGuestPortfolioAssignmentRuntime({
   publishBatch: publishGuestPortfolioSnapshotsBatch,
   renderBoard,
   showToast,
-  logError: (message, error) => console.error(message, error),
+  logError: (_message, error) => logSafeDiagnostic('error', 'broker-data', error),
   logAppMessage
 });
 guestPortfolioAssignmentRuntime.bind();
@@ -748,7 +749,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceL
   }
   state = portfolioStore.getState();
   switchView(state.activeView);
-  console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
+  console.info("[Sync]: Cloud state ingested successfully.");
   emitUiEvent('app:scroll-workspace');
 }
 
@@ -835,7 +836,7 @@ async function resetToBlankState(): Promise<void> {
       if (previousDeviceActiveView === null) localStorage.removeItem('portfolio_active_view');
       else localStorage.setItem('portfolio_active_view', previousDeviceActiveView);
     } catch (error) {
-      console.error('Could not restore the previous device desk preference after reset rollback:', error);
+      logSafeDiagnostic('error', 'browser-storage', error);
     }
     portfolioStore.restoreInMemorySnapshot(previousState);
     state = portfolioStore.getState();
@@ -863,7 +864,7 @@ async function resetToBlankState(): Promise<void> {
   } catch (error) {
     if (!isResetSessionCurrent()) return;
     const detail = error instanceof Error ? error.message : "Unknown cloud history error.";
-    console.error("Unable to clear closed history from KV cloud:", error);
+    logSafeDiagnostic('error', 'cloud-sync', error);
     showToast(
       "The portfolio was reset locally, but cloud closed history could not be cleared. Restore cloud access and retry the reset.",
       "error"
@@ -1097,7 +1098,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
       };
     }
   } catch (err: unknown) {
-    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err instanceof Error ? err.message : err);
+    logSafeDiagnostic('warn', 'market-data', err);
   }
 
   throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
@@ -1356,7 +1357,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     launchBackgroundTask(
       () => startFreedomAccountStreamForSession(accountStreamSessionKey),
       (streamError) => {
-        console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; REST snapshots remain available.', streamError);
+        logSafeDiagnostic('warn', 'broker-stream', streamError);
       }
     );
   } else {
@@ -1393,10 +1394,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     // or reconnects; later q messages take over without blocking startup.
     launchBackgroundTask(
       () => quoteStreamRuntime.start(tickersArray, sessionKey),
-      (streamError) => console.warn(
-        '[Freedom Quote Stream]: Live socket is not ready yet; REST quote snapshots remain active.',
-        streamError
-      )
+      (streamError) => logSafeDiagnostic('warn', 'broker-stream', streamError)
     );
 
     const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
@@ -1411,8 +1409,8 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     logAppMessage('[Warning]: The live quote socket is connecting; the initial REST quote snapshot returned no usable prices.');
     return false;
   } catch (err: any) {
-    console.error('Initial REST quote fallback failed:', err);
-    logAppMessage('[Error]: Initial quote snapshot failed - ' + err.message);
+    logSafeDiagnostic('error', 'market-data', err);
+    logAppMessage('[Error]: Initial quote snapshot failed.');
     return false;
   }
 }
@@ -1433,10 +1431,10 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       if (currentAccountRole + ':' + currentAccountId !== sessionKey) return false;
       launchBackgroundTask(
         () => accountStreamRuntime.start(sessionKey),
-        (streamError) => console.warn('[Freedom Account Stream]: Unable to establish the private account socket; broker REST catch-up will continue.', streamError)
+        (streamError) => logSafeDiagnostic('warn', 'broker-stream', streamError)
       );
     } catch (streamError) {
-      console.warn('[Freedom Account Stream]: Unable to load the private account socket; broker REST catch-up will continue.', streamError);
+      logSafeDiagnostic('warn', 'broker-stream', streamError);
     }
 
     // The persistent browser stream suppresses its REST backups while connected.
@@ -1465,9 +1463,8 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       .then(() => refreshAllLivePricesAfterCurrent(true))
       .then((result) => result !== false)
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
-        logAppMessage(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+        logSafeDiagnostic('warn', 'cloud-sync', error);
+        logAppMessage('[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed.');
         return false;
       })
       .finally(() => {
@@ -1951,7 +1948,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     // background refreshes and can take several seconds across fallback sources.
     launchBackgroundTask(
       () => refreshAllLivePrices(true),
-      (error) => console.warn('[Startup Quote Refresh]: Initial background quote refresh did not complete.', error)
+      (error) => logSafeDiagnostic('warn', 'startup', error)
     );
     return Promise.resolve();
   },
@@ -1966,13 +1963,13 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
           const saved = await pushStateToCloud();
           if (!saved) console.warn('[Startup Cloud Sync]: Pending cloud write was not confirmed; retry from the KV status control.');
         },
-        (error) => console.warn('[Startup Cloud Sync]: Pending cloud write could not be started.', error)
+        (error) => logSafeDiagnostic('warn', 'cloud-sync', error)
       );
     }
   },
   hideStartupLoading,
-  reportBackgroundStartupError: (task, error) => {
-    console.warn(`[Startup Background]: ${task} did not complete successfully.`, error);
+  reportBackgroundStartupError: (_task, error) => {
+    logSafeDiagnostic('warn', 'startup', error);
   }
 });
 
@@ -1999,7 +1996,7 @@ const portfolioStartupRuntime = createPortfolioStartupRuntime({
   hideAuthContainer,
   startApp,
   onStartupFailure: (error) => {
-    console.error('[Startup Error]:', error);
+    logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();
   }
 });
@@ -2106,7 +2103,7 @@ async function continueStartupOffline() {
     await startApp('');
   } catch (error) {
     appInitialized = false;
-    console.error('[Startup Error]: Could not continue offline.', error);
+    logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();
   }
 }

@@ -1124,9 +1124,7 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     // Persist the actual last cutoff, not the time of this sync, so later
     // pulls cannot skip or double-count a rollover.
     state.lastRolloverTimestamp = lastProcessedBoundary;
-    console.log(
-      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} ${timeZone} rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
-    );
+    console.info('[System]: Missed scheduled margin rollovers processed.');
     return true;
   }
   return false;
