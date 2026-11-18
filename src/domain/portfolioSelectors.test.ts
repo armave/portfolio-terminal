@@ -166,6 +166,9 @@ describe('portfolio projection selectors', () => {
 
     expect(getPortfolioNetSaleProceeds(state, commissionRules)).toBe(247);
     expect(getPortfolioNetSaleProceeds(state, commissionRules, ['AAPL'])).toBe(148.5);
+    expect(getPortfolioNetSaleProceeds({
+      positions: { AAPL: { ticker: 'AAPL', shares: 10, pt: undefined } }
+    } as unknown as BoardState, commissionRules)).toBeNull();
   });
 
   it('derives a single-position projection from the active position and allocated debt', () => {
