@@ -93,7 +93,7 @@ npm run build
 3. **Monitor Active Positions:** Use ticker tabs to inspect tranches, unrealized profit/loss, daily carry costs, and breakeven horizons.
 
 
-4. **Automatic Portfolio Sync:** Each signed-in admin or guest has a mandatory 15s, 30s, or 60s refresh cadence in Settings. The selected interval refreshes that role's important data; **Sync portfolio** remains available for immediate manual sync.
+4. **Automatic Portfolio Sync:** Each signed-in admin or guest has a mandatory 15s, 30s, or 60s quote cadence in Settings. Broker REST fallback, Closed History/cashflows, and guest assigned-holdings projections refresh independently every 60 seconds; **Sync portfolio** remains available for immediate full sync.
 
 
 5. **Review Market Tools:** Use Compare Exits and Buy More to model hypothetical prices, fees, average entry, and margin exposure without changing portfolio state.

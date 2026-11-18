@@ -19,7 +19,7 @@ import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows, type Normaliz
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
-import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
+import { calculateFreedomMarginFeeAllocations, createFreedomMarginFeeAllocationInputKey } from '../domain/freedomMarginFees';
 import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
@@ -226,38 +226,26 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     });
     return () => { active = false; };
   }, []);
-  // Recalculate once per distinct cashflow/execution snapshot. Excluding
-  // calculated metadata prevents the allocation effect from re-entering.
+  // The key projects the exact facts consumed by the fee allocator. Quote-only
+  // position updates therefore do not invalidate an in-flight or completed pass.
+  const allocationBrokerExecutions = state.brokerExecutedTrades?.length
+    ? state.brokerExecutedTrades
+    : brokerTrades;
+  const allocationInputKey = createFreedomMarginFeeAllocationInputKey(
+    state.cashflows || [],
+    allocationBrokerExecutions,
+    state.closedTrades || [],
+    {
+      trancheTypes: state.activeTrancheTypes || {},
+      trancheMixes: state.activeTrancheMixes || {},
+      openAppPositions: state.positions || {}
+    }
+  );
+
   useEffect(() => {
     const cashflows = state.cashflows || [];
     if (!isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
-    const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
-    const executions = storedExecutions.length ? storedExecutions : brokerTrades;
-    // Exclude calculated metadata from the input fingerprint; otherwise a
-    // successful allocation changes its own key and triggers another pass.
-    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'openMarginFeeAllocations', 'openMarginFee', 'feesAndCommissions', 'netProfit']);
-    const sourceExecutions = executions.map((trade) =>
-      Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
-    );
-    const sourceAppTrades = (state.closedTrades || []).map((trade) =>
-      Object.fromEntries(Object.entries(trade).filter(([field]) =>
-        !['marginFee', 'marginInterest', 'feesAndCommissions', 'totalCommissions', 'netProfit', 'netRealizedGain'].includes(field)
-      ))
-    );
-    const sourceAppPositions = Object.fromEntries(Object.entries(state.positions || {}).map(([key, position]) => [
-      key,
-      Object.fromEntries(Object.entries(position || {}).filter(([field]) =>
-        !['brokerMarginFeeAllocations', 'brokerMarginFee'].includes(field)
-      ))
-    ]));
-    const key = JSON.stringify({
-      cashflows,
-      executions: sourceExecutions,
-      appTrades: sourceAppTrades,
-      appPositions: sourceAppPositions,
-      trancheTypes: state.activeTrancheTypes || {},
-      trancheMixes: state.activeTrancheMixes || {}
-    });
+    const key = allocationInputKey;
     if (key === lastRecalculationKey.current) {
       setCashflowAllocationReady(true);
       return;
@@ -273,7 +261,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     return () => {
       active = false;
     };
-  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, state.positions, state.activeTrancheTypes, state.activeTrancheMixes, brokerTrades]);
+  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false,
