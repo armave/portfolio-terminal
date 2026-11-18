@@ -1191,6 +1191,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Configure app-side planning guardrails and defaults for newly observed broker positions.': 'Настройте ограничения планирования приложения и значения по умолчанию для новых позиций брокера.',
   'These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.': 'Это параметры планирования приложения, а не ограничения брокера и не гарантии ликвидации. Правила брокера настраиваются отдельно ниже.',
   'Breakeven minimum remaining balance (USD)': 'Минимальный остаток баланса для безубыточности (USD)',
+  'The floor is checked on the projected net-P&L breakeven day, not on each weekly checkpoint.': 'Минимальный остаток проверяется в прогнозируемый день безубыточности по чистой прибыли/убытку, а не на каждой недельной контрольной дате.',
   'Buy More minimum equity (%)': 'Минимальная доля собственного капитала для Buy More (%)',
   'Buy More maintenance reserve (percentage points)': 'Резерв сверх поддерживающей маржи для Buy More (процентные пункты)',
   'Account equity health reference (%)': 'Ориентир уровня капитала счёта (%)',
