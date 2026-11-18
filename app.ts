@@ -1874,6 +1874,8 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
     emitUiEvent('settings:gateway-secret-authenticated', { secret });
   },
   setActiveView,
+  beginWorkspaceSync: () => { initialWorkspaceSyncSettled = false; },
+  completeWorkspaceSync: () => { initialWorkspaceSyncSettled = true; },
   resolveRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role
