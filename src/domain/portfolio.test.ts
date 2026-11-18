@@ -813,10 +813,10 @@ describe('portfolio domain', () => {
     });
     expect(calculatePostSaleBalanceFloorHorizon({
       ...constraint,
-      netSaleProceeds: 24_310.83
+      netSaleProceeds: 23_810.82
     }, 0.15 / 365)).toMatchObject({
       status: 'already-below',
-      currentBalanceUsd: 50
+      currentBalanceUsd: -450
     });
     expect(calculatePostSaleBalanceFloorHorizon({
       ...constraint,
