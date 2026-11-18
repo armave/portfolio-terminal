@@ -138,6 +138,34 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings.some(finding => finding.type === 'execution_match_ambiguous')).toBe(false);
   });
 
+  it('reports execution currency differences only when the provider fill ID proves identity', () => {
+    const exactMatch = reconcile([
+      execution({ id: 'exec-currency', currency: 'USD', price: 100 })
+    ], [
+      appEvent('trade.buy', {
+        externalReferenceId: 'exec-currency',
+        currency: 'EUR',
+        unitPrice: 100
+      })
+    ]);
+
+    expect(exactMatch.matchedExecutionCount).toBe(1);
+    expect(exactMatch.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_currency_mismatch',
+      brokerCurrency: 'USD',
+      appCurrency: 'EUR',
+      brokerReferences: ['exec-currency'],
+      appEventIds: ['app-trade.buy']
+    }));
+    expect(exactMatch.findings.some(finding => finding.type === 'execution_price_mismatch')).toBe(false);
+
+    const fallbackOnly = reconcile([
+      execution({ id: 'exec-fallback-currency', currency: 'USD' })
+    ], [appEvent('trade.buy', { currency: 'EUR' })]);
+    expect(fallbackOnly.matchedExecutionCount).toBe(0);
+    expect(fallbackOnly.findings.some(finding => finding.type === 'execution_currency_mismatch')).toBe(false);
+  });
+
   it('does not let a different provider execution ID claim an app event with a stable reference', () => {
     const app = appEvent('trade.buy', { externalReferenceId: 'provider-fill-expected' });
     const report = reconcile([

@@ -19,6 +19,7 @@ type BrokerActivityFindingType =
   | 'execution_revision_conflict'
   | 'execution_match_ambiguous'
   | 'execution_data_incomplete'
+  | 'execution_currency_mismatch'
   | 'execution_unclassified'
   | 'execution_missing_in_app'
   | 'execution_missing_in_broker'
@@ -53,6 +54,8 @@ interface BrokerActivityFinding {
   appAt?: number;
   explanation: string;
   missingFields?: string[];
+  brokerCurrency?: string;
+  appCurrency?: string;
 }
 
 export interface BrokerActivityReconciliationReport {
@@ -427,11 +430,13 @@ export function reconcileBrokerActivity(
   const compareCandidate = (broker: NormalizedExecution, app: PortfolioTransactionEvent) => {
     const side = eventSide(app);
     if (ticker(app.ticker) !== broker.ticker || side !== broker.side) return false;
-    if (currency(app.currency) && broker.currency && currency(app.currency) !== broker.currency) return false;
     // A stable provider fill reference is an identity constraint, not merely
     // a score bonus. Another nearby fill must never claim this app event.
     const externalReferenceId = text(app.externalReferenceId);
     if (externalReferenceId && externalReferenceId !== broker.id) return false;
+    const appCurrency = currency(app.currency);
+    if (appCurrency && broker.currency && appCurrency !== broker.currency &&
+      externalReferenceId !== broker.id) return false;
     return true;
   };
 
@@ -494,7 +499,9 @@ export function reconcileBrokerActivity(
         const timeDelta = broker.at === null ? null : Math.abs(broker.at - eventAt);
         const quantityComparable = quantity !== null;
         const quantityMatch = quantityComparable && Math.abs(quantity! - broker.quantity) <= quantityTolerance;
-        const priceComparable = broker.price !== null && price !== null;
+        const appCurrency = currency(event.currency);
+        const priceComparable = broker.price !== null && price !== null &&
+          Boolean(broker.currency) && Boolean(appCurrency) && broker.currency === appCurrency;
         const priceMatch = priceComparable && Math.abs(price! - broker.price!) <= priceTolerance;
         const identityMatch = Boolean(text(event.externalReferenceId)) &&
           text(event.externalReferenceId) === broker.id;
@@ -705,6 +712,25 @@ export function reconcileBrokerActivity(
     unmatchedBroker.delete(candidate.brokerIndex);
     unmatchedApp.delete(candidate.index);
     matchedPairs.push({ broker: candidate.broker, app: candidate.event });
+
+    const matchedAppCurrency = currency(candidate.event.currency);
+    if (candidate.broker.currency && matchedAppCurrency &&
+      candidate.broker.currency !== matchedAppCurrency) {
+      findings.push(makeFinding({
+        id: `execution-currency:${candidate.broker.id}:${candidate.event.id}`,
+        type: 'execution_currency_mismatch',
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        brokerValue: null,
+        appValue: null,
+        brokerCurrency: candidate.broker.currency,
+        appCurrency: matchedAppCurrency,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
+        explanation: 'The broker and app transaction use different execution currencies; no FX conversion was attempted.'
+      }, confidence));
+    }
 
     if (candidate.quantityComparable && !candidate.quantityMatch) {
       findings.push(makeFinding({

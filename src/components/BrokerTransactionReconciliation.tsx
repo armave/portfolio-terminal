@@ -86,6 +86,10 @@ const RU_COPY: Record<string, string> = {
   'Broker execution revision conflict': 'Конфликт версий исполнения брокера',
   'Ambiguous broker order match': 'Неоднозначное совпадение ордера брокера',
   'Execution evidence incomplete': 'Недостаточно данных для проверки исполнения',
+  'Execution currency differs': 'Валюта исполнения отличается',
+  'Broker currency': 'Валюта брокера',
+  'App currency': 'Валюта приложения',
+  'The broker and app transaction use different execution currencies; no FX conversion was attempted.': 'Валюта исполнения брокера отличается от валюты транзакции приложения; пересчет валюты не выполнялся.',
   'Missing execution evidence': 'Отсутствуют данные исполнения',
   'App execution quantity': 'Количество транзакции приложения',
   'Broker execution price': 'Цена исполнения брокера',
@@ -433,6 +437,7 @@ const FINDING_LABELS: Record<string, string> = {
   execution_revision_conflict: 'Broker execution revision conflict',
   execution_match_ambiguous: 'Ambiguous broker order match',
   execution_data_incomplete: 'Execution evidence incomplete',
+  execution_currency_mismatch: 'Execution currency differs',
   execution_unclassified: 'Unclassified broker execution',
   duplicate_broker_cashflow: 'Duplicate broker cashflow',
   cashflow_revision_conflict: 'Broker cashflow revision conflict',
@@ -700,6 +705,11 @@ export function BrokerTransactionReconciliation({
               {finding.missingFields && finding.missingFields.length > 0 && (
                 <p class="mt-1 text-amber-300">
                   {translateBrokerReconciliationCopy('Missing execution evidence')}: {finding.missingFields.map(field => translateBrokerReconciliationCopy(field)).join(', ')}
+                </p>
+              )}
+              {finding.brokerCurrency && finding.appCurrency && (
+                <p class="mt-1 text-amber-300">
+                  {translateBrokerReconciliationCopy('Broker currency')}: {finding.brokerCurrency} · {translateBrokerReconciliationCopy('App currency')}: {finding.appCurrency}
                 </p>
               )}
               <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
