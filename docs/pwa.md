@@ -35,7 +35,7 @@ The startup update gate is preserved and made observable:
 - first controller acquisition does not force a reload;
 - startup cache repair removes only the app-scoped service worker and Workbox precache and preserves account data.
 
-A failed check is shown as a check failure, not as proof that the app is out of date. Automatic checks retry on the next interval; Check now performs another detection attempt without forcing a reload or applying a waiting worker mid-session.
+An update-check failure after successful service-worker registration is shown as a check failure, not as proof that the app is out of date; the runtime retries on the next interval. If registration itself fails, Settings explains that reopening the app is required to retry registration. Check now performs another detection attempt only when a registration is available; it never forces a reload or applies a waiting worker mid-session.
 
 Do not switch back to unconditional `autoUpdate` activation or clear localStorage/IndexedDB as part of PWA repair.
 
@@ -49,7 +49,7 @@ The existing unit suite separately tests install-event capture, user-initiated p
 
 After exact-head GitHub Actions pass, verify on real devices:
 - Android Chrome: install prompt, accepted install, standalone launch and relaunch.
-- Desktop Chrome/Edge: install prompt, standalone launch and safe update activation.
+- Desktop Chrome/Edge: install prompt, standalone launch, a 30-minute visible-tab update check, Settings status, and safe update activation.
 - iPhone/iPad Safari: Add to Home Screen guidance, touch icon, standalone launch and status-bar appearance.
 - Offline restart: cached shell opens, authenticated data remains unavailable until identity is verified online.
 - Reconnection: banner remains while the application status endpoint is unavailable and clears only after a successful status response.
