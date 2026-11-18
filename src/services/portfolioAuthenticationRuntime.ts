@@ -14,6 +14,9 @@ export interface PortfolioAuthenticationRuntimeDependencies {
   showToast: (message: string, tone: 'error') => void;
   emitGatewaySecretAuthenticated: (secret: string) => void;
   setActiveView: (view: string) => void;
+  /** Hold automatic refresh while an authenticated workspace is being switched and hydrated. */
+  beginWorkspaceSync: () => void;
+  completeWorkspaceSync: () => void;
   resolveRefreshInterval: (role: AuthRole) => number;
   setQuoteRefreshInterval: (intervalMs: number) => void;
   pullGuestPortfolioSnapshot: () => Promise<unknown>;
@@ -46,7 +49,17 @@ export function createPortfolioAuthenticationRuntime(
     const authenticated = await dependencies.validateGatewaySecret(submittedSecret);
     if (!authenticated) return false;
 
-    dependencies.saveGatewaySecret(submittedSecret);
+    // Close the refresh gate before publishing the next account: a same-role
+    // account switch must not let the previous scheduler cycle touch the new scope.
+    dependencies.beginWorkspaceSync();
+    let workspaceSyncCompleted = false;
+    const completeWorkspaceSync = (): void => {
+      if (workspaceSyncCompleted) return;
+      workspaceSyncCompleted = true;
+      dependencies.completeWorkspaceSync();
+    };
+    try {
+      dependencies.saveGatewaySecret(submittedSecret);
     // Resolve the account role before any store update can trigger the cloud-write subscriber.
     const authenticatedUser = await dependencies.publishCurrentUser();
     // Move a guest into their own Balance view immediately. The startup/pull path
@@ -61,16 +74,22 @@ export function createPortfolioAuthenticationRuntime(
 
     dependencies.emitGatewaySecretAuthenticated(submittedSecret);
     if (!dependencies.isAppInitialized()) {
+      // startApp owns the asynchronous initial pull; its app-level pull callback
+      // releases the gate only after that remote snapshot has settled.
       await dependencies.startApp(submittedSecret);
       dependencies.setAppInitialized(true);
     } else {
       await dependencies.publishCurrentUser();
       const refreshScope: AuthRole = dependencies.getAccountRole() === 'guest' ? 'guest' : 'admin';
-      dependencies.setQuoteRefreshInterval(dependencies.resolveRefreshInterval(refreshScope));
+      try {
+        dependencies.setQuoteRefreshInterval(dependencies.resolveRefreshInterval(refreshScope));
 
-      // Guests load only their server-scoped projection; administrators load the shared workspace.
-      if (refreshScope === 'guest') await dependencies.pullGuestPortfolioSnapshot();
-      else await dependencies.pullAdminPortfolioSnapshot();
+        // Guests load only their server-scoped projection; administrators load the shared workspace.
+        if (refreshScope === 'guest') await dependencies.pullGuestPortfolioSnapshot();
+        else await dependencies.pullAdminPortfolioSnapshot();
+      } finally {
+        completeWorkspaceSync();
+      }
       await dependencies.refreshAllLivePrices();
     }
 
@@ -79,6 +98,12 @@ export function createPortfolioAuthenticationRuntime(
     // Keep the modal visible until startup, cloud data, and initial quotes finish.
     dependencies.hideAuthContainer();
     return true;
+    } catch (error) {
+      // A failed authentication transition must not leave the previous account's
+      // scheduler permanently paused. Failed pulls release from the finally above.
+      completeWorkspaceSync();
+      throw error;
+    }
   };
 
   return { handleSaveGatewaySecret };
