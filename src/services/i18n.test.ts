@@ -25,6 +25,9 @@ describe('app localization', () => {
   it('localizes portfolio planning controls in Russian', () => {
     const copy = [
       'No breakeven date satisfies the configured remaining-balance floor',
+      'Estimated time until post-sale balance breaches the configured floor',
+      'Post-sale balance estimate unavailable', 'Already below floor',
+      'No projected floor breach within 10 years', 'BALANCE FLOOR',
       'Portfolio planning settings',
       'Configure app-side planning guardrails and defaults for newly observed broker positions.',
       'These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.',
