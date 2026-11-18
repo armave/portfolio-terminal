@@ -1463,7 +1463,6 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       .then(() => refreshAllLivePricesAfterCurrent(true))
       .then((result) => result !== false)
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
         logSafeDiagnostic('warn', 'cloud-sync', error);
         logAppMessage('[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed.');
         return false;
@@ -1969,7 +1968,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     }
   },
   hideStartupLoading,
-  reportBackgroundStartupError: (task, error) => {
+  reportBackgroundStartupError: (_task, error) => {
     logSafeDiagnostic('warn', 'startup', error);
   }
 });
