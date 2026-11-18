@@ -110,10 +110,11 @@ describe('portfolio metric quote updates', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('Ticker market context');
-    expect(source).toContain('formatQuoteVolume(position.quoteDetails?.volume)');
-    expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
+    expect(source).toContain('<QuoteVolumeBadge volume={position.quoteDetails?.volume} price={marketPrice ?? undefined} currency={position.quoteDetails?.currency} />');
+    expect(source).toContain('<QuoteVolumeBadge volume={pos.quoteDetails?.volume} price={usableMarketPrice ?? undefined} currency={pos.quoteDetails?.currency} />');
+    expect(source).not.toContain('formatQuoteVolume');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
-    expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
+    expect(source).toContain('id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]"');
   });
 });
 

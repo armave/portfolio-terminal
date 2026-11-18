@@ -1,6 +1,6 @@
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
-import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
+import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection, calculateTargetUpsidePercent } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
 import { getActiveTrancheType, getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixEdit, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
@@ -18,6 +18,7 @@ import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheG
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { useCloudSyncStatus } from '../ui/uiStateStore';
 import { GuestPortfolioOverview } from './GuestPortfolioOverview';
+import { QuoteVolumeBadge } from './QuoteVolumeBadge';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import {
@@ -52,6 +53,7 @@ const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
 type GuestAnalystTarget = {
   status: 'loading' | 'available' | 'unavailable';
   targetPrice?: number;
+  analystCount?: number;
 };
 
 type MixInputDraft = {
@@ -377,7 +379,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         const data = await fetchYahooDeepStockData(ticker, false, controller.signal);
         const targetPrice = [data.analystTargets?.median, data.analystTargets?.mean, data.analystTargets?.high]
           .find((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
-        return [ticker, targetPrice ? { status: 'available' as const, targetPrice } : { status: 'unavailable' as const }] as const;
+        const rawAnalystCount = data.analystTargets?.numberOfAnalysts;
+        const analystCount = typeof rawAnalystCount === 'number' && Number.isFinite(rawAnalystCount) && rawAnalystCount > 0
+          ? rawAnalystCount
+          : undefined;
+        return [ticker, targetPrice
+          ? { status: 'available' as const, targetPrice, ...(analystCount !== undefined ? { analystCount } : {}) }
+          : { status: 'unavailable' as const }] as const;
       } catch {
         return controller.signal.aborted
           ? null
@@ -610,7 +618,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 .filter((tranche) => tranche.assignedShares > 0)
                 .sort((a, b) => (b.purchasedAt ?? 0) - (a.purchasedAt ?? 0));
 
-              const volume = formatQuoteVolume(holding.quoteDetails?.volume);
               return (
                 <article
                   key={holding.ticker}
@@ -622,7 +629,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         <h3 class="text-lg font-black tracking-wide text-cyan-300">{holding.ticker}</h3>
                       </div>
                     </div>
-                    {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
+                    <div class="flex flex-wrap items-center justify-end gap-1.5">
+                      {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
+                      <QuoteVolumeBadge volume={holding.quoteDetails?.volume} price={price} currency={holding.quoteDetails?.currency} />
+                    </div>
                   </div>
                   <div class="instrument-target-section guest-stock-value-section mt-3">
                     <div class="instrument-target-segment guest-stock-market-value">
@@ -631,9 +641,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
                         {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
                         {renderDailyQuoteSubtext(holding.quoteDetails)}
-                        <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                          {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
-                        </p>
+                        <p class="mt-1 text-[9px] text-slate-500">{formatQuoteMetadata(holding, refreshIntervalMs)}</p>
                       </div>
                     </div>
                     {(() => {
@@ -644,15 +652,28 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       return (
                         <div class="instrument-target-segment guest-stock-analyst-target">
                           <div class="min-w-0">
-                            <p class="instrument-target-label">{translateText('Analyst (Yahoo)', getAppLanguage())}</p>
-                            <p class="mt-1 text-[9px] leading-relaxed text-slate-500">{translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', getAppLanguage())}</p>
+                            <div class="flex items-center justify-between gap-2">
+                              <p class="instrument-target-label">{translateText('Analyst target', getAppLanguage())}</p>
+                              <span class="text-[9px] font-semibold text-slate-500">Yahoo</span>
+                            </div>
                             {analystTarget.status === 'available' && analystTarget.targetPrice ? (
-                              <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                                <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>
-                                <span class={"instrument-target-return " + (upside === undefined ? 'text-slate-400' : upside >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
-                                  {upside === undefined ? '—' : (upside >= 0 ? '+' : '') + upside.toFixed(2) + '%'}
-                                </span>
-                              </div>
+                              <>
+                                <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                  <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>
+                                  <span class={"instrument-target-return " + (upside === undefined ? 'text-slate-400' : upside > 0 ? 'text-emerald-400' : upside < 0 ? 'text-rose-400' : 'text-slate-400')}>
+                                    {upside === undefined
+                                      ? translateText('Current price unavailable', getAppLanguage())
+                                      : upside > 0
+                                        ? '+' + upside.toFixed(1) + '% ' + translateText('upside to target', getAppLanguage())
+                                        : upside < 0
+                                          ? Math.abs(upside).toFixed(1) + '% ' + translateText('below current price', getAppLanguage())
+                                          : translateText('At current price', getAppLanguage())}
+                                  </span>
+                                </div>
+                                {typeof analystTarget.analystCount === 'number' && Number.isFinite(analystTarget.analystCount) && analystTarget.analystCount > 0 && (
+                                  <p class="mt-1 text-[9px] text-slate-500">{translateText('Analysts', getAppLanguage())}: {analystTarget.analystCount.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</p>
+                                )}
+                              </>
                             ) : (
                               <p class="mt-1 text-xs font-semibold text-slate-400">
                                 {analystTarget.status === 'loading' ? translateText('Loading analyst target…', getAppLanguage()) : translateText('Analyst target unavailable', getAppLanguage())}
@@ -773,7 +794,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
                           : sentimentLabel(direction);
 
-                      const volume = formatQuoteVolume(h.quoteDetails?.volume)
 
                       return (
                         <tr key={row.key} class="cash-holding-row hover:bg-slate-900/40">
@@ -792,6 +812,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               >
                                 {badgeText}
                               </span>
+                              <QuoteVolumeBadge volume={h.quoteDetails?.volume} price={price ?? undefined} currency={h.quoteDetails?.currency} />
                               {isAdmin && marketDepthAvailable && <button
                                 type="button"
                                 title={`View live market depth for ${h.ticker}`}
@@ -807,9 +828,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td data-label="Market price" class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                             <span>{price !== null ? formatUSD(price) : '—'}</span>
                             {renderDailyQuoteSubtext(h.quoteDetails)}
-                            <span class="mt-0.5 block text-[9px] font-normal text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                              {translateText('Volume', getAppLanguage())} {volume ?? '—'}
-                            </span>
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                               {quoteMeta}
                             </span>

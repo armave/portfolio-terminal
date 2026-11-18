@@ -236,13 +236,13 @@ describe('guest stock subheader daily move formatting', () => {
 describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows provider volume without adding a currency label and validates percentage metadata', () => {
-    expect(deskSource).toContain('const volume = formatQuoteVolume(holding.quoteDetails?.volume)');
-    expect(deskSource).toContain('const volume = formatQuoteVolume(h.quoteDetails?.volume)');
+  it('places estimated dollar-volume badges beside the daily move in both Balance presentations', () => {
+    expect(deskSource).toContain('<QuoteVolumeBadge volume={holding.quoteDetails?.volume} price={price} currency={holding.quoteDetails?.currency} />');
+    expect(deskSource).toContain('<QuoteVolumeBadge volume={h.quoteDetails?.volume} price={price ?? undefined} currency={h.quoteDetails?.currency} />');
+    expect(deskSource).not.toContain('formatQuoteVolume');
     expect(deskSource).toContain('Number.isFinite(h.quoteDetails?.changePercent)');
     expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');
     expect(deskSource).toContain('renderDailyQuoteSubtext(holding.quoteDetails)');
-    expect(deskSource).toContain('volume ??');
   });
 
   it('shows administrator Market Depth controls only during an open US equity session', () => {
@@ -653,7 +653,10 @@ describe('guest My Stocks presentation', () => {
     expect(deskSource).toContain('You do not have any stocks yet.');
   });
 
-  it('explains that analyst targets are third-party estimates', () => {
-    expect(deskSource).toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
+  it('shows a direct analyst target with a clear price move and optional analyst count', () => {
+    expect(deskSource).toContain("translateText('Analyst target', getAppLanguage())");
+    expect(deskSource).toContain("translateText('upside to target', getAppLanguage())");
+    expect(deskSource).toContain('analystTarget.analystCount');
+    expect(deskSource).not.toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
   });
 });

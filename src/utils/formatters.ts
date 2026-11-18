@@ -73,12 +73,26 @@ export function formatUSDDisplayValue(value: string): string {
   return sign + formatUSD(amount);
 }
 
-export function formatQuoteVolume(value: unknown): string | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
-  return new Intl.NumberFormat(currentNumberLocale(), {
+/**
+ * Approximate traded USD value from provider volume units and the displayed USD share price.
+ * Raw provider volume is never assigned a currency symbol without this multiplication.
+ */
+export function formatQuoteDollarVolume(
+  volume: unknown,
+  price: unknown,
+  currency?: unknown
+): string | null {
+  if (typeof volume !== 'number' || !Number.isFinite(volume) || volume < 0) return null;
+  if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return null;
+  if (typeof currency === 'string' && currency.trim() && currency.trim().toUpperCase() !== 'USD') return null;
+
+  const dollarValue = volume * price;
+  if (!Number.isFinite(dollarValue) || dollarValue < 0) return null;
+  const compactValue = new Intl.NumberFormat(currentNumberLocale(), {
     notation: 'compact',
     maximumFractionDigits: 1
-  }).format(value);
+  }).format(dollarValue);
+  return '$' + compactValue;
 }
 
 

@@ -81,8 +81,12 @@ describe('app localization', () => {
 
   it('localizes the unified ticker identity and target subheader in Russian', () => {
     const tickerHeaderCopy = [
-      'Analyst',
-      'Analyst (Yahoo)',
+      'Analyst target',
+      'Analysts',
+      'upside to target',
+      'below current price',
+      'At current price',
+      'Current price unavailable',
       'Margin PT',
       'Margin and analyst target information',
       'share',
@@ -246,6 +250,14 @@ describe('app localization', () => {
 
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
+    expect(translateText('Vol.', 'ru')).toBe('Объём');
+    expect(translateText('Estimated dollar volume: provider-reported volume multiplied by the current USD price. Reporting period may vary by source.', 'ru'))
+      .toContain('Расчётный объём в USD');
+    expect(translateText('upside to target', 'ru')).toBe('рост до целевой цены');
+    expect(translateText('below current price', 'ru')).toBe('ниже текущей цены');
+    expect(translateText('At current price', 'ru')).toBe('на уровне текущей цены');
+    expect(translateText('Current price unavailable', 'ru')).toBe('Текущая цена недоступна');
+    expect(translateText('Analysts', 'ru')).toBe('Аналитики');
     expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');
     expect(translateText('Provider-reported volume; reporting period may vary by source.', 'ru'))
       .toBe('Объём указан поставщиком котировок; период данных зависит от источника.');

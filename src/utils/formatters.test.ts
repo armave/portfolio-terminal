@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteDollarVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -34,13 +34,18 @@ describe('display formatters', () => {
     expect(formatUSDDisplayValue('$1234567.89')).toMatch(/^\$.*1.*234.*567,89$/);
   });
 
-  it('formats provider-reported volume compactly and omits invalid values', () => {
-    expect(formatQuoteVolume(1234)).toBe('1.2K');
-    expect(formatQuoteVolume(0)).toBe('0');
-    expect(formatQuoteVolume(null)).toBeNull();
-    expect(formatQuoteVolume('1234')).toBeNull();
-    expect(formatQuoteVolume(-1)).toBeNull();
-    expect(formatQuoteVolume(Number.POSITIVE_INFINITY)).toBeNull();
+  it('formats estimated dollar volume from valid provider volume and a USD share price', () => {
+    expect(formatQuoteDollarVolume(1234, 50, 'USD')).toBe('$61.7K');
+    expect(formatQuoteDollarVolume(1000, 25)).toBe('$25K');
+    expect(formatQuoteDollarVolume(0, 50, 'USD')).toBe('$0');
+    expect(formatQuoteDollarVolume(null, 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume('1234', 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(-1, 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(1234, null, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(1234, 0, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(1234, Number.POSITIVE_INFINITY, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(Number.MAX_VALUE, Number.MAX_VALUE, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(1234, 50, 'EUR')).toBeNull();
   });
 
   it('formats supported tranche date inputs', () => {
