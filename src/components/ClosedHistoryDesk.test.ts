@@ -83,7 +83,7 @@ describe('Trades cache-first rendering', () => {
   it('ignores fee-allocation completion after its effect is disposed', () => {
     const source = readSource();
     const allocationEffect = source.slice(
-      source.indexOf('// Recalculate once per distinct cashflow/execution snapshot.'),
+      source.indexOf('const allocationInputKey ='),
       source.indexOf('const processCashflowRows')
     );
 

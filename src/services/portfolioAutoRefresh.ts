@@ -53,8 +53,7 @@ export function createPortfolioAutoRefreshScheduler(
     options.setIntervalFn ?? ((callback, intervalMs) => setInterval(callback, intervalMs));
   const clearIntervalFn: NonNullable<PortfolioAutoRefreshSchedulerOptions['clearIntervalFn']> =
     options.clearIntervalFn ?? ((timer) => clearInterval(timer));
-  let quoteTimer: ReturnType<typeof setInterval> | null = null;
-  let supplementalTimer: ReturnType<typeof setInterval> | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
   let activeInterval = 0;
   let activeRole: PortfolioAutoRefreshRole = null;
   let quoteTickCount = 0;
@@ -65,11 +64,9 @@ export function createPortfolioAutoRefreshScheduler(
   let historySyncInFlight: Promise<boolean> | null = null;
   let cycleInFlight: Promise<boolean> | null = null;
 
-  const stopTimers = () => {
-    if (quoteTimer !== null) clearIntervalFn(quoteTimer);
-    if (supplementalTimer !== null) clearIntervalFn(supplementalTimer);
-    quoteTimer = null;
-    supplementalTimer = null;
+  const stopTimer = () => {
+    if (timer !== null) clearIntervalFn(timer);
+    timer = null;
   };
 
   const canRefresh = () =>
@@ -110,42 +107,41 @@ export function createPortfolioAutoRefreshScheduler(
     return request;
   };
 
-  const refreshAdminQuoteCheckpoint = async (checkpointSharesHistoryBoundary: boolean): Promise<boolean> => {
-    const quotes = await runTask('quotes', options.refreshQuotes);
-    if (!canRefresh()) return quotes;
+  const refreshAdminScheduledCheckpoint = async (supplementalDue: boolean): Promise<boolean> => {
+    let quotes: boolean;
+    let supplemental = true;
 
-    // At a shared 60-second boundary, the supplemental cycle checkpoints state
-    // after Closed History has been reconciled. Avoid a duplicate earlier write.
-    const synced = checkpointSharesHistoryBoundary || !options.syncState
-      ? true
-      : await runTask('state-sync', options.syncState);
-    return quotes && synced;
-  };
+    if (supplementalDue) {
+      // One scheduler tick owns both tasks at a shared 60-second boundary. This
+      // avoids duplicate quote batches and ensures history sees that quote cycle.
+      [quotes, supplemental] = await Promise.all([
+        runTask('quotes', options.refreshQuotes),
+        runTask('supplemental', options.refreshSupplemental)
+      ]);
+    } else {
+      quotes = await runTask('quotes', options.refreshQuotes);
+    }
 
-  const refreshAdminSupplementalCheckpoint = async (): Promise<boolean> => {
-    // At the shared boundary, wait for the due quote batch as well as the broker
-    // catch-up before reconciling history and checkpointing the combined snapshot.
-    const [quotes, supplemental] = await Promise.all([
-      runTask('quotes', options.refreshQuotes),
-      runTask('supplemental', options.refreshSupplemental)
-    ]);
     if (!canRefresh()) return quotes && supplemental;
 
-    const history = options.syncHistory
+    const history = supplementalDue && options.syncHistory
       ? await runTask('history-sync', options.syncHistory)
       : true;
     if (!canRefresh()) return quotes && supplemental && history;
 
     // Closed History fee totals are stored in the shared portfolio snapshot too.
-    // Checkpoint it after history processing, even when a source reported failure.
+    // Checkpoint at the selected cadence, after history on each supplemental tick.
     const synced = options.syncState
       ? await runTask('state-sync', options.syncState)
       : true;
     return quotes && supplemental && history && synced;
   };
 
-  const refreshGuestSupplemental = (): Promise<boolean> =>
-    runTask('supplemental', options.refreshSupplemental);
+  const refreshGuestScheduledCheckpoint = (supplementalDue: boolean): Promise<boolean> =>
+    supplementalDue
+      // Guest snapshot hydration refreshes quotes after applying new assignments.
+      ? runTask('supplemental', options.refreshSupplemental)
+      : runTask('quotes', options.refreshQuotes);
 
   const refreshNow = async (): Promise<boolean> => {
     if (!canRefresh()) return false;
@@ -153,8 +149,8 @@ export function createPortfolioAutoRefreshScheduler(
 
     let cycle: Promise<boolean>;
     if (activeRole === 'guest') {
-      // Guest hydration fetches the latest assignment and then quotes its tickers.
-      cycle = refreshGuestSupplemental();
+      // Manual guest Sync hydrates the scoped snapshot, then quotes its tickers.
+      cycle = refreshGuestScheduledCheckpoint(true);
     } else {
       // Manual admin Sync remains comprehensive and immediate.
       cycle = (async () => {
@@ -185,7 +181,7 @@ export function createPortfolioAutoRefreshScheduler(
   };
 
   const configure = (interval: unknown, role: PortfolioAutoRefreshRole): number => {
-    stopTimers();
+    stopTimer();
     // A role switch must not make the new account await a previous account's cycle.
     quoteInFlight = null;
     supplementalInFlight = null;
@@ -202,32 +198,22 @@ export function createPortfolioAutoRefreshScheduler(
 
     if (!role) return activeInterval;
 
-    quoteTimer = setIntervalFn(() => {
+    timer = setIntervalFn(() => {
       if (!canRefresh()) return;
+      // Use elapsed wall time so skipped hidden-tab callbacks cannot shift the
+      // independent 60-second cadence relative to the selected quote interval.
       quoteTickCount = Math.max(
         quoteTickCount + 1,
         Math.floor((Date.now() - configuredAt) / activeInterval)
       );
+      const supplementalDue =
+        (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS === 0;
       if (activeRole === 'admin') {
-        const sharesHistoryBoundary =
-          (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS === 0;
-        void refreshAdminQuoteCheckpoint(sharesHistoryBoundary);
-      } else if (
-        (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS !== 0
-      ) {
-        // Guest supplemental hydration quotes the newly assigned tickers itself.
-        void runTask('quotes', options.refreshQuotes);
+        void refreshAdminScheduledCheckpoint(supplementalDue);
+      } else {
+        void refreshGuestScheduledCheckpoint(supplementalDue);
       }
     }, activeInterval);
-
-    supplementalTimer = setIntervalFn(() => {
-      if (!canRefresh()) return;
-      if (activeRole === 'admin') {
-        void refreshAdminSupplementalCheckpoint();
-      } else {
-        void refreshGuestSupplemental();
-      }
-    }, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
 
     return activeInterval;
   };
@@ -235,8 +221,7 @@ export function createPortfolioAutoRefreshScheduler(
   const onVisibilityChange = async (): Promise<boolean> => {
     if (!options.isVisible()) return false;
     const refreshed = await refreshNow();
-    // Set the quote timer's phase from wall time so skipped hidden-tab ticks
-    // cannot desynchronize its 60-second boundary from the supplemental timer.
+    // Re-align the next automatic tick after this full visibility catch-up.
     if (activeInterval > 0) {
       quoteTickCount = Math.max(
         quoteTickCount,
@@ -247,7 +232,7 @@ export function createPortfolioAutoRefreshScheduler(
   };
 
   const stop = () => {
-    stopTimers();
+    stopTimer();
     activeInterval = 0;
     activeRole = null;
     quoteTickCount = 0;

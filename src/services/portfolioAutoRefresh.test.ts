@@ -39,7 +39,7 @@ describe('portfolio automatic refresh policy', () => {
     });
 
     scheduler.configure(15_000, 'admin');
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(1);
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(refreshQuotes).toHaveBeenCalledTimes(4);
