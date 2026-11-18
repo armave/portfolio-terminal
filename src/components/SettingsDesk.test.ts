@@ -32,6 +32,8 @@ describe('automatic update settings', () => {
     expect(source).toContain('Your assigned holdings, LOTS history and their market quotes refresh at the selected interval.');
     expect(source).toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
     expect(source).toContain('Automatic refresh interval');
+    expect(source).toContain('md:justify-start justify-center');
+    expect(source).not.toContain('md:justify-left');
     expect(source).not.toContain('<option value="0">');
     expect(source).not.toContain('Automatic updates are paused. Manual Sync remains available.');
     expect(source).toContain('<option value="15000">');
