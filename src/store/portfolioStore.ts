@@ -581,12 +581,6 @@ function todayIso(): string {
 }
 
 /**
- * Preserve the last known daily move when a live tick omits change fields.
- * Recalculate it against the prior quote's implied previous close so the move
- * follows the latest price. Freshness and timestamps always come from the
- * incoming quote, never from the older observation.
- */
-/**
  * Keep the last known provider turnover when a later q tick omits daily
  * volume fields. Do not carry a previous session's turnover into a new day.
  */
@@ -597,10 +591,10 @@ function mergeLiveTurnoverDetails(
   if (!previous) return incoming;
 
   const previousServerDate = typeof previous.serverTime === 'string'
-    ? /^(\\d{4}-\\d{2}-\\d{2})/.exec(previous.serverTime.trim())?.[1]
+    ? /^(\d{4}-\d{2}-\d{2})/.exec(previous.serverTime.trim())?.[1]
     : undefined;
   const incomingServerDate = typeof incoming.serverTime === 'string'
-    ? /^(\\d{4}-\\d{2}-\\d{2})/.exec(incoming.serverTime.trim())?.[1]
+    ? /^(\d{4}-\d{2}-\d{2})/.exec(incoming.serverTime.trim())?.[1]
     : undefined;
   if (previousServerDate && incomingServerDate && previousServerDate !== incomingServerDate) {
     return incoming;
@@ -629,6 +623,12 @@ function mergeLiveTurnoverDetails(
   };
 }
 
+/**
+ * Preserve the last known daily move when a live tick omits change fields.
+ * Recalculate it against the prior quote's implied previous close so the move
+ * follows the latest price. Freshness and timestamps always come from the
+ * incoming quote, never from the older observation.
+ */
 function mergeLiveQuoteDetails(
   previous: Record<string, unknown> | undefined,
   incoming: Record<string, unknown> | undefined,
