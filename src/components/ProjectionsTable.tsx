@@ -11,8 +11,7 @@ import {
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
-import { calculateSaleCommission } from '../domain/portfolioTransactions';
+import { getPortfolioNetSaleProceeds, getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { normalizePortfolioSettings } from '../domain/portfolioSettings';
 
@@ -31,15 +30,11 @@ function ProjectionsTableView() {
     ? tickers
     : [projectionState.positions?.[projectionState.activeView || ''] ? projectionState.activeView : tickers[0]]
       .filter((ticker): ticker is string => Boolean(ticker));
-  const netSaleProceeds = liquidatedTickers.reduce((total, ticker) => {
-    const position = projectionState.positions?.[ticker];
-    if (!position) return total;
-    const shares = Number(position.shares);
-    const exitPrice = Number(position.pt);
-    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return total;
-    const grossProceeds = shares * exitPrice;
-    return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, state.brokerAssumptions);
-  }, 0);
+  const netSaleProceeds = getPortfolioNetSaleProceeds(
+    projectionState,
+    state.brokerAssumptions,
+    liquidatedTickers
+  );
   const portfolioSettings = normalizePortfolioSettings(state.portfolioSettings);
   const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
   const freeCash = Number(freeCashInput ?? 0);
