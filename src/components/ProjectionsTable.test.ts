@@ -9,7 +9,7 @@ describe('Projection Table account balance', () => {
     expect(source).toContain('getPortfolioNetSaleProceeds(');
     expect(source).toContain('const breakevenBalanceConstraint = {');
     expect(source).toContain('MAX_BREAKEVEN_SEARCH_DAYS,\n      breakevenBalanceConstraint');
-    expect(source).toContain('projectionState,\\n    state.brokerAssumptions,\\n    liquidatedTickers');
+    expect(source).toContain('projectionState,\n    state.brokerAssumptions,\n    liquidatedTickers');
     expect(source).toContain('Number(state.balance ?? 0), freeCash, netSaleProceeds, dailyRate, daysFromToday');
     expect(source).toContain('{formatUSD(projectedAccountBalance)}');
   });
