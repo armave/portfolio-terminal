@@ -84,7 +84,7 @@ export default defineConfig({
     normalizeRootPlugin(),
     startupCriticalCssPlugin(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['ico.svg'],
       manifest: {
         name: 'Portfolio Terminal',
