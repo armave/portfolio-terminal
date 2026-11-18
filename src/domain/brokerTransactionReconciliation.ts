@@ -18,6 +18,8 @@ type BrokerActivityFindingType =
   | 'duplicate_broker_execution'
   | 'execution_revision_conflict'
   | 'execution_match_ambiguous'
+  | 'execution_data_incomplete'
+  | 'execution_currency_mismatch'
   | 'execution_unclassified'
   | 'execution_missing_in_app'
   | 'execution_missing_in_broker'
@@ -51,6 +53,9 @@ interface BrokerActivityFinding {
   brokerAt?: number;
   appAt?: number;
   explanation: string;
+  missingFields?: string[];
+  brokerCurrency?: string;
+  appCurrency?: string;
 }
 
 export interface BrokerActivityReconciliationReport {
@@ -311,6 +316,16 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
       }
+      const missingSourceFields: string[] = [];
+      if (row.price === null) missingSourceFields.push('Broker execution price');
+      if (row.at === null) missingSourceFields.push('Broker execution timestamp');
+      if (!row.currency) missingSourceFields.push('Broker execution currency');
+      if (row.side !== 'sell' && row.fee === null) missingSourceFields.push('Broker execution commission');
+      if (missingSourceFields.length > 0) {
+        sourceDataIncomplete = true;
+        confidence = 'provisional';
+        warnings.push('One or more broker executions lack verifiable price, commission, currency or timestamp evidence; matching is provisional.');
+      }
       return;
     }
     sourceDataIncomplete = true;
@@ -332,78 +347,165 @@ export function reconcileBrokerActivity(
   });
 
   const uniqueBrokerRows: NormalizedExecution[] = [];
-  const seenExecutionIds = new Map<string, NormalizedExecution>();
-  const conflictingExecutionIds = new Set<string>();
+  const executionRowsById = new Map<string, NormalizedExecution[]>();
   for (const row of normalizedExecutionRows) {
-    if (conflictingExecutionIds.has(row.id)) continue;
-    const prior = seenExecutionIds.get(row.id);
-    if (prior) {
-      if (sameExecutionObservation(prior, row)) {
+    const group = executionRowsById.get(row.id) || [];
+    group.push(row);
+    executionRowsById.set(row.id, group);
+  }
+  for (const [id, rows] of [...executionRowsById.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const orderedRows = [...rows].sort((a, b) =>
+      JSON.stringify([
+        a.orderId ?? '', a.ticker, a.side, a.quantity, a.price, a.currency,
+        a.fee, a.feeCurrency, a.at
+      ]).localeCompare(JSON.stringify([
+        b.orderId ?? '', b.ticker, b.side, b.quantity, b.price, b.currency,
+        b.fee, b.feeCurrency, b.at
+      ]))
+    );
+    const representative = orderedRows[0];
+    if (orderedRows.every(row => sameExecutionObservation(representative, row))) {
+      uniqueBrokerRows.push(representative);
+      if (orderedRows.length > 1) {
         findings.push(makeFinding({
-          id: `duplicate-execution:${row.id}:${uniqueBrokerRows.length}`,
+          id: `duplicate-execution:${id}`,
           type: 'duplicate_broker_execution',
-          subject: `${row.ticker} ${row.side.toUpperCase()}`,
-          currency: row.currency || undefined,
-          brokerValue: row.quantity,
+          subject: `${representative.ticker} ${representative.side.toUpperCase()}`,
+          currency: representative.currency || undefined,
+          brokerValue: representative.quantity,
           appValue: null,
-          brokerReferences: [row.id],
+          brokerReferences: [id],
           appEventIds: [],
-          brokerAt: row.at ?? undefined,
+          brokerAt: representative.at ?? undefined,
           explanation: 'The broker history contains the same execution identifier and facts more than once.'
         }, confidence));
-      } else {
-        sourceDataIncomplete = true;
-        conflictingExecutionIds.add(row.id);
-        const priorIndex = uniqueBrokerRows.findIndex(candidate => candidate.id === row.id);
-        if (priorIndex >= 0) uniqueBrokerRows.splice(priorIndex, 1);
-        findings.push(makeFinding({
-          id: `execution-revision-conflict:${row.id}`,
-          type: 'execution_revision_conflict',
-          subject: `${row.ticker} ${row.side.toUpperCase()}`,
-          currency: row.currency || undefined,
-          brokerValue: row.quantity,
-          appValue: prior.quantity,
-          brokerReferences: [row.id],
-          appEventIds: [],
-          brokerAt: row.at ?? undefined,
-          explanation: 'The same broker execution identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.'
-        }, 'provisional'));
-        warnings.push('One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.');
       }
       continue;
     }
-    seenExecutionIds.set(row.id, row);
-    uniqueBrokerRows.push(row);
+
+    sourceDataIncomplete = true;
+    findings.push(makeFinding({
+      id: `execution-revision-conflict:${id}`,
+      type: 'execution_revision_conflict',
+      subject: `${representative.ticker} ${representative.side.toUpperCase()}`,
+      currency: representative.currency || undefined,
+      brokerValue: null,
+      appValue: null,
+      brokerReferences: [id],
+      appEventIds: [],
+      explanation: 'The same broker execution identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.'
+    }, 'provisional'));
+    warnings.push('One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.');
   }
+  uniqueBrokerRows.sort((a, b) => a.id.localeCompare(b.id));
   if (sourceDataIncomplete) confidence = 'provisional';
 
-  const appExecutions = input.appEvents.filter(event => EXECUTION_EVENT_TYPES.has(event.type));
+  const appExecutions = input.appEvents
+    .filter(event => EXECUTION_EVENT_TYPES.has(event.type))
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id));
+  appExecutions.forEach(event => {
+    const missingSourceFields: string[] = [];
+    if (number(event.quantity) === null) missingSourceFields.push('App execution quantity');
+    if (number(event.unitPrice) === null) missingSourceFields.push('App execution price');
+    if (!currency(event.currency)) missingSourceFields.push('App transaction currency');
+    if (event.type !== 'trade.sell' && number(event.fees) === null) {
+      missingSourceFields.push('App transaction commission');
+    }
+    if (missingSourceFields.length > 0) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      warnings.push('One or more app-authored executions lack verifiable quantity, price, currency or commission evidence; matching is provisional.');
+    }
+  });
   const legacyClosedSales = (input.legacyClosedTrades ?? [])
     .map(normalizeLegacyClosedSale)
     .filter((row): row is NormalizedLegacyClosedSale => row !== null);
   const unmatchedBroker = new Set(uniqueBrokerRows.map((_, index) => index));
   const unmatchedApp = new Set(appExecutions.map((_, index) => index));
+  const ambiguousBrokerIndices = new Set<number>();
+  const ambiguousAppIndices = new Set<number>();
   const matchedPairs: Array<{ broker: NormalizedExecution; app: PortfolioTransactionEvent }> = [];
 
   const compareCandidate = (broker: NormalizedExecution, app: PortfolioTransactionEvent) => {
     const side = eventSide(app);
     if (ticker(app.ticker) !== broker.ticker || side !== broker.side) return false;
-    if (currency(app.currency) && broker.currency && currency(app.currency) !== broker.currency) return false;
+    // A stable provider fill reference is an identity constraint, not merely
+    // a score bonus. Another nearby fill must never claim this app event.
+    const externalReferenceId = text(app.externalReferenceId);
+    if (externalReferenceId && externalReferenceId !== broker.id) return false;
+    const appCurrency = currency(app.currency);
+    if (appCurrency && broker.currency && appCurrency !== broker.currency &&
+      externalReferenceId !== broker.id) return false;
     return true;
   };
 
-  // Exact/fallback one-to-one matches first; stable IDs are preferred when present.
-  uniqueBrokerRows.forEach((broker, brokerIndex) => {
-    const candidates = [...unmatchedApp].map(index => ({ index, event: appExecutions[index] }))
-      .filter(candidate => compareCandidate(broker, candidate.event))
+  const getExecutionMissingFields = (
+    broker: NormalizedExecution,
+    app: PortfolioTransactionEvent
+  ): string[] => {
+    const missingFields: string[] = [];
+    if (number(app.quantity) === null) missingFields.push('App execution quantity');
+    if (broker.price === null) missingFields.push('Broker execution price');
+    if (number(app.unitPrice) === null) missingFields.push('App execution price');
+    if (broker.at === null) missingFields.push('Broker execution timestamp');
+    if (!broker.currency) missingFields.push('Broker execution currency');
+    if (!currency(app.currency)) missingFields.push('App transaction currency');
+    if (app.type !== 'trade.sell') {
+      if (broker.fee === null) missingFields.push('Broker execution commission');
+      if (number(app.fees) === null) missingFields.push('App transaction commission');
+    }
+    return missingFields;
+  };
+
+  type ExecutionMatchCandidate = {
+    brokerIndex: number;
+    broker: NormalizedExecution;
+    index: number;
+    event: PortfolioTransactionEvent;
+    quantityMatch: boolean;
+    quantityComparable: boolean;
+    priceMatch: boolean;
+    priceComparable: boolean;
+    exactTime: boolean;
+    acceptableTime: boolean;
+    timeDelta: number | null;
+    score: number;
+    partialFillAggregateMatch: boolean;
+    multipleFillsForOrder: boolean;
+    identityMatch: boolean;
+  };
+
+  const candidatesByBroker = new Map<number, ExecutionMatchCandidate[]>();
+
+  // Build the full candidate graph before consuming any records. This prevents
+  // the one-to-one matcher from depending on the provider's array order.
+  for (const brokerIndex of unmatchedBroker) {
+    const broker = uniqueBrokerRows[brokerIndex];
+    const candidates = [...unmatchedApp]
+      .map(index => ({ index, event: appExecutions[index] }))
+      .filter(candidate => {
+        if (!compareCandidate(broker, candidate.event)) return false;
+        const appOrderReference = text(candidate.event.externalOrderReferenceId);
+        return !appOrderReference ||
+          broker.orderId === appOrderReference ||
+          text(candidate.event.externalReferenceId) === broker.id;
+      })
       .map(candidate => {
         const event = candidate.event;
         const quantity = number(event.quantity);
         const price = number(event.unitPrice);
         const eventAt = event.effectiveAt;
         const timeDelta = broker.at === null ? null : Math.abs(broker.at - eventAt);
-        const quantityMatch = quantity !== null && Math.abs(quantity - broker.quantity) <= quantityTolerance;
-        const priceMatch = broker.price === null || price === null || Math.abs(price - broker.price) <= priceTolerance;
+        const quantityComparable = quantity !== null;
+        const quantityMatch = quantityComparable && Math.abs(quantity! - broker.quantity) <= quantityTolerance;
+        const appCurrency = currency(event.currency);
+        const priceComparable = broker.price !== null && price !== null &&
+          Boolean(broker.currency) && Boolean(appCurrency) && broker.currency === appCurrency;
+        const priceMatch = priceComparable && Math.abs(price! - broker.price!) <= priceTolerance;
+        const identityMatch = Boolean(text(event.externalReferenceId)) &&
+          text(event.externalReferenceId) === broker.id;
+
         // App trade dates are often recorded at UTC midnight while broker fills
         // carry intraday timestamps. A same-calendar-day date-only event is not
         // a timing discrepancy; explicit app timestamps still use the tolerance.
@@ -418,8 +520,19 @@ export function reconcileBrokerActivity(
           brokerDate!.getUTCFullYear() === appDate.getUTCFullYear() &&
           brokerDate!.getUTCMonth() === appDate.getUTCMonth() &&
           brokerDate!.getUTCDate() === appDate.getUTCDate();
-        const exactTime = timeDelta === null || timeDelta <= timeTolerance || (appDateOnly && sameUtcDay);
-        const acceptableTime = timeDelta === null || timeDelta <= maxTimingDifference;
+        const exactTime = timeDelta !== null
+          ? timeDelta <= timeTolerance || (appDateOnly && sameUtcDay)
+          : identityMatch;
+        // A timestamp-free fallback is not enough evidence to match two rows.
+        // An exact provider fill reference can still identify a pair, but the
+        // missing timestamp is exposed as incomplete evidence after matching.
+        const fallbackEvidenceAvailable = quantity !== null || priceComparable;
+        const acceptableTime = identityMatch || (
+          timeDelta !== null &&
+          timeDelta <= maxTimingDifference &&
+          fallbackEvidenceAvailable
+        );
+
         // Partial fills may only be aggregated within an explicit provider order.
         // Same-symbol/side/time proximity is not enough to prove common order identity.
         const sameGroup = broker.orderId
@@ -435,11 +548,13 @@ export function reconcileBrokerActivity(
         const multipleFillsForOrder = Boolean(broker.orderId) && sameGroup.length > 1;
         const partialFillAggregateMatch = multipleFillsForOrder &&
           quantity !== null && Math.abs(groupedQuantity - quantity) <= quantityTolerance;
+        const appOrderReference = text(event.externalOrderReferenceId);
         const otherCandidateExecutions = uniqueBrokerRows.filter(other =>
           other.id !== broker.id &&
           other.ticker === broker.ticker &&
           other.side === broker.side &&
           (!broker.currency || !other.currency || other.currency === broker.currency) &&
+          (!appOrderReference || other.orderId === appOrderReference) &&
           (other.at === null || Math.abs(other.at - eventAt) <= maxTimingDifference)
         );
         const ambiguousUnlinkedFill = quantity !== null &&
@@ -449,18 +564,37 @@ export function reconcileBrokerActivity(
         const ambiguousBrokerReferences = ambiguousUnlinkedFill
           ? [broker.id, ...otherCandidateExecutions.map(other => other.id)]
           : [];
-        const identityMatch = Boolean(text(event.externalReferenceId)) && text(event.externalReferenceId) === broker.id;
-        const score = (identityMatch ? 1000 : 0) +
-          (quantityMatch ? 100 : partialFillAggregateMatch ? -1000 : 0) +
+        const score = (identityMatch ? 1_000 : 0) +
+          (quantityMatch ? 100 : partialFillAggregateMatch ? -1_000 : 0) +
           (priceMatch ? 30 : 0) + (exactTime ? 20 : 0) +
           (acceptableTime ? 10 : 0) - (timeDelta ?? 0) / Math.max(maxTimingDifference, 1);
-        return { ...candidate, quantityMatch, priceMatch, exactTime, acceptableTime, timeDelta, score, partialFillAggregateMatch, multipleFillsForOrder, identityMatch, ambiguousUnlinkedFill, ambiguousBrokerReferences };
+        return {
+          ...candidate,
+          brokerIndex,
+          broker,
+          quantityMatch,
+          quantityComparable,
+          priceMatch,
+          priceComparable,
+          exactTime,
+          acceptableTime,
+          timeDelta,
+          score,
+          partialFillAggregateMatch,
+          multipleFillsForOrder,
+          identityMatch,
+          ambiguousUnlinkedFill,
+          ambiguousBrokerReferences
+        };
       })
       .filter(candidate => {
         if (candidate.ambiguousUnlinkedFill) {
           sourceDataIncomplete = true;
           confidence = 'provisional';
-          const findingId = `execution-match-ambiguous-unlinked:${candidate.event.id}:${candidate.ambiguousBrokerReferences.slice().sort().join('|')}`;
+          ambiguousBrokerIndices.add(brokerIndex);
+          ambiguousAppIndices.add(candidate.index);
+          const brokerReferences = [...new Set(candidate.ambiguousBrokerReferences)].sort();
+          const findingId = `execution-match-ambiguous-unlinked:${candidate.event.id}:${brokerReferences.join('|')}`;
           if (!findings.some(finding => finding.id === findingId)) {
             findings.push(makeFinding({
               id: findingId,
@@ -469,7 +603,7 @@ export function reconcileBrokerActivity(
               currency: broker.currency || undefined,
               brokerValue: broker.quantity,
               appValue: number(candidate.event.quantity),
-              brokerReferences: candidate.ambiguousBrokerReferences,
+              brokerReferences,
               appEventIds: [candidate.event.id],
               brokerAt: broker.at ?? undefined,
               appAt: candidate.event.effectiveAt,
@@ -481,18 +615,26 @@ export function reconcileBrokerActivity(
         return candidate.acceptableTime && !candidate.ambiguousUnlinkedFill &&
           (!candidate.multipleFillsForOrder || candidate.identityMatch);
       })
-      .sort((a, b) => b.score - a.score || a.event.recordedAt - b.event.recordedAt);
-    const best = candidates[0];
-    if (!best) return;
-    // A fallback match is evidence, not a way to infer intent from insertion
-    // order. recordedAt is the time the app stored an event, not a provider
-    // execution identity. Leave equally strong candidates unmatched.
-    const tiedBest = candidates.filter(candidate => Math.abs(candidate.score - best.score) <= 1e-9);
-    if (tiedBest.length > 1) {
-      sourceDataIncomplete = true;
-      confidence = 'provisional';
-      const appEventIds = [...new Set(tiedBest.map(candidate => candidate.event.id))].sort();
-      const findingId = `execution-match-ambiguous-fallback:${broker.id}:${appEventIds.join('|')}`;
+      .sort((a, b) => b.score - a.score || a.event.id.localeCompare(b.event.id));
+    candidatesByBroker.set(brokerIndex, candidates);
+  }
+
+  // First reserve app events for which one broker execution has equally strong
+  // alternatives. Input order and recordedAt are not execution identity.
+  for (const [brokerIndex, candidates] of candidatesByBroker) {
+    if (ambiguousBrokerIndices.has(brokerIndex) || candidates.length < 2) continue;
+    const bestScore = candidates[0].score;
+    const tiedBest = candidates.filter(candidate => Math.abs(candidate.score - bestScore) <= 1e-9);
+    if (tiedBest.length < 2) continue;
+
+    sourceDataIncomplete = true;
+    confidence = 'provisional';
+    ambiguousBrokerIndices.add(brokerIndex);
+    tiedBest.forEach(candidate => ambiguousAppIndices.add(candidate.index));
+    const broker = uniqueBrokerRows[brokerIndex];
+    const appEventIds = [...new Set(tiedBest.map(candidate => candidate.event.id))].sort();
+    const findingId = `execution-match-ambiguous-fallback:${broker.id}:${appEventIds.join('|')}`;
+    if (!findings.some(finding => finding.id === findingId)) {
       findings.push(makeFinding({
         id: findingId,
         type: 'execution_match_ambiguous',
@@ -505,108 +647,210 @@ export function reconcileBrokerActivity(
         brokerAt: broker.at ?? undefined,
         explanation: 'More than one app-authored transaction is an equally strong fallback match for this broker execution. recordedAt does not establish execution identity, so no candidate was selected.'
       }, 'provisional'));
-      warnings.push('A broker execution has multiple equally strong app fallback candidates; manual review is required.');
-      return;
     }
-    unmatchedBroker.delete(brokerIndex);
-    unmatchedApp.delete(best.index);
-    matchedPairs.push({ broker, app: best.event });
-    if (!best.quantityMatch) {
+    warnings.push('A broker execution has multiple equally strong app fallback candidates; manual review is required.');
+  }
+
+  // Then detect multiple broker rows competing equally for a single app event.
+  const candidatesByApp = new Map<number, ExecutionMatchCandidate[]>();
+  for (const [brokerIndex, candidates] of candidatesByBroker) {
+    if (ambiguousBrokerIndices.has(brokerIndex)) continue;
+    for (const candidate of candidates) {
+      const group = candidatesByApp.get(candidate.index) || [];
+      group.push(candidate);
+      candidatesByApp.set(candidate.index, group);
+    }
+  }
+  for (const [appIndex, candidates] of candidatesByApp) {
+    if (ambiguousAppIndices.has(appIndex)) continue;
+    const activeCandidates = candidates.filter(candidate =>
+      !ambiguousBrokerIndices.has(candidate.brokerIndex)
+    );
+    if (activeCandidates.length < 2) continue;
+    activeCandidates.sort((a, b) =>
+      b.score - a.score || a.broker.id.localeCompare(b.broker.id)
+    );
+    const bestScore = activeCandidates[0].score;
+    const tiedBest = activeCandidates.filter(candidate => Math.abs(candidate.score - bestScore) <= 1e-9);
+    if (tiedBest.length < 2) continue;
+
+    sourceDataIncomplete = true;
+    confidence = 'provisional';
+    ambiguousAppIndices.add(appIndex);
+    tiedBest.forEach(candidate => ambiguousBrokerIndices.add(candidate.brokerIndex));
+    const app = appExecutions[appIndex];
+    const brokerReferences = [...new Set(tiedBest.map(candidate => candidate.broker.id))].sort();
+    findings.push(makeFinding({
+      id: `execution-match-ambiguous-contenders:${app.id}:${brokerReferences.join('|')}`,
+      type: 'execution_match_ambiguous',
+      subject: `${ticker(app.ticker)} ${eventSide(app)?.toUpperCase() || ''}`.trim(),
+      currency: currency(app.currency) || undefined,
+      brokerValue: null,
+      appValue: number(app.quantity),
+      brokerReferences,
+      appEventIds: [app.id],
+      appAt: app.effectiveAt,
+      explanation: 'Multiple broker executions are equally strong candidates for one app transaction. No execution was selected.'
+    }, 'provisional'));
+    warnings.push('Multiple broker executions are equally plausible for one app transaction; manual review is required.');
+  }
+
+  // Resolve only unambiguous pairs in stable score order. Any ambiguous row
+  // remains unconsumed and is excluded from absence-based findings.
+  const orderedCandidates = [...candidatesByBroker.entries()]
+    .filter(([brokerIndex]) => !ambiguousBrokerIndices.has(brokerIndex))
+    .flatMap(([, candidates]) => candidates.filter(candidate =>
+      !ambiguousAppIndices.has(candidate.index)
+    ))
+    .sort((a, b) =>
+      b.score - a.score ||
+      a.broker.id.localeCompare(b.broker.id) ||
+      a.event.id.localeCompare(b.event.id)
+    );
+  for (const candidate of orderedCandidates) {
+    if (!unmatchedBroker.has(candidate.brokerIndex) || !unmatchedApp.has(candidate.index)) continue;
+    unmatchedBroker.delete(candidate.brokerIndex);
+    unmatchedApp.delete(candidate.index);
+    matchedPairs.push({ broker: candidate.broker, app: candidate.event });
+
+    const matchedAppCurrency = currency(candidate.event.currency);
+    if (candidate.broker.currency && matchedAppCurrency &&
+      candidate.broker.currency !== matchedAppCurrency) {
       findings.push(makeFinding({
-        id: `execution-quantity:${broker.id}:${best.event.id}`,
+        id: `execution-currency:${candidate.broker.id}:${candidate.event.id}`,
+        type: 'execution_currency_mismatch',
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        brokerValue: null,
+        appValue: null,
+        brokerCurrency: candidate.broker.currency,
+        appCurrency: matchedAppCurrency,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
+        explanation: 'The broker and app transaction use different execution currencies; no FX conversion was attempted.'
+      }, confidence));
+    }
+
+    if (candidate.quantityComparable && !candidate.quantityMatch) {
+      findings.push(makeFinding({
+        id: `execution-quantity:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_quantity_mismatch',
-        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
-        currency: broker.currency || undefined,
-        brokerValue: broker.quantity,
-        appValue: number(best.event.quantity),
-        difference: broker.quantity - (number(best.event.quantity) ?? 0),
-        brokerReferences: [broker.id],
-        appEventIds: [best.event.id],
-        brokerAt: broker.at ?? undefined,
-        appAt: best.event.effectiveAt,
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        currency: candidate.broker.currency || undefined,
+        brokerValue: candidate.broker.quantity,
+        appValue: number(candidate.event.quantity),
+        difference: candidate.broker.quantity - number(candidate.event.quantity)!,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
         explanation: 'The broker fill quantity differs from the app transaction quantity.'
       }, confidence));
     }
-    if (!best.priceMatch) {
+    if (candidate.priceComparable && !candidate.priceMatch) {
       findings.push(makeFinding({
-        id: `execution-price:${broker.id}:${best.event.id}`,
+        id: `execution-price:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_price_mismatch',
-        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
-        currency: broker.currency || undefined,
-        brokerValue: broker.price,
-        appValue: number(best.event.unitPrice),
-        difference: (broker.price ?? 0) - (number(best.event.unitPrice) ?? 0),
-        brokerReferences: [broker.id],
-        appEventIds: [best.event.id],
-        brokerAt: broker.at ?? undefined,
-        appAt: best.event.effectiveAt,
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        currency: candidate.broker.currency || undefined,
+        brokerValue: candidate.broker.price,
+        appValue: number(candidate.event.unitPrice),
+        difference: candidate.broker.price! - number(candidate.event.unitPrice)!,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
         explanation: 'The broker execution price differs from the app transaction price.'
       }, confidence));
     }
-    const appFee = number(best.event.fees);
-    const brokerFeeCurrency = broker.feeCurrency || broker.currency;
-    const appFeeCurrency = currency(best.event.feeCurrency) || currency(best.event.currency);
-    if (best.event.type !== 'trade.sell' && broker.fee !== null && appFee !== null &&
+
+    const appFee = number(candidate.event.fees);
+    const brokerFeeCurrency = candidate.broker.feeCurrency || candidate.broker.currency;
+    const appFeeCurrency = currency(candidate.event.feeCurrency) || currency(candidate.event.currency);
+    if (candidate.event.type !== 'trade.sell' && candidate.broker.fee !== null && appFee !== null &&
       brokerFeeCurrency && appFeeCurrency && brokerFeeCurrency !== appFeeCurrency) {
       findings.push(makeFinding({
-        id: `execution-fee-currency:${broker.id}:${best.event.id}`,
+        id: `execution-fee-currency:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_fee_currency_mismatch',
-        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
         currency: brokerFeeCurrency,
-        brokerValue: Math.abs(broker.fee),
+        brokerValue: Math.abs(candidate.broker.fee),
         appValue: Math.abs(appFee),
-        brokerReferences: [broker.id],
-        appEventIds: [best.event.id],
-        brokerAt: broker.at ?? undefined,
-        appAt: best.event.effectiveAt,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
         explanation: 'The broker and app transaction fees use different currencies; no conversion was attempted.'
       }, confidence));
     }
-    if (best.event.type !== 'trade.sell' && broker.fee !== null && appFee !== null &&
-      (!broker.feeCurrency || !best.event.feeCurrency || broker.feeCurrency === currency(best.event.feeCurrency)) &&
-      Math.abs(Math.abs(broker.fee) - Math.abs(appFee)) > amountTolerance) {
+    if (candidate.event.type !== 'trade.sell' && candidate.broker.fee !== null && appFee !== null &&
+      (!candidate.broker.feeCurrency || !candidate.event.feeCurrency || candidate.broker.feeCurrency === currency(candidate.event.feeCurrency)) &&
+      Math.abs(Math.abs(candidate.broker.fee) - Math.abs(appFee)) > amountTolerance) {
       findings.push(makeFinding({
-        id: `execution-fee:${broker.id}:${best.event.id}`,
+        id: `execution-fee:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_fee_mismatch',
-        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
-        currency: broker.feeCurrency || currency(best.event.feeCurrency) || undefined,
-        brokerValue: Math.abs(broker.fee),
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        currency: candidate.broker.feeCurrency || currency(candidate.event.feeCurrency) || undefined,
+        brokerValue: Math.abs(candidate.broker.fee),
         appValue: Math.abs(appFee),
-        difference: Math.abs(broker.fee) - Math.abs(appFee),
-        brokerReferences: [broker.id],
-        appEventIds: [best.event.id],
-        brokerAt: broker.at ?? undefined,
-        appAt: best.event.effectiveAt,
+        difference: Math.abs(candidate.broker.fee) - Math.abs(appFee),
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
         explanation: 'The broker commission differs from the app-recorded transaction fee.'
       }, confidence));
     }
-    if (!best.exactTime && best.timeDelta !== null) {
+    if (!candidate.exactTime && candidate.timeDelta !== null) {
       findings.push(makeFinding({
-        id: `execution-time:${broker.id}:${best.event.id}`,
+        id: `execution-time:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_timing_difference',
-        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
-        currency: broker.currency || undefined,
-        brokerValue: broker.at,
-        appValue: best.event.effectiveAt,
-        difference: best.timeDelta,
-        brokerReferences: [broker.id],
-        appEventIds: [best.event.id],
-        brokerAt: broker.at ?? undefined,
-        appAt: best.event.effectiveAt,
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        currency: candidate.broker.currency || undefined,
+        brokerValue: candidate.broker.at,
+        appValue: candidate.event.effectiveAt,
+        difference: candidate.timeDelta,
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
         explanation: 'The broker and app transaction timestamps differ beyond the normal matching tolerance.'
       }, confidence));
     }
-  });
 
+    const missingFields = getExecutionMissingFields(candidate.broker, candidate.event);
+    if (missingFields.length > 0) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      findings.push(makeFinding({
+        id: `execution-data-incomplete:${candidate.broker.id}:${candidate.event.id}`,
+        type: 'execution_data_incomplete',
+        subject: `${candidate.broker.ticker} ${candidate.broker.side.toUpperCase()}`,
+        currency: candidate.broker.currency || currency(candidate.event.currency) || undefined,
+        brokerValue: candidate.broker.price,
+        appValue: number(candidate.event.unitPrice),
+        brokerReferences: [candidate.broker.id],
+        appEventIds: [candidate.event.id],
+        brokerAt: candidate.broker.at ?? undefined,
+        appAt: candidate.event.effectiveAt,
+        explanation: 'The matched execution is missing one or more source values needed for a complete comparison. Missing values were not treated as zero.',
+        missingFields
+      }, 'provisional'));
+      warnings.push('One or more matched executions lack verifiable price, commission, currency or timestamp evidence; affected comparisons are provisional.');
+    }
+  }
   // Remaining app and broker rows with same instrument/side/currency/date can
   // represent one app order filled by multiple broker partial executions.
   for (const appIndex of [...unmatchedApp]) {
+    if (ambiguousAppIndices.has(appIndex)) continue;
     const app = appExecutions[appIndex];
     const side = eventSide(app);
     const appQuantity = number(app.quantity);
     const appPrice = number(app.unitPrice);
     if (!side || appQuantity === null) continue;
     const candidates = [...unmatchedBroker].filter(index => {
+      if (ambiguousBrokerIndices.has(index)) return false;
       const broker = uniqueBrokerRows[index];
       if (!broker.orderId) return false;
       if (broker.ticker !== ticker(app.ticker) || broker.side !== side) return false;
@@ -620,7 +864,7 @@ export function reconcileBrokerActivity(
       group.push(index);
       byOrder.set(orderId, group);
     }
-    const matchingGroups = [...byOrder.values()].filter(indices => {
+    const matchingOrderGroups = [...byOrder.entries()].filter(([, indices]) => {
       if (indices.length < 2) return false;
       const quantityTotal = indices.reduce((sum, index) => sum + uniqueBrokerRows[index].quantity, 0);
       if (Math.abs(quantityTotal - appQuantity) > quantityTolerance) return false;
@@ -632,6 +876,12 @@ export function reconcileBrokerActivity(
       }
       return true;
     });
+    const explicitOrderReference = text(app.externalOrderReferenceId);
+    const matchingGroups = explicitOrderReference
+      ? matchingOrderGroups
+        .filter(([orderId]) => orderId === explicitOrderReference)
+        .map(([, indices]) => indices)
+      : matchingOrderGroups.map(([, indices]) => indices);
     if (matchingGroups.length > 1) {
       sourceDataIncomplete = true;
       confidence = 'provisional';
@@ -647,6 +897,8 @@ export function reconcileBrokerActivity(
         appAt: app.effectiveAt,
         explanation: 'More than one broker order has fills that match this app transaction. No order was selected without a unique match.'
       }, 'provisional'));
+      matchingGroups.flatMap(indices => indices).forEach(index => ambiguousBrokerIndices.add(index));
+      ambiguousAppIndices.add(appIndex);
       warnings.push('More than one broker order has fills that match an app transaction; manual review is required.');
       continue;
     }
@@ -659,6 +911,27 @@ export function reconcileBrokerActivity(
     unmatchedApp.delete(appIndex);
     const refs = selected.map(index => uniqueBrokerRows[index].id);
     const selectedFees = selected.map(index => uniqueBrokerRows[index].fee);
+    const incompleteFields = [...new Set(selected.flatMap(index =>
+      getExecutionMissingFields(uniqueBrokerRows[index], app)
+    ))];
+    if (incompleteFields.length > 0) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      findings.push(makeFinding({
+        id: `execution-data-incomplete-partial:${app.id}:${refs.slice().sort().join('|')}`,
+        type: 'execution_data_incomplete',
+        subject: `${ticker(app.ticker)} ${side.toUpperCase()}`,
+        currency: currency(app.currency) || undefined,
+        brokerValue: null,
+        appValue: number(app.quantity),
+        brokerReferences: refs.slice().sort(),
+        appEventIds: [app.id],
+        appAt: app.effectiveAt,
+        explanation: 'The matched partial fills are missing one or more source values needed for a complete comparison. Missing values were not treated as zero.',
+        missingFields: incompleteFields
+      }, 'provisional'));
+      warnings.push('One or more matched executions lack verifiable price, commission, currency or timestamp evidence; affected comparisons are provisional.');
+    }
     const feesComplete = selectedFees.every((fee): fee is number => fee !== null);
     const totalFees = feesComplete ? selectedFees.reduce((sum, fee) => sum + fee, 0) : null;
     const appFee = number(app.fees);
@@ -704,6 +977,7 @@ export function reconcileBrokerActivity(
   while (foundLegacyPair) {
     foundLegacyPair = false;
     for (const brokerIndex of [...unmatchedBroker]) {
+      if (ambiguousBrokerIndices.has(brokerIndex)) continue;
       const broker = uniqueBrokerRows[brokerIndex];
       if (broker.side !== 'sell' || broker.at === null || broker.price === null) continue;
       const candidates = [...unmatchedLegacyClosedSales].filter(saleIndex => {
@@ -716,6 +990,7 @@ export function reconcileBrokerActivity(
       const saleIndex = candidates[0];
       const sale = legacyClosedSales[saleIndex];
       const reverseCandidates = [...unmatchedBroker].filter(candidateIndex => {
+        if (ambiguousBrokerIndices.has(candidateIndex)) return false;
         const candidate = uniqueBrokerRows[candidateIndex];
         return candidate.side === 'sell' && candidate.at !== null && candidate.price !== null &&
           candidate.ticker === sale.ticker && legacySaleTimeMatches(candidate, sale) &&
@@ -761,6 +1036,7 @@ export function reconcileBrokerActivity(
   }
 
   for (const index of unmatchedBroker) {
+    if (ambiguousBrokerIndices.has(index)) continue;
     const row = uniqueBrokerRows[index];
     findings.push(makeFinding({
       id: `execution-unmatched-broker:${row.id}`,
@@ -776,6 +1052,7 @@ export function reconcileBrokerActivity(
     }, confidence));
   }
   for (const index of unmatchedApp) {
+    if (ambiguousAppIndices.has(index)) continue;
     const row = appExecutions[index];
     findings.push(makeFinding({
       id: `execution-unmatched-app:${row.id}`,

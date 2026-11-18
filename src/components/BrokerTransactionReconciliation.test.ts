@@ -41,6 +41,42 @@ describe('broker reconciliation localization', () => {
     )).toContain('предварительное');
   });
 
+  it('localizes incomplete execution evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Execution evidence incomplete', 'ru'))
+      .toBe('Недостаточно данных для проверки исполнения');
+    expect(translateBrokerReconciliationCopy('Missing execution evidence', 'ru'))
+      .toBe('Отсутствуют данные исполнения');
+    for (const field of [
+      'App execution quantity',
+      'Broker execution price',
+      'App execution price',
+      'Broker execution timestamp',
+      'Broker execution currency',
+      'App transaction currency',
+      'Broker execution commission',
+      'App transaction commission'
+    ]) {
+      expect(translateBrokerReconciliationCopy(field, 'ru'), field).not.toBe(field);
+    }
+    expect(translateBrokerReconciliationCopy(
+      'The matched execution is missing one or more source values needed for a complete comparison. Missing values were not treated as zero.',
+      'ru'
+    )).toContain('не считались нулевыми');
+  });
+
+  it('localizes execution currency discrepancy labels and evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Execution currency differs', 'ru'))
+      .toBe('Валюта исполнения отличается');
+    expect(translateBrokerReconciliationCopy('Broker currency', 'ru'))
+      .toBe('Валюта брокера');
+    expect(translateBrokerReconciliationCopy('App currency', 'ru'))
+      .toBe('Валюта приложения');
+    expect(translateBrokerReconciliationCopy(
+      'The broker and app transaction use different execution currencies; no FX conversion was attempted.',
+      'ru'
+    )).toContain('пересчет валюты не выполнялся');
+  });
+
   it('localizes the unclassified cashflow explanation in Russian', () => {
     expect(translateBrokerReconciliationCopy(
       'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.',
@@ -162,6 +198,18 @@ describe('broker reconciliation audit-only review markers', () => {
   });
 });
 
+
+describe('execution evidence presentation', () => {
+  it('renders missing and conflicting-currency source evidence on provisional findings', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('finding.missingFields && finding.missingFields.length > 0');
+    expect(source).toContain("translateBrokerReconciliationCopy('Missing execution evidence')");
+    expect(source).toContain('finding.missingFields.map(field => translateBrokerReconciliationCopy(field))');
+    expect(source).toContain('finding.brokerCurrency && finding.appCurrency');
+    expect(source).toContain("translateBrokerReconciliationCopy('Broker currency')");
+    expect(source).toContain("translateBrokerReconciliationCopy('App currency')");
+  });
+});
 
 describe('transaction journal coverage visibility', () => {
   it('renders scoped replay counts and bounded issue explanations in broker reconciliation', () => {
