@@ -7,7 +7,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
-  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
+  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed",
+  "Cache-Control": "no-store"
 };
 
 function jsonResponse(body, status = 200, revision = null) {
