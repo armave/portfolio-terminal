@@ -99,6 +99,17 @@ describe('portfolio authenticated startup runtime', () => {
       .toBeLessThan(fixture.calls.indexOf('recover-cloud-writes'));
   });
 
+  it('does not release queued cloud writes when the initial admin pull is rejected', async () => {
+    const fixture = createFixture('admin');
+    (fixture.dependencies.pullSharedCloudState as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    await fixture.start();
+
+    await vi.waitFor(() => expect(fixture.dependencies.refreshLivePrices).toHaveBeenCalledTimes(1));
+    expect(fixture.dependencies.recoverPendingCloudWrites).not.toHaveBeenCalled();
+    expect(fixture.dependencies.reportBackgroundStartupError).not.toHaveBeenCalled();
+  });
+
   it('hydrates the guest-only workspace and restores Balance before background quotes', async () => {
     const fixture = createFixture('guest');
 
