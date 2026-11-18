@@ -1,6 +1,6 @@
 export const PWA_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1_000;
 
-export type PwaUpdateState =
+type PwaUpdateState =
   | 'not_checked'
   | 'checking'
   | 'up_to_date'
