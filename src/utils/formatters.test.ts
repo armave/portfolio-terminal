@@ -34,18 +34,37 @@ describe('display formatters', () => {
     expect(formatUSDDisplayValue('$1234567.89')).toMatch(/^\$.*1.*234.*567,89$/);
   });
 
-  it('formats estimated dollar volume from valid provider volume and a USD share price', () => {
-    expect(formatQuoteDollarVolume(1234, 50, 'USD')).toBe('$61.7K');
-    expect(formatQuoteDollarVolume(1000, 25)).toBe('$25K');
-    expect(formatQuoteDollarVolume(0, 50, 'USD')).toBe('$0');
-    expect(formatQuoteDollarVolume(null, 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume('1234', 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(-1, 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(1234, null, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(1234, 0, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(1234, Number.POSITIVE_INFINITY, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(Number.MAX_VALUE, Number.MAX_VALUE, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(1234, 50, 'EUR')).toBeNull();
+  it('prefers provider-reported USD traded value over an estimated share-count calculation', () => {
+    expect(formatQuoteDollarVolume(9100000000, 1000000, 50, 'USD'))
+      .toEqual({ value: '$9.1B', estimated: false });
+    expect(formatQuoteDollarVolume(0, 1000, 50, 'USD'))
+      .toEqual({ value: '$0', estimated: false });
+  });
+
+  it('marks share-count multiplication as an estimate and requires explicit USD currency', () => {
+    expect(formatQuoteDollarVolume(null, 1234, 50, 'USD'))
+      .toEqual({ value: '$61.7K', estimated: true });
+    expect(formatQuoteDollarVolume(undefined, 1000, 25, 'USD'))
+      .toEqual({ value: '$25K', estimated: true });
+    expect(formatQuoteDollarVolume(null, 0, 50, 'USD'))
+      .toEqual({ value: '$0', estimated: true });
+    expect(formatQuoteDollarVolume(null, 1000, 25)).toBeNull();
+    expect(formatQuoteDollarVolume(null, 1000, 25, 'EUR')).toBeNull();
+    expect(formatQuoteDollarVolume(9100000000, 1000, 25, 'EUR')).toBeNull();
+  });
+
+  it('withholds missing, malformed, negative, and overflowing turnover or volume values', () => {
+    expect(formatQuoteDollarVolume(null, null, 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume('9100000000', 1000, 25, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(Number.NaN, 1000, 25, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(Number.POSITIVE_INFINITY, 1000, 25, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, '1234', 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, -1, 50, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, 1234, null, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, 1234, 0, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, 1234, Number.POSITIVE_INFINITY, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, Number.MAX_VALUE, Number.MAX_VALUE, 'USD')).toBeNull();
+    expect(formatQuoteDollarVolume(null, 1234, 50, 'usd')).toEqual({ value: '$61.7K', estimated: true });
   });
 
   it('formats supported tranche date inputs', () => {

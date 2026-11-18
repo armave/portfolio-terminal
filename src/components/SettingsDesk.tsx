@@ -380,7 +380,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   };
 
   return (
-    <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
+    <div id="settingsDesk" class="settings-desk min-w-0">
       <DeskPageHeader
         title={translateText('Settings', getAppLanguage())}
         description={translateText('Manage account, data, and application preferences.', getAppLanguage())}

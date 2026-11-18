@@ -631,7 +631,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-1.5">
                       {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
-                      <QuoteVolumeBadge volume={holding.quoteDetails?.volume} price={price} currency={holding.quoteDetails?.currency} />
+                      <QuoteVolumeBadge volume={holding.quoteDetails?.volume} volumeValue={holding.quoteDetails?.volumeValue} price={price} currency={holding.quoteDetails?.currency} />
                     </div>
                   </div>
                   <div class="instrument-target-section guest-stock-value-section mt-3">
@@ -812,7 +812,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               >
                                 {badgeText}
                               </span>
-                              <QuoteVolumeBadge volume={h.quoteDetails?.volume} price={price ?? undefined} currency={h.quoteDetails?.currency} />
+                              <QuoteVolumeBadge volume={h.quoteDetails?.volume} volumeValue={h.quoteDetails?.volumeValue} price={price ?? undefined} currency={h.quoteDetails?.currency} />
                               {isAdmin && marketDepthAvailable && <button
                                 type="button"
                                 title={`View live market depth for ${h.ticker}`}

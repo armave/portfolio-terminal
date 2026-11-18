@@ -31,8 +31,10 @@ export interface QuoteDetails {
   changePercent?: number;
   high?: number;
   low?: number;
-  /** Provider-reported traded-unit volume; the reporting period may vary by quote source. */
+  /** Provider-reported traded-unit count, e.g. TradeNet vol. */
   volume?: number;
+  /** Provider-reported traded value, e.g. TradeNet vlt, in the explicit quote currency. */
+  volumeValue?: number;
   marketState?: string;
   price?: number;
   /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */

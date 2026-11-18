@@ -72,6 +72,18 @@ describe('standard non-Margin page layout', () => {
     expect(styles).toContain('width: auto;');
   });
 
+  it('keeps mobile Settings compact without a flow-reserving hidden header', () => {
+    expect(settingsSource).toContain('class="settings-desk min-w-0"');
+    expect(settingsSource).not.toContain('settings-desk min-w-0 space-y-4');
+    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{[\\s\\S]*?#settingsDesk\\s*>\\s*\\.desk-page-header\\s*\\{[^}]*position:\\s*absolute;/s);
+    expect(styles).toMatch(/#settingsDesk\\s*\\{[^}]*display:\\s*grid;[^}]*gap:/s);
+  });
+
+  it('increases key Settings and volume-badge text and control sizing on mobile', () => {
+    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*640px\\)\\s*\\{[\\s\\S]*?#settingsDesk\\s*\\.settings-section-nav\\s+a\\s*\\{[^}]*font-size:\\s*0\\.8rem;/s);
+    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*640px\\)[\\s\\S]*?\\.quote-volume-badge\\s*\\{[^}]*font-size:\\s*0\\.75rem;/s);
+  });
+
   it('localizes new desk page headings and descriptions in Russian', () => {
     for (const label of [
       'MY STOCKS', 'CASH & NON-MARGIN HOLDINGS', 'LOTS',

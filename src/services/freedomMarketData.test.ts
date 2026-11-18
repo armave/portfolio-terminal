@@ -156,6 +156,24 @@ describe("normalizeFreedomQuote", () => {
     });
   });
 
+  it("keeps TradeNet share volume separate from daily traded value and explicit currency", () => {
+    expect(normalizeFreedomQuote({
+      q: [{ c: "GOOGL.US", ltp: 280.5, vol: 123456, vlt: 987654321.25, x_curr: "USD" }]
+    }, "GOOGL")).toMatchObject({
+      volume: 123456,
+      volumeValue: 987654321.25,
+      currency: "USD"
+    });
+  });
+
+  it("does not infer quote currency when the provider omits it", () => {
+    const quote = normalizeFreedomQuote({
+      q: [{ c: "GOOGL.US", ltp: 280.5, vol: 123456, vlt: 987654321.25 }]
+    }, "GOOGL");
+    expect(quote).not.toHaveProperty("currency");
+    expect(quote).toMatchObject({ volume: 123456, volumeValue: 987654321.25 });
+  });
+
   it("normalizes the documented TradeNet q-array response envelope", () => {
     expect(normalizeFreedomQuote({
       q: [{

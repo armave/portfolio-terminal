@@ -6214,3 +6214,116 @@ table tbody tr:hover {
     width: 100%;
   }
 }
+
+
+/* Mobile Settings: the shared page heading is screen-reader only here; remove its empty flow slot. */
+@media (max-width: 767px) {
+  #settingsDesk > .desk-page-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* Improve touch readability without changing desktop typography or hiding Settings content. */
+@media (max-width: 640px) {
+  #settingsDesk {
+    gap: 0.7rem;
+  }
+
+  #settingsDesk .settings-section {
+    gap: 0.55rem;
+  }
+
+  #settingsDesk .settings-section-heading h2 {
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+
+  #settingsDesk .settings-section-heading p {
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  #settingsDesk .settings-section-nav {
+    gap: 0.45rem;
+    padding-block: 0 0.45rem;
+  }
+
+  #settingsDesk .settings-section-nav a {
+    min-height: 2.65rem;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  #settingsDesk .settings-toolbar--organized > .settings-toolbar__card,
+  #settingsDesk .settings-data-grid > .settings-toolbar__card {
+    padding: 0.9rem;
+  }
+
+  #settingsDesk .settings-account-identity,
+  #settingsDesk .settings-sync-status > span:first-child,
+  #settingsDesk .settings-sync-status > span:nth-child(2) {
+    font-size: 0.8rem;
+  }
+
+  #settingsDesk .settings-account-language {
+    gap: 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  #settingsDesk .settings-account-language select,
+  #settingsDesk #quoteRefreshInterval {
+    min-height: 2.65rem;
+    padding-inline: 0.7rem;
+    font-size: 0.9rem;
+  }
+
+  #settingsDesk .settings-refresh-interval {
+    justify-content: space-between;
+    width: 100%;
+    font-size: 0.75rem;
+  }
+
+  #settingsDesk .settings-refresh-description,
+  #settingsDesk .settings-sync-status > span.w-full,
+  #settingsDesk .settings-data-safety-note p {
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  #settingsDesk .settings-account-actions > button {
+    min-height: 2.75rem;
+    font-size: 0.85rem;
+  }
+
+  .quote-volume-badge {
+    min-height: 1.65rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.25;
+  }
+
+  #cashCushionContainer .guest-stock-value-section .instrument-target-label {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  #cashCushionContainer .guest-stock-value-section [class~="text-[9px]"],
+  #cashCushionContainer .guest-stock-value-section [class~="text-[10px]"] {
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  #cashCushionContainer .guest-stock-value-section .text-2xl {
+    font-size: 1.55rem;
+    line-height: 1.25;
+  }
+}
