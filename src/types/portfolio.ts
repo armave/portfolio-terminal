@@ -336,10 +336,6 @@ export interface PortfolioState {
     /** Administrator publication time returned by the server. */
     updatedAt: number;
     tranches: ActiveBrokerTranche[];
-    /** Last publication time for this guest's assignment ledger. */
-    ledgerUpdatedAt?: number;
-    /** Client receipt time for the last successfully hydrated snapshot. */
-    fetchedAt?: number;
   };
   /** Server-filtered assignment history returned only to the signed-in guest. */
   guestTrancheLedger?: GuestTrancheLedgerRecord[];
