@@ -19,6 +19,15 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 - Manual Sync fetches only the authenticated guest's holdings/LOTS snapshot and then refreshes quotes for those holdings.
 - Guests never request administrator broker balances, executions, orders, the admin Closed History record, or the administrator's shared portfolio cloud record. Their assigned holdings and history remain scoped to their authenticated guest account.
 
+
+## Guest-facing freshness semantics
+
+- The guest Balance view shows a read-only scope notice and includes only the current guest's assigned cash-funded holdings.
+- The guest projection keeps three distinct timestamps: `updatedAt` is the administrator publication time for holdings, `ledgerUpdatedAt` is the assignment-history publication time, and `fetchedAt` is when this guest's browser last successfully received the snapshot. Do not label these timestamps interchangeably.
+- Quote freshness uses provider observation timestamps and provider quality classifications where available. Client receipt time alone must not promote a quote to fresh.
+- If a refresh fails, the previously accepted guest snapshot remains visible and is explicitly marked as last successfully loaded. A missing first snapshot must not be presented as a confirmed empty assignment list.
+- Complete market value requires a valid quote for every assigned holding. Complete cost basis requires a valid average entry price for every holding. Unrealized P/L remains unavailable unless both totals are complete.
+
 ## Visibility and account isolation
 
 The scheduler pauses while the document is hidden and performs a fresh role-scoped sync when the app becomes visible again. Changing account role replaces the previous role's timers. Session guards prevent late broker, cashflow, or guest responses from being applied to a different account. Automatic and manual operations use the same role-specific source boundaries.
