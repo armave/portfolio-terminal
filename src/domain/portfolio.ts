@@ -497,7 +497,7 @@ export interface BreakevenBalanceConstraint {
   netSaleProceeds: number;
 }
 
-/** Require the hypothetical post-sale account balance to stay above the breakeven floor. */
+/** Require the hypothetical post-sale account balance to stay at or above the breakeven floor. */
 function meetsBreakevenBalanceFloor(
   constraint: BreakevenBalanceConstraint | undefined,
   dailyRate: number,
