@@ -196,10 +196,12 @@ export function getMarketStatusCountdownParts(
   if (!normalized || !transitionAt) return null;
   const time = formatMarketCountdown(transitionAt.getTime() - now.getTime());
   const template = normalized === 'CLOSED'
-    ? 'Premarket in {time}'
+    ? 'Pre-market in {time}'
     : normalized === 'PREMARKET'
       ? 'Opens in {time}'
-      : 'Closes in {time}';
+      : normalized === 'POSTMARKET'
+        ? 'Session ends in {time}'
+        : 'Closes in {time}';
   return { label: translateText(template).replace('{time}', ''), time };
 }
 
