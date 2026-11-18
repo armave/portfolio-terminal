@@ -591,9 +591,10 @@ describe('cash holding model summaries and display groups', () => {
 describe('guest holding card compact presentation', () => {
   const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows the existing My Stocks heading without adding another portfolio-value summary', () => {
+  it('shows the My Stocks overview only when more than one distinct stock is present', () => {
     expect(source).toContain("guestUserId ? 'MY STOCKS'");
-    expect(source).not.toContain('Assigned portfolio market value');
+    expect(source).toContain('guestUserId && guestHoldings.length > 1 &&');
+    expect(source).toContain('<GuestPortfolioOverview holdings={guestHoldings} />');
     expect(source).toContain('Current market value');
   });
 
@@ -629,19 +630,27 @@ describe('guest holding card compact presentation', () => {
 });
 
 
-describe('guest portfolio trust and recovery UI', () => {
+describe('guest My Stocks presentation', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('renders the guest overview and places a full assigned-data refresh on the Balance header', () => {
-    expect(deskSource).toContain('<GuestPortfolioOverview');
-    expect(deskSource).toContain('<PortfolioSyncButton userId={guestUserId} />');
+  it('hides the overview for zero or one stock and keeps the guest stock cards visible', () => {
+    expect(deskSource).toContain('guestUserId && guestHoldings.length > 1 &&');
+    expect(deskSource).toContain('<GuestPortfolioOverview holdings={guestHoldings} />');
+    expect(deskSource).toContain('guestHoldings.length === 0');
+    expect(deskSource).toContain('guestHoldings.map((holding) =>');
+  });
+
+  it('removes the shared-scope panel, data-health panel and dedicated refresh action', () => {
+    expect(deskSource).not.toContain('<PortfolioSyncButton');
+    expect(deskSource).not.toContain("translateText('Refresh assigned data'");
+    expect(deskSource).not.toContain('guest-assigned-data-health');
     expect(deskSource).toContain("useCloudSyncStatus()");
   });
 
-  it('distinguishes a failed first load from a successfully loaded empty assignment snapshot', () => {
-    expect(deskSource).toContain("guestSyncStatus.status === 'error' ? 'Unable to load assigned holdings.'");
+  it('keeps a failed first load distinct from a confirmed empty My Stocks list', () => {
+    expect(deskSource).toContain("guestSyncStatus.status === 'error' ? 'Unable to load My Stocks.'");
     expect(deskSource).toContain("!state.guestPortfolioSnapshot");
-    expect(deskSource).toContain('No stocks are assigned to your account yet.');
+    expect(deskSource).toContain('You do not have any stocks yet.');
   });
 
   it('explains that analyst targets are third-party estimates', () => {
