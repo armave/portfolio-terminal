@@ -13,6 +13,13 @@ const vendorV4 = resolve(root, 'vendor/picomatch-v4');
 const dependencyRequire = (relativePackagePath: string) =>
   createRequire(resolve(root, relativePackagePath, 'package.json'));
 
+interface PicomatchUtils {
+  removeBackslashes(input: string): string;
+}
+
+const picomatchUtilsV2 = createRequire(resolve(vendorV2, 'package.json'))('./lib/utils.js') as PicomatchUtils;
+const picomatchUtilsV4 = createRequire(resolve(vendorV4, 'package.json'))('./lib/utils.js') as PicomatchUtils;
+
 describe('patched picomatch dependency resolution', () => {
   it('routes current v4 tooling to the source-attributed v4 backport', () => {
     expect(realpathSync(createRequire(resolve(root, 'package.json')).resolve('picomatch')))
