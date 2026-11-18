@@ -17,6 +17,11 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes the breakeven remaining-balance floor in Russian', () => {
+    expect(translateText('No breakeven date with remaining balance ≥ −$450', 'ru'))
+      .toBe('Нет даты безубыточности при остатке баланса не ниже −$450');
+  });
+
   it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
     const marginRiskCopy = [
       'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit', 'Equity ratio',
