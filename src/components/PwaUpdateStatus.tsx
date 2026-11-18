@@ -54,9 +54,11 @@ export function PwaUpdateStatus() {
         <p class={`mt-1 text-xs font-semibold ${statusTone}`} role="status" aria-live="polite">
           {translateText(statusCopy(snapshot.status), language)}
         </p>
-        <p class="mt-1 text-[11px] text-slate-500">
-          {translateText('Automatically checks every 30 minutes', language)}
-        </p>
+        {snapshot.status !== 'unsupported' && (snapshot.status !== 'error' || canCheckNow) && (
+          <p class="mt-1 text-[11px] text-slate-500">
+            {translateText('Automatically checks every 30 minutes', language)}
+          </p>
+        )}
         <p class="mt-0.5 text-[11px] text-slate-500">
           {snapshot.lastCheckedAt === null
             ? translateText('Not checked yet', language)
