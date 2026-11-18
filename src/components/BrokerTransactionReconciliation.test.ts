@@ -24,6 +24,19 @@ describe('broker reconciliation localization', () => {
     )).toContain('предварительными');
   });
 
+  it('localizes ambiguous broker cashflow matching evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Ambiguous broker cashflow match', 'ru'))
+      .toBe('Неоднозначное сопоставление денежного потока брокера');
+    expect(translateBrokerReconciliationCopy(
+      'More than one app-authored cashflow is an equally strong fallback match for this broker cashflow. No candidate was selected.',
+      'ru'
+    )).toContain('Ни одна запись не выбрана');
+    expect(translateBrokerReconciliationCopy(
+      'A broker cashflow has multiple equally strong app fallback candidates; manual review is required.',
+      'ru'
+    )).toContain('ручная проверка');
+  });
+
   it('localizes the unclassified cashflow explanation in Russian', () => {
     expect(translateBrokerReconciliationCopy(
       'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.',

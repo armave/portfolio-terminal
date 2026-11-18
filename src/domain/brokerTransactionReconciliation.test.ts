@@ -382,6 +382,67 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('leaves equally close app cashflow candidates ambiguous and independent of input order', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'ambiguous-fee-1', date: new Date(at).toISOString(), type: 'Fee',
+      amount: -5, currency: 'USD', description: 'Account fee', raw: {}
+    };
+    const appFee = (id: string) => createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at, currency: 'USD', fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: id, recordedAt: at });
+
+    for (const appEvents of [
+      [appFee('app-fee-a'), appFee('app-fee-b')],
+      [appFee('app-fee-b'), appFee('app-fee-a')]
+    ]) {
+      const report = reconcile([], appEvents, { brokerCashflows: [brokerCashflow] });
+      expect(report.status).toBe('partial');
+      expect(report.matchedCashflowCount).toBe(0);
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        type: 'cashflow_match_ambiguous',
+        confidence: 'provisional',
+        brokerReferences: ['ambiguous-fee-1'],
+        appEventIds: ['app-fee-a', 'app-fee-b']
+      }));
+      expect(report.findings.some(finding =>
+        finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker'
+      )).toBe(false);
+    }
+  });
+
+  it('does not pair a currency mismatch across dates outside the matching window', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'old-fee-usd', date: new Date(at).toISOString(), type: 'Fee',
+      amount: -5, currency: 'USD', description: 'Account fee', raw: {}
+    };
+    const appFee = createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at - 3 * 24 * 60 * 60 * 1000,
+      currency: 'EUR', fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'old-app-fee', recordedAt: at });
+
+    const report = reconcile([], [appFee], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'cashflow_missing_in_app', brokerReferences: ['old-fee-usd'] }),
+      expect.objectContaining({ type: 'cashflow_missing_in_broker', appEventIds: ['old-app-fee'] })
+    ]));
+    expect(report.findings.some(finding => finding.type === 'cashflow_currency_mismatch')).toBe(false);
+  });
+
+  it('does not treat a missing app cashflow amount as zero during currency comparison', () => {
+    const brokerCashflow: BrokerCashflow = {
+      id: 'zero-fee-usd', date: new Date(at).toISOString(), type: 'Fee',
+      amount: 0, currency: 'USD', description: 'Account fee', raw: {}
+    };
+    const appFeeWithoutAmount = createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at, currency: 'EUR'
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'fee-without-amount', recordedAt: at });
+
+    const report = reconcile([], [appFeeWithoutAmount], { brokerCashflows: [brokerCashflow] });
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings.some(finding => finding.type === 'cashflow_currency_mismatch')).toBe(false);
+  });
+
   it('reports cashflow currency mismatches without attempting FX conversion', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'fee-1', date: new Date(at).toISOString(), type: 'Fee',
