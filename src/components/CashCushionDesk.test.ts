@@ -237,8 +237,8 @@ describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
   it('places estimated dollar-volume badges beside the daily move in both Balance presentations', () => {
-    expect(deskSource).toContain('<QuoteVolumeBadge volume={holding.quoteDetails?.volume} price={price} currency={holding.quoteDetails?.currency} />');
-    expect(deskSource).toContain('<QuoteVolumeBadge volume={h.quoteDetails?.volume} price={price ?? undefined} currency={h.quoteDetails?.currency} />');
+    expect(deskSource).toContain('<QuoteVolumeBadge volume={holding.quoteDetails?.volume} volumeValue={holding.quoteDetails?.volumeValue} price={price} currency={holding.quoteDetails?.currency} />');
+    expect(deskSource).toContain('<QuoteVolumeBadge volume={h.quoteDetails?.volume} volumeValue={h.quoteDetails?.volumeValue} price={price ?? undefined} currency={h.quoteDetails?.currency} />');
     expect(deskSource).not.toContain('formatQuoteVolume');
     expect(deskSource).toContain('Number.isFinite(h.quoteDetails?.changePercent)');
     expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');

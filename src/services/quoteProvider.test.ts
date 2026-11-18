@@ -87,7 +87,7 @@ describe('fetchLivePriceFromProviders', () => {
         exchange: 'US',
         assetType: 'UNKNOWN',
         delayClass: 'live',
-        dataQuality: 'partial',
+        dataQuality: 'complete',
         freshness: 'fresh'
       }
     });

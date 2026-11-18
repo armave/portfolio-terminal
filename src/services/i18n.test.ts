@@ -251,8 +251,11 @@ describe('app localization', () => {
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
     expect(translateText('Vol.', 'ru')).toBe('Объём');
-    expect(translateText('Estimated dollar volume: provider-reported volume multiplied by the current USD price. Reporting period may vary by source.', 'ru'))
-      .toContain('Расчётный объём в USD');
+    expect(translateText('Daily volume', 'ru')).toBe('Дневной объём торгов');
+    expect(translateText('Estimated daily volume', 'ru')).toBe('Расчётный дневной объём торгов');
+    expect(translateText('Daily volume reported by the data provider in USD.', 'ru')).toContain('USD');
+    expect(translateText('Estimated daily volume: share volume multiplied by the latest USD share price. Use as an approximation; it is not provider-reported traded value.', 'ru'))
+      .toContain('Расчётный дневной объём');
     expect(translateText('upside to target', 'ru')).toBe('рост до целевой цены');
     expect(translateText('below current price', 'ru')).toBe('ниже текущей цены');
     expect(translateText('At current price', 'ru')).toBe('на уровне текущей цены');
