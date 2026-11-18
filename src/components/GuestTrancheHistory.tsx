@@ -7,6 +7,7 @@ import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
 import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
+import { getHistoryDateRangeForPreset, type HistoryDatePreset } from '../ui/historyDateRange';
 
 interface GuestTrancheHistoryProps {
   records: GuestTrancheLedgerRecord[];
@@ -26,11 +27,32 @@ const STATUS_LABELS: Record<GuestTrancheLedgerStatus, string> = {
   unassigned: 'Removed'
 };
 
+const DATE_RANGE_PRESETS: { value: HistoryDatePreset; label: string }[] = [
+  { value: 'all', label: 'All time' },
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
+  { value: 'month', label: 'This month' }
+];
+
 export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHistoryProps) {
   const [tickerFilter, setTickerFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | GuestTrancheLedgerStatus>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [datePreset, setDatePreset] = useState<HistoryDatePreset | 'custom'>('all');
+
+  const applyDatePreset = (preset: HistoryDatePreset) => {
+    const range = getHistoryDateRangeForPreset(preset);
+    setFromDate(range.fromDate);
+    setToDate(range.toDate);
+    setDatePreset(preset);
+  };
+  const updateCustomDateRange = (nextFromDate: string, nextToDate: string) => {
+    setFromDate(nextFromDate);
+    setToDate(nextToDate);
+    setDatePreset(nextFromDate || nextToDate ? 'custom' : 'all');
+  };
 
   const filteredRecords = useMemo(() => filterGuestTrancheLedger(records, {
     ticker: tickerFilter,
@@ -53,7 +75,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     <section id="guestTrancheHistory" class="desk-page-content min-w-0 space-y-4"
       aria-labelledby="guestTrancheHistoryHeading">
       <DeskPageHeader
-        title={translateText('My Stocks', getAppLanguage())}
+        title={translateText('History', getAppLanguage())}
         description={translateText('Your stocks, purchases, and completed trades in one place.', getAppLanguage())}
         titleId="guestTrancheHistoryHeading"
         trailing={
@@ -81,32 +103,53 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           <p class="mt-1 font-mono text-lg font-bold text-cyan-300">{summary.pricedOpenTranches + summary.unpricedOpenTranches > 0 ? marketValueLabel : '—'}</p>
         </div>
       </div>
-      <div class="flex flex-wrap items-end gap-2">
-        <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Ticker
-          <input type="search" value={tickerFilter} onInput={(event) => setTickerFilter((event.currentTarget as HTMLInputElement).value)}
-            placeholder="All tickers" class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
-        </label>
-        <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Status
-          <select value={statusFilter} onChange={(event) => setStatusFilter((event.currentTarget as HTMLSelectElement).value as typeof statusFilter)}
-            class="min-h-11 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
-            <option value="all" class="text-center">All statuses</option>
-            <option value="active" class="text-center">Active</option>
-            <option value="closed" class="text-center">Closed</option>
-            <option value="unassigned" class="text-center">Removed</option>
-          </select>
-        </label>
-        <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Date from
-          <input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate((event.currentTarget as HTMLInputElement).value)}
-            class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
-        </label>
-        <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Date to
-          <input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate((event.currentTarget as HTMLInputElement).value)}
-            class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
-        </label>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end">
+          <label class="flex min-w-0 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem] sm:flex-1">
+            Ticker
+            <input type="search" value={tickerFilter} onInput={(event) => setTickerFilter((event.currentTarget as HTMLInputElement).value)}
+              placeholder="All tickers" class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem] sm:flex-1">
+            Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter((event.currentTarget as HTMLSelectElement).value as typeof statusFilter)}
+              class="min-h-11 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
+              <option value="all" class="text-center">All statuses</option>
+              <option value="active" class="text-center">Active</option>
+              <option value="closed" class="text-center">Closed</option>
+              <option value="unassigned" class="text-center">Removed</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="space-y-2">
+          <span class="block text-[9px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Date range', getAppLanguage())}</span>
+          <div class="guest-history-date-presets" role="group" aria-label={translateText('Date range', getAppLanguage())}>
+            {DATE_RANGE_PRESETS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={datePreset === value}
+                class={'guest-history-date-preset' + (datePreset === value ? ' guest-history-date-preset--active' : '')}
+                onClick={() => applyDatePreset(value)}
+              >
+                {translateText(label, getAppLanguage())}
+              </button>
+            ))}
+          </div>
+          <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <label class="flex min-w-0 flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem]">
+              {translateText('Date from', getAppLanguage())}
+              <input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => updateCustomDateRange((event.currentTarget as HTMLInputElement).value, toDate)}
+                class="min-h-11 w-full rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
+            </label>
+            <label class="flex min-w-0 flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem]">
+              {translateText('Date to', getAppLanguage())}
+              <input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => updateCustomDateRange(fromDate, (event.currentTarget as HTMLInputElement).value)}
+                class="min-h-11 w-full rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
+            </label>
+          </div>
+        </div>
       </div>
 
       {records.length === 0 ? (
@@ -118,9 +161,9 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">{translateText('No stocks match these filters.', getAppLanguage())}</p>
       ) : (
         <>
-        <TableScrollRegion label={translateText('My stocks history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
+        <TableScrollRegion label={translateText('Stock history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
           <table class="guest-assignment-history-table w-full border-collapse text-left text-xs">
-            <caption class="sr-only">My stocks history table</caption>
+            <caption class="sr-only">Stock history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
                 <th scope="col" class="px-2 py-2">Date</th>
@@ -204,7 +247,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           </table>
         </TableScrollRegion>
         <TablePagination
-          tableLabel={translateText('My stocks history table', getAppLanguage())}
+          tableLabel={translateText('Stock history table', getAppLanguage())}
           page={pagination.currentPage}
           pageCount={pagination.pageCount}
           pageSize={pagination.pageSize}

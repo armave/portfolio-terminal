@@ -1622,8 +1622,8 @@ try {
 
   await page.locator('#tickerTabs [data-nav-kind="lots"]').click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'My Stocks history desk');
-  await assertResponsiveSurface(page, '#guestHistoryContainer', 'My Stocks history desk');
+  await assertVisibleControlsHaveNames(page, 'History desk');
+  await assertResponsiveSurface(page, '#guestHistoryContainer', 'History desk');
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });

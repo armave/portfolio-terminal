@@ -11,7 +11,7 @@ describe('workspace destination ordering', () => {
       .toEqual(['COMBINED', 'AAPL', 'MSFT', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
   });
 
-  it('keeps guest destinations limited to Balance, assigned LOTS history, and Settings', () => {
+  it('keeps guest destinations limited to Balance, History, and Settings', () => {
     expect(getWorkspaceNavigationViews(['AAPL'], false, true))
       .toEqual(['BALANCE', 'GUEST_HISTORY', 'SETTINGS']);
     expect(getWorkspaceNavigationViews(['AAPL'], false, false))

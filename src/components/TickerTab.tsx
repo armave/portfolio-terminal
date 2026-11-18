@@ -185,7 +185,7 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onClick={() => selectView('GUEST_HISTORY')}
-          aria-label={translateText('My Stocks', getAppLanguage())}
+          aria-label={translateText('History', getAppLanguage())}
           aria-pressed={isGuestHistoryActive}
           class={workspaceNavigationButtonClass(isGuestHistoryActive)}
           data-nav-tab="true"
@@ -193,10 +193,10 @@ export const TickerTabs = memo(function TickerTabs({
           data-nav-index={guestHistoryNavIndex}
           ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
-          title={translateText('My Stocks', getAppLanguage())}
+          title={translateText('History', getAppLanguage())}
         >
           <WorkspaceNavigationIcon name="lots" />
-          <span class="workspace-nav-button__label">{translateText('My Stocks', getAppLanguage())}</span>
+          <span class="workspace-nav-button__label">{translateText('History', getAppLanguage())}</span>
         </button>
       )}
 

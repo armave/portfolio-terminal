@@ -451,7 +451,7 @@ describe('app localization', () => {
     setAppLanguage('ru');
     const region = h('div', {
       role: 'region',
-      'aria-label': 'My stocks history table',
+      'aria-label': 'Stock history table',
       tabindex: 0
     });
     expect(region.props.role).toBe('region');
@@ -955,15 +955,20 @@ describe('Margin PT target information localization', () => {
     expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
   });
 
-  it('localizes My Stocks overview and history copy in Russian', () => {
-    expect(translateText('My Stocks', 'ru')).toBe('Мои акции');
+  it('localizes the History destination, date filters and My Stocks overview in Russian', () => {
+    expect(translateText('History', 'ru')).toBe('История');
+    expect(translateText('Stock history table', 'ru')).toBe('Таблица истории акций');
+    const dateRangeLabels = ['Date range', 'All time', '7 days', '30 days', '90 days', 'This month'];
+    for (const label of dateRangeLabels) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
     expect(translateText('My stocks overview', 'ru')).toBe('Обзор моих акций');
     expect(translateText('Market value', 'ru')).toBe('Рыночная стоимость');
     expect(translateText('Cost basis', 'ru')).toBe('Себестоимость');
     expect(translateText('Stocks', 'ru')).toBe('Акции');
     expect(translateText('priced stocks', 'ru')).toBe('акций с котировками');
     expect(translateText('Unpriced stocks', 'ru')).toBe('Акции без котировки');
-    expect(translateText('My stocks history table', 'ru')).toBe('Таблица истории моих акций');
+    expect(translateText('Stock history table', 'ru')).toBe('Таблица истории акций');
     expect(translateText('No stock history yet.', 'ru')).toBe('История акций пока отсутствует.');
     expect(translateText('No stocks match these filters.', 'ru')).toBe('Нет акций, соответствующих выбранным фильтрам.');
     expect(translateText('You do not have any stocks yet.', 'ru')).toBe('У вас пока нет акций.');

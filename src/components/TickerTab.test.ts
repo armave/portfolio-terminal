@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getWorkspaceNavigationViews } from '../ui/tabNavigation';
 
 const tickerTabSource = readFileSync(new URL('./TickerTab.tsx', import.meta.url), 'utf8');
+const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
 describe('standardized workspace navigation controls', () => {
   it('uses one shared icon, label, touch target and active-state contract for every destination', () => {
@@ -18,7 +19,7 @@ describe('standardized workspace navigation controls', () => {
     expect(tickerTabSource).toContain('aria-pressed={isCushionActive}');
   });
 
-  it('keeps Margin destinations exclusive to admins while guests retain Balance, My Stocks and Settings', () => {
+  it('keeps Margin destinations exclusive to admins while guests retain Balance, History and Settings', () => {
     expect(getWorkspaceNavigationViews(['AAPL'], false, true))
       .toEqual(['BALANCE', 'GUEST_HISTORY', 'SETTINGS']);
     expect(getWorkspaceNavigationViews(['AAPL'], false, false))
@@ -26,7 +27,15 @@ describe('standardized workspace navigation controls', () => {
     expect(tickerTabSource).toContain('{isAdmin && tickers.length === 1 &&');
     expect(tickerTabSource).toContain('{isAdmin && tickers.length > 1 &&');
     expect(tickerTabSource).toContain('{canViewGuestHistory && (');
-    expect(tickerTabSource).toContain("translateText('My Stocks', getAppLanguage())");
+    expect(tickerTabSource).toContain("translateText('History', getAppLanguage())");
+  });
+
+  it('preserves selected, pressed, focus and touch feedback in the mobile navigation dock', () => {
+    expect(stylesheet).toContain('.workspace-nav-button[aria-pressed="true"]');
+    expect(stylesheet).toContain('.workspace-nav-button:active');
+    expect(stylesheet).toContain('.workspace-nav-button:focus-visible');
+    expect(stylesheet).toContain('@media (hover: hover) and (pointer: fine)');
+    expect(stylesheet).not.toContain('#tickerTabs button,');
   });
 
   it('does not expose a dedicated guest refresh-assigned-data control', () => {

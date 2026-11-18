@@ -63,6 +63,15 @@ describe('standard non-Margin page layout', () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*639px\)\s*\{\s*\.desk-page-header__trailing\s*\{[^}]*width:\s*100%;/s);
   });
 
+  it('hides page title and subtitle visually on mobile while retaining the semantic heading', () => {
+    expect(headerSource).toContain('<h1 id={titleId} class="desk-page-header__title');
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('.desk-page-header__copy');
+    expect(styles).toContain('clip: rect(0, 0, 0, 0)');
+    expect(styles).toContain('clip-path: inset(50%)');
+    expect(styles).toContain('width: auto;');
+  });
+
   it('localizes new desk page headings and descriptions in Russian', () => {
     for (const label of [
       'MY STOCKS', 'CASH & NON-MARGIN HOLDINGS', 'LOTS',
