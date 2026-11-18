@@ -53,8 +53,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     <section id="guestTrancheHistory" class="desk-page-content min-w-0 space-y-4"
       aria-labelledby="guestTrancheHistoryHeading">
       <DeskPageHeader
-        title={translateText('LOTS', getAppLanguage())}
-        description={translateText('Your cash-funded purchase allocations, including completed and removed assignments', getAppLanguage())}
+        title={translateText('Assignment History', getAppLanguage())}
+        description={translateText('Review assigned cash-funded purchases and completed or removed assignments.', getAppLanguage())}
         titleId="guestTrancheHistoryHeading"
         trailing={
           <span class="text-xs tabular-nums text-slate-400">
@@ -110,15 +110,16 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
       </div>
 
       {records.length === 0 ? (
-        <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">
-          Assignment history will appear here after the administrator's next successful portfolio sync. Only assignments created before this history feature and still open can be backfilled.
-        </p>
+        <div class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">
+          <p class="font-semibold text-slate-300">{translateText('No assignment history is available yet.', getAppLanguage())}</p>
+          <p class="mt-2 leading-relaxed">{translateText('It will appear after the administrator publishes your next successful portfolio update. Earlier assignments may not be recoverable.', getAppLanguage())}</p>
+        </div>
       ) : filteredRecords.length === 0 ? (
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
         <>
-        <TableScrollRegion label="Guest assignment history table" className="table-scroll-wrapper" focusClassName="focus-visible:outline-indigo-400">
-          <table class="w-full min-w-[960px] border-collapse text-left text-xs">
+        <TableScrollRegion label={translateText('Guest assignment history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
+          <table class="guest-assignment-history-table w-full border-collapse text-left text-xs">
             <caption class="sr-only">Guest assignment history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
@@ -174,18 +175,18 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                   : null;
                 return (
                   <tr key={grouped.map((item) => item.assignmentId).join('|')} class="hover:bg-slate-900/60">
-                    <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(group.operationAt)}</td>
-                    <td class="px-2 py-2 text-slate-400">{isClosedTrade ? 'Trade' : 'Tranche'}</td>
-                    <td class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{averagePrice !== null ? formatUSD(averagePrice) : '—'}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null ? formatUSD(value) : '—'}</td>
-                    <td class={`px-2 py-2 text-right tabular-nums ${netProfit === null ? 'text-slate-500' : netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    <td data-label={translateText('Date', getAppLanguage())} class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(group.operationAt)}</td>
+                    <td data-label={translateText('Source', getAppLanguage())} class="px-2 py-2 text-slate-400">{isClosedTrade ? translateText('Trade', getAppLanguage()) : translateText('Tranche', getAppLanguage())}</td>
+                    <td data-label={translateText('Ticker', getAppLanguage())} class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
+                    <td data-label={translateText('Assigned shares', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-200">{assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td data-label={translateText('Remaining shares', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-200">{openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td data-label={translateText('Average cost', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-300">{averagePrice !== null ? formatUSD(averagePrice) : '—'}</td>
+                    <td data-label={translateText('Value', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null ? formatUSD(value) : '—'}</td>
+                    <td data-label={translateText('Net P&L', getAppLanguage())} class={`px-2 py-2 text-right tabular-nums ${netProfit === null ? 'text-slate-500' : netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
                       {netProfit !== null ? formatUSD(netProfit) : '—'}
                     </td>
-                    <td class="px-2 py-2 text-right">
-                      <span class={statusClass}>{statusLabel}</span>
+                    <td data-label={translateText('Status', getAppLanguage())} class="px-2 py-2 text-right">
+                      <span class={statusClass}>{translateText(statusLabel, getAppLanguage())}</span>
                     </td>
                   </tr>
                 );
