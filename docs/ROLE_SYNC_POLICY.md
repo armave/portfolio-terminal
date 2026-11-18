@@ -20,13 +20,13 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 - Guests never request administrator broker balances, executions, orders, the admin Closed History record, or the administrator's shared portfolio cloud record. Their assigned holdings and history remain scoped to their authenticated guest account.
 
 
-## Guest-facing freshness semantics
+## Guest My Stocks presentation
 
-- The guest Balance view shows a read-only scope notice and includes only the current guest's assigned cash-funded holdings.
-- The guest projection keeps three distinct timestamps: `updatedAt` is the administrator publication time for holdings, `ledgerUpdatedAt` is the assignment-history publication time, and `fetchedAt` is when this guest's browser last successfully received the snapshot. Do not label these timestamps interchangeably.
-- Quote freshness uses provider observation timestamps and provider quality classifications where available. Client receipt time alone must not promote a quote to fresh.
-- If a refresh fails, the previously accepted guest snapshot remains visible and is explicitly marked as last successfully loaded. A missing first snapshot must not be presented as a confirmed empty assignment list.
-- Complete market value requires a valid quote for every assigned holding. Complete cost basis requires a valid average entry price for every holding. Unrealized P/L remains unavailable unless both totals are complete.
+- The guest Balance desk is titled **My Stocks** and shows only the stock cards contained in that guest's server-scoped cash-funded holdings projection.
+- The compact My Stocks overview is shown only when the guest has more than one distinct active ticker. With one stock, the individual stock card is the primary view; with no stocks, the empty state is shown without a summary.
+- The overview contains market value, cost basis, unrealized P/L and stock count. Complete market value requires a valid quote for every stock; complete cost basis requires a valid average entry price for every stock. Unrealized P/L remains unavailable unless both totals are complete.
+- The guest Balance desk does not show a shared-portfolio scope notice, a separate data-health panel, or a dedicated refresh action. Automatic guest quote and projection refresh schedules remain unchanged.
+- Individual stock cards continue to display quote source and available provider quote context. Receipt time alone must not be used to promote an unknown or stale provider quote to fresh.
 
 ## Visibility and account isolation
 
