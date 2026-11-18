@@ -40,7 +40,7 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS,
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
-import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getMarketInsightsTicker, getPortfolioNetSaleProceeds, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { DEFAULT_PORTFOLIO_SETTINGS, normalizePortfolioSettings } from './src/domain/portfolioSettings';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
@@ -1009,7 +1009,6 @@ function updateCombinedBreakeven() {
   let totalGrossTarget = 0;
   let totalInvested = 0;
   let totalComms = 0;
-  let totalNetSaleProceeds = 0;
   let totalMarginCharged = state.realizedMarginCharged || 0;
 
   tickers.forEach(t => {
@@ -1034,6 +1033,7 @@ function updateCombinedBreakeven() {
   totalMarginCharged += openMarginCharged;
 
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
+  const totalNetSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES);
   const balanceConstraint = {
     signedBalance: Number(state.balance),
     freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
