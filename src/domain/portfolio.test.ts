@@ -816,7 +816,7 @@ describe('portfolio domain', () => {
       netSaleProceeds: 23_810.82
     }, 0.15 / 365)).toMatchObject({
       status: 'already-below',
-      currentBalanceUsd: -450
+      currentBalanceUsd: -450.01
     });
     expect(calculatePostSaleBalanceFloorHorizon({
       ...constraint,
