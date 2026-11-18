@@ -581,6 +581,49 @@ function todayIso(): string {
 }
 
 /**
+ * Keep the last known provider turnover when a later q tick omits daily
+ * volume fields. Do not carry a previous session's turnover into a new day.
+ */
+function mergeLiveTurnoverDetails(
+  previous: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown>
+): Record<string, unknown> {
+  if (!previous) return incoming;
+
+  const previousServerDate = typeof previous.serverTime === 'string'
+    ? /^(\d{4}-\d{2}-\d{2})/.exec(previous.serverTime.trim())?.[1]
+    : undefined;
+  const incomingServerDate = typeof incoming.serverTime === 'string'
+    ? /^(\d{4}-\d{2}-\d{2})/.exec(incoming.serverTime.trim())?.[1]
+    : undefined;
+  if (previousServerDate && incomingServerDate && previousServerDate !== incomingServerDate) {
+    return incoming;
+  }
+
+  const previousCurrency = typeof previous.currency === 'string' ? previous.currency : '';
+  const incomingCurrency = typeof incoming.currency === 'string' ? incoming.currency : '';
+  const hasPreviousTurnover = previous.volumeValue !== null && previous.volumeValue !== undefined &&
+    previousCurrency !== '';
+  const hasIncomingTurnover = incoming.volumeValue !== null && incoming.volumeValue !== undefined;
+
+  if (hasIncomingTurnover) {
+    return !incomingCurrency && previousCurrency
+      ? { ...incoming, currency: previousCurrency }
+      : incoming;
+  }
+  if (!hasPreviousTurnover || (incomingCurrency && incomingCurrency !== previousCurrency)) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    volumeValue: previous.volumeValue,
+    currency: incomingCurrency || previousCurrency,
+    ...(incoming.lastTradeTime ? {} : previous.lastTradeTime ? { lastTradeTime: previous.lastTradeTime } : {})
+  };
+}
+
+/**
  * Preserve the last known daily move when a live tick omits change fields.
  * Recalculate it against the prior quote's implied previous close so the move
  * follows the latest price. Freshness and timestamps always come from the
@@ -594,7 +637,7 @@ function mergeLiveQuoteDetails(
 ): Record<string, unknown> | undefined {
   if (!incoming) return previous;
 
-  const next = { ...incoming };
+  const next = mergeLiveTurnoverDetails(previous, incoming);
   const incomingChange = Number(incoming.change);
   const incomingChangePercent = Number(incoming.changePercent);
   const hasIncomingChange =
