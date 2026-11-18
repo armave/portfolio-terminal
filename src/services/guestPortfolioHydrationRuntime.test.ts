@@ -23,6 +23,7 @@ function createFixture(options: {
   snapshot?: GuestPortfolioSnapshot;
   currentCashHoldings?: PortfolioState['cashCushion']['holdings'];
   missingIdentityGeneration?: boolean;
+  now?: number;
 } = {}) {
   let session: GuestPortfolioSessionIdentity = options.session ?? {
     role: 'guest',
@@ -39,7 +40,8 @@ function createFixture(options: {
     getActiveView: vi.fn(() => options.currentView ?? 'BALANCE'),
     getCurrentCashHoldings: vi.fn(() => options.currentCashHoldings ?? []),
     createCleanWorkspaceState: vi.fn(() => createBlankPortfolioState(100)),
-    importGuestWorkspace: vi.fn()
+    importGuestWorkspace: vi.fn(),
+    now: vi.fn(() => options.now ?? 12345)
   } satisfies GuestPortfolioHydrationRuntimeDependencies;
 
   return {
@@ -80,7 +82,7 @@ describe('guest portfolio hydration runtime', () => {
       activeTrancheGuestAssignments: {},
       activeTrancheTypes: {},
       activeTrancheMixes: {},
-      guestPortfolioSnapshot: { updatedAt: 42, tranches: [] },
+      guestPortfolioSnapshot: { updatedAt: 42, ledgerUpdatedAt: 42, fetchedAt: 12345, tranches: [] },
       guestTrancheLedger: [],
       brokerAccountInfo: undefined,
       brokerExecutedTrades: [],
