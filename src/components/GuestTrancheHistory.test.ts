@@ -8,7 +8,9 @@ describe('guest History presentation', () => {
   it('uses History terminology and keeps the history table semantically labelled', () => {
     expect(historySource).toContain("translateText('History', getAppLanguage())");
     expect(historySource).toContain("translateText('Closed assignments', getAppLanguage())");
-    expect(historySource).toContain("translateText('Closed assignment', getAppLanguage())");
+    expect(historySource).toContain("closed: 'Closed assignment'");
+    expect(historySource).toContain("active: 'Active assignment'");
+    expect(historySource).toContain("translateText(statusLabel, getAppLanguage())");
     expect(historySource).toContain("translateText('Open cost basis', getAppLanguage())");
     expect(historySource).toContain("translateText('Open market value', getAppLanguage())");
     expect(historySource).toContain("translateText('Date', getAppLanguage())");
