@@ -196,6 +196,14 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
     expect(source).not.toContain('if (brokerTradesLoading || !cashflowHistoryReady');
     expect(source).toContain('const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;');
+    expect(source).toContain('createFreedomMarginFeeAllocationInputKey(');
+    expect(source).toContain('const allocationInputKey =');
+    const allocationEffect = source.slice(
+      source.indexOf('const allocationInputKey ='),
+      source.indexOf('const processCashflowRows')
+    );
+    expect(allocationEffect).toContain('}, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);');
+    expect(allocationEffect).not.toContain('state.positions,');
     expect(source).toContain('role="status"');
     expect(source).toContain('animate-spin');
     expect(source).toContain('strokeDasharray="24 14"');
