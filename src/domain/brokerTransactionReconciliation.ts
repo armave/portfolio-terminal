@@ -882,6 +882,7 @@ export function reconcileBrokerActivity(
       const saleIndex = candidates[0];
       const sale = legacyClosedSales[saleIndex];
       const reverseCandidates = [...unmatchedBroker].filter(candidateIndex => {
+        if (ambiguousBrokerIndices.has(candidateIndex)) return false;
         const candidate = uniqueBrokerRows[candidateIndex];
         return candidate.side === 'sell' && candidate.at !== null && candidate.price !== null &&
           candidate.ticker === sale.ticker && legacySaleTimeMatches(candidate, sale) &&

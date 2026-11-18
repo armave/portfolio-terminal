@@ -97,6 +97,99 @@ describe('reconcileBrokerActivity', () => {
     }
   });
 
+  it('keeps equally plausible broker executions competing for one app event ambiguous in either input order', () => {
+    const first = execution({ id: 'exec-a' });
+    const second = execution({ id: 'exec-b' });
+    const app = appEvent('trade.buy');
+
+    const reports = [
+      reconcile([first, second], [app]),
+      reconcile([second, first], [app])
+    ];
+    for (const report of reports) {
+      expect(report.status).toBe('partial');
+      expect(report.matchedExecutionCount).toBe(0);
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        type: 'execution_match_ambiguous',
+        confidence: 'provisional',
+        brokerReferences: ['exec-a', 'exec-b'],
+        appEventIds: ['app-trade.buy']
+      }));
+      expect(report.findings.some(finding =>
+        finding.type === 'execution_missing_in_app' || finding.type === 'execution_missing_in_broker'
+      )).toBe(false);
+    }
+    expect(reports[0].findings.map(finding => finding.id).sort())
+      .toEqual(reports[1].findings.map(finding => finding.id).sort());
+  });
+
+  it('uses an exact provider execution reference to resolve otherwise competing broker rows', () => {
+    const app = appEvent('trade.buy', { externalReferenceId: 'exec-a' });
+    const report = reconcile([
+      execution({ id: 'exec-b' }),
+      execution({ id: 'exec-a' })
+    ], [app]);
+
+    expect(report.matchedExecutionCount).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      brokerReferences: ['exec-b']
+    }));
+    expect(report.findings.some(finding => finding.type === 'execution_match_ambiguous')).toBe(false);
+  });
+
+  it('does not use a timestamp-free broker row for fallback matching without a stable execution reference', () => {
+    const report = reconcile(
+      [execution({ id: '', executedAt: null })],
+      [appEvent('trade.buy')]
+    );
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app',
+      confidence: 'provisional'
+    }));
+  });
+
+  it('surfaces missing execution values instead of treating them as verified matches', () => {
+    const broker = execution({
+      id: 'exec-incomplete',
+      price: null,
+      commission: null,
+      currency: '',
+      executedAt: null
+    });
+    const app = appEvent('trade.buy', {
+      externalReferenceId: 'exec-incomplete',
+      unitPrice: null,
+      fees: undefined,
+      currency: ''
+    });
+    const report = reconcile([broker], [app]);
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedExecutionCount).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_data_incomplete',
+      confidence: 'provisional',
+      brokerReferences: ['exec-incomplete'],
+      appEventIds: ['app-trade.buy'],
+      missingFields: expect.arrayContaining([
+        'Broker execution price',
+        'App execution price',
+        'Broker execution timestamp',
+        'Broker execution currency',
+        'App transaction currency',
+        'Broker execution commission',
+        'App transaction commission'
+      ])
+    }));
+    expect(report.findings.some(finding =>
+      finding.type === 'execution_price_mismatch' || finding.type === 'execution_fee_mismatch'
+    )).toBe(false);
+  });
+
   it('reports commission differences without converting currencies or changing inputs', () => {
     const broker = execution({ commission: 1.5 });
     const app = appEvent('trade.buy');

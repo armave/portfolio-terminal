@@ -41,6 +41,28 @@ describe('broker reconciliation localization', () => {
     )).toContain('предварительное');
   });
 
+  it('localizes incomplete execution evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy('Execution evidence incomplete', 'ru'))
+      .toBe('Недостаточно данных для проверки исполнения');
+    expect(translateBrokerReconciliationCopy('Missing execution evidence', 'ru'))
+      .toBe('Отсутствуют данные исполнения');
+    for (const field of [
+      'Broker execution price',
+      'App execution price',
+      'Broker execution timestamp',
+      'Broker execution currency',
+      'App transaction currency',
+      'Broker execution commission',
+      'App transaction commission'
+    ]) {
+      expect(translateBrokerReconciliationCopy(field, 'ru'), field).not.toBe(field);
+    }
+    expect(translateBrokerReconciliationCopy(
+      'The matched execution is missing one or more source values needed for a complete comparison. Missing values were not treated as zero.',
+      'ru'
+    )).toContain('не считались нулевыми');
+  });
+
   it('localizes the unclassified cashflow explanation in Russian', () => {
     expect(translateBrokerReconciliationCopy(
       'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.',

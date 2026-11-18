@@ -85,6 +85,15 @@ const RU_COPY: Record<string, string> = {
   'Duplicate broker execution': 'Дублирующееся исполнение брокера',
   'Broker execution revision conflict': 'Конфликт версий исполнения брокера',
   'Ambiguous broker order match': 'Неоднозначное совпадение ордера брокера',
+  'Execution evidence incomplete': 'Недостаточно данных для проверки исполнения',
+  'Missing execution evidence': 'Отсутствуют данные исполнения',
+  'Broker execution price': 'Цена исполнения брокера',
+  'App execution price': 'Цена исполнения приложения',
+  'Broker execution timestamp': 'Время исполнения брокера',
+  'Broker execution currency': 'Валюта исполнения брокера',
+  'App transaction currency': 'Валюта транзакции приложения',
+  'Broker execution commission': 'Комиссия исполнения брокера',
+  'App transaction commission': 'Комиссия транзакции приложения',
   'Unclassified broker execution': 'Нераспознанное исполнение брокера',
   'Duplicate broker cashflow': 'Дублирующийся денежный поток брокера',
   'Broker cashflow revision conflict': 'Конфликт версий денежного потока брокера',
@@ -140,6 +149,8 @@ const RU_COPY: Record<string, string> = {
   'One or more broker cashflow IDs have conflicting revisions; affected records were excluded from matching.': 'Некоторые идентификаторы денежных потоков содержат конфликтующие версии; такие записи исключены из сверки.',
   'No corresponding app-authored trade was found in the available transaction journal.': 'В доступном журнале транзакций не найдена соответствующая сделка приложения.',
   'No corresponding broker execution was found in the available provider history.': 'В доступной истории провайдера не найдено соответствующее исполнение брокера.',
+  'The matched execution is missing one or more source values needed for a complete comparison. Missing values were not treated as zero.': 'Для полной проверки исполнения отсутствует одно или несколько исходных значений. Отсутствующие значения не считались нулевыми.',
+  'One or more matched executions lack verifiable price, commission, currency or timestamp evidence; affected comparisons are provisional.': 'Для некоторых сопоставленных исполнений отсутствуют проверяемые цена, комиссия, валюта или время; такие сравнения предварительные.',
   'The broker fill quantity differs from the app transaction quantity.': 'Количество исполнения брокера отличается от количества в транзакции приложения.',
   'The broker execution price differs from the app transaction price.': 'Цена исполнения брокера отличается от цены транзакции приложения.',
   'The broker commission differs from the app-recorded transaction fee.': 'Комиссия брокера отличается от комиссии, записанной в приложении.',
@@ -420,6 +431,7 @@ const FINDING_LABELS: Record<string, string> = {
   duplicate_broker_execution: 'Duplicate broker execution',
   execution_revision_conflict: 'Broker execution revision conflict',
   execution_match_ambiguous: 'Ambiguous broker order match',
+  execution_data_incomplete: 'Execution evidence incomplete',
   execution_unclassified: 'Unclassified broker execution',
   duplicate_broker_cashflow: 'Duplicate broker cashflow',
   cashflow_revision_conflict: 'Broker cashflow revision conflict',
@@ -684,6 +696,11 @@ export function BrokerTransactionReconciliation({
                 </span>
               </div>
               <p class="mt-1 text-slate-400">{translateBrokerReconciliationCopy(finding.explanation)}</p>
+              {finding.missingFields && finding.missingFields.length > 0 && (
+                <p class="mt-1 text-amber-300">
+                  {translateBrokerReconciliationCopy('Missing execution evidence')}: {finding.missingFields.map(field => translateBrokerReconciliationCopy(field)).join(', ')}
+                </p>
+              )}
               <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
                 <span>{translateBrokerReconciliationCopy('Broker')}: {formatValue(finding.brokerValue, finding.currency)}</span>
                 <span>{translateBrokerReconciliationCopy('App')}: {formatValue(finding.appValue, finding.currency)}</span>
