@@ -5,12 +5,10 @@ import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
-  calculateCommission,
   calculatePostSaleBalanceFloorHorizon,
   resolveCommissionConfig,
   calculateProjectedDebt,
   calculateMarginInterest,
-  collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
   MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
@@ -876,10 +874,6 @@ async function resetToBlankState(): Promise<void> {
     );
     logAppMessage(`[KV Cloud Error]: Closed history reset failed: ${detail}`);
   }
-}
-
-function calcCommission(shares: number, totalVal: number) {
-  return calculateCommission(shares, totalVal, resolveCommissionConfig(TRADERNET_RULES));
 }
 
 function getDailyRate() {
