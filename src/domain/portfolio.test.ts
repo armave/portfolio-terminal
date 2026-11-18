@@ -801,6 +801,12 @@ describe('portfolio domain', () => {
       minimumRemainingBalanceUsd: -450
     };
 
+    expect(calculateProjectedAccountBalanceAfterSale(
+      -24_260.83, 0, 24_760.16, 0.15 / 365, 63
+    )).toBe(-136.85);
+    expect(calculateProjectedAccountBalanceAfterSale(
+      -24_260.83, 0, 24_760.16, 0.15 / 365, 93
+    )).toBe(-445.63);
     expect(calculatePostSaleBalanceFloorHorizon(constraint, 0.15 / 365)).toEqual({
       status: 'breach',
       currentBalanceUsd: 499.33,
