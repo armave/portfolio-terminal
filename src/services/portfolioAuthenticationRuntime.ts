@@ -101,7 +101,7 @@ export function createPortfolioAuthenticationRuntime(
     } catch (error) {
       // A failed authentication transition must not leave the previous account's
       // scheduler permanently paused. Failed pulls release from the finally above.
-      dependencies.completeWorkspaceSync();
+      completeWorkspaceSync();
       throw error;
     }
   };
