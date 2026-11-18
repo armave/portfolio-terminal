@@ -443,7 +443,13 @@ describe('app localization', () => {
     expect(translateText('Market Pre-market', 'ru')).toBe('До открытия рынка');
     expect(translateText('Market After-hours', 'ru')).toBe('После закрытия рынка');
     expect(translateText('Market Unavailable', 'ru')).toBe('Статус рынка недоступен');
-    expect(translateText('Pre-market', 'ru')).toBe('До открытия');
+    expect(translateText('Pre-market', 'ru')).toBe('Премаркет');
+    expect(translateText('Pre-market session', 'ru')).toBe('Предторговая сессия');
+    expect(translateText('Regular session', 'ru')).toBe('Основная сессия');
+    expect(translateText('After-hours trading', 'ru')).toBe('Торги после закрытия');
+    expect(translateText('Mixed status', 'ru')).toBe('Разные статусы бирж');
+    expect(translateText('Exchanges differ', 'ru')).toBe('Биржи: разные статусы');
+    expect(translateText('Status unavailable', 'ru')).toBe('Статус недоступен');
     expect(translateText('After-hours', 'ru')).toBe('После закрытия');
     expect(translateText('Premarket', 'ru')).toBe('Премаркет');
     expect(translateText('Market', 'ru')).toBe('Рынок открыт');
