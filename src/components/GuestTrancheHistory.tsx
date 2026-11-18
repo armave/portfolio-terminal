@@ -23,7 +23,7 @@ function formatAssignmentDate(value: number | null | undefined): string {
 const STATUS_LABELS: Record<GuestTrancheLedgerStatus, string> = {
   active: 'Active',
   closed: 'Closed',
-  unassigned: 'Unassigned'
+  unassigned: 'Removed'
 };
 
 export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHistoryProps) {
@@ -53,8 +53,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     <section id="guestTrancheHistory" class="desk-page-content min-w-0 space-y-4"
       aria-labelledby="guestTrancheHistoryHeading">
       <DeskPageHeader
-        title={translateText('Assignment History', getAppLanguage())}
-        description={translateText('Review assigned cash-funded purchases and completed or removed assignments.', getAppLanguage())}
+        title={translateText('My Stocks', getAppLanguage())}
+        description={translateText('Your stocks, purchases, and completed trades in one place.', getAppLanguage())}
         titleId="guestTrancheHistoryHeading"
         trailing={
           <span class="text-xs tabular-nums text-slate-400">
@@ -94,7 +94,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             <option value="all" class="text-center">All statuses</option>
             <option value="active" class="text-center">Active</option>
             <option value="closed" class="text-center">Closed</option>
-            <option value="unassigned" class="text-center">Unassigned</option>
+            <option value="unassigned" class="text-center">Removed</option>
           </select>
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
@@ -111,22 +111,22 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
 
       {records.length === 0 ? (
         <div class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">
-          <p class="font-semibold text-slate-300">{translateText('No assignment history is available yet.', getAppLanguage())}</p>
-          <p class="mt-2 leading-relaxed">{translateText('It will appear after the administrator publishes your next successful portfolio update. Earlier assignments may not be recoverable.', getAppLanguage())}</p>
+          <p class="font-semibold text-slate-300">{translateText('No stock history yet.', getAppLanguage())}</p>
+          <p class="mt-2 leading-relaxed">{translateText('Your stock purchases and completed trades will appear here after the next portfolio update.', getAppLanguage())}</p>
         </div>
       ) : filteredRecords.length === 0 ? (
-        <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
+        <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">{translateText('No stocks match these filters.', getAppLanguage())}</p>
       ) : (
         <>
-        <TableScrollRegion label={translateText('Guest assignment history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
+        <TableScrollRegion label={translateText('My stocks history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
           <table class="guest-assignment-history-table w-full border-collapse text-left text-xs">
-            <caption class="sr-only">Guest assignment history table</caption>
+            <caption class="sr-only">My stocks history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
                 <th scope="col" class="px-2 py-2">Date</th>
                 <th scope="col" class="px-2 py-2">Source</th>
                 <th scope="col" class="px-2 py-2">Ticker</th>
-                <th scope="col" class="px-2 py-2 text-right">Assigned shares</th>
+                <th scope="col" class="px-2 py-2 text-right">Shares</th>
                 <th scope="col" class="px-2 py-2 text-right">Remaining shares</th>
                 <th scope="col" class="px-2 py-2 text-right">Average cost</th>
                 <th scope="col" class="px-2 py-2 text-right">Value</th>
@@ -178,7 +178,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                     <td data-label={translateText('Date', getAppLanguage())} class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(group.operationAt)}</td>
                     <td data-label={translateText('Source', getAppLanguage())} class="px-2 py-2 text-slate-400">{isClosedTrade ? translateText('Trade', getAppLanguage()) : translateText('Tranche', getAppLanguage())}</td>
                     <td data-label={translateText('Ticker', getAppLanguage())} class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
-                    <td data-label={translateText('Assigned shares', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-200">{assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td data-label={translateText('Shares', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-200">{assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                     <td data-label={translateText('Remaining shares', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-200">{openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                     <td data-label={translateText('Average cost', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-300">{averagePrice !== null ? formatUSD(averagePrice) : '—'}</td>
                     <td data-label={translateText('Value', getAppLanguage())} class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null ? formatUSD(value) : '—'}</td>
@@ -195,8 +195,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             <tfoot>
               <tr class="border-t border-slate-700 text-[10px] text-slate-400">
                 <td colSpan={9} class="px-2 py-2">
-                  Assigned cost basis across filtered records: {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
-                  {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} unassigned` : ''}
+                  Cost basis across filtered records: {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
+                  {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} removed` : ''}
                   {summary.unpricedOpenTranches > 0 ? ' · Some open holdings have no current quote' : ''}
                 </td>
               </tr>
@@ -204,7 +204,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           </table>
         </TableScrollRegion>
         <TablePagination
-          tableLabel={translateText('Guest assignment history table', getAppLanguage())}
+          tableLabel={translateText('My stocks history table', getAppLanguage())}
           page={pagination.currentPage}
           pageCount={pagination.pageCount}
           pageSize={pagination.pageSize}
