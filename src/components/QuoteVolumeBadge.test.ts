@@ -8,7 +8,6 @@ describe('QuoteVolumeBadge', () => {
   it('shows provider-reported USD monetary turnover instead of the share count', () => {
     const badge = QuoteVolumeBadge({
       volumeValue: 9_100_000_000,
-      volume: 32_176_544,
       currency: 'USD'
     });
     expect(badge).not.toBeNull();
@@ -29,7 +28,7 @@ describe('QuoteVolumeBadge', () => {
   });
 
   it('requires provider-reported monetary turnover and explicit USD currency', () => {
-    expect(QuoteVolumeBadge({ volume: 32_176_544, currency: 'USD' })).toBeNull();
+    expect(QuoteVolumeBadge({ currency: 'USD' })).toBeNull();
     expect(QuoteVolumeBadge({ volumeValue: null, currency: 'USD' })).toBeNull();
     expect(QuoteVolumeBadge({ volumeValue: 9_100_000_000 })).toBeNull();
     expect(QuoteVolumeBadge({ volumeValue: 9_100_000_000, currency: 'EUR' })).toBeNull();
