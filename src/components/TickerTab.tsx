@@ -1,5 +1,5 @@
 import { memo } from 'preact/compat';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { getWorkspaceNavigationViews, isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
 import { useActiveView, usePortfolioSelector } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
@@ -8,7 +8,6 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
-import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import type { PortfolioState } from '../types/portfolio';
 
 type WorkspaceNavigationIconName = 'margin' | 'portfolio' | 'balance' | 'trades' | 'lots' | 'settings';
@@ -186,7 +185,7 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onClick={() => selectView('GUEST_HISTORY')}
-          aria-label={translateText('Assignments', getAppLanguage())}
+          aria-label={translateText('My Stocks', getAppLanguage())}
           aria-pressed={isGuestHistoryActive}
           class={workspaceNavigationButtonClass(isGuestHistoryActive)}
           data-nav-tab="true"
@@ -194,10 +193,10 @@ export const TickerTabs = memo(function TickerTabs({
           data-nav-index={guestHistoryNavIndex}
           ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
-          title={translateText('Assignments', getAppLanguage())}
+          title={translateText('My Stocks', getAppLanguage())}
         >
           <WorkspaceNavigationIcon name="lots" />
-          <span class="workspace-nav-button__label">{translateText('Assignments', getAppLanguage())}</span>
+          <span class="workspace-nav-button__label">{translateText('My Stocks', getAppLanguage())}</span>
         </button>
       )}
 
@@ -240,58 +239,6 @@ export const TickerTabs = memo(function TickerTabs({
     </>
   );
 });
-
-/** Portfolio synchronization is an action, not a workspace destination. */
-export function PortfolioSyncButton({
-  isAdmin = false,
-  userId
-}: {
-  isAdmin?: boolean;
-  userId?: string;
-}) {
-  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
-  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
-
-  if (!isAdmin && !userId) return null;
-  const syncLabel = userId
-    ? translateText('Refresh assigned holdings and history', getAppLanguage())
-    : translateText('Sync portfolio', getAppLanguage());
-
-  const handleSyncPortfolio = async (): Promise<void> => {
-    if (portfolioSyncPromise.current) {
-      await portfolioSyncPromise.current;
-      return;
-    }
-
-    setIsSyncingPortfolio(true);
-    const request = new Promise<ManualPortfolioSyncResult>((resolve) => {
-      emitUiEvent('portfolio:sync-request', { resolve });
-    });
-    portfolioSyncPromise.current = request;
-    try {
-      await request;
-    } finally {
-      if (portfolioSyncPromise.current === request) portfolioSyncPromise.current = null;
-      setIsSyncingPortfolio(false);
-    }
-  };
-
-  return (
-    <button
-      id="syncPortfolioButton"
-      type="button"
-      title={syncLabel}
-      aria-label={syncLabel}
-      aria-busy={isSyncingPortfolio}
-      disabled={isSyncingPortfolio}
-      onClick={handleSyncPortfolio}
-      class="min-h-11 min-w-11 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
-    >
-      <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
-    </button>
-  );
-}
-
 
 type BalanceBadgeSnapshot = Pick<
   PortfolioState,
