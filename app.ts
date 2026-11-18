@@ -1005,6 +1005,7 @@ function updateCombinedBreakeven() {
   let totalGrossTarget = 0;
   let totalInvested = 0;
   let totalComms = 0;
+  let totalNetSaleProceeds = 0;
   let totalMarginCharged = state.realizedMarginCharged || 0;
 
   tickers.forEach(t => {
@@ -1015,6 +1016,7 @@ function updateCombinedBreakeven() {
       const valSell = pos.shares * pos.pt;
       const commSell = calcCommission(pos.shares, valSell);
       totalGrossTarget += (valSell - cost);
+      totalNetSaleProceeds += valSell - commSell;
       totalComms += (pos.commBuy || 0) + commSell;
     }
   });
@@ -1028,6 +1030,11 @@ function updateCombinedBreakeven() {
   totalMarginCharged += openMarginCharged;
 
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
+  const balanceConstraint = {
+    signedBalance: Number(state.balance),
+    freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
+    netSaleProceeds: totalNetSaleProceeds
+  };
 
   if (tickers.length === 0 || totalInvested === 0) {
     setText(translateText('No active trades', getAppLanguage()));
@@ -1049,9 +1056,9 @@ function updateCombinedBreakeven() {
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
+  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate(), balanceConstraint);
   if (beDays === null) {
-    setText(translateText('No non-negative breakeven date', getAppLanguage()));
+    setText(translateText('No breakeven date with remaining balance ≥ −$450', getAppLanguage()));
     return;
   }
 
