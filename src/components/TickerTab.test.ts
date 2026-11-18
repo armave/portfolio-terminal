@@ -58,3 +58,15 @@ describe('navigation portfolio sync control', () => {
     expect(syncButtonSource).toContain('if (!isAdmin && !userId) return null;');
   });
 });
+
+
+describe('guest navigation terminology', () => {
+  it('labels the guest history destination as Assignments rather than Lots', () => {
+    expect(tickerTabSource).toContain("translateText('Assignments', getAppLanguage())");
+  });
+
+  it('uses an explicit refresh label for a guest portfolio refresh button', () => {
+    expect(syncButtonSource).toContain("translateText('Refresh assigned holdings and history', getAppLanguage())");
+    expect(syncButtonSource).toContain('aria-label={syncLabel}');
+  });
+});
