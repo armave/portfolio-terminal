@@ -601,7 +601,7 @@ summary:hover {
 
 .table-scroll-wrapper th,
 .table-scroll-wrapper td {
-  white-space: nowrap;
+  white-space: break-spaces;
 }
 
 #projectionTableContainer .projection-date-cell {
@@ -6139,6 +6139,7 @@ table tbody tr:hover {
 }
 
 @media (max-width: 767px) {
+
   #guestHistoryContainer,
   #guestTrancheHistory,
   .table-scroll-wrapper.guest-assignment-history-scroll {
