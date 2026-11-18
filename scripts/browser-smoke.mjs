@@ -1605,7 +1605,8 @@ try {
         };
       });
       if (!guestTargetLayout.sectionVisible || !guestTargetLayout.sharedSection ||
-          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst (yahoo)') ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst target') ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('yahoo') ||
           guestTargetLayout.hasMarginPt || !guestTargetLayout.marketValue.includes('Current market value')) {
         throw new Error('Guest Stocks target information must be combined and PT-free: ' + JSON.stringify(guestTargetLayout));
       }
