@@ -21,6 +21,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'No active trades': 'Нет активных сделок',
   'No date': 'Дата не определена',
   'No non-negative breakeven date': 'Не удалось определить неотрицательную дату безубыточности',
+  'No breakeven date with remaining balance ≥ −$450': 'Нет даты безубыточности при остатке баланса не ниже −$450',
   'Shares / Your PT': 'Количество акций / ваша цель',
   'Net return at targets': 'Чистая доходность при достижении целей',
   'Portfolio key indicators': 'Ключевые показатели портфеля',
