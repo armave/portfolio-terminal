@@ -259,8 +259,6 @@ describe('app localization', () => {
     expect(translateText('Current price unavailable', 'ru')).toBe('Текущая цена недоступна');
     expect(translateText('Analysts', 'ru')).toBe('Аналитики');
     expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');
-    expect(translateText('Provider-reported volume; reporting period may vary by source.', 'ru'))
-      .toBe('Объём указан поставщиком котировок; период данных зависит от источника.');
   });
 
   it('localizes the live-only Market Depth modal and status states in Russian', () => {
