@@ -24,7 +24,10 @@
   "overrides": {
     "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",
     "glob": "14.0.2",
-    "minimatch": "11.0.1"
+    "minimatch": "11.0.1",
+    "@rollup/pluginutils@4.2.1": {
+      "picomatch": "file:../../../../../../vendor/picomatch-v2"
+    }
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
@@ -38,7 +41,8 @@
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0",
     "@vitest/coverage-v8": "5.1.0",
-    "oxlint": "1.93.0"
+    "oxlint": "1.93.0",
+    "picomatch": "file:vendor/picomatch-v4"
   },
   "dependencies": {
     "crypto-js": "^4.2.0",
