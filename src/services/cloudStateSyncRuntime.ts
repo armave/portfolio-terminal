@@ -358,8 +358,8 @@ async function pullCloudState(
       if (pulledRevision !== null) {
         revisionCoordinator.recordPulledRevision(pulledRevision);
       }
-      reportResult?.(false);
-      logAppMessage('[KV Cloud]: State not found (404). Falling back to local storage.');
+      reportResult?.(true);
+      logAppMessage('[KV Cloud]: State not found (404). Accepted an empty cloud baseline and retained local storage.');
       return loadSavedState(toCloudStateRecord(state));
     }
 
