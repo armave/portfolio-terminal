@@ -163,6 +163,7 @@ describe('reconcileBrokerActivity', () => {
     const app = appEvent('trade.buy', {
       externalReferenceId: 'exec-incomplete',
       unitPrice: null,
+      quantity: undefined,
       fees: undefined,
       currency: ''
     });
@@ -176,6 +177,7 @@ describe('reconcileBrokerActivity', () => {
       brokerReferences: ['exec-incomplete'],
       appEventIds: ['app-trade.buy'],
       missingFields: expect.arrayContaining([
+        'App execution quantity',
         'Broker execution price',
         'App execution price',
         'Broker execution timestamp',
@@ -186,6 +188,7 @@ describe('reconcileBrokerActivity', () => {
       ])
     }));
     expect(report.findings.some(finding =>
+      finding.type === 'execution_quantity_mismatch' ||
       finding.type === 'execution_price_mismatch' || finding.type === 'execution_fee_mismatch'
     )).toBe(false);
   });

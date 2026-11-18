@@ -87,6 +87,7 @@ const RU_COPY: Record<string, string> = {
   'Ambiguous broker order match': 'Неоднозначное совпадение ордера брокера',
   'Execution evidence incomplete': 'Недостаточно данных для проверки исполнения',
   'Missing execution evidence': 'Отсутствуют данные исполнения',
+  'App execution quantity': 'Количество транзакции приложения',
   'Broker execution price': 'Цена исполнения брокера',
   'App execution price': 'Цена исполнения приложения',
   'Broker execution timestamp': 'Время исполнения брокера',

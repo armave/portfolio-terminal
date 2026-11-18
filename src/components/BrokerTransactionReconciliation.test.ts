@@ -47,6 +47,7 @@ describe('broker reconciliation localization', () => {
     expect(translateBrokerReconciliationCopy('Missing execution evidence', 'ru'))
       .toBe('Отсутствуют данные исполнения');
     for (const field of [
+      'App execution quantity',
       'Broker execution price',
       'App execution price',
       'Broker execution timestamp',

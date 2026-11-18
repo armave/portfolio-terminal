@@ -413,6 +413,7 @@ export function reconcileBrokerActivity(
     index: number;
     event: PortfolioTransactionEvent;
     quantityMatch: boolean;
+    quantityComparable: boolean;
     priceMatch: boolean;
     priceComparable: boolean;
     exactTime: boolean;
@@ -445,7 +446,8 @@ export function reconcileBrokerActivity(
         const price = number(event.unitPrice);
         const eventAt = event.effectiveAt;
         const timeDelta = broker.at === null ? null : Math.abs(broker.at - eventAt);
-        const quantityMatch = quantity !== null && Math.abs(quantity - broker.quantity) <= quantityTolerance;
+        const quantityComparable = quantity !== null;
+        const quantityMatch = quantityComparable && Math.abs(quantity! - broker.quantity) <= quantityTolerance;
         const priceComparable = broker.price !== null && price !== null;
         const priceMatch = priceComparable && Math.abs(price! - broker.price!) <= priceTolerance;
         const identityMatch = Boolean(text(event.externalReferenceId)) &&
@@ -515,6 +517,7 @@ export function reconcileBrokerActivity(
           brokerIndex,
           broker,
           quantityMatch,
+          quantityComparable,
           priceMatch,
           priceComparable,
           exactTime,
@@ -654,7 +657,7 @@ export function reconcileBrokerActivity(
     unmatchedApp.delete(candidate.index);
     matchedPairs.push({ broker: candidate.broker, app: candidate.event });
 
-    if (!candidate.quantityMatch) {
+    if (candidate.quantityComparable && !candidate.quantityMatch) {
       findings.push(makeFinding({
         id: `execution-quantity:${candidate.broker.id}:${candidate.event.id}`,
         type: 'execution_quantity_mismatch',
@@ -662,7 +665,7 @@ export function reconcileBrokerActivity(
         currency: candidate.broker.currency || undefined,
         brokerValue: candidate.broker.quantity,
         appValue: number(candidate.event.quantity),
-        difference: candidate.broker.quantity - (number(candidate.event.quantity) ?? 0),
+        difference: candidate.broker.quantity - number(candidate.event.quantity)!,
         brokerReferences: [candidate.broker.id],
         appEventIds: [candidate.event.id],
         brokerAt: candidate.broker.at ?? undefined,
@@ -742,6 +745,7 @@ export function reconcileBrokerActivity(
     }
 
     const missingFields: string[] = [];
+    if (number(candidate.event.quantity) === null) missingFields.push('App execution quantity');
     if (candidate.broker.price === null) missingFields.push('Broker execution price');
     if (number(candidate.event.unitPrice) === null) missingFields.push('App execution price');
     if (candidate.broker.at === null) missingFields.push('Broker execution timestamp');
