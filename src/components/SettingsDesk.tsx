@@ -657,11 +657,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           }}>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="flex flex-col gap-1 text-xs text-slate-300">
-                {translateText('Breakeven minimum remaining balance (USD)')}
+                {translateText('Minimum post-sale account balance (USD)')}
                 <input type="number" step="1" min="-1000000" max="1000000" required value={portfolioSettingValues.breakevenMinimumRemainingBalanceUsd}
                   onInput={(event) => setPortfolioSettingValues(current => ({ ...current, breakevenMinimumRemainingBalanceUsd: (event.currentTarget as HTMLInputElement).value }))}
                   class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
-                <span class="text-[11px] leading-relaxed text-slate-500">{translateText('The floor is checked on the projected net-P&L breakeven day, not on each weekly checkpoint.')}</span>
+                <span class="text-[11px] leading-relaxed text-slate-500">{translateText('The horizon uses your PT, net sale proceeds after sell commission, and daily margin interest—not net-P&L breakeven.')}</span>
               </label>
               <label class="flex flex-col gap-1 text-xs text-slate-300">
                 {translateText('Buy More minimum equity (%)')}
