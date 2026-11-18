@@ -971,7 +971,7 @@ describe('Margin PT target information localization', () => {
     expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
       .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
     expect(translateText('No assignment history is available yet.', 'ru')).toBe('История назначений пока недоступна.');
-    expect(translateText('Assigned shares', 'ru')).toBe('Назначено акций');
+    expect(translateText('Assigned shares', 'ru')).toBe('Назначенные акции');
     expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
     expect(translateText('Average cost', 'ru')).toBe('Средняя себестоимость');
   });
