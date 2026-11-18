@@ -583,8 +583,8 @@ async function refreshGuestPortfolioSnapshot(): Promise<boolean> {
   }
 }
 
-async function pullGuestPortfolioSnapshot(): Promise<void> {
-  await refreshGuestPortfolioSnapshot();
+async function pullGuestPortfolioSnapshot(): Promise<boolean> {
+  return refreshGuestPortfolioSnapshot();
 }
 
 let startupCloudWritesSuppressed = true;
@@ -759,16 +759,28 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceL
   emitUiEvent('app:scroll-workspace');
 }
 
+function releaseStartupCloudWrites(): void {
+  if (!startupCloudWritesSuppressed) return;
+  startupCloudWritesSuppressed = false;
+  if (!startupCloudWritePending) return;
+
+  startupCloudWritePending = false;
+  launchBackgroundTask(
+    async () => {
+      const saved = await pushStateToCloud();
+      if (!saved) console.warn('[Startup Cloud Sync]: Pending cloud write was not confirmed; retry from the KV status control.');
+    },
+    (error) => logSafeDiagnostic('warn', 'cloud-sync', error)
+  );
+}
+
 async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
-    if (mode === 'pull') {
-      await pullGuestPortfolioSnapshot();
-      return true;
-    }
+    if (mode === 'pull') return pullGuestPortfolioSnapshot();
     return false;
   }
   const requestSession = currentAccountSessionGuard.capture();
-  return syncCloudStateService(mode, {
+  const succeeded = await syncCloudStateService(mode, {
     state,
     getState: () => state,
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
@@ -802,6 +814,12 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
           : { text: 'Sync failed', status: 'error' });
     }
   });
+  if (mode === 'pull' && succeeded && currentAccountRole === 'admin') {
+    // A confirmed pull refreshes the revision baseline. Only then may writes
+    // deferred during startup or a failed earlier pull be released.
+    releaseStartupCloudWrites();
+  }
+  return succeeded;
 }
 
 async function resetToBlankState(): Promise<void> {
@@ -1961,17 +1979,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
-    startupCloudWritesSuppressed = false;
-    if (startupCloudWritePending) {
-      startupCloudWritePending = false;
-      launchBackgroundTask(
-        async () => {
-          const saved = await pushStateToCloud();
-          if (!saved) console.warn('[Startup Cloud Sync]: Pending cloud write was not confirmed; retry from the KV status control.');
-        },
-        (error) => logSafeDiagnostic('warn', 'cloud-sync', error)
-      );
-    }
+    releaseStartupCloudWrites();
   },
   hideStartupLoading,
   reportBackgroundStartupError: (_task, error) => {
