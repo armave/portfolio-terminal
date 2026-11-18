@@ -595,7 +595,7 @@ let initialWorkspaceSyncSettled = false;
 let performanceSnapshotInFlight = false;
 let performanceSnapshotPending = false;
 
-createPortfolioEquitySyncRuntime({
+const portfolioEquitySyncRuntime = createPortfolioEquitySyncRuntime({
   subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
     state = nextStoreState;
     listener(nextStoreState, source);
@@ -630,6 +630,10 @@ createPortfolioEquitySyncRuntime({
         appendDailyPerformanceValuation,
         capturePortfolioPerformanceValuation
       } = await import('./src/domain/portfolioPerformanceCapture');
+
+      // The cloud pull may have started while the lazy performance module was
+      // resolving. Do not mutate protected valuation history until it settles.
+      if (!initialWorkspaceSyncSettled) return false;
 
       let changed = false;
       do {
@@ -676,8 +680,14 @@ createPortfolioEquitySyncRuntime({
       performanceSnapshotPending = false;
     }
   },
-  onPerformanceSnapshotChanged: () => { void pushStateToCloud(); }
+  onPerformanceSnapshotChanged: () => { void pushStateToCloud(); },
+  isPerformanceSnapshotReady: () => initialWorkspaceSyncSettled
 });
+
+function settleInitialWorkspaceSync(): void {
+  initialWorkspaceSyncSettled = true;
+  portfolioEquitySyncRuntime.flushDeferredPerformanceSnapshot();
+}
 
 async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   if (!canWriteCloudState) {
@@ -1893,7 +1903,7 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
   },
   setActiveView,
   beginWorkspaceSync: () => { initialWorkspaceSyncSettled = false; },
-  completeWorkspaceSync: () => { initialWorkspaceSyncSettled = true; },
+  completeWorkspaceSync: settleInitialWorkspaceSync,
   resolveRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role
@@ -1942,7 +1952,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     try {
       return await pullGuestPortfolioSnapshot();
     } finally {
-      initialWorkspaceSyncSettled = true;
+      settleInitialWorkspaceSync();
     }
   },
   importSavedAdminWorkspace: () => {
@@ -1955,7 +1965,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
       setCloudStatus('syncing', 'CHECKING...');
       return await syncCloudState('pull', { protectLocalEditsDuringPull: true });
     } finally {
-      initialWorkspaceSyncSettled = true;
+      settleInitialWorkspaceSync();
     }
   },
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(

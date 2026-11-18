@@ -12,11 +12,15 @@ export interface PortfolioEquitySyncRuntimeDependencies {
   /** Capture daily performance evidence independently of equity projection changes. */
   recordPerformanceSnapshot?: (state: PortfolioState, timestamp: number) => boolean | Promise<boolean>;
   onPerformanceSnapshotChanged?: () => void;
+  /** Do not mutate protected performance history until the initial cloud pull settles. */
+  isPerformanceSnapshotReady?: () => boolean;
   now?: () => number;
 }
 
 export interface PortfolioEquitySyncRuntime {
   dispose: () => void;
+  /** Commit one coalesced performance snapshot after the workspace readiness gate opens. */
+  flushDeferredPerformanceSnapshot: () => void;
 }
 
 /**
@@ -28,21 +32,39 @@ export function createPortfolioEquitySyncRuntime(
   dependencies: PortfolioEquitySyncRuntimeDependencies
 ): PortfolioEquitySyncRuntime {
   const now = dependencies.now || Date.now;
+  let performanceSnapshotDeferred = false;
 
-  const sync = (state: PortfolioState, source: PortfolioStoreChangeSource = 'durable'): void => {
-    if (source === 'derived') return;
+  const recordPerformanceSnapshot = (state: PortfolioState, timestamp: number): void => {
+    const record = dependencies.recordPerformanceSnapshot;
+    if (!record) return;
+    if (dependencies.isPerformanceSnapshotReady?.() === false) {
+      performanceSnapshotDeferred = true;
+      return;
+    }
 
-    const timestamp = now();
-    const recordedSnapshot = dependencies.recordPerformanceSnapshot?.(state, timestamp);
+    const recordedSnapshot = record(state, timestamp);
     if (recordedSnapshot && typeof (recordedSnapshot as Promise<boolean>).then === 'function') {
       void Promise.resolve(recordedSnapshot)
         .then((changed) => {
+          // An account transition can close the readiness gate while capture is
+          // awaiting lazy work. Re-defer instead of publishing into that pull.
+          if (dependencies.isPerformanceSnapshotReady?.() === false) {
+            performanceSnapshotDeferred = true;
+            return;
+          }
           if (changed) dependencies.onPerformanceSnapshotChanged?.();
         })
         .catch(() => undefined);
     } else if (recordedSnapshot) {
       dependencies.onPerformanceSnapshotChanged?.();
     }
+  };
+
+  const sync = (state: PortfolioState, source: PortfolioStoreChangeSource = 'durable'): void => {
+    if (source === 'derived') return;
+
+    const timestamp = now();
+    recordPerformanceSnapshot(state, timestamp);
 
     const rawEquity = Number(dependencies.calculateEquity(state));
     if (!Number.isFinite(rawEquity)) return;
@@ -62,5 +84,12 @@ export function createPortfolioEquitySyncRuntime(
   // suppression remains owned by the app-level sync coordinator.
   sync(dependencies.getState(), 'durable');
 
-  return { dispose: unsubscribe };
+  return {
+    dispose: unsubscribe,
+    flushDeferredPerformanceSnapshot: () => {
+      if (!performanceSnapshotDeferred || dependencies.isPerformanceSnapshotReady?.() === false) return;
+      performanceSnapshotDeferred = false;
+      recordPerformanceSnapshot(dependencies.getState(), now());
+    }
+  };
 }
