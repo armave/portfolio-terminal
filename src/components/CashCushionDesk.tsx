@@ -18,7 +18,6 @@ import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheG
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { useCloudSyncStatus } from '../ui/uiStateStore';
 import { GuestPortfolioOverview } from './GuestPortfolioOverview';
-import { PortfolioSyncButton } from './TickerTab';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import {
@@ -503,12 +502,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       `}</style>
       <DeskPageHeader
         title={translateText(guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE', getAppLanguage())}
-        trailing={guestUserId ? (
-          <div class="flex items-center gap-2">
-            <span class="text-[10px] font-semibold text-slate-400">{translateText('Refresh assigned data', getAppLanguage())}</span>
-            <PortfolioSyncButton userId={guestUserId} />
-          </div>
-        ) : balanceRefreshing && (
+        trailing={balanceRefreshing && (
           <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
             <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
               <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
@@ -519,13 +513,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         )}
       />
 
-      {guestUserId && (
-        <GuestPortfolioOverview
-          holdings={guestHoldings}
-          snapshot={state.guestPortfolioSnapshot ?? null}
-          syncStatus={guestSyncStatus}
-          refreshIntervalMs={refreshIntervalMs}
-        />
+      {guestUserId && guestHoldings.length > 1 && (
+        <GuestPortfolioOverview holdings={guestHoldings} />
       )}
 
       {isAdmin && (balanceSync.status === 'stale' || balanceSync.status === 'error') && (
@@ -585,13 +574,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role={guestSyncStatus.status === 'error' ? 'alert' : 'status'} aria-live="polite">
                 {!state.guestPortfolioSnapshot ? (
                   <>
-                    <p class="font-semibold text-slate-200">{translateText(guestSyncStatus.status === 'error' ? 'Unable to load assigned holdings.' : 'Checking your assigned holdings…', getAppLanguage())}</p>
-                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText(guestSyncStatus.status === 'error' ? 'The first assigned snapshot is not available on this device. Refresh to try again.' : 'Your account is checking for its first published assignment.', getAppLanguage())}</p>
+                    <p class="font-semibold text-slate-200">{translateText(guestSyncStatus.status === 'error' ? 'Unable to load My Stocks.' : 'Checking your stocks…', getAppLanguage())}</p>
+                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText(guestSyncStatus.status === 'error' ? 'Your stock list is temporarily unavailable. The next automatic update will retry.' : 'Your stock list is loading.', getAppLanguage())}</p>
                   </>
                 ) : (
                   <>
-                    <p class="font-semibold text-slate-200">{translateText('No stocks are assigned to your account yet.', getAppLanguage())}</p>
-                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText('Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.', getAppLanguage())}</p>
+                    <p class="font-semibold text-slate-200">{translateText('You do not have any stocks yet.', getAppLanguage())}</p>
+                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText('Your stocks will appear here when your portfolio is updated.', getAppLanguage())}</p>
                   </>
                 )}
               </div>
