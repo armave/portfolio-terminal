@@ -251,6 +251,14 @@ For the read-only broker Closed History table:
 
 **Known compatibility boundary:** repository architecture/audit notes distinguish the active runtime rollover/accrual calculation from the legacy cloud-import `processRollovers` path. Their time-boundary and rounding history must remain separately covered until explicitly reconciled. Do not unify, re-timezone, or re-round them as part of PT-01 or a cleanup-only change.
 
+### Breakeven remaining-balance qualification
+
+`findProjectionBreakevenDay` and `calculateBreakevenDays` only report a breakeven when the projected net result has reached or crossed zero **and** the same day's hypothetical post-sale signed account balance is at least **−$450.00** (inclusive).
+
+The remaining balance is calculated as the projected signed account balance (negative margin debt compounds using the existing daily cent-rounded debt model) plus available free cash plus net proceeds from selling the selected positions at their configured target prices after sell commissions. The floor is checked on the exact day the net result reaches zero; because projected negative debt does not improve with time, a balance below the floor on that day cannot qualify on a later day. A breakeven that already exists today is still subject to the same day-zero balance check.
+
+When any required signed-balance, free-cash, or net-proceeds input is missing or non-finite, no balance-qualified breakeven date is reported. These calculations do not substitute zero for unavailable balance evidence. The −$450 floor is an app planning constraint, not a broker buying-power, maintenance-margin, or liquidation guarantee.
+
 ## 8. Freedom financing-fee allocation and currency boundary
 
 **Sources:** `calculateFreedomMarginFeeAllocations` in `src/domain/freedomMarginFees.ts`; row provenance in `src/domain/freedomCashflows.ts`.

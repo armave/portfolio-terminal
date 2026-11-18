@@ -39,11 +39,17 @@ function ProjectionsTableView() {
     const grossProceeds = shares * exitPrice;
     return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, state.brokerAssumptions);
   }, 0);
-  const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
+  const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
+  const freeCash = Number(freeCashInput ?? 0);
+  const breakevenBalanceConstraint = {
+    signedBalance: Number(state.balance),
+    freeCash: Number(freeCashInput),
+    netSaleProceeds
+  };
 
   const hasProjection = debtToUse > 0 || gross > 0;
-  // Find the first day projected net reaches or crosses zero. That day is the
-  // breakeven milestone; display its net as $0.00 and stop before any negative day.
+  // A breakeven milestone requires both net P&L reaching zero and a post-sale
+  // account balance no lower than -$450 on that same day.
   const breakevenDays = hasProjection
     ? findProjectionBreakevenDay(
       gross,
@@ -51,7 +57,8 @@ function ProjectionsTableView() {
       marginChargedToUse,
       debtToUse,
       dailyRate,
-      MAX_BREAKEVEN_SEARCH_DAYS
+      MAX_BREAKEVEN_SEARCH_DAYS,
+      breakevenBalanceConstraint
     )
     : 0;
   const projectionItems = hasProjection
@@ -62,7 +69,7 @@ function ProjectionsTableView() {
 
   useEffect(() => {
     pagination.setPage(1);
-  }, [gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate]);
+  }, [gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate, state.balance, freeCash, netSaleProceeds]);
 
   if (!hasProjection) {
     return (

@@ -489,6 +489,35 @@ export function calculateAccruedFees(
   return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
 }
 
+const MIN_BREAKEVEN_REMAINING_BALANCE_USD = -450;
+
+export interface BreakevenBalanceConstraint {
+  signedBalance: number;
+  freeCash: number;
+  netSaleProceeds: number;
+}
+
+/** Require the hypothetical post-sale account balance to stay at or above the breakeven floor. */
+function meetsBreakevenBalanceFloor(
+  constraint: BreakevenBalanceConstraint | undefined,
+  dailyRate: number,
+  days: number
+): boolean {
+  if (!constraint) return true;
+  const { signedBalance, freeCash, netSaleProceeds } = constraint;
+  if (![signedBalance, freeCash, netSaleProceeds, dailyRate, days].every(Number.isFinite) ||
+      freeCash < 0 || dailyRate < 0 || days < 0) return false;
+  const remainingBalance = calculateProjectedAccountBalanceAfterSale(
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    dailyRate,
+    days
+  );
+  return Number.isFinite(remainingBalance) &&
+    remainingBalance >= MIN_BREAKEVEN_REMAINING_BALANCE_USD;
+}
+
 /** Find the first projected breakeven day while applying daily cent rounding once per day. */
 export function findProjectionBreakevenDay(
   gross: number,
@@ -496,11 +525,12 @@ export function findProjectionBreakevenDay(
   marginCharged: number,
   debt: number,
   dailyRate: number,
-  maxDays: number
+  maxDays: number,
+  balanceConstraint?: BreakevenBalanceConstraint
 ): number | undefined {
   const principal = Math.abs(debt);
   const todayNet = Number((gross - calculateAccruedFees(totalComms, marginCharged, 0)).toFixed(2));
-  if (todayNet <= 0) return 0;
+  if (todayNet <= 0) return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, 0) ? 0 : undefined;
   if (debt <= 0 || dailyRate <= 0) return undefined;
 
   let projectedDebt = principal;
@@ -512,7 +542,9 @@ export function findProjectionBreakevenDay(
       marginCharged,
       projectedDebt - principal
     );
-    if (Number((gross - projectedFees).toFixed(2)) <= 0) return day;
+    if (Number((gross - projectedFees).toFixed(2)) <= 0) {
+      return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, day) ? day : undefined;
+    }
   }
   return undefined;
 }
@@ -520,10 +552,13 @@ export function findProjectionBreakevenDay(
 export function calculateBreakevenDays(
   netTargetProfit: number,
   totalDebt: number,
-  dailyRate: number
+  dailyRate: number,
+  balanceConstraint?: BreakevenBalanceConstraint
 ): number | null {
   if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
-  if (netTargetProfit <= 0 || totalDebt === 0) return 0;
+  if (netTargetProfit <= 0 || totalDebt === 0) {
+    return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, 0) ? 0 : null;
+  }
   if (totalDebt < 0 || dailyRate < 0) return null;
   // Positive interest coverage is impossible without a positive daily rate.
   if (dailyRate === 0) return null;
@@ -536,9 +571,10 @@ export function calculateBreakevenDays(
     const next = Number((projected * (1 + dailyRate)).toFixed(2));
     if (!Number.isFinite(next) || next <= 0) return null;
     const remainingNet = Number((netTargetProfit - (next - principal)).toFixed(2));
-    // The first day the debt accrual covers the target is the breakeven day.
-    // The UI marks that crossing as exactly zero rather than displaying a negative balance.
-    if (remainingNet <= 0) return day;
+    // Both target net and same-day post-sale balance must satisfy the breakeven rule.
+    if (remainingNet <= 0) {
+      return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, day) ? day : null;
+    }
     // Cent rounding can make very small balances stationary indefinitely.
     if (next === projected) return null;
     projected = next;
