@@ -313,7 +313,16 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
       }
-      return;
+      const missingSourceFields: string[] = [];
+    if (row.price === null) missingSourceFields.push('Broker execution price');
+    if (row.at === null) missingSourceFields.push('Broker execution timestamp');
+    if (!row.currency) missingSourceFields.push('Broker execution currency');
+    if (row.side !== 'sell' && row.fee === null) missingSourceFields.push('Broker execution commission');
+    if (missingSourceFields.length > 0) {
+      sourceDataIncomplete = true;
+      warnings.push('One or more broker executions lack verifiable price, commission, currency or timestamp evidence; matching is provisional.');
+    }
+    return;
     }
     sourceDataIncomplete = true;
     warnings.push('One or more broker execution rows could not be classified; affected rows were excluded from matching.');
@@ -391,6 +400,19 @@ export function reconcileBrokerActivity(
     .filter(event => EXECUTION_EVENT_TYPES.has(event.type))
     .slice()
     .sort((a, b) => a.id.localeCompare(b.id));
+  appExecutions.forEach(event => {
+    const missingSourceFields: string[] = [];
+    if (number(event.quantity) === null) missingSourceFields.push('App execution quantity');
+    if (number(event.unitPrice) === null) missingSourceFields.push('App execution price');
+    if (!currency(event.currency)) missingSourceFields.push('App transaction currency');
+    if (event.type !== 'trade.sell' && number(event.fees) === null) {
+      missingSourceFields.push('App transaction commission');
+    }
+    if (missingSourceFields.length > 0) {
+      sourceDataIncomplete = true;
+      warnings.push('One or more app-authored executions lack verifiable quantity, price, currency or commission evidence; matching is provisional.');
+    }
+  });
   const legacyClosedSales = (input.legacyClosedTrades ?? [])
     .map(normalizeLegacyClosedSale)
     .filter((row): row is NormalizedLegacyClosedSale => row !== null);
@@ -409,6 +431,24 @@ export function reconcileBrokerActivity(
     const externalReferenceId = text(app.externalReferenceId);
     if (externalReferenceId && externalReferenceId !== broker.id) return false;
     return true;
+  };
+
+  const getExecutionMissingFields = (
+    broker: NormalizedExecution,
+    app: PortfolioTransactionEvent
+  ): string[] => {
+    const missingFields: string[] = [];
+    if (number(app.quantity) === null) missingFields.push('App execution quantity');
+    if (broker.price === null) missingFields.push('Broker execution price');
+    if (number(app.unitPrice) === null) missingFields.push('App execution price');
+    if (broker.at === null) missingFields.push('Broker execution timestamp');
+    if (!broker.currency) missingFields.push('Broker execution currency');
+    if (!currency(app.currency)) missingFields.push('App transaction currency');
+    if (app.type !== 'trade.sell') {
+      if (broker.fee === null) missingFields.push('Broker execution commission');
+      if (number(app.fees) === null) missingFields.push('App transaction commission');
+    }
+    return missingFields;
   };
 
   type ExecutionMatchCandidate = {
@@ -477,9 +517,12 @@ export function reconcileBrokerActivity(
         // A timestamp-free fallback is not enough evidence to match two rows.
         // An exact provider fill reference can still identify a pair, but the
         // missing timestamp is exposed as incomplete evidence after matching.
-        const acceptableTime = timeDelta !== null
-          ? timeDelta <= maxTimingDifference
-          : identityMatch;
+        const fallbackEvidenceAvailable = quantity !== null || priceComparable;
+        const acceptableTime = identityMatch || (
+          timeDelta !== null &&
+          timeDelta <= maxTimingDifference &&
+          fallbackEvidenceAvailable
+        );
 
         // Partial fills may only be aggregated within an explicit provider order.
         // Same-symbol/side/time proximity is not enough to prove common order identity.
@@ -748,17 +791,7 @@ export function reconcileBrokerActivity(
       }, confidence));
     }
 
-    const missingFields: string[] = [];
-    if (number(candidate.event.quantity) === null) missingFields.push('App execution quantity');
-    if (candidate.broker.price === null) missingFields.push('Broker execution price');
-    if (number(candidate.event.unitPrice) === null) missingFields.push('App execution price');
-    if (candidate.broker.at === null) missingFields.push('Broker execution timestamp');
-    if (!candidate.broker.currency) missingFields.push('Broker execution currency');
-    if (!currency(candidate.event.currency)) missingFields.push('App transaction currency');
-    if (candidate.event.type !== 'trade.sell') {
-      if (candidate.broker.fee === null) missingFields.push('Broker execution commission');
-      if (appFee === null) missingFields.push('App transaction commission');
-    }
+    const missingFields = getExecutionMissingFields(candidate.broker, candidate.event);
     if (missingFields.length > 0) {
       sourceDataIncomplete = true;
       confidence = 'provisional';
@@ -850,6 +883,27 @@ export function reconcileBrokerActivity(
     unmatchedApp.delete(appIndex);
     const refs = selected.map(index => uniqueBrokerRows[index].id);
     const selectedFees = selected.map(index => uniqueBrokerRows[index].fee);
+    const incompleteFields = [...new Set(selected.flatMap(index =>
+      getExecutionMissingFields(uniqueBrokerRows[index], app)
+    ))];
+    if (incompleteFields.length > 0) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      findings.push(makeFinding({
+        id: `execution-data-incomplete-partial:${app.id}:${refs.slice().sort().join('|')}`,
+        type: 'execution_data_incomplete',
+        subject: `${ticker(app.ticker)} ${side.toUpperCase()}`,
+        currency: currency(app.currency) || undefined,
+        brokerValue: null,
+        appValue: number(app.quantity),
+        brokerReferences: refs.slice().sort(),
+        appEventIds: [app.id],
+        appAt: app.effectiveAt,
+        explanation: 'The matched partial fills are missing one or more source values needed for a complete comparison. Missing values were not treated as zero.',
+        missingFields: incompleteFields
+      }, 'provisional'));
+      warnings.push('One or more matched executions lack verifiable price, commission, currency or timestamp evidence; affected comparisons are provisional.');
+    }
     const feesComplete = selectedFees.every((fee): fee is number => fee !== null);
     const totalFees = feesComplete ? selectedFees.reduce((sum, fee) => sum + fee, 0) : null;
     const appFee = number(app.fees);
