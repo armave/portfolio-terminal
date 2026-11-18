@@ -95,7 +95,7 @@ try {
       const paths = requests.map((request) => new URL(request.url).pathname);
       const hasDocument = paths.some((path) => path === scopePath || path === scopePath + 'index.html');
       const hasEntryScript = paths.some((path) =>
-        path.startsWith(scopePath + 'assets/') && /\\/index-[\\w-]+\\.js$/.test(path)
+        path.startsWith(scopePath + 'assets/') && /\/index-[\w-]+\.js$/.test(path)
       );
       const hasStylesheet = paths.some((path) =>
         path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
