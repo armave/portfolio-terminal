@@ -313,7 +313,7 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
       }
-        const missingSourceFields: string[] = [];
+      const missingSourceFields: string[] = [];
       if (row.price === null) missingSourceFields.push('Broker execution price');
       if (row.at === null) missingSourceFields.push('Broker execution timestamp');
       if (!row.currency) missingSourceFields.push('Broker execution currency');
@@ -730,7 +730,7 @@ export function reconcileBrokerActivity(
         currency: candidate.broker.currency || undefined,
         brokerValue: candidate.broker.price,
         appValue: number(candidate.event.unitPrice),
-        difference: candidate.broker.price! - (number(candidate.event.unitPrice) ?? 0),
+        difference: candidate.broker.price! - number(candidate.event.unitPrice)!,
         brokerReferences: [candidate.broker.id],
         appEventIds: [candidate.event.id],
         brokerAt: candidate.broker.at ?? undefined,
