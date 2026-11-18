@@ -21,13 +21,16 @@ export function getPortfolioNetSaleProceeds(
   state: BoardState,
   rules: BrokerAssumptions,
   tickers: string[] = Object.keys(state.positions || {})
-): number {
-  return tickers.reduce((total, ticker) => {
+): number | null {
+  return tickers.reduce<number | null>((total, ticker) => {
+    if (total === null) return null;
     const position = state.positions?.[ticker];
     if (!position) return total;
     const shares = Number(position.shares);
+    if (!Number.isFinite(shares)) return null;
+    if (shares <= 0) return total;
     const exitPrice = Number(position.pt);
-    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return total;
+    if (!Number.isFinite(exitPrice) || exitPrice <= 0) return null;
     const grossProceeds = shares * exitPrice;
     return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, rules);
   }, 0);
