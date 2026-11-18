@@ -1,5 +1,6 @@
 import type { BoardState, BrokerAssumptions, PositionRecord } from '../types/portfolio';
 import { getPositiveMarketPrice } from './portfolioValuation';
+import { calculateSaleCommission } from './portfolioTransactions';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -12,6 +13,23 @@ export function getTotalPortfolioInvested(state?: BoardState | null): number {
   if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
     return acc + (pos?.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
+  }, 0);
+}
+
+/** Sum hypothetical net proceeds from target-price sales after the configured sell commission. */
+export function getPortfolioNetSaleProceeds(
+  state: BoardState,
+  rules: BrokerAssumptions,
+  tickers: string[] = Object.keys(state.positions || {})
+): number {
+  return tickers.reduce((total, ticker) => {
+    const position = state.positions?.[ticker];
+    if (!position) return total;
+    const shares = Number(position.shares);
+    const exitPrice = Number(position.pt);
+    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return total;
+    const grossProceeds = shares * exitPrice;
+    return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, rules);
   }, 0);
 }
 
