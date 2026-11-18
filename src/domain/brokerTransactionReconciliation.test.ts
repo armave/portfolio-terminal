@@ -180,12 +180,16 @@ describe('reconcileBrokerActivity', () => {
       currency: '',
       executedAt: null
     });
-    const app = appEvent('trade.buy', {
-      externalReferenceId: 'exec-incomplete',
-      unitPrice: null,
-      quantity: undefined,
-      fees: undefined,
-      currency: ''
+    const app = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: at,
+      ticker: 'AAPL',
+      externalReferenceId: 'exec-incomplete'
+    }, {
+      actor: { type: 'user' },
+      source: 'manual',
+      eventId: 'app-trade.buy',
+      recordedAt: at
     });
     const report = reconcile([broker], [app]);
 
