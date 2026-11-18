@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatRelativeTime } from '../utils/relativeTime';
+import { getSafeNewsArticleUrl } from '../features/quotes/marketInsightsContent';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
@@ -181,11 +182,16 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
           {data.articles.length > 0 && <section class="mt-5 border-t border-slate-800 pt-4">
             <h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{formatMarginSourcesHeading(data.articles.length, getAppLanguage())}</h3>
             <ul class="space-y-2">
-              {data.articles.map((article, index) => <li key={article.url + index} data-animate-content class="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-                <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span class="font-bold text-cyan-300">{article.ticker}</span>{article.sourceId && <span class="rounded border border-cyan-900/70 px-1 text-cyan-200">[{article.sourceId}]</span>}<span>{article.source || translateText('News source', getAppLanguage())}</span><span>{publishedLabel(article.publishedAt)}</span></div>
-                {article.url ? <a href={article.url} target="_blank" rel="noreferrer" class="text-sm font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 hover:text-cyan-300">{article.headline}</a> : <p class="text-sm font-semibold text-slate-100">{article.headline}</p>}
-                {article.summary && <p class="mt-1 text-xs leading-5 text-slate-400">{article.summary}</p>}
-              </li>)}
+              {data.articles.map((article, index) => {
+                const safeArticleUrl = getSafeNewsArticleUrl(article.url);
+                return (
+                  <li key={article.url + index} data-animate-content class="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+                    <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span class="font-bold text-cyan-300">{article.ticker}</span>{article.sourceId && <span class="rounded border border-cyan-900/70 px-1 text-cyan-200">[{article.sourceId}]</span>}<span>{article.source || translateText('News source', getAppLanguage())}</span><span>{publishedLabel(article.publishedAt)}</span></div>
+                    {safeArticleUrl ? <a href={safeArticleUrl} target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 hover:text-cyan-300">{article.headline}</a> : <p class="text-sm font-semibold text-slate-100">{article.headline}</p>}
+                    {article.summary && <p class="mt-1 text-xs leading-5 text-slate-400">{article.summary}</p>}
+                  </li>
+                );
+              })}
             </ul>
           </section>}
         </div>
