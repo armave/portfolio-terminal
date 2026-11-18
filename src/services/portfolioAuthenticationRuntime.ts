@@ -56,7 +56,7 @@ export function createPortfolioAuthenticationRuntime(
     const completeWorkspaceSync = (): void => {
       if (workspaceSyncCompleted) return;
       workspaceSyncCompleted = true;
-      completeWorkspaceSync();
+      dependencies.completeWorkspaceSync();
     };
     try {
       dependencies.saveGatewaySecret(submittedSecret);
