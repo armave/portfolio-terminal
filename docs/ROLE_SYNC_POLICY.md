@@ -4,7 +4,7 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 
 ## Administrator account
 
-- Live market quotes and the encrypted shared portfolio snapshot follow the selected interval. The default is 60 seconds.
+- Live market quotes and the encrypted shared portfolio snapshot follow the selected interval. The default is 60 seconds. Live quote ticks may refresh the current daily-performance observation in the local portfolio, but do not trigger an individual cloud write for every tick; the latest observation is included in the next scheduled workspace checkpoint. Durable portfolio edits and Manual Sync retain their existing cloud-write behavior.
 - The private TradeNet portfolio and orders streams are the primary source for broker balances, positions, executed trades, and active orders.
 - The private stream is considered healthy only after both portfolio and orders channels have delivered validated snapshots for the current administrator session.
 - While both channels are healthy, recurring REST snapshots are suppressed. If either stream has not delivered its first valid snapshot or is disconnected, account/balance/position, executed-trade, and active-order REST snapshots run on the 60-second supplemental cadence. A recovered stream receives one catch-up after a missed update window.
