@@ -84,6 +84,27 @@ try {
   // navigation below proves that the worker actually serves the cached shell.
   await page.reload({ waitUntil: 'domcontentloaded' });
 
+  // Wait for the Workbox install/activation lifecycle to finish writing the
+  // complete precache before auditing CacheStorage. Registration becoming
+  // active and the page reload can race the final cache population.
+  await page.waitForFunction(async (scopePath) => {
+    const cacheNames = (await caches.keys()).filter((name) => name.startsWith('workbox-precache-'));
+    for (const name of cacheNames) {
+      const cache = await caches.open(name);
+      const requests = await cache.keys();
+      const paths = requests.map((request) => new URL(request.url).pathname);
+      const hasDocument = paths.some((path) => path === scopePath || path === scopePath + 'index.html');
+      const hasEntryScript = paths.some((path) =>
+        path.startsWith(scopePath + 'assets/') && /\\/index-[\\w-]+\\.js$/.test(path)
+      );
+      const hasStylesheet = paths.some((path) =>
+        path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
+      );
+      if (hasDocument && hasEntryScript && hasStylesheet) return true;
+    }
+    return false;
+  }, '/portfolio-terminal/', { timeout: 15_000 });
+
   const cacheAudit = await page.evaluate(async () => {
     const cacheNames = await caches.keys();
     const workboxCacheNames = cacheNames.filter((name) => name.startsWith('workbox-precache-'));
