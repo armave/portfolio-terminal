@@ -9,6 +9,7 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
   const calls: string[] = [];
   let currentRole = role;
   const dependencies: PortfolioAuthenticatedStartupDependencies = {
+    beginWorkspaceActivation: vi.fn(() => calls.push('begin-workspace-activation')),
     loadBrokerRules: vi.fn(() => calls.push('load-rules')),
     publishCurrentUser: vi.fn(async () => { calls.push('publish-user'); }),
     clearAccountIdentity: vi.fn(() => { calls.push('clear-identity'); currentRole = null; }),
@@ -36,10 +37,12 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
     hideStartupLoading: vi.fn(() => calls.push('hide-loading')),
     reportBackgroundStartupError: vi.fn((task, error) => calls.push(`background-error:${task}:${String(error)}`))
   };
+  const runtime = createPortfolioAuthenticatedStartupRuntime(dependencies);
   return {
     calls,
     dependencies,
-    start: () => createPortfolioAuthenticatedStartupRuntime(dependencies).startApp(secret)
+    runtime,
+    start: () => runtime.startApp(secret)
   };
 }
 
@@ -53,8 +56,8 @@ describe('portfolio authenticated startup runtime', () => {
 
     await fixture.start();
 
-    expect(fixture.calls.slice(0, 12)).toEqual([
-      'publish-user', 'load-rules', 'secret:valid-secret',
+    expect(fixture.calls.slice(0, 13)).toEqual([
+      'begin-workspace-activation', 'publish-user', 'load-rules', 'secret:valid-secret',
       'import-admin-workspace', 'rollover',
       'resolve-interval:admin', 'set-interval:admin-interval', 'rollover-timer:true',
       'quote-refresh-start', 'saved-admin-view', 'scroll', 'hide-loading'
@@ -69,6 +72,23 @@ describe('portfolio authenticated startup runtime', () => {
     });
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('pull-shared-cloud'));
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
+  });
+
+  it('re-arms cloud-write suppression before every workspace activation', async () => {
+    const fixture = createFixture('admin');
+
+    await fixture.start();
+    await vi.waitFor(() => expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(1));
+
+    fixture.calls.length = 0;
+    await fixture.runtime.startApp('valid-secret');
+
+    expect(fixture.calls.slice(0, 2)).toEqual([
+      'begin-workspace-activation',
+      'publish-user'
+    ]);
+    await vi.waitFor(() => expect(fixture.dependencies.recoverPendingCloudWrites).toHaveBeenCalledTimes(2));
+    expect(fixture.dependencies.beginWorkspaceActivation).toHaveBeenCalledTimes(2);
   });
 
   it('keeps pending cloud writes suppressed until the initial remote pull settles', async () => {
