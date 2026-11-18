@@ -2415,6 +2415,8 @@ export default {
                 // public Worker applies the request's validated CORS policy.
                 const stateHeaders = new Headers(stateResponse.headers);
                 Object.entries(corsHeaders).forEach(([name, value]) => stateHeaders.set(name, value));
+                // Authenticated portfolio snapshots and their ETags must never be served from a browser or intermediary cache.
+                stateHeaders.set("Cache-Control", "no-store");
                 return new Response(stateResponse.body, {
                     status: stateResponse.status,
                     statusText: stateResponse.statusText,
