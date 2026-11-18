@@ -587,16 +587,14 @@ function todayIso(): string {
  * incoming quote, never from the older observation.
  */
 /**
- * Keep the last known provider turnover when a later q tick omits the daily
+ * Keep the last known provider turnover when a later q tick omits daily
  * volume fields. Do not carry a previous session's turnover into a new day.
  */
 function mergeLiveTurnoverDetails(
   previous: Record<string, unknown> | undefined,
   incoming: Record<string, unknown>
 ): Record<string, unknown> {
-  if (!previous || (incoming.volumeValue !== null && incoming.volumeValue !== undefined)) {
-    return incoming;
-  }
+  if (!previous) return incoming;
 
   const previousServerDate = typeof previous.serverTime === 'string'
     ? /^(\\d{4}-\\d{2}-\\d{2})/.exec(previous.serverTime.trim())?.[1]
@@ -608,15 +606,25 @@ function mergeLiveTurnoverDetails(
     return incoming;
   }
 
-  if (previous.volumeValue === null || previous.volumeValue === undefined ||
-      previous.currency === null || previous.currency === undefined || previous.currency === '') {
+  const previousCurrency = typeof previous.currency === 'string' ? previous.currency : '';
+  const incomingCurrency = typeof incoming.currency === 'string' ? incoming.currency : '';
+  const hasPreviousTurnover = previous.volumeValue !== null && previous.volumeValue !== undefined &&
+    previousCurrency !== '';
+  const hasIncomingTurnover = incoming.volumeValue !== null && incoming.volumeValue !== undefined;
+
+  if (hasIncomingTurnover) {
+    return !incomingCurrency && previousCurrency
+      ? { ...incoming, currency: previousCurrency }
+      : incoming;
+  }
+  if (!hasPreviousTurnover || (incomingCurrency && incomingCurrency !== previousCurrency)) {
     return incoming;
   }
 
   return {
     ...incoming,
     volumeValue: previous.volumeValue,
-    currency: incoming.currency || previous.currency,
+    currency: incomingCurrency || previousCurrency,
     ...(incoming.lastTradeTime ? {} : previous.lastTradeTime ? { lastTradeTime: previous.lastTradeTime } : {})
   };
 }
