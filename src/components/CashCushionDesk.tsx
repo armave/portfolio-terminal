@@ -16,6 +16,9 @@ import { balanceSyncReducer, createBalanceSyncState } from '../domain/balanceSyn
 import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
+import { useCloudSyncStatus } from '../ui/uiStateStore';
+import { GuestPortfolioOverview } from './GuestPortfolioOverview';
+import { PortfolioSyncButton } from './TickerTab';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { emitUiEvent } from '../ui/uiEventBus';
 import {
@@ -97,6 +100,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
+  const guestSyncStatus = useCloudSyncStatus();
   const [balanceAdjustmentReasons, setBalanceAdjustmentReasons] = useState<Record<string, string>>({});
   const [balanceAdjustmentNotice, setBalanceAdjustmentNotice] = useState('');
   const [pendingBalanceAdjustmentId, setPendingBalanceAdjustmentId] = useState<string | null>(null);
@@ -499,7 +503,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       `}</style>
       <DeskPageHeader
         title={translateText(guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE', getAppLanguage())}
-        trailing={balanceRefreshing && (
+        trailing={guestUserId ? (
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-semibold text-slate-400">{translateText('Refresh assigned data', getAppLanguage())}</span>
+            <PortfolioSyncButton userId={guestUserId} />
+          </div>
+        ) : balanceRefreshing && (
           <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
             <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
               <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
@@ -509,6 +518,15 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </span>
         )}
       />
+
+      {guestUserId && (
+        <GuestPortfolioOverview
+          holdings={guestHoldings}
+          snapshot={state.guestPortfolioSnapshot ?? null}
+          syncStatus={guestSyncStatus}
+          refreshIntervalMs={refreshIntervalMs}
+        />
+      )}
 
       {isAdmin && (balanceSync.status === 'stale' || balanceSync.status === 'error') && (
         <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
@@ -564,9 +582,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         {guestUserId ? (
           <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2" aria-label="Your active stock cards">
             {guestHoldings.length === 0 ? (
-              <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role="status">
-                <p class="font-semibold text-slate-200">No stocks are assigned to your account yet.</p>
-                <p class="mt-2 text-xs leading-relaxed text-slate-500">Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.</p>
+              <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role={guestSyncStatus.status === 'error' ? 'alert' : 'status'} aria-live="polite">
+                {!state.guestPortfolioSnapshot ? (
+                  <>
+                    <p class="font-semibold text-slate-200">{translateText(guestSyncStatus.status === 'error' ? 'Unable to load assigned holdings.' : 'Checking your assigned holdings…', getAppLanguage())}</p>
+                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText(guestSyncStatus.status === 'error' ? 'The first assigned snapshot is not available on this device. Refresh to try again.' : 'Your account is checking for its first published assignment.', getAppLanguage())}</p>
+                  </>
+                ) : (
+                  <>
+                    <p class="font-semibold text-slate-200">{translateText('No stocks are assigned to your account yet.', getAppLanguage())}</p>
+                    <p class="mt-2 text-xs leading-relaxed text-slate-500">{translateText('Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.', getAppLanguage())}</p>
+                  </>
+                )}
               </div>
             ) : guestHoldings.map((holding) => {
               const {
@@ -629,6 +656,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         <div class="instrument-target-segment guest-stock-analyst-target">
                           <div class="min-w-0">
                             <p class="instrument-target-label">{translateText('Analyst (Yahoo)', getAppLanguage())}</p>
+                            <p class="mt-1 text-[9px] leading-relaxed text-slate-500">{translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', getAppLanguage())}</p>
                             {analystTarget.status === 'available' && analystTarget.targetPrice ? (
                               <div class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                                 <strong class="instrument-target-value">{formatUSD(analystTarget.targetPrice)}</strong>
