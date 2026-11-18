@@ -267,7 +267,8 @@ export class ScenarioCalculator {
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance);
-    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
+    const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
+    const freeCash = Number(freeCashInput);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
     }
@@ -422,13 +423,24 @@ export class ScenarioCalculator {
       rows: (() => {
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
+        const currentSaleGross = oldShares * projectionPrice;
+        const afterSaleGross = newShares * projectionPrice;
+        const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
+        const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
+        const currentBalanceConstraint = { signedBalance: balance, freeCash: Number(freeCashInput), netSaleProceeds: currentNetSaleProceeds };
+        const afterBalanceConstraint = {
+          signedBalance: balanceAfter,
+          freeCash: Number.isFinite(Number(freeCashInput)) ? remainingFreeCashAfterPurchase : Number.NaN,
+          netSaleProceeds: afterNetSaleProceeds
+        };
         const currentBreakevenDays = findProjectionBreakevenDay(
           oldShares * projectionPrice - oldCost,
           currentComms,
           currentMargin,
           currentAllocatedDebt,
           rules.dailyRate,
-          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS,
+          currentBalanceConstraint
         );
         const afterBreakevenDays = findProjectionBreakevenDay(
           newShares * projectionPrice - newCost,
@@ -436,7 +448,8 @@ export class ScenarioCalculator {
           afterMargin,
           afterAllocatedDebt,
           rules.dailyRate,
-          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS,
+          afterBalanceConstraint
         );
         const knownBreakevenHorizons = [currentBreakevenDays, afterBreakevenDays]
           .filter((days): days is number => typeof days === 'number' && Number.isFinite(days));
@@ -448,10 +461,6 @@ export class ScenarioCalculator {
           pos.startDate || state.startDate,
           furthestBreakevenDays
         );
-        const currentSaleGross = oldShares * projectionPrice;
-        const afterSaleGross = newShares * projectionPrice;
-        const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
-        const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
           money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {
