@@ -1215,6 +1215,7 @@ describe('gateway browser-origin boundary', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe(appOrigin);
     expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
     expect(response.headers.get('ETag')).toBe('"4"');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('rejects browser origins outside the configured personal-app allowlist', async () => {
@@ -2265,6 +2266,34 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     );
     expect(await store.ctx.storage.get('record')).toBeUndefined();
     expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
+  });
+
+  it('marks empty, current, and stale cloud-state reads as non-cacheable', async () => {
+    const store = makeDurableObject();
+
+    const missing = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('Cache-Control')).toBe('no-store');
+
+    const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'first' })
+    }));
+    expect(firstWrite.status).toBe(200);
+
+    const staleWrite = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'stale' })
+    }));
+    expect(staleWrite.status).toBe(409);
+    expect(staleWrite.headers.get('Cache-Control')).toBe('no-store');
+
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(latest.status).toBe(200);
+    expect(latest.headers.get('Cache-Control')).toBe('no-store');
+    expect(latest.headers.get('ETag')).toBe('"1"');
   });
 
   it('accepts a write at the current revision and rejects a stale write', async () => {
