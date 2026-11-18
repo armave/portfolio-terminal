@@ -684,7 +684,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       );
                     })()}
                   </div>
-                  <div class="mt-3 grid grid-cols-2 gap-2.5 border-t border-slate-800 pt-3">
+                  <div class="guest-stock-metrics-grid mt-3 grid grid-cols-2 gap-2.5 border-t border-slate-800 pt-3">
                     <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>

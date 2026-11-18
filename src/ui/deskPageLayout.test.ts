@@ -86,6 +86,8 @@ describe('standard non-Margin page layout', () => {
     expect(styles).toContain('font-size: 0.8rem;');
     expect(styles).toContain('.quote-volume-badge {');
     expect(styles).toContain('font-size: 0.75rem;');
+    expect(styles).toContain('.guest-stock-metrics-grid > div > p:first-child {');
+    expect(styles).toContain('.guest-stock-metrics-grid > div > p:nth-child(2) {');
   });
 
   it('localizes new desk page headings and descriptions in Russian', () => {
