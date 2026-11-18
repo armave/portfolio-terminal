@@ -59,6 +59,8 @@ function createFixture(options: {
     showToast: vi.fn((message: string, tone: 'error') => calls.push(`toast:${tone}:${message}`)),
     emitGatewaySecretAuthenticated: vi.fn((secret: string) => calls.push(`event:${secret}`)),
     setActiveView: vi.fn((view: string) => calls.push(`view:${view}`)),
+    beginWorkspaceSync: vi.fn(() => calls.push('workspace-sync-start')),
+    completeWorkspaceSync: vi.fn(() => calls.push('workspace-sync-complete')),
     resolveRefreshInterval: vi.fn((accountRole: AuthRole) => {
       calls.push(`resolve-interval:${accountRole}`);
       return accountRole === 'guest' ? 15_000 : 60_000;
@@ -118,6 +120,7 @@ describe('portfolio authentication runtime', () => {
 
     expect(fixture.calls).toEqual([
       'validate:session-token',
+      'workspace-sync-start',
       'save:session-token',
       'publish:guest',
       'view:BALANCE',
@@ -146,7 +149,11 @@ describe('portfolio authentication runtime', () => {
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.pullAdminPortfolioSnapshot).not.toHaveBeenCalled();
     expect(fixture.dependencies.refreshAllLivePrices).toHaveBeenCalledTimes(1);
-    expect(fixture.calls.indexOf('pull-guest')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
+    expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('interval:15000'));
+    expect(fixture.calls.indexOf('pull-guest')).toBeLessThan(fixture.calls.indexOf('workspace-sync-complete'));
+    expect(fixture.calls.indexOf('workspace-sync-complete')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
+    expect(fixture.dependencies.beginWorkspaceSync).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.completeWorkspaceSync).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.setActiveView).toHaveBeenCalledTimes(2);
   });
 
@@ -161,7 +168,23 @@ describe('portfolio authentication runtime', () => {
     expect(fixture.dependencies.pullAdminPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).not.toHaveBeenCalled();
     expect(fixture.dependencies.refreshAllLivePrices).toHaveBeenCalledTimes(1);
+    expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('interval:60000'));
+    expect(fixture.calls.indexOf('pull-admin')).toBeLessThan(fixture.calls.indexOf('workspace-sync-complete'));
+    expect(fixture.calls.indexOf('workspace-sync-complete')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
+    expect(fixture.dependencies.completeWorkspaceSync).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.setActiveView).not.toHaveBeenCalled();
+  });
+
+  it('releases the refresh gate when an already-initialized workspace pull fails', async () => {
+    const fixture = createFixture({ initialized: true, user: adminUser });
+    fixture.dependencies.pullAdminPortfolioSnapshot.mockRejectedValue(new Error('Cloud pull failed'));
+    const runtime = createPortfolioAuthenticationRuntime(fixture.dependencies);
+
+    await expect(runtime.handleSaveGatewaySecret('admin-token')).rejects.toThrow('Cloud pull failed');
+
+    expect(fixture.dependencies.beginWorkspaceSync).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.completeWorkspaceSync).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.refreshAllLivePrices).not.toHaveBeenCalled();
   });
 
   it('continues authentication with a warning when secure local persistence fails', async () => {
@@ -188,6 +211,7 @@ describe('portfolio authentication runtime', () => {
     await expect(runtime.handleSaveGatewaySecret('session-token')).rejects.toThrow('Startup failed');
 
     expect(fixture.dependencies.setAppInitialized).not.toHaveBeenCalled();
+    expect(fixture.dependencies.completeWorkspaceSync).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.hideAuthContainer).not.toHaveBeenCalled();
   });
 });
