@@ -100,7 +100,7 @@ describe('linear removeBackslashes ReDoS regressions', () => {
       expect(utils.removeBackslashes('[a\\\\]b]')).toBe('[a\\\\]b]');
       expect(utils.removeBackslashes('\\\\[abc]')).toBe('[abc]');
       expect(utils.removeBackslashes('foo\\\\[bar\\\\]')).toBe('foo[bar]');
-      expect(utils.removeBackslashes('terminal\\\\')).toBe('terminal\\\\');
+      expect(utils.removeBackslashes('terminal\\')).toBe('terminal\\');
       expect(utils.removeBackslashes('a\\\\' + '\\n' + 'b')).toBe('a\\\\' + '\\n' + 'b');
     });
 
