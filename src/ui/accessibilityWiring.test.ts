@@ -209,7 +209,7 @@ describe('Stage 10 accessibility wiring', () => {
     const guestHistory = readSource('../components/GuestTrancheHistory.tsx');
     const reconciliation = readSource('../components/BrokerTransactionReconciliation.tsx');
 
-    expect(guestHistory.match(/class="min-h-11 rounded border border-slate-700/g)).toHaveLength(4);
+    expect(guestHistory.match(/class="[^"]*min-h-11[^"]*rounded border border-slate-700/g)).toHaveLength(4);
     expect(guestHistory).not.toContain('class="h-8 rounded border border-slate-700');
     expect(reconciliation.match(/inline-flex min-h-11 min-w-11 items-center justify-center rounded border/g)).toHaveLength(3);
     expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300');

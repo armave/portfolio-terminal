@@ -455,7 +455,7 @@ describe('app localization', () => {
       tabindex: 0
     });
     expect(region.props.role).toBe('region');
-    expect(region.props['aria-label']).toBe('Таблица истории моих акций');
+    expect(region.props['aria-label']).toBe('Таблица истории акций');
     expect(region.props.tabindex).toBe(0);
   });
 
