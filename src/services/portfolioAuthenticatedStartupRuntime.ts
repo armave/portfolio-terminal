@@ -3,6 +3,8 @@ export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
 
 export interface PortfolioAuthenticatedStartupDependencies {
+  /** Re-arm owner cloud-write suppression before activating a different workspace/session. */
+  beginWorkspaceActivation: () => void;
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
   clearAccountIdentity: () => void;
@@ -103,6 +105,8 @@ export function createPortfolioAuthenticatedStartupRuntime(
   };
 
   const startApp = async (secret: string): Promise<void> => {
+    // Re-arm cloud-write suppression on every startup, including account switches.
+    dependencies.beginWorkspaceActivation();
     // Resolve identity and activate its account-scoped storage before reading rules.
     // Offline history is initialized only after we know no account workspace applies.
     if (secret) await dependencies.publishCurrentUser();
