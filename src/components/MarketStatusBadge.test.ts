@@ -57,22 +57,28 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusRoleLabel(false)).toBe('Your market');
   });
 
-  it('uses explicit market-state labels for guest workspaces while preserving admin copy', () => {
-    expect(getMarketStatusLabel('PREMARKET', false)).toBe('Market Pre-market');
-    expect(getMarketStatusLabel('MARKET', false)).toBe('Market Open');
-    expect(getMarketStatusLabel('POSTMARKET', false)).toBe('Market After-hours');
-    expect(getMarketStatusLabel('CLOSED', false)).toBe('Market Closed');
-    expect(getMarketStatusLabel('UNKNOWN', false)).toBe('Market Unavailable');
-    expect(getMarketStatusLabel('MARKET', true)).toBe('Market');
+  it('uses compact administrator labels and descriptive guest market-session labels', () => {
+    expect(getMarketStatusLabel('PREMARKET', true)).toBe('Pre-market');
+    expect(getMarketStatusLabel('PREMARKET', false)).toBe('Pre-market session');
+    expect(getMarketStatusLabel('MARKET', true)).toBe('Market open');
+    expect(getMarketStatusLabel('MARKET', false)).toBe('Regular session');
+    expect(getMarketStatusLabel('POSTMARKET', true)).toBe('Postmarket');
+    expect(getMarketStatusLabel('POSTMARKET', false)).toBe('After-hours trading');
+    expect(getMarketStatusLabel('CLOSED', true)).toBe('Closed');
+    expect(getMarketStatusLabel('CLOSED', false)).toBe('Market closed');
+    expect(getMarketStatusLabel('MIXED', true)).toBe('Mixed status');
+    expect(getMarketStatusLabel('MIXED', false)).toBe('Exchanges differ');
+    expect(getMarketStatusLabel('UNKNOWN', true)).toBe('Unavailable');
+    expect(getMarketStatusLabel('UNKNOWN', false)).toBe('Status unavailable');
   });
 
   it.each([
-    ['PREV', 'PREMARKET', 'Premarket'],
-    ['PRE', 'PREMARKET', 'Premarket'],
-    ['PREPRE', 'PREMARKET', 'Premarket'],
-    ['PRE-MARKET', 'PREMARKET', 'Premarket'],
-    ['OPEN', 'MARKET', 'Market'],
-    ['REGULAR', 'MARKET', 'Market'],
+    ['PREV', 'PREMARKET', 'Pre-market'],
+    ['PRE', 'PREMARKET', 'Pre-market'],
+    ['PREPRE', 'PREMARKET', 'Pre-market'],
+    ['PRE-MARKET', 'PREMARKET', 'Pre-market'],
+    ['OPEN', 'MARKET', 'Market open'],
+    ['REGULAR', 'MARKET', 'Market open'],
     ['POST', 'POSTMARKET', 'Postmarket'],
     ['POSTPOST', 'POSTMARKET', 'Postmarket'],
     ['POST-MARKET', 'POSTMARKET', 'Postmarket'],
@@ -119,8 +125,8 @@ describe('US-equities market status presentation', () => {
   it('keeps a MIXED exchange status visible and suppresses a misleading single-market countdown', () => {
     const now = new Date('2026-11-02T15:00:00.000Z');
     expect(normalizeMarketSessionStatus('MIXED')).toBe('MIXED');
-    expect(getMarketStatusLabel('MIXED')).toBe('Mixed exchange status');
-    expect(getMarketStatusLabel('MIXED', false)).toBe('Exchanges report different states');
+    expect(getMarketStatusLabel('MIXED')).toBe('Mixed status');
+    expect(getMarketStatusLabel('MIXED', false)).toBe('Exchanges differ');
     expect(getEffectiveMarketStatusCountdown('MIXED', now.getTime(), now)).toBeNull();
     expect(getEffectiveMarketStatusCountdown('CLOSED', now.getTime(), now)).toBe(getMarketStatusCountdown('MARKET', now));
     expect(getEffectiveMarketStatusCountdown('MARKET', now.getTime(), now)).toBe(getMarketStatusCountdown('MARKET', now));
