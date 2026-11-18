@@ -483,6 +483,30 @@ export function reconcileBrokerActivity(
       .sort((a, b) => b.score - a.score || a.event.recordedAt - b.event.recordedAt);
     const best = candidates[0];
     if (!best) return;
+    // A fallback match is evidence, not a way to infer intent from insertion
+    // order. recordedAt is the time the app stored an event, not a provider
+    // execution identity. Leave equally strong candidates unmatched.
+    const tiedBest = candidates.filter(candidate => Math.abs(candidate.score - best.score) <= 1e-9);
+    if (tiedBest.length > 1) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      const appEventIds = [...new Set(tiedBest.map(candidate => candidate.event.id))].sort();
+      const findingId = `execution-match-ambiguous-fallback:${broker.id}:${appEventIds.join('|')}`;
+      findings.push(makeFinding({
+        id: findingId,
+        type: 'execution_match_ambiguous',
+        subject: `${broker.ticker} ${broker.side.toUpperCase()}`,
+        currency: broker.currency || undefined,
+        brokerValue: broker.quantity,
+        appValue: null,
+        brokerReferences: [broker.id],
+        appEventIds,
+        brokerAt: broker.at ?? undefined,
+        explanation: 'More than one app-authored transaction is an equally strong fallback match for this broker execution. recordedAt does not establish execution identity, so no candidate was selected.'
+      }, 'provisional'));
+      warnings.push('A broker execution has multiple equally strong app fallback candidates; manual review is required.');
+      return;
+    }
     unmatchedBroker.delete(brokerIndex);
     unmatchedApp.delete(best.index);
     matchedPairs.push({ broker, app: best.event });
