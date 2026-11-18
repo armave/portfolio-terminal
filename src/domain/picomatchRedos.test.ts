@@ -43,13 +43,6 @@ describe('patched picomatch dependency resolution', () => {
   });
 });
 
-interface PicomatchUtils {
-  removeBackslashes(input: string): string;
-}
-
-const picomatchUtilsV2 = createRequire(resolve(vendorV2, 'package.json'))('./lib/utils.js') as PicomatchUtils;
-const picomatchUtilsV4 = createRequire(resolve(vendorV4, 'package.json'))('./lib/utils.js') as PicomatchUtils;
-
 describe('single-branch repeated-extglob ReDoS regressions', () => {
   const candidates = [
     ['v2', picomatch2, vendorV2],
