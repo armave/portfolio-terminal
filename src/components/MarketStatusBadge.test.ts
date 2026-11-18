@@ -188,8 +188,12 @@ describe('US-equities market status presentation', () => {
       time: '1d 11h'
     });
     expect(getEffectiveMarketStatusCountdownParts('CLOSED', now.getTime(), now)).toEqual({
-      label: 'Premarket in ',
+      label: 'Pre-market in ',
       time: '1d 11h'
+    });
+    expect(getMarketStatusCountdownParts('POST', new Date('2026-11-02T22:00:00.000Z'))).toEqual({
+      label: 'Session ends in ',
+      time: '3h'
     });
     const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
     expect(source).toContain('text-slate-100');
