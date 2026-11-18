@@ -16,6 +16,18 @@ export function getTotalPortfolioInvested(state?: BoardState | null): number {
   }, 0);
 }
 
+/** Resolve the same target-sale scope used by the portfolio projection table. */
+export function getPortfolioProjectionTickers(state: BoardState): string[] {
+  const tickers = Object.keys(state.positions || {});
+  const activeView = state.activeView || '';
+  const isCombined = activeView === 'COMBINED' ||
+    (tickers.length !== 1 && !state.positions?.[activeView]);
+  return isCombined
+    ? tickers
+    : [state.positions?.[activeView] ? activeView : tickers[0]]
+      .filter((ticker): ticker is string => Boolean(ticker));
+}
+
 /** Sum hypothetical net proceeds from target-price sales after the configured sell commission. */
 export function getPortfolioNetSaleProceeds(
   state: BoardState,
