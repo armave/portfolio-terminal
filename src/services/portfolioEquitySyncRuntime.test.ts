@@ -161,10 +161,10 @@ describe('portfolio equity synchronization', () => {
     expect(onPerformanceSnapshotChanged).not.toHaveBeenCalled();
 
     expect(store.setState({ balance: 500 })).toBe(true);
-    expect(capturedViews).toEqual([]);
+    expect(capturedBalances).toEqual([]);
 
     runtime.flushDeferredPerformanceSnapshot();
-    expect(capturedViews).toEqual([]);
+    expect(capturedBalances).toEqual([]);
 
     workspaceReady = true;
     runtime.flushDeferredPerformanceSnapshot();
@@ -172,7 +172,7 @@ describe('portfolio equity synchronization', () => {
     expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
 
     runtime.flushDeferredPerformanceSnapshot();
-    expect(capturedViews).toEqual(['AAPL']);
+    expect(capturedBalances).toEqual([500]);
     runtime.dispose();
   });
 
