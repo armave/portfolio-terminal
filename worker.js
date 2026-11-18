@@ -2569,7 +2569,7 @@ export default {
 
                     } catch (err) {
                         logServerDiagnostic("error", "gemini_provider_failed", err);
-                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
+                        lastData = { error: `Model ${modelName} fetch failed.` };
                     } finally {
                         if (timeoutId !== undefined) clearTimeout(timeoutId);
                     }

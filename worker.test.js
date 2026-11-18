@@ -3027,6 +3027,27 @@ describe('Worker request hardening', () => {
     expect(response.status).toBe(200);
   }, 15_000);
 
+  it('does not return raw Gemini upstream exception details to the client', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(
+      new Error('https://generativelanguage.googleapis.com/private?key=provider-secret AAPL')
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'hello' })
+    }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
+
+    expect(response.status).toBe(502);
+    const body = await response.text();
+    expect(body).toMatch(/"error":"Model models\/[a-z0-9.-]+ fetch failed\."/);
+    expect(body).not.toContain('generativelanguage.googleapis.com');
+    expect(body).not.toContain('provider-secret');
+    expect(body).not.toContain('AAPL');
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
