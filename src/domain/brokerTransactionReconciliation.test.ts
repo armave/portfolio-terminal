@@ -278,12 +278,15 @@ describe('reconcileBrokerActivity', () => {
     ], [appEvent('trade.buy')]);
 
     expect(report.matchedExecutionCount).toBe(0);
-    expect(report.findings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-a'] }),
-      expect.objectContaining({ type: 'execution_missing_in_app', brokerReferences: ['fill-order-b'] }),
-      expect.objectContaining({ type: 'execution_missing_in_broker', appEventIds: ['app-trade.buy'] }),
-      expect.objectContaining({ type: 'execution_match_ambiguous', confidence: 'provisional' })
-    ]));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_match_ambiguous',
+      confidence: 'provisional',
+      brokerReferences: ['fill-order-a', 'fill-order-b'],
+      appEventIds: ['app-trade.buy']
+    }));
+    expect(report.findings.some(finding =>
+      finding.type === 'execution_missing_in_app' || finding.type === 'execution_missing_in_broker'
+    )).toBe(false);
   });
 
   it('leaves partial-fill matching unresolved when parent order identity is missing', () => {
@@ -294,11 +297,15 @@ describe('reconcileBrokerActivity', () => {
 
     expect(report.matchedExecutionCount).toBe(0);
     expect(report.status).toBe('partial');
-    expect(report.findings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'execution_missing_in_app' }),
-      expect.objectContaining({ type: 'execution_missing_in_broker' }),
-      expect.objectContaining({ type: 'execution_match_ambiguous' })
-    ]));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_match_ambiguous',
+      confidence: 'provisional',
+      brokerReferences: ['fill-unlinked-1', 'fill-unlinked-2'],
+      appEventIds: ['app-trade.buy']
+    }));
+    expect(report.findings.some(finding =>
+      finding.type === 'execution_missing_in_app' || finding.type === 'execution_missing_in_broker'
+    )).toBe(false);
   });
 
   it('reports multiple matching broker order groups as ambiguous instead of selecting one', () => {
@@ -638,16 +645,22 @@ describe('reconcileBrokerActivity', () => {
       brokerReferences: ['exec-1']
     }));
 
-    const conflict = reconcile(
-      [execution(), execution({ commission: 2 })],
-      [appEvent('trade.buy')]
-    );
-    expect(conflict.status).toBe('partial');
-    expect(conflict.findings).toContainEqual(expect.objectContaining({
-      type: 'execution_revision_conflict',
-      brokerReferences: ['exec-1'],
-      confidence: 'provisional'
-    }));
+    const conflictReports = [
+      reconcile([execution(), execution({ commission: 2 })], [appEvent('trade.buy')]),
+      reconcile([execution({ commission: 2 }), execution()], [appEvent('trade.buy')])
+    ];
+    for (const conflict of conflictReports) {
+      expect(conflict.status).toBe('partial');
+      expect(conflict.findings).toContainEqual(expect.objectContaining({
+        type: 'execution_revision_conflict',
+        brokerReferences: ['exec-1'],
+        brokerValue: null,
+        appValue: null,
+        confidence: 'provisional'
+      }));
+    }
+    expect(conflictReports[0].findings.map(finding => finding.id).sort())
+      .toEqual(conflictReports[1].findings.map(finding => finding.id).sort());
   });
 
   it('surfaces broker cashflow rows with unusable amounts instead of silently dropping them', () => {
