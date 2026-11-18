@@ -1925,6 +1925,7 @@ function hideAuthContainer() {
 }
 
 const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartupRuntime({
+  beginWorkspaceActivation: () => { startupCloudWritesSuppressed = true; },
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
