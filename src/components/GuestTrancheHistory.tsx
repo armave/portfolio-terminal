@@ -16,7 +16,7 @@ interface GuestTrancheHistoryProps {
 
 function formatAssignmentDate(value: number | null | undefined): string {
   if (!Number.isFinite(Number(value)) || Number(value) <= 0) return '—';
-  return new Date(Number(value)).toLocaleDateString(undefined, {
+  return new Date(Number(value)).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
     year: 'numeric', month: 'short', day: '2-digit'
   });
 }
@@ -80,7 +80,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         titleId="guestTrancheHistoryHeading"
         trailing={
           <span class="text-xs tabular-nums text-slate-400">
-            {translateText(`${filteredRecords.length} records`, getAppLanguage())} / {translateText(`${records.length} records`, getAppLanguage())}
+            {filteredRecords.length} {translateText('records', getAppLanguage())} / {records.length} {translateText('records', getAppLanguage())}
           </span>
         }
       />
@@ -163,7 +163,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <>
         <TableScrollRegion label={translateText('Stock history table', getAppLanguage())} className="table-scroll-wrapper guest-assignment-history-scroll" focusClassName="focus-visible:outline-indigo-400">
           <table class="guest-assignment-history-table w-full border-collapse text-left text-xs">
-            <caption class="sr-only">Stock history table</caption>
+            <caption class="sr-only">{translateText('Stock history table', getAppLanguage())}</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
                 <th scope="col" class="px-2 py-2">{translateText('Date', getAppLanguage())}</th>
@@ -240,7 +240,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                 <td colSpan={9} class="px-2 py-2">
                   {translateText('Cost basis across filtered records:', getAppLanguage())} {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
                   {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} ${translateText('Removed', getAppLanguage())}` : ''}
-                  {summary.unpricedOpenTranches > 0 ? ' · Some open holdings have no current quote' : ''}
+                  {summary.unpricedOpenTranches > 0 ? translateText('· Some open holdings have no current quote', getAppLanguage()) : ''}
                 </td>
               </tr>
             </tfoot>

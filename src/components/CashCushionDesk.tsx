@@ -24,7 +24,6 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import {
   areCashCushionPortfolioStatesEqual,
   buildCashHoldingDisplayGroups,
-  formatDailyQuoteRange,
   getActiveTrancheMarketPrice,
   getCashHoldingDisplayMetrics,
   getReversibleBalanceAdjustmentEvents,
@@ -89,12 +88,12 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   }
 
   if (hasRange) {
-    parts.push(formatDailyQuoteRange(details));
+    parts.push(`${translateText('High', getAppLanguage())} ${formatUSD(details.high)} / ${translateText('Low', getAppLanguage())} ${formatUSD(details.low)}`);
   }
 
   return (
     <span class={`mt-0.5 block text-[9px] font-normal tabular-nums ${colorClass}`}>
-      Day: {parts.join(' · ')}
+      {translateText('Day:', getAppLanguage())} {parts.join(' · ')}
     </span>
   );
 }

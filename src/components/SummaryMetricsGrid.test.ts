@@ -219,6 +219,16 @@ describe('margin tranche quantity display', () => {
   });
 });
 
+describe('daily quote context localization', () => {
+  it('localizes the day, high and low labels in margin quote context', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateText('Day:', getAppLanguage())");
+    expect(source).toContain("translateText('High', getAppLanguage())");
+    expect(source).toContain("translateText('Low', getAppLanguage())");
+    expect(source).not.toContain('text: `Day:');
+  });
+});
+
 describe('canonical margin risk integration', () => {
   it('routes combined and single-ticker dashboard risk through the same risk snapshot', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');

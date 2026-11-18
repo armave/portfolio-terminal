@@ -239,11 +239,11 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   }
 
   if (hasRange) {
-    parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
+    parts.push(`${translateText('High', getAppLanguage())} ${formatUSD(details.high)} / ${translateText('Low', getAppLanguage())} ${formatUSD(details.low)}`);
   }
 
   return {
-    text: `Day: ${parts.join(' · ')}`,
+    text: `${translateText('Day:', getAppLanguage())} ${parts.join(' · ')}`,
     className: `mt-0.5 block text-[9px] font-normal tabular-nums text-right ${colorClass}`
   };
 }

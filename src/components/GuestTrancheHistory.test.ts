@@ -17,7 +17,10 @@ describe('guest History presentation', () => {
     expect(historySource).toContain("translateText('Source', getAppLanguage())");
     expect(historySource).toContain("translateText('Value', getAppLanguage())");
     expect(historySource).toContain("translateText('Net P&L', getAppLanguage())");
-    expect(historySource).toContain('Stock history table');
+    expect(historySource).toContain("translateText('Stock history table', getAppLanguage())");
+    expect(historySource).toContain("translateText('records', getAppLanguage())");
+    expect(historySource).toContain("translateText('· Some open holdings have no current quote', getAppLanguage())");
+    expect(historySource).toContain("getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US'");
     expect(historySource).toContain("{translateText('Shares', getAppLanguage())}</th>");
     expect(historySource).toContain("data-label={translateText('Shares', getAppLanguage())}");
     expect(historySource).toContain("data-label={translateText('Remaining shares', getAppLanguage())}");
