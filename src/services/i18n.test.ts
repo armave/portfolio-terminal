@@ -912,7 +912,7 @@ describe('new financial header copy localization', () => {
   it('localizes the new KPI and supporting-section labels in Russian', () => {
     const copy = [
       'Portfolio key indicators',
-      'Portfolio carry break-even',
+      'Post-sale balance floor',
       'Allocated Equity',
       'Margin Risk',
       'Fees & accrued interest',
