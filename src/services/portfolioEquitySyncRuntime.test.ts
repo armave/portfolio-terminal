@@ -177,4 +177,47 @@ describe('portfolio equity synchronization', () => {
   });
 
 
+  it('re-defers an in-flight capture when workspace readiness closes before it completes', async () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {},
+      balance: 0,
+      portfolioEquity: 0,
+      cashCushion: { freeCash: 0, holdings: [] },
+      activeView: 'BALANCE'
+    });
+
+    let workspaceReady = true;
+    let resolveFirstCapture!: (changed: boolean) => void;
+    const recordPerformanceSnapshot = vi.fn()
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+        resolveFirstCapture = resolve;
+      }))
+      .mockImplementationOnce(() => true);
+    const onPerformanceSnapshotChanged = vi.fn();
+    const runtime = createPortfolioEquitySyncRuntime({
+      subscribe: (listener) => store.subscribe(listener),
+      getState: () => store.getState(),
+      calculateEquity: () => 0,
+      setDerivedEquity: () => {},
+      onDurableEquityChanged: vi.fn(),
+      recordPerformanceSnapshot,
+      onPerformanceSnapshotChanged,
+      isPerformanceSnapshotReady: () => workspaceReady,
+      now: () => 1_800_000_000_000
+    });
+
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(1);
+    workspaceReady = false;
+    resolveFirstCapture(true);
+    await Promise.resolve();
+    expect(onPerformanceSnapshotChanged).not.toHaveBeenCalled();
+
+    workspaceReady = true;
+    runtime.flushDeferredPerformanceSnapshot();
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(2);
+    expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
+    runtime.dispose();
+  });
+
 });

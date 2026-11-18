@@ -46,6 +46,12 @@ export function createPortfolioEquitySyncRuntime(
     if (recordedSnapshot && typeof (recordedSnapshot as Promise<boolean>).then === 'function') {
       void Promise.resolve(recordedSnapshot)
         .then((changed) => {
+          // An account transition can close the readiness gate while capture is
+          // awaiting lazy work. Re-defer instead of publishing into that pull.
+          if (dependencies.isPerformanceSnapshotReady?.() === false) {
+            performanceSnapshotDeferred = true;
+            return;
+          }
           if (changed) dependencies.onPerformanceSnapshotChanged?.();
         })
         .catch(() => undefined);

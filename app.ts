@@ -631,6 +631,10 @@ const portfolioEquitySyncRuntime = createPortfolioEquitySyncRuntime({
         capturePortfolioPerformanceValuation
       } = await import('./src/domain/portfolioPerformanceCapture');
 
+      // The cloud pull may have started while the lazy performance module was
+      // resolving. Do not mutate protected valuation history until it settles.
+      if (!initialWorkspaceSyncSettled) return false;
+
       let changed = false;
       do {
         performanceSnapshotPending = false;
