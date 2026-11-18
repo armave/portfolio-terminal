@@ -1099,7 +1099,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               <span id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
                 {dailyQuoteMeta?.text && <span class={dailyQuoteMeta.className}>{dailyQuoteMeta.text}</span>}
                 <QuoteVolumeBadge volume={pos.quoteDetails?.volume} />
-                <span class="text-slate-400"> · </span>
                 <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
                   <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
                 </span>
