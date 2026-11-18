@@ -489,7 +489,7 @@ export function calculateAccruedFees(
   return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
 }
 
-export const MIN_BREAKEVEN_REMAINING_BALANCE_USD = -450;
+const MIN_BREAKEVEN_REMAINING_BALANCE_USD = -450;
 
 export interface BreakevenBalanceConstraint {
   signedBalance: number;
