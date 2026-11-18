@@ -59,6 +59,42 @@ describe('portfolio automatic refresh policy', () => {
     }
   );
 
+  it('waits for the initial workspace sync before timer, manual, and visibility refreshes', async () => {
+    vi.useFakeTimers();
+    let workspaceReady = false;
+    const refreshQuotes = vi.fn();
+    const refreshSupplemental = vi.fn();
+    const syncState = vi.fn();
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      isWorkspaceReady: () => workspaceReady,
+      refreshQuotes,
+      refreshSupplemental,
+      syncState,
+      syncHistory
+    });
+
+    scheduler.configure(15_000, 'admin');
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(scheduler.refreshNow()).resolves.toBe(false);
+    await expect(scheduler.onVisibilityChange()).resolves.toBe(false);
+
+    expect(refreshQuotes).not.toHaveBeenCalled();
+    expect(refreshSupplemental).not.toHaveBeenCalled();
+    expect(syncHistory).not.toHaveBeenCalled();
+    expect(syncState).not.toHaveBeenCalled();
+
+    workspaceReady = true;
+    await expect(scheduler.onVisibilityChange()).resolves.toBe(true);
+    expect(refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
+
   it('defers history and workspace checkpoints until both core admin refresh branches finish', async () => {
     const sequence: string[] = [];
     let releaseQuotes: (() => void) | undefined;

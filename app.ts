@@ -589,6 +589,9 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
+// The refresh timer is configured before workspace hydration. Keep every scheduled
+// quote/broker/history refresh idle until the authenticated startup pull has settled.
+let initialWorkspaceSyncSettled = false;
 let performanceSnapshotInFlight = false;
 let performanceSnapshotPending = false;
 
@@ -1672,6 +1675,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
 const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   getRole: () => currentAccountRole,
   isVisible: () => !document.hidden,
+  isWorkspaceReady: () => initialWorkspaceSyncSettled,
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
   syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
@@ -1870,6 +1874,8 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
     emitUiEvent('settings:gateway-secret-authenticated', { secret });
   },
   setActiveView,
+  beginWorkspaceSync: () => { initialWorkspaceSyncSettled = false; },
+  completeWorkspaceSync: () => { initialWorkspaceSyncSettled = true; },
   resolveRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     role
@@ -1913,15 +1919,25 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   initializeOfflineHistoryStorage: () => initializeSavedHistoryStorage(),
   setGatewaySecret: (secret) => { portfolioStore.setState({ gatewaySecret: secret }); },
   getAccountRole: () => currentAccountRole,
-  pullGuestPortfolioSnapshot,
+  pullGuestPortfolioSnapshot: async () => {
+    try {
+      await pullGuestPortfolioSnapshot();
+    } finally {
+      initialWorkspaceSyncSettled = true;
+    }
+  },
   importSavedAdminWorkspace: () => {
     portfolioStore.importState(loadSavedState(portfolioStore.getState()));
     state = portfolioStore.getState();
   },
   applyOvernightRollover,
   pullSharedCloudState: async () => {
-    setCloudStatus('syncing', 'CHECKING...');
-    await syncCloudState('pull', { protectLocalEditsDuringPull: true });
+    try {
+      setCloudStatus('syncing', 'CHECKING...');
+      await syncCloudState('pull', { protectLocalEditsDuringPull: true });
+    } finally {
+      initialWorkspaceSyncSettled = true;
+    }
   },
   getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
     role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -1964,6 +1980,8 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
 });
 
 async function startApp(secret: string) {
+  // Reset for every authenticated workspace activation, including account switches.
+  initialWorkspaceSyncSettled = false;
   await portfolioAuthenticatedStartupRuntime.startApp(secret);
 }
 

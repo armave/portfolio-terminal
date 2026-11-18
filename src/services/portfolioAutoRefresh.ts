@@ -25,6 +25,8 @@ export function normalizeQuoteRefreshInterval(value: unknown, fallback = DEFAULT
 interface PortfolioAutoRefreshSchedulerOptions {
   getRole: () => PortfolioAutoRefreshRole;
   isVisible: () => boolean;
+  /** Hold automatic refresh until the authenticated workspace's initial cloud pull settles. */
+  isWorkspaceReady?: () => boolean;
   refreshQuotes: () => void | Promise<unknown>;
   refreshSupplemental: () => void | Promise<unknown>;
   /** Sync the current admin portfolio snapshot after each scheduled quote cycle. */
@@ -68,7 +70,8 @@ export function createPortfolioAutoRefreshScheduler(
     activeInterval > 0 &&
     activeRole !== null &&
     options.getRole() === activeRole &&
-    options.isVisible();
+    options.isVisible() &&
+    (options.isWorkspaceReady?.() ?? true);
 
   const runTask = (
     source: QuoteRefreshSource,
