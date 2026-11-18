@@ -390,6 +390,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                               {analystConsensus.upsideText}
                             </span>
                           )}
+                          {typeof analystConsensus.analystCount === 'number' && Number.isFinite(analystConsensus.analystCount) && analystConsensus.analystCount > 0 && (
+                            <span class="mt-1 text-[9px] text-slate-500">{translateText('Analysts', getAppLanguage())}: {analystConsensus.analystCount.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
+                          )}
                         </>
                       ) : (
                         <span class="board-analyst-consensus__status">{analystConsensus.text}</span>

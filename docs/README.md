@@ -13,6 +13,7 @@ This directory contains maintained product and engineering references, current o
 ## Accounts, broker integrations, and UI patterns
 
 - [Account sessions](account-sessions.md) — server-enforced session expiry, per-account session cap, and revocation behavior.
+- [Portfolio planning settings](portfolio-settings.md) — admin-managed app guardrails, defaults, scope, and validation boundaries.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces and authenticated workspace transitions.
 - [Freedom TradeNet market-data integration](FREEDOM_MARKET_DATA.md) — Worker-backed read-only quote, market-status, order, and depth paths.
@@ -35,6 +36,8 @@ This directory contains maintained product and engineering references, current o
 - [GitHub repository settings follow-up](ci/github-settings-follow-up.md) — manual branch-ruleset and Cloudflare production-environment steps that cannot be represented by workflow files.
 
 ## Delivery workstreams
+
+- [Remaining work implementation plan](remaining-work-implementation-plan.md) — dependency-ordered plan for active PT-02, PT-04, PT-05, PT-16 and PT-17 issues, including manual approval and production-verification gates.
 
 - [Wave 2 delivery record](wave-2/README.md) — completed foundation streams and their integration history.
 - [Wave 2 performance methodology](wave-2/performance-methodology.md) — deterministic performance-calculation input and quality contract.

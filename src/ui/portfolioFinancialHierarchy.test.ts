@@ -18,10 +18,14 @@ describe('financial target and carry-break-even scope', () => {
     expect(combinedHeaderBranch).not.toContain('boardTargetSection');
   });
 
-  it('states that the unchanged break-even estimate is portfolio-wide and localizes its status', () => {
+  it('uses the portfolio-wide target-price post-sale balance floor horizon', () => {
     expect(runtimeSource).not.toContain("translateText('BE', getAppLanguage())");
-    expect(summarySource).toContain("translateText('Portfolio carry break-even', getAppLanguage())");
-    expect(runtimeSource).toContain("translateText('No margin debt', getAppLanguage())");
+    expect(summarySource).toContain("translateText('Post-sale balance floor', getAppLanguage())");
+    expect(runtimeSource).toContain('getPortfolioNetSaleProceeds(state, TRADERNET_RULES, getPortfolioProjectionTickers(state))');
+    expect(runtimeSource).toContain('calculatePostSaleBalanceFloorHorizon');
+    expect(runtimeSource).toContain("translateText('Post-sale balance estimate unavailable', getAppLanguage())");
+    expect(runtimeSource).toContain("translateText('Already below floor', getAppLanguage())");
+    expect(runtimeSource).toContain("translateText('No projected floor breach within 10 years', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No active trades', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('days', getAppLanguage())");
   });
@@ -84,7 +88,8 @@ describe('financial title and KPI single-source presentation', () => {
 
   it('keeps Guest Stocks PT-free and labels the Yahoo target consistently', () => {
     const guestSource = readFileSync(new URL('../components/CashCushionDesk.tsx', import.meta.url), 'utf8');
-    expect(guestSource).toContain("translateText('Analyst (Yahoo)', getAppLanguage())");
+    expect(guestSource).toContain("translateText('Analyst target', getAppLanguage())");
+    expect(guestSource).not.toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
     expect(guestSource).not.toContain('Margin PT');
     expect(guestSource).toContain('guest-stock-value-section');
   });

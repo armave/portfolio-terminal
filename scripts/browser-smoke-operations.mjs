@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { arch, cpus, platform, release } from 'node:os';
+import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount } from './browser-performance-baseline-metrics.mjs';
+import { buildAuthenticatedPortfolioFixture } from './authenticated-portfolio-fixture.mjs';
 
 const host = '127.0.0.1';
 const port = Number(process.env.OPERATIONS_SMOKE_PORT || 4174);
@@ -36,7 +39,7 @@ function makeUser(id, name, role, language = 'en') {
   return { id, name, role, language, createdAt: '2026-11-05T00:00:00.000Z' };
 }
 
-async function mockWorkerApi(page) {
+async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEvents, ignoreCloudStatePulls = false } = {}) {
   const calls = [];
   const users = [];
   let bootstrapComplete = false;
@@ -51,6 +54,52 @@ async function mockWorkerApi(page) {
   let newsRequestCount = 0;
   let tenantDirectoryRevision = 0;
   const tenantDirectories = [];
+  const mockedBrokerPositions = portfolioPositions
+    ? Object.values(portfolioPositions).map((position, index) => {
+        const lots = Array.isArray(position.tranches) ? position.tranches : [];
+        const costBasis = lots.reduce((sum, lot) => sum + (Number(lot.qty) * Number(lot.price)), 0);
+        const averagePrice = Number(position.shares) > 0 ? costBasis / Number(position.shares) : null;
+        const marketValue = Number(position.shares) * Number(position.currentPrice);
+        return {
+          curr: 'USD',
+          i: `${position.ticker}.US`,
+          name: position.ticker,
+          q: String(position.shares),
+          mkt_price: String(position.currentPrice),
+          market_value: String(marketValue),
+          bal_price_a: averagePrice === null ? '' : String(averagePrice),
+          profit_close: averagePrice === null ? '0' : String((Number(position.currentPrice) - averagePrice) * Number(position.shares)),
+          acc_pos_id: 7001 + index
+        };
+      })
+    : [
+        { curr: 'USD', i: 'AAPL.US', name: 'Apple', q: '5', mkt_price: '11', market_value: '55', bal_price_a: '10', profit_close: '5', acc_pos_id: 7001 },
+        { curr: 'USD', i: 'MSFT.US', name: 'Microsoft', q: '2', mkt_price: '21', market_value: '42', bal_price_a: '20', profit_close: '2', acc_pos_id: 7002 }
+      ];
+  const mockedBrokerTrades = Array.isArray(portfolioTransactionEvents)
+    ? portfolioTransactionEvents.flatMap((event) => {
+        if (!['trade.buy', 'trade.sell'].includes(event?.type) ||
+            typeof event.ticker !== 'string' ||
+            !Number.isFinite(Number(event.quantity)) ||
+            !Number.isFinite(Number(event.unitPrice))) return [];
+        return [{
+          trade_id: `performance-${event.id}`,
+          instr_nm: `${event.ticker}.US`,
+          // TradeNet history type is documented as 1=Buy and 2=Sell.
+          type: event.type === 'trade.buy' ? '1' : '2',
+          quantity: String(event.quantity),
+          p: String(event.unitPrice),
+          date: new Date(event.effectiveAt).toISOString(),
+          v: String(event.grossAmount ?? Number(event.quantity) * Number(event.unitPrice)),
+          curr_c: 'USD',
+          commiss: String(event.type === 'trade.buy' ? Number(event.fees ?? 0) : 0),
+          profit: String(event.realizedPnl ?? 0)
+        }];
+      })
+    : [
+        { trade_id: 'operations-aapl-buy', instr_nm: 'AAPL.US', operation: '1', quantity: '5', p: '10', date: '2026-11-05T09:00:00.000Z', v: '50', curr_c: 'USD', commiss: '0.10', profit: '0' },
+        { trade_id: 'operations-msft-buy', instr_nm: 'MSFT.US', operation: '1', quantity: '2', p: '20', date: '2026-11-05T10:00:00.000Z', v: '40', curr_c: 'USD', commiss: '0.10', profit: '0' }
+      ];
   const tenantCapabilities = {
     owner: ['tenant.read', 'tenant.manage', 'workspace.manage', 'portfolio.manage', 'membership.manage'],
     manager: ['tenant.read', 'portfolio.read', 'portfolio.write'],
@@ -424,6 +473,12 @@ async function mockWorkerApi(page) {
         return;
       }
       if (method === 'GET') {
+        // The authenticated performance fixture is intentionally local-only.
+        // Do not let a startup cloud snapshot replace the deterministic seed.
+        if (ignoreCloudStatePulls) {
+          await json(route, 404, { error: 'No cloud workspace is attached to the isolated performance fixture.' }, { ETag: `"${stateRevision}"` }, call);
+          return;
+        }
         if (failNextConflictPull) {
           failNextConflictPull = false;
           await json(route, 503, { error: 'Temporary conflict-reconciliation read failure.' }, {}, call);
@@ -492,20 +547,14 @@ async function mockWorkerApi(page) {
           data: { result: { ps: {
             loaded: true,
             acc: [{ curr: 'USD', s: '10000', currval: '10000' }],
-            pos: [
-              { curr: 'USD', i: 'AAPL.US', name: 'Apple', q: '5', mkt_price: '11', market_value: '55', bal_price_a: '10', profit_close: '5', acc_pos_id: 7001 },
-              { curr: 'USD', i: 'MSFT.US', name: 'Microsoft', q: '2', mkt_price: '21', market_value: '42', bal_price_a: '20', profit_close: '2', acc_pos_id: 7002 }
-            ]
+            pos: mockedBrokerPositions
           } } }
         }, {}, call);
         return;
       }
       if (action === 'freedom-trades') {
         await json(route, 200, {
-          data: { trades: { trade: [
-            { trade_id: 'operations-aapl-buy', instr_nm: 'AAPL.US', operation: '1', quantity: '5', p: '10', date: '2026-11-05T09:00:00.000Z', v: '50', curr_c: 'USD', commiss: '0.10', profit: '0' },
-            { trade_id: 'operations-msft-buy', instr_nm: 'MSFT.US', operation: '1', quantity: '2', p: '20', date: '2026-11-05T10:00:00.000Z', v: '40', curr_c: 'USD', commiss: '0.10', profit: '0' }
-          ] } }
+          data: { trades: { trade: mockedBrokerTrades } }
         }, {}, call);
         return;
       }
@@ -555,6 +604,8 @@ async function mockWorkerApi(page) {
   return {
     calls,
     users,
+    mockedBrokerPositionCount: mockedBrokerPositions.length,
+    mockedBrokerExecutionCount: mockedBrokerTrades.length,
     count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length,
     findCalls: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname),
     failNextStateConflict: () => { failNextStateConflict = true; }
@@ -652,12 +703,115 @@ async function seedSyntheticPortfolio(page) {
   }
 }
 
+async function seedAuthenticatedPerformancePortfolio(page, fixture, worker) {
+  const expectedFixtureEventIds = fixture.transactionEvents.map((event) => event.id);
+  await page.evaluate((seed) => {
+    const key = 'margin_portfolio_state_dynamic_v2::owner';
+    const previous = localStorage.getItem(key);
+    const state = previous ? JSON.parse(previous) : {};
+    state.positions = seed.positions;
+    state.transactionEvents = seed.transactionEvents;
+    state.closedTrades = seed.closedTrades;
+    state.cashCushion = seed.cashCushion;
+    state.balance = 0;
+    state.realizedMarginCharged = 0;
+    state.startDate = seed.startDate;
+    state.activeView = 'AAPL';
+    state.lastUpdated = seed.generatedAt;
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem('portfolio_active_view', 'COMBINED');
+  }, fixture);
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForAuthOverlay(page, false);
+  const readPersistedFixtureCounts = (fixtureEventIds) => {
+    try {
+      const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2::owner');
+      const saved = raw ? JSON.parse(raw) : null;
+      const positions = Object.values(saved?.positions || {});
+      const transactionEvents = Array.isArray(saved?.transactionEvents) ? saved.transactionEvents : [];
+      const eventCounts = new Map();
+      for (const event of transactionEvents) {
+        if (typeof event?.id === 'string' && event.id) {
+          eventCounts.set(event.id, (eventCounts.get(event.id) || 0) + 1);
+        }
+      }
+      const expectedIds = Array.isArray(fixtureEventIds) ? fixtureEventIds : [];
+      return {
+        positionCount: positions.length,
+        openLotCount: positions.reduce((sum, position) =>
+          sum + (Array.isArray(position?.tranches) ? position.tranches.length : 0), 0),
+        closedTradeCount: Array.isArray(saved?.closedTrades) ? saved.closedTrades.length : null,
+        transactionEventCount: transactionEvents.length,
+        missingOrDuplicatedFixtureEventCount: expectedIds.filter((id) => eventCounts.get(id) !== 1).length,
+        samplePositionTickers: positions.slice(0, 5).map((position) => position?.ticker || null),
+        firstPositionLotCount: Array.isArray(positions[0]?.tranches) ? positions[0].tranches.length : null,
+        snapshotPresent: Boolean(saved)
+      };
+    } catch (error) {
+      return { snapshotPresent: false, parseError: String(error) };
+    }
+  };
+  try {
+    await page.waitForFunction(({ summary, fixtureEventIds }) => {
+      try {
+        const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2::owner');
+        const saved = raw ? JSON.parse(raw) : null;
+        const positions = Object.values(saved?.positions || {});
+        const tranches = positions.reduce((sum, position) =>
+          sum + (Array.isArray(position?.tranches) ? position.tranches.length : 0), 0);
+        const transactionEvents = Array.isArray(saved?.transactionEvents) ? saved.transactionEvents : [];
+        const eventCounts = new Map();
+        for (const event of transactionEvents) {
+          if (typeof event?.id === 'string' && event.id) {
+            eventCounts.set(event.id, (eventCounts.get(event.id) || 0) + 1);
+          }
+        }
+        const fixtureEventsPreserved = fixtureEventIds.every((id) => eventCounts.get(id) === 1);
+        return positions.length === summary.positionCount &&
+          tranches === summary.openLotCount &&
+          saved?.closedTrades?.length === summary.closedTradeCount &&
+          transactionEvents.length >= summary.transactionEventCount &&
+          fixtureEventsPreserved;
+      } catch {
+        return false;
+      }
+    }, { summary: fixture.summary, fixtureEventIds: expectedFixtureEventIds }, { timeout: 15_000 });
+  } catch (error) {
+    const actual = await page.evaluate(readPersistedFixtureCounts, expectedFixtureEventIds);
+    const brokerPositionCalls = worker.findCalls('GET', '/')
+      .filter((call) => call.action === 'freedom-positions')
+      .map((call) => ({
+        status: call.responseStatus,
+        positionCount: call.responsePayload?.data?.result?.ps?.pos?.length ?? null,
+        sampleTickers: call.responsePayload?.data?.result?.ps?.pos?.slice(0, 5).map((row) => row?.i) ?? []
+      }));
+    const relatedActions = worker.calls
+      .filter((call) => /portfolio|positions|account|trades|execution/i.test(String(call.action || call.pathname)))
+      .map((call) => ({ action: call.action || null, path: call.pathname, status: call.responseStatus }))
+      .slice(-30);
+    throw new Error(
+      'Authenticated performance fixture did not survive startup. Expected at least ' +
+      JSON.stringify(fixture.summary) + ' with each fixture event ID present exactly once; observed ' +
+      JSON.stringify(actual) +
+      '; mockedBrokerPositionCount=' + worker.mockedBrokerPositionCount +
+      '; mockedBrokerExecutionCount=' + worker.mockedBrokerExecutionCount +
+      '; brokerPositionCalls=' + JSON.stringify(brokerPositionCalls) +
+      '; relatedActions=' + JSON.stringify(relatedActions) +
+      '; cause: ' + (error instanceof Error ? error.message : String(error))
+    );
+  }
+  if (await page.locator('#cmdInput').count()) {
+    throw new Error('The removed command console is still present in the application.');
+  }
+}
+
 async function captureAuthenticatedPortfolioPerformance(browser) {
   const viewports = [
     { name: 'desktop', width: 1440, height: 900 },
     { name: 'mobile', width: 390, height: 844 }
   ];
-  const runsPerViewport = 3;
+  const runsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_BASELINE_RUNS, 3);
   const samples = [];
 
   for (const viewport of viewports) {
@@ -669,7 +823,8 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
       const page = await context.newPage();
       const pageErrors = [];
       page.on('pageerror', (error) => pageErrors.push(error.message));
-      const worker = await mockWorkerApi(page);
+      const fixture = buildAuthenticatedPortfolioFixture(Date.now());
+      const worker = await mockWorkerApi(page, { portfolioPositions: fixture.positions, portfolioTransactionEvents: fixture.transactionEvents, ignoreCloudStatePulls: true });
       const startedAt = Date.now();
 
       try {
@@ -711,12 +866,41 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
         const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
         if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
-        await seedSyntheticPortfolio(page);
+        await seedAuthenticatedPerformancePortfolio(page, fixture, worker);
 
         await waitForCondition(
           () => worker.findCalls('GET', '/').some((call) => call.action === 'freedom-positions' && call.responseStatus === 200),
           'synthetic broker positions snapshot'
         );
+        const expectedFixtureEventIds = fixture.transactionEvents.map((event) => event.id);
+        const persistedFixture = await page.evaluate((fixtureEventIds) => {
+          const raw = localStorage.getItem('margin_portfolio_state_dynamic_v2::owner');
+          const saved = raw ? JSON.parse(raw) : null;
+          const positions = Object.values(saved?.positions || {});
+          const transactionEvents = Array.isArray(saved?.transactionEvents) ? saved.transactionEvents : [];
+          const eventCounts = new Map();
+          for (const event of transactionEvents) {
+            if (typeof event?.id === 'string' && event.id) {
+              eventCounts.set(event.id, (eventCounts.get(event.id) || 0) + 1);
+            }
+          }
+          return {
+            positionCount: positions.length,
+            openLotCount: positions.reduce((sum, position) =>
+              sum + (Array.isArray(position?.tranches) ? position.tranches.length : 0), 0),
+            closedTradeCount: saved?.closedTrades?.length ?? 0,
+            transactionEventCount: transactionEvents.length,
+            missingOrDuplicatedFixtureEventCount: fixtureEventIds.filter((id) => eventCounts.get(id) !== 1).length
+          };
+        }, expectedFixtureEventIds);
+        if (persistedFixture.positionCount !== fixture.summary.positionCount ||
+            persistedFixture.openLotCount !== fixture.summary.openLotCount ||
+            persistedFixture.closedTradeCount !== fixture.summary.closedTradeCount ||
+            persistedFixture.transactionEventCount < fixture.summary.transactionEventCount ||
+            persistedFixture.missingOrDuplicatedFixtureEventCount !== 0) {
+          throw new Error('Authenticated synthetic portfolio changed during startup or mocked broker reconciliation: ' +
+            JSON.stringify(persistedFixture));
+        }
         await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
         await page.waitForFunction(
           () => document.querySelector('#marketInsightsTicker')?.textContent?.includes('AAPL'),
@@ -748,7 +932,7 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
           run,
           viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
           authenticatedRole: 'admin',
-          syntheticPortfolio: { ticker: 'AAPL', shares: 5, entryPrice: 10 },
+          syntheticPortfolio: fixture.summary,
           elapsedToPortfolioReadyMs: Date.now() - startedAt,
           ...metrics
         });
@@ -761,16 +945,31 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
   await mkdir('artifacts', { recursive: true });
   await writeFile('artifacts/authenticated-portfolio-performance.json', JSON.stringify({
     schemaVersion: 1,
+    environment: buildPerformanceEnvironmentMetadata({
+      platform: platform(),
+      osRelease: release(),
+      architecture: arch(),
+      nodeVersion: process.version,
+      cpuModel: cpus()[0]?.model,
+      logicalCpuCount: cpus().length,
+      runnerImageOS: process.env.ImageOS,
+      runnerImageVersion: process.env.ImageVersion,
+      browserName: 'Chromium',
+      browserVersion: browser.version(),
+      headless: true,
+      viewports
+    }),
     fixture: {
       authentication: 'Application bootstrap flow with a deterministic mocked Worker API',
-      portfolioSeed: 'Direct local-only synthetic portfolio fixture; no order is placed',
-      brokerSnapshot: 'Deterministic mocked Freedom positions response',
-      liveBrokerVerification: false
+      portfolioSeed: 'Local-only deterministic fixture: 100 active positions, 200 stable open lots, 10 linked closed trades and 220 transaction journal events; no order is placed',
+      brokerSnapshot: 'Deterministic mocked Freedom positions and synthetic indicative quotes',
+      liveBrokerVerification: false,
+      replayValidation: 'The fixture is validated by Vitest against transaction-event schema, snapshot replay parity, stable-lot parity and linked closed-history parity before browser use'
     },
     methodology: {
       runsPerViewport,
       viewports,
-      readiness: 'Market Insights panel visible and selected ticker confirmed as AAPL',
+      readiness: 'Market Insights panel visible, selected ticker is AAPL, and the 100-position fixture remains persisted after mocked broker refresh',
       timing: 'Elapsed wall-clock time from navigation start through authenticated seeded portfolio readiness'
     },
     samples

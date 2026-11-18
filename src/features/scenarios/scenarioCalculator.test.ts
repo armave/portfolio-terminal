@@ -284,6 +284,37 @@ describe('Market Tools Buy More preview', () => {
 });
 
 
+describe('Buy More breakeven remaining-balance floor', () => {
+  it('omits breakeven dates when the projected post-sale account balance is below -$450', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-18T12:00:00.000Z'));
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'AAPL',
+      balance: -2_000,
+      cashCushion: { ...(state.cashCushion || { holdings: [] }), freeCash: 0 },
+      brokerAssumptions: { ...state.brokerAssumptions, annualBorrowRate: 0.365, dayCountBasis: 365 },
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 105, commBuy: 2,
+          startDate: '2026-11-10',
+          tranches: [{ qty: 10, price: 100, date: '2026-11-10', buyCommission: 2 }]
+        },
+        MSFT: {
+          ticker: 'MSFT', shares: 100, currentPrice: 100, pt: 100, commBuy: 0,
+          tranches: [{ qty: 100, price: 100 }]
+        }
+      }
+    } as any);
+
+    const result = ScenarioCalculator.previewBuyMoreScenario('AAPL', 5, 105, 105);
+
+    expect(result.type).toBe('res');
+    expect(result.modal?.rows.some(row => row.label.includes('BREAKEVEN'))).toBe(false);
+  });
+});
+
 describe('Market Tools Exit Comparison preview', () => {
   it('reuses the deterministic two-period scenario engine without mutating the portfolio', () => {
     const state = portfolioStore.getState();

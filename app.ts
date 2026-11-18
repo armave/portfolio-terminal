@@ -1,17 +1,17 @@
+import { logSafeDiagnostic } from './src/services/safeDiagnostics';
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
-  calculateBreakevenDays,
-  calculateCommission,
+  calculatePostSaleBalanceFloorHorizon,
   resolveCommissionConfig,
   calculateProjectedDebt,
   calculateMarginInterest,
-  collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
+  MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
 } from './src/domain/portfolio';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import {
@@ -39,7 +39,8 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS,
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
-import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getMarketInsightsTicker, getPortfolioNetSaleProceeds, getPortfolioProjectionTickers, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { DEFAULT_PORTFOLIO_SETTINGS, normalizePortfolioSettings } from './src/domain/portfolioSettings';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
@@ -167,7 +168,7 @@ const guestPortfolioAssignmentRuntime = createGuestPortfolioAssignmentRuntime({
   publishBatch: publishGuestPortfolioSnapshotsBatch,
   renderBoard,
   showToast,
-  logError: (message, error) => console.error(message, error),
+  logError: (_message, error) => logSafeDiagnostic('error', 'broker-data', error),
   logAppMessage
 });
 guestPortfolioAssignmentRuntime.bind();
@@ -214,7 +215,8 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -328,7 +330,8 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     Date.now(),
     tradesWithPersistedFees,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -426,7 +429,8 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    activeTrancheMixes
+    activeTrancheMixes,
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -748,7 +752,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceL
   }
   state = portfolioStore.getState();
   switchView(state.activeView);
-  console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
+  console.info("[Sync]: Cloud state ingested successfully.");
   emitUiEvent('app:scroll-workspace');
 }
 
@@ -835,7 +839,7 @@ async function resetToBlankState(): Promise<void> {
       if (previousDeviceActiveView === null) localStorage.removeItem('portfolio_active_view');
       else localStorage.setItem('portfolio_active_view', previousDeviceActiveView);
     } catch (error) {
-      console.error('Could not restore the previous device desk preference after reset rollback:', error);
+      logSafeDiagnostic('error', 'browser-storage', error);
     }
     portfolioStore.restoreInMemorySnapshot(previousState);
     state = portfolioStore.getState();
@@ -863,17 +867,13 @@ async function resetToBlankState(): Promise<void> {
   } catch (error) {
     if (!isResetSessionCurrent()) return;
     const detail = error instanceof Error ? error.message : "Unknown cloud history error.";
-    console.error("Unable to clear closed history from KV cloud:", error);
+    logSafeDiagnostic('error', 'cloud-sync', error);
     showToast(
       "The portfolio was reset locally, but cloud closed history could not be cleared. Restore cloud access and retry the reset.",
       "error"
     );
     logAppMessage(`[KV Cloud Error]: Closed history reset failed: ${detail}`);
   }
-}
-
-function calcCommission(shares: number, totalVal: number) {
-  return calculateCommission(shares, totalVal, resolveCommissionConfig(TRADERNET_RULES));
 }
 
 function getDailyRate() {
@@ -996,71 +996,50 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const setText = (status: string) => setBreakevenText('Breakeven: ' + status);
+  const setText = (status: string) => setBreakevenText('Post-sale floor: ' + status);
 
   const tickers = Object.keys(state.positions);
-  const totalDebt = Math.abs(state.balance);
-
-  let totalGrossTarget = 0;
-  let totalInvested = 0;
-  let totalComms = 0;
-  let totalMarginCharged = state.realizedMarginCharged || 0;
-
-  tickers.forEach(t => {
-    const pos = state.positions[t];
-    if (pos && pos.shares > 0) {
-      const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
-      totalInvested += cost;
-      const valSell = pos.shares * pos.pt;
-      const commSell = calcCommission(pos.shares, valSell);
-      totalGrossTarget += (valSell - cost);
-      totalComms += (pos.commBuy || 0) + commSell;
-    }
-  });
-
-  const tranchesForCombined = collectOpenPositionTranches(state.positions);
-  const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
-    dailyRate: getDailyRate(),
-    marginDebt: totalDebt,
-    totalDebt
-  });
-  totalMarginCharged += openMarginCharged;
-
-  const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
-
-  if (tickers.length === 0 || totalInvested === 0) {
+  if (tickers.length === 0 || !tickers.some((ticker) => Number(state.positions[ticker]?.shares) > 0)) {
     setText(translateText('No active trades', getAppLanguage()));
     return;
   }
 
-  if (totalDebt <= 0) {
-    setText(translateText('No margin debt', getAppLanguage()));
+  const netSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES, getPortfolioProjectionTickers(state));
+  const result = netSaleProceeds === null
+    ? { status: 'unavailable' as const }
+    : calculatePostSaleBalanceFloorHorizon({
+      signedBalance: Number(state.balance),
+      freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
+      netSaleProceeds,
+      minimumRemainingBalanceUsd: state.portfolioSettings?.breakevenMinimumRemainingBalanceUsd ??
+        DEFAULT_PORTFOLIO_SETTINGS.breakevenMinimumRemainingBalanceUsd
+    }, getDailyRate(), MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS);
+
+  if (result.status === 'unavailable') {
+    setText(translateText('Post-sale balance estimate unavailable', getAppLanguage()));
     return;
   }
 
-  if (netTargetProfit <= 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'already-below') {
+    setText(
+      translateText('Already below floor', getAppLanguage()) + ' (' + formatUSD(result.currentBalanceUsd) + ')'
+    );
     return;
   }
 
-  if (getDailyRate() === 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'not-reached') {
+    setText(translateText('No projected floor breach within 10 years', getAppLanguage()));
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
-  if (beDays === null) {
-    setText(translateText('No non-negative breakeven date', getAppLanguage()));
-    return;
-  }
-
-  const beDate = new Date();
-  beDate.setDate(beDate.getDate() + beDays);
-  const beDateStr = beDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  setText(beDays + ' ' + translateText('days', getAppLanguage()) + ' (' + beDateStr + ')');
+  const floorDate = new Date();
+  floorDate.setDate(floorDate.getDate() + result.days);
+  const floorDateStr = floorDate.toLocaleDateString(
+    getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
+    { month: 'short', day: 'numeric', year: 'numeric' }
+  );
+  setText(result.days + ' ' + translateText('days', getAppLanguage()) + ' (' + floorDateStr + ')');
 }
-
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES,
@@ -1097,7 +1076,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
       };
     }
   } catch (err: unknown) {
-    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err instanceof Error ? err.message : err);
+    logSafeDiagnostic('warn', 'market-data', err);
   }
 
   throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
@@ -1113,11 +1092,11 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
       value?: string;
       upsideText?: string;
       upsideTone?: 'positive' | 'negative' | 'neutral';
+      analystCount?: number;
     }
   ) => setAnalystConsensus({ text, title, className, ...presentation });
   const hideConsensus = () => publish('');
   const analystTargetLabel = translateText('Analyst target', getAppLanguage());
-  const analystLabel = translateText('Analyst', getAppLanguage());
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
     return;
@@ -1130,33 +1109,45 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
 
   if (!force && snapshot && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
     const upside = calculateTargetUpsidePercent(snapshot.targetPrice, currentPrice);
+    const analystCount = typeof snapshot.numberOfAnalysts === 'number' &&
+      Number.isFinite(snapshot.numberOfAnalysts) && snapshot.numberOfAnalysts > 0
+      ? snapshot.numberOfAnalysts
+      : undefined;
+    const targetLabel = `${analystTargetLabel} · ${snapshot.source}`;
     if (upside !== undefined) {
+      const upsideText = upside > 0
+        ? `+${upside.toFixed(1)}% ${translateText('upside to target', getAppLanguage())}`
+        : upside < 0
+          ? `${Math.abs(upside).toFixed(1)}% ${translateText('below current price', getAppLanguage())}`
+          : translateText('At current price', getAppLanguage());
       const color = upside > 0
         ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
       publish(
-        `${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`,
-        `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`,
+        `${targetLabel} · ${formatUSD(snapshot.targetPrice)} · ${upsideText}`,
+        `${snapshot.source} analyst target ${formatUSD(snapshot.targetPrice)}; ${upsideText} from current price ${formatUSD(currentPrice)}.`,
         `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`,
         {
-          label: `${analystLabel} (${snapshot.source})`,
+          label: targetLabel,
           value: formatUSD(snapshot.targetPrice),
-          upsideText: `${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`,
-          upsideTone: upside > 0 ? 'positive' : upside < 0 ? 'negative' : 'neutral'
+          upsideText,
+          upsideTone: upside > 0 ? 'positive' : upside < 0 ? 'negative' : 'neutral',
+          ...(analystCount !== undefined ? { analystCount } : {})
         }
       );
     } else {
       publish(
-        `${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · current price unavailable`,
-        `Price target from ${snapshot.source}.`,
+        `${targetLabel} · ${formatUSD(snapshot.targetPrice)} · ${translateText('Current price unavailable', getAppLanguage())}`,
+        `${snapshot.source} analyst target ${formatUSD(snapshot.targetPrice)}. Current price is unavailable for comparison.`,
         'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300',
         {
-          label: `${analystLabel} (${snapshot.source})`,
+          label: targetLabel,
           value: formatUSD(snapshot.targetPrice),
-          upsideText: '',
-          upsideTone: 'neutral'
+          upsideText: translateText('Current price unavailable', getAppLanguage()),
+          upsideTone: 'neutral',
+          ...(analystCount !== undefined ? { analystCount } : {})
         }
       );
     }
@@ -1356,7 +1347,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     launchBackgroundTask(
       () => startFreedomAccountStreamForSession(accountStreamSessionKey),
       (streamError) => {
-        console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; REST snapshots remain available.', streamError);
+        logSafeDiagnostic('warn', 'broker-stream', streamError);
       }
     );
   } else {
@@ -1393,10 +1384,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     // or reconnects; later q messages take over without blocking startup.
     launchBackgroundTask(
       () => quoteStreamRuntime.start(tickersArray, sessionKey),
-      (streamError) => console.warn(
-        '[Freedom Quote Stream]: Live socket is not ready yet; REST quote snapshots remain active.',
-        streamError
-      )
+      (streamError) => logSafeDiagnostic('warn', 'broker-stream', streamError)
     );
 
     const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
@@ -1411,8 +1399,8 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     logAppMessage('[Warning]: The live quote socket is connecting; the initial REST quote snapshot returned no usable prices.');
     return false;
   } catch (err: any) {
-    console.error('Initial REST quote fallback failed:', err);
-    logAppMessage('[Error]: Initial quote snapshot failed - ' + err.message);
+    logSafeDiagnostic('error', 'market-data', err);
+    logAppMessage('[Error]: Initial quote snapshot failed.');
     return false;
   }
 }
@@ -1433,10 +1421,10 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       if (currentAccountRole + ':' + currentAccountId !== sessionKey) return false;
       launchBackgroundTask(
         () => accountStreamRuntime.start(sessionKey),
-        (streamError) => console.warn('[Freedom Account Stream]: Unable to establish the private account socket; broker REST catch-up will continue.', streamError)
+        (streamError) => logSafeDiagnostic('warn', 'broker-stream', streamError)
       );
     } catch (streamError) {
-      console.warn('[Freedom Account Stream]: Unable to load the private account socket; broker REST catch-up will continue.', streamError);
+      logSafeDiagnostic('warn', 'broker-stream', streamError);
     }
 
     // The persistent browser stream suppresses its REST backups while connected.
@@ -1465,9 +1453,8 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
       .then(() => refreshAllLivePricesAfterCurrent(true))
       .then((result) => result !== false)
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
-        logAppMessage(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+        logSafeDiagnostic('warn', 'cloud-sync', error);
+        logAppMessage('[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed.');
         return false;
       })
       .finally(() => {
@@ -1951,7 +1938,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     // background refreshes and can take several seconds across fallback sources.
     launchBackgroundTask(
       () => refreshAllLivePrices(true),
-      (error) => console.warn('[Startup Quote Refresh]: Initial background quote refresh did not complete.', error)
+      (error) => logSafeDiagnostic('warn', 'startup', error)
     );
     return Promise.resolve();
   },
@@ -1966,13 +1953,13 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
           const saved = await pushStateToCloud();
           if (!saved) console.warn('[Startup Cloud Sync]: Pending cloud write was not confirmed; retry from the KV status control.');
         },
-        (error) => console.warn('[Startup Cloud Sync]: Pending cloud write could not be started.', error)
+        (error) => logSafeDiagnostic('warn', 'cloud-sync', error)
       );
     }
   },
   hideStartupLoading,
-  reportBackgroundStartupError: (task, error) => {
-    console.warn(`[Startup Background]: ${task} did not complete successfully.`, error);
+  reportBackgroundStartupError: (_task, error) => {
+    logSafeDiagnostic('warn', 'startup', error);
   }
 });
 
@@ -1999,7 +1986,7 @@ const portfolioStartupRuntime = createPortfolioStartupRuntime({
   hideAuthContainer,
   startApp,
   onStartupFailure: (error) => {
-    console.error('[Startup Error]:', error);
+    logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();
   }
 });
@@ -2037,6 +2024,33 @@ function bindStartupActions() {
     logAppMessage,
     getSyncStatus: getCloudSyncStatus,
     setSyncStatus: setCloudSyncStatus
+  });
+  addUiEventListener('settings:save-portfolio-settings', (event) => {
+    void requireAdmin('change portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      const settings = normalizePortfolioSettings(event.detail.settings);
+      if (!portfolioStore.setState({ portfolioSettings: settings })) {
+        showToast(translateText('Portfolio settings could not be saved.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings saved.', getAppLanguage()), 'success');
+      renderBoard();
+    });
+  });
+  addUiEventListener('settings:reset-portfolio-settings', () => {
+    void requireAdmin('reset portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      if (!portfolioStore.setState({ portfolioSettings: DEFAULT_PORTFOLIO_SETTINGS })) {
+        showToast(translateText('Portfolio settings could not be reset.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings restored to defaults.', getAppLanguage()), 'success');
+      renderBoard();
+    });
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
     void requireAdmin('change broker rules').then((allowed) => {
@@ -2106,7 +2120,7 @@ async function continueStartupOffline() {
     await startApp('');
   } catch (error) {
     appInitialized = false;
-    console.error('[Startup Error]: Could not continue offline.', error);
+    logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();
   }
 }

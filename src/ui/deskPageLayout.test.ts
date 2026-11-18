@@ -63,6 +63,33 @@ describe('standard non-Margin page layout', () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*639px\)\s*\{\s*\.desk-page-header__trailing\s*\{[^}]*width:\s*100%;/s);
   });
 
+  it('hides page title and subtitle visually on mobile while retaining the semantic heading', () => {
+    expect(headerSource).toContain('<h1 id={titleId} class="desk-page-header__title');
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('.desk-page-header__copy');
+    expect(styles).toContain('clip: rect(0, 0, 0, 0)');
+    expect(styles).toContain('clip-path: inset(50%)');
+    expect(styles).toContain('width: auto;');
+  });
+
+  it('keeps mobile Settings compact without a flow-reserving hidden header', () => {
+    expect(settingsSource).toContain('class="settings-desk min-w-0"');
+    expect(settingsSource).not.toContain('settings-desk min-w-0 space-y-4');
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('#settingsDesk > .desk-page-header {');
+    expect(styles).toContain('position: absolute;');
+    expect(styles).toContain('gap: 0.7rem;');
+  });
+
+  it('increases key Settings and volume-badge text and control sizing on mobile', () => {
+    expect(styles).toContain('#settingsDesk .settings-section-nav a {');
+    expect(styles).toContain('font-size: 0.8rem;');
+    expect(styles).toContain('.quote-volume-badge {');
+    expect(styles).toContain('font-size: 0.75rem;');
+    expect(styles).toContain('.guest-stock-metrics-grid > div > p:first-child {');
+    expect(styles).toContain('.guest-stock-metrics-grid > div > p:nth-child(2) {');
+  });
+
   it('localizes new desk page headings and descriptions in Russian', () => {
     for (const label of [
       'MY STOCKS', 'CASH & NON-MARGIN HOLDINGS', 'LOTS',

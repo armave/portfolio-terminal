@@ -269,6 +269,57 @@ describe('portfolio transaction journal imports', () => {
     expect(Object.isFrozen(merged)).toBe(true);
   });
 
+  it('preserves stable merge order when imported journal events share a recorded-time millisecond', () => {
+    const localBuy = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: draft.effectiveAt,
+      ticker: 'AAPL',
+      quantity: 1,
+      positionQuantityDelta: 1,
+      cashDelta: 0,
+      marginDebtDelta: 0
+    }, { eventId: 'local-buy-before-collision', recordedAt: 2_000 });
+    const localReset = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: draft.effectiveAt + 1,
+      note: 'Local reset committed in the same millisecond as the prior event.'
+    }, { eventId: 'local-reset-collision', recordedAt: 2_000 });
+    const importedBuy = createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: draft.effectiveAt - 10_000,
+      ticker: 'MSFT',
+      quantity: 2,
+      positionQuantityDelta: 2,
+      cashDelta: 0,
+      marginDebtDelta: 0
+    }, { eventId: 'imported-buy-collision', recordedAt: 2_000 });
+    const importedCash = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: draft.effectiveAt - 20_000,
+      cashDelta: 5
+    }, { eventId: 'imported-cash-collision', recordedAt: 2_000 });
+
+    const merged = mergePortfolioTransactionEvents(
+      [localBuy, localReset],
+      [importedBuy, importedCash]
+    );
+
+    expect(merged.map((event) => event.id)).toEqual([
+      'local-buy-before-collision',
+      'local-reset-collision',
+      'imported-buy-collision',
+      'imported-cash-collision'
+    ]);
+    expect(replayPortfolioTransactionJournal(merged)).toMatchObject({
+      positions: { MSFT: 2 },
+      freeCash: 5
+    });
+
+    const repeatedImport = mergePortfolioTransactionEvents(merged, [importedBuy, importedCash]);
+    expect(repeatedImport.map((event) => event.id)).toEqual(merged.map((event) => event.id));
+    expect(replayPortfolioTransactionJournal(repeatedImport)).toEqual(replayPortfolioTransactionJournal(merged));
+  });
+
   it('accepts an identical backup event when JSON object keys have been reordered', () => {
     const original = createPortfolioTransactionEvent(draft, {
       eventId: 'backup-order-independent',

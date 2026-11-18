@@ -5,7 +5,8 @@ import {
   filterGuestTrancheLedger,
   groupGuestTrancheLedgerOperations,
   getGuestAssignedCashHoldings,
-  summarizeGuestTrancheLedger
+  summarizeGuestTrancheLedger,
+  summarizeGuestCashHoldings
 } from './guestPortfolio';
 
 const tranche = (overrides: Partial<ActiveBrokerTranche>): ActiveBrokerTranche => ({
@@ -312,6 +313,64 @@ describe('guest tranche ledger reports and filtering', () => {
       currentMarketValue: 520,
       pricedOpenTranches: 1,
       unpricedOpenTranches: 0
+    });
+  });
+});
+
+
+describe('guest cash holdings summary', () => {
+  it('reports complete assigned portfolio totals only when every required input is available', () => {
+    expect(summarizeGuestCashHoldings([
+      { ticker: 'AAPL', shares: 2, averagePrice: 10, currentPrice: 15, price: 15, marketValue: 30 },
+      { ticker: 'MSFT', shares: 1, averagePrice: 20, currentPrice: 25, price: 25, marketValue: 25 }
+    ])).toEqual({
+      holdingCount: 2,
+      pricedHoldingCount: 2,
+      unpricedHoldingCount: 0,
+      pricedMarketValue: 55,
+      marketValue: 55,
+      costBasis: 40,
+      unrealizedPnl: 15
+    });
+  });
+
+  it('keeps total market value and P/L unavailable when at least one holding is unpriced', () => {
+    expect(summarizeGuestCashHoldings([
+      { ticker: 'AAPL', shares: 2, averagePrice: 10, currentPrice: 15, price: 15, marketValue: 30 },
+      { ticker: 'MSFT', shares: 1, averagePrice: 20, currentPrice: null, price: null, marketValue: null }
+    ])).toEqual({
+      holdingCount: 2,
+      pricedHoldingCount: 1,
+      unpricedHoldingCount: 1,
+      pricedMarketValue: 30,
+      marketValue: null,
+      costBasis: 40,
+      unrealizedPnl: null
+    });
+  });
+
+  it('does not manufacture cost basis or P/L when an assigned entry price is missing', () => {
+    expect(summarizeGuestCashHoldings([
+      { ticker: 'AAPL', shares: 2, averagePrice: 10, currentPrice: 15, price: 15, marketValue: 30 },
+      { ticker: 'MSFT', shares: 1, averagePrice: null, currentPrice: 25, price: 25, marketValue: 25 }
+    ])).toMatchObject({
+      holdingCount: 2,
+      pricedHoldingCount: 2,
+      marketValue: 55,
+      costBasis: null,
+      unrealizedPnl: null
+    });
+  });
+
+  it('keeps monetary totals unavailable for an empty assignment set', () => {
+    expect(summarizeGuestCashHoldings([])).toEqual({
+      holdingCount: 0,
+      pricedHoldingCount: 0,
+      unpricedHoldingCount: 0,
+      pricedMarketValue: 0,
+      marketValue: null,
+      costBasis: null,
+      unrealizedPnl: null
     });
   });
 });

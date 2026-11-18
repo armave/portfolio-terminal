@@ -13,6 +13,13 @@ const vendorV4 = resolve(root, 'vendor/picomatch-v4');
 const dependencyRequire = (relativePackagePath: string) =>
   createRequire(resolve(root, relativePackagePath, 'package.json'));
 
+interface PicomatchUtils {
+  removeBackslashes(input: string): string;
+}
+
+const picomatchUtilsV2 = createRequire(resolve(vendorV2, 'package.json'))('./lib/utils.js') as PicomatchUtils;
+const picomatchUtilsV4 = createRequire(resolve(vendorV4, 'package.json'))('./lib/utils.js') as PicomatchUtils;
+
 describe('patched picomatch dependency resolution', () => {
   it('routes current v4 tooling to the source-attributed v4 backport', () => {
     expect(realpathSync(createRequire(resolve(root, 'package.json')).resolve('picomatch')))
@@ -76,6 +83,40 @@ describe('single-branch repeated-extglob ReDoS regressions', () => {
       const literalFallback = matcher.makeRe('+(*a)', { capture: true });
       expect(literalFallback.exec('+(*a)')).not.toBeNull();
       expect(matcher.isMatch('aaa', '+(*a)', { capture: true })).toBe(false);
+    });
+  }
+});
+
+describe('linear removeBackslashes ReDoS regressions', () => {
+  const candidates = [
+    ['v2', picomatchUtilsV2, vendorV2],
+    ['v4', picomatchUtilsV4, vendorV4]
+  ] as const;
+
+  for (const [major, utils, vendorDir] of candidates) {
+    it(`preserves escaped bracket expressions and ordinary unescaping in ${major}`, () => {
+      expect(utils.removeBackslashes('foo\\\\bar')).toBe('foobar');
+      expect(utils.removeBackslashes('[abc]')).toBe('[abc]');
+      expect(utils.removeBackslashes('[a\\\\]b]')).toBe('[a\\\\]b]');
+      expect(utils.removeBackslashes('\\\\[abc]')).toBe('[abc]');
+      expect(utils.removeBackslashes('foo\\\\[bar\\\\]')).toBe('foo[bar]');
+      expect(utils.removeBackslashes('terminal\\')).toBe('terminal\\');
+      expect(utils.removeBackslashes('a\\' + '\n' + 'b')).toBe('a\\' + '\n' + 'b');
+    });
+
+    it(`handles repeated unmatched bracket prefixes in linear time in an isolated ${major} process`, () => {
+      const entry = resolve(vendorDir, 'lib/utils.js');
+      const code = [
+        "const assert = require('node:assert/strict');",
+        `const utils = require(${JSON.stringify(entry)});`,
+        "const count = 100000;",
+        "const prefix = String.fromCharCode(92) + '[';",
+        "const expected = '['.repeat(count) + 'x';",
+        "for (const input of [prefix.repeat(count) + 'x', '['.repeat(count) + 'x']) {",
+        "  assert.equal(utils.removeBackslashes(input), expected);",
+        "}"
+      ].join(String.fromCharCode(10));
+      expect(() => execFileSync(process.execPath, ['-e', code], { timeout: 2500 })).not.toThrow();
     });
   }
 });

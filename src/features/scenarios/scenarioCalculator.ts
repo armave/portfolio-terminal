@@ -1,4 +1,5 @@
 import { portfolioStore } from '../../store/portfolioStore';
+import { normalizePortfolioSettings } from '../../domain/portfolioSettings';
 import { getAppLanguage } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, findProjectionBreakevenDay, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
@@ -13,8 +14,6 @@ import {
   type BrokerQuantityLimit
 } from '../../domain/brokerScenarioLimits';
 
-const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
-const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
 const MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS = 3650;
 
 export interface ScenarioCalculationOutput {
@@ -267,7 +266,8 @@ export class ScenarioCalculator {
     const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance);
-    const freeCash = Number(state.cashCushion?.freeCash ?? state.cashBalance ?? 0);
+    const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
+    const freeCash = Number(freeCashInput);
     if (!Number.isFinite(balance) || !Number.isFinite(freeCash) || freeCash < 0) {
       throw new Error('Buy scenario blocked: account cash and margin inputs are incomplete or invalid. Refresh the portfolio and review broker assumptions before comparing.');
     }
@@ -298,10 +298,12 @@ export class ScenarioCalculator {
 
     const maintenanceLimit = state.brokerAssumptions.maintenanceEquityRatio;
     const stopOutLimit = state.brokerAssumptions.stopOutRatio;
-    // Maintenance is a liquidation-risk boundary, not a prudent buy-more target.
-    // Keep at least a 10 percentage-point cushion and never plan below 20% equity.
-    // This is an app-side planning guard, not broker-reported buying power.
-    const requiredEquityRatio = Math.max(BUY_MORE_MIN_EQUITY_RATIO, maintenanceLimit + BUY_MORE_MAINTENANCE_RESERVE_RATIO);
+    const portfolioSettings = normalizePortfolioSettings(state.portfolioSettings);
+    // These remain app-side planning guardrails, not broker-reported buying power.
+    const requiredEquityRatio = Math.max(
+      portfolioSettings.buyMoreMinimumEquityRatio,
+      maintenanceLimit + portfolioSettings.buyMoreMaintenanceReserveRatio
+    );
     const projectPurchase = (sharesToBuy: number) => {
       const orderValue = sharesToBuy * price;
       const commission = calculateCommission(sharesToBuy, orderValue, rules);
@@ -422,13 +424,30 @@ export class ScenarioCalculator {
       rows: (() => {
         const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
         const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
+        const currentSaleGross = oldShares * projectionPrice;
+        const afterSaleGross = newShares * projectionPrice;
+        const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
+        const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
+        const currentBalanceConstraint = {
+          signedBalance: balance,
+          freeCash: Number(freeCashInput),
+          netSaleProceeds: currentNetSaleProceeds,
+          minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
+        };
+        const afterBalanceConstraint = {
+          signedBalance: balanceAfter,
+          freeCash: Number.isFinite(Number(freeCashInput)) ? remainingFreeCashAfterPurchase : Number.NaN,
+          netSaleProceeds: afterNetSaleProceeds,
+          minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
+        };
         const currentBreakevenDays = findProjectionBreakevenDay(
           oldShares * projectionPrice - oldCost,
           currentComms,
           currentMargin,
           currentAllocatedDebt,
           rules.dailyRate,
-          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS,
+          currentBalanceConstraint
         );
         const afterBreakevenDays = findProjectionBreakevenDay(
           newShares * projectionPrice - newCost,
@@ -436,7 +455,8 @@ export class ScenarioCalculator {
           afterMargin,
           afterAllocatedDebt,
           rules.dailyRate,
-          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS
+          MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS,
+          afterBalanceConstraint
         );
         const knownBreakevenHorizons = [currentBreakevenDays, afterBreakevenDays]
           .filter((days): days is number => typeof days === 'number' && Number.isFinite(days));
@@ -448,10 +468,6 @@ export class ScenarioCalculator {
           pos.startDate || state.startDate,
           furthestBreakevenDays
         );
-        const currentSaleGross = oldShares * projectionPrice;
-        const afterSaleGross = newShares * projectionPrice;
-        const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
-        const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
         const feesWithDailyMargin = (fees: number, dailyMargin: number) =>
           money(fees) + ' {' + money(dailyMargin) + '/day}';
         return dates.map(item => {

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   getCashCushionTotal,
   getTotalPortfolioInvested,
+  getPortfolioNetSaleProceeds,
   getPortfolioProjectionInputs,
+  getPortfolioProjectionTickers,
   getMarketInsightsTicker,
   isCurrentMarketInsightsTicker,
   resolvePositionEntryDate
@@ -152,6 +154,38 @@ describe('portfolio projection selectors', () => {
     commissionPerShare: 0,
     commissionRatePct: 0
   };
+
+  it('uses the same active ticker or combined ticker scope for post-sale estimates', () => {
+    const positions = {
+      AAPL: { ticker: 'AAPL', shares: 10, pt: 15 },
+      MSFT: { ticker: 'MSFT', shares: 5, pt: 20 }
+    };
+    expect(getPortfolioProjectionTickers({ activeView: 'COMBINED', positions } as unknown as BoardState))
+      .toEqual(['AAPL', 'MSFT']);
+    expect(getPortfolioProjectionTickers({ activeView: 'AAPL', positions } as unknown as BoardState))
+      .toEqual(['AAPL']);
+    expect(getPortfolioProjectionTickers({ activeView: 'MSFT', positions } as unknown as BoardState))
+      .toEqual(['MSFT']);
+    expect(getPortfolioProjectionTickers({ activeView: 'SETTINGS', positions } as unknown as BoardState))
+      .toEqual(['AAPL', 'MSFT']);
+  });
+
+  it('sums net target-sale proceeds consistently for combined and selected positions', () => {
+    const state = {
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 10, pt: 15 },
+        MSFT: { ticker: 'MSFT', shares: 5, pt: 20 },
+        TSLA: { ticker: 'TSLA', shares: 0, pt: 500 }
+      }
+    } as unknown as BoardState;
+    const commissionRules = { ...rules, commissionMin: 1.5, commissionPerShare: 0.1 };
+
+    expect(getPortfolioNetSaleProceeds(state, commissionRules)).toBe(247);
+    expect(getPortfolioNetSaleProceeds(state, commissionRules, ['AAPL'])).toBe(148.5);
+    expect(getPortfolioNetSaleProceeds({
+      positions: { AAPL: { ticker: 'AAPL', shares: 10, pt: undefined } }
+    } as unknown as BoardState, commissionRules)).toBeNull();
+  });
 
   it('derives a single-position projection from the active position and allocated debt', () => {
     const state = {

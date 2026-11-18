@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
+import { arch, cpus, platform, release } from 'node:os';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
-import { parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
+import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
 
 const host = '127.0.0.1';
 const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
@@ -156,6 +157,20 @@ try {
     ref: process.env.GITHUB_REF || null,
     workflowRunId: process.env.GITHUB_RUN_ID || null,
     browserVersion: browser.version(),
+    environment: buildPerformanceEnvironmentMetadata({
+      platform: platform(),
+      osRelease: release(),
+      architecture: arch(),
+      nodeVersion: process.version,
+      cpuModel: cpus()[0]?.model,
+      logicalCpuCount: cpus().length,
+      runnerImageOS: process.env.ImageOS,
+      runnerImageVersion: process.env.ImageVersion,
+      browserName: 'Chromium',
+      browserVersion: browser.version(),
+      headless: true,
+      viewports
+    }),
     fixture: {
       name: 'unauthenticated application shell',
       brokerAndMarketApis: 'mocked',

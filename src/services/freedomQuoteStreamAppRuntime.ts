@@ -80,6 +80,8 @@ export function createFreedomQuoteStreamAppRuntime(
         ...(quote.bid !== null && quote.bid !== undefined ? { bid: quote.bid } : {}),
         ...(quote.ask !== null && quote.ask !== undefined ? { ask: quote.ask } : {}),
         ...(quote.volume !== null && quote.volume !== undefined ? { volume: quote.volume } : {}),
+        ...(quote.volumeValue !== null && quote.volumeValue !== undefined ? { volumeValue: quote.volumeValue } : {}),
+        ...(quote.currency ? { currency: quote.currency } : {}),
         ...(quote.lastTradeTime ? { lastTradeTime: quote.lastTradeTime } : {}),
         ...(quote.utcOffset !== null && quote.utcOffset !== undefined ? { utcOffset: quote.utcOffset } : {}),
         ...(quote.serverTime ? { serverTime: quote.serverTime } : {})

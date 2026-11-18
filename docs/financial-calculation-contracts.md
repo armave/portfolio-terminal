@@ -116,7 +116,7 @@ For each positive-quantity cash holding:
 
 Input values at these calculation boundaries must be finite numbers or non-empty numeric strings. Booleans, arrays, objects, blank strings, zero/negative prices, non-positive quantities, and overflowing products are not financial values. Missing or invalid market values and P&L remain unavailable rather than being presented as zero. If any positive-quantity holding is unpriced, allocation percentages remain unavailable; the footer may show a lower-bound priced subtotal, not a complete total.
 
-Provider-reported quote volume is not assigned a currency symbol because its unit depends on the quote source. Quote change and change-percent values are independently validated before rendering.
+TradeNet exposes two distinct quote fields: `vol` is the daily traded quantity in pieces (the share/unit count), while `vlt` is the daily traded monetary value in the instrument's quote currency ([TradeNet quote field reference](https://tradernet.com/tradernet-api/securities?site_lang=en)). The quote badge displays only the provider-reported monetary turnover (`vlt`) and only when the provider explicitly confirms the quote currency is USD. Guest surfaces label it **Daily volume**; administrator surfaces use the shorter **Vol.** label. The value is formatted as dollars without multiplying by share count or price. The unit count (`vol`) is not substituted for monetary turnover, and no estimate or FX conversion is inferred. If monetary turnover is missing, malformed, negative, non-finite, or its currency is unknown/non-USD, the badge is omitted rather than shown as zero or given a guessed currency. Both unit count and monetary turnover remain presentation-only and must not be used for portfolio market value, P&L, allocation, risk, or accounting calculations. Quote change and change-percent values are independently validated before rendering.
 
 Cash/margin mix editing preserves the in-progress input string across unrelated store rerenders. While either sub-input is being edited, the opposite sub-input is recalculated live as the tranche's total quantity minus the edited side; this keeps the displayed split balanced before the edit is committed. The edited side is clamped to the range from zero through the tranche quantity, and blank or invalid intermediate text retains the last valid allocation for calculating the opposite side. On blur, the shared resolver commits the edited split, so cash plus margin equals the total quantity. A local draft is only displayed while its base tranche quantity and saved cash/margin mix still match; a changed tranche or accepted allocation invalidates the old draft.
 
@@ -250,6 +250,16 @@ For the read-only broker Closed History table:
 - `calculateAccruedFees` normalizes non-finite fee inputs to zero and rounds the aggregate to cents; this is an existing compatibility behavior, not a blanket rule for all financial helpers.
 
 **Known compatibility boundary:** repository architecture/audit notes distinguish the active runtime rollover/accrual calculation from the legacy cloud-import `processRollovers` path. Their time-boundary and rounding history must remain separately covered until explicitly reconciled. Do not unify, re-timezone, or re-round them as part of PT-01 or a cleanup-only change.
+
+### Post-sale account-balance floor horizon
+
+`calculatePostSaleBalanceFloorHorizon` finds the first calendar day when a hypothetical sale at the selected positions' configured target prices (PTs) would leave the projected signed account balance strictly below the configured minimum (−$450 USD by default). It uses net sale proceeds after sell commission, available free cash, and the projected signed account balance. Negative margin debt compounds using the existing daily cent-rounded debt model. Equality with the floor is still allowed; the breach day is the first day below it.
+
+This horizon is independent of net-P&L breakeven. The portfolio header reports the time/date until the post-sale balance floor is breached, and the projection table extends to that balance-floor milestone. Each row's NET value continues to report projected net P&L separately; it is not used to determine the floor horizon.
+
+`findProjectionBreakevenDay` remains a separate net-P&L search helper. Where a scenario such as Buy More supplies a `BreakevenBalanceConstraint`, that scenario also checks the hypothetical post-sale balance at its own projected net-P&L breakeven day. This scenario-specific check does not define the portfolio carry horizon.
+
+When any required signed-balance, free-cash, or target-price net-proceeds input is missing or non-finite, the post-sale balance estimate is unavailable. The calculation does not substitute zero for missing sale-price or balance evidence. The −$450 floor is an app planning constraint, not a broker buying-power, maintenance-margin, or liquidation guarantee.
 
 ## 8. Freedom financing-fee allocation and currency boundary
 

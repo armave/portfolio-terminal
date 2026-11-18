@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: true
+      performance_baseline_runs:
+        description: Authenticated synthetic-portfolio performance samples per viewport.
+        required: false
+        type: number
+        default: 3
   workflow_dispatch:
     inputs:
       artifact_name:
@@ -25,6 +30,11 @@ on:
         required: false
         type: boolean
         default: false
+      performance_baseline_runs:
+        description: Authenticated synthetic-portfolio performance samples per viewport (manual runs default to 10).
+        required: false
+        type: number
+        default: 10
 
 permissions:
   contents: read
@@ -33,7 +43,7 @@ jobs:
   operations-browser:
     name: Account, Settings and guest browser journey
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,6 +88,8 @@ jobs:
 
       - name: Exercise account and Settings journeys in production browser
         id: operations_browser
+        env:
+          AUTHENTICATED_PERFORMANCE_BASELINE_RUNS: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.performance_baseline_runs) || '3' }}
         run: node scripts/browser-smoke-operations.mjs
 
       - name: Upload authenticated synthetic-portfolio performance baseline

@@ -63,6 +63,9 @@ describe('fetchLivePriceFromProviders', () => {
       change: 10,
       changePercent: 5,
       sourceTimestamp: Date.now(),
+      volume: 123456,
+      volumeValue: 987654321,
+      currency: 'USD',
       raw: {}
     });
 
@@ -76,12 +79,15 @@ describe('fetchLivePriceFromProviders', () => {
       sourceName: 'Freedom TradeNet',
       quoteDetails: {
         transport: 'websocket',
+        volume: 123456,
+        volumeValue: 987654321,
+        currency: 'USD',
         provider: 'FREEDOM TRADENET',
         instrumentId: 'UNKNOWN:US:AAPL',
         exchange: 'US',
         assetType: 'UNKNOWN',
         delayClass: 'live',
-        dataQuality: 'partial',
+        dataQuality: 'complete',
         freshness: 'fresh'
       }
     });

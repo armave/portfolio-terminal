@@ -1,6 +1,6 @@
 # Role-based portfolio synchronization
 
-Automatic synchronization is mandatory for authenticated accounts. Settings stores a separate quote interval per role; supported values are 15, 30, and 60 seconds. The defaults are 60 seconds for administrators and 15 seconds for guests. A legacy saved `Off` value is normalized to that role's default. Settings no longer offers a disabled interval. Manual Sync is available in the workspace header and Settings for both roles.
+Automatic synchronization is mandatory for authenticated accounts. Settings stores a separate quote interval per role; supported values are 15, 30, and 60 seconds. The defaults are 60 seconds for administrators and 15 seconds for guests. A legacy saved `Off` value is normalized to that role's default. Settings no longer offers a disabled interval. Manual Sync is available in Settings for both roles.
 
 ## Administrator account
 
@@ -18,6 +18,16 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 - The server-scoped assigned-holdings projection and LOTS ledger refresh every 60 seconds. After the snapshot is applied, quotes are refreshed for the newly assigned tickers.
 - Manual Sync fetches only the authenticated guest's holdings/LOTS snapshot and then refreshes quotes for those holdings.
 - Guests never request administrator broker balances, executions, orders, the admin Closed History record, or the administrator's shared portfolio cloud record. Their assigned holdings and history remain scoped to their authenticated guest account.
+
+
+## Guest My Stocks and History presentation
+
+- The guest Balance desk is titled **My Stocks** and shows only the stock cards contained in that guest's server-scoped cash-funded holdings projection.
+- The compact My Stocks overview is shown only when the guest has more than one distinct active ticker. With one stock, the individual stock card is the primary view; with no stocks, the empty state is shown without a summary.
+- The guest navigation calls the ledger destination **History**. Date filters provide all-time, rolling 7/30/90-day and current-month shortcuts alongside a custom start/end date range.
+- The overview contains market value, cost basis, unrealized P/L and stock count. Complete market value requires a valid quote for every stock; complete cost basis requires a valid average entry price for every stock. Unrealized P/L remains unavailable unless both totals are complete.
+- The guest Balance desk does not show a shared-portfolio scope notice, a separate data-health panel, or a dedicated refresh action. Automatic guest quote and projection refresh schedules remain unchanged.
+- Individual stock cards continue to display quote source and available provider quote context. Receipt time alone must not be used to promote an unknown or stale provider quote to fresh.
 
 ## Visibility and account isolation
 
