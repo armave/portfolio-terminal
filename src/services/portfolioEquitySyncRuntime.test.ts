@@ -140,7 +140,7 @@ describe('portfolio equity synchronization', () => {
     });
 
     let workspaceReady = false;
-    const capturedViews: string[] = [];
+    const capturedBalances: number[] = [];
     const onPerformanceSnapshotChanged = vi.fn();
     const runtime = createPortfolioEquitySyncRuntime({
       subscribe: (listener) => store.subscribe(listener),
@@ -149,7 +149,7 @@ describe('portfolio equity synchronization', () => {
       setDerivedEquity: () => {},
       onDurableEquityChanged: vi.fn(),
       recordPerformanceSnapshot: (state) => {
-        capturedViews.push(state.activeView);
+        capturedBalances.push(state.balance);
         return true;
       },
       onPerformanceSnapshotChanged,
@@ -157,10 +157,10 @@ describe('portfolio equity synchronization', () => {
       now: () => 1_800_000_000_000
     });
 
-    expect(capturedViews).toEqual([]);
+    expect(capturedBalances).toEqual([]);
     expect(onPerformanceSnapshotChanged).not.toHaveBeenCalled();
 
-    expect(store.setState({ activeView: 'AAPL' })).toBe(true);
+    expect(store.setState({ balance: 500 })).toBe(true);
     expect(capturedViews).toEqual([]);
 
     runtime.flushDeferredPerformanceSnapshot();
@@ -168,7 +168,7 @@ describe('portfolio equity synchronization', () => {
 
     workspaceReady = true;
     runtime.flushDeferredPerformanceSnapshot();
-    expect(capturedViews).toEqual(['AAPL']);
+    expect(capturedBalances).toEqual([500]);
     expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
 
     runtime.flushDeferredPerformanceSnapshot();
