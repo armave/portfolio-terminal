@@ -66,6 +66,7 @@ import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
+import { normalizePortfolioSettings } from '../domain/portfolioSettings';
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
@@ -805,6 +806,7 @@ export class PortfolioStore {
     const normalized: PortfolioState = {
       ...raw,
       brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
+      portfolioSettings: normalizePortfolioSettings(raw.portfolioSettings),
       transactionEvents: Array.isArray(raw.transactionEvents)
         ? (isPortfolioTransactionEventList(raw.transactionEvents)
           ? freezePortfolioTransactionEventList(raw.transactionEvents)

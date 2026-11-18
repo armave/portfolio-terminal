@@ -59,7 +59,7 @@ function getCashCushionValueFromState(state: BoardState): number {
   }, 0);
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope }: {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope, healthReferenceRatio }: {
   equityPct: number;
   risk: MarginRiskDisplay;
   equityText: string;
@@ -69,6 +69,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
   scope: 'account' | 'allocated-ticker';
+  healthReferenceRatio?: number;
 }) {
   const language = getAppLanguage();
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -153,7 +154,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
-  const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
+  const referenceRatio = typeof healthReferenceRatio === 'number' && Number.isFinite(healthReferenceRatio) && healthReferenceRatio >= 0.01 && healthReferenceRatio <= 1
+    ? healthReferenceRatio
+    : ACCOUNT_EQUITY_HEALTH_REFERENCE;
+  const referencePercent = (referenceRatio * 100).toFixed(0);
   return (
     <>
       <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
@@ -172,7 +176,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           </button>
         </div>
         <div class="margin-risk-meter" role="progressbar" aria-label={translateText('Account equity percentage', language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', language)}>
-          <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, ACCOUNT_EQUITY_HEALTH_REFERENCE * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
+          <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, referenceRatio * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
           <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
         </div>
         <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% {translateText('maintenance', language)}</span><span>{translateText('{value}% reference', language).replace('{value}', referencePercent)}</span><span>{translateText('100% assets', language)}</span></div>
@@ -745,6 +749,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       eligibleCollateral: valuation.cashBalance,
       eligibleCollateralSource: 'configured-assumption',
       assumptions: rules,
+      accountEquityHealthReferenceRatio: state.portfolioSettings?.accountEquityHealthReferenceRatio,
       quality: valuationStatus,
       freshness: riskFreshness,
       observedAt: riskObservedAt,
@@ -874,6 +879,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               equityText={equityText}
               collateralText={formatUSD(valuation.cashBalance)}
               rules={rules}
+              healthReferenceRatio={state.portfolioSettings?.accountEquityHealthReferenceRatio}
               valuationStatus={valuationStatus}
               accountBalanceAvailable={valuation.accountBalanceAvailable}
               unpricedHoldings={valuation.unpricedHoldings}
@@ -1034,6 +1040,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     eligibleCollateral: allocatedCashBalance,
     eligibleCollateralSource: 'configured-assumption',
     assumptions: rules,
+    accountEquityHealthReferenceRatio: state.portfolioSettings?.accountEquityHealthReferenceRatio,
     quality: positionValuationStatus,
     freshness: riskFreshness,
     observedAt: riskObservedAt,
@@ -1151,6 +1158,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             equityText={equityText}
             collateralText={formatUSD(allocatedCashBalance)}
             rules={rules}
+            healthReferenceRatio={state.portfolioSettings?.accountEquityHealthReferenceRatio}
             valuationStatus={positionValuationStatus}
             accountBalanceAvailable={accountBalanceAvailable}
             unpricedHoldings={positionUnpricedHoldingCount}

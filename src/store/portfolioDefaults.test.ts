@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BROKER_ASSUMPTIONS } from '../domain/brokerAssumptions';
+import { DEFAULT_PORTFOLIO_SETTINGS } from '../domain/portfolioSettings';
 import { createBlankPortfolioState } from './portfolioDefaults';
 
 describe('createBlankPortfolioState', () => {
@@ -24,6 +25,7 @@ describe('createBlankPortfolioState', () => {
       closedHistory: [],
       cashflows: [],
       brokerAssumptions: DEFAULT_BROKER_ASSUMPTIONS,
+      portfolioSettings: DEFAULT_PORTFOLIO_SETTINGS,
       lastRolloverTimestamp: now,
       lastUpdated: now,
       cashBalance: 0,

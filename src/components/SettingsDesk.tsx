@@ -6,6 +6,7 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
+import { normalizePortfolioSettings, type PortfolioSettings } from '../domain/portfolioSettings';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
@@ -21,6 +22,38 @@ import { getStopOutValidationMessage } from '../domain/brokerRulesValidation';
 import { DeviceCheckSummary } from './DeviceCheckSummary';
 import { MarginDigestSecurityPanel } from './MarginDigestSecurityPanel';
 
+
+type PortfolioSettingsFormValues = {
+  breakevenMinimumRemainingBalanceUsd: string;
+  buyMoreMinimumEquityPercent: string;
+  buyMoreMaintenanceReservePercent: string;
+  accountEquityHealthReferencePercent: string;
+  defaultMarginTargetUpsidePercent: string;
+  defaultActiveTrancheType: 'cash' | 'margin';
+};
+
+function toPortfolioSettingsFormValues(value: unknown): PortfolioSettingsFormValues {
+  const settings = normalizePortfolioSettings(value);
+  return {
+    breakevenMinimumRemainingBalanceUsd: String(settings.breakevenMinimumRemainingBalanceUsd),
+    buyMoreMinimumEquityPercent: String(settings.buyMoreMinimumEquityRatio * 100),
+    buyMoreMaintenanceReservePercent: String(settings.buyMoreMaintenanceReserveRatio * 100),
+    accountEquityHealthReferencePercent: String(settings.accountEquityHealthReferenceRatio * 100),
+    defaultMarginTargetUpsidePercent: String(settings.defaultMarginTargetUpsideRatio * 100),
+    defaultActiveTrancheType: settings.defaultActiveTrancheType
+  };
+}
+
+function toPortfolioSettings(value: PortfolioSettingsFormValues): PortfolioSettings {
+  return normalizePortfolioSettings({
+    breakevenMinimumRemainingBalanceUsd: Number(value.breakevenMinimumRemainingBalanceUsd),
+    buyMoreMinimumEquityRatio: Number(value.buyMoreMinimumEquityPercent) / 100,
+    buyMoreMaintenanceReserveRatio: Number(value.buyMoreMaintenanceReservePercent) / 100,
+    accountEquityHealthReferenceRatio: Number(value.accountEquityHealthReferencePercent) / 100,
+    defaultMarginTargetUpsideRatio: Number(value.defaultMarginTargetUpsidePercent) / 100,
+    defaultActiveTrancheType: value.defaultActiveTrancheType
+  });
+}
 
 export interface BrokerRulesFormValues {
   annualRate: string;
@@ -271,6 +304,24 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const brokerRulesDirty = (Object.keys(persistedRuleValues) as Array<keyof BrokerRulesFormValues>)
     .some((field) => ruleValues[field] !== persistedRuleValues[field]);
 
+  const persistedPortfolioSettings = normalizePortfolioSettings(portfolio.portfolioSettings);
+  const [portfolioSettingValues, setPortfolioSettingValues] = useState<PortfolioSettingsFormValues>(() =>
+    toPortfolioSettingsFormValues(persistedPortfolioSettings)
+  );
+  const persistedPortfolioSettingForm = toPortfolioSettingsFormValues(persistedPortfolioSettings);
+  const portfolioSettingsDirty = (Object.keys(portfolioSettingValues) as Array<keyof PortfolioSettingsFormValues>)
+    .some((field) => portfolioSettingValues[field] !== persistedPortfolioSettingForm[field]);
+  useEffect(() => {
+    setPortfolioSettingValues(toPortfolioSettingsFormValues(portfolio.portfolioSettings));
+  }, [
+    portfolio.portfolioSettings?.breakevenMinimumRemainingBalanceUsd,
+    portfolio.portfolioSettings?.buyMoreMinimumEquityRatio,
+    portfolio.portfolioSettings?.buyMoreMaintenanceReserveRatio,
+    portfolio.portfolioSettings?.accountEquityHealthReferenceRatio,
+    portfolio.portfolioSettings?.defaultMarginTargetUpsideRatio,
+    portfolio.portfolioSettings?.defaultActiveTrancheType
+  ]);
+
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
 
   const updateStopOutValidity = () => {
@@ -339,6 +390,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         <a href="#settings-account-section">{translateText('Account')}</a>
         <a href="#settings-data-section">{translateText('Data & Sync')}</a>
         {account?.role === 'admin' && <a href="#settings-access-section">{translateText('Access management')}</a>}
+        {permissions.canEditPortfolioSettings && <a href="#settings-portfolio-section">{translateText('Portfolio planning settings')}</a>}
         {permissions.canEditBrokerRules && <a href="#settings-broker-section">{translateText('Broker & Trading')}</a>}
         <a href="#settings-maintenance-section">{translateText('Diagnostics & Maintenance')}</a>
         <a href="#settings-help-section">{translateText('Methodology & Help')}</a>
@@ -589,6 +641,77 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </div>
         </details>}
       </section>
+
+      {permissions.canEditPortfolioSettings && <section id="settings-portfolio-section" class="settings-section" aria-labelledby="settingsPortfolioTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsPortfolioTitle">{translateText('Portfolio planning settings')}</h2>
+          <p>{translateText('Configure app-side planning guardrails and defaults for newly observed broker positions.')}</p>
+        </div>
+        <div class="settings-panel space-y-3">
+          <p class="text-xs leading-relaxed text-slate-400">{translateText('These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.')}</p>
+          <form id="portfolioSettingsForm" class="settings-rules-form space-y-3" onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget as HTMLFormElement;
+            if (!form.reportValidity()) return;
+            emitUiEvent('settings:save-portfolio-settings', { settings: toPortfolioSettings(portfolioSettingValues) });
+          }}>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('Breakeven minimum remaining balance (USD)')}
+                <input type="number" step="1" min="-1000000" max="1000000" required value={portfolioSettingValues.breakevenMinimumRemainingBalanceUsd}
+                  onInput={(event) => setPortfolioSettingValues(current => ({ ...current, breakevenMinimumRemainingBalanceUsd: (event.currentTarget as HTMLInputElement).value }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('Buy More minimum equity (%)')}
+                <input type="number" step="0.5" min="0" max="100" required value={portfolioSettingValues.buyMoreMinimumEquityPercent}
+                  onInput={(event) => setPortfolioSettingValues(current => ({ ...current, buyMoreMinimumEquityPercent: (event.currentTarget as HTMLInputElement).value }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('Buy More maintenance reserve (percentage points)')}
+                <input type="number" step="0.5" min="0" max="100" required value={portfolioSettingValues.buyMoreMaintenanceReservePercent}
+                  onInput={(event) => setPortfolioSettingValues(current => ({ ...current, buyMoreMaintenanceReservePercent: (event.currentTarget as HTMLInputElement).value }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('Account equity health reference (%)')}
+                <input type="number" step="0.5" min="1" max="100" required value={portfolioSettingValues.accountEquityHealthReferencePercent}
+                  onInput={(event) => setPortfolioSettingValues(current => ({ ...current, accountEquityHealthReferencePercent: (event.currentTarget as HTMLInputElement).value }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('New margin-position target uplift (%)')}
+                <input type="number" step="0.5" min="0" max="200" required value={portfolioSettingValues.defaultMarginTargetUpsidePercent}
+                  onInput={(event) => setPortfolioSettingValues(current => ({ ...current, defaultMarginTargetUpsidePercent: (event.currentTarget as HTMLInputElement).value }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+              </label>
+              <label class="flex flex-col gap-1 text-xs text-slate-300">
+                {translateText('Default funding for new broker positions')}
+                <select value={portfolioSettingValues.defaultActiveTrancheType}
+                  onChange={(event) => setPortfolioSettingValues(current => ({ ...current, defaultActiveTrancheType: (event.currentTarget as HTMLSelectElement).value as 'cash' | 'margin' }))}
+                  class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100">
+                  <option value="margin">{translateText('Margin')}</option>
+                  <option value="cash">{translateText('Cash')}</option>
+                </select>
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3">
+              <span class={portfolioSettingsDirty ? 'text-xs font-semibold text-amber-200' : 'text-xs font-semibold text-emerald-300'} role="status">
+                {translateText(portfolioSettingsDirty ? 'Unsaved changes' : 'All portfolio settings saved.')}
+              </span>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" disabled={!portfolioSettingsDirty} onClick={() => emitUiEvent('settings:reset-portfolio-settings')} class="h-9 rounded border border-slate-700 px-3 text-xs text-slate-300 disabled:opacity-40">
+                  {translateText('Restore portfolio defaults')}
+                </button>
+                <button type="submit" disabled={!portfolioSettingsDirty} class="h-9 rounded bg-cyan-700 px-3 text-xs font-semibold text-white disabled:opacity-40">
+                  {translateText('Save portfolio settings')}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>}
 
       {permissions.canEditBrokerRules && <section id="settings-broker-section" class="settings-section" aria-labelledby="settingsBrokerSectionTitle">
         <div class="settings-section-heading">

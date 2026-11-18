@@ -1,4 +1,5 @@
 import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE, normalizeBrokerAssumptions } from './brokerAssumptions';
+import { normalizePortfolioSettings } from './portfolioSettings';
 import { getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './rolloverCalendar';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
@@ -495,6 +496,8 @@ export interface BreakevenBalanceConstraint {
   signedBalance: number;
   freeCash: number;
   netSaleProceeds: number;
+  /** Configurable app planning floor in USD; absent retains the historic −$450 default. */
+  minimumRemainingBalanceUsd?: number;
 }
 
 /** Require the hypothetical post-sale account balance to stay at or above the breakeven floor. */
@@ -505,7 +508,8 @@ function meetsBreakevenBalanceFloor(
 ): boolean {
   if (!constraint) return true;
   const { signedBalance, freeCash, netSaleProceeds } = constraint;
-  if (![signedBalance, freeCash, netSaleProceeds, dailyRate, days].every(Number.isFinite) ||
+  const minimumRemainingBalanceUsd = constraint.minimumRemainingBalanceUsd ?? MIN_BREAKEVEN_REMAINING_BALANCE_USD;
+  if (![signedBalance, freeCash, netSaleProceeds, dailyRate, days, minimumRemainingBalanceUsd].every(Number.isFinite) ||
       freeCash < 0 || dailyRate < 0 || days < 0) return false;
   const remainingBalance = calculateProjectedAccountBalanceAfterSale(
     signedBalance,
@@ -514,8 +518,7 @@ function meetsBreakevenBalanceFloor(
     dailyRate,
     days
   );
-  return Number.isFinite(remainingBalance) &&
-    remainingBalance >= MIN_BREAKEVEN_REMAINING_BALANCE_USD;
+  return Number.isFinite(remainingBalance) && remainingBalance >= minimumRemainingBalanceUsd;
 }
 
 /** Find the first projected breakeven day while applying daily cent rounding once per day. */
@@ -782,7 +785,8 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): L
     lastRolloverTimestamp: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : now,
     startDate: typeof candidate.startDate === 'string' && candidate.startDate
       ? candidate.startDate
-      : blankState.startDate
+      : blankState.startDate,
+    portfolioSettings: normalizePortfolioSettings(candidate.portfolioSettings)
   };
 }
 
@@ -799,7 +803,7 @@ export function createPortfolioBackupSnapshot<T extends object>(state: T): Parti
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents', 'corporateActionEvents', 'marketHistoryCorrections'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents', 'corporateActionEvents', 'marketHistoryCorrections', 'portfolioSettings'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }

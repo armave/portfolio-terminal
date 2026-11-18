@@ -14,6 +14,7 @@ import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { calculateSaleCommission } from '../domain/portfolioTransactions';
 import { getAppLanguage, translateText } from '../services/i18n';
+import { normalizePortfolioSettings } from '../domain/portfolioSettings';
 
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
@@ -39,17 +40,19 @@ function ProjectionsTableView() {
     const grossProceeds = shares * exitPrice;
     return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, state.brokerAssumptions);
   }, 0);
+  const portfolioSettings = normalizePortfolioSettings(state.portfolioSettings);
   const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
   const freeCash = Number(freeCashInput ?? 0);
   const breakevenBalanceConstraint = {
     signedBalance: Number(state.balance),
     freeCash: Number(freeCashInput),
-    netSaleProceeds
+    netSaleProceeds,
+    minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
   };
 
   const hasProjection = debtToUse > 0 || gross > 0;
-  // A breakeven milestone requires both net P&L reaching zero and a post-sale
-  // account balance no lower than -$450 on that same day.
+  // A breakeven milestone requires both net P&L reaching zero and the configured
+  // post-sale account-balance floor on that same day.
   const breakevenDays = hasProjection
     ? findProjectionBreakevenDay(
       gross,

@@ -97,6 +97,22 @@ describe('multi-portfolio ownership Settings surface', () => {
 
 
 
+describe('portfolio planning settings', () => {
+  it('exposes app-side planning guardrails only through the admin capability and saves through a guarded runtime event', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    const appSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+    expect(source).toContain('permissions.canEditPortfolioSettings');
+    expect(source).toContain('settings-portfolio-section');
+    expect(source).toContain('Breakeven minimum remaining balance (USD)');
+    expect(source).toContain('Buy More minimum equity (%)');
+    expect(source).toContain('Buy More maintenance reserve (percentage points)');
+    expect(source).toContain('Default funding for new broker positions');
+    expect(source).toContain("emitUiEvent('settings:save-portfolio-settings'");
+    expect(appSource).toContain("requireAdmin('change portfolio planning settings')");
+    expect(appSource).toContain("requireAdmin('reset portfolio planning settings')");
+  });
+});
+
 describe('broker rules disclosure state', () => {
   it('synchronizes native details toggles with Preact state across controlled form rerenders', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');

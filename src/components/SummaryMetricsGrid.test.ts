@@ -31,7 +31,7 @@ describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
+    expect(source).toContain('referenceRatio * 100');
     expect(source).not.toMatch(/40\s*-\s*Math\.min/);
     expect(source).not.toContain("'Asia/Yerevan'");
     expect(source).toContain('FREEDOM_BROKER_TIME_ZONE');

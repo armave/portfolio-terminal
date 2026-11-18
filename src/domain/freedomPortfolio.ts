@@ -4,6 +4,7 @@ import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { getPositiveMarketPrice } from './portfolioValuation';
 import { collectFreedomPositionIntegrityIssues } from './freedomPositionIntegrity';
 import type { BrokerPositionIntegrityIssue } from '../types/broker';
+import { DEFAULT_PORTFOLIO_SETTINGS, type PortfolioSettings } from './portfolioSettings';
 
 /** Newly observed active purchases are margin-funded unless the user chose otherwise. */
 const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
@@ -11,9 +12,10 @@ const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
 export function getActiveTrancheType(
   classifications: Record<string, ActiveTrancheType> | null | undefined,
   trancheId: string,
-  ticker: string
+  ticker: string,
+  defaultType: 'cash' | 'margin' = DEFAULT_ACTIVE_TRANCHE_TYPE
 ): ActiveTrancheType {
-  return classifications?.[trancheId] ?? classifications?.[ticker] ?? DEFAULT_ACTIVE_TRANCHE_TYPE;
+  return classifications?.[trancheId] ?? classifications?.[ticker] ?? defaultType;
 }
 
 /**
@@ -526,7 +528,7 @@ export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike |
 /**
  * Project the broker's current open quantities into the app's cash and margin
  * ledgers. Broker data is authoritative for active quantities; classifications
- * are user preferences and default to margin for newly observed tickers.
+ * are user preferences and default to the workspace funding preference for new tickers.
  */
 export function classifyFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
@@ -536,7 +538,8 @@ export function classifyFreedomPortfolio(
   receivedAt = Date.now(),
   executedTrades?: FreedomExecutedTradeLike[],
   commissionRules?: CommissionConfig,
-  mixedAllocations: Record<string, ActiveTrancheMix> = {}
+  mixedAllocations: Record<string, ActiveTrancheMix> = {},
+  portfolioSettings: Pick<PortfolioSettings, 'defaultActiveTrancheType' | 'defaultMarginTargetUpsideRatio'> = DEFAULT_PORTFOLIO_SETTINGS
 ): FreedomPortfolioClassificationResult {
   const positionIntegrityIssues = collectFreedomPositionIntegrityIssues(snapshot, executedTrades);
   const unsupportedTickers = new Set(positionIntegrityIssues
@@ -569,7 +572,7 @@ export function classifyFreedomPortfolio(
     : getActiveBrokerTranches(snapshot);
   for (const tranche of activeTranches) {
     if (unsupportedTickers.has(tickerKey(tranche.ticker))) continue;
-    const type = getActiveTrancheType(classifications, tranche.id, tranche.ticker);
+    const type = getActiveTrancheType(classifications, tranche.id, tranche.ticker, portfolioSettings.defaultActiveTrancheType);
     const allocation = type === 'mix'
       ? normalizeActiveTrancheMix(tranche.quantity, mixedAllocations[tranche.id] || mixedAllocations[tranche.ticker])
       : null;
@@ -668,7 +671,8 @@ export function classifyFreedomPortfolio(
       // Match app-created positions: use a modest 5% upside target when a newly
       // classified margin position has no user-defined target. A target equal
       // to cost basis makes Breakeven's net target zero immediately.
-      pt: Number(prior?.pt) || Number(((entryPrice > 0 ? entryPrice : item.currentPrice) * 1.05).toFixed(2)),
+      pt: Number(prior?.pt) || Number(((entryPrice > 0 ? entryPrice : item.currentPrice) *
+        (1 + portfolioSettings.defaultMarginTargetUpsideRatio)).toFixed(2)),
       commBuy: Array.isArray(executedTrades)
         ? item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0)
         : (Number(prior?.commBuy) || 0),

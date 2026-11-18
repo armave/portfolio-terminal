@@ -797,6 +797,12 @@ describe('portfolio domain', () => {
     const belowFloor = { ...atFloor, netSaleProceeds: 559.99 };
 
     expect(calculateProjectedAccountBalanceAfterSale(-1_000, 0, 560, 0.01, 1)).toBe(-450);
+    expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, {
+      ...atFloor, minimumRemainingBalanceUsd: -400
+    })).toBeUndefined();
+    expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, {
+      ...atFloor, minimumRemainingBalanceUsd: -500
+    })).toBe(1);
     expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, atFloor)).toBe(1);
     expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, belowFloor)).toBeUndefined();
     expect(findProjectionBreakevenDay(0, 0, 0, 1_000, 0.01, 3650, {

@@ -13,6 +13,7 @@ This directory contains maintained product and engineering references, current o
 ## Accounts, broker integrations, and UI patterns
 
 - [Account sessions](account-sessions.md) — server-enforced session expiry, per-account session cap, and revocation behavior.
+- [Portfolio planning settings](portfolio-settings.md) — admin-managed app guardrails, defaults, scope, and validation boundaries.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces and authenticated workspace transitions.
 - [Freedom TradeNet market-data integration](FREEDOM_MARKET_DATA.md) — Worker-backed read-only quote, market-status, order, and depth paths.

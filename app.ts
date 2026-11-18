@@ -41,6 +41,7 @@ import {
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
 import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { DEFAULT_PORTFOLIO_SETTINGS, normalizePortfolioSettings } from './src/domain/portfolioSettings';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
@@ -215,7 +216,8 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -427,7 +429,8 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    activeTrancheMixes
+    activeTrancheMixes,
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -1033,7 +1036,8 @@ function updateCombinedBreakeven() {
   const balanceConstraint = {
     signedBalance: Number(state.balance),
     freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
-    netSaleProceeds: totalNetSaleProceeds
+    netSaleProceeds: totalNetSaleProceeds,
+    minimumRemainingBalanceUsd: state.portfolioSettings?.breakevenMinimumRemainingBalanceUsd ?? DEFAULT_PORTFOLIO_SETTINGS.breakevenMinimumRemainingBalanceUsd
   };
 
   if (tickers.length === 0 || totalInvested === 0) {
@@ -1058,7 +1062,7 @@ function updateCombinedBreakeven() {
 
   const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate(), balanceConstraint);
   if (beDays === null) {
-    setText(translateText('No breakeven date with remaining balance ≥ −$450', getAppLanguage()));
+    setText(translateText('No breakeven date satisfies the configured remaining-balance floor', getAppLanguage()));
     return;
   }
 
@@ -2041,6 +2045,33 @@ function bindStartupActions() {
     logAppMessage,
     getSyncStatus: getCloudSyncStatus,
     setSyncStatus: setCloudSyncStatus
+  });
+  addUiEventListener('settings:save-portfolio-settings', (event) => {
+    void requireAdmin('change portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      const settings = normalizePortfolioSettings(event.detail.settings);
+      if (!portfolioStore.setState({ portfolioSettings: settings })) {
+        showToast(translateText('Portfolio settings could not be saved.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings saved.', getAppLanguage()), 'success');
+      renderBoard();
+    });
+  });
+  addUiEventListener('settings:reset-portfolio-settings', () => {
+    void requireAdmin('reset portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      if (!portfolioStore.setState({ portfolioSettings: DEFAULT_PORTFOLIO_SETTINGS })) {
+        showToast(translateText('Portfolio settings could not be reset.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings restored to defaults.', getAppLanguage()), 'success');
+      renderBoard();
+    });
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
     void requireAdmin('change broker rules').then((allowed) => {

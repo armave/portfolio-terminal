@@ -33,7 +33,7 @@ describe('active tranche operation accessibility', () => {
   });
 
   it('defaults new active-tranche operations to Margin and preserves explicit saved types', () => {
-    expect(deskSource).toContain('getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker)');
+    expect(deskSource).toContain('getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker, state.portfolioSettings?.defaultActiveTrancheType)');
     expect(deskSource).toContain('new operations default to Margin');
   });
 

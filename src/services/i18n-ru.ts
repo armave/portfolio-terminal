@@ -1186,4 +1186,23 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Analyst target unavailable": "Цель аналитиков недоступна",
   "Loading analyst target…": "Загрузка цели аналитиков…",
   "Margin PT": "Целевая цена маржинальной позиции",
+  'No breakeven date satisfies the configured remaining-balance floor': 'Нет даты безубыточности, удовлетворяющей заданному минимальному остатку баланса',
+  'Portfolio planning settings': 'Параметры планирования портфеля',
+  'Configure app-side planning guardrails and defaults for newly observed broker positions.': 'Настройте ограничения планирования приложения и значения по умолчанию для новых позиций брокера.',
+  'These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.': 'Это параметры планирования приложения, а не ограничения брокера и не гарантии ликвидации. Правила брокера настраиваются отдельно ниже.',
+  'Breakeven minimum remaining balance (USD)': 'Минимальный остаток баланса для безубыточности (USD)',
+  'Buy More minimum equity (%)': 'Минимальная доля собственного капитала для Buy More (%)',
+  'Buy More maintenance reserve (percentage points)': 'Резерв сверх поддерживающей маржи для Buy More (процентные пункты)',
+  'Account equity health reference (%)': 'Ориентир уровня капитала счёта (%)',
+  'New margin-position target uplift (%)': 'Повышение цели для новой маржинальной позиции (%)',
+  'Default funding for new broker positions': 'Финансирование новых позиций брокера по умолчанию',
+  'Save portfolio settings': 'Сохранить настройки портфеля',
+  'Restore portfolio defaults': 'Восстановить параметры портфеля',
+  'Portfolio settings saved.': 'Настройки портфеля сохранены.',
+  'Portfolio settings could not be saved.': 'Не удалось сохранить настройки портфеля.',
+  'Portfolio settings restored to defaults.': 'Настройки портфеля восстановлены по умолчанию.',
+  'Portfolio settings could not be reset.': 'Не удалось восстановить настройки портфеля.',
+  'All portfolio settings saved.': 'Все настройки портфеля сохранены.',
+  'Unsaved changes': 'Несохранённые изменения'
+
 };

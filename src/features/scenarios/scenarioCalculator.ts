@@ -1,4 +1,5 @@
 import { portfolioStore } from '../../store/portfolioStore';
+import { normalizePortfolioSettings } from '../../domain/portfolioSettings';
 import { getAppLanguage } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedAccountBalanceAfterSale, calculateProjectedDebt, findProjectionBreakevenDay, resolveCommissionConfig } from '../../domain/portfolio';
 import { calculateSaleAccounting, calculateSaleCommission } from '../../domain/portfolioTransactions';
@@ -13,8 +14,6 @@ import {
   type BrokerQuantityLimit
 } from '../../domain/brokerScenarioLimits';
 
-const BUY_MORE_MIN_EQUITY_RATIO = 0.20;
-const BUY_MORE_MAINTENANCE_RESERVE_RATIO = 0.10;
 const MAX_BUY_MORE_BREAKEVEN_SEARCH_DAYS = 3650;
 
 export interface ScenarioCalculationOutput {
@@ -299,10 +298,12 @@ export class ScenarioCalculator {
 
     const maintenanceLimit = state.brokerAssumptions.maintenanceEquityRatio;
     const stopOutLimit = state.brokerAssumptions.stopOutRatio;
-    // Maintenance is a liquidation-risk boundary, not a prudent buy-more target.
-    // Keep at least a 10 percentage-point cushion and never plan below 20% equity.
-    // This is an app-side planning guard, not broker-reported buying power.
-    const requiredEquityRatio = Math.max(BUY_MORE_MIN_EQUITY_RATIO, maintenanceLimit + BUY_MORE_MAINTENANCE_RESERVE_RATIO);
+    const portfolioSettings = normalizePortfolioSettings(state.portfolioSettings);
+    // These remain app-side planning guardrails, not broker-reported buying power.
+    const requiredEquityRatio = Math.max(
+      portfolioSettings.buyMoreMinimumEquityRatio,
+      maintenanceLimit + portfolioSettings.buyMoreMaintenanceReserveRatio
+    );
     const projectPurchase = (sharesToBuy: number) => {
       const orderValue = sharesToBuy * price;
       const commission = calculateCommission(sharesToBuy, orderValue, rules);
@@ -427,11 +428,17 @@ export class ScenarioCalculator {
         const afterSaleGross = newShares * projectionPrice;
         const currentNetSaleProceeds = currentSaleGross - calculateSaleCommission(oldShares, currentSaleGross, state.brokerAssumptions);
         const afterNetSaleProceeds = afterSaleGross - calculateSaleCommission(newShares, afterSaleGross, state.brokerAssumptions);
-        const currentBalanceConstraint = { signedBalance: balance, freeCash: Number(freeCashInput), netSaleProceeds: currentNetSaleProceeds };
+        const currentBalanceConstraint = {
+          signedBalance: balance,
+          freeCash: Number(freeCashInput),
+          netSaleProceeds: currentNetSaleProceeds,
+          minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
+        };
         const afterBalanceConstraint = {
           signedBalance: balanceAfter,
           freeCash: Number.isFinite(Number(freeCashInput)) ? remainingFreeCashAfterPurchase : Number.NaN,
-          netSaleProceeds: afterNetSaleProceeds
+          netSaleProceeds: afterNetSaleProceeds,
+          minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
         };
         const currentBreakevenDays = findProjectionBreakevenDay(
           oldShares * projectionPrice - oldCost,
