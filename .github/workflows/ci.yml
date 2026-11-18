@@ -214,6 +214,9 @@ jobs:
       - name: Install Chromium
         run: node node_modules/playwright/cli.js install chromium
 
+      - name: Verify production PWA manifest, precache and offline shell
+        run: npm run test:pwa
+
       - name: Smoke-test the production app and capture before/after UX screenshots
         id: browser_smoke
         env:

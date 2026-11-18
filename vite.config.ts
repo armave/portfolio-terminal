@@ -85,22 +85,23 @@ export default defineConfig({
     startupCriticalCssPlugin(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['ico.svg'],
+      includeAssets: ['ico.svg', 'pwa-180.png', 'pwa-192.png'],
       manifest: {
         name: 'Portfolio Terminal',
         short_name: 'Portfolio',
+        id: '/portfolio-terminal/',
         description: 'Personal stock portfolio tracker and margin scenario calculator',
         theme_color: '#0f172a',
         background_color: '#0f172a',
         display: 'standalone',
-        orientation: 'portrait',
         start_url: '/portfolio-terminal/',
         scope: '/portfolio-terminal/',
         icons: [
           {
-            src: 'ico.svg',
+            src: 'pwa-192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'ico.svg',

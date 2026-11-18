@@ -17,6 +17,43 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes PWA installation, offline and app-shell diagnostics in Russian', () => {
+    const pwaCopy = [
+      'Install Portfolio Terminal',
+      'Keep your workspace one tap away.',
+      'Install app',
+      'Add to Home Screen',
+      'On iPhone or iPad, tap Share, then choose Add to Home Screen.',
+      'Tap Add to finish.',
+      'Not now',
+      'No internet connection',
+      'Only the application shell is cached. Sign-in and authenticated portfolio data require a connection.',
+      'Checking application service…',
+      'The application service is not responding. Portfolio, broker and quote availability is checked separately.',
+      'Retry',
+      'App shell cache',
+      'Cached app shell available',
+      'App shell cache incomplete',
+      'Service worker not registered',
+      'App updates',
+      'Checking for updates…',
+      'Up to date',
+      'Update ready',
+      'Update check failed',
+      'Updates are not supported in this browser.',
+      'Automatically checks every 30 minutes',
+      'Last checked',
+      'Not checked yet',
+      'The update will install automatically the next time you open the app.',
+      'The app will retry automatically. You can also check again now.',
+      'Check now',
+      'Open the app again to retry update detection.'
+    ];
+    for (const copy of pwaCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes the breakeven remaining-balance floor in Russian', () => {
     expect(translateText('No breakeven date with remaining balance ≥ −$450', 'ru'))
       .toBe('Нет даты безубыточности при остатке баланса не ниже −$450');
