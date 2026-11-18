@@ -12,7 +12,7 @@ Settings are stored in `PortfolioState.portfolioSettings`, separate from canonic
 
 | Setting | Existing default | Effect |
 |---|---:|---|
-| Breakeven minimum remaining balance | −$450 USD | Minimum hypothetical signed account balance after target-price sales and sell commissions on the net-P&L breakeven day. This is an app planning floor, not a broker buying-power or liquidation limit. |
+| Minimum post-sale account balance | −$450 USD | Minimum hypothetical signed account balance after selling open positions at their configured PTs, net of sell commissions. The portfolio carry horizon is the first day daily margin accrual takes the post-sale balance below this floor; it is independent of net-P&L breakeven. This is an app planning floor, not a broker buying-power or liquidation limit. |
 | Buy More minimum equity | 20% | App-side projected equity-ratio floor. |
 | Buy More maintenance reserve | 10 percentage points | Added to the configured broker maintenance equity ratio; the greater of this result and the minimum-equity floor is used. This is not a broker-reported requirement. |
 | Account equity health reference | 40% | Reference for the account-equity gauge and Elevated/Healthy classification, after broker stop-out and maintenance boundaries. |
