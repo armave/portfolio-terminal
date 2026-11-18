@@ -893,7 +893,8 @@ export function reconcileBrokerActivity(
     );
     const bestTimeDelta = ranked[0].timeDelta;
     const tied = ranked.filter(candidate => Math.abs(candidate.timeDelta - bestTimeDelta) <= 1e-9);
-    if (tied.length > 1) {
+    const bestAlreadyAmbiguous = ambiguousCashflowAppIndices.has(ranked[0].index);
+    if (tied.length > 1 || bestAlreadyAmbiguous) {
       sourceDataIncomplete = true;
       confidence = 'provisional';
       ambiguousCashflowBrokerIndices.add(brokerIndex);
@@ -923,8 +924,9 @@ export function reconcileBrokerActivity(
   for (let brokerIndex = 0; brokerIndex < brokerCashflows.length; brokerIndex += 1) {
     if (ambiguousCashflowBrokerIndices.has(brokerIndex)) continue;
     const broker = brokerCashflows[brokerIndex];
-    const availableAppIndices = [...unmatchedCashflowApp]
-      .filter(index => !ambiguousCashflowAppIndices.has(index));
+    // Keep earlier ambiguous candidates visible so a second broker row cannot
+    // claim one of them as a unique match merely because another row was seen first.
+    const availableAppIndices = [...unmatchedCashflowApp];
 
     const signedDirectionCandidates = availableAppIndices.map(index => {
       const event = appCashflows[index];

@@ -410,6 +410,32 @@ describe('reconcileBrokerActivity', () => {
     }
   });
 
+  it('keeps multiple broker rows from claiming app events already implicated in an ambiguity', () => {
+    const brokerCashflow = (id: string): BrokerCashflow => ({
+      id, date: new Date(at).toISOString(), type: 'Fee',
+      amount: -5, currency: 'USD', description: 'Account fee', raw: {}
+    });
+    const appFee = (id: string) => createPortfolioTransactionEvent({
+      type: 'fee', effectiveAt: at, currency: 'USD', fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: id, recordedAt: at });
+    const brokerRows = [brokerCashflow('broker-fee-a'), brokerCashflow('broker-fee-b')];
+    const appRows = [appFee('app-fee-a'), appFee('app-fee-b')];
+
+    for (const brokerCashflows of [brokerRows, [...brokerRows].reverse()]) {
+      for (const appEvents of [appRows, [...appRows].reverse()]) {
+        const report = reconcile([], appEvents, { brokerCashflows });
+        const ambiguousFindings = report.findings.filter(finding => finding.type === 'cashflow_match_ambiguous');
+        expect(ambiguousFindings.map(finding => finding.brokerReferences[0]).sort())
+          .toEqual(['broker-fee-a', 'broker-fee-b']);
+        expect(ambiguousFindings.every(finding => finding.appEventIds.join('|') === 'app-fee-a|app-fee-b')).toBe(true);
+        expect(report.matchedCashflowCount).toBe(0);
+        expect(report.findings.some(finding =>
+          finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker'
+        )).toBe(false);
+      }
+    }
+  });
+
   it('does not pair a currency mismatch across dates outside the matching window', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'old-fee-usd', date: new Date(at).toISOString(), type: 'Fee',
