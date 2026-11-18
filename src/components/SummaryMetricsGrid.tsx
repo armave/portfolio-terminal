@@ -369,7 +369,7 @@ function getHeaderRiskValueClass(risk: MarginRiskDisplay): string {
 }
 
 export function getHeaderBreakevenValue(value: string): string {
-  const displayValue = value.replace(/^(?:Breakeven|BE):\s*/i, '').trim();
+  const displayValue = value.replace(/^(?:Breakeven|BE|Post-sale floor):\s*/i, '').trim();
   return displayValue || '—';
 }
 
@@ -768,10 +768,10 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           />
           <PortfolioHeaderMetric
             metric="carry-break-even"
-            label={translateText('Portfolio carry break-even', getAppLanguage())}
+            label={translateText('Post-sale balance floor', getAppLanguage())}
             value={getHeaderBreakevenValue(breakevenText)}
             valueId="daysToBreakeven"
-            valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+            valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
             valueClass="is-carry"
           />
           <PortfolioHeaderMetric
@@ -1053,10 +1053,10 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
         <PortfolioHeaderMetric
           metric="carry-break-even"
-          label={translateText('Portfolio carry break-even', getAppLanguage())}
+          label={translateText('Post-sale balance floor', getAppLanguage())}
           value={getHeaderBreakevenValue(breakevenText)}
           valueId="daysToBreakeven"
-          valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+          valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
           valueClass="is-carry"
         />
         <PortfolioHeaderMetric
