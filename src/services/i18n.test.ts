@@ -253,8 +253,8 @@ describe('app localization', () => {
     expect(translateText('Vol.', 'ru')).toBe('Объём');
     expect(translateText('Daily volume', 'ru')).toBe('Дневной объём торгов');
     expect(translateText('shares', 'ru')).toBe('акций');
-    expect(translateText('Daily share volume reported by the data provider.', 'ru')).toContain('Количество акций')
-      .toContain('Расчётный дневной объём');
+    expect(translateText('Daily share volume reported by the data provider.', 'ru'))
+      .toBe('Количество акций, проторгованных за день, по данным поставщика.');
     expect(translateText('upside to target', 'ru')).toBe('рост до целевой цены');
     expect(translateText('below current price', 'ru')).toBe('ниже текущей цены');
     expect(translateText('At current price', 'ru')).toBe('на уровне текущей цены');
