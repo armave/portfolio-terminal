@@ -33,6 +33,7 @@ type BrokerActivityFindingType =
   | 'cashflow_missing_in_app'
   | 'cashflow_missing_in_broker'
   | 'cashflow_amount_mismatch'
+  | 'cashflow_match_ambiguous'
   | 'cashflow_currency_mismatch'
   | 'cashflow_type_mismatch';
 
@@ -863,26 +864,80 @@ export function reconcileBrokerActivity(
     brokerCashflows.push(row);
   }
   if (sourceDataIncomplete) confidence = 'provisional';
+  appCashflows.forEach(event => {
+    if (eventAmount(event) === null) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      warnings.push('One or more app cashflow events have no usable amount; matching is provisional.');
+    }
+  });
   const unmatchedCashflowBroker = new Set(brokerCashflows.map((_, index) => index));
   let matchedCashflowCount = 0;
   const unmatchedCashflowApp = new Set(appCashflows.map((_, index) => index));
-  for (const broker of brokerCashflows) {
-    const candidate = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
-      .filter(({ event }) => event.type === broker.type && (!broker.currency || !event.currency || currency(event.currency) === broker.currency))
-      .map(({ index, event }) => {
-        const appAmount = eventAmount(event);
-        const delta = appAmount === null ? Number.POSITIVE_INFINITY : Math.abs(Math.abs(appAmount) - Math.abs(broker.amount));
-        const timeDelta = Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt));
-        return { index, event, appAmount, delta, timeDelta };
-      })
-      .filter(candidate => candidate.delta <= amountTolerance && candidate.timeDelta <= maxTimingDifference)
-      .sort((a, b) => a.timeDelta - b.timeDelta);
-    const signedDirectionMismatch = [...unmatchedCashflowApp].map(index => ({
-      index,
-      event: appCashflows[index],
-      appAmount: eventAmount(appCashflows[index]),
-      timeDelta: Math.abs(appCashflows[index].effectiveAt - (broker.at ?? appCashflows[index].effectiveAt))
-    })).filter(candidate =>
+  const ambiguousCashflowAppIndices = new Set<number>();
+  const ambiguousCashflowBrokerIndices = new Set<number>();
+
+  const selectUniqueClosestCashflowCandidate = (
+    brokerIndex: number,
+    broker: NormalizedCashflow,
+    candidates: Array<{
+      index: number;
+      event: PortfolioTransactionEvent;
+      appAmount: number | null;
+      timeDelta: number;
+    }>
+  ): { candidate: typeof candidates[number] | null; ambiguous: boolean } => {
+    if (candidates.length === 0) return { candidate: null, ambiguous: false };
+    const ranked = [...candidates].sort((a, b) =>
+      a.timeDelta - b.timeDelta || a.event.id.localeCompare(b.event.id)
+    );
+    const bestTimeDelta = ranked[0].timeDelta;
+    const tied = ranked.filter(candidate => Math.abs(candidate.timeDelta - bestTimeDelta) <= 1e-9);
+    const bestAlreadyAmbiguous = ambiguousCashflowAppIndices.has(ranked[0].index);
+    if (tied.length > 1 || bestAlreadyAmbiguous) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      ambiguousCashflowBrokerIndices.add(brokerIndex);
+      tied.forEach(candidate => ambiguousCashflowAppIndices.add(candidate.index));
+      const appEventIds = [...new Set(tied.map(candidate => candidate.event.id))].sort();
+      const findingId = `cashflow-match-ambiguous:${broker.id}:${appEventIds.join('|')}`;
+      if (!findings.some(finding => finding.id === findingId)) {
+        findings.push(makeFinding({
+          id: findingId,
+          type: 'cashflow_match_ambiguous',
+          subject: broker.type,
+          currency: broker.currency || undefined,
+          brokerValue: broker.amount,
+          appValue: null,
+          brokerReferences: [broker.id],
+          appEventIds,
+          brokerAt: broker.at ?? undefined,
+          explanation: 'More than one app-authored cashflow is an equally strong fallback match for this broker cashflow. No candidate was selected.'
+        }, 'provisional'));
+      }
+      warnings.push('A broker cashflow has multiple equally strong app fallback candidates; manual review is required.');
+      return { candidate: null, ambiguous: true };
+    }
+    return { candidate: ranked[0], ambiguous: false };
+  };
+
+  for (let brokerIndex = 0; brokerIndex < brokerCashflows.length; brokerIndex += 1) {
+    if (ambiguousCashflowBrokerIndices.has(brokerIndex)) continue;
+    const broker = brokerCashflows[brokerIndex];
+    // Keep earlier ambiguous candidates visible so a second broker row cannot
+    // claim one of them as a unique match merely because another row was seen first.
+    const availableAppIndices = [...unmatchedCashflowApp];
+
+    const signedDirectionCandidates = availableAppIndices.map(index => {
+      const event = appCashflows[index];
+      const appAmount = eventAmount(event);
+      return {
+        index,
+        event,
+        appAmount,
+        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+      };
+    }).filter(candidate =>
       candidate.event.type === broker.type &&
       (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
       candidate.appAmount !== null &&
@@ -892,110 +947,181 @@ export function reconcileBrokerActivity(
       Math.sign(candidate.appAmount) !== 0 &&
       Math.sign(broker.amount) !== 0 &&
       Math.sign(candidate.appAmount) !== Math.sign(broker.amount)
-    ).sort((a, b) => a.timeDelta - b.timeDelta)[0];
-    if (signedDirectionMismatch) {
-      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
-      unmatchedCashflowApp.delete(signedDirectionMismatch.index);
+    );
+    const directionSelection = selectUniqueClosestCashflowCandidate(
+      brokerIndex, broker, signedDirectionCandidates
+    );
+    if (directionSelection.ambiguous) continue;
+    if (directionSelection.candidate) {
+      const selected = directionSelection.candidate;
+      unmatchedCashflowBroker.delete(brokerIndex);
+      unmatchedCashflowApp.delete(selected.index);
       findings.push(makeFinding({
-        id: `cashflow-direction:${broker.id}:${signedDirectionMismatch.event.id}`,
+        id: `cashflow-direction:${broker.id}:${selected.event.id}`,
         type: 'cashflow_direction_mismatch',
         subject: broker.type,
         currency: broker.currency || undefined,
         brokerValue: broker.amount,
-        appValue: signedDirectionMismatch.appAmount,
-        difference: broker.amount - (signedDirectionMismatch.appAmount ?? 0),
+        appValue: selected.appAmount,
+        difference: broker.amount - (selected.appAmount ?? 0),
         brokerReferences: [broker.id],
-        appEventIds: [signedDirectionMismatch.event.id],
+        appEventIds: [selected.event.id],
         brokerAt: broker.at ?? undefined,
-        appAt: signedDirectionMismatch.event.effectiveAt,
+        appAt: selected.event.effectiveAt,
         explanation: 'The broker and app record opposite signed cash movements for the same cashflow. No balance adjustment was made.'
       }, confidence));
       continue;
     }
-    if (candidate[0]) {
-      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
-      unmatchedCashflowApp.delete(candidate[0].index);
+
+    const exactCandidates = availableAppIndices.map(index => {
+      const event = appCashflows[index];
+      const appAmount = eventAmount(event);
+      return {
+        index,
+        event,
+        appAmount,
+        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+      };
+    }).filter(candidate =>
+      candidate.event.type === broker.type &&
+      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      candidate.appAmount !== null &&
+      Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
+      candidate.timeDelta <= maxTimingDifference
+    );
+    const exactSelection = selectUniqueClosestCashflowCandidate(brokerIndex, broker, exactCandidates);
+    if (exactSelection.ambiguous) continue;
+    if (exactSelection.candidate) {
+      unmatchedCashflowBroker.delete(brokerIndex);
+      unmatchedCashflowApp.delete(exactSelection.candidate.index);
       matchedCashflowCount += 1;
       continue;
     }
-    const classificationMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
-      .find(({ event }) => event.type !== broker.type &&
-        (!broker.currency || !event.currency || currency(event.currency) === broker.currency) &&
-        Math.abs(Math.abs(eventAmount(event) ?? 0) - Math.abs(broker.amount)) <= amountTolerance &&
-        Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt)) <= maxTimingDifference);
-    if (classificationMismatch) {
-      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
-      unmatchedCashflowApp.delete(classificationMismatch.index);
+
+    const classificationCandidates = availableAppIndices.map(index => {
+      const event = appCashflows[index];
+      const appAmount = eventAmount(event);
+      return {
+        index,
+        event,
+        appAmount,
+        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+      };
+    }).filter(candidate =>
+      candidate.event.type !== broker.type &&
+      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      candidate.appAmount !== null &&
+      Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
+      candidate.timeDelta <= maxTimingDifference
+    );
+    const classificationSelection = selectUniqueClosestCashflowCandidate(
+      brokerIndex, broker, classificationCandidates
+    );
+    if (classificationSelection.ambiguous) continue;
+    if (classificationSelection.candidate) {
+      const selected = classificationSelection.candidate;
+      unmatchedCashflowBroker.delete(brokerIndex);
+      unmatchedCashflowApp.delete(selected.index);
       findings.push(makeFinding({
-        id: `cashflow-type:${broker.id}:${classificationMismatch.event.id}`,
+        id: `cashflow-type:${broker.id}:${selected.event.id}`,
         type: 'cashflow_type_mismatch',
         subject: broker.type,
         currency: broker.currency || undefined,
         brokerValue: broker.amount,
-        appValue: eventAmount(classificationMismatch.event),
+        appValue: selected.appAmount,
         brokerReferences: [broker.id],
-        appEventIds: [classificationMismatch.event.id],
+        appEventIds: [selected.event.id],
         brokerAt: broker.at ?? undefined,
-        appAt: classificationMismatch.event.effectiveAt,
+        appAt: selected.event.effectiveAt,
         explanation: 'The broker and app classify the same cashflow differently.'
       }, confidence));
       continue;
     }
-    const amountMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
-      .map(candidate => ({
-        ...candidate,
-        appAmount: eventAmount(candidate.event),
-        timeDelta: Math.abs(candidate.event.effectiveAt - (broker.at ?? candidate.event.effectiveAt))
-      }))
-      .filter(candidate => candidate.event.type === broker.type &&
-        (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
-        candidate.appAmount !== null &&
-        Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) > amountTolerance &&
-        candidate.timeDelta <= maxTimingDifference)
-      .sort((a, b) => a.timeDelta - b.timeDelta)[0];
-    if (amountMismatch) {
-      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
-      unmatchedCashflowApp.delete(amountMismatch.index);
+
+    const amountMismatchCandidates = availableAppIndices.map(index => {
+      const event = appCashflows[index];
+      const appAmount = eventAmount(event);
+      return {
+        index,
+        event,
+        appAmount,
+        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+      };
+    }).filter(candidate =>
+      candidate.event.type === broker.type &&
+      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      candidate.appAmount !== null &&
+      Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) > amountTolerance &&
+      candidate.timeDelta <= maxTimingDifference
+    );
+    const amountSelection = selectUniqueClosestCashflowCandidate(
+      brokerIndex, broker, amountMismatchCandidates
+    );
+    if (amountSelection.ambiguous) continue;
+    if (amountSelection.candidate) {
+      const selected = amountSelection.candidate;
+      unmatchedCashflowBroker.delete(brokerIndex);
+      unmatchedCashflowApp.delete(selected.index);
       findings.push(makeFinding({
-        id: `cashflow-amount:${broker.id}:${amountMismatch.event.id}`,
+        id: `cashflow-amount:${broker.id}:${selected.event.id}`,
         type: 'cashflow_amount_mismatch',
         subject: broker.type,
         currency: broker.currency || undefined,
         brokerValue: broker.amount,
-        appValue: amountMismatch.appAmount,
-        difference: broker.amount - (amountMismatch.appAmount ?? 0),
+        appValue: selected.appAmount,
+        difference: broker.amount - (selected.appAmount ?? 0),
         brokerReferences: [broker.id],
-        appEventIds: [amountMismatch.event.id],
+        appEventIds: [selected.event.id],
         brokerAt: broker.at ?? undefined,
-        appAt: amountMismatch.event.effectiveAt,
+        appAt: selected.event.effectiveAt,
         explanation: 'The broker and app cashflow amounts differ; no balance adjustment was made.'
       }, confidence));
       continue;
     }
-    const currencyMismatch = [...unmatchedCashflowApp].map(index => ({ index, event: appCashflows[index] }))
-      .find(({ event }) => event.type === broker.type &&
-        Math.abs(Math.abs(eventAmount(event) ?? 0) - Math.abs(broker.amount)) <= amountTolerance &&
-        Boolean(currency(event.currency)) && Boolean(broker.currency) &&
-        currency(event.currency) !== broker.currency);
-    if (currencyMismatch) {
-      unmatchedCashflowBroker.delete(brokerCashflows.indexOf(broker));
-      unmatchedCashflowApp.delete(currencyMismatch.index);
+
+    const currencyMismatchCandidates = availableAppIndices.map(index => {
+      const event = appCashflows[index];
+      const appAmount = eventAmount(event);
+      return {
+        index,
+        event,
+        appAmount,
+        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+      };
+    }).filter(candidate =>
+      candidate.event.type === broker.type &&
+      candidate.appAmount !== null &&
+      Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
+      Boolean(currency(candidate.event.currency)) &&
+      Boolean(broker.currency) &&
+      currency(candidate.event.currency) !== broker.currency &&
+      candidate.timeDelta <= maxTimingDifference
+    );
+    const currencySelection = selectUniqueClosestCashflowCandidate(
+      brokerIndex, broker, currencyMismatchCandidates
+    );
+    if (currencySelection.ambiguous) continue;
+    if (currencySelection.candidate) {
+      const selected = currencySelection.candidate;
+      unmatchedCashflowBroker.delete(brokerIndex);
+      unmatchedCashflowApp.delete(selected.index);
       findings.push(makeFinding({
-        id: `cashflow-currency:${broker.id}:${currencyMismatch.event.id}`,
+        id: `cashflow-currency:${broker.id}:${selected.event.id}`,
         type: 'cashflow_currency_mismatch',
         subject: broker.type,
         currency: broker.currency || undefined,
         brokerValue: broker.amount,
-        appValue: eventAmount(currencyMismatch.event),
+        appValue: selected.appAmount,
         brokerReferences: [broker.id],
-        appEventIds: [currencyMismatch.event.id],
+        appEventIds: [selected.event.id],
         brokerAt: broker.at ?? undefined,
-        appAt: currencyMismatch.event.effectiveAt,
+        appAt: selected.event.effectiveAt,
         explanation: 'The broker and app cashflow records use different currencies; no conversion was attempted.'
       }, confidence));
     }
   }
   for (const index of unmatchedCashflowBroker) {
+    if (ambiguousCashflowBrokerIndices.has(index)) continue;
     const row = brokerCashflows[index];
     findings.push(makeFinding({
       id: `cashflow-unmatched-broker:${row.id}`,
@@ -1011,6 +1137,7 @@ export function reconcileBrokerActivity(
     }, confidence));
   }
   for (const index of unmatchedCashflowApp) {
+    if (ambiguousCashflowAppIndices.has(index)) continue;
     const row = appCashflows[index];
     findings.push(makeFinding({
       id: `cashflow-unmatched-app:${row.id}`,

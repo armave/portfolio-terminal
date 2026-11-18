@@ -56,3 +56,10 @@ This is a classification-safety fix only; it does not change provider payload co
 ## Branch ownership
 
 Own reconciliation matching, discrepancy taxonomy and review workflow only. Do not edit PT-02 event schema, PT-07 provider normalization or PT-05 authorization model without coordinating the contract owner.
+
+
+## Cashflow match ambiguity and time qualification — implemented on 2026-11-18
+
+The read-only cashflow matcher now requires a unique closest app-authored candidate before it can count a broker cashflow as matched or attach a specific mismatch. Equally close candidates are reported as provisional `cashflow_match_ambiguous` evidence with all candidate event IDs sorted; no candidate is consumed and later broker rows cannot claim an event already implicated in an ambiguity. The result is invariant to app-event and broker-row input order.
+
+Currency-mismatch comparisons now require a non-null app amount and a timestamp difference within the configured maximum matching window. A missing amount is never substituted with zero; app cashflow rows without an amount make the comparison provisional rather than confirmed absent. Equal values on distant dates are not paired as a currency discrepancy. No FX conversion, balance adjustment, fee posting or other portfolio mutation is performed.
