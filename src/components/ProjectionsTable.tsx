@@ -57,7 +57,8 @@ function ProjectionsTableView() {
       marginChargedToUse,
       debtToUse,
       dailyRate,
-      MAX_BREAKEVEN_SEARCH_DAYS
+      MAX_BREAKEVEN_SEARCH_DAYS,
+      breakevenBalanceConstraint
     )
     : 0;
   const projectionItems = hasProjection
