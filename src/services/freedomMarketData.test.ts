@@ -170,7 +170,7 @@ describe("normalizeFreedomQuote", () => {
     const quote = normalizeFreedomQuote({
       q: [{ c: "GOOGL.US", ltp: 280.5, vol: 123456, vlt: 987654321.25 }]
     }, "GOOGL");
-    expect(quote).not.toHaveProperty("currency");
+    expect(quote?.currency).toBeNull();
     expect(quote).toMatchObject({ volume: 123456, volumeValue: 987654321.25 });
   });
 

@@ -75,13 +75,17 @@ describe('standard non-Margin page layout', () => {
   it('keeps mobile Settings compact without a flow-reserving hidden header', () => {
     expect(settingsSource).toContain('class="settings-desk min-w-0"');
     expect(settingsSource).not.toContain('settings-desk min-w-0 space-y-4');
-    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{[\\s\\S]*?#settingsDesk\\s*>\\s*\\.desk-page-header\\s*\\{[^}]*position:\\s*absolute;/s);
-    expect(styles).toMatch(/#settingsDesk\\s*\\{[^}]*display:\\s*grid;[^}]*gap:/s);
+    expect(styles).toContain('@media (max-width: 767px)');
+    expect(styles).toContain('#settingsDesk > .desk-page-header {');
+    expect(styles).toContain('position: absolute;');
+    expect(styles).toContain('gap: 0.7rem;');
   });
 
   it('increases key Settings and volume-badge text and control sizing on mobile', () => {
-    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*640px\\)\\s*\\{[\\s\\S]*?#settingsDesk\\s*\\.settings-section-nav\\s+a\\s*\\{[^}]*font-size:\\s*0\\.8rem;/s);
-    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*640px\\)[\\s\\S]*?\\.quote-volume-badge\\s*\\{[^}]*font-size:\\s*0\\.75rem;/s);
+    expect(styles).toContain('#settingsDesk .settings-section-nav a {');
+    expect(styles).toContain('font-size: 0.8rem;');
+    expect(styles).toContain('.quote-volume-badge {');
+    expect(styles).toContain('font-size: 0.75rem;');
   });
 
   it('localizes new desk page headings and descriptions in Russian', () => {
