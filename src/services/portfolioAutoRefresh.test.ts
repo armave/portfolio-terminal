@@ -76,6 +76,36 @@ describe('portfolio automatic refresh policy', () => {
     scheduler.stop();
   });
 
+  it('forces a fresh workspace checkpoint after history when an older checkpoint is still running', async () => {
+    vi.useFakeTimers();
+    let releaseFirstSync: (() => void) | undefined;
+    const syncState = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { releaseFirstSync = resolve; }))
+      .mockImplementation(() => Promise.resolve());
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      refreshQuotes: vi.fn(),
+      refreshSupplemental: vi.fn(),
+      syncHistory,
+      syncState
+    });
+
+    scheduler.configure(15_000, 'admin');
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(syncState).toHaveBeenCalledTimes(1);
+
+    // The 15-second checkpoint remains in-flight across the 60-second boundary.
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(1);
+
+    releaseFirstSync?.();
+    await vi.waitFor(() => expect(syncState).toHaveBeenCalledTimes(2));
+    scheduler.stop();
+  });
+
   it('does not duplicate the state checkpoint when the selected cadence is 60 seconds', async () => {
     vi.useFakeTimers();
     const refreshQuotes = vi.fn();

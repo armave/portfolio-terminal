@@ -78,12 +78,19 @@ export function createPortfolioAutoRefreshScheduler(
 
   const runTask = (
     source: QuoteRefreshSource,
-    task: () => void | Promise<unknown>
+    task: () => void | Promise<unknown>,
+    rerunAfterExisting = false
   ): Promise<boolean> => {
     const existing = source === 'quotes' ? quoteInFlight
       : source === 'supplemental' ? supplementalInFlight
         : source === 'state-sync' ? stateSyncInFlight : historySyncInFlight;
-    if (existing) return existing;
+    if (existing) {
+      // A post-history workspace checkpoint must not inherit a write that
+      // started before history reconciliation completed.
+      return rerunAfterExisting
+        ? existing.then(() => runTask(source, task))
+        : existing;
+    }
 
     let request: Promise<boolean>;
     request = Promise.resolve()
@@ -132,7 +139,7 @@ export function createPortfolioAutoRefreshScheduler(
     // Closed History fee totals are stored in the shared portfolio snapshot too.
     // Checkpoint at the selected cadence, after history on each supplemental tick.
     const synced = options.syncState
-      ? await runTask('state-sync', options.syncState)
+      ? await runTask('state-sync', options.syncState, supplementalDue)
       : true;
     return quotes && supplemental && history && synced;
   };
@@ -166,7 +173,7 @@ export function createPortfolioAutoRefreshScheduler(
         if (!canRefresh()) return quotes && supplemental && history;
 
         const synced = options.syncState
-          ? await runTask('state-sync', options.syncState)
+          ? await runTask('state-sync', options.syncState, true)
           : true;
         return quotes && supplemental && history && synced;
       })();
