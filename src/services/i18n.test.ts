@@ -31,7 +31,7 @@ describe('app localization', () => {
       'Portfolio planning settings',
       'Configure app-side planning guardrails and defaults for newly observed broker positions.',
       'These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.',
-      'Breakeven minimum remaining balance (USD)', 'Buy More minimum equity (%)',
+      'Minimum post-sale account balance (USD)', 'Buy More minimum equity (%)',
       'Buy More maintenance reserve (percentage points)', 'Account equity health reference (%)',
       'New margin-position target uplift (%)', 'Default funding for new broker positions',
       'Save portfolio settings', 'Restore portfolio defaults', 'Portfolio settings saved.',
