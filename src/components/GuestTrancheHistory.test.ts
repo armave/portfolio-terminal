@@ -18,7 +18,7 @@ describe('guest History presentation', () => {
     expect(historySource).toContain("translateText('Value', getAppLanguage())");
     expect(historySource).toContain("translateText('Net P&L', getAppLanguage())");
     expect(historySource).toContain('Stock history table');
-    expect(historySource).toContain('Shares</th>');
+    expect(historySource).toContain("{translateText('Shares', getAppLanguage())}</th>");
     expect(historySource).toContain("data-label={translateText('Shares', getAppLanguage())}");
     expect(historySource).toContain("data-label={translateText('Remaining shares', getAppLanguage())}");
     expect(historySource).not.toContain('My stocks history table');
