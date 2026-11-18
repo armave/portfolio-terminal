@@ -8,6 +8,14 @@ The full development dependency audit identifies CVE-2026-112366 / GHSA-fc5q-39x
 
 The advisory describes catastrophic regular-expression backtracking in single-branch repeated extglob patterns such as +(*) and +(*a). This backport updates both installed major-version lines without downgrading Vite or weakening the full audit command.
 
+## Additional CodeQL ReDoS hardening
+
+CodeQL identified polynomial backtracking in the lazy bracket-expression scan used by both vendored versions' `removeBackslashes` helper. Repeated opening brackets without a valid closing bracket caused the regular expression to rescan the remaining input and exhibit quadratic runtime.
+
+Both `vendor/picomatch-v2/lib/utils.js` and `vendor/picomatch-v4/lib/utils.js` now use the same linear scanner. It precomputes the next valid bracket close and line-terminator positions, then walks the input once to preserve bracket expressions and remove ordinary escape backslashes. The unused `REGEX_REMOVE_BACKSLASH` constant is removed from both constants modules.
+
+The regression suite directly tests both utilities for ordinary escapes, escaped closing brackets, unmatched bracket prefixes, trailing backslash pairs, and newline behavior. It also runs 100,000 repeated unmatched prefixes in isolated Node processes with a hard 2.5-second timeout. A local equivalence check compared the scanner with the previous regular-expression behavior across 37,449 representative short strings; the checked-in timeout tests are the ongoing CI guard.
+
 ## Upstream source and patch provenance
 
 | Internal package | Upstream source line | Source commit | Backport proposal |
