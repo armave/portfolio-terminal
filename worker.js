@@ -1,5 +1,6 @@
 import { requestTradeNet } from "./src/services/freedomTradeNet.js";
 import { sanitizeFreedomMarketDepth } from "./src/services/freedomMarketDepth.js";
+import { logServerDiagnostic } from "./safeServerDiagnostics.js";
 // Keep the live stream and one-shot diagnostic on the same global-position book model.
 export { sanitizeFreedomMarketDepth };
 
@@ -1476,7 +1477,7 @@ export default {
                     headers: responseHeaders
                 });
             } catch (error) {
-                console.error("Persistent TradeNet quote socket failed", error);
+                logServerDiagnostic("error", "tradenet_quote_stream_failed", error);
                 return jsonError("Could not establish the TradeNet quote socket.", 502, corsHeaders);
             }
         }
@@ -1508,7 +1509,7 @@ export default {
                     headers: responseHeaders
                 });
             } catch (error) {
-                console.error("Persistent TradeNet account socket failed", error);
+                logServerDiagnostic("error", "tradenet_account_stream_failed", error);
                 return jsonError("Could not establish the TradeNet account socket.", 502, corsHeaders);
             }
         }
@@ -1539,7 +1540,7 @@ export default {
                     headers: responseHeaders
                 });
             } catch (error) {
-                console.error("Persistent TradeNet Market Depth socket failed", error);
+                logServerDiagnostic("error", "tradenet_market_depth_stream_failed", error);
                 return jsonError("Could not establish the TradeNet Market Depth socket.", 502, corsHeaders);
             }
         }
@@ -1617,7 +1618,7 @@ export default {
             } catch (error) {
                 // Preserve CORS headers so the browser can display a useful
                 // JSON failure instead of masking the Durable Object error.
-                console.error("Account Durable Object request failed", error);
+                logServerDiagnostic("error", "account_durable_object_request_failed", error);
                 return jsonError("Account service unavailable. Check the Cloudflare Worker logs.", 503, corsHeaders);
             }
             const authHeaders = new Headers(authResponse.headers);
@@ -2567,7 +2568,7 @@ export default {
                         console.warn(`[Gemini Proxy]: ${modelName} failed (HTTP ${res.status}). Trying next candidate...`);
 
                     } catch (err) {
-                        console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message);
+                        logServerDiagnostic("error", "gemini_provider_failed", err);
                         lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
                     } finally {
                         if (timeoutId !== undefined) clearTimeout(timeoutId);

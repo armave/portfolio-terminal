@@ -1,5 +1,6 @@
 // Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
+import { logServerDiagnostic } from "./safeServerDiagnostics.js";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",
@@ -1709,7 +1710,7 @@ export class PortfolioStateDO {
     try {
       await this.cleanupExpiredSessions();
     } catch (error) {
-      console.warn("Session cleanup deferred:", error instanceof Error ? error.message : "unknown error");
+      logServerDiagnostic("warn", "session_cleanup_deferred", error);
     }
 
     const authorization = request.headers.get("Authorization") || "";
@@ -1788,7 +1789,7 @@ export class PortfolioStateDO {
     try {
       await this.cleanupExpiredSessions();
     } catch (error) {
-      console.warn("Session cleanup deferred during issuance:", error instanceof Error ? error.message : "unknown error");
+      logServerDiagnostic("warn", "session_cleanup_deferred_during_issuance", error);
     }
 
     const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
