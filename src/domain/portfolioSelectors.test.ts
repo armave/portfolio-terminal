@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getCashCushionTotal,
   getTotalPortfolioInvested,
+  getPortfolioNetSaleProceeds,
   getPortfolioProjectionInputs,
   getMarketInsightsTicker,
   isCurrentMarketInsightsTicker,
@@ -152,6 +153,20 @@ describe('portfolio projection selectors', () => {
     commissionPerShare: 0,
     commissionRatePct: 0
   };
+
+  it('sums net target-sale proceeds consistently for combined and selected positions', () => {
+    const state = {
+      positions: {
+        AAPL: { ticker: 'AAPL', shares: 10, pt: 15 },
+        MSFT: { ticker: 'MSFT', shares: 5, pt: 20 },
+        TSLA: { ticker: 'TSLA', shares: 0, pt: 500 }
+      }
+    } as unknown as BoardState;
+    const commissionRules = { ...rules, commissionMin: 1.5, commissionPerShare: 0.1 };
+
+    expect(getPortfolioNetSaleProceeds(state, commissionRules)).toBe(247);
+    expect(getPortfolioNetSaleProceeds(state, commissionRules, ['AAPL'])).toBe(148.5);
+  });
 
   it('derives a single-position projection from the active position and allocated debt', () => {
     const state = {
