@@ -68,7 +68,8 @@ describe('portfolio automatic refresh policy', () => {
     scheduler.configure(15_000, 'guest');
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(refreshQuotes).toHaveBeenCalledTimes(4);
+    // The 60-second projection refresh includes a quote batch after hydration.
+    expect(refreshQuotes).toHaveBeenCalledTimes(3);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
     expect(syncState).not.toHaveBeenCalled();
     expect(syncHistory).not.toHaveBeenCalled();

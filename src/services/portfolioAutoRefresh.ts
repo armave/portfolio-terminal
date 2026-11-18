@@ -123,20 +123,25 @@ export function createPortfolioAutoRefreshScheduler(
   };
 
   const refreshAdminSupplementalCheckpoint = async (): Promise<boolean> => {
-    const supplemental = await runTask('supplemental', options.refreshSupplemental);
-    if (!canRefresh()) return supplemental;
+    // At the shared boundary, wait for the due quote batch as well as the broker
+    // catch-up before reconciling history and checkpointing the combined snapshot.
+    const [quotes, supplemental] = await Promise.all([
+      runTask('quotes', options.refreshQuotes),
+      runTask('supplemental', options.refreshSupplemental)
+    ]);
+    if (!canRefresh()) return quotes && supplemental;
 
     const history = options.syncHistory
       ? await runTask('history-sync', options.syncHistory)
       : true;
-    if (!canRefresh()) return supplemental && history;
+    if (!canRefresh()) return quotes && supplemental && history;
 
     // Closed History fee totals are stored in the shared portfolio snapshot too.
     // Checkpoint it after history processing, even when a source reported failure.
     const synced = options.syncState
       ? await runTask('state-sync', options.syncState)
       : true;
-    return supplemental && history && synced;
+    return quotes && supplemental && history && synced;
   };
 
   const refreshGuestSupplemental = (): Promise<boolean> =>
@@ -207,7 +212,10 @@ export function createPortfolioAutoRefreshScheduler(
         const sharesHistoryBoundary =
           (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS === 0;
         void refreshAdminQuoteCheckpoint(sharesHistoryBoundary);
-      } else {
+      } else if (
+        (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS !== 0
+      ) {
+        // Guest supplemental hydration quotes the newly assigned tickers itself.
         void runTask('quotes', options.refreshQuotes);
       }
     }, activeInterval);
