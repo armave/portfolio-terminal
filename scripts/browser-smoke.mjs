@@ -1620,10 +1620,10 @@ try {
   }
   await captureUxReviewScreenshots(page, 'guest-balance');
 
-  await page.getByRole('button', { name: /lots/i }).click();
+  await page.getByRole('button', { name: /my stocks/i }).click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'Guest LOTS history desk');
-  await assertResponsiveSurface(page, '#guestHistoryContainer', 'Guest LOTS history desk');
+  await assertVisibleControlsHaveNames(page, 'My Stocks history desk');
+  await assertResponsiveSurface(page, '#guestHistoryContainer', 'My Stocks history desk');
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
