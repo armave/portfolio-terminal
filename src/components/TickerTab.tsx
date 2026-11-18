@@ -186,7 +186,7 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onClick={() => selectView('GUEST_HISTORY')}
-          aria-label={translateText('Lots', getAppLanguage())}
+          aria-label={translateText('Assignments', getAppLanguage())}
           aria-pressed={isGuestHistoryActive}
           class={workspaceNavigationButtonClass(isGuestHistoryActive)}
           data-nav-tab="true"
@@ -194,10 +194,10 @@ export const TickerTabs = memo(function TickerTabs({
           data-nav-index={guestHistoryNavIndex}
           ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
-          title={translateText('Lots', getAppLanguage())}
+          title={translateText('Assignments', getAppLanguage())}
         >
           <WorkspaceNavigationIcon name="lots" />
-          <span class="workspace-nav-button__label">{translateText('LOTS', getAppLanguage())}</span>
+          <span class="workspace-nav-button__label">{translateText('Assignments', getAppLanguage())}</span>
         </button>
       )}
 
@@ -253,6 +253,9 @@ export function PortfolioSyncButton({
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
 
   if (!isAdmin && !userId) return null;
+  const syncLabel = userId
+    ? translateText('Refresh assigned holdings and history', getAppLanguage())
+    : translateText('Sync portfolio', getAppLanguage());
 
   const handleSyncPortfolio = async (): Promise<void> => {
     if (portfolioSyncPromise.current) {
@@ -277,8 +280,8 @@ export function PortfolioSyncButton({
     <button
       id="syncPortfolioButton"
       type="button"
-      title={translateText('Sync portfolio', getAppLanguage())}
-      aria-label={translateText('Sync portfolio', getAppLanguage())}
+      title={syncLabel}
+      aria-label={syncLabel}
       aria-busy={isSyncingPortfolio}
       disabled={isSyncingPortfolio}
       onClick={handleSyncPortfolio}
