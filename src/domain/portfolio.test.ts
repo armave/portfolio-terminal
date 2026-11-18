@@ -16,6 +16,7 @@ import {
   calculateProjectedDebt,
   calculateProjectedAccountBalance,
   calculateProjectedAccountBalanceAfterSale,
+  calculatePostSaleBalanceFloorHorizon,
   calculateAccruedFees,
   calculateBreakevenDays,
   findProjectionBreakevenDay,
@@ -790,6 +791,60 @@ describe('portfolio domain', () => {
         parameters.maxDays
       )).toBe(referenceBreakeven(parameters));
     }
+  });
+
+  it('finds when the target-price post-sale account balance first falls below the configured floor', () => {
+    const constraint = {
+      signedBalance: -24_260.83,
+      freeCash: 0,
+      netSaleProceeds: 24_760.16,
+      minimumRemainingBalanceUsd: -450
+    };
+
+    expect(calculatePostSaleBalanceFloorHorizon(constraint, 0.15 / 365)).toEqual({
+      status: 'breach',
+      currentBalanceUsd: 499.33,
+      breachBalanceUsd: -455.99,
+      days: 94
+    });
+    expect(calculatePostSaleBalanceFloorHorizon(constraint, 0.15 / 365, 63)).toEqual({
+      status: 'not-reached',
+      currentBalanceUsd: 499.33
+    });
+    expect(calculatePostSaleBalanceFloorHorizon({
+      ...constraint,
+      netSaleProceeds: 24_310.83
+    }, 0.15 / 365)).toMatchObject({
+      status: 'already-below',
+      currentBalanceUsd: 50
+    });
+    expect(calculatePostSaleBalanceFloorHorizon({
+      ...constraint,
+      signedBalance: -1_000,
+      netSaleProceeds: 550,
+      minimumRemainingBalanceUsd: -450
+    }, 0.01)).toMatchObject({
+      status: 'breach',
+      days: 1
+    });
+  });
+
+  it('does not turn missing post-sale inputs into a zero balance or a false horizon', () => {
+    expect(calculatePostSaleBalanceFloorHorizon({
+      signedBalance: -1_000,
+      freeCash: 0,
+      netSaleProceeds: Number.NaN
+    }, 0.01)).toEqual({ status: 'unavailable' });
+    expect(calculatePostSaleBalanceFloorHorizon({
+      signedBalance: Number.NaN,
+      freeCash: 0,
+      netSaleProceeds: 560
+    }, 0.01)).toEqual({ status: 'unavailable' });
+    expect(calculatePostSaleBalanceFloorHorizon({
+      signedBalance: -1_000,
+      freeCash: 0,
+      netSaleProceeds: 560
+    }, 0)).toMatchObject({ status: 'not-reached', currentBalanceUsd: -440 });
   });
 
   it('requires the projected post-sale balance to remain at or above -$450 for breakeven', () => {
