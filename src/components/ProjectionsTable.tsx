@@ -12,7 +12,7 @@ import {
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { getPortfolioNetSaleProceeds, getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
+import { getPortfolioNetSaleProceeds, getPortfolioProjectionInputs, getPortfolioProjectionTickers } from '../domain/portfolioSelectors';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { normalizePortfolioSettings } from '../domain/portfolioSettings';
 
@@ -22,13 +22,7 @@ function ProjectionsTableView() {
   const projectionState = state.activeView === activeView ? state : { ...state, activeView };
   const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
     getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
-  const tickers = Object.keys(projectionState.positions || {});
-  const isCombined = projectionState.activeView === 'COMBINED' ||
-    (tickers.length !== 1 && !projectionState.positions?.[projectionState.activeView || '']);
-  const liquidatedTickers = isCombined
-    ? tickers
-    : [projectionState.positions?.[projectionState.activeView || ''] ? projectionState.activeView : tickers[0]]
-      .filter((ticker): ticker is string => Boolean(ticker));
+  const liquidatedTickers = getPortfolioProjectionTickers(projectionState);
   const netSaleProceeds = getPortfolioNetSaleProceeds(
     projectionState,
     state.brokerAssumptions,
