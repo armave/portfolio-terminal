@@ -25,8 +25,9 @@ export interface PortfolioEquitySyncRuntime {
 
 /**
  * Keeps the portfolio-equity projection current without treating live market
- * ticks as durable portfolio edits. Only durable mutations may request a
- * cloud write; derived updates are ignored to prevent recursive notifications.
+ * ticks as durable portfolio edits. Live quote-driven performance observations
+ * stay local until the scheduled workspace checkpoint; durable mutations may
+ * request a cloud write. Derived updates are ignored to prevent recursive notifications.
  */
 export function createPortfolioEquitySyncRuntime(
   dependencies: PortfolioEquitySyncRuntimeDependencies
@@ -34,7 +35,11 @@ export function createPortfolioEquitySyncRuntime(
   const now = dependencies.now || Date.now;
   let performanceSnapshotDeferred = false;
 
-  const recordPerformanceSnapshot = (state: PortfolioState, timestamp: number): void => {
+  const recordPerformanceSnapshot = (
+    state: PortfolioState,
+    timestamp: number,
+    notifyCloudOnChange = true
+  ): void => {
     const record = dependencies.recordPerformanceSnapshot;
     if (!record) return;
     if (dependencies.isPerformanceSnapshotReady?.() === false) {
@@ -52,10 +57,10 @@ export function createPortfolioEquitySyncRuntime(
             performanceSnapshotDeferred = true;
             return;
           }
-          if (changed) dependencies.onPerformanceSnapshotChanged?.();
+          if (changed && notifyCloudOnChange) dependencies.onPerformanceSnapshotChanged?.();
         })
         .catch(() => undefined);
-    } else if (recordedSnapshot) {
+    } else if (recordedSnapshot && notifyCloudOnChange) {
       dependencies.onPerformanceSnapshotChanged?.();
     }
   };
@@ -64,7 +69,10 @@ export function createPortfolioEquitySyncRuntime(
     if (source === 'derived') return;
 
     const timestamp = now();
-    recordPerformanceSnapshot(state, timestamp);
+    const isLiveQuote = source === 'live-quote';
+    // Live ticks refresh today's local valuation, but the scheduled workspace
+    // checkpoint already persists that observation. Avoid a cloud write per tick.
+    recordPerformanceSnapshot(state, timestamp, !isLiveQuote);
 
     const rawEquity = Number(dependencies.calculateEquity(state));
     if (!Number.isFinite(rawEquity)) return;
