@@ -51,6 +51,8 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 A focused article-link implementation is tracked in [PR #564](https://github.com/armave/portfolio-terminal/pull/564). That change rejects non-HTTP(S) article URLs. It is a partial mitigation, not completion of the full XSS audit.
 
+The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). This closes that additional link path but does not complete the broader active-origin credential or CSP review.
+
 The follow-up regression suite in [the URL safety tests](../src/features/quotes/marketInsightsContent.test.ts) exercises absolute HTTP(S) acceptance and rejection of executable/non-web schemes, protocol-relative and malformed destinations, embedded credentials, non-string values, and overlong input. This protects the existing URL boundary; it does not replace the broader href/src/navigation sink audit or the CSP and account-lifecycle review.
 
 ## 4. Browser credential exposure
