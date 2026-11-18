@@ -595,12 +595,16 @@ export function reconcileBrokerActivity(
     }
   }
   for (const [appIndex, candidates] of candidatesByApp) {
-    if (ambiguousAppIndices.has(appIndex) || candidates.length < 2) continue;
-    candidates.sort((a, b) =>
+    if (ambiguousAppIndices.has(appIndex)) continue;
+    const activeCandidates = candidates.filter(candidate =>
+      !ambiguousBrokerIndices.has(candidate.brokerIndex)
+    );
+    if (activeCandidates.length < 2) continue;
+    activeCandidates.sort((a, b) =>
       b.score - a.score || a.broker.id.localeCompare(b.broker.id)
     );
-    const bestScore = candidates[0].score;
-    const tiedBest = candidates.filter(candidate => Math.abs(candidate.score - bestScore) <= 1e-9);
+    const bestScore = activeCandidates[0].score;
+    const tiedBest = activeCandidates.filter(candidate => Math.abs(candidate.score - bestScore) <= 1e-9);
     if (tiedBest.length < 2) continue;
 
     sourceDataIncomplete = true;
@@ -783,7 +787,7 @@ export function reconcileBrokerActivity(
       group.push(index);
       byOrder.set(orderId, group);
     }
-    const matchingGroups = [...byOrder.values()].filter(indices => {
+    const matchingOrderGroups = [...byOrder.entries()].filter(([, indices]) => {
       if (indices.length < 2) return false;
       const quantityTotal = indices.reduce((sum, index) => sum + uniqueBrokerRows[index].quantity, 0);
       if (Math.abs(quantityTotal - appQuantity) > quantityTolerance) return false;
@@ -795,6 +799,12 @@ export function reconcileBrokerActivity(
       }
       return true;
     });
+    const explicitOrderReference = text(app.externalOrderReferenceId);
+    const matchingGroups = explicitOrderReference
+      ? matchingOrderGroups
+        .filter(([orderId]) => orderId === explicitOrderReference)
+        .map(([, indices]) => indices)
+      : matchingOrderGroups.map(([, indices]) => indices);
     if (matchingGroups.length > 1) {
       sourceDataIncomplete = true;
       confidence = 'provisional';

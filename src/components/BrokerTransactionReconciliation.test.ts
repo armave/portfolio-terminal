@@ -185,6 +185,16 @@ describe('broker reconciliation audit-only review markers', () => {
 });
 
 
+describe('execution evidence presentation', () => {
+  it('renders the specific missing broker/app values on provisional execution findings', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("finding.type] || finding.type");
+    expect(source).toContain('finding.missingFields && finding.missingFields.length > 0');
+    expect(source).toContain("translateBrokerReconciliationCopy('Missing execution evidence')");
+    expect(source).toContain('finding.missingFields.map(field => translateBrokerReconciliationCopy(field))');
+  });
+});
+
 describe('transaction journal coverage visibility', () => {
   it('renders scoped replay counts and bounded issue explanations in broker reconciliation', () => {
     const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');

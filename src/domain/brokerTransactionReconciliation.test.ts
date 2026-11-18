@@ -319,6 +319,29 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('uses a stable app order reference to resolve matching partial-fill groups', () => {
+    const app = appEvent('trade.buy', { externalOrderReferenceId: 'order-b' });
+    const report = reconcile([
+      execution({ id: 'order-a-fill-1', orderId: 'order-a', quantity: 1 }),
+      execution({ id: 'order-b-fill-1', orderId: 'order-b', quantity: 1 }),
+      execution({ id: 'order-a-fill-2', orderId: 'order-a', quantity: 1 }),
+      execution({ id: 'order-b-fill-2', orderId: 'order-b', quantity: 1 })
+    ], [app]);
+
+    expect(report.matchedExecutionCount).toBe(2);
+    expect(report.findings.filter(finding => finding.type === 'execution_match_ambiguous')).toEqual([]);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'execution_missing_in_app',
+        brokerReferences: ['order-a-fill-1']
+      }),
+      expect.objectContaining({
+        type: 'execution_missing_in_app',
+        brokerReferences: ['order-a-fill-2']
+      })
+    ]));
+  });
+
   it('detects duplicate broker execution identifiers', () => {
     const report = reconcile(
       [execution(), execution({ quantity: 2 })],
