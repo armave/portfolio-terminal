@@ -59,12 +59,12 @@ export function getMarketStatusRoleLabel(isAdmin: boolean): string {
 export function getMarketStatusLabel(status: string | null | undefined, isAdmin = true): string {
   const normalized = normalizeMarketSessionStatus(status);
   switch (normalized) {
-    case 'PREMARKET': return translateText(isAdmin ? 'Premarket' : 'Market Pre-market');
-    case 'MARKET': return translateText(isAdmin ? 'Market' : 'Market Open');
-    case 'POSTMARKET': return translateText(isAdmin ? 'Postmarket' : 'Market After-hours');
-    case 'CLOSED': return translateText(isAdmin ? 'Closed' : 'Market Closed');
-    case 'MIXED': return translateText(isAdmin ? 'Mixed exchange status' : 'Exchanges report different states');
-    default: return translateText(isAdmin ? 'Unavailable' : 'Market Unavailable');
+    case 'PREMARKET': return translateText(isAdmin ? 'Pre-market' : 'Pre-market session');
+    case 'MARKET': return translateText(isAdmin ? 'Market open' : 'Regular session');
+    case 'POSTMARKET': return translateText(isAdmin ? 'Postmarket' : 'After-hours trading');
+    case 'CLOSED': return translateText(isAdmin ? 'Closed' : 'Market closed');
+    case 'MIXED': return translateText(isAdmin ? 'Mixed status' : 'Exchanges differ');
+    default: return translateText(isAdmin ? 'Unavailable' : 'Status unavailable');
   }
 }
 
@@ -330,7 +330,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
   const countdown = countdownParts ? `${countdownParts.label}${countdownParts.time}` : null;
   const tone = getMarketStatusTone(status);
   const statusLabel = loading && !snapshot
-    ? translateText(isAdmin ? 'Unavailable' : 'Market Unavailable')
+    ? translateText(isAdmin ? 'Unavailable' : 'Status unavailable')
     : getMarketStatusLabel(status, isAdmin);
   const toneClass = tone === 'open'
     ? 'text-emerald-300'
