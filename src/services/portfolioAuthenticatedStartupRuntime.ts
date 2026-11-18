@@ -3,6 +3,8 @@ export type AuthenticatedStartupRole = 'admin' | 'guest' | null;
 type StartupBackgroundTask = 'initial-quotes' | 'pending-cloud-writes' | 'shared-cloud-pull' | 'guest-snapshot';
 
 export interface PortfolioAuthenticatedStartupDependencies {
+  /** Re-arm owner cloud-write suppression before activating a different workspace/session. */
+  beginWorkspaceActivation: () => void;
   loadBrokerRules: () => void;
   publishCurrentUser: () => Promise<unknown>;
   clearAccountIdentity: () => void;
@@ -80,23 +82,31 @@ export function createPortfolioAuthenticatedStartupRuntime(
       .catch((error) => reportBackgroundError(dependencies, 'pending-cloud-writes', error));
   };
 
-  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): Promise<void> => {
+  const synchronizeWorkspaceInBackground = (role: AuthenticatedStartupRole, secret: string): Promise<boolean> => {
     if (role === 'guest') {
       return Promise.resolve()
         .then(() => dependencies.pullGuestPortfolioSnapshot())
-        .then(() => undefined)
-        .catch((error) => reportBackgroundError(dependencies, 'guest-snapshot', error));
+        .then((result) => result !== false)
+        .catch((error) => {
+          reportBackgroundError(dependencies, 'guest-snapshot', error);
+          return false;
+        });
     }
     if (secret) {
       return Promise.resolve()
         .then(() => dependencies.pullSharedCloudState())
-        .then(() => undefined)
-        .catch((error) => reportBackgroundError(dependencies, 'shared-cloud-pull', error));
+        .then((result) => result !== false)
+        .catch((error) => {
+          reportBackgroundError(dependencies, 'shared-cloud-pull', error);
+          return false;
+        });
     }
-    return Promise.resolve();
+    return Promise.resolve(true);
   };
 
   const startApp = async (secret: string): Promise<void> => {
+    // Re-arm cloud-write suppression on every startup, including account switches.
+    dependencies.beginWorkspaceActivation();
     // Resolve identity and activate its account-scoped storage before reading rules.
     // Offline history is initialized only after we know no account workspace applies.
     if (secret) await dependencies.publishCurrentUser();
@@ -131,11 +141,11 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // Start quote refresh only after the remote snapshot is reconciled. This
     // avoids racing live price writes against a cloud pull while still keeping
     // both operations off the first-render critical path.
-    void workspaceSync.finally(() => {
+    void workspaceSync.then((workspaceSyncAccepted) => {
       startInitialQuoteRefresh(role);
-      // Do not release queued local writes until the initial remote snapshot has
-      // been reconciled against any edits made while that request was in flight.
-      recoverPendingCloudWritesInBackground();
+      // A timeout, HTTP failure, or protected conflict is not a valid revision
+      // baseline. Keep queued local writes suppressed until a later pull succeeds.
+      if (workspaceSyncAccepted) recoverPendingCloudWritesInBackground();
     });
   };
 

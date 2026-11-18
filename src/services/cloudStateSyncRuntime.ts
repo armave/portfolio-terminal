@@ -255,7 +255,8 @@ export function createCloudStateSyncRuntime({
   ): Promise<boolean> {
     const response = await fetchWithTimeout(apiUrl(path), {
       method: 'GET',
-      headers: authHeaders(secret)
+      headers: authHeaders(secret),
+      cache: 'no-store'
     });
     if (!isCurrentSession()) return false;
     if (!response.ok) throw new Error(`Cloud encryption verification failed (HTTP ${response.status}).`);
@@ -319,7 +320,8 @@ async function pullCloudState(
     if (!isCurrentSession()) return stalePullFallback();
     const res = await fetchWithTimeout(url, {
       method: 'GET',
-      headers: authHeaders(currentSecret)
+      headers: authHeaders(currentSecret),
+      cache: 'no-store'
     });
     if (!isCurrentSession()) return stalePullFallback();
 
@@ -356,8 +358,8 @@ async function pullCloudState(
       if (pulledRevision !== null) {
         revisionCoordinator.recordPulledRevision(pulledRevision);
       }
-      reportResult?.(false);
-      logAppMessage('[KV Cloud]: State not found (404). Falling back to local storage.');
+      reportResult?.(true);
+      logAppMessage('[KV Cloud]: State not found (404). Accepted an empty cloud baseline and retained local storage.');
       return loadSavedState(toCloudStateRecord(state));
     }
 
@@ -857,7 +859,8 @@ async function performPullCloudHistory(
 ): Promise<CloudHistorySnapshot> {
   const res = await fetchWithTimeout(apiUrl('/api/history'), {
     method: 'GET',
-    headers: authHeaders(secret)
+    headers: authHeaders(secret),
+    cache: 'no-store'
   });
   if (!isCurrentSession()) return { history: null, revision: 0 };
   const revision = readCloudRevision(res.headers) ?? 0;
