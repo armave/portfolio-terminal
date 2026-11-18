@@ -1891,6 +1891,88 @@ describe('canonical trade lifecycle and persistence', () => {
     });
   });
 
+  it('preserves last-known daily turnover across partial WebSocket ticks within the same session', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.addCashStock('AAPL', 1, 100);
+    store.setState({
+      cashStocks: [{ ticker: 'AAPL', shares: 1, currentPrice: 100 }]
+    });
+    const firstReceivedAt = Date.now() + 1_000;
+
+    store.updateLiveQuote('AAPL', {
+      price: 100,
+      requestStartedAt: firstReceivedAt,
+      quoteDetails: {
+        transport: 'websocket',
+        volumeValue: 9_100_000_000,
+        currency: 'USD',
+        lastTradeTime: '2026-11-18T15:30:00',
+        serverTime: '2026-11-18 15:30:01.000'
+      }
+    });
+
+    store.updateLiveQuote('AAPL', {
+      price: 101,
+      requestStartedAt: firstReceivedAt + 1_000,
+      quoteDetails: {
+        transport: 'websocket',
+        price: 101,
+        freshness: 'unknown',
+        receivedAt: firstReceivedAt + 1_000,
+        serverTime: '2026-11-18 15:30:02.000'
+      }
+    });
+
+    const state = store.getState();
+    expect(state.positions.AAPL.quoteDetails).toMatchObject({
+      price: 101,
+      volumeValue: 9_100_000_000,
+      currency: 'USD',
+      lastTradeTime: '2026-11-18T15:30:00',
+      serverTime: '2026-11-18 15:30:02.000'
+    });
+    expect(state.cashCushion.holdings[0].quoteDetails).toMatchObject({
+      volumeValue: 9_100_000_000,
+      currency: 'USD'
+    });
+    expect(state.cashStocks?.[0].quoteDetails).toMatchObject({
+      volumeValue: 9_100_000_000,
+      currency: 'USD'
+    });
+  });
+
+  it('does not carry daily turnover into a new provider session date', () => {
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const firstReceivedAt = Date.now() + 1_000;
+
+    store.updateLiveQuote('AAPL', {
+      price: 100,
+      requestStartedAt: firstReceivedAt,
+      quoteDetails: {
+        transport: 'websocket',
+        volumeValue: 9_100_000_000,
+        currency: 'USD',
+        serverTime: '2026-11-17 23:59:59.000'
+      }
+    });
+
+    store.updateLiveQuote('AAPL', {
+      price: 101,
+      requestStartedAt: firstReceivedAt + 1_000,
+      quoteDetails: {
+        transport: 'websocket',
+        price: 101,
+        serverTime: '2026-11-18 00:00:01.000'
+      }
+    });
+
+    expect(store.getState().positions.AAPL.quoteDetails).not.toHaveProperty('volumeValue');
+    expect(store.getState().positions.AAPL.quoteDetails).not.toHaveProperty('currency');
+  });
+
   it('rewrites the matching local ticker for every newly received WebSocket quote even when source time regresses', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
