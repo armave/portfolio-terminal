@@ -7,7 +7,7 @@ import type { BrokerPositionIntegrityIssue } from '../types/broker';
 import { DEFAULT_PORTFOLIO_SETTINGS, type PortfolioSettings } from './portfolioSettings';
 
 /** Newly observed active purchases are margin-funded unless the user chose otherwise. */
-const DEFAULT_ACTIVE_TRANCHE_TYPE: ActiveTrancheType = 'margin';
+const DEFAULT_ACTIVE_TRANCHE_TYPE: 'cash' | 'margin' = 'margin';
 
 export function getActiveTrancheType(
   classifications: Record<string, ActiveTrancheType> | null | undefined,
