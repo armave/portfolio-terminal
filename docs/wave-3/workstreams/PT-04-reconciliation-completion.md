@@ -12,7 +12,7 @@ Extend the merged read-only position-quantity comparison into a reproducible com
 
 ## Scope
 
-- Match normalized broker executions to PT-02 transaction/event records using stable provider IDs and documented fallback keys.
+- Match normalized broker executions to PT-02 transaction/event records using stable provider IDs and documented fallback keys. When multiple fallback candidates are equally strong, preserve the ambiguity as provisional evidence; do not use journal recording order as execution identity.
 - Detect duplicate, missing, reordered, partially filled, reversed/corrected and timing-shifted executions without double-counting.
 - Compare cashflows, dividends, commissions, margin-interest allocations and relevant fees where source contracts support value and currency.
 - Compare price/freshness and timestamp differences using PT-07 provider observation and receipt metadata.

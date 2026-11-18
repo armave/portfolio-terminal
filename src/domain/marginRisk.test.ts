@@ -343,6 +343,18 @@ describe('account equity health status', () => {
     expect(getMarginRiskLevel(0.2618, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Elevated');
     expect(getMarginRiskLevel(0.3999, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Elevated');
     expect(getMarginRiskLevel(0.4, DEFAULT_BROKER_ASSUMPTIONS)).toBe('Healthy');
+    expect(getMarginRiskLevel(0.35, DEFAULT_BROKER_ASSUMPTIONS, 0.30)).toBe('Healthy');
+    expect(getMarginRiskLevel(0.35, DEFAULT_BROKER_ASSUMPTIONS, 0.40)).toBe('Elevated');
+  });
+
+  it('applies the configured health reference to the full margin-risk calculation', () => {
+    const defaultResult = calculateMarginRiskSnapshot(riskInput());
+    const customResult = calculateMarginRiskSnapshot(riskInput({ accountEquityHealthReferenceRatio: 0.60 }));
+    expect(defaultResult.status).toBe('available');
+    expect(customResult.status).toBe('available');
+    if (defaultResult.status !== 'unavailable') expect(defaultResult.value.riskLevel).toBe('Healthy');
+    if (customResult.status !== 'unavailable') expect(customResult.value.riskLevel).toBe('Elevated');
+    expect(calculateMarginRiskSnapshot(riskInput({ accountEquityHealthReferenceRatio: 0 }))).toMatchObject({ status: 'unavailable' });
   });
 
   it('keeps maintenance-call and stop-out states more severe than elevated', () => {

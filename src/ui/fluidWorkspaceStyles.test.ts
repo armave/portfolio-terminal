@@ -278,7 +278,7 @@ describe('Margin desk localization', () => {
       'Entry',
       'Position opened',
       'TODAY',
-      'BREAKEVEN',
+      'BALANCE FLOOR',
       'EOW · +{days}d',
       'NTD · +{days}d'
     ]) {

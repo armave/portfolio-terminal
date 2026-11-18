@@ -18,6 +18,7 @@ describe('Freedom portfolio type contracts', () => {
 describe('active tranche funding defaults', () => {
   it('defaults new unclassified operations to Margin while respecting saved overrides', () => {
     expect(getActiveTrancheType(undefined, 'AAPL:buy-1', 'AAPL')).toBe('margin');
+    expect(getActiveTrancheType({}, 'AAPL:buy-1', 'AAPL', 'cash')).toBe('cash');
     expect(getActiveTrancheType({}, 'AAPL:buy-1', 'AAPL')).toBe('margin');
     expect(getActiveTrancheType({ AAPL: 'cash' }, 'AAPL:buy-1', 'AAPL')).toBe('cash');
     expect(getActiveTrancheType({ AAPL: 'cash', 'AAPL:buy-1': 'mix' }, 'AAPL:buy-1', 'AAPL')).toBe('mix');

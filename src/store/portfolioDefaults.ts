@@ -1,5 +1,6 @@
 import type { PortfolioState } from '../types/portfolio';
 import { DEFAULT_BROKER_ASSUMPTIONS } from '../domain/brokerAssumptions';
+import { DEFAULT_PORTFOLIO_SETTINGS } from '../domain/portfolioSettings';
 
 /**
  * Creates a complete, canonical application portfolio state.
@@ -35,6 +36,7 @@ export function createBlankPortfolioState(now = Date.now()): PortfolioState {
     closedHistory: [],
     cashflows: [],
     brokerAssumptions: DEFAULT_BROKER_ASSUMPTIONS,
+    portfolioSettings: DEFAULT_PORTFOLIO_SETTINGS,
     lastRolloverTimestamp: now,
     lastUpdated: now,
     cashBalance: 0,

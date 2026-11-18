@@ -12,7 +12,7 @@ describe('shared workspace navigation visual system', () => {
     expect(stylesheet).toContain('.workspace-header-status {');
     expect(stylesheet).toContain('.workspace-nav-button {');
     expect(stylesheet).toContain('min-height: 2.75rem;');
-    expect(stylesheet).toContain('.workspace-nav-button--active {');
+    expect(stylesheet).toContain('.workspace-nav-button--active,\n.workspace-nav-button[aria-pressed="true"] {');
     expect(stylesheet).toContain('.workspace-nav-button__icon {');
     expect(stylesheet).toContain('.workspace-header-status-pill {');
   });

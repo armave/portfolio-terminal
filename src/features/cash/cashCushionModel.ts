@@ -54,6 +54,7 @@ export function selectCashCushionPortfolioState(state: PortfolioState) {
     activeTrancheGuestAssignments: state.activeTrancheGuestAssignments,
     activeTrancheTypes: state.activeTrancheTypes,
     activeTrancheMixes: state.activeTrancheMixes,
+    portfolioSettings: state.portfolioSettings,
     cashHoldings: state.cashCushion?.holdings,
     positions: state.positions,
     transactionEvents: state.transactionEvents
@@ -70,6 +71,7 @@ export function areCashCushionPortfolioStatesEqual(
     previous.activeTrancheGuestAssignments === next.activeTrancheGuestAssignments &&
     previous.activeTrancheTypes === next.activeTrancheTypes &&
     previous.activeTrancheMixes === next.activeTrancheMixes &&
+    previous.portfolioSettings === next.portfolioSettings &&
     previous.cashHoldings === next.cashHoldings &&
     previous.positions === next.positions &&
     previous.transactionEvents === next.transactionEvents;

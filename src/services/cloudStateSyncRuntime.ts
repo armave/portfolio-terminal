@@ -1,3 +1,4 @@
+import { logSafeDiagnostic } from './safeDiagnostics';
 import type { CloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 import { getAppLanguage, translateText } from './i18n';
@@ -290,8 +291,8 @@ async function pullCloudState(
   const {
     state,
     pullCloudAndRewriteLocal,
-    showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`),
-    logAppMessage = (msg: string) => console.log(msg)
+    showToast = (_msg: string, _type: string) => logSafeDiagnostic('info', 'cloud-sync'),
+    logAppMessage = (_msg: string) => logSafeDiagnostic('info', 'cloud-sync')
   } = handlers;
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
@@ -541,7 +542,7 @@ async function pullCloudState(
           getAppLanguage()
         );
         showToast(notice, 'error');
-        logAppMessage(`[Cloud Security]: Encryption upgrade remains pending: ${migrationError instanceof Error ? migrationError.message : 'unknown error'}`);
+        logAppMessage('[Cloud Security]: Encryption upgrade remains pending.');
       }
     } else if (handlers.allowCloudWrites !== false && (wasUpdated || mergedLocalData)) {
       pushCloudState(stateToPersist, {
@@ -549,7 +550,7 @@ async function pullCloudState(
         secret: currentSecret,
         showToast: () => { }
       }).catch((err) => {
-        console.warn('Background cloud-state refresh failed:', err);
+        logSafeDiagnostic('warn', 'cloud-sync', err);
       });
     }
 
@@ -563,7 +564,7 @@ async function pullCloudState(
     const message = errorMessage(err);
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'error');
     reportResult?.(false);
-    console.error('Failed to pull KV cloud state:', err);
+    logSafeDiagnostic('error', 'cloud-sync', err);
     showToast(`Cloud pull failed: ${message}`, 'error');
     logAppMessage(`[KV Cloud Error]: ${message}. Retaining local state.`);
     return loadSavedState(toCloudStateRecord(state));
@@ -671,7 +672,7 @@ async function tryAutoReconcileCloudConflict(
     cloudStatePushFingerprints.set(secret, mergedFingerprint);
     if (cloudStateConflictSecret === secret) cloudStateConflictSecret = null;
     handlers.onStatusChange?.('synced');
-    (handlers.logAppMessage || ((message: string) => console.log(message)))(
+    (handlers.logAppMessage || ((_message: string) => logSafeDiagnostic('info', 'cloud-sync'))) (
       '[Cloud Conflict]: Non-conflicting changes were reconciled and synchronized in the background.'
     );
     return true;
@@ -830,7 +831,7 @@ function pullCloudHistorySnapshot(
         if (!isCurrentSession()) return snapshot;
         const error = migrationError instanceof Error ? migrationError : new Error('Unknown Closed History encryption migration error.');
         if (options.onEncryptionMigrationFailure) options.onEncryptionMigrationFailure(error);
-        else console.warn('Closed History encryption migration remains pending:', error.message);
+        else logSafeDiagnostic('warn', 'closed-history', error);
         // Keep the successfully decrypted rows available. No migration marker is
         // written on failure, so a later open retries the migration.
         rememberCloudHistorySnapshot(secret, snapshot);
@@ -889,8 +890,8 @@ async function performPushCloudState(
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
-    logAppMessage = (msg: string) => console.log(msg),
-    showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`)
+    logAppMessage = (_msg: string) => logSafeDiagnostic('info', 'cloud-sync'),
+    showToast = (_msg: string, _type: string) => logSafeDiagnostic('info', 'cloud-sync')
   } = handlers;
   const isCurrentSession = handlers.isCurrentSession || (() => true);
   if (!isCurrentSession()) return false;
@@ -972,7 +973,7 @@ async function performPushCloudState(
   } catch (err: unknown) {
     if (!isCurrentSession()) return false;
     const message = errorMessage(err);
-    console.error('Failed to push to KV cloud:', err);
+    logSafeDiagnostic('error', 'cloud-sync', err);
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'error');
     showToast(`Cloud push failed: ${message}`, 'error');
     return false;

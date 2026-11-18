@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
-let breakevenText = 'Breakeven: —';
+let breakevenText = 'Post-sale floor: —';
 const breakevenTextListeners = new Set<(text: string) => void>();
 
 /** Publish the current combined-portfolio breakeven label. */
@@ -97,6 +97,7 @@ export interface AnalystConsensusState {
   value?: string;
   upsideText?: string;
   upsideTone?: 'positive' | 'negative' | 'neutral';
+  analystCount?: number;
 }
 
 let analystConsensus: AnalystConsensusState = { text: '', title: '', className: 'hidden' };
@@ -110,7 +111,8 @@ export function setAnalystConsensus(state: AnalystConsensusState): void {
     state.label === analystConsensus.label &&
     state.value === analystConsensus.value &&
     state.upsideText === analystConsensus.upsideText &&
-    state.upsideTone === analystConsensus.upsideTone
+    state.upsideTone === analystConsensus.upsideTone &&
+    state.analystCount === analystConsensus.analystCount
   ) return;
   analystConsensus = state;
   analystConsensusListeners.forEach((listener) => listener(analystConsensus));

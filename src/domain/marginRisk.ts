@@ -1,6 +1,6 @@
 import type { BrokerAssumptions } from '../types/portfolio';
 
-/** The gauge uses 40% as its visual healthy-reference threshold. */
+/** Default visual healthy-reference threshold for accounts without a saved policy. */
 export const ACCOUNT_EQUITY_HEALTH_REFERENCE = 0.4;
 
 export type MarginRiskLevel = 'Healthy' | 'Elevated' | 'Margin-call level' | 'Stop-out level';
@@ -48,6 +48,8 @@ export interface MarginRiskInput {
   observedAt: number | null;
   calculatedAt: number;
   brokerRequirements?: BrokerReportedMarginRequirements | null;
+  /** Workspace risk-presentation policy; does not alter broker maintenance or stop-out limits. */
+  accountEquityHealthReferenceRatio?: number;
 }
 
 interface MarginRequirementValue {
@@ -112,11 +114,15 @@ export type MarginRiskCalculation =
   | { status: 'available' | 'provisional'; quality: 'current' | 'provisional'; value: MarginRiskSnapshot; warnings: string[] }
   | { status: 'unavailable'; reason: string; warnings: string[] };
 
-/** Classify equity against the same 40% visual reference shown on the account-health meter. */
-export function getMarginRiskLevel(equityRatio: number, rules: BrokerAssumptions): MarginRiskLevel {
+/** Classify equity using broker limits first, then the workspace health reference. */
+export function getMarginRiskLevel(
+  equityRatio: number,
+  rules: BrokerAssumptions,
+  healthReferenceRatio = ACCOUNT_EQUITY_HEALTH_REFERENCE
+): MarginRiskLevel {
   if (equityRatio <= rules.stopOutRatio) return 'Stop-out level';
   if (equityRatio <= rules.maintenanceEquityRatio) return 'Margin-call level';
-  if (equityRatio < ACCOUNT_EQUITY_HEALTH_REFERENCE) return 'Elevated';
+  if (equityRatio < healthReferenceRatio) return 'Elevated';
   return 'Healthy';
 }
 
@@ -234,6 +240,10 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
     return unavailable('Margin risk is unavailable because eligible collateral is unknown.');
   }
   if (!validAssumptions(input.assumptions)) return unavailable('Broker margin assumptions are invalid.');
+  const healthReferenceRatio = input.accountEquityHealthReferenceRatio ?? ACCOUNT_EQUITY_HEALTH_REFERENCE;
+  if (!isFiniteNumber(healthReferenceRatio) || healthReferenceRatio < 0.01 || healthReferenceRatio > 1) {
+    return unavailable('Account-equity health reference must be a finite percentage from 1% to 100%.');
+  }
   if (!['current', 'provisional', 'incomplete'].includes(input.quality) ||
       !['fresh', 'stale', 'delayed', 'indicative', 'unknown'].includes(input.freshness)) {
     return unavailable('Margin-risk data quality or quote freshness is invalid.');
@@ -364,7 +374,7 @@ export function calculateMarginRiskSnapshot(input: MarginRiskInput): MarginRiskC
   }
 
   const ratioForClassification = equityRatio ?? Number.NEGATIVE_INFINITY;
-  let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions);
+  let riskLevel = input.marginDebt <= 0 ? 'Healthy' : getMarginRiskLevel(ratioForClassification, input.assumptions, healthReferenceRatio);
   if (input.shortExposure > 0) {
     if (equity <= 0) riskLevel = 'Stop-out level';
     else if (maintenanceBuffer !== null && maintenanceBuffer <= 0) riskLevel = 'Margin-call level';

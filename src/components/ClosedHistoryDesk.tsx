@@ -1,3 +1,4 @@
+import { logSafeDiagnostic } from '../services/safeDiagnostics';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
 import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
@@ -131,7 +132,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     void listUsers().then((users) => {
       if (active && isSessionCurrent()) setGuestUsers(users.filter((user) => user.role === 'guest'));
     }).catch((error) => {
-      console.warn('Unable to load guest names for closed-trade attribution:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     });
     return () => { active = false; };
   }, []);
@@ -147,7 +148,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
           getAppLanguage()
         ));
-        console.warn('Closed History encryption migration remains pending:', error.message);
+        logSafeDiagnostic('warn', 'closed-history', error);
       }
     }).then(async history => {
       if (!active || !isSessionCurrent()) return;
@@ -200,14 +201,14 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         if (!isSessionCurrent()) return;
         try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession: isSessionCurrent }); }
         catch (error) {
-          if (isSessionCurrent()) console.error('Unable to sync closed history:', error);
+          if (isSessionCurrent()) logSafeDiagnostic('error', 'closed-history', error);
         }
         if (!active || !isSessionCurrent()) return;
       }
       if (active && isSessionCurrent()) setCashflowHistoryReady(true);
     }).catch(error => {
       if (!active || !isSessionCurrent()) return;
-      console.error('Unable to load closed history from cloud:', error);
+      logSafeDiagnostic('error', 'closed-history', error);
       if (active && isSessionCurrent()) {
         const current = portfolioStore.getState();
         const saved = loadSavedHistory();
@@ -315,7 +316,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         cashflowRows
       );
       if (feeAuditUpdate.rejectedCount > 0) {
-        console.warn('Closed-history fee sync retained rows without complete linked sale/cashflow evidence:', feeAuditUpdate.rejectedTradeIds);
+        logSafeDiagnostic('warn', 'closed-history');
       }
       const auditedClosedTrades = feeAuditUpdate.closedTrades;
       const openPositionFeeAllocations = brokerExecutions.length
@@ -368,7 +369,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         portfolioStore.restoreInMemorySnapshot(previousPortfolioState);
         const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
         setCashflowSyncMessage(message);
-        console.error(message);
+        logSafeDiagnostic('error', 'closed-history');
         return false;
       }
       // The closed-history collection lives in its own cloud record; saving the
@@ -389,7 +390,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
           if (!isOperationCurrent()) return false;
-          console.error('Failed to sync closed-history cashflows and fees:', error);
+          logSafeDiagnostic('error', 'closed-history', error);
           if (requireCloudSync) {
             setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
             return false;
@@ -403,7 +404,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     } catch (error) {
       if (!isOperationCurrent()) return false;
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
-      console.error('Unable to process saved closed-history cashflows:', detail);
+      logSafeDiagnostic('error', 'closed-history');
       if (requireCloudSync) setCashflowSyncMessage(`Freedom cashflow processing failed: ${detail}`);
       return false;
     }
@@ -452,7 +453,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (!isSessionCurrent()) return;
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
       setCashflowSyncMessage(`Automatic Freedom cashflow sync failed: ${detail}`);
-      console.warn('Automatic Freedom cashflow sync failed:', detail);
+      logSafeDiagnostic('warn', 'closed-history');
     } finally {
       if (isSessionCurrent()) {
         // A failed request or local/cloud persistence failure must be retryable
@@ -483,7 +484,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
             'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
             getAppLanguage()
           ));
-          console.warn('Closed History encryption migration remains pending:', error.message);
+          logSafeDiagnostic('warn', 'closed-history', error);
         }
       });
     } catch (error) {
@@ -559,7 +560,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
             brokerExecutedTrades: normalized,
             cashflows: portfolioStore.getState().cashflows || []
           }, undefined, undefined, { isCurrentSession: isSessionCurrent }).catch(error => {
-            if (isSessionCurrent()) console.error('Unable to sync updated broker history:', error);
+            if (isSessionCurrent()) logSafeDiagnostic('error', 'closed-history', error);
           });
         }
       }

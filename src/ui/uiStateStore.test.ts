@@ -153,23 +153,26 @@ describe('analyst consensus store subscriptions', () => {
       text: 'Analyst target · Yahoo · $400.00 · +36.09%',
       title: 'Target from Yahoo.',
       className: 'loaded',
-      label: 'Analyst (Yahoo)',
+      label: 'Analyst target · Yahoo',
       value: '$400.00',
-      upsideText: '+36.09%',
-      upsideTone: 'positive'
+      upsideText: '+36.1% upside to target',
+      upsideTone: 'positive',
+      analystCount: 8
     };
     setAnalystConsensus(published);
     setAnalystConsensus({
       ...published,
-      text: 'Analyst target · Yahoo · $405.00 · +37.80%',
+      text: 'Analyst target · Yahoo · $405.00 · +37.8% upside to target',
       value: '$405.00',
-      upsideText: '+37.80%'
+      upsideText: '+37.8% upside to target',
+      analystCount: 9
     });
     expect(received[received.length - 1]).toMatchObject({
-      label: 'Analyst (Yahoo)',
+      label: 'Analyst target · Yahoo',
       value: '$405.00',
-      upsideText: '+37.80%',
-      upsideTone: 'positive'
+      upsideText: '+37.8% upside to target',
+      upsideTone: 'positive',
+      analystCount: 9
     });
     unsubscribe();
   });

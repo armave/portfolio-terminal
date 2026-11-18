@@ -1,4 +1,5 @@
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
+import type { PortfolioSettings } from '../domain/portfolioSettings';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
@@ -23,6 +24,8 @@ export interface UiEventPayloads {
   'settings:gateway-secret-authenticated': { secret: string };
   'settings:save-broker-rules': { values: { annualRate: string; dayCountBasis: string; maintenanceMargin: string; stopOutRatio: string; rolloverTime: string; commPerShare: string; commVolumePct: string; minCommOrder: string } };
   'settings:reset-broker-rules': undefined;
+  'settings:save-portfolio-settings': { settings: PortfolioSettings };
+  'settings:reset-portfolio-settings': undefined;
   'settings:save-api-keys': { secret: string; resolve: (saved: boolean) => void };
   'settings:pull-cloud-state': undefined;
   'settings:change-refresh-interval': { intervalMs: string; refreshNow?: boolean };

@@ -31,7 +31,7 @@ describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
+    expect(source).toContain('referenceRatio * 100');
     expect(source).not.toMatch(/40\s*-\s*Math\.min/);
     expect(source).not.toContain("'Asia/Yerevan'");
     expect(source).toContain('FREEDOM_BROKER_TIME_ZONE');
@@ -110,10 +110,11 @@ describe('portfolio metric quote updates', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('Ticker market context');
-    expect(source).toContain('formatQuoteVolume(position.quoteDetails?.volume)');
-    expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} lastTradeTime={position.quoteDetails?.lastTradeTime} serverTime={position.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} lastTradeTime={pos.quoteDetails?.lastTradeTime} serverTime={pos.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(source).not.toContain('formatQuoteVolume');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
-    expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
+    expect(source).toContain('id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]"');
   });
 });
 
@@ -215,6 +216,16 @@ describe('margin tranche quantity display', () => {
     ];
 
     expect(getMarginTrancheQuantities(tranches, brokerLots, 'GOOGL')).toEqual([5, 14, 10, 20, 20]);
+  });
+});
+
+describe('daily quote context localization', () => {
+  it('localizes the day, high and low labels in margin quote context', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateText('Day:', getAppLanguage())");
+    expect(source).toContain("translateText('High', getAppLanguage())");
+    expect(source).toContain("translateText('Low', getAppLanguage())");
+    expect(source).not.toContain('text: `Day:');
   });
 });
 
@@ -330,9 +341,9 @@ describe('accessible Margin Health overview action', () => {
 
 describe('header carry-break-even formatting', () => {
   it('removes only the legacy internal prefix while preserving status and date text', () => {
-    expect(getHeaderBreakevenValue('Breakeven: 216 days (Nov 15, 2026)')).toBe('216 days (Nov 15, 2026)');
-    expect(getHeaderBreakevenValue('Breakeven: No margin debt')).toBe('No margin debt');
-    expect(getHeaderBreakevenValue('Breakeven: —')).toBe('—');
+    expect(getHeaderBreakevenValue('Post-sale floor: 94 days (Feb 20, 2027)')).toBe('94 days (Feb 20, 2027)');
+    expect(getHeaderBreakevenValue('Post-sale floor: Already below floor')).toBe('Already below floor');
+    expect(getHeaderBreakevenValue('Post-sale floor: —')).toBe('—');
     expect(getHeaderBreakevenValue('')).toBe('—');
   });
 });

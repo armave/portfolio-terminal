@@ -62,6 +62,41 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings).toEqual([]);
   });
 
+  it('leaves equally ranked app fallback candidates ambiguous instead of using recordedAt or input order', () => {
+    const makeAppEvent = (eventId: string, recordedAt: number) => createPortfolioTransactionEvent({
+      type: 'trade.buy',
+      effectiveAt: at,
+      ticker: 'AAPL',
+      quantity: 2,
+      unitPrice: 100,
+      currency: 'USD',
+      fees: 1,
+      feeCurrency: 'USD'
+    }, {
+      actor: { type: 'user', id: 'investor-1' },
+      source: 'manual',
+      eventId,
+      recordedAt
+    });
+    const first = makeAppEvent('app-trade-a', at);
+    const second = makeAppEvent('app-trade-b', at + 10_000);
+
+    for (const appEvents of [[first, second], [second, first]]) {
+      const report = reconcile([execution()], appEvents);
+      expect(report.status).toBe('partial');
+      expect(report.matchedExecutionCount).toBe(0);
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        type: 'execution_match_ambiguous',
+        confidence: 'provisional',
+        brokerReferences: ['exec-1'],
+        appEventIds: ['app-trade-a', 'app-trade-b']
+      }));
+      expect(report.warnings).toContain(
+        'A broker execution has multiple equally strong app fallback candidates; manual review is required.'
+      );
+    }
+  });
+
   it('reports commission differences without converting currencies or changing inputs', () => {
     const broker = execution({ commission: 1.5 });
     const app = appEvent('trade.buy');

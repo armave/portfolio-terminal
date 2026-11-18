@@ -9,6 +9,7 @@ export interface AccountPermissions {
   canViewActiveTranches: boolean;
   canViewGuestTrancheHistory: boolean;
   canEditBrokerRules: boolean;
+  canEditPortfolioSettings: boolean;
 }
 
 /** Unknown roles fail closed; only an authenticated admin receives elevated UI capabilities. */
@@ -22,7 +23,8 @@ export function getAccountPermissions(role: AccountRole | null | undefined): Acc
     canViewClosedHistory: isAdmin,
     canViewActiveTranches: isAdmin,
     canViewGuestTrancheHistory: role === 'guest',
-    canEditBrokerRules: isAdmin
+    canEditBrokerRules: isAdmin,
+    canEditPortfolioSettings: isAdmin
   };
 }
 

@@ -3,13 +3,14 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { useBreakevenText } from '../ui/uiStateStore';
+import { QuoteVolumeBadge } from './QuoteVolumeBadge';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -59,7 +60,7 @@ function getCashCushionValueFromState(state: BoardState): number {
   }, 0);
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope }: {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, scope, healthReferenceRatio }: {
   equityPct: number;
   risk: MarginRiskDisplay;
   equityText: string;
@@ -69,6 +70,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
   scope: 'account' | 'allocated-ticker';
+  healthReferenceRatio?: number;
 }) {
   const language = getAppLanguage();
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -153,7 +155,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   ).replace('{threshold}', (rules.stopOutRatio * 100).toFixed(2));
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
-  const referencePercent = (ACCOUNT_EQUITY_HEALTH_REFERENCE * 100).toFixed(0);
+  const referenceRatio = typeof healthReferenceRatio === 'number' && Number.isFinite(healthReferenceRatio) && healthReferenceRatio >= 0.01 && healthReferenceRatio <= 1
+    ? healthReferenceRatio
+    : ACCOUNT_EQUITY_HEALTH_REFERENCE;
+  const referencePercent = (referenceRatio * 100).toFixed(0);
   return (
     <>
       <section class="margin-risk-gauge-card" aria-label={translateText('ACCOUNT EQUITY HEALTH', language)}>
@@ -172,7 +177,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
           </button>
         </div>
         <div class="margin-risk-meter" role="progressbar" aria-label={translateText('Account equity percentage', language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth} aria-valuetext={equityWidth.toFixed(1) + '% ' + translateText('Account equity', language)}>
-          <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, ACCOUNT_EQUITY_HEALTH_REFERENCE * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
+          <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, referenceRatio * 100 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
           <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
         </div>
         <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% {translateText('maintenance', language)}</span><span>{translateText('{value}% reference', language).replace('{value}', referencePercent)}</span><span>{translateText('100% assets', language)}</span></div>
@@ -234,11 +239,11 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   }
 
   if (hasRange) {
-    parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
+    parts.push(`${translateText('High', getAppLanguage())} ${formatUSD(details.high)} / ${translateText('Low', getAppLanguage())} ${formatUSD(details.low)}`);
   }
 
   return {
-    text: `Day: ${parts.join(' · ')}`,
+    text: `${translateText('Day:', getAppLanguage())} ${parts.join(' · ')}`,
     className: `mt-0.5 block text-[9px] font-normal tabular-nums text-right ${colorClass}`
   };
 }
@@ -365,7 +370,7 @@ function getHeaderRiskValueClass(risk: MarginRiskDisplay): string {
 }
 
 export function getHeaderBreakevenValue(value: string): string {
-  const displayValue = value.replace(/^(?:Breakeven|BE):\s*/i, '').trim();
+  const displayValue = value.replace(/^(?:Breakeven|BE|Post-sale floor):\s*/i, '').trim();
   return displayValue || '—';
 }
 
@@ -745,6 +750,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       eligibleCollateral: valuation.cashBalance,
       eligibleCollateralSource: 'configured-assumption',
       assumptions: rules,
+      accountEquityHealthReferenceRatio: state.portfolioSettings?.accountEquityHealthReferenceRatio,
       quality: valuationStatus,
       freshness: riskFreshness,
       observedAt: riskObservedAt,
@@ -763,10 +769,10 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
           />
           <PortfolioHeaderMetric
             metric="carry-break-even"
-            label={translateText('Portfolio carry break-even', getAppLanguage())}
+            label={translateText('Post-sale balance floor', getAppLanguage())}
             value={getHeaderBreakevenValue(breakevenText)}
             valueId="daysToBreakeven"
-            valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+            valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
             valueClass="is-carry"
           />
           <PortfolioHeaderMetric
@@ -820,21 +826,18 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2" aria-label={translateText('Ticker market context', getAppLanguage())}>
                     {tickers.map((ticker) => {
                       const position = state.positions![ticker];
-                      const volume = formatQuoteVolume(position.quoteDetails?.volume);
                       const dailyMeta = getDailyQuoteMeta(position.quoteDetails);
                       const marketPrice = getUsableMarketPrice(position.currentPrice);
                       return (
                         <div key={ticker} class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
                           <span class="font-semibold text-slate-300">
                             {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
-                            {dailyMeta && <span class={`ml-1 ${dailyMeta.className}`}>{dailyMeta.text}</span>}
-                          </span>
-                          <span class="text-slate-500">
-                            <span title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-                              {translateText('Volume', getAppLanguage())} {volume ?? '—'}
+                            <span class="inline-flex flex-wrap items-center gap-1.5 align-middle">
+                              {dailyMeta && <span class={dailyMeta.className}>{dailyMeta.text}</span>}
+                              <QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} lastTradeTime={position.quoteDetails?.lastTradeTime} serverTime={position.quoteDetails?.serverTime} isAdmin={isAdmin} />
                             </span>
-                            {' · '}{formatQuoteMetadata(position, refreshIntervalMs)}
                           </span>
+                          <span class="text-slate-500">{formatQuoteMetadata(position, refreshIntervalMs)}</span>
                         </div>
                       );
                     })}
@@ -874,6 +877,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               equityText={equityText}
               collateralText={formatUSD(valuation.cashBalance)}
               rules={rules}
+              healthReferenceRatio={state.portfolioSettings?.accountEquityHealthReferenceRatio}
               valuationStatus={valuationStatus}
               accountBalanceAvailable={valuation.accountBalanceAvailable}
               unpricedHoldings={valuation.unpricedHoldings}
@@ -1034,22 +1038,22 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     eligibleCollateral: allocatedCashBalance,
     eligibleCollateralSource: 'configured-assumption',
     assumptions: rules,
+    accountEquityHealthReferenceRatio: state.portfolioSettings?.accountEquityHealthReferenceRatio,
     quality: positionValuationStatus,
     freshness: riskFreshness,
     observedAt: riskObservedAt,
     calculatedAt: Date.now()
   });
 
-  const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
       <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
         <PortfolioHeaderMetric
           metric="carry-break-even"
-          label={translateText('Portfolio carry break-even', getAppLanguage())}
+          label={translateText('Post-sale balance floor', getAppLanguage())}
           value={getHeaderBreakevenValue(breakevenText)}
           valueId="daysToBreakeven"
-          valueTitle={translateText('Estimated days to breakeven', getAppLanguage())}
+          valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
           valueClass="is-carry"
         />
         <PortfolioHeaderMetric
@@ -1092,15 +1096,12 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   )}
                 </span>
               </div>
-              <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
-                {dailyQuoteMeta?.text || ''}
-                <span class="text-slate-400"> · </span>
+              <span id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
+                {dailyQuoteMeta?.text && <span class={dailyQuoteMeta.className}>{dailyQuoteMeta.text}</span>}
+                <QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} lastTradeTime={pos.quoteDetails?.lastTradeTime} serverTime={pos.quoteDetails?.serverTime} isAdmin={isAdmin} />
                 <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
                   <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
                 </span>
-              </span>
-              <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-                {translateText('Volume', getAppLanguage())} {volume ?? '—'}
               </span>
             </div>
             <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
@@ -1151,6 +1152,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             equityText={equityText}
             collateralText={formatUSD(allocatedCashBalance)}
             rules={rules}
+            healthReferenceRatio={state.portfolioSettings?.accountEquityHealthReferenceRatio}
             valuationStatus={positionValuationStatus}
             accountBalanceAvailable={accountBalanceAvailable}
             unpricedHoldings={positionUnpricedHoldingCount}

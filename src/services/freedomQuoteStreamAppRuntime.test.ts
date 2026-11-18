@@ -80,6 +80,8 @@ describe('Freedom quote stream app adapter', () => {
         bbp: 280.51,
         bap: 280.6,
         vol: 123456,
+        vlt: 987654321,
+        x_curr: 'USD',
         ltt: '2026-11-03T10:00:00',
         UTCOffset: -300,
         owner_login: 'must-not-forward'
@@ -98,6 +100,9 @@ describe('Freedom quote stream app adapter', () => {
         price: 280.55,
         bid: 280.51,
         ask: 280.6,
+        volume: 123456,
+        volumeValue: 987654321,
+        currency: 'USD',
         freshness: 'unknown',
         requestSequence: 123
       }),

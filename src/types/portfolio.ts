@@ -31,8 +31,10 @@ export interface QuoteDetails {
   changePercent?: number;
   high?: number;
   low?: number;
-  /** Provider-reported volume; the reporting period may vary by quote source. */
+  /** Provider-reported daily share/unit count; TradeNet supplies this as vol (pieces). */
   volume?: number;
+  /** Provider-reported daily monetary turnover; TradeNet supplies vlt in the quote currency. */
+  volumeValue?: number;
   marketState?: string;
   price?: number;
   /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */
@@ -332,7 +334,11 @@ export interface PortfolioState {
   /** Manual funding / guest overrides keyed by a stable closed-history row identity. */
   closedTradeAllocations?: Record<string, ClosedTradeAllocation>;
   /** Server-filtered tranche projection returned only to the signed-in guest. */
-  guestPortfolioSnapshot?: { updatedAt: number; tranches: ActiveBrokerTranche[] };
+  guestPortfolioSnapshot?: {
+    /** Administrator publication time returned by the server. */
+    updatedAt: number;
+    tranches: ActiveBrokerTranche[];
+  };
   /** Server-filtered assignment history returned only to the signed-in guest. */
   guestTrancheLedger?: GuestTrancheLedgerRecord[];
   brokerAccountInfo?: {
@@ -381,6 +387,8 @@ export interface PortfolioState {
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
   brokerAssumptions: BrokerAssumptions;
+  /** Admin-managed app planning defaults; separate from broker-reported rules. */
+  portfolioSettings?: import('../domain/portfolioSettings').PortfolioSettings;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;
   gatewaySecret?: string;

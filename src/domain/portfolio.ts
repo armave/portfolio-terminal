@@ -1,4 +1,5 @@
 import { DEFAULT_BROKER_ASSUMPTIONS, FREEDOM_BROKER_TIME_ZONE, normalizeBrokerAssumptions } from './brokerAssumptions';
+import { normalizePortfolioSettings } from './portfolioSettings';
 import { getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './rolloverCalendar';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 import { isPortfolioTransactionEventList } from './portfolioTransactionJournal';
@@ -489,6 +490,112 @@ export function calculateAccruedFees(
   return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
 }
 
+const MIN_BREAKEVEN_REMAINING_BALANCE_USD = -450;
+
+export interface BreakevenBalanceConstraint {
+  signedBalance: number;
+  freeCash: number;
+  netSaleProceeds: number;
+  /** Configurable app planning floor in USD; absent retains the historic −$450 default. */
+  minimumRemainingBalanceUsd?: number;
+}
+
+export const MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS = 3650;
+
+export type PostSaleBalanceFloorHorizon =
+  | { status: 'unavailable' }
+  | { status: 'already-below'; currentBalanceUsd: number }
+  | { status: 'breach'; currentBalanceUsd: number; breachBalanceUsd: number; days: number }
+  | { status: 'not-reached'; currentBalanceUsd: number };
+
+/**
+ * Find when a hypothetical sale at target price no longer leaves the configured
+ * minimum account balance. This is independent of net-P&L breakeven.
+ *
+ * The floor is inclusive: a balance equal to the floor is still allowed. The
+ * reported day is the first calendar day whose projected post-sale balance is
+ * strictly below the floor, using the same daily cent rounding as projected debt.
+ */
+export function calculatePostSaleBalanceFloorHorizon(
+  constraint: BreakevenBalanceConstraint,
+  dailyRate: number,
+  maxDays = MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
+): PostSaleBalanceFloorHorizon {
+  const {
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    minimumRemainingBalanceUsd = MIN_BREAKEVEN_REMAINING_BALANCE_USD
+  } = constraint;
+
+  if (
+    ![signedBalance, freeCash, netSaleProceeds, minimumRemainingBalanceUsd, dailyRate, maxDays].every(Number.isFinite) ||
+    freeCash < 0 ||
+    dailyRate < 0 ||
+    !Number.isInteger(maxDays) ||
+    maxDays < 0
+  ) {
+    return { status: 'unavailable' };
+  }
+
+  const currentBalanceUsd = calculateProjectedAccountBalanceAfterSale(
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    dailyRate,
+    0
+  );
+  if (!Number.isFinite(currentBalanceUsd)) return { status: 'unavailable' };
+  if (currentBalanceUsd < minimumRemainingBalanceUsd) {
+    return { status: 'already-below', currentBalanceUsd };
+  }
+  if (signedBalance >= 0 || dailyRate === 0 || maxDays === 0) {
+    return { status: 'not-reached', currentBalanceUsd };
+  }
+
+  let projectedDebt = Math.abs(signedBalance);
+  for (let day = 1; day <= maxDays; day++) {
+    const nextDebt = Number((projectedDebt * (1 + dailyRate)).toFixed(2));
+    if (!Number.isFinite(nextDebt) || nextDebt <= 0) return { status: 'unavailable' };
+    if (nextDebt === projectedDebt) break;
+
+    const projectedBalanceUsd = Number((-nextDebt + freeCash + netSaleProceeds).toFixed(2));
+    if (!Number.isFinite(projectedBalanceUsd)) return { status: 'unavailable' };
+    if (projectedBalanceUsd < minimumRemainingBalanceUsd) {
+      return {
+        status: 'breach',
+        currentBalanceUsd,
+        breachBalanceUsd: projectedBalanceUsd,
+        days: day
+      };
+    }
+    projectedDebt = nextDebt;
+  }
+
+  return { status: 'not-reached', currentBalanceUsd };
+}
+
+/** Require the hypothetical post-sale account balance to stay at or above the breakeven floor. */
+function meetsBreakevenBalanceFloor(
+  constraint: BreakevenBalanceConstraint | undefined,
+  dailyRate: number,
+  days: number
+): boolean {
+  if (!constraint) return true;
+  const { signedBalance, freeCash, netSaleProceeds } = constraint;
+  const minimumRemainingBalanceUsd = constraint.minimumRemainingBalanceUsd ?? MIN_BREAKEVEN_REMAINING_BALANCE_USD;
+  if (![signedBalance, freeCash, netSaleProceeds, dailyRate, days, minimumRemainingBalanceUsd].every(Number.isFinite) ||
+      freeCash < 0 || dailyRate < 0 || days < 0) return false;
+  const remainingBalance = calculateProjectedAccountBalanceAfterSale(
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    dailyRate,
+    days
+  );
+  return Number.isFinite(remainingBalance) && remainingBalance >= minimumRemainingBalanceUsd;
+}
+
 /** Find the first projected breakeven day while applying daily cent rounding once per day. */
 export function findProjectionBreakevenDay(
   gross: number,
@@ -496,11 +603,12 @@ export function findProjectionBreakevenDay(
   marginCharged: number,
   debt: number,
   dailyRate: number,
-  maxDays: number
+  maxDays: number,
+  balanceConstraint?: BreakevenBalanceConstraint
 ): number | undefined {
   const principal = Math.abs(debt);
   const todayNet = Number((gross - calculateAccruedFees(totalComms, marginCharged, 0)).toFixed(2));
-  if (todayNet <= 0) return 0;
+  if (todayNet <= 0) return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, 0) ? 0 : undefined;
   if (debt <= 0 || dailyRate <= 0) return undefined;
 
   let projectedDebt = principal;
@@ -512,7 +620,9 @@ export function findProjectionBreakevenDay(
       marginCharged,
       projectedDebt - principal
     );
-    if (Number((gross - projectedFees).toFixed(2)) <= 0) return day;
+    if (Number((gross - projectedFees).toFixed(2)) <= 0) {
+      return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, day) ? day : undefined;
+    }
   }
   return undefined;
 }
@@ -520,10 +630,13 @@ export function findProjectionBreakevenDay(
 export function calculateBreakevenDays(
   netTargetProfit: number,
   totalDebt: number,
-  dailyRate: number
+  dailyRate: number,
+  balanceConstraint?: BreakevenBalanceConstraint
 ): number | null {
   if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
-  if (netTargetProfit <= 0 || totalDebt === 0) return 0;
+  if (netTargetProfit <= 0 || totalDebt === 0) {
+    return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, 0) ? 0 : null;
+  }
   if (totalDebt < 0 || dailyRate < 0) return null;
   // Positive interest coverage is impossible without a positive daily rate.
   if (dailyRate === 0) return null;
@@ -536,9 +649,10 @@ export function calculateBreakevenDays(
     const next = Number((projected * (1 + dailyRate)).toFixed(2));
     if (!Number.isFinite(next) || next <= 0) return null;
     const remainingNet = Number((netTargetProfit - (next - principal)).toFixed(2));
-    // The first day the debt accrual covers the target is the breakeven day.
-    // The UI marks that crossing as exactly zero rather than displaying a negative balance.
-    if (remainingNet <= 0) return day;
+    // Both target net and same-day post-sale balance must satisfy the breakeven rule.
+    if (remainingNet <= 0) {
+      return meetsBreakevenBalanceFloor(balanceConstraint, dailyRate, day) ? day : null;
+    }
     // Cent rounding can make very small balances stationary indefinitely.
     if (next === projected) return null;
     projected = next;
@@ -746,7 +860,8 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): L
     lastRolloverTimestamp: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : now,
     startDate: typeof candidate.startDate === 'string' && candidate.startDate
       ? candidate.startDate
-      : blankState.startDate
+      : blankState.startDate,
+    portfolioSettings: normalizePortfolioSettings(candidate.portfolioSettings)
   };
 }
 
@@ -763,7 +878,7 @@ export function createPortfolioBackupSnapshot<T extends object>(state: T): Parti
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents', 'corporateActionEvents', 'marketHistoryCorrections'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate', 'transactionEvents', 'corporateActionEvents', 'marketHistoryCorrections', 'portfolioSettings'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
@@ -1124,9 +1239,7 @@ export function processRollovers(state: RolloverState | null | undefined): boole
     // Persist the actual last cutoff, not the time of this sync, so later
     // pulls cannot skip or double-count a rollover.
     state.lastRolloverTimestamp = lastProcessedBoundary;
-    console.log(
-      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} ${timeZone} rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
-    );
+    console.info('[System]: Missed scheduled margin rollovers processed.');
     return true;
   }
   return false;
