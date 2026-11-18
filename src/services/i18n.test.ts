@@ -451,11 +451,11 @@ describe('app localization', () => {
     setAppLanguage('ru');
     const region = h('div', {
       role: 'region',
-      'aria-label': 'Guest assignment history table',
+      'aria-label': 'My stocks history table',
       tabindex: 0
     });
     expect(region.props.role).toBe('region');
-    expect(region.props['aria-label']).toBe('Таблица истории назначений гостю');
+    expect(region.props['aria-label']).toBe('Таблица истории моих акций');
     expect(region.props.tabindex).toBe(0);
   });
 
@@ -968,7 +968,7 @@ describe('Margin PT target information localization', () => {
     expect(translateText('No stocks match these filters.', 'ru')).toBe('Нет акций, соответствующих выбранным фильтрам.');
     expect(translateText('You do not have any stocks yet.', 'ru')).toBe('У вас пока нет акций.');
     expect(translateText('Removed', 'ru')).toBe('Снято');
-    expect(translateText('Shares', 'ru')).toBe('Акции');
+    expect(translateText('Shares', 'ru')).toBe('Акций');
     expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
     expect(translateText('Average cost', 'ru')).toBe('Средняя стоимость');
     expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
