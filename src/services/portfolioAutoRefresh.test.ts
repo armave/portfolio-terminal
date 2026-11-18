@@ -23,41 +23,113 @@ describe('portfolio automatic refresh policy', () => {
     expect(DEFAULT_GUEST_REFRESH_INTERVAL_MS).toBe(15_000);
   });
 
-  it.each(['admin', 'guest'] as const)(
-    'runs the complete %s sync on every selected interval',
-    async (role) => {
-      vi.useFakeTimers();
-      const refreshQuotes = vi.fn();
-      const refreshSupplemental = vi.fn();
-      const syncState = vi.fn();
-      const syncHistory = vi.fn();
-      const scheduler = createPortfolioAutoRefreshScheduler({
-        getRole: () => role,
-        isVisible: () => true,
-        refreshQuotes,
-        refreshSupplemental,
-        syncState,
-        syncHistory
-      });
+  it('keeps admin quote checkpoints selected while broker and history refresh stay on 60 seconds', async () => {
+    vi.useFakeTimers();
+    const refreshQuotes = vi.fn();
+    const refreshSupplemental = vi.fn();
+    const syncState = vi.fn();
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      refreshQuotes,
+      refreshSupplemental,
+      syncState,
+      syncHistory
+    });
 
-      scheduler.configure(15_000, role);
-      expect(vi.getTimerCount()).toBe(1);
-      await vi.advanceTimersByTimeAsync(60_000);
+    scheduler.configure(15_000, 'admin');
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(60_000);
 
-      expect(refreshSupplemental).toHaveBeenCalledTimes(4);
-      if (role === 'admin') {
-        expect(refreshQuotes).toHaveBeenCalledTimes(4);
-        expect(syncHistory).toHaveBeenCalledTimes(4);
-        expect(syncState).toHaveBeenCalled();
-      } else {
-        // Guest refreshSupplemental performs snapshot hydration then quotes the new assigned tickers.
-        expect(refreshQuotes).not.toHaveBeenCalled();
-        expect(syncState).not.toHaveBeenCalled();
-        expect(syncHistory).not.toHaveBeenCalled();
-      }
-      scheduler.stop();
-    }
-  );
+    expect(refreshQuotes).toHaveBeenCalledTimes(4);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    // The t=60s shared checkpoint follows history, not the quote timer.
+    expect(syncState).toHaveBeenCalledTimes(4);
+    scheduler.stop();
+  });
+
+  it('refreshes guest quotes at the selected cadence and the assigned projection every 60 seconds', async () => {
+    vi.useFakeTimers();
+    const refreshQuotes = vi.fn();
+    const refreshSupplemental = vi.fn();
+    const syncState = vi.fn();
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'guest',
+      isVisible: () => true,
+      refreshQuotes,
+      refreshSupplemental,
+      syncState,
+      syncHistory
+    });
+
+    scheduler.configure(15_000, 'guest');
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // The 60-second projection refresh includes a quote batch after hydration.
+    expect(refreshQuotes).toHaveBeenCalledTimes(3);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    expect(syncState).not.toHaveBeenCalled();
+    expect(syncHistory).not.toHaveBeenCalled();
+    scheduler.stop();
+  });
+
+  it('forces a fresh workspace checkpoint after history when an older checkpoint is still running', async () => {
+    vi.useFakeTimers();
+    let releaseFirstSync: (() => void) | undefined;
+    const syncState = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { releaseFirstSync = resolve; }))
+      .mockImplementation(() => Promise.resolve());
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      refreshQuotes: vi.fn(),
+      refreshSupplemental: vi.fn(),
+      syncHistory,
+      syncState
+    });
+
+    scheduler.configure(15_000, 'admin');
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(syncState).toHaveBeenCalledTimes(1);
+
+    // The 15-second checkpoint remains in-flight across the 60-second boundary.
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(1);
+
+    releaseFirstSync?.();
+    await vi.waitFor(() => expect(syncState).toHaveBeenCalledTimes(2));
+    scheduler.stop();
+  });
+
+  it('does not duplicate the state checkpoint when the selected cadence is 60 seconds', async () => {
+    vi.useFakeTimers();
+    const refreshQuotes = vi.fn();
+    const refreshSupplemental = vi.fn();
+    const syncState = vi.fn();
+    const syncHistory = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'admin',
+      isVisible: () => true,
+      refreshQuotes,
+      refreshSupplemental,
+      syncState,
+      syncHistory
+    });
+
+    scheduler.configure(60_000, 'admin');
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
 
   it('waits for the initial workspace sync before timer, manual, and visibility refreshes', async () => {
     vi.useFakeTimers();
@@ -230,6 +302,9 @@ describe('portfolio automatic refresh policy', () => {
 
     expect(scheduler.configure(0, 'guest')).toBe(DEFAULT_GUEST_REFRESH_INTERVAL_MS);
     await vi.advanceTimersByTimeAsync(DEFAULT_GUEST_REFRESH_INTERVAL_MS);
+    expect(refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(refreshSupplemental).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(45_000);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
     scheduler.stop();
   });
@@ -274,8 +349,8 @@ describe('portfolio automatic refresh policy', () => {
     scheduler.configure(30_000, 'guest');
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
-    expect(refreshQuotes).not.toHaveBeenCalled();
+    expect(refreshSupplemental).not.toHaveBeenCalled();
+    expect(refreshQuotes).toHaveBeenCalledTimes(1);
     expect(syncState).not.toHaveBeenCalled();
     expect(syncHistory).not.toHaveBeenCalled();
     scheduler.stop();

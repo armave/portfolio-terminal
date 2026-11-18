@@ -1,6 +1,6 @@
 # Role-based portfolio synchronization
 
-Automatic synchronization is mandatory for authenticated accounts. Settings stores a separate quote interval per role; supported values are 15, 30, and 60 seconds. The defaults are 60 seconds for administrators and 15 seconds for guests. A legacy saved `Off` value is normalized to that role's default. Settings no longer offers a disabled interval. Manual Sync is available in Settings for both roles.
+Automatic synchronization is mandatory for authenticated accounts. Settings stores a separate quote interval per role; supported values are 15, 30, and 60 seconds. The defaults are 60 seconds for administrators and 15 seconds for guests. The selected interval controls quote refreshes (and administrator workspace checkpoints); broker REST fallback, Closed History/cashflows, and guest assigned-projection refresh use an independent 60-second cadence. A legacy saved `Off` value is normalized to that role's default. Settings no longer offers a disabled interval. Manual Sync is available in Settings for both roles.
 
 ## Administrator account
 

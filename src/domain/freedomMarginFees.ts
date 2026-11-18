@@ -267,6 +267,76 @@ function resolveOpenLotFunding(
   }
 }
 
+function pickAllocationFields(value: unknown, fields: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(fields
+    .filter((field) => Object.prototype.hasOwnProperty.call(record, field))
+    .map((field) => [field, record[field]]));
+}
+
+/**
+ * Fingerprint only the source facts consumed by the deterministic fee allocator.
+ * Quote/current-value metadata is deliberately excluded so live market updates
+ * cannot restart an otherwise unchanged history reconciliation.
+ */
+export function createFreedomMarginFeeAllocationInputKey(
+  cashflows: readonly unknown[],
+  brokerExecutions: readonly unknown[],
+  appTrades: readonly unknown[],
+  fundingOptions: FreedomMarginFeeFundingOptions = {}
+): string {
+  const projectedCashflows = cashflows.map((row) => {
+    const projected = pickAllocationFields(row, [
+      'id', 'date', 'amount', 'type', 'description', 'currency'
+    ]);
+    const raw = (row && typeof row === 'object')
+      ? (row as Record<string, unknown>).raw
+      : undefined;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      projected.raw = Object.fromEntries(
+        Object.entries(raw as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+      );
+    }
+    return projected;
+  });
+  const projectedExecutions = brokerExecutions.map((row) => pickAllocationFields(row, [
+    'id', 'ticker', 'side', 'quantity', 'shares', 'executedAt', 'date',
+    'price', 'executionPrice', 'tradeValue', 'currency', 'commission', 'profit'
+  ]));
+  const projectedAppTrades = appTrades.map((row) => pickAllocationFields(row, [
+    'id', 'transactionEventId',
+    'buyDate', 'purchaseDate', 'entryDate', 'openDate',
+    'sellDate', 'exitDate', 'closedAt', 'date',
+    'shares', 'quantity', 'entryPrice', 'avgBuyPrice', 'buyPrice', 'currency'
+  ]));
+
+  const projectedOpenPositions = brokerExecutions.length > 0
+    ? null
+    : Object.entries(fundingOptions.openAppPositions ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, position]) => ({
+        key,
+        ticker: position.ticker,
+        startDate: position.startDate,
+        tranches: (position.tranches ?? []).map((tranche) => ({
+          qty: tranche.qty,
+          price: tranche.price,
+          date: tranche.date,
+          acquiredAt: tranche.acquiredAt
+        }))
+      }));
+
+  return JSON.stringify({
+    cashflows: projectedCashflows,
+    brokerExecutions: projectedExecutions,
+    appTrades: projectedAppTrades,
+    trancheTypes: fundingOptions.trancheTypes ?? {},
+    trancheMixes: fundingOptions.trancheMixes ?? {},
+    openAppPositions: projectedOpenPositions
+  });
+}
+
 /** Allocate daily USD financing fees across all margin-funded exposure on each fee date. */
 export function calculateFreedomMarginFeeAllocations(
   cashflows: CashflowInput[],

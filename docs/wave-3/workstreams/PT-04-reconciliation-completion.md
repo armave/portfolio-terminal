@@ -56,3 +56,21 @@ This is a classification-safety fix only; it does not change provider payload co
 ## Branch ownership
 
 Own reconciliation matching, discrepancy taxonomy and review workflow only. Do not edit PT-02 event schema, PT-07 provider normalization or PT-05 authorization model without coordinating the contract owner.
+
+
+## Cashflow match ambiguity and time qualification — implemented on 2026-11-18
+
+The read-only cashflow matcher now requires a unique closest app-authored candidate before it can count a broker cashflow as matched or attach a specific mismatch. Equally close candidates are reported as provisional `cashflow_match_ambiguous` evidence with all candidate event IDs sorted; no candidate is consumed and later broker rows cannot claim an event already implicated in an ambiguity. The result is invariant to app-event and broker-row input order.
+
+Currency-mismatch comparisons now require a non-null app amount and a timestamp difference within the configured maximum matching window. A missing amount is never substituted with zero; app cashflow rows without an amount make the comparison provisional rather than confirmed absent. Equal values on distant dates are not paired as a currency discrepancy. No FX conversion, balance adjustment, fee posting or other portfolio mutation is performed.
+
+
+## Deterministic execution assignment and incomplete evidence — implementation slice
+
+The one-to-one execution matcher now builds its candidate graph before consuming records. Equally strong broker rows competing for one app transaction, as well as equally strong app transactions for one broker row, remain provisional and are excluded from missing-record claims. Exact provider execution references take precedence over fallback candidates. Stable ID ordering is used for duplicate-revision handling and candidate presentation; the matcher does not use input-array order or journal `recordedAt` as execution identity.
+
+A broker execution without a source timestamp cannot use ticker/side/quantity alone as fallback identity. A stable exact execution reference can still identify the pair, but missing price, currency, commission or source-time values are surfaced as an `execution_data_incomplete` finding. Missing values are not compared as zero. The discrepancy view lists the specific missing evidence in English and Russian.
+
+Execution-currency differences are reported only when the stable provider fill reference proves the two records are the same execution. Cross-currency fallback candidates are not paired, and numeric execution-price comparisons run only when both records have the same known currency; no FX conversion is attempted.
+
+The matcher remains deterministic and read-only. Ambiguous rows are not counted as confirmed missing records, and no portfolio position, FIFO lot, cash, debt, fee, cost basis or P&L value is changed. Authenticated TradeNet and multi-device acceptance remain separate manual gates.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateFreedomMarginFeeAllocations } from './freedomMarginFees';
+import { calculateFreedomMarginFeeAllocations, createFreedomMarginFeeAllocationInputKey } from './freedomMarginFees';
 import { mergeFreedomCashflowRows } from './freedomCashflows';
 import { applyCashflowAllocationsToBrokerExecutions } from './closedHistoryFees';
 
@@ -10,6 +10,92 @@ const fee = (id: string, date: string, amount: number, currency = 'USD') => ({
   amount,
   currency,
   raw: { comment: 'Negative cash balance fee' }
+});
+
+describe('Freedom margin fee allocation input fingerprint', () => {
+  it('ignores quote and calculated fee metadata but retains app-position lot inputs', () => {
+    const cashflows = [fee('fingerprint', '2026-11-02', -1)];
+    const closedTrades = [{
+      id: 'app-close',
+      transactionEventId: 'sale-event',
+      buyDate: '2026-11-01',
+      sellDate: '2026-11-04',
+      shares: 2,
+      entryPrice: 100,
+      marginFee: 0
+    }];
+    const options = {
+      openAppPositions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 100,
+          marketValue: 1_000,
+          startDate: '2026-11-01',
+          tranches: [{ qty: 10, price: 100, date: '2026-11-01' }]
+        }
+      }
+    };
+    const initial = createFreedomMarginFeeAllocationInputKey(cashflows, [], closedTrades, options);
+    const quoteUpdatedPosition = {
+      ...options.openAppPositions.AAPL,
+      currentPrice: 125,
+      marketValue: 1_250,
+      tranches: [{ ...options.openAppPositions.AAPL.tranches[0] }]
+    };
+    const afterQuoteTick = createFreedomMarginFeeAllocationInputKey(
+      cashflows,
+      [],
+      [{ ...closedTrades[0], marginFee: 7 }],
+      { openAppPositions: { AAPL: quoteUpdatedPosition } }
+    );
+
+    expect(afterQuoteTick).toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows,
+      [],
+      closedTrades,
+      { openAppPositions: { AAPL: { ...options.openAppPositions.AAPL, tranches: [{ qty: 9, price: 100, date: '2026-11-01' }] } } }
+    )).not.toBe(initial);
+  });
+
+  it('changes when an execution, fee, trade identity or funding input changes', () => {
+    const cashflows = [fee('fingerprint', '2026-11-02', -1)];
+    const executions = [{
+      id: 'buy-1', ticker: 'AAPL', side: 'buy', quantity: 10,
+      price: 100, executedAt: '2026-11-01T10:00:00Z', currency: 'USD',
+      commission: 0.25, profit: 0
+    }];
+    const closedTrades = [{
+      id: 'app-close',
+      transactionEventId: 'sale-event',
+      buyDate: '2026-11-01',
+      sellDate: '2026-11-04',
+      shares: 2,
+      entryPrice: 100
+    }];
+    const options = { trancheTypes: { 'AAPL:buy-1': 'margin' as const } };
+    const initial = createFreedomMarginFeeAllocationInputKey(cashflows, executions, closedTrades, options);
+
+    expect(createFreedomMarginFeeAllocationInputKey(
+      [{ ...cashflows[0], amount: -2 }], executions, closedTrades, options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, [{ ...executions[0], quantity: 9 }], closedTrades, options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, [{ ...executions[0], commission: 0.5 }], closedTrades, options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, executions, [{ ...closedTrades[0], entryPrice: 101 }], options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, executions, [{ ...closedTrades[0], transactionEventId: 'other-sale' }], options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, executions, closedTrades, { trancheTypes: { 'AAPL:buy-1': 'cash' } }
+    )).not.toBe(initial);
+  });
 });
 
 describe('Freedom margin fee allocation', () => {

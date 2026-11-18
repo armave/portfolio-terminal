@@ -85,11 +85,24 @@ const RU_COPY: Record<string, string> = {
   'Duplicate broker execution': 'Дублирующееся исполнение брокера',
   'Broker execution revision conflict': 'Конфликт версий исполнения брокера',
   'Ambiguous broker order match': 'Неоднозначное совпадение ордера брокера',
+  'Execution evidence incomplete': 'Недостаточно данных для проверки исполнения',
+  'Execution currency differs': 'Валюта исполнения отличается',
+  'The broker and app transaction use different execution currencies; no FX conversion was attempted.': 'Валюта исполнения брокера отличается от валюты транзакции приложения; пересчет валюты не выполнялся.',
+  'Missing execution evidence': 'Отсутствуют данные исполнения',
+  'App execution quantity': 'Количество транзакции приложения',
+  'Broker execution price': 'Цена исполнения брокера',
+  'App execution price': 'Цена исполнения приложения',
+  'Broker execution timestamp': 'Время исполнения брокера',
+  'Broker execution currency': 'Валюта исполнения брокера',
+  'App transaction currency': 'Валюта транзакции приложения',
+  'Broker execution commission': 'Комиссия исполнения брокера',
+  'App transaction commission': 'Комиссия транзакции приложения',
   'Unclassified broker execution': 'Нераспознанное исполнение брокера',
   'Duplicate broker cashflow': 'Дублирующийся денежный поток брокера',
   'Broker cashflow revision conflict': 'Конфликт версий денежного потока брокера',
   'Unclassified broker cashflow': 'Нераспознанный денежный поток брокера',
   'Cashflow direction differs': 'Направление денежного потока отличается',
+  'Ambiguous broker cashflow match': 'Неоднозначное сопоставление денежного потока брокера',
   'Execution not found in app journal': 'Исполнение не найдено в журнале приложения',
   'App trade not found in broker history': 'Сделка приложения не найдена в истории брокера',
   'Execution quantity differs': 'Количество исполнения отличается',
@@ -125,6 +138,9 @@ const RU_COPY: Record<string, string> = {
   'The broker execution is missing a usable instrument, supported side or positive quantity and was excluded from matching.': 'В исполнении брокера отсутствует допустимый инструмент, поддерживаемая сторона или положительное количество; запись исключена из сверки.',
   'The same broker cashflow identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.': 'Один и тот же идентификатор денежного потока брокера содержит противоречивые данные. Версия не выбрана, поскольку поток не указывает, какая запись заменяет другую.',
   'The broker cashflow could not be safely classified or had no usable amount and was excluded from matching.': 'Не удалось безопасно классифицировать денежный поток брокера или определить допустимую сумму; запись исключена из сверки.',
+  'One or more app cashflow events have no usable amount; matching is provisional.': 'У одного или нескольких денежных потоков приложения отсутствует допустимая сумма; сопоставление предварительное.',
+  'A broker cashflow has multiple equally strong app fallback candidates; manual review is required.': 'Для денежного потока брокера найдено несколько одинаково подходящих записей приложения; требуется ручная проверка.',
+  'More than one app-authored cashflow is an equally strong fallback match for this broker cashflow. No candidate was selected.': 'Несколько денежных потоков приложения одинаково подходят для сопоставления с этим потоком брокера. Ни одна запись не выбрана.',
   'The broker and app record opposite signed cash movements for the same cashflow. No balance adjustment was made.': 'Брокер и приложение указывают противоположные знаки одного денежного потока. Баланс не корректировался.',
   'The broker history contains the same execution identifier and facts more than once.': 'В истории брокера несколько раз встречается один идентификатор исполнения с одинаковыми данными.',
   'The broker history contains the same cashflow identifier and facts more than once.': 'В истории брокера несколько раз встречается один идентификатор денежного потока с одинаковыми данными.',
@@ -136,6 +152,8 @@ const RU_COPY: Record<string, string> = {
   'One or more broker cashflow IDs have conflicting revisions; affected records were excluded from matching.': 'Некоторые идентификаторы денежных потоков содержат конфликтующие версии; такие записи исключены из сверки.',
   'No corresponding app-authored trade was found in the available transaction journal.': 'В доступном журнале транзакций не найдена соответствующая сделка приложения.',
   'No corresponding broker execution was found in the available provider history.': 'В доступной истории провайдера не найдено соответствующее исполнение брокера.',
+  'The matched execution is missing one or more source values needed for a complete comparison. Missing values were not treated as zero.': 'Для полной проверки исполнения отсутствует одно или несколько исходных значений. Отсутствующие значения не считались нулевыми.',
+  'One or more matched executions lack verifiable price, commission, currency or timestamp evidence; affected comparisons are provisional.': 'Для некоторых сопоставленных исполнений отсутствуют проверяемые цена, комиссия, валюта или время; такие сравнения предварительные.',
   'The broker fill quantity differs from the app transaction quantity.': 'Количество исполнения брокера отличается от количества в транзакции приложения.',
   'The broker execution price differs from the app transaction price.': 'Цена исполнения брокера отличается от цены транзакции приложения.',
   'The broker commission differs from the app-recorded transaction fee.': 'Комиссия брокера отличается от комиссии, записанной в приложении.',
@@ -416,11 +434,14 @@ const FINDING_LABELS: Record<string, string> = {
   duplicate_broker_execution: 'Duplicate broker execution',
   execution_revision_conflict: 'Broker execution revision conflict',
   execution_match_ambiguous: 'Ambiguous broker order match',
+  execution_data_incomplete: 'Execution evidence incomplete',
+  execution_currency_mismatch: 'Execution currency differs',
   execution_unclassified: 'Unclassified broker execution',
   duplicate_broker_cashflow: 'Duplicate broker cashflow',
   cashflow_revision_conflict: 'Broker cashflow revision conflict',
   cashflow_unclassified: 'Unclassified broker cashflow',
   cashflow_direction_mismatch: 'Cashflow direction differs',
+  cashflow_match_ambiguous: 'Ambiguous broker cashflow match',
   execution_missing_in_app: 'Execution not found in app journal',
   execution_missing_in_broker: 'App trade not found in broker history',
   execution_quantity_mismatch: 'Execution quantity differs',
@@ -679,6 +700,16 @@ export function BrokerTransactionReconciliation({
                 </span>
               </div>
               <p class="mt-1 text-slate-400">{translateBrokerReconciliationCopy(finding.explanation)}</p>
+              {finding.missingFields && finding.missingFields.length > 0 && (
+                <p class="mt-1 text-amber-300">
+                  {translateBrokerReconciliationCopy('Missing execution evidence')}: {finding.missingFields.map(field => translateBrokerReconciliationCopy(field)).join(', ')}
+                </p>
+              )}
+              {finding.brokerCurrency && finding.appCurrency && (
+                <p class="mt-1 text-amber-300">
+                  {translateBrokerReconciliationCopy('Broker currency')}: {finding.brokerCurrency} · {translateBrokerReconciliationCopy('App currency')}: {finding.appCurrency}
+                </p>
+              )}
               <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 font-mono text-slate-300">
                 <span>{translateBrokerReconciliationCopy('Broker')}: {formatValue(finding.brokerValue, finding.currency)}</span>
                 <span>{translateBrokerReconciliationCopy('App')}: {formatValue(finding.appValue, finding.currency)}</span>
