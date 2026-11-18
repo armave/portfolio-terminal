@@ -151,8 +151,8 @@ describe('portfolio authenticated startup runtime', () => {
 
     await fixture.start();
 
-    expect(fixture.calls.slice(0, 4)).toEqual([
-      'clear-identity', 'initialize-offline-history', 'load-rules', 'secret:'
+    expect(fixture.calls.slice(0, 5)).toEqual([
+      'begin-workspace-activation', 'clear-identity', 'initialize-offline-history', 'load-rules', 'secret:'
     ]);
     expect(fixture.dependencies.publishCurrentUser).not.toHaveBeenCalled();
     expect(fixture.dependencies.pullSharedCloudState).not.toHaveBeenCalled();
