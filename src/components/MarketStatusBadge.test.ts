@@ -204,6 +204,10 @@ describe('US-equities market status presentation', () => {
     setAppLanguage('ru');
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
       .toBe('До премаркета: 2 дн 11 ч');
+    expect(getMarketStatusCountdown('PRE', new Date('2026-11-02T13:00:00.000Z')))
+      .toBe('До открытия: 1 ч 30 мин');
+    expect(getMarketStatusCountdown('MARKET', new Date('2026-11-02T14:30:00.000Z')))
+      .toBe('До закрытия: 6 ч 30 мин');
     expect(getMarketStatusCountdown('POST', new Date('2026-11-02T22:00:00.000Z')))
       .toBe('До конца сессии: 3 ч');
   });
