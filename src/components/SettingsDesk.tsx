@@ -661,6 +661,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 <input type="number" step="1" min="-1000000" max="1000000" required value={portfolioSettingValues.breakevenMinimumRemainingBalanceUsd}
                   onInput={(event) => setPortfolioSettingValues(current => ({ ...current, breakevenMinimumRemainingBalanceUsd: (event.currentTarget as HTMLInputElement).value }))}
                   class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
+                <span class="text-[11px] leading-relaxed text-slate-500">{translateText('The floor is checked on the projected net-P&L breakeven day, not on each weekly checkpoint.')}</span>
               </label>
               <label class="flex flex-col gap-1 text-xs text-slate-300">
                 {translateText('Buy More minimum equity (%)')}
