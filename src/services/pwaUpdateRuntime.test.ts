@@ -90,9 +90,6 @@ describe('PWA update runtime', () => {
     expect(runtime.getState().status).toBe('update_waiting');
     runtime.dispose();
   });
-});
-
-
   it('does not offer retry when service-worker registration never succeeded', () => {
     const runtime = createPwaUpdateRuntime();
     runtime.markError();
@@ -101,3 +98,4 @@ describe('PWA update runtime', () => {
     expect(runtime.canCheckNow()).toBe(false);
     runtime.dispose();
   });
+});
