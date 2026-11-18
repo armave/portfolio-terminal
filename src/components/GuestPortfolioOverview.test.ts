@@ -3,14 +3,15 @@ import { describe, expect, it } from 'vitest';
 
 const overviewSource = readFileSync(new URL('./GuestPortfolioOverview.tsx', import.meta.url), 'utf8');
 
-describe('guest portfolio overview', () => {
-  it('identifies the guest view as shared and read-only', () => {
-    expect(overviewSource).toContain('Shared portfolio · Read only');
-    expect(overviewSource).toContain('Portfolio changes are managed by your administrator.');
+describe('My Stocks overview', () => {
+  it('uses the My Stocks language without a shared-workspace information panel', () => {
+    expect(overviewSource).toContain('My stocks overview');
     expect(overviewSource).toContain('data-testid="guest-portfolio-overview"');
+    expect(overviewSource).not.toContain('Shared portfolio');
+    expect(overviewSource).not.toContain('administrator');
   });
 
-  it('uses complete guest-domain totals and leaves incomplete totals unavailable', () => {
+  it('uses complete stock totals and leaves incomplete values unavailable', () => {
     expect(overviewSource).toContain('summarizeGuestCashHoldings(holdings)');
     expect(overviewSource).toContain("summary.marketValue !== null ? formatUSD(summary.marketValue) : '—'");
     expect(overviewSource).toContain("summary.costBasis !== null ? formatUSD(summary.costBasis) : '—'");
@@ -18,17 +19,17 @@ describe('guest portfolio overview', () => {
     expect(overviewSource).not.toContain('calculateGuestPersonalEquity');
   });
 
-  it('distinguishes guest receipt time, administrator publication time and quote observation freshness', () => {
-    expect(overviewSource).toContain('snapshot?.fetchedAt');
-    expect(overviewSource).toContain('snapshot?.updatedAt');
-    expect(overviewSource).toContain('snapshot?.ledgerUpdatedAt');
-    expect(overviewSource).toContain('summarizeQuoteFreshness');
-    expect(overviewSource).toContain('refreshIntervalMs');
+  it('does not render a separate data-health, refresh or timestamp panel', () => {
+    expect(overviewSource).not.toContain('Assigned data health');
+    expect(overviewSource).not.toContain('Last successful refresh');
+    expect(overviewSource).not.toContain('refreshIntervalMs');
+    expect(overviewSource).not.toContain('PortfolioSyncButton');
+    expect(overviewSource).not.toContain('summarizeQuoteFreshness');
   });
 
-  it('announces refresh failures without discarding the previously loaded snapshot', () => {
-    expect(overviewSource).toContain('Showing your last successfully loaded snapshot.');
-    expect(overviewSource).toContain("role={isError ? 'alert' : 'status'}");
-    expect(overviewSource).toContain('aria-live="polite"');
+  it('explains missing quotes or cost basis without manufacturing zero values', () => {
+    expect(overviewSource).toContain('Complete market value is unavailable until every stock has a valid quote.');
+    expect(overviewSource).toContain('Complete cost basis is unavailable until every stock has a valid average entry price.');
+    expect(overviewSource).toContain('Unpriced stocks');
   });
 });
