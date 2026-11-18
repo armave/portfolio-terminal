@@ -283,6 +283,48 @@ export function summarizeGuestTrancheLedger(
   return summary;
 }
 
+export interface GuestCashHoldingsSummary {
+  holdingCount: number;
+  pricedHoldingCount: number;
+  unpricedHoldingCount: number;
+  pricedMarketValue: number;
+  marketValue: number | null;
+  costBasis: number | null;
+  unrealizedPnl: number | null;
+}
+
+/**
+ * Summarize only guest-assigned cash holdings. A complete market value or P/L
+ * is returned only when every assigned holding has the required inputs.
+ */
+export function summarizeGuestCashHoldings(
+  holdings: readonly GuestCashHolding[]
+): GuestCashHoldingsSummary {
+  const valuations = (holdings || []).map(getGuestHoldingValuation);
+  const priced = valuations.filter((item) => item.marketValue !== null);
+  const costed = valuations.filter((item) => item.costBasis !== null);
+  const pricedMarketValue = priced.reduce((total, item) => total + (item.marketValue ?? 0), 0);
+  const marketValueComplete = valuations.length > 0 && priced.length === valuations.length;
+  const costBasisComplete = valuations.length > 0 && costed.length === valuations.length;
+  const marketValue = marketValueComplete ? pricedMarketValue : null;
+  const costBasis = costBasisComplete
+    ? costed.reduce((total, item) => total + (item.costBasis ?? 0), 0)
+    : null;
+  const unrealizedPnl = marketValue !== null && costBasis !== null
+    ? marketValue - costBasis
+    : null;
+
+  return {
+    holdingCount: valuations.length,
+    pricedHoldingCount: priced.length,
+    unpricedHoldingCount: valuations.length - priced.length,
+    pricedMarketValue,
+    marketValue,
+    costBasis,
+    unrealizedPnl
+  };
+}
+
 export interface GuestHoldingValuation {
   shares: number;
   currentPrice: number | null;
