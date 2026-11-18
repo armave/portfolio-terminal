@@ -37,20 +37,17 @@ describe('Freedom margin fee allocation input fingerprint', () => {
       }
     };
     const initial = createFreedomMarginFeeAllocationInputKey(cashflows, [], closedTrades, options);
+    const quoteUpdatedPosition = {
+      ...options.openAppPositions.AAPL,
+      currentPrice: 125,
+      marketValue: 1_250,
+      tranches: [{ ...options.openAppPositions.AAPL.tranches[0] }]
+    };
     const afterQuoteTick = createFreedomMarginFeeAllocationInputKey(
       cashflows,
       [],
       [{ ...closedTrades[0], marginFee: 7 }],
-      {
-        openAppPositions: {
-          AAPL: {
-            ...options.openAppPositions.AAPL,
-            currentPrice: 125,
-            marketValue: 1_250,
-            tranches: [{ ...options.openAppPositions.AAPL.tranches[0] }]
-          }
-        }
-      }
+      { openAppPositions: { AAPL: quoteUpdatedPosition } }
     );
 
     expect(afterQuoteTick).toBe(initial);
