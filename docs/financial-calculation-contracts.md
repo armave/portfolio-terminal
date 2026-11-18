@@ -251,13 +251,15 @@ For the read-only broker Closed History table:
 
 **Known compatibility boundary:** repository architecture/audit notes distinguish the active runtime rollover/accrual calculation from the legacy cloud-import `processRollovers` path. Their time-boundary and rounding history must remain separately covered until explicitly reconciled. Do not unify, re-timezone, or re-round them as part of PT-01 or a cleanup-only change.
 
-### Breakeven remaining-balance qualification
+### Post-sale account-balance floor horizon
 
-`findProjectionBreakevenDay` and `calculateBreakevenDays` only report a breakeven when the projected net result has reached or crossed zero **and** the same day's hypothetical post-sale signed account balance is at least **−$450.00** (inclusive).
+`calculatePostSaleBalanceFloorHorizon` finds the first calendar day when a hypothetical sale at the selected positions' configured target prices (PTs) would leave the projected signed account balance strictly below the configured minimum (−$450 USD by default). It uses net sale proceeds after sell commission, available free cash, and the projected signed account balance. Negative margin debt compounds using the existing daily cent-rounded debt model. Equality with the floor is still allowed; the breach day is the first day below it.
 
-The remaining balance is calculated as the projected signed account balance (negative margin debt compounds using the existing daily cent-rounded debt model) plus available free cash plus net proceeds from selling the selected positions at their configured target prices after sell commissions. The floor is checked on the exact day the net result reaches zero; because projected negative debt does not improve with time, a balance below the floor on that day cannot qualify on a later day. A breakeven that already exists today is still subject to the same day-zero balance check.
+This horizon is independent of net-P&L breakeven. The portfolio header reports the time/date until the post-sale balance floor is breached, and the projection table extends to that balance-floor milestone. Each row's NET value continues to report projected net P&L separately; it is not used to determine the floor horizon.
 
-When any required signed-balance, free-cash, or net-proceeds input is missing or non-finite, no balance-qualified breakeven date is reported. These calculations do not substitute zero for unavailable balance evidence. The −$450 floor is an app planning constraint, not a broker buying-power, maintenance-margin, or liquidation guarantee.
+`findProjectionBreakevenDay` remains a separate net-P&L search helper. Where a scenario such as Buy More supplies a `BreakevenBalanceConstraint`, that scenario also checks the hypothetical post-sale balance at its own projected net-P&L breakeven day. This scenario-specific check does not define the portfolio carry horizon.
+
+When any required signed-balance, free-cash, or target-price net-proceeds input is missing or non-finite, the post-sale balance estimate is unavailable. The calculation does not substitute zero for missing sale-price or balance evidence. The −$450 floor is an app planning constraint, not a broker buying-power, maintenance-margin, or liquidation guarantee.
 
 ## 8. Freedom financing-fee allocation and currency boundary
 
