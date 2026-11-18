@@ -36,6 +36,10 @@ describe('guest History presentation', () => {
     expect(stylesheet).toContain('.guest-assignment-history-table tbody tr');
     expect(stylesheet).toContain('content: attr(data-label)');
     expect(stylesheet).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+    expect(stylesheet).toContain('.guest-assignment-history-scroll .guest-assignment-history-table');
+    expect(stylesheet).toContain('max-width: 100%;');
+    expect(stylesheet).toContain('min-width: 0;');
+    expect(stylesheet).toContain('overflow-x: clip;');
   });
 
   it('uses stock-focused empty and removed states', () => {

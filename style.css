@@ -6139,12 +6139,27 @@ table tbody tr:hover {
 }
 
 @media (max-width: 767px) {
-  .guest-assignment-history-scroll {
-    overflow-x: visible;
+  #guestHistoryContainer,
+  #guestTrancheHistory,
+  .table-scroll-wrapper.guest-assignment-history-scroll {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
   }
 
-  .guest-assignment-history-table {
+  /* Outrank .table-scroll-wrapper table { min-width: max-content } so the
+     mobile card layout cannot retain the desktop table's intrinsic width. */
+  .guest-assignment-history-scroll .guest-assignment-history-table {
     display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .guest-assignment-history-table tbody {
     width: 100%;
     min-width: 0;
   }
