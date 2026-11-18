@@ -404,6 +404,10 @@ export function reconcileBrokerActivity(
     const side = eventSide(app);
     if (ticker(app.ticker) !== broker.ticker || side !== broker.side) return false;
     if (currency(app.currency) && broker.currency && currency(app.currency) !== broker.currency) return false;
+    // A stable provider fill reference is an identity constraint, not merely
+    // a score bonus. Another nearby fill must never claim this app event.
+    const externalReferenceId = text(app.externalReferenceId);
+    if (externalReferenceId && externalReferenceId !== broker.id) return false;
     return true;
   };
 

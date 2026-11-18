@@ -138,6 +138,26 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings.some(finding => finding.type === 'execution_match_ambiguous')).toBe(false);
   });
 
+  it('does not let a different provider execution ID claim an app event with a stable reference', () => {
+    const app = appEvent('trade.buy', { externalReferenceId: 'provider-fill-expected' });
+    const report = reconcile([
+      execution({ id: 'nearby-fill-same-ticker' })
+    ], [app]);
+
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'execution_missing_in_app',
+        brokerReferences: ['nearby-fill-same-ticker']
+      }),
+      expect.objectContaining({
+        type: 'execution_missing_in_broker',
+        appEventIds: ['app-trade.buy']
+      })
+    ]));
+    expect(report.findings.some(finding => finding.type === 'execution_match_ambiguous')).toBe(false);
+  });
+
   it('does not use a timestamp-free broker row for fallback matching without a stable execution reference', () => {
     const report = reconcile(
       [execution({ id: '', executedAt: null })],
