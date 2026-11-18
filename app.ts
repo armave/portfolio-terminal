@@ -1979,7 +1979,8 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
-    releaseStartupCloudWrites();
+    // Only the owner workspace may release its deferred cloud writes.
+    if (currentAccountRole === 'admin') releaseStartupCloudWrites();
   },
   hideStartupLoading,
   reportBackgroundStartupError: (_task, error) => {
