@@ -394,7 +394,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'below current price': 'ниже текущей цены',
   'At current price': 'на уровне текущей цены',
   'Current price unavailable': 'Текущая цена недоступна',
-  'Analysts': 'Аналитики',
   'Assigned shares': 'Назначенные акции',
   'Price · share': 'Цена · акция',
   'Avg. entry': 'Средняя цена входа',
