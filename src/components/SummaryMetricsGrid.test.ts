@@ -330,9 +330,9 @@ describe('accessible Margin Health overview action', () => {
 
 describe('header carry-break-even formatting', () => {
   it('removes only the legacy internal prefix while preserving status and date text', () => {
-    expect(getHeaderBreakevenValue('Breakeven: 216 days (Nov 15, 2026)')).toBe('216 days (Nov 15, 2026)');
-    expect(getHeaderBreakevenValue('Breakeven: No margin debt')).toBe('No margin debt');
-    expect(getHeaderBreakevenValue('Breakeven: —')).toBe('—');
+    expect(getHeaderBreakevenValue('Post-sale floor: 94 days (Feb 20, 2027)')).toBe('94 days (Feb 20, 2027)');
+    expect(getHeaderBreakevenValue('Post-sale floor: Already below floor')).toBe('Already below floor');
+    expect(getHeaderBreakevenValue('Post-sale floor: —')).toBe('—');
     expect(getHeaderBreakevenValue('')).toBe('—');
   });
 });
