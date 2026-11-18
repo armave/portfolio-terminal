@@ -955,25 +955,24 @@ describe('Margin PT target information localization', () => {
     expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
   });
 
-  it('localizes the guest portfolio overview, freshness states and assignment-history terminology', () => {
-    expect(translateText('Assignments', 'ru')).toBe('Назначения');
-    expect(translateText('Assignment History', 'ru')).toBe('История назначений');
-    expect(translateText('Shared portfolio · Read only', 'ru')).toBe('Общий портфель · Только просмотр');
-    expect(translateText('Portfolio overview', 'ru')).toBe('Обзор портфеля');
-    expect(translateText('Assigned market value', 'ru')).toBe('Рыночная стоимость назначенных активов');
-    expect(translateText('Assigned cost basis', 'ru')).toBe('Себестоимость назначенных активов');
-    expect(translateText('Assigned data health', 'ru')).toBe('Состояние назначенных данных');
-    expect(translateText('Last successful refresh', 'ru')).toBe('Последнее успешное обновление');
-    expect(translateText('Holdings published by administrator', 'ru')).toBe('Активы опубликованы администратором');
-    expect(translateText('Assignment history last updated', 'ru')).toBe('Последнее обновление истории назначений');
-    expect(translateText('Quote freshness', 'ru')).toBe('Актуальность котировок');
-    expect(translateText('Refresh assigned data', 'ru')).toBe('Обновить назначенные данные');
-    expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
-      .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
-    expect(translateText('No assignment history is available yet.', 'ru')).toBe('История назначений пока недоступна.');
-    expect(translateText('Assigned shares', 'ru')).toBe('Назначенные акции');
+  it('localizes My Stocks overview and history copy in Russian', () => {
+    expect(translateText('My Stocks', 'ru')).toBe('Мои акции');
+    expect(translateText('My stocks overview', 'ru')).toBe('Обзор моих акций');
+    expect(translateText('Market value', 'ru')).toBe('Рыночная стоимость');
+    expect(translateText('Cost basis', 'ru')).toBe('Себестоимость');
+    expect(translateText('Stocks', 'ru')).toBe('Акции');
+    expect(translateText('priced stocks', 'ru')).toBe('акций с котировками');
+    expect(translateText('Unpriced stocks', 'ru')).toBe('Акции без котировки');
+    expect(translateText('My stocks history table', 'ru')).toBe('Таблица истории моих акций');
+    expect(translateText('No stock history yet.', 'ru')).toBe('История акций пока отсутствует.');
+    expect(translateText('No stocks match these filters.', 'ru')).toBe('Нет акций, соответствующих выбранным фильтрам.');
+    expect(translateText('You do not have any stocks yet.', 'ru')).toBe('У вас пока нет акций.');
+    expect(translateText('Removed', 'ru')).toBe('Снято');
+    expect(translateText('Shares', 'ru')).toBe('Акции');
     expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
     expect(translateText('Average cost', 'ru')).toBe('Средняя стоимость');
+    expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
+      .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
   });
 
 });
