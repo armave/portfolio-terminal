@@ -82,7 +82,6 @@ export function createPortfolioEquitySyncRuntime(
       Number(state.portfolioEquity) === equity
     ) return;
 
-    const isLiveQuote = source === 'live-quote';
     dependencies.setDerivedEquity(equity, timestamp, !isLiveQuote);
     if (!isLiveQuote) dependencies.onDurableEquityChanged();
   };
