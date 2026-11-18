@@ -103,7 +103,7 @@ describe('portfolio planning settings', () => {
     const appSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
     expect(source).toContain('permissions.canEditPortfolioSettings');
     expect(source).toContain('settings-portfolio-section');
-    expect(source).toContain('Breakeven minimum remaining balance (USD)');
+    expect(source).toContain('Minimum post-sale account balance (USD)');
     expect(source).toContain('Buy More minimum equity (%)');
     expect(source).toContain('Buy More maintenance reserve (percentage points)');
     expect(source).toContain('Default funding for new broker positions');
