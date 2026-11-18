@@ -972,6 +972,10 @@ describe('Margin PT target information localization', () => {
   it('localizes the History destination, date filters and My Stocks overview in Russian', () => {
     expect(translateText('History', 'ru')).toBe('История');
     expect(translateText('Stock history table', 'ru')).toBe('Таблица истории акций');
+    expect(translateText('Active assignment', 'ru')).toBe('Активное назначение');
+    expect(translateText('Active assignments', 'ru')).toBe('Активные назначения');
+    expect(translateText('Closed assignment', 'ru')).toBe('Закрытое назначение');
+    expect(translateText('Closed assignments', 'ru')).toBe('Закрытые назначения');
     const dateRangeLabels = ['Date range', 'All time', '7 days', '30 days', '90 days', 'This month'];
     for (const label of dateRangeLabels) {
       expect(translateText(label, 'ru'), label).not.toBe(label);

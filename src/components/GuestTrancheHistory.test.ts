@@ -7,6 +7,14 @@ const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'ut
 describe('guest History presentation', () => {
   it('uses History terminology and keeps the history table semantically labelled', () => {
     expect(historySource).toContain("translateText('History', getAppLanguage())");
+    expect(historySource).toContain("translateText('Closed assignments', getAppLanguage())");
+    expect(historySource).toContain("translateText('Closed assignment', getAppLanguage())");
+    expect(historySource).toContain("translateText('Open cost basis', getAppLanguage())");
+    expect(historySource).toContain("translateText('Open market value', getAppLanguage())");
+    expect(historySource).toContain("translateText('Date', getAppLanguage())");
+    expect(historySource).toContain("translateText('Source', getAppLanguage())");
+    expect(historySource).toContain("translateText('Value', getAppLanguage())");
+    expect(historySource).toContain("translateText('Net P&L', getAppLanguage())");
     expect(historySource).toContain('Stock history table');
     expect(historySource).toContain('Shares</th>');
     expect(historySource).toContain("data-label={translateText('Shares', getAppLanguage())}");

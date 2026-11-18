@@ -22,8 +22,8 @@ function formatAssignmentDate(value: number | null | undefined): string {
 }
 
 const STATUS_LABELS: Record<GuestTrancheLedgerStatus, string> = {
-  active: 'Active',
-  closed: 'Closed',
+  active: 'Active assignment',
+  closed: 'Closed assignment',
   unassigned: 'Removed'
 };
 
@@ -87,37 +87,37 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
 
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-          <p class="text-[9px] uppercase tracking-wide text-slate-500">Active</p>
+          <p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Active assignments', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold text-emerald-300">{summary.activeAssignments}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-          <p class="text-[9px] uppercase tracking-wide text-slate-500">Closed</p>
+          <p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Closed assignments', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold text-slate-200">{summary.closedAssignments}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-          <p class="text-[9px] uppercase tracking-wide text-slate-500">Open cost basis</p>
+          <p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Open cost basis', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold text-slate-100">{summary.openCostBasis > 0 ? formatUSD(summary.openCostBasis) : '—'}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-          <p class="text-[9px] uppercase tracking-wide text-slate-500">Open market value</p>
+          <p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Open market value', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold text-cyan-300">{summary.pricedOpenTranches + summary.unpricedOpenTranches > 0 ? marketValueLabel : '—'}</p>
         </div>
       </div>
       <div class="space-y-3">
         <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end">
           <label class="flex min-w-0 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem] sm:flex-1">
-            Ticker
+            {translateText('Ticker', getAppLanguage())}
             <input type="search" value={tickerFilter} onInput={(event) => setTickerFilter((event.currentTarget as HTMLInputElement).value)}
-              placeholder="All tickers" class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
+              placeholder={translateText('All tickers', getAppLanguage())} class="min-h-11 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200 placeholder:text-slate-600" />
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:min-w-[8rem] sm:flex-1">
-            Status
+            {translateText('Status', getAppLanguage())}
             <select value={statusFilter} onChange={(event) => setStatusFilter((event.currentTarget as HTMLSelectElement).value as typeof statusFilter)}
               class="min-h-11 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
-              <option value="all" class="text-center">All statuses</option>
-              <option value="active" class="text-center">Active</option>
-              <option value="closed" class="text-center">Closed</option>
-              <option value="unassigned" class="text-center">Removed</option>
+              <option value="all" class="text-center">{translateText('All statuses', getAppLanguage())}</option>
+              <option value="active" class="text-center">{translateText('Active assignments', getAppLanguage())}</option>
+              <option value="closed" class="text-center">{translateText('Closed assignments', getAppLanguage())}</option>
+              <option value="unassigned" class="text-center">{translateText('Removed', getAppLanguage())}</option>
             </select>
           </label>
         </div>
@@ -166,15 +166,15 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             <caption class="sr-only">Stock history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
-                <th scope="col" class="px-2 py-2">Date</th>
-                <th scope="col" class="px-2 py-2">Source</th>
-                <th scope="col" class="px-2 py-2">Ticker</th>
-                <th scope="col" class="px-2 py-2 text-right">Shares</th>
-                <th scope="col" class="px-2 py-2 text-right">Remaining shares</th>
-                <th scope="col" class="px-2 py-2 text-right">Average cost</th>
-                <th scope="col" class="px-2 py-2 text-right">Value</th>
-                <th scope="col" class="px-2 py-2 text-right">Net P&amp;L</th>
-                <th scope="col" class="px-2 py-2 text-right">Status</th>
+                <th scope="col" class="px-2 py-2">{translateText('Date', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2">{translateText('Source', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2">{translateText('Ticker', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Shares', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Remaining shares', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Average cost', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Value', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Net P&L', getAppLanguage())}</th>
+                <th scope="col" class="px-2 py-2 text-right">{translateText('Status', getAppLanguage())}</th>
               </tr>
             </thead>
             <tbody id="guestTrancheHistoryTableBody" class="divide-y divide-slate-800/70 font-mono">
@@ -238,8 +238,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             <tfoot>
               <tr class="border-t border-slate-700 text-[10px] text-slate-400">
                 <td colSpan={9} class="px-2 py-2">
-                  Cost basis across filtered records: {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
-                  {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} removed` : ''}
+                  {translateText('Cost basis across filtered records:', getAppLanguage())} {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
+                  {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} ${translateText('Removed', getAppLanguage())}` : ''}
                   {summary.unpricedOpenTranches > 0 ? ' · Some open holdings have no current quote' : ''}
                 </td>
               </tr>
@@ -260,7 +260,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         />
         </>
       )}
-      <p class="text-[9px] text-slate-600">Value shows current market value for open tranches and sale proceeds for closed trades. Net P&amp;L appears only when the closed trade's net result is available.</p>
+      <p class="text-[9px] text-slate-600">{translateText("Value shows current market value for open tranches and sale proceeds for closed trades. Net P&L appears only when the closed trade's net result is available.", getAppLanguage())}</p>
     </section>
   );
 }
