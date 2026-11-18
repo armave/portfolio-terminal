@@ -6,6 +6,7 @@ import {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('PWA update runtime', () => {
@@ -16,7 +17,8 @@ describe('PWA update runtime', () => {
 
     expect(runtime.canCheckNow()).toBe(false);
     runtime.start(checkForUpdate);
-    await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(checkForUpdate).toHaveBeenCalledTimes(1);
     expect(runtime.getState().status).toBe('up_to_date');
     expect(runtime.canCheckNow()).toBe(true);
 
@@ -29,17 +31,47 @@ describe('PWA update runtime', () => {
     runtime.dispose();
   });
 
-  it('does not overlap checks or poll while the document is hidden', async () => {
+  it('does not overlap an in-flight check', async () => {
+    let resolveCheck: (() => void) | undefined;
+    const checkForUpdate = vi.fn(() => new Promise<void>((resolve) => { resolveCheck = resolve; }));
+    const runtime = createPwaUpdateRuntime();
+
+    runtime.start(checkForUpdate);
+    await Promise.resolve();
+    await runtime.checkNow();
+
+    expect(checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(runtime.canCheckNow()).toBe(false);
+    resolveCheck?.();
+    await Promise.resolve();
+    runtime.dispose();
+  });
+
+  it('skips interval checks while hidden and catches up when the tab becomes visible', async () => {
     vi.useFakeTimers();
+    const listeners = new Set<() => void>();
+    const fakeDocument = {
+      visibilityState: 'visible',
+      addEventListener: (_type: string, listener: () => void) => { listeners.add(listener); },
+      removeEventListener: (_type: string, listener: () => void) => { listeners.delete(listener); }
+    };
+    vi.stubGlobal('document', fakeDocument);
     const checkForUpdate = vi.fn().mockResolvedValue(undefined);
     const runtime = createPwaUpdateRuntime();
-    runtime.start(checkForUpdate);
 
-    await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
-    vi.stubGlobal('document', { visibilityState: 'hidden', addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    runtime.start(checkForUpdate);
+    await Promise.resolve();
+    expect(checkForUpdate).toHaveBeenCalledTimes(1);
+
+    fakeDocument.visibilityState = 'hidden';
     await vi.advanceTimersByTimeAsync(PWA_UPDATE_CHECK_INTERVAL_MS);
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
-    vi.unstubAllGlobals();
+
+    fakeDocument.visibilityState = 'visible';
+    listeners.forEach((listener) => listener());
+    await Promise.resolve();
+    expect(checkForUpdate).toHaveBeenCalledTimes(2);
+
     runtime.dispose();
   });
 
@@ -65,8 +97,10 @@ describe('PWA update runtime', () => {
     const runtime = createPwaUpdateRuntime();
 
     runtime.start(checkForUpdate);
-    await vi.waitFor(() => expect(runtime.getState().status).toBe('error'));
+    await Promise.resolve();
+    expect(runtime.getState().status).toBe('error');
     expect(runtime.getState().lastCheckedAt).not.toBeNull();
+    expect(runtime.canCheckNow()).toBe(true);
 
     await runtime.checkNow();
     expect(runtime.getState().status).toBe('up_to_date');
@@ -75,13 +109,13 @@ describe('PWA update runtime', () => {
     runtime.dispose();
   });
 
-  it('does not activate a waiting update or repeat checks until the next app startup', async () => {
+  it('does not repeat checks while an update is waiting for the next startup', async () => {
     vi.useFakeTimers();
     const checkForUpdate = vi.fn().mockResolvedValue(undefined);
     const runtime = createPwaUpdateRuntime();
 
     runtime.start(checkForUpdate);
-    await vi.waitFor(() => expect(checkForUpdate).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
     runtime.markUpdateAvailable();
     await vi.advanceTimersByTimeAsync(PWA_UPDATE_CHECK_INTERVAL_MS);
     await runtime.checkNow();
@@ -90,6 +124,7 @@ describe('PWA update runtime', () => {
     expect(runtime.getState().status).toBe('update_waiting');
     runtime.dispose();
   });
+
   it('does not offer retry when service-worker registration never succeeded', () => {
     const runtime = createPwaUpdateRuntime();
     runtime.markError();
