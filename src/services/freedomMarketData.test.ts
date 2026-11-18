@@ -166,6 +166,16 @@ describe("normalizeFreedomQuote", () => {
     });
   });
 
+  it("does not treat monetary vlt as unit-count volume when vol is absent", () => {
+    expect(normalizeFreedomQuote({
+      q: [{ c: "GOOGL.US", ltp: 280.5, vlt: 9100000000, x_curr: "USD" }]
+    }, "GOOGL")).toMatchObject({
+      volume: null,
+      volumeValue: 9100000000,
+      currency: "USD"
+    });
+  });
+
   it("does not infer quote currency when the provider omits it", () => {
     const quote = normalizeFreedomQuote({
       q: [{ c: "GOOGL.US", ltp: 280.5, vol: 123456, vlt: 987654321.25 }]

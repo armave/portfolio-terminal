@@ -834,7 +834,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                             {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
                             <span class="inline-flex flex-wrap items-center gap-1.5 align-middle">
                               {dailyMeta && <span class={dailyMeta.className}>{dailyMeta.text}</span>}
-                              <QuoteVolumeBadge volume={position.quoteDetails?.volume} volumeValue={position.quoteDetails?.volumeValue} price={marketPrice ?? undefined} currency={position.quoteDetails?.currency} />
+                              <QuoteVolumeBadge volume={position.quoteDetails?.volume} />
                             </span>
                           </span>
                           <span class="text-slate-500">{formatQuoteMetadata(position, refreshIntervalMs)}</span>
@@ -1098,7 +1098,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               </div>
               <span id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
                 {dailyQuoteMeta?.text && <span class={dailyQuoteMeta.className}>{dailyQuoteMeta.text}</span>}
-                <QuoteVolumeBadge volume={pos.quoteDetails?.volume} volumeValue={pos.quoteDetails?.volumeValue} price={usableMarketPrice ?? undefined} currency={pos.quoteDetails?.currency} />
+                <QuoteVolumeBadge volume={pos.quoteDetails?.volume} />
                 <span class="text-slate-400"> · </span>
                 <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
                   <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>

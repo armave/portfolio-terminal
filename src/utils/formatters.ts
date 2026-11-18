@@ -73,45 +73,13 @@ export function formatUSDDisplayValue(value: string): string {
   return sign + formatUSD(amount);
 }
 
-export interface FormattedQuoteDollarVolume {
-  value: string;
-  estimated: boolean;
-}
-
-function formatCompactDollarValue(value: number): string | null {
-  if (!Number.isFinite(value) || value < 0) return null;
-  const compactValue = new Intl.NumberFormat(currentNumberLocale(), {
+export function formatQuoteVolume(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return new Intl.NumberFormat(currentNumberLocale(), {
     notation: 'compact',
     maximumFractionDigits: 1
   }).format(value);
-  return '$' + compactValue;
 }
-
-/**
- * Prefer provider-reported daily traded value. Only estimate from share count and
- * price when the quote currency is explicitly USD; never infer a dollar currency.
- */
-export function formatQuoteDollarVolume(
-  providerValue: unknown,
-  volume: unknown,
-  price: unknown,
-  currency?: unknown
-): FormattedQuoteDollarVolume | null {
-  const normalizedCurrency = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
-  if (normalizedCurrency !== 'USD') return null;
-
-  if (providerValue !== undefined && providerValue !== null) {
-    if (typeof providerValue !== 'number') return null;
-    const formatted = formatCompactDollarValue(providerValue);
-    return formatted === null ? null : { value: formatted, estimated: false };
-  }
-
-  if (typeof volume !== 'number' || !Number.isFinite(volume) || volume < 0) return null;
-  if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return null;
-  const estimatedValue = formatCompactDollarValue(volume * price);
-  return estimatedValue === null ? null : { value: estimatedValue, estimated: true };
-}
-
 
 export type QuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable';
 

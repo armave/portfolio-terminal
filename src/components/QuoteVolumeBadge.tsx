@@ -1,26 +1,18 @@
 import { getAppLanguage, translateText } from '../services/i18n';
-import { formatQuoteDollarVolume } from '../utils/formatters';
+import { formatQuoteVolume } from '../utils/formatters';
 
 interface QuoteVolumeBadgeProps {
   volume?: unknown;
-  volumeValue?: unknown;
-  price?: unknown;
-  currency?: unknown;
 }
 
-export function QuoteVolumeBadge({ volume, volumeValue, price, currency }: QuoteVolumeBadgeProps) {
-  const formattedVolume = formatQuoteDollarVolume(volumeValue, volume, price, currency);
+export function QuoteVolumeBadge({ volume }: QuoteVolumeBadgeProps) {
+  const formattedVolume = formatQuoteVolume(volume);
   if (formattedVolume === null) return null;
 
   const language = getAppLanguage();
-  const label = translateText(formattedVolume.estimated ? 'Estimated daily volume' : 'Daily volume', language);
-  const description = translateText(
-    formattedVolume.estimated
-      ? 'Estimated daily volume: share volume multiplied by the latest USD share price. Use as an approximation; it is not provider-reported traded value.'
-      : 'Daily volume reported by the data provider in USD.',
-    language
-  );
-  const displayValue = (formattedVolume.estimated ? '~' : '') + formattedVolume.value;
+  const label = translateText('Daily volume', language);
+  const description = translateText('Daily share volume reported by the data provider.', language);
+  const displayValue = formattedVolume + ' ' + translateText('shares', language);
 
   return (
     <span

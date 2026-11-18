@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteDollarVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, formatUSDDisplayValue, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -34,37 +34,14 @@ describe('display formatters', () => {
     expect(formatUSDDisplayValue('$1234567.89')).toMatch(/^\$.*1.*234.*567,89$/);
   });
 
-  it('prefers provider-reported USD traded value over an estimated share-count calculation', () => {
-    expect(formatQuoteDollarVolume(9100000000, 1000000, 50, 'USD'))
-      .toEqual({ value: '$9.1B', estimated: false });
-    expect(formatQuoteDollarVolume(0, 1000, 50, 'USD'))
-      .toEqual({ value: '$0', estimated: false });
-  });
-
-  it('marks share-count multiplication as an estimate and requires explicit USD currency', () => {
-    expect(formatQuoteDollarVolume(null, 1234, 50, 'USD'))
-      .toEqual({ value: '$61.7K', estimated: true });
-    expect(formatQuoteDollarVolume(undefined, 1000, 25, 'USD'))
-      .toEqual({ value: '$25K', estimated: true });
-    expect(formatQuoteDollarVolume(null, 0, 50, 'USD'))
-      .toEqual({ value: '$0', estimated: true });
-    expect(formatQuoteDollarVolume(null, 1000, 25)).toBeNull();
-    expect(formatQuoteDollarVolume(null, 1000, 25, 'EUR')).toBeNull();
-    expect(formatQuoteDollarVolume(9100000000, 1000, 25, 'EUR')).toBeNull();
-  });
-
-  it('withholds missing, malformed, negative, and overflowing turnover or volume values', () => {
-    expect(formatQuoteDollarVolume(null, null, 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume('9100000000', 1000, 25, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(Number.NaN, 1000, 25, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(Number.POSITIVE_INFINITY, 1000, 25, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, '1234', 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, -1, 50, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, 1234, null, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, 1234, 0, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, 1234, Number.POSITIVE_INFINITY, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, Number.MAX_VALUE, Number.MAX_VALUE, 'USD')).toBeNull();
-    expect(formatQuoteDollarVolume(null, 1234, 50, 'usd')).toEqual({ value: '$61.7K', estimated: true });
+  it('formats provider-reported daily share volume compactly and omits invalid values', () => {
+    expect(formatQuoteVolume(32_176_544)).toBe('32.2M');
+    expect(formatQuoteVolume(1234)).toBe('1.2K');
+    expect(formatQuoteVolume(0)).toBe('0');
+    expect(formatQuoteVolume(null)).toBeNull();
+    expect(formatQuoteVolume('1234')).toBeNull();
+    expect(formatQuoteVolume(-1)).toBeNull();
+    expect(formatQuoteVolume(Number.POSITIVE_INFINITY)).toBeNull();
   });
 
   it('formats supported tranche date inputs', () => {

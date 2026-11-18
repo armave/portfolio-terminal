@@ -1,28 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
 import { QuoteVolumeBadge } from './QuoteVolumeBadge';
 
+afterEach(() => setAppLanguage('en'));
+
 describe('QuoteVolumeBadge', () => {
-  it('shows the provider-reported USD daily traded value with a clear full label', () => {
-    setAppLanguage('en');
-    const badge = QuoteVolumeBadge({ volume: 123456, volumeValue: 9100000000, price: 50, currency: 'USD' });
+  it('shows the provider-reported daily share count, not monetary turnover', () => {
+    const badge = QuoteVolumeBadge({ volume: 32_176_544 });
     expect(badge).not.toBeNull();
     expect(badge?.props.class).toContain('quote-volume-badge');
-    expect(badge?.props['aria-label']).toBe('Daily volume $9.1B');
-    expect(badge?.props.title).toBe('Daily volume reported by the data provider in USD.');
+    expect(badge?.props['aria-label']).toBe('Daily volume 32.2M shares');
+    expect(badge?.props.title).toBe('Daily share volume reported by the data provider.');
   });
 
-  it('clearly marks the share-count estimate and explains how it is calculated', () => {
-    setAppLanguage('en');
-    const badge = QuoteVolumeBadge({ volume: 1234, price: 50, currency: 'USD' });
-    expect(badge?.props['aria-label']).toBe('Estimated daily volume ~$61.7K');
-    expect(badge?.props.title).toContain('share volume multiplied by the latest USD share price');
+  it('does not manufacture a volume figure when the provider count is missing or invalid', () => {
+    expect(QuoteVolumeBadge({ volume: null })).toBeNull();
+    expect(QuoteVolumeBadge({ volume: undefined })).toBeNull();
+    expect(QuoteVolumeBadge({ volume: '32176544' })).toBeNull();
+    expect(QuoteVolumeBadge({ volume: -1 })).toBeNull();
+    expect(QuoteVolumeBadge({ volume: Number.NaN })).toBeNull();
+    expect(QuoteVolumeBadge({ volume: Number.POSITIVE_INFINITY })).toBeNull();
   });
 
-  it('hides dollar volume when price or explicit USD currency evidence is missing', () => {
-    expect(QuoteVolumeBadge({ volume: 1234, price: null, currency: 'USD' })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: 1234, price: 50 })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: 1234, volumeValue: 90000, price: 50, currency: 'EUR' })).toBeNull();
-    expect(QuoteVolumeBadge({ volume: 1234, price: 50, currency: 'EUR' })).toBeNull();
+  it('localizes the count and accessible description in Russian', () => {
+    setAppLanguage('ru');
+    const badge = QuoteVolumeBadge({ volume: 32_176_544 });
+    expect(badge?.props['aria-label']).toBe('Дневной объём торгов 32,2 млн акций');
+    expect(badge?.props.title).toBe('Количество акций, проторгованных за день, по данным поставщика.');
   });
 });
