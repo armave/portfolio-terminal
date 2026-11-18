@@ -58,6 +58,7 @@ export function createPortfolioAutoRefreshScheduler(
   let activeInterval = 0;
   let activeRole: PortfolioAutoRefreshRole = null;
   let quoteTickCount = 0;
+  let configuredAt = 0;
   let quoteInFlight: Promise<boolean> | null = null;
   let supplementalInFlight: Promise<boolean> | null = null;
   let stateSyncInFlight: Promise<boolean> | null = null;
@@ -187,6 +188,7 @@ export function createPortfolioAutoRefreshScheduler(
     historySyncInFlight = null;
     cycleInFlight = null;
     quoteTickCount = 0;
+    configuredAt = Date.now();
     activeRole = role;
     const fallback = role === 'guest'
       ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
@@ -197,7 +199,10 @@ export function createPortfolioAutoRefreshScheduler(
 
     quoteTimer = setIntervalFn(() => {
       if (!canRefresh()) return;
-      quoteTickCount += 1;
+      quoteTickCount = Math.max(
+        quoteTickCount + 1,
+        Math.floor((Date.now() - configuredAt) / activeInterval)
+      );
       if (activeRole === 'admin') {
         const sharesHistoryBoundary =
           (quoteTickCount * activeInterval) % SUPPLEMENTAL_REFRESH_INTERVAL_MS === 0;
@@ -221,7 +226,16 @@ export function createPortfolioAutoRefreshScheduler(
 
   const onVisibilityChange = async (): Promise<boolean> => {
     if (!options.isVisible()) return false;
-    return refreshNow();
+    const refreshed = await refreshNow();
+    // Set the quote timer's phase from wall time so skipped hidden-tab ticks
+    // cannot desynchronize its 60-second boundary from the supplemental timer.
+    if (activeInterval > 0) {
+      quoteTickCount = Math.max(
+        quoteTickCount,
+        Math.floor((Date.now() - configuredAt) / activeInterval)
+      );
+    }
+    return refreshed;
   };
 
   const stop = () => {
@@ -229,6 +243,7 @@ export function createPortfolioAutoRefreshScheduler(
     activeInterval = 0;
     activeRole = null;
     quoteTickCount = 0;
+    configuredAt = 0;
     cycleInFlight = null;
   };
 

@@ -302,9 +302,10 @@ export function createFreedomMarginFeeAllocationInputKey(
   });
   const projectedExecutions = brokerExecutions.map((row) => pickAllocationFields(row, [
     'id', 'ticker', 'side', 'quantity', 'shares', 'executedAt', 'date',
-    'price', 'executionPrice', 'tradeValue', 'currency'
+    'price', 'executionPrice', 'tradeValue', 'currency', 'commission', 'profit'
   ]));
   const projectedAppTrades = appTrades.map((row) => pickAllocationFields(row, [
+    'id', 'transactionEventId',
     'buyDate', 'purchaseDate', 'entryDate', 'openDate',
     'sellDate', 'exitDate', 'closedAt', 'date',
     'shares', 'quantity', 'entryPrice', 'avgBuyPrice', 'buyPrice', 'currency'

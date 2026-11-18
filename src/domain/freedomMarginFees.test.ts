@@ -13,16 +13,16 @@ const fee = (id: string, date: string, amount: number, currency = 'USD') => ({
 });
 
 describe('Freedom margin fee allocation input fingerprint', () => {
-  it('ignores quote and calculated fee metadata that the allocator does not consume', () => {
+  it('ignores quote and calculated fee metadata but retains app-position lot inputs', () => {
     const cashflows = [fee('fingerprint', '2026-11-02', -1)];
-    const executions = [{
-      id: 'buy-1', ticker: 'AAPL', side: 'buy', quantity: 10,
-      price: 100, executedAt: '2026-11-01T10:00:00Z', currency: 'USD',
-      marginFee: 0, openMarginFee: 0, netProfit: 5
-    }];
     const closedTrades = [{
-      buyDate: '2026-11-01', sellDate: '2026-11-04',
-      shares: 2, entryPrice: 100, marginFee: 0
+      id: 'app-close',
+      transactionEventId: 'sale-event',
+      buyDate: '2026-11-01',
+      sellDate: '2026-11-04',
+      shares: 2,
+      entryPrice: 100,
+      marginFee: 0
     }];
     const options = {
       openAppPositions: {
@@ -36,10 +36,10 @@ describe('Freedom margin fee allocation input fingerprint', () => {
         }
       }
     };
-    const initial = createFreedomMarginFeeAllocationInputKey(cashflows, executions, closedTrades, options);
+    const initial = createFreedomMarginFeeAllocationInputKey(cashflows, [], closedTrades, options);
     const afterQuoteTick = createFreedomMarginFeeAllocationInputKey(
       cashflows,
-      [{ ...executions[0], currentPrice: 125, quoteUpdatedAt: 123_456, marginFee: 9 }],
+      [],
       [{ ...closedTrades[0], marginFee: 7 }],
       {
         openAppPositions: {
@@ -54,15 +54,29 @@ describe('Freedom margin fee allocation input fingerprint', () => {
     );
 
     expect(afterQuoteTick).toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows,
+      [],
+      closedTrades,
+      { openAppPositions: { AAPL: { ...options.openAppPositions.AAPL, tranches: [{ qty: 9, price: 100, date: '2026-11-01' }] } } }
+    )).not.toBe(initial);
   });
 
-  it('changes when a financial allocation input, cashflow amount or funding classification changes', () => {
+  it('changes when an execution, fee, trade identity or funding input changes', () => {
     const cashflows = [fee('fingerprint', '2026-11-02', -1)];
     const executions = [{
       id: 'buy-1', ticker: 'AAPL', side: 'buy', quantity: 10,
-      price: 100, executedAt: '2026-11-01T10:00:00Z', currency: 'USD'
+      price: 100, executedAt: '2026-11-01T10:00:00Z', currency: 'USD',
+      commission: 0.25, profit: 0
     }];
-    const closedTrades = [{ buyDate: '2026-11-01', sellDate: '2026-11-04', shares: 2, entryPrice: 100 }];
+    const closedTrades = [{
+      id: 'app-close',
+      transactionEventId: 'sale-event',
+      buyDate: '2026-11-01',
+      sellDate: '2026-11-04',
+      shares: 2,
+      entryPrice: 100
+    }];
     const options = { trancheTypes: { 'AAPL:buy-1': 'margin' as const } };
     const initial = createFreedomMarginFeeAllocationInputKey(cashflows, executions, closedTrades, options);
 
@@ -73,7 +87,13 @@ describe('Freedom margin fee allocation input fingerprint', () => {
       cashflows, [{ ...executions[0], quantity: 9 }], closedTrades, options
     )).not.toBe(initial);
     expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, [{ ...executions[0], commission: 0.5 }], closedTrades, options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
       cashflows, executions, [{ ...closedTrades[0], entryPrice: 101 }], options
+    )).not.toBe(initial);
+    expect(createFreedomMarginFeeAllocationInputKey(
+      cashflows, executions, [{ ...closedTrades[0], transactionEventId: 'other-sale' }], options
     )).not.toBe(initial);
     expect(createFreedomMarginFeeAllocationInputKey(
       cashflows, executions, closedTrades, { trancheTypes: { 'AAPL:buy-1': 'cash' } }
