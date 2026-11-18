@@ -1,15 +1,10 @@
+import { logSafeDiagnostic } from './safeDiagnostics';
 import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
 import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 import { normalizeMarketQuoteObservation, type MarketDelayClass } from './marketDataContracts';
 import { marketDataProviderHealth } from './marketDataProviderHealth';
-
-function describeProviderError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'string') return error;
-  return String(error);
-}
 
 function usableQuoteNumber(value: unknown): number | null {
   if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
@@ -63,7 +58,7 @@ async function fetchFallbackPrice(symbol: string, force = false) {
       };
     } catch (error: unknown) {
       marketDataProviderHealth.recordFailure(provider);
-      console.warn(`[${provider} Quote Error for ${symbol}]:`, describeProviderError(error));
+      logSafeDiagnostic('warn', 'market-data', error);
     }
   }
   return null;
@@ -183,10 +178,7 @@ export async function fetchLivePriceFromProviders(
       marketDataProviderHealth.recordSuccess('FREEDOM_WEBSOCKET');
     } catch (websocketError) {
       marketDataProviderHealth.recordFailure('FREEDOM_WEBSOCKET');
-      console.warn(
-        `[Freedom WebSocket Quote Error for ${symbol}]:`,
-        describeProviderError(websocketError)
-      );
+      logSafeDiagnostic('warn', 'market-data', websocketError);
     }
   }
 
@@ -204,7 +196,7 @@ export async function fetchLivePriceFromProviders(
       marketDataProviderHealth.recordSuccess('FREEDOM_REST');
     } catch (restError) {
       marketDataProviderHealth.recordFailure('FREEDOM_REST');
-      console.warn(`[Freedom REST Quote Error for ${symbol}]:`, describeProviderError(restError));
+      logSafeDiagnostic('warn', 'market-data', restError);
     }
   }
 
@@ -336,7 +328,7 @@ export async function fetchLivePriceFromProviders(
       if (price === null) marketDataProviderHealth.recordFailure('YAHOO');
     } catch (error: unknown) {
       marketDataProviderHealth.recordFailure('YAHOO');
-      console.warn(`[Proxy Quote Error for ${symbol}]:`, describeProviderError(error));
+      logSafeDiagnostic('warn', 'market-data', error);
     }
   }
 

@@ -1,3 +1,4 @@
+import { logSafeDiagnostic } from './safeDiagnostics';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
 const STORAGE_KEY_GW_AUTH_ENCRYPTED = 'gateway_secret_encrypted_v1';
 const GW_KEY_DB = 'portfolio-terminal-secure-storage';
@@ -192,14 +193,14 @@ export function saveGatewaySecret(secret: string): void {
     const storage = getBrowserStorage();
     if (storage) removeStoredKeys(storage, [STORAGE_KEY_GW_AUTH, 'gateway_secret']);
   } catch (err) {
-    console.warn('Failed to purge persisted gateway credentials:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
   }
   pendingSecretPersistence = pendingSecretPersistence
     .catch(() => false)
     .then(() => persistEncryptedGatewaySecret(cleanSecret))
     .then(() => true)
     .catch((err) => {
-      console.warn('Could not persist encrypted Gateway Secret; it will be requested again after refresh:', err);
+      logSafeDiagnostic('warn', 'credential-storage', err);
       return false;
     });
 }
@@ -220,7 +221,7 @@ export async function restoreGatewaySecret(): Promise<string> {
   try {
     removeStoredKeys(storage, [STORAGE_KEY_GW_AUTH, 'gateway_secret']);
   } catch (err) {
-    console.warn('Could not clear legacy Gateway Secret entries:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
   }
   if (inMemoryGatewaySecret) return inMemoryGatewaySecret;
 
@@ -228,7 +229,7 @@ export async function restoreGatewaySecret(): Promise<string> {
   try {
     raw = storage.getItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
   } catch (err) {
-    console.warn('Could not read encrypted Gateway Secret from device storage:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
     return '';
   }
   if (!raw) return '';
@@ -242,7 +243,7 @@ export async function restoreGatewaySecret(): Promise<string> {
   } catch (err) {
     // Preserve the original ciphertext for inspection/recovery. A newly entered
     // credential will replace it after secure device storage is available.
-    console.warn('Encrypted Gateway Secret payload is invalid; preserving the device copy:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
     setGatewaySecret('');
     return '';
   }
@@ -259,7 +260,7 @@ export async function restoreGatewaySecret(): Promise<string> {
   try {
     db = await openSecureKeyDatabase();
   } catch (err) {
-    console.warn('Could not open secure key storage; preserving the encrypted Gateway Secret:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
     return '';
   }
 
@@ -267,7 +268,7 @@ export async function restoreGatewaySecret(): Promise<string> {
   try {
     key = await getOrCreateDeviceKey(db, false);
   } catch (err) {
-    console.warn('Could not access the device encryption key; preserving the encrypted Gateway Secret:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
     db.close();
     return '';
   }
@@ -285,7 +286,7 @@ export async function restoreGatewaySecret(): Promise<string> {
     // A missing/replaced IndexedDB key can be temporary or recoverable in a
     // restored browser profile. Preserve ciphertext instead of destroying the
     // only remaining device copy; the normal sign-in flow remains available.
-    console.warn('Could not decrypt encrypted Gateway Secret; preserving ciphertext for a later retry:', err);
+    logSafeDiagnostic('warn', 'credential-storage', err);
     setGatewaySecret('');
     return '';
   } finally {
