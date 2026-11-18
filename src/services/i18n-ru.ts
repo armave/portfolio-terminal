@@ -1208,7 +1208,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Portfolio settings could not be saved.': 'Не удалось сохранить настройки портфеля.',
   'Portfolio settings restored to defaults.': 'Настройки портфеля восстановлены по умолчанию.',
   'Portfolio settings could not be reset.': 'Не удалось восстановить настройки портфеля.',
-  'All portfolio settings saved.': 'Все настройки портфеля сохранены.'
+  'All portfolio settings saved.': 'Все настройки портфеля сохранены.',
 
   "Assignments": "Назначения",
   "Assignment History": "История назначений",
