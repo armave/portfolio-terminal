@@ -14,6 +14,7 @@ export interface GuestPortfolioHydrationRuntimeDependencies {
   getCurrentCashHoldings: () => PortfolioState['cashCushion']['holdings'];
   createCleanWorkspaceState: () => PortfolioState;
   importGuestWorkspace: (guestWorkspace: PortfolioState) => void;
+  now?: () => number;
 }
 
 export interface GuestPortfolioHydrationRuntime {
@@ -67,7 +68,12 @@ export function createGuestPortfolioHydrationRuntime(
       activeTrancheGuestAssignments: assignments,
       activeTrancheTypes: types,
       activeTrancheMixes: {},
-      guestPortfolioSnapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches },
+      guestPortfolioSnapshot: {
+        updatedAt: snapshot.updatedAt,
+        ledgerUpdatedAt: snapshot.ledgerUpdatedAt,
+        fetchedAt: dependencies.now?.() ?? Date.now(),
+        tranches: snapshot.tranches
+      },
       guestTrancheLedger: snapshot.ledger,
       brokerAccountInfo: undefined,
       brokerExecutedTrades: [],
