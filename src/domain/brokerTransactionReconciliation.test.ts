@@ -349,6 +349,25 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('surfaces missing values on a matched partial-fill group without substituting zero', () => {
+    const app = appEvent('trade.buy');
+    const report = reconcile([
+      execution({ id: 'partial-incomplete-1', orderId: 'order-1', quantity: 0.75, price: null }),
+      execution({ id: 'partial-incomplete-2', orderId: 'order-1', quantity: 1.25, price: 100 })
+    ], [app]);
+
+    expect(report.matchedExecutionCount).toBe(2);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_data_incomplete',
+      confidence: 'provisional',
+      brokerReferences: ['partial-incomplete-1', 'partial-incomplete-2'],
+      appEventIds: ['app-trade.buy'],
+      missingFields: ['Broker execution price']
+    }));
+    expect(report.findings.some(finding => finding.type === 'execution_price_mismatch')).toBe(false);
+  });
+
   it('uses a stable app order reference to resolve matching partial-fill groups', () => {
     const app = appEvent('trade.buy', { externalOrderReferenceId: 'order-b' });
     const report = reconcile([

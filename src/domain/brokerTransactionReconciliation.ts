@@ -313,16 +313,17 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
       }
-      const missingSourceFields: string[] = [];
-    if (row.price === null) missingSourceFields.push('Broker execution price');
-    if (row.at === null) missingSourceFields.push('Broker execution timestamp');
-    if (!row.currency) missingSourceFields.push('Broker execution currency');
-    if (row.side !== 'sell' && row.fee === null) missingSourceFields.push('Broker execution commission');
-    if (missingSourceFields.length > 0) {
-      sourceDataIncomplete = true;
-      warnings.push('One or more broker executions lack verifiable price, commission, currency or timestamp evidence; matching is provisional.');
-    }
-    return;
+        const missingSourceFields: string[] = [];
+      if (row.price === null) missingSourceFields.push('Broker execution price');
+      if (row.at === null) missingSourceFields.push('Broker execution timestamp');
+      if (!row.currency) missingSourceFields.push('Broker execution currency');
+      if (row.side !== 'sell' && row.fee === null) missingSourceFields.push('Broker execution commission');
+      if (missingSourceFields.length > 0) {
+        sourceDataIncomplete = true;
+        confidence = 'provisional';
+        warnings.push('One or more broker executions lack verifiable price, commission, currency or timestamp evidence; matching is provisional.');
+      }
+      return;
     }
     sourceDataIncomplete = true;
     warnings.push('One or more broker execution rows could not be classified; affected rows were excluded from matching.');
@@ -410,6 +411,7 @@ export function reconcileBrokerActivity(
     }
     if (missingSourceFields.length > 0) {
       sourceDataIncomplete = true;
+      confidence = 'provisional';
       warnings.push('One or more app-authored executions lack verifiable quantity, price, currency or commission evidence; matching is provisional.');
     }
   });
