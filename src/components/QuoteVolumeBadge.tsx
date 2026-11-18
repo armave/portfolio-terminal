@@ -4,10 +4,22 @@ import { formatQuoteTurnover } from '../utils/formatters';
 interface QuoteVolumeBadgeProps {
   volumeValue?: unknown;
   currency?: unknown;
+  lastTradeTime?: unknown;
+  serverTime?: unknown;
   isAdmin?: boolean;
 }
 
-export function QuoteVolumeBadge({ volumeValue, currency, isAdmin = false }: QuoteVolumeBadgeProps) {
+function getCalendarDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return /^(\d{4}-\d{2}-\d{2})/.exec(value.trim())?.[1] ?? null;
+}
+
+export function QuoteVolumeBadge({ volumeValue, currency, lastTradeTime, serverTime, isAdmin = false }: QuoteVolumeBadgeProps) {
+  const tradeDate = getCalendarDate(lastTradeTime);
+  const observationDate = getCalendarDate(serverTime);
+  // Do not label yesterday's completed-session turnover as today's volume during premarket.
+  if (tradeDate && observationDate && tradeDate !== observationDate) return null;
+
   const formattedTurnover = formatQuoteTurnover(volumeValue, currency);
   if (formattedTurnover === null) return null;
 

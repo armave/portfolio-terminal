@@ -27,6 +27,24 @@ describe('QuoteVolumeBadge', () => {
     expect(badge?.props.children[1].props.children).toBe('$9.1B');
   });
 
+  it('suppresses previous-session turnover when the last-trade date differs from server date', () => {
+    expect(QuoteVolumeBadge({
+      volumeValue: 9_128_117_006.5,
+      currency: 'USD',
+      lastTradeTime: '2026-11-17T19:59:25',
+      serverTime: '2026-11-18 11:32:26.608'
+    })).toBeNull();
+  });
+
+  it('shows turnover when last-trade and server dates match', () => {
+    expect(QuoteVolumeBadge({
+      volumeValue: 125_000_000,
+      currency: 'USD',
+      lastTradeTime: '2026-11-18T15:30:00',
+      serverTime: '2026-11-18 15:30:01.000'
+    })?.props['aria-label']).toBe('Daily volume $125M');
+  });
+
   it('requires provider-reported monetary turnover and explicit USD currency', () => {
     expect(QuoteVolumeBadge({ currency: 'USD' })).toBeNull();
     expect(QuoteVolumeBadge({ volumeValue: null, currency: 'USD' })).toBeNull();

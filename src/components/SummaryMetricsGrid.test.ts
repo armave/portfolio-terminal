@@ -110,8 +110,8 @@ describe('portfolio metric quote updates', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('Ticker market context');
-    expect(source).toContain('<QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} isAdmin={isAdmin} />');
-    expect(source).toContain('<QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} isAdmin={isAdmin} />');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} lastTradeTime={position.quoteDetails?.lastTradeTime} serverTime={position.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} lastTradeTime={pos.quoteDetails?.lastTradeTime} serverTime={pos.quoteDetails?.serverTime} isAdmin={isAdmin} />');
     expect(source).not.toContain('formatQuoteVolume');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
     expect(source).toContain('id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]"');
