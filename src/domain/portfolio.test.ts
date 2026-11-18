@@ -792,6 +792,30 @@ describe('portfolio domain', () => {
     }
   });
 
+  it('requires the projected post-sale balance to remain at or above -$450 for breakeven', () => {
+    const atFloor = { signedBalance: -1_000, freeCash: 0, netSaleProceeds: 560 };
+    const belowFloor = { ...atFloor, netSaleProceeds: 559.99 };
+
+    expect(calculateProjectedAccountBalanceAfterSale(-1_000, 0, 560, 0.01, 1)).toBe(-450);
+    expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, atFloor)).toBe(1);
+    expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, belowFloor)).toBeUndefined();
+    expect(findProjectionBreakevenDay(0, 0, 0, 1_000, 0.01, 3650, {
+      signedBalance: -1_000, freeCash: 0, netSaleProceeds: 550
+    })).toBe(0);
+    expect(findProjectionBreakevenDay(0, 0, 0, 1_000, 0.01, 3650, {
+      signedBalance: -1_000, freeCash: 0, netSaleProceeds: 549.99
+    })).toBeUndefined();
+    expect(findProjectionBreakevenDay(10, 0, 0, 1_000, 0.01, 3650, {
+      signedBalance: Number.NaN, freeCash: 0, netSaleProceeds: 560
+    })).toBeUndefined();
+
+    expect(calculateBreakevenDays(10, 1_000, 0.01, atFloor)).toBe(1);
+    expect(calculateBreakevenDays(10, 1_000, 0.01, belowFloor)).toBeNull();
+    expect(calculateBreakevenDays(10, 1_000, 0.01, {
+      signedBalance: Number.NaN, freeCash: 0, netSaleProceeds: 560
+    })).toBeNull();
+  });
+
   it('calculates commission based on rules', () => {
     const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
     expect(calculateCommission(100, 1000, rules)).toBe(2); // 100*0.01 + 1000*0.001 = 1 + 1 = 2
