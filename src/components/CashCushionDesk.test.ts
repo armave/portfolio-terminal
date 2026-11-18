@@ -627,3 +627,24 @@ describe('guest holding card compact presentation', () => {
     expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
   });
 });
+
+
+describe('guest portfolio trust and recovery UI', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('renders the guest overview and places a full assigned-data refresh on the Balance header', () => {
+    expect(deskSource).toContain('<GuestPortfolioOverview');
+    expect(deskSource).toContain('<PortfolioSyncButton userId={guestUserId} />');
+    expect(deskSource).toContain("useCloudSyncStatus()");
+  });
+
+  it('distinguishes a failed first load from a successfully loaded empty assignment snapshot', () => {
+    expect(deskSource).toContain("guestSyncStatus.status === 'error' ? 'Unable to load assigned holdings.'");
+    expect(deskSource).toContain("!state.guestPortfolioSnapshot");
+    expect(deskSource).toContain('No stocks are assigned to your account yet.');
+  });
+
+  it('explains that analyst targets are third-party estimates', () => {
+    expect(deskSource).toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
+  });
+});
