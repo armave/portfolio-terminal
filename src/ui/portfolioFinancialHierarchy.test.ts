@@ -18,10 +18,14 @@ describe('financial target and carry-break-even scope', () => {
     expect(combinedHeaderBranch).not.toContain('boardTargetSection');
   });
 
-  it('states that the unchanged break-even estimate is portfolio-wide and localizes its status', () => {
+  it('uses the portfolio-wide target-price post-sale balance floor horizon', () => {
     expect(runtimeSource).not.toContain("translateText('BE', getAppLanguage())");
-    expect(summarySource).toContain("translateText('Portfolio carry break-even', getAppLanguage())");
-    expect(runtimeSource).toContain("translateText('No margin debt', getAppLanguage())");
+    expect(summarySource).toContain("translateText('Post-sale balance floor', getAppLanguage())");
+    expect(runtimeSource).toContain('getPortfolioNetSaleProceeds(state, TRADERNET_RULES)');
+    expect(runtimeSource).toContain('calculatePostSaleBalanceFloorHorizon');
+    expect(runtimeSource).toContain("translateText('Post-sale balance estimate unavailable', getAppLanguage())");
+    expect(runtimeSource).toContain("translateText('Already below floor', getAppLanguage())");
+    expect(runtimeSource).toContain("translateText('No projected floor breach within 10 years', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('No active trades', getAppLanguage())");
     expect(runtimeSource).toContain("translateText('days', getAppLanguage())");
   });
