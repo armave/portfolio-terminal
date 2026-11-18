@@ -954,4 +954,26 @@ describe('Margin PT target information localization', () => {
     expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
     expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
   });
+
+  it('localizes the guest portfolio overview, freshness states and assignment-history terminology', () => {
+    expect(translateText('Assignments', 'ru')).toBe('Назначения');
+    expect(translateText('Assignment History', 'ru')).toBe('История назначений');
+    expect(translateText('Shared portfolio · Read only', 'ru')).toBe('Общий портфель · Только просмотр');
+    expect(translateText('Portfolio overview', 'ru')).toBe('Обзор портфеля');
+    expect(translateText('Assigned market value', 'ru')).toBe('Рыночная стоимость назначенных активов');
+    expect(translateText('Assigned cost basis', 'ru')).toBe('Себестоимость назначенных активов');
+    expect(translateText('Assigned data health', 'ru')).toBe('Состояние назначенных данных');
+    expect(translateText('Last successful refresh', 'ru')).toBe('Последнее успешное обновление');
+    expect(translateText('Holdings published by administrator', 'ru')).toBe('Активы опубликованы администратором');
+    expect(translateText('Assignment history last updated', 'ru')).toBe('Последнее обновление истории назначений');
+    expect(translateText('Quote freshness', 'ru')).toBe('Актуальность котировок');
+    expect(translateText('Refresh assigned data', 'ru')).toBe('Обновить назначенные данные');
+    expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
+      .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
+    expect(translateText('No assignment history is available yet.', 'ru')).toBe('История назначений пока недоступна.');
+    expect(translateText('Assigned shares', 'ru')).toBe('Назначено акций');
+    expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
+    expect(translateText('Average cost', 'ru')).toBe('Средняя себестоимость');
+  });
+
 });
