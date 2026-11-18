@@ -500,6 +500,81 @@ export interface BreakevenBalanceConstraint {
   minimumRemainingBalanceUsd?: number;
 }
 
+export const MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS = 3650;
+
+export type PostSaleBalanceFloorHorizon =
+  | { status: 'unavailable' }
+  | { status: 'already-below'; currentBalanceUsd: number }
+  | { status: 'breach'; currentBalanceUsd: number; breachBalanceUsd: number; days: number }
+  | { status: 'not-reached'; currentBalanceUsd: number };
+
+/**
+ * Find when a hypothetical sale at target price no longer leaves the configured
+ * minimum account balance. This is independent of net-P&L breakeven.
+ *
+ * The floor is inclusive: a balance equal to the floor is still allowed. The
+ * reported day is the first calendar day whose projected post-sale balance is
+ * strictly below the floor, using the same daily cent rounding as projected debt.
+ */
+export function calculatePostSaleBalanceFloorHorizon(
+  constraint: BreakevenBalanceConstraint,
+  dailyRate: number,
+  maxDays = MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
+): PostSaleBalanceFloorHorizon {
+  const {
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    minimumRemainingBalanceUsd = MIN_BREAKEVEN_REMAINING_BALANCE_USD
+  } = constraint;
+
+  if (
+    ![signedBalance, freeCash, netSaleProceeds, minimumRemainingBalanceUsd, dailyRate, maxDays].every(Number.isFinite) ||
+    freeCash < 0 ||
+    dailyRate < 0 ||
+    !Number.isInteger(maxDays) ||
+    maxDays < 0
+  ) {
+    return { status: 'unavailable' };
+  }
+
+  const currentBalanceUsd = calculateProjectedAccountBalanceAfterSale(
+    signedBalance,
+    freeCash,
+    netSaleProceeds,
+    dailyRate,
+    0
+  );
+  if (!Number.isFinite(currentBalanceUsd)) return { status: 'unavailable' };
+  if (currentBalanceUsd < minimumRemainingBalanceUsd) {
+    return { status: 'already-below', currentBalanceUsd };
+  }
+  if (signedBalance >= 0 || dailyRate === 0 || maxDays === 0) {
+    return { status: 'not-reached', currentBalanceUsd };
+  }
+
+  let projectedDebt = Math.abs(signedBalance);
+  for (let day = 1; day <= maxDays; day++) {
+    const nextDebt = Number((projectedDebt * (1 + dailyRate)).toFixed(2));
+    if (!Number.isFinite(nextDebt) || nextDebt <= 0) return { status: 'unavailable' };
+    if (nextDebt === projectedDebt) break;
+
+    const projectedBalanceUsd = Number((-nextDebt + freeCash + netSaleProceeds).toFixed(2));
+    if (!Number.isFinite(projectedBalanceUsd)) return { status: 'unavailable' };
+    if (projectedBalanceUsd < minimumRemainingBalanceUsd) {
+      return {
+        status: 'breach',
+        currentBalanceUsd,
+        breachBalanceUsd: projectedBalanceUsd,
+        days: day
+      };
+    }
+    projectedDebt = nextDebt;
+  }
+
+  return { status: 'not-reached', currentBalanceUsd };
+}
+
 /** Require the hypothetical post-sale account balance to stay at or above the breakeven floor. */
 function meetsBreakevenBalanceFloor(
   constraint: BreakevenBalanceConstraint | undefined,
