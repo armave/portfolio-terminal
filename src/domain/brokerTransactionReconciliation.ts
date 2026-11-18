@@ -864,6 +864,13 @@ export function reconcileBrokerActivity(
     brokerCashflows.push(row);
   }
   if (sourceDataIncomplete) confidence = 'provisional';
+  appCashflows.forEach(event => {
+    if (eventAmount(event) === null) {
+      sourceDataIncomplete = true;
+      confidence = 'provisional';
+      warnings.push('One or more app cashflow events have no usable amount; matching is provisional.');
+    }
+  });
   const unmatchedCashflowBroker = new Set(brokerCashflows.map((_, index) => index));
   let matchedCashflowCount = 0;
   const unmatchedCashflowApp = new Set(appCashflows.map((_, index) => index));

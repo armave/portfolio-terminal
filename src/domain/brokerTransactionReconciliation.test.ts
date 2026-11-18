@@ -440,6 +440,16 @@ describe('reconcileBrokerActivity', () => {
 
     const report = reconcile([], [appFeeWithoutAmount], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(0);
+    expect(report.status).toBe('partial');
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_broker',
+      appEventIds: ['fee-without-amount'],
+      confidence: 'provisional',
+      appValue: null
+    }));
+    expect(report.warnings).toContain(
+      'One or more app cashflow events have no usable amount; matching is provisional.'
+    );
     expect(report.findings.some(finding => finding.type === 'cashflow_currency_mismatch')).toBe(false);
   });
 

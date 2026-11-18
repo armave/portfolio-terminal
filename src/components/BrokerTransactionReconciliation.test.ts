@@ -35,6 +35,10 @@ describe('broker reconciliation localization', () => {
       'A broker cashflow has multiple equally strong app fallback candidates; manual review is required.',
       'ru'
     )).toContain('ручная проверка');
+    expect(translateBrokerReconciliationCopy(
+      'One or more app cashflow events have no usable amount; matching is provisional.',
+      'ru'
+    )).toContain('предварительное');
   });
 
   it('localizes the unclassified cashflow explanation in Russian', () => {
