@@ -217,6 +217,89 @@ describe('bounded cloud startup requests', () => {
     }
   });
 
+  it('bypasses browser HTTP caches for state and closed-history reads', async () => {
+    const requests: Array<{ path: string; cache: RequestCache | undefined }> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      requests.push({ path: new URL(url).pathname, cache: init?.cache });
+      return new Response(JSON.stringify({ error: 'Not found.' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+      });
+    }) as unknown as typeof fetch;
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:nonce',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(0)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl
+    });
+
+    await runtime.pullCloudState({
+      secret: 'test-secret',
+      state: {},
+      showToast: () => {},
+      logAppMessage: () => {}
+    });
+    await runtime.pullCloudHistory('test-secret');
+
+    expect(requests).toEqual([
+      { path: '/api/state', cache: 'no-store' },
+      { path: '/api/history', cache: 'no-store' }
+    ]);
+  });
+
+  it('accepts an empty cloud record as a confirmed baseline for first-time sync', async () => {
+    const statuses: string[] = [];
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:nonce',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(0)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'Not found.' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+      })
+    });
+
+    await expect(runtime.syncCloudState('pull', {
+      secret: 'test-secret',
+      state: { balance: 400 },
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status) => statuses.push(status)
+    })).resolves.toBe(true);
+    expect(statuses).toEqual(['synced']);
+  });
+
   it('applies the same deadline to response-body consumption', async () => {
     vi.useFakeTimers();
     try {

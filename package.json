@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev-server": "node scripts/dev-server-smoke.mjs",
+    "test:pwa": "node scripts/pwa-smoke.mjs",
     "knip": "npx --yes knip@6.45.1",
     "validate:dead-code": "npm run knip && npm run audit:complexity",
     "audit:dependencies": "npm audit --audit-level=high",

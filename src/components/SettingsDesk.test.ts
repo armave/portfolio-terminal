@@ -63,6 +63,17 @@ describe('TradeNet Settings surface', () => {
   });
 });
 
+describe('PWA update status placement', () => {
+  it('shows app update checks and waiting status in Settings diagnostics', () => {
+    const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(settingsSource).toContain("import { PwaUpdateStatus } from './PwaUpdateStatus';");
+    expect(settingsSource).toContain('<PwaUpdateStatus />');
+    expect(settingsSource.indexOf('<PwaUpdateStatus />')).toBeLessThan(
+      settingsSource.indexOf('<DeviceCheckSummary />')
+    );
+  });
+});
+
 describe('Device Check placement', () => {
   it('places device diagnostics in Settings instead of the Cash & Non-Margin Holdings desk', () => {
     const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
