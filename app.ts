@@ -39,7 +39,7 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS,
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
-import { getMarketInsightsTicker, getPortfolioNetSaleProceeds, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getMarketInsightsTicker, getPortfolioNetSaleProceeds, getPortfolioProjectionTickers, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { DEFAULT_PORTFOLIO_SETTINGS, normalizePortfolioSettings } from './src/domain/portfolioSettings';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
@@ -1004,7 +1004,7 @@ function updateCombinedBreakeven() {
     return;
   }
 
-  const netSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES);
+  const netSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES, getPortfolioProjectionTickers(state));
   const result = netSaleProceeds === null
     ? { status: 'unavailable' as const }
     : calculatePostSaleBalanceFloorHorizon({
