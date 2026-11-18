@@ -77,7 +77,12 @@ try {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(async (scope) => {
     const registrations = await navigator.serviceWorker.getRegistrations();
-    return registrations.some((registration) => registration.scope === scope && Boolean(registration.active));
+    return registrations.some((registration) =>
+      registration.scope === scope &&
+      registration.installing === null &&
+      registration.waiting === null &&
+      registration.active?.state === 'activated'
+    );
   }, expectedScope, { timeout: 15_000 });
   // Registration/activation is the lifecycle contract here. Control of an
   // existing page is browser-timing dependent; the subsequent offline cold
@@ -94,9 +99,12 @@ try {
       const requests = await cache.keys();
       const paths = requests.map((request) => new URL(request.url).pathname);
       const hasDocument = paths.some((path) => path === scopePath || path === scopePath + 'index.html');
-      const hasEntryScript = paths.some((path) =>
-        path.startsWith(scopePath + 'assets/') && /\/index-[\w-]+\.js$/.test(path)
-      );
+      const hasEntryScript = paths.some((path) => {
+        const fileName = path.slice(path.lastIndexOf('/') + 1);
+        return path.startsWith(scopePath + 'assets/') &&
+          fileName.startsWith('index-') &&
+          fileName.endsWith('.js');
+      });
       const hasStylesheet = paths.some((path) =>
         path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
       );
@@ -122,9 +130,17 @@ try {
   const appScopePath = '/portfolio-terminal/';
   const hasCompleteAppShell = cacheAudit.cacheEntries.some((entry) => {
     const paths = entry.urls.map((url) => new URL(url).pathname);
-    return paths.some((path) => path === appScopePath || path === appScopePath + 'index.html') &&
-      paths.some((path) => path.startsWith(appScopePath + 'assets/') && /\/index-[\w-]+\.js$/.test(path)) &&
-      paths.some((path) => path.startsWith(appScopePath + 'assets/') && path.endsWith('.css'));
+    const hasDocument = paths.some((path) => path === appScopePath || path === appScopePath + 'index.html');
+    const hasEntryScript = paths.some((path) => {
+      const fileName = path.slice(path.lastIndexOf('/') + 1);
+      return path.startsWith(appScopePath + 'assets/') &&
+        fileName.startsWith('index-') &&
+        fileName.endsWith('.js');
+    });
+    const hasStylesheet = paths.some((path) =>
+      path.startsWith(appScopePath + 'assets/') && path.endsWith('.css')
+    );
+    return hasDocument && hasEntryScript && hasStylesheet;
   });
   const cachedPaths = requestUrls.map((url) => new URL(url).pathname);
   assert.ok(hasCompleteAppShell,
