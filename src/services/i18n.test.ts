@@ -973,7 +973,7 @@ describe('Margin PT target information localization', () => {
     expect(translateText('No assignment history is available yet.', 'ru')).toBe('История назначений пока недоступна.');
     expect(translateText('Assigned shares', 'ru')).toBe('Назначенные акции');
     expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
-    expect(translateText('Average cost', 'ru')).toBe('Средняя себестоимость');
+    expect(translateText('Average cost', 'ru')).toBe('Средняя стоимость');
   });
 
 });
