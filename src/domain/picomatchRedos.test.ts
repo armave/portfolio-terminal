@@ -87,7 +87,6 @@ describe('single-branch repeated-extglob ReDoS regressions', () => {
   }
 });
 
-
 describe('linear removeBackslashes ReDoS regressions', () => {
   const candidates = [
     ['v2', picomatchUtilsV2, vendorV2],
@@ -95,21 +94,21 @@ describe('linear removeBackslashes ReDoS regressions', () => {
   ] as const;
 
   for (const [major, utils, vendorDir] of candidates) {
-    it(\`preserves escaped bracket expressions and ordinary unescaping in \${major}\`, () => {
-      expect(utils.removeBackslashes('foo\\bar')).toBe('foobar');
+    it(`preserves escaped bracket expressions and ordinary unescaping in ${major}`, () => {
+      expect(utils.removeBackslashes('foo\\\\bar')).toBe('foobar');
       expect(utils.removeBackslashes('[abc]')).toBe('[abc]');
-      expect(utils.removeBackslashes('[a\\]b]')).toBe('[a\\]b]');
-      expect(utils.removeBackslashes('\\[abc]')).toBe('[abc]');
-      expect(utils.removeBackslashes('foo\\[bar\\]')).toBe('foo[bar]');
-      expect(utils.removeBackslashes('terminal\\')).toBe('terminal\\');
-      expect(utils.removeBackslashes('a\\' + '\\n' + 'b')).toBe('a\\' + '\\n' + 'b');
+      expect(utils.removeBackslashes('[a\\\\]b]')).toBe('[a\\\\]b]');
+      expect(utils.removeBackslashes('\\\\[abc]')).toBe('[abc]');
+      expect(utils.removeBackslashes('foo\\\\[bar\\\\]')).toBe('foo[bar]');
+      expect(utils.removeBackslashes('terminal\\\\')).toBe('terminal\\\\');
+      expect(utils.removeBackslashes('a\\\\' + '\\n' + 'b')).toBe('a\\\\' + '\\n' + 'b');
     });
 
-    it(\`handles repeated unmatched bracket prefixes in linear time in an isolated \${major} process\`, () => {
+    it(`handles repeated unmatched bracket prefixes in linear time in an isolated ${major} process`, () => {
       const entry = resolve(vendorDir, 'lib/utils.js');
       const code = [
         "const assert = require('node:assert/strict');",
-        \`const utils = require(\${JSON.stringify(entry)});\`,
+        `const utils = require(${JSON.stringify(entry)});`,
         "const count = 100000;",
         "const prefix = String.fromCharCode(92) + '[';",
         "const expected = '['.repeat(count) + 'x';",
