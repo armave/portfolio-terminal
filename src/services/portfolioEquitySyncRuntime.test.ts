@@ -129,4 +129,52 @@ describe('portfolio equity synchronization', () => {
     runtime.dispose();
   });
 
+  it('defers performance capture until the workspace pull settles and flushes the latest state once', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {},
+      balance: 0,
+      portfolioEquity: 0,
+      cashCushion: { freeCash: 0, holdings: [] },
+      activeView: 'BALANCE'
+    });
+
+    let workspaceReady = false;
+    const capturedViews: string[] = [];
+    const onPerformanceSnapshotChanged = vi.fn();
+    const runtime = createPortfolioEquitySyncRuntime({
+      subscribe: (listener) => store.subscribe(listener),
+      getState: () => store.getState(),
+      calculateEquity: () => 0,
+      setDerivedEquity: () => {},
+      onDurableEquityChanged: vi.fn(),
+      recordPerformanceSnapshot: (state) => {
+        capturedViews.push(state.activeView);
+        return true;
+      },
+      onPerformanceSnapshotChanged,
+      isPerformanceSnapshotReady: () => workspaceReady,
+      now: () => 1_800_000_000_000
+    });
+
+    expect(capturedViews).toEqual([]);
+    expect(onPerformanceSnapshotChanged).not.toHaveBeenCalled();
+
+    expect(store.setState({ activeView: 'AAPL' })).toBe(true);
+    expect(capturedViews).toEqual([]);
+
+    runtime.flushDeferredPerformanceSnapshot();
+    expect(capturedViews).toEqual([]);
+
+    workspaceReady = true;
+    runtime.flushDeferredPerformanceSnapshot();
+    expect(capturedViews).toEqual(['AAPL']);
+    expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
+
+    runtime.flushDeferredPerformanceSnapshot();
+    expect(capturedViews).toEqual(['AAPL']);
+    runtime.dispose();
+  });
+
+
 });
