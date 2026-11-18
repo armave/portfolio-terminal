@@ -149,6 +149,7 @@ describe('portfolio authentication runtime', () => {
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.pullAdminPortfolioSnapshot).not.toHaveBeenCalled();
     expect(fixture.dependencies.refreshAllLivePrices).toHaveBeenCalledTimes(1);
+    expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('publish:guest'));
     expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('interval:15000'));
     expect(fixture.calls.indexOf('pull-guest')).toBeLessThan(fixture.calls.indexOf('workspace-sync-complete'));
     expect(fixture.calls.indexOf('workspace-sync-complete')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
@@ -168,6 +169,7 @@ describe('portfolio authentication runtime', () => {
     expect(fixture.dependencies.pullAdminPortfolioSnapshot).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.pullGuestPortfolioSnapshot).not.toHaveBeenCalled();
     expect(fixture.dependencies.refreshAllLivePrices).toHaveBeenCalledTimes(1);
+    expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('publish:admin'));
     expect(fixture.calls.indexOf('workspace-sync-start')).toBeLessThan(fixture.calls.indexOf('interval:60000'));
     expect(fixture.calls.indexOf('pull-admin')).toBeLessThan(fixture.calls.indexOf('workspace-sync-complete'));
     expect(fixture.calls.indexOf('workspace-sync-complete')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
