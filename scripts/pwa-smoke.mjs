@@ -89,50 +89,56 @@ try {
   // navigation below proves that the worker actually serves the cached shell.
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  // Snapshot the cache in the same evaluation that establishes readiness.
-  // This avoids querying again after a concurrent service-worker lifecycle transition.
-  const cacheAuditHandle = await page.waitForFunction(async (scopePath) => {
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    const registration = registrations.find((candidate) =>
-      candidate.scope === new URL(scopePath, location.origin).href
-    );
-    if (
-      !registration ||
-      registration.installing !== null ||
-      registration.waiting !== null ||
-      registration.active?.state !== 'activated'
-    ) return false;
+  // Poll in one browser evaluation and return the final plain-JSON cache snapshot.
+  // Registration readiness and the cache audit must refer to the same stable worker.
+  const cacheAudit = await page.evaluate(async (scopePath) => {
+    const deadline = Date.now() + 15_000;
+    let latestEntries = [];
 
-    const cacheNames = (await caches.keys()).filter((name) => name.startsWith('workbox-precache-'));
-    const cacheEntries = [];
-    let hasCompleteAppShell = false;
+    while (Date.now() < deadline) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const registration = registrations.find((candidate) =>
+        candidate.scope === new URL(scopePath, location.origin).href
+      );
+      const workerReady = Boolean(
+        registration &&
+        registration.installing === null &&
+        registration.waiting === null &&
+        registration.active?.state === 'activated'
+      );
 
-    for (const name of cacheNames) {
-      const cache = await caches.open(name);
-      const requests = await cache.keys();
-      const urls = requests.map((request) => request.url);
-      const paths = urls.map((url) => new URL(url).pathname);
-      const hasDocument = paths.some((path) =>
-        path === scopePath || path === scopePath + 'index.html'
-      );
-      const hasEntryScript = paths.some((path) => {
-        const fileName = path.slice(path.lastIndexOf('/') + 1);
-        return path.startsWith(scopePath + 'assets/') &&
-          fileName.startsWith('index-') &&
-          fileName.endsWith('.js');
-      });
-      const hasStylesheet = paths.some((path) =>
-        path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
-      );
-      cacheEntries.push({ name, urls });
-      if (hasDocument && hasEntryScript && hasStylesheet) hasCompleteAppShell = true;
+      const cacheNames = (await caches.keys()).filter((name) => name.startsWith('workbox-precache-'));
+      const cacheEntries = [];
+      let hasCompleteAppShell = false;
+
+      for (const name of cacheNames) {
+        const cache = await caches.open(name);
+        const requests = await cache.keys();
+        const urls = requests.map((request) => request.url);
+        const paths = urls.map((url) => new URL(url).pathname);
+        const hasDocument = paths.some((path) =>
+          path === scopePath || path === scopePath + 'index.html'
+        );
+        const hasEntryScript = paths.some((path) => {
+          const fileName = path.slice(path.lastIndexOf('/') + 1);
+          return path.startsWith(scopePath + 'assets/') &&
+            fileName.startsWith('index-') &&
+            fileName.endsWith('.js');
+        });
+        const hasStylesheet = paths.some((path) =>
+          path.startsWith(scopePath + 'assets/') && path.endsWith('.css')
+        );
+        cacheEntries.push({ name, urls });
+        if (hasDocument && hasEntryScript && hasStylesheet) hasCompleteAppShell = true;
+      }
+
+      latestEntries = cacheEntries;
+      if (workerReady && hasCompleteAppShell) return { cacheEntries };
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    return hasCompleteAppShell ? { cacheEntries } : false;
-  }, '/portfolio-terminal/', { timeout: 15_000 });
-
-  const cacheAudit = await cacheAuditHandle.jsonValue();
-  await cacheAuditHandle.dispose();
+    return { cacheEntries: latestEntries };
+  }, '/portfolio-terminal/');
 
   assert.ok(cacheAudit.cacheEntries.length > 0, 'a Workbox precache must exist');
   const requestUrls = cacheAudit.cacheEntries.flatMap((entry) => entry.urls);
