@@ -389,7 +389,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Volume': 'Объём',
   'Vol.': 'Объём',
   'Daily volume': 'Дневной объём торгов',
-  'shares': 'акций',
   'Daily share volume reported by the data provider.': 'Количество акций, проторгованных за день, по данным поставщика.',
   'Ticker market context': 'Рыночные данные по тикерам',
   'upside to target': 'рост до целевой цены',
