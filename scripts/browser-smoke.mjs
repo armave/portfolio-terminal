@@ -1605,7 +1605,8 @@ try {
         };
       });
       if (!guestTargetLayout.sectionVisible || !guestTargetLayout.sharedSection ||
-          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst (yahoo)') ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('analyst target') ||
+          !guestTargetLayout.analystTarget.toLowerCase().includes('yahoo') ||
           guestTargetLayout.hasMarginPt || !guestTargetLayout.marketValue.includes('Current market value')) {
         throw new Error('Guest Stocks target information must be combined and PT-free: ' + JSON.stringify(guestTargetLayout));
       }
@@ -1620,10 +1621,10 @@ try {
   }
   await captureUxReviewScreenshots(page, 'guest-balance');
 
-  await page.getByRole('button', { name: /lots/i }).click();
+  await page.locator('#tickerTabs [data-nav-kind="lots"]').click();
   await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'Guest LOTS history desk');
-  await assertResponsiveSurface(page, '#guestHistoryContainer', 'Guest LOTS history desk');
+  await assertVisibleControlsHaveNames(page, 'History desk');
+  await assertResponsiveSurface(page, '#guestHistoryContainer', 'History desk');
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });

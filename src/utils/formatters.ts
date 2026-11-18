@@ -81,6 +81,18 @@ export function formatQuoteVolume(value: unknown): string | null {
   }).format(value);
 }
 
+/** Formats provider-reported USD turnover; never derives money from share count or price. */
+export function formatQuoteTurnover(value: unknown, currency?: unknown): string | null {
+  const normalizedCurrency = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+  if (normalizedCurrency !== 'USD' || typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  const compactValue = new Intl.NumberFormat(currentNumberLocale(), {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(value);
+  return '$' + compactValue;
+}
 
 export type QuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable';
 

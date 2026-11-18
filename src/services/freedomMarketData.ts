@@ -1,5 +1,5 @@
 import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
-import { normalizeMarketHistoryResponse, type MarketHistoryResult } from './marketDataContracts';
+import { normalizeCurrencyCode, normalizeMarketHistoryResponse, type MarketHistoryResult } from './marketDataContracts';
 import { retryMarketDataRequest } from './marketDataRetry';
 
 export interface FreedomQuote {
@@ -11,7 +11,12 @@ export interface FreedomQuote {
   sourceTimestamp: number | null;
   bid?: number | null;
   ask?: number | null;
+  /** Provider-reported daily traded-unit count (TradeNet vol). */
   volume?: number | null;
+  /** Provider-reported daily traded value in the quote currency (TradeNet vlt). */
+  volumeValue?: number | null;
+  /** Explicit currency supplied with the quote. */
+  currency?: string | null;
   lastTradeTime?: string | null;
   utcOffset?: number | null;
   serverTime?: string | null;
@@ -74,6 +79,8 @@ export function normalizeFreedomQuote(payload: unknown, symbol: string): Freedom
     bid: numeric(record, ["bbp", "bid"]),
     ask: numeric(record, ["bap", "ask"]),
     volume: numeric(record, ["vol", "volume"]),
+    volumeValue: numeric(record, ["vlt", "turnover", "volumeValue"]),
+    currency: normalizeCurrencyCode(record.x_curr ?? record.currency),
     lastTradeTime: typeof record.ltt === "string" ? record.ltt : null,
     utcOffset: numeric(record, ["UTCOffset"]),
     serverTime: typeof record.acc_srv_tm === "string" ? record.acc_srv_tm : null,

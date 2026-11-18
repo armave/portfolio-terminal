@@ -1092,11 +1092,11 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
       value?: string;
       upsideText?: string;
       upsideTone?: 'positive' | 'negative' | 'neutral';
+      analystCount?: number;
     }
   ) => setAnalystConsensus({ text, title, className, ...presentation });
   const hideConsensus = () => publish('');
   const analystTargetLabel = translateText('Analyst target', getAppLanguage());
-  const analystLabel = translateText('Analyst', getAppLanguage());
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
     return;
@@ -1109,33 +1109,45 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
 
   if (!force && snapshot && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
     const upside = calculateTargetUpsidePercent(snapshot.targetPrice, currentPrice);
+    const analystCount = typeof snapshot.numberOfAnalysts === 'number' &&
+      Number.isFinite(snapshot.numberOfAnalysts) && snapshot.numberOfAnalysts > 0
+      ? snapshot.numberOfAnalysts
+      : undefined;
+    const targetLabel = `${analystTargetLabel} · ${snapshot.source}`;
     if (upside !== undefined) {
+      const upsideText = upside > 0
+        ? `+${upside.toFixed(1)}% ${translateText('upside to target', getAppLanguage())}`
+        : upside < 0
+          ? `${Math.abs(upside).toFixed(1)}% ${translateText('below current price', getAppLanguage())}`
+          : translateText('At current price', getAppLanguage());
       const color = upside > 0
         ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
       publish(
-        `${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`,
-        `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`,
+        `${targetLabel} · ${formatUSD(snapshot.targetPrice)} · ${upsideText}`,
+        `${snapshot.source} analyst target ${formatUSD(snapshot.targetPrice)}; ${upsideText} from current price ${formatUSD(currentPrice)}.`,
         `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`,
         {
-          label: `${analystLabel} (${snapshot.source})`,
+          label: targetLabel,
           value: formatUSD(snapshot.targetPrice),
-          upsideText: `${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`,
-          upsideTone: upside > 0 ? 'positive' : upside < 0 ? 'negative' : 'neutral'
+          upsideText,
+          upsideTone: upside > 0 ? 'positive' : upside < 0 ? 'negative' : 'neutral',
+          ...(analystCount !== undefined ? { analystCount } : {})
         }
       );
     } else {
       publish(
-        `${analystTargetLabel} · ${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · current price unavailable`,
-        `Price target from ${snapshot.source}.`,
+        `${targetLabel} · ${formatUSD(snapshot.targetPrice)} · ${translateText('Current price unavailable', getAppLanguage())}`,
+        `${snapshot.source} analyst target ${formatUSD(snapshot.targetPrice)}. Current price is unavailable for comparison.`,
         'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300',
         {
-          label: `${analystLabel} (${snapshot.source})`,
+          label: targetLabel,
           value: formatUSD(snapshot.targetPrice),
-          upsideText: '',
-          upsideTone: 'neutral'
+          upsideText: translateText('Current price unavailable', getAppLanguage()),
+          upsideTone: 'neutral',
+          ...(analystCount !== undefined ? { analystCount } : {})
         }
       );
     }

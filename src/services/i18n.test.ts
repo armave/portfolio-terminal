@@ -81,8 +81,12 @@ describe('app localization', () => {
 
   it('localizes the unified ticker identity and target subheader in Russian', () => {
     const tickerHeaderCopy = [
-      'Analyst',
-      'Analyst (Yahoo)',
+      'Analyst target',
+      'Analysts',
+      'upside to target',
+      'below current price',
+      'At current price',
+      'Current price unavailable',
       'Margin PT',
       'Margin and analyst target information',
       'share',
@@ -246,9 +250,19 @@ describe('app localization', () => {
 
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
+    expect(translateText('Vol.', 'ru')).toBe('Объём');
+    expect(translateText('Daily volume', 'ru')).toBe('За день');
+    expect(translateText('Daily traded value reported by the data provider in USD.', 'ru'))
+      .toBe('Денежный объём торгов за день в USD по данным поставщика.');
+    expect(translateText('shares', 'ru')).toBe('акций');
+    expect(translateText('Daily share volume reported by the data provider.', 'ru'))
+      .toBe('Количество акций, проторгованных за день, по данным поставщика.');
+    expect(translateText('upside to target', 'ru')).toBe('рост до целевой цены');
+    expect(translateText('below current price', 'ru')).toBe('ниже текущей цены');
+    expect(translateText('At current price', 'ru')).toBe('на уровне текущей цены');
+    expect(translateText('Current price unavailable', 'ru')).toBe('Текущая цена недоступна');
+    expect(translateText('Analysts', 'ru')).toBe('Аналитики');
     expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');
-    expect(translateText('Provider-reported volume; reporting period may vary by source.', 'ru'))
-      .toBe('Объём указан поставщиком котировок; период данных зависит от источника.');
   });
 
   it('localizes the live-only Market Depth modal and status states in Russian', () => {
@@ -451,11 +465,11 @@ describe('app localization', () => {
     setAppLanguage('ru');
     const region = h('div', {
       role: 'region',
-      'aria-label': 'Guest assignment history table',
+      'aria-label': 'Stock history table',
       tabindex: 0
     });
     expect(region.props.role).toBe('region');
-    expect(region.props['aria-label']).toBe('Таблица истории назначений гостю');
+    expect(region.props['aria-label']).toBe('Таблица истории акций');
     expect(region.props.tabindex).toBe(0);
   });
 
@@ -954,4 +968,40 @@ describe('Margin PT target information localization', () => {
     expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
     expect(translateText('Margin and analyst target information', 'ru')).toBe('Информация о целях маржи и аналитиков');
   });
+
+  it('localizes the History destination, date filters and My Stocks overview in Russian', () => {
+    expect(translateText('History', 'ru')).toBe('История');
+    expect(translateText('records', 'ru')).toBe('записей');
+    expect(translateText('Day:', 'ru')).toBe('За день:');
+    expect(translateText('High', 'ru')).toBe('Максимум');
+    expect(translateText('Low', 'ru')).toBe('Минимум');
+    expect(translateText('· Some open holdings have no current quote', 'ru'))
+      .toBe('· Для некоторых открытых активов нет актуальной котировки');
+    expect(translateText('Stock history table', 'ru')).toBe('Таблица истории акций');
+    expect(translateText('Active assignment', 'ru')).toBe('Активное назначение');
+    expect(translateText('Active assignments', 'ru')).toBe('Активные назначения');
+    expect(translateText('Closed assignment', 'ru')).toBe('Закрытое назначение');
+    expect(translateText('Closed assignments', 'ru')).toBe('Закрытые назначения');
+    const dateRangeLabels = ['Date range', 'All time', '7 days', '30 days', '90 days', 'This month'];
+    for (const label of dateRangeLabels) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+    expect(translateText('My stocks overview', 'ru')).toBe('Обзор моих акций');
+    expect(translateText('Market value', 'ru')).toBe('Рыночная стоимость');
+    expect(translateText('Cost basis', 'ru')).toBe('Себестоимость');
+    expect(translateText('Stocks', 'ru')).toBe('Акции');
+    expect(translateText('priced stocks', 'ru')).toBe('акций с котировками');
+    expect(translateText('Unpriced stocks', 'ru')).toBe('Акции без котировки');
+    expect(translateText('Stock history table', 'ru')).toBe('Таблица истории акций');
+    expect(translateText('No stock history yet.', 'ru')).toBe('История акций пока отсутствует.');
+    expect(translateText('No stocks match these filters.', 'ru')).toBe('Нет акций, соответствующих выбранным фильтрам.');
+    expect(translateText('You do not have any stocks yet.', 'ru')).toBe('У вас пока нет акций.');
+    expect(translateText('Removed', 'ru')).toBe('Снято');
+    expect(translateText('Shares', 'ru')).toBe('Акций');
+    expect(translateText('Remaining shares', 'ru')).toBe('Остаток акций');
+    expect(translateText('Average cost', 'ru')).toBe('Средняя стоимость');
+    expect(translateText('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.', 'ru'))
+      .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
+  });
+
 });

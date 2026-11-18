@@ -3,13 +3,14 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { useBreakevenText } from '../ui/uiStateStore';
+import { QuoteVolumeBadge } from './QuoteVolumeBadge';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -238,11 +239,11 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   }
 
   if (hasRange) {
-    parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
+    parts.push(`${translateText('High', getAppLanguage())} ${formatUSD(details.high)} / ${translateText('Low', getAppLanguage())} ${formatUSD(details.low)}`);
   }
 
   return {
-    text: `Day: ${parts.join(' · ')}`,
+    text: `${translateText('Day:', getAppLanguage())} ${parts.join(' · ')}`,
     className: `mt-0.5 block text-[9px] font-normal tabular-nums text-right ${colorClass}`
   };
 }
@@ -825,21 +826,18 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2" aria-label={translateText('Ticker market context', getAppLanguage())}>
                     {tickers.map((ticker) => {
                       const position = state.positions![ticker];
-                      const volume = formatQuoteVolume(position.quoteDetails?.volume);
                       const dailyMeta = getDailyQuoteMeta(position.quoteDetails);
                       const marketPrice = getUsableMarketPrice(position.currentPrice);
                       return (
                         <div key={ticker} class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
                           <span class="font-semibold text-slate-300">
                             {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
-                            {dailyMeta && <span class={`ml-1 ${dailyMeta.className}`}>{dailyMeta.text}</span>}
-                          </span>
-                          <span class="text-slate-500">
-                            <span title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-                              {translateText('Volume', getAppLanguage())} {volume ?? '—'}
+                            <span class="inline-flex flex-wrap items-center gap-1.5 align-middle">
+                              {dailyMeta && <span class={dailyMeta.className}>{dailyMeta.text}</span>}
+                              <QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} lastTradeTime={position.quoteDetails?.lastTradeTime} serverTime={position.quoteDetails?.serverTime} isAdmin={isAdmin} />
                             </span>
-                            {' · '}{formatQuoteMetadata(position, refreshIntervalMs)}
                           </span>
+                          <span class="text-slate-500">{formatQuoteMetadata(position, refreshIntervalMs)}</span>
                         </div>
                       );
                     })}
@@ -1047,7 +1045,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     calculatedAt: Date.now()
   });
 
-  const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
       <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
@@ -1099,15 +1096,12 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                   )}
                 </span>
               </div>
-              <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
-                {dailyQuoteMeta?.text || ''}
-                <span class="text-slate-400"> · </span>
+              <span id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
+                {dailyQuoteMeta?.text && <span class={dailyQuoteMeta.className}>{dailyQuoteMeta.text}</span>}
+                <QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} lastTradeTime={pos.quoteDetails?.lastTradeTime} serverTime={pos.quoteDetails?.serverTime} isAdmin={isAdmin} />
                 <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={translateText('Quote status', getAppLanguage()) + ': ' + translateText(quoteFreshness, getAppLanguage())}>
                   <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
                 </span>
-              </span>
-              <span class="mt-0.5 block text-[10px] text-slate-500 text-right" title={translateText('Provider-reported volume; reporting period may vary by source.', getAppLanguage())}>
-                {translateText('Volume', getAppLanguage())} {volume ?? '—'}
               </span>
             </div>
             <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>

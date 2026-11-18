@@ -110,10 +110,11 @@ describe('portfolio metric quote updates', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('Ticker market context');
-    expect(source).toContain('formatQuoteVolume(position.quoteDetails?.volume)');
-    expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={position.quoteDetails?.volumeValue} currency={position.quoteDetails?.currency} lastTradeTime={position.quoteDetails?.lastTradeTime} serverTime={position.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(source).toContain('<QuoteVolumeBadge volumeValue={pos.quoteDetails?.volumeValue} currency={pos.quoteDetails?.currency} lastTradeTime={pos.quoteDetails?.lastTradeTime} serverTime={pos.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(source).not.toContain('formatQuoteVolume');
     expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
-    expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
+    expect(source).toContain('id="boardDailyQuote" class="mt-0.5 flex flex-wrap items-center justify-end gap-1.5 text-[10px]"');
   });
 });
 
@@ -215,6 +216,16 @@ describe('margin tranche quantity display', () => {
     ];
 
     expect(getMarginTrancheQuantities(tranches, brokerLots, 'GOOGL')).toEqual([5, 14, 10, 20, 20]);
+  });
+});
+
+describe('daily quote context localization', () => {
+  it('localizes the day, high and low labels in margin quote context', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateText('Day:', getAppLanguage())");
+    expect(source).toContain("translateText('High', getAppLanguage())");
+    expect(source).toContain("translateText('Low', getAppLanguage())");
+    expect(source).not.toContain('text: `Day:');
   });
 });
 

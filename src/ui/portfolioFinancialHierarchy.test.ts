@@ -88,7 +88,8 @@ describe('financial title and KPI single-source presentation', () => {
 
   it('keeps Guest Stocks PT-free and labels the Yahoo target consistently', () => {
     const guestSource = readFileSync(new URL('../components/CashCushionDesk.tsx', import.meta.url), 'utf8');
-    expect(guestSource).toContain("translateText('Analyst (Yahoo)', getAppLanguage())");
+    expect(guestSource).toContain("translateText('Analyst target', getAppLanguage())");
+    expect(guestSource).not.toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
     expect(guestSource).not.toContain('Margin PT');
     expect(guestSource).toContain('guest-stock-value-section');
   });

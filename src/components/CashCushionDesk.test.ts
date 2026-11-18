@@ -236,13 +236,20 @@ describe('guest stock subheader daily move formatting', () => {
 describe('cash holdings quote context', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows provider volume without adding a currency label and validates percentage metadata', () => {
-    expect(deskSource).toContain('const volume = formatQuoteVolume(holding.quoteDetails?.volume)');
-    expect(deskSource).toContain('const volume = formatQuoteVolume(h.quoteDetails?.volume)');
+  it('localizes daily quote period, high and low labels', () => {
+    expect(deskSource).toContain("translateText('Day:', getAppLanguage())");
+    expect(deskSource).toContain("translateText('High', getAppLanguage())");
+    expect(deskSource).toContain("translateText('Low', getAppLanguage())");
+    expect(deskSource).not.toContain('Day: {parts.join');
+  });
+
+  it('places provider-reported USD turnover badges beside the daily move in both Balance presentations', () => {
+    expect(deskSource).toContain('<QuoteVolumeBadge volumeValue={holding.quoteDetails?.volumeValue} currency={holding.quoteDetails?.currency} lastTradeTime={holding.quoteDetails?.lastTradeTime} serverTime={holding.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(deskSource).toContain('<QuoteVolumeBadge volumeValue={h.quoteDetails?.volumeValue} currency={h.quoteDetails?.currency} lastTradeTime={h.quoteDetails?.lastTradeTime} serverTime={h.quoteDetails?.serverTime} isAdmin={isAdmin} />');
+    expect(deskSource).not.toContain('formatQuoteVolume');
     expect(deskSource).toContain('Number.isFinite(h.quoteDetails?.changePercent)');
     expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');
     expect(deskSource).toContain('renderDailyQuoteSubtext(holding.quoteDetails)');
-    expect(deskSource).toContain('volume ??');
   });
 
   it('shows administrator Market Depth controls only during an open US equity session', () => {
@@ -591,9 +598,10 @@ describe('cash holding model summaries and display groups', () => {
 describe('guest holding card compact presentation', () => {
   const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
 
-  it('shows the existing My Stocks heading without adding another portfolio-value summary', () => {
+  it('shows the My Stocks overview only when more than one distinct stock is present', () => {
     expect(source).toContain("guestUserId ? 'MY STOCKS'");
-    expect(source).not.toContain('Assigned portfolio market value');
+    expect(source).toContain('guestUserId && guestHoldings.length > 1 &&');
+    expect(source).toContain('<GuestPortfolioOverview holdings={guestHoldings} />');
     expect(source).toContain('Current market value');
   });
 
@@ -625,5 +633,37 @@ describe('guest holding card compact presentation', () => {
     expect(translateText('Post-sale balance floor', 'ru')).toBe('Минимальный баланс после продажи');
     expect(translateText('Details', 'ru')).toBe('Детали');
     expect(translateText('Analyst target', 'ru')).toBe('Цель аналитиков');
+  });
+});
+
+
+describe('guest My Stocks presentation', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('hides the overview for zero or one stock and keeps the guest stock cards visible', () => {
+    expect(deskSource).toContain('guestUserId && guestHoldings.length > 1 &&');
+    expect(deskSource).toContain('<GuestPortfolioOverview holdings={guestHoldings} />');
+    expect(deskSource).toContain('guestHoldings.length === 0');
+    expect(deskSource).toContain('guestHoldings.map((holding) =>');
+  });
+
+  it('removes the shared-scope panel, data-health panel and dedicated refresh action', () => {
+    expect(deskSource).not.toContain('<PortfolioSyncButton');
+    expect(deskSource).not.toContain("translateText('Refresh assigned data'");
+    expect(deskSource).not.toContain('guest-assigned-data-health');
+    expect(deskSource).toContain("useCloudSyncStatus()");
+  });
+
+  it('keeps a failed first load distinct from a confirmed empty My Stocks list', () => {
+    expect(deskSource).toContain("guestSyncStatus.status === 'error' ? 'Unable to load My Stocks.'");
+    expect(deskSource).toContain("!state.guestPortfolioSnapshot");
+    expect(deskSource).toContain('You do not have any stocks yet.');
+  });
+
+  it('shows a direct analyst target with a clear price move and optional analyst count', () => {
+    expect(deskSource).toContain("translateText('Analyst target', getAppLanguage())");
+    expect(deskSource).toContain("translateText('upside to target', getAppLanguage())");
+    expect(deskSource).toContain('analystTarget.analystCount');
+    expect(deskSource).not.toContain('Analyst price targets are third-party estimates, not forecasts or guaranteed outcomes.');
   });
 });

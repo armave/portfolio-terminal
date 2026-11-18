@@ -10,16 +10,18 @@ function getTableHeaderTags(source: string): string[] {
 }
 
 describe('Stage 10 accessibility wiring', () => {
-  it('keeps portfolio synchronization outside the workspace destination group', () => {
+  it('keeps manual portfolio sync in Settings and removes the guest Balance refresh action', () => {
     const app = readSource('../App.tsx');
     const ticker = readSource('../components/TickerTab.tsx');
+    const desk = readSource('../components/CashCushionDesk.tsx');
     const settings = readSource('../components/SettingsDesk.tsx');
     const tabsStart = ticker.indexOf('export const TickerTabs');
-    const syncStart = ticker.indexOf('export function PortfolioSyncButton');
     expect(tabsStart).toBeGreaterThan(-1);
-    expect(syncStart).toBeGreaterThan(tabsStart);
-    expect(ticker.slice(tabsStart, syncStart)).toContain('workspace-nav-ticker-list');
-    expect(app).not.toContain('<MemoPortfolioSyncButton');
+    expect(ticker.slice(tabsStart)).toContain('workspace-nav-ticker-list');
+    expect(ticker).not.toContain('PortfolioSyncButton');
+    expect(ticker).not.toContain("emitUiEvent('portfolio:sync-request'");
+    expect(desk).not.toContain('PortfolioSyncButton');
+    expect(desk).not.toContain('Refresh assigned data');
     expect(settings).toContain("emitUiEvent('portfolio:sync-request'");
     expect(app).toContain("aria-label={translateText('Workspace navigation', getAppLanguage())}");
     expect(app).toContain('class="workspace-header-controls"');
@@ -207,7 +209,7 @@ describe('Stage 10 accessibility wiring', () => {
     const guestHistory = readSource('../components/GuestTrancheHistory.tsx');
     const reconciliation = readSource('../components/BrokerTransactionReconciliation.tsx');
 
-    expect(guestHistory.match(/class="min-h-11 rounded border border-slate-700/g)).toHaveLength(4);
+    expect(guestHistory.match(/class="[^"]*min-h-11[^"]*rounded border border-slate-700/g)).toHaveLength(4);
     expect(guestHistory).not.toContain('class="h-8 rounded border border-slate-700');
     expect(reconciliation.match(/inline-flex min-h-11 min-w-11 items-center justify-center rounded border/g)).toHaveLength(3);
     expect(reconciliation).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300');
