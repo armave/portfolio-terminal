@@ -331,7 +331,8 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     Date.now(),
     tradesWithPersistedFees,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
