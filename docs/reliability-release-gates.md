@@ -149,6 +149,8 @@ Portfolio localStorage, IndexedDB, device credentials, account sessions, and oth
 
 Cloud state and closed-history requests are part of authenticated workspace startup. Each cloud request has a 15-second default deadline that covers both response headers and JSON body consumption. A timeout aborts the request; a cloud-state pull then retains the already recovered local workspace and reports sync unavailable rather than leaving the startup overlay pending indefinitely. Idempotent writes retain their existing bounded retry behavior, with each network attempt subject to the same request deadline.
 
+The role-based automatic refresh scheduler is configured before that first workspace pull completes. Timer-triggered, manual scheduler, and visibility-triggered quote/broker/history refresh work must remain gated until the initial authenticated workspace pull has settled. Otherwise a routine local refresh can mutate the startup snapshot while the protected cloud reconciliation is still comparing local and remote state, producing a false overlapping-change conflict. The gate is released after the initial admin or guest pull settles, including a failed pull; the existing unavailable/conflict state and revision protections remain authoritative.
+
 ## 5. Manual release verification gates
 
 Automated mocks are necessary but not sufficient. Mark each gate **PASS**, **FAIL**, **BLOCKED**, or **NOT APPLICABLE**, with date, candidate SHA, environment, and evidence. Never mark a gate passed if only a mocked test ran.
