@@ -81,7 +81,7 @@ describe('portfolio equity synchronization', () => {
 
     runtime.dispose();
   });
-  it('records performance observations independently of equity projection changes', () => {
+  it('records live performance observations without pushing each quote to cloud', async () => {
     const store = new PortfolioStore();
     store.importState({
       positions: {
@@ -95,8 +95,9 @@ describe('portfolio equity synchronization', () => {
       cashCushion: { freeCash: 0, holdings: [] }
     });
 
-    const recordPerformanceSnapshot = vi.fn(() => true);
+    const recordPerformanceSnapshot = vi.fn(async () => true);
     const onPerformanceSnapshotChanged = vi.fn();
+    const onDurableEquityChanged = vi.fn();
     const runtime = createPortfolioEquitySyncRuntime({
       subscribe: (listener) => store.subscribe(listener),
       getState: () => store.getState(),
@@ -107,11 +108,12 @@ describe('portfolio equity synchronization', () => {
       setDerivedEquity: (equity, updatedAt, persist) => {
         store.setDerivedState({ portfolioEquity: equity, portfolioEquityUpdatedAt: updatedAt }, persist);
       },
-      onDurableEquityChanged: vi.fn(),
+      onDurableEquityChanged,
       recordPerformanceSnapshot,
       onPerformanceSnapshotChanged,
       now: () => 1_800_000_000_000
     });
+    await Promise.resolve();
 
     expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(1);
     expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
@@ -122,10 +124,21 @@ describe('portfolio equity synchronization', () => {
       requestStartedAt: 1_800_000_000_001,
       quoteDetails: { currency: 'USD', freshness: 'fresh', sourceTimestamp: 1_800_000_000_001 }
     });
+    await Promise.resolve();
     expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(2);
+    // Live quote ticks still update the same-day valuation, but do not schedule
+    // one cloud write per quote. The normal scheduled checkpoint persists them.
+    expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(1);
+    expect(onDurableEquityChanged).not.toHaveBeenCalled();
 
     store.setDerivedState({ portfolioEquityUpdatedAt: 1_800_000_000_002 });
     expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(2);
+
+    expect(store.setState({ balance: 50 })).toBe(true);
+    await Promise.resolve();
+    expect(recordPerformanceSnapshot).toHaveBeenCalledTimes(3);
+    expect(onPerformanceSnapshotChanged).toHaveBeenCalledTimes(2);
+    expect(onDurableEquityChanged).toHaveBeenCalledTimes(1);
     runtime.dispose();
   });
 
