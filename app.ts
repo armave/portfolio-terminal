@@ -5,14 +5,15 @@ import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
-  calculateBreakevenDays,
   calculateCommission,
+  calculatePostSaleBalanceFloorHorizon,
   resolveCommissionConfig,
   calculateProjectedDebt,
   calculateMarginInterest,
   collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
+  MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
 } from './src/domain/portfolio';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import {
@@ -1001,78 +1002,50 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const setText = (status: string) => setBreakevenText('Breakeven: ' + status);
+  const setText = (status: string) => setBreakevenText('Post-sale floor: ' + status);
 
   const tickers = Object.keys(state.positions);
-  const totalDebt = Math.abs(state.balance);
-
-  let totalGrossTarget = 0;
-  let totalInvested = 0;
-  let totalComms = 0;
-  let totalMarginCharged = state.realizedMarginCharged || 0;
-
-  tickers.forEach(t => {
-    const pos = state.positions[t];
-    if (pos && pos.shares > 0) {
-      const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
-      totalInvested += cost;
-      const valSell = pos.shares * pos.pt;
-      const commSell = calcCommission(pos.shares, valSell);
-      totalGrossTarget += (valSell - cost);
-      totalComms += (pos.commBuy || 0) + commSell;
-    }
-  });
-
-  const tranchesForCombined = collectOpenPositionTranches(state.positions);
-  const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
-    dailyRate: getDailyRate(),
-    marginDebt: totalDebt,
-    totalDebt
-  });
-  totalMarginCharged += openMarginCharged;
-
-  const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
-  const totalNetSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES);
-  const balanceConstraint = {
-    signedBalance: Number(state.balance),
-    freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
-    netSaleProceeds: totalNetSaleProceeds,
-    minimumRemainingBalanceUsd: state.portfolioSettings?.breakevenMinimumRemainingBalanceUsd ?? DEFAULT_PORTFOLIO_SETTINGS.breakevenMinimumRemainingBalanceUsd
-  };
-
-  if (tickers.length === 0 || totalInvested === 0) {
+  if (tickers.length === 0 || !tickers.some((ticker) => Number(state.positions[ticker]?.shares) > 0)) {
     setText(translateText('No active trades', getAppLanguage()));
     return;
   }
 
-  if (totalDebt <= 0) {
-    setText(translateText('No margin debt', getAppLanguage()));
+  const netSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES);
+  const result = netSaleProceeds === null
+    ? { status: 'unavailable' as const }
+    : calculatePostSaleBalanceFloorHorizon({
+      signedBalance: Number(state.balance),
+      freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
+      netSaleProceeds,
+      minimumRemainingBalanceUsd: state.portfolioSettings?.breakevenMinimumRemainingBalanceUsd ??
+        DEFAULT_PORTFOLIO_SETTINGS.breakevenMinimumRemainingBalanceUsd
+    }, getDailyRate(), MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS);
+
+  if (result.status === 'unavailable') {
+    setText(translateText('Post-sale balance estimate unavailable', getAppLanguage()));
     return;
   }
 
-  if (netTargetProfit <= 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'already-below') {
+    setText(
+      translateText('Already below floor', getAppLanguage()) + ' (' + formatUSD(result.currentBalanceUsd) + ')'
+    );
     return;
   }
 
-  if (getDailyRate() === 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'not-reached') {
+    setText(translateText('No projected floor breach within 10 years', getAppLanguage()));
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate(), balanceConstraint);
-  if (beDays === null) {
-    setText(translateText('No breakeven date satisfies the configured remaining-balance floor', getAppLanguage()));
-    return;
-  }
-
-  const beDate = new Date();
-  beDate.setDate(beDate.getDate() + beDays);
-  const beDateStr = beDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  setText(beDays + ' ' + translateText('days', getAppLanguage()) + ' (' + beDateStr + ')');
+  const floorDate = new Date();
+  floorDate.setDate(floorDate.getDate() + result.days);
+  const floorDateStr = floorDate.toLocaleDateString(
+    getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
+    { month: 'short', day: 'numeric', year: 'numeric' }
+  );
+  setText(result.days + ' ' + translateText('days', getAppLanguage()) + ' (' + floorDateStr + ')');
 }
-
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES,
