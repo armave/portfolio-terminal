@@ -251,7 +251,7 @@ describe('app localization', () => {
   it('localizes ticker market-volume labels and context', () => {
     expect(translateText('Volume', 'ru')).toBe('Объём');
     expect(translateText('Vol.', 'ru')).toBe('Объём');
-    expect(translateText('Daily volume', 'ru')).toBe('Дневной объём торгов');
+    expect(translateText('Daily volume', 'ru')).toBe('За день');
     expect(translateText('Daily traded value reported by the data provider in USD.', 'ru'))
       .toBe('Денежный объём торгов за день в USD по данным поставщика.');
     expect(translateText('shares', 'ru')).toBe('акций');

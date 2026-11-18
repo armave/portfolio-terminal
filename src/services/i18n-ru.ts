@@ -388,7 +388,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Current market value': 'Текущая рыночная стоимость',
   'Volume': 'Объём',
   'Vol.': 'Объём',
-  'Daily volume': 'Дневной объём торгов',
+  'Daily volume': 'За день',
   'Daily traded value reported by the data provider in USD.': 'Денежный объём торгов за день в USD по данным поставщика.',
   'Daily share volume reported by the data provider.': 'Количество акций, проторгованных за день, по данным поставщика.',
   'Ticker market context': 'Рыночные данные по тикерам',
