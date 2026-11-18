@@ -71,4 +71,6 @@ The one-to-one execution matcher now builds its candidate graph before consuming
 
 A broker execution without a source timestamp cannot use ticker/side/quantity alone as fallback identity. A stable exact execution reference can still identify the pair, but missing price, currency, commission or source-time values are surfaced as an `execution_data_incomplete` finding. Missing values are not compared as zero. The discrepancy view lists the specific missing evidence in English and Russian.
 
+Execution-currency differences are reported only when the stable provider fill reference proves the two records are the same execution. Cross-currency fallback candidates are not paired, and numeric execution-price comparisons run only when both records have the same known currency; no FX conversion is attempted.
+
 The matcher remains deterministic and read-only. Ambiguous rows are not counted as confirmed missing records, and no portfolio position, FIFO lot, cash, debt, fee, cost basis or P&L value is changed. Authenticated TradeNet and multi-device acceptance remain separate manual gates.
