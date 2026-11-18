@@ -27,13 +27,16 @@ describe('QuoteVolumeBadge', () => {
     expect(badge?.props.children[1].props.children).toBe('$9.1B');
   });
 
-  it('suppresses previous-session turnover when the last-trade date differs from server date', () => {
-    expect(QuoteVolumeBadge({
+  it('keeps previous-session turnover visible and identifies its session date', () => {
+    const badge = QuoteVolumeBadge({
       volumeValue: 9_128_117_006.5,
       currency: 'USD',
       lastTradeTime: '2026-11-17T19:59:25',
       serverTime: '2026-11-18 11:32:26.608'
-    })).toBeNull();
+    });
+    expect(badge?.props['aria-label']).toBe('Daily volume $9.1B · Nov 17');
+    expect(badge?.props.title).toContain('Nov 17');
+    expect(badge?.props.children[1].props.children).toBe('$9.1B');
   });
 
   it('shows turnover when last-trade and server dates match', () => {
