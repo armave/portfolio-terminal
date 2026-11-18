@@ -22,6 +22,25 @@ describe('app localization', () => {
       .toBe('Нет даты безубыточности при остатке баланса не ниже −$450');
   });
 
+  it('localizes portfolio planning controls in Russian', () => {
+    const copy = [
+      'No breakeven date satisfies the configured remaining-balance floor',
+      'Estimated time until post-sale balance breaches the configured floor',
+      'Post-sale balance estimate unavailable', 'Already below floor',
+      'No projected floor breach within 10 years', 'BALANCE FLOOR',
+      'Portfolio planning settings',
+      'Configure app-side planning guardrails and defaults for newly observed broker positions.',
+      'These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.',
+      'Minimum post-sale account balance (USD)', 'Buy More minimum equity (%)',
+      'Buy More maintenance reserve (percentage points)', 'Account equity health reference (%)',
+      'New margin-position target uplift (%)', 'Default funding for new broker positions',
+      'Save portfolio settings', 'Restore portfolio defaults', 'Portfolio settings saved.',
+      'Portfolio settings could not be saved.', 'Portfolio settings restored to defaults.',
+      'Portfolio settings could not be reset.', 'All portfolio settings saved.', 'Unsaved changes'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
   it('localizes margin risk provenance, requirements and source freshness in Russian', () => {
     const marginRiskCopy = [
       'Margin input details', 'Long exposure', 'Short exposure', 'Cash balance', 'Margin debit', 'Equity ratio',
@@ -777,6 +796,7 @@ describe('app localization', () => {
       'Delete',
       'Only administrators can view or manage the user list.',
       'Broker Rules',
+      'The horizon uses your PT, net sale proceeds after sell commission, and daily margin interest—not net-P&L breakeven.',
       'Margin and commission rules (USD)',
       'Annual margin rate (%)',
       'Interest day-count',
@@ -895,7 +915,7 @@ describe('new financial header copy localization', () => {
   it('localizes the new KPI and supporting-section labels in Russian', () => {
     const copy = [
       'Portfolio key indicators',
-      'Portfolio carry break-even',
+      'Post-sale balance floor',
       'Allocated Equity',
       'Margin Risk',
       'Fees & accrued interest',

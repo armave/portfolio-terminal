@@ -1,4 +1,4 @@
-type ProjectionKind = 'entry' | 'today' | 'next-trading-day' | 'week-end' | 'weekly' | 'breakeven';
+type ProjectionKind = 'entry' | 'today' | 'next-trading-day' | 'week-end' | 'weekly' | 'breakeven' | 'balance-floor';
 
 interface ProjectionDate {
   date: Date;
@@ -20,6 +20,7 @@ function getProjectionMilestoneLabel(
     return `(EOW · +${daysFromToday}d)`;
   }
   if (kind === 'breakeven') return 'BREAKEVEN';
+  if (kind === 'balance-floor') return 'BALANCE FLOOR';
   return `(+${daysFromToday}d)`;
 }
 
@@ -147,7 +148,12 @@ function calendarDayDifference(from: Date, to: Date): number {
   return Math.round((toUtc - fromUtc) / DAY_MS);
 }
 
-export function getUsEquityProjectionDates(today = new Date(), entryDate?: string, breakevenDays?: number): ProjectionDate[] {
+export function getUsEquityProjectionDates(
+  today = new Date(),
+  entryDate?: string,
+  horizonDays?: number,
+  horizonKind: 'breakeven' | 'balance-floor' = 'breakeven'
+): ProjectionDate[] {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   const projections: ProjectionDate[] = [];
@@ -200,12 +206,12 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
   }
 
   const referenceDate = getClosestTradingDay(start);
-  const hasBreakevenHorizon = Number.isFinite(breakevenDays) && Number(breakevenDays) >= 0;
-  const horizon = hasBreakevenHorizon ? Number(breakevenDays) : null;
+  const hasProjectionHorizon = Number.isFinite(horizonDays) && Number(horizonDays) >= 0;
+  const horizon = hasProjectionHorizon ? Number(horizonDays) : null;
   const seenKeys = new Set<string>(projections.map((p) => dateKey(p.date)));
 
-  // Keep the original nine weekly checkpoints when there is no calculable
-  // break-even horizon. Otherwise continue weekly rows up to the break-even day.
+  // Keep the original nine weekly checkpoints without a calculable horizon.
+  // Otherwise continue weekly rows up to the requested projection milestone.
   const weeklyLimit = horizon === null ? 9 : Math.ceil(horizon / 7);
   for (let week = 1; week <= weeklyLimit; week++) {
     const targetDate = addDays(referenceDate, week * 7);
@@ -220,20 +226,25 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
 
   if (horizon !== null) {
     // Exclude checkpoints beyond the horizon and mark the exact calendar day
-    // projected net reaches break-even, including when that day is a weekend.
+    // the requested projection milestone is reached, including weekends.
     for (let index = projections.length - 1; index >= 0; index--) {
       const item = projections[index];
       if (item.kind !== 'entry' && item.kind !== 'today' && item.daysFromToday > horizon) projections.splice(index, 1);
     }
     if (horizon > 0) {
-      const breakEvenDate = addDays(start, horizon);
-      const key = dateKey(breakEvenDate);
+      const milestoneDate = addDays(start, horizon);
+      const key = dateKey(milestoneDate);
       const existing = projections.find((item) => dateKey(item.date) === key);
       if (existing) {
-        existing.kind = 'breakeven';
-        existing.label = getProjectionMilestoneLabel(horizon, 'breakeven');
+        existing.kind = horizonKind;
+        existing.label = getProjectionMilestoneLabel(horizon, horizonKind);
       } else {
-        projections.push({ date: breakEvenDate, daysFromToday: horizon, kind: 'breakeven', label: getProjectionMilestoneLabel(horizon, 'breakeven') });
+        projections.push({
+          date: milestoneDate,
+          daysFromToday: horizon,
+          kind: horizonKind,
+          label: getProjectionMilestoneLabel(horizon, horizonKind)
+        });
       }
     }
   }

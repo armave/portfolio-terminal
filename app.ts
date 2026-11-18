@@ -5,14 +5,13 @@ import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
-  calculateBreakevenDays,
-  calculateCommission,
+  calculatePostSaleBalanceFloorHorizon,
   resolveCommissionConfig,
   calculateProjectedDebt,
   calculateMarginInterest,
-  collectOpenPositionTranches,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
+  MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
 } from './src/domain/portfolio';
 import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import {
@@ -40,7 +39,8 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS,
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
-import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getMarketInsightsTicker, getPortfolioNetSaleProceeds, getPortfolioProjectionTickers, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { DEFAULT_PORTFOLIO_SETTINGS, normalizePortfolioSettings } from './src/domain/portfolioSettings';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
@@ -215,7 +215,8 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -329,7 +330,8 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     Date.now(),
     tradesWithPersistedFees,
     resolveCommissionConfig(TRADERNET_RULES),
-    current.activeTrancheMixes || {}
+    current.activeTrancheMixes || {},
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -427,7 +429,8 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     Date.now(),
     executedTrades,
     resolveCommissionConfig(TRADERNET_RULES),
-    activeTrancheMixes
+    activeTrancheMixes,
+    current.portfolioSettings
   );
   const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
@@ -873,10 +876,6 @@ async function resetToBlankState(): Promise<void> {
   }
 }
 
-function calcCommission(shares: number, totalVal: number) {
-  return calculateCommission(shares, totalVal, resolveCommissionConfig(TRADERNET_RULES));
-}
-
 function getDailyRate() {
   return TRADERNET_RULES.annualBorrowRate / TRADERNET_RULES.dayCountBasis;
 }
@@ -997,78 +996,50 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function updateCombinedBreakeven() {
-  const setText = (status: string) => setBreakevenText('Breakeven: ' + status);
+  const setText = (status: string) => setBreakevenText('Post-sale floor: ' + status);
 
   const tickers = Object.keys(state.positions);
-  const totalDebt = Math.abs(state.balance);
-
-  let totalGrossTarget = 0;
-  let totalInvested = 0;
-  let totalComms = 0;
-  let totalNetSaleProceeds = 0;
-  let totalMarginCharged = state.realizedMarginCharged || 0;
-
-  tickers.forEach(t => {
-    const pos = state.positions[t];
-    if (pos && pos.shares > 0) {
-      const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
-      totalInvested += cost;
-      const valSell = pos.shares * pos.pt;
-      const commSell = calcCommission(pos.shares, valSell);
-      totalGrossTarget += (valSell - cost);
-      totalNetSaleProceeds += valSell - commSell;
-      totalComms += (pos.commBuy || 0) + commSell;
-    }
-  });
-
-  const tranchesForCombined = collectOpenPositionTranches(state.positions);
-  const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
-    dailyRate: getDailyRate(),
-    marginDebt: totalDebt,
-    totalDebt
-  });
-  totalMarginCharged += openMarginCharged;
-
-  const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
-  const balanceConstraint = {
-    signedBalance: Number(state.balance),
-    freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
-    netSaleProceeds: totalNetSaleProceeds
-  };
-
-  if (tickers.length === 0 || totalInvested === 0) {
+  if (tickers.length === 0 || !tickers.some((ticker) => Number(state.positions[ticker]?.shares) > 0)) {
     setText(translateText('No active trades', getAppLanguage()));
     return;
   }
 
-  if (totalDebt <= 0) {
-    setText(translateText('No margin debt', getAppLanguage()));
+  const netSaleProceeds = getPortfolioNetSaleProceeds(state, TRADERNET_RULES, getPortfolioProjectionTickers(state));
+  const result = netSaleProceeds === null
+    ? { status: 'unavailable' as const }
+    : calculatePostSaleBalanceFloorHorizon({
+      signedBalance: Number(state.balance),
+      freeCash: Number(state.cashCushion?.freeCash ?? state.cashBalance),
+      netSaleProceeds,
+      minimumRemainingBalanceUsd: state.portfolioSettings?.breakevenMinimumRemainingBalanceUsd ??
+        DEFAULT_PORTFOLIO_SETTINGS.breakevenMinimumRemainingBalanceUsd
+    }, getDailyRate(), MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS);
+
+  if (result.status === 'unavailable') {
+    setText(translateText('Post-sale balance estimate unavailable', getAppLanguage()));
     return;
   }
 
-  if (netTargetProfit <= 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'already-below') {
+    setText(
+      translateText('Already below floor', getAppLanguage()) + ' (' + formatUSD(result.currentBalanceUsd) + ')'
+    );
     return;
   }
 
-  if (getDailyRate() === 0) {
-    setText(translateText('No date', getAppLanguage()));
+  if (result.status === 'not-reached') {
+    setText(translateText('No projected floor breach within 10 years', getAppLanguage()));
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate(), balanceConstraint);
-  if (beDays === null) {
-    setText(translateText('No breakeven date with remaining balance ≥ −$450', getAppLanguage()));
-    return;
-  }
-
-  const beDate = new Date();
-  beDate.setDate(beDate.getDate() + beDays);
-  const beDateStr = beDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  setText(beDays + ' ' + translateText('days', getAppLanguage()) + ' (' + beDateStr + ')');
+  const floorDate = new Date();
+  floorDate.setDate(floorDate.getDate() + result.days);
+  const floorDateStr = floorDate.toLocaleDateString(
+    getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
+    { month: 'short', day: 'numeric', year: 'numeric' }
+  );
+  setText(result.days + ' ' + translateText('days', getAppLanguage()) + ' (' + floorDateStr + ')');
 }
-
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES,
@@ -2041,6 +2012,33 @@ function bindStartupActions() {
     logAppMessage,
     getSyncStatus: getCloudSyncStatus,
     setSyncStatus: setCloudSyncStatus
+  });
+  addUiEventListener('settings:save-portfolio-settings', (event) => {
+    void requireAdmin('change portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      const settings = normalizePortfolioSettings(event.detail.settings);
+      if (!portfolioStore.setState({ portfolioSettings: settings })) {
+        showToast(translateText('Portfolio settings could not be saved.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings saved.', getAppLanguage()), 'success');
+      renderBoard();
+    });
+  });
+  addUiEventListener('settings:reset-portfolio-settings', () => {
+    void requireAdmin('reset portfolio planning settings').then((allowed) => {
+      if (!allowed) return;
+      if (!portfolioStore.setState({ portfolioSettings: DEFAULT_PORTFOLIO_SETTINGS })) {
+        showToast(translateText('Portfolio settings could not be reset.', getAppLanguage()), 'error');
+        return;
+      }
+      state = portfolioStore.getState();
+      pushStateToGist();
+      showToast(translateText('Portfolio settings restored to defaults.', getAppLanguage()), 'success');
+      renderBoard();
+    });
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
     void requireAdmin('change broker rules').then((allowed) => {

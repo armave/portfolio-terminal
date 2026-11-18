@@ -1,5 +1,6 @@
 import type { BoardState, BrokerAssumptions, PositionRecord } from '../types/portfolio';
 import { getPositiveMarketPrice } from './portfolioValuation';
+import { calculateSaleCommission } from './portfolioTransactions';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -12,6 +13,38 @@ export function getTotalPortfolioInvested(state?: BoardState | null): number {
   if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
     return acc + (pos?.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
+  }, 0);
+}
+
+/** Resolve the same target-sale scope used by the portfolio projection table. */
+export function getPortfolioProjectionTickers(state: BoardState): string[] {
+  const tickers = Object.keys(state.positions || {});
+  const activeView = state.activeView || '';
+  const isCombined = activeView === 'COMBINED' ||
+    (tickers.length !== 1 && !state.positions?.[activeView]);
+  return isCombined
+    ? tickers
+    : [state.positions?.[activeView] ? activeView : tickers[0]]
+      .filter((ticker): ticker is string => Boolean(ticker));
+}
+
+/** Sum hypothetical net proceeds from target-price sales after the configured sell commission. */
+export function getPortfolioNetSaleProceeds(
+  state: BoardState,
+  rules: BrokerAssumptions,
+  tickers: string[] = Object.keys(state.positions || {})
+): number | null {
+  return tickers.reduce<number | null>((total, ticker) => {
+    if (total === null) return null;
+    const position = state.positions?.[ticker];
+    if (!position) return total;
+    const shares = Number(position.shares);
+    if (!Number.isFinite(shares)) return null;
+    if (shares <= 0) return total;
+    const exitPrice = Number(position.pt);
+    if (!Number.isFinite(exitPrice) || exitPrice <= 0) return null;
+    const grossProceeds = shares * exitPrice;
+    return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, rules);
   }, 0);
 }
 

@@ -1031,7 +1031,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
                     ) : visibleActiveTranches.map((tranche) => {
-                      const type = getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker);
+                      const type = getActiveTrancheType(activeTrancheTypes, tranche.id, tranche.ticker, state.portfolioSettings?.defaultActiveTrancheType);
                       const mix = normalizeActiveTrancheMix(
                         tranche.quantity,
                         activeTrancheMixes[tranche.id] || activeTrancheMixes[tranche.ticker]

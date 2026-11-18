@@ -31,7 +31,7 @@ describe('Margin hardcode centralization', () => {
   it('uses shared margin-risk and broker-timezone constants instead of duplicate literals', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('ACCOUNT_EQUITY_HEALTH_REFERENCE * 100');
+    expect(source).toContain('referenceRatio * 100');
     expect(source).not.toMatch(/40\s*-\s*Math\.min/);
     expect(source).not.toContain("'Asia/Yerevan'");
     expect(source).toContain('FREEDOM_BROKER_TIME_ZONE');
@@ -330,9 +330,9 @@ describe('accessible Margin Health overview action', () => {
 
 describe('header carry-break-even formatting', () => {
   it('removes only the legacy internal prefix while preserving status and date text', () => {
-    expect(getHeaderBreakevenValue('Breakeven: 216 days (Nov 15, 2026)')).toBe('216 days (Nov 15, 2026)');
-    expect(getHeaderBreakevenValue('Breakeven: No margin debt')).toBe('No margin debt');
-    expect(getHeaderBreakevenValue('Breakeven: —')).toBe('—');
+    expect(getHeaderBreakevenValue('Post-sale floor: 94 days (Feb 20, 2027)')).toBe('94 days (Feb 20, 2027)');
+    expect(getHeaderBreakevenValue('Post-sale floor: Already below floor')).toBe('Already below floor');
+    expect(getHeaderBreakevenValue('Post-sale floor: —')).toBe('—');
     expect(getHeaderBreakevenValue('')).toBe('—');
   });
 });

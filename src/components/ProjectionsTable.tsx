@@ -4,18 +4,17 @@ import { TablePagination } from './TablePagination';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import {
   calculateAccruedFees,
+  calculatePostSaleBalanceFloorHorizon,
   calculateProjectedAccountBalanceAfterSale,
   calculateProjectedDebt,
-  findProjectionBreakevenDay
+  MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
-import { calculateSaleCommission } from '../domain/portfolioTransactions';
+import { getPortfolioNetSaleProceeds, getPortfolioProjectionInputs, getPortfolioProjectionTickers } from '../domain/portfolioSelectors';
 import { getAppLanguage, translateText } from '../services/i18n';
-
-const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
+import { normalizePortfolioSettings } from '../domain/portfolioSettings';
 
 function ProjectionsTableView() {
   const state = usePortfolio();
@@ -23,53 +22,37 @@ function ProjectionsTableView() {
   const projectionState = state.activeView === activeView ? state : { ...state, activeView };
   const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
     getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
-  const tickers = Object.keys(projectionState.positions || {});
-  const isCombined = projectionState.activeView === 'COMBINED' ||
-    (tickers.length !== 1 && !projectionState.positions?.[projectionState.activeView || '']);
-  const liquidatedTickers = isCombined
-    ? tickers
-    : [projectionState.positions?.[projectionState.activeView || ''] ? projectionState.activeView : tickers[0]]
-      .filter((ticker): ticker is string => Boolean(ticker));
-  const netSaleProceeds = liquidatedTickers.reduce((total, ticker) => {
-    const position = projectionState.positions?.[ticker];
-    if (!position) return total;
-    const shares = Number(position.shares);
-    const exitPrice = Number(position.pt);
-    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(exitPrice) || exitPrice <= 0) return total;
-    const grossProceeds = shares * exitPrice;
-    return total + grossProceeds - calculateSaleCommission(shares, grossProceeds, state.brokerAssumptions);
-  }, 0);
+  const liquidatedTickers = getPortfolioProjectionTickers(projectionState);
+  const netSaleProceeds = getPortfolioNetSaleProceeds(
+    projectionState,
+    state.brokerAssumptions,
+    liquidatedTickers
+  );
+  const portfolioSettings = normalizePortfolioSettings(state.portfolioSettings);
   const freeCashInput = state.cashCushion?.freeCash ?? state.cashBalance;
-  const freeCash = Number(freeCashInput ?? 0);
-  const breakevenBalanceConstraint = {
-    signedBalance: Number(state.balance),
-    freeCash: Number(freeCashInput),
-    netSaleProceeds
-  };
-
+  const freeCash = Number(freeCashInput);
+  const signedBalance = Number(state.balance);
   const hasProjection = debtToUse > 0 || gross > 0;
-  // A breakeven milestone requires both net P&L reaching zero and a post-sale
-  // account balance no lower than -$450 on that same day.
-  const breakevenDays = hasProjection
-    ? findProjectionBreakevenDay(
-      gross,
-      totalComms,
-      marginChargedToUse,
-      debtToUse,
-      dailyRate,
-      MAX_BREAKEVEN_SEARCH_DAYS,
-      breakevenBalanceConstraint
-    )
-    : 0;
+  const balanceFloorHorizon = hasProjection && netSaleProceeds !== null
+    ? calculatePostSaleBalanceFloorHorizon({
+      signedBalance,
+      freeCash,
+      netSaleProceeds,
+      minimumRemainingBalanceUsd: portfolioSettings.breakevenMinimumRemainingBalanceUsd
+    }, dailyRate, MAX_POST_SALE_BALANCE_FLOOR_SEARCH_DAYS)
+    : { status: 'unavailable' as const };
+  const balanceFloorDays = balanceFloorHorizon.status === 'breach'
+    ? balanceFloorHorizon.days
+    : undefined;
   const projectionItems = hasProjection
-    ? getUsEquityProjectionDates(new Date(), entryDate, breakevenDays)
+    ? getUsEquityProjectionDates(new Date(), entryDate, balanceFloorDays, 'balance-floor')
     : [];
   const pagination = useTablePagination('portfolio-projection', projectionItems.length, 10);
   const visibleItems = sliceTablePage(projectionItems, pagination.currentPage, pagination.pageSize);
 
   useEffect(() => {
     pagination.setPage(1);
-  }, [gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate, state.balance, freeCash, netSaleProceeds]);
+  }, [gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate, state.balance, freeCash, netSaleProceeds, portfolioSettings.breakevenMinimumRemainingBalanceUsd]);
 
   if (!hasProjection) {
     return (
@@ -113,13 +96,17 @@ function ProjectionsTableView() {
         const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
         const net = kind === 'breakeven' ? 0 : projectedNet;
         const dailyFee = projectedDebt * dailyRate;
-        const projectedAccountBalance = calculateProjectedAccountBalanceAfterSale(
-          Number(state.balance ?? 0), freeCash, netSaleProceeds, dailyRate, daysFromToday
-        );
+        const projectedAccountBalance = netSaleProceeds !== null &&
+          Number.isFinite(signedBalance) &&
+          Number.isFinite(freeCash)
+          ? calculateProjectedAccountBalanceAfterSale(
+            signedBalance, freeCash, netSaleProceeds, dailyRate, daysFromToday
+          )
+          : null;
 
         const rowClass = kind === 'today'
           ? 'bg-slate-900/80 font-bold'
-          : kind === 'breakeven'
+          : kind === 'balance-floor'
             ? 'bg-amber-950/30 font-bold'
             : 'hover:bg-slate-900/40';
         const netClass = net >= 0 ? 'text-emerald-400' : 'text-rose-400';
@@ -137,9 +124,9 @@ function ProjectionsTableView() {
             ? translateText('EOW · +{days}d', getAppLanguage())
             : translateText('NTD · +{days}d', getAppLanguage());
           badgeText = defaultTag.replace('{days}', String(daysFromToday));
-        } else if (kind === 'breakeven') {
+        } else if (kind === 'balance-floor') {
           badgeClass = 'text-xs text-amber-300 font-mono';
-          badgeText = translateText('BREAKEVEN', getAppLanguage());
+          badgeText = translateText('BALANCE FLOOR', getAppLanguage());
         }
 
         return (
@@ -152,8 +139,8 @@ function ProjectionsTableView() {
               {netSign}{formatUSD(net)}
             </td>
             <td class="projection-number-cell py-1 px-1 text-right tabular-nums text-slate-200">{formatUSD(feesAndCommissions)} ({formatUSD(dailyFee)})</td>
-            <td class={`projection-number-cell py-1 px-1 text-right tabular-nums ${projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
-              {formatUSD(projectedAccountBalance)}
+            <td class={`projection-number-cell py-1 px-1 text-right tabular-nums ${projectedAccountBalance === null ? 'text-slate-500' : projectedAccountBalance < 0 ? 'text-rose-400' : 'text-cyan-200'}`}>
+              {projectedAccountBalance === null ? '—' : formatUSD(projectedAccountBalance)}
             </td>
           </tr>
         );

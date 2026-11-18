@@ -11,7 +11,8 @@ describe("getAccountPermissions", () => {
       canViewClosedHistory: true,
       canViewActiveTranches: true,
       canViewGuestTrancheHistory: false,
-      canEditBrokerRules: true
+      canEditBrokerRules: true,
+      canEditPortfolioSettings: true
     });
   });
 
@@ -24,7 +25,8 @@ describe("getAccountPermissions", () => {
       canViewClosedHistory: false,
       canViewActiveTranches: false,
       canViewGuestTrancheHistory: true,
-      canEditBrokerRules: false
+      canEditBrokerRules: false,
+      canEditPortfolioSettings: false
     });
   });
 

@@ -75,6 +75,21 @@ describe('US equity trading calendar', () => {
     expect(projections.every(({ daysFromToday, kind }) => kind === 'entry' || daysFromToday <= 94)).toBe(true);
   });
 
+  it('marks the exact post-sale balance-floor breach date separately from net-P&L breakeven', () => {
+    const projections = getUsEquityProjectionDates(
+      localDate(2026, 11, 18),
+      undefined,
+      94,
+      'balance-floor'
+    );
+    expect(projections.at(-1)).toMatchObject({
+      daysFromToday: 94,
+      kind: 'balance-floor',
+      label: 'BALANCE FLOOR'
+    });
+    expect(dateLabel(projections.at(-1)!.date)).toBe('2027-02-20');
+  });
+
   it('puts a historical entry date before today without treating it as a projection', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 6), '2026-09-22');
     expect(projections.slice(0, 3).map(({ date, daysFromToday, kind }) => [
