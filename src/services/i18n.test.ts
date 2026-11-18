@@ -793,7 +793,7 @@ describe('app localization', () => {
       'Delete',
       'Only administrators can view or manage the user list.',
       'Broker Rules',
-      'The floor is checked on the projected net-P&L breakeven day, not on each weekly checkpoint.',
+      'The horizon uses your PT, net sale proceeds after sell commission, and daily margin interest—not net-P&L breakeven.',
       'Margin and commission rules (USD)',
       'Annual margin rate (%)',
       'Interest day-count',
