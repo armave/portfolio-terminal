@@ -1019,7 +1019,6 @@ function updateCombinedBreakeven() {
       const valSell = pos.shares * pos.pt;
       const commSell = calcCommission(pos.shares, valSell);
       totalGrossTarget += (valSell - cost);
-      totalNetSaleProceeds += valSell - commSell;
       totalComms += (pos.commBuy || 0) + commSell;
     }
   });
