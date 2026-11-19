@@ -314,7 +314,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     fetchStocktwits: (symbol, signal, force) => dependencies.proxyFetch('stocktwits', { symbol }, {
       signal, ...(force ? { cache: 'no-store' as RequestCache } : {})
     }),
-    onNewsError: (symbol, error) => {
+    onNewsError: (_symbol, error) => {
       logSafeDiagnostic('warn', 'market-data', error);
     }
   });
