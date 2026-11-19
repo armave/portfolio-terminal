@@ -45,6 +45,8 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
   let bootstrapComplete = false;
   let currentUser = null;
   let currentToken = '';
+  let previewAdminUser = null;
+  let previewAdminToken = '';
   let nextUserId = 1;
   let stateRevision = 0;
   let cloudStatePayload = null;
@@ -231,6 +233,8 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
       }
       currentUser = user;
       currentToken = `operations-session-${user.id}`;
+      previewAdminUser = null;
+      previewAdminToken = '';
       await json(route, 200, {
         token: currentToken, user: publicUser(user), expiresAt: Date.now() + 3_600_000
       }, {}, call);
@@ -241,8 +245,59 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
         await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
       }
+      if (currentUser.isImpersonating && method === 'POST' && pathname !== '/api/auth/preview/return') {
+        await json(route, 403, { error: 'Administrator preview sessions are read-only.' }, {}, call);
+        return;
+      }
+      if (pathname === '/api/auth/preview' && method === 'POST') {
+        if (currentUser.role !== 'admin' || currentUser.isImpersonating) {
+          await json(route, 403, { error: 'Administrator access required.' }, {}, call);
+          return;
+        }
+        const guest = users.find((user) => user.id === body.userId);
+        if (!guest) {
+          await json(route, 404, { error: 'User not found.' }, {}, call);
+          return;
+        }
+        if (guest.role !== 'guest') {
+          await json(route, 400, { error: 'Only guest accounts have a separate dashboard to preview.' }, {}, call);
+          return;
+        }
+        previewAdminUser = currentUser;
+        previewAdminToken = currentToken;
+        currentUser = {
+          ...guest,
+          isImpersonating: true,
+          impersonatedById: previewAdminUser.id,
+          impersonatedByName: previewAdminUser.name
+        };
+        currentToken = `operations-preview-session-${guest.id}`;
+        await json(route, 201, {
+          token: currentToken,
+          user: publicUser(guest),
+          expiresAt: Date.now() + 30 * 60_000
+        }, {}, call);
+        return;
+      }
+      if (pathname === '/api/auth/preview/return' && method === 'POST') {
+        if (!currentUser.isImpersonating || !previewAdminUser || !previewAdminToken) {
+          await json(route, 400, { error: 'No administrator preview is active.' }, {}, call);
+          return;
+        }
+        currentUser = previewAdminUser;
+        currentToken = previewAdminToken;
+        previewAdminUser = null;
+        previewAdminToken = '';
+        await json(route, 200, { success: true }, {}, call);
+        return;
+      }
       if (pathname === '/api/auth/me' && method === 'GET') {
-        await json(route, 200, { user: publicUser(currentUser) }, {}, call);
+        const user = publicUser(currentUser);
+        await json(route, 200, {
+          user: currentUser.isImpersonating
+            ? { ...user, isImpersonating: true, impersonatedById: currentUser.impersonatedById, impersonatedByName: currentUser.impersonatedByName }
+            : user
+        }, {}, call);
         return;
       }
       if (pathname === '/api/auth/me' && method === 'POST') {
@@ -348,6 +403,8 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
       if (pathname === '/api/auth/logout' && method === 'POST') {
         currentUser = null;
         currentToken = '';
+        previewAdminUser = null;
+        previewAdminToken = '';
         await json(route, 200, { success: true }, {}, call);
         return;
       }
@@ -1031,6 +1088,14 @@ try {
   await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits'), 'Stocktwits opt-in request');
 
   const visibleSettingsDesk = () => page.locator('#settingsDesk').filter({ visible: true }).first();
+  const openUserManagement = async () => {
+    const disclosure = visibleSettingsDesk().locator('#settingsUserManagement');
+    await disclosure.waitFor({ state: 'visible', timeout: 10_000 });
+    if (!(await disclosure.evaluate((element) => element.open))) {
+      await disclosure.locator('summary').click();
+    }
+    await disclosure.locator('form.settings-user-form').waitFor({ state: 'visible', timeout: 10_000 });
+  };
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   const settingsNavigation = visibleSettingsDesk().getByRole('navigation', { name: 'Settings sections' });
@@ -1048,8 +1113,10 @@ try {
     }
   }
   if (await visibleSettingsDesk().locator('.settings-device-details[open]').count() !== 0 ||
-      await visibleSettingsDesk().locator('.settings-maintenance-advanced[open]').count() !== 0) {
-    throw new Error('Technical diagnostics or advanced maintenance should be collapsed by default.');
+      await visibleSettingsDesk().locator('.settings-maintenance-advanced[open]').count() !== 0 ||
+      await visibleSettingsDesk().locator('#settingsUserManagement[open]').count() !== 0 ||
+      await visibleSettingsDesk().locator('#settingsUserManagement form.settings-user-form').count() !== 0) {
+    throw new Error('Technical diagnostics, advanced maintenance, and user management should be collapsed by default.');
   }
   if (await page.locator('#settingsDesk').filter({ visible: true }).count() !== 1) {
     throw new Error('Expected exactly one visible Settings desk after navigation.');
@@ -1126,6 +1193,7 @@ try {
       return saveButton instanceof HTMLButtonElement && !saveButton.disabled;
     }, name, { timeout: 10_000 });
   };
+  await openUserManagement();
   const createUser = async (name, password) => {
     await visibleSettingsDesk().getByLabel('User name').fill(name);
     await visibleSettingsDesk().getByLabel('Password (6+ characters)').fill(password);
@@ -1193,6 +1261,34 @@ try {
 
   const rowForUser = (name) => visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`)
     .locator('xpath=ancestor::tr[1]');
+
+  const previewCallsBefore = worker.count('POST', '/api/auth/preview');
+  await rowForUser('Browser Guest Keep').getByRole('button', { name: 'View as Browser Guest Keep' }).click();
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/auth/preview').slice(previewCallsBefore)
+      .some((call) => call.responseStatus === 201 && call.body.userId === 'operations-user-2'),
+    'administrator starting a guest preview session'
+  );
+  await page.getByRole('button', { name: 'Return to admin' }).waitFor({ state: 'visible', timeout: 20_000 });
+  await page.getByText('Guest preview: Browser Guest Keep').waitFor({ state: 'visible', timeout: 20_000 });
+  const previewToken = worker.findCalls('POST', '/api/auth/preview').slice(previewCallsBefore)
+    .find((call) => call.responseStatus === 201)?.token;
+  if (!previewToken || previewToken === 'operations-admin-session') {
+    throw new Error('Guest preview did not use a separate temporary session token.');
+  }
+  const previewReturnCallsBefore = worker.count('POST', '/api/auth/preview/return');
+  await page.getByRole('button', { name: 'Return to admin' }).click();
+  await waitForCondition(
+    () => worker.findCalls('POST', '/api/auth/preview/return').slice(previewReturnCallsBefore)
+      .some((call) => call.responseStatus === 200),
+    'administrator ending the guest preview session'
+  );
+  await page.getByText('Guest preview: Browser Guest Keep').waitFor({ state: 'detached', timeout: 20_000 });
+  await openUserManagement();
+  const adminIdentityAfterPreview = worker.findCalls('GET', '/api/auth/me').slice(-1)[0];
+  if (!adminIdentityAfterPreview || adminIdentityAfterPreview.token !== 'operations-admin-session') {
+    throw new Error('Returning from preview did not restore the original administrator session.');
+  }
   const deleteRow = rowForUser('Browser Guest Delete');
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await deleteRow.getByRole('button', { name: 'Delete' }).click();
