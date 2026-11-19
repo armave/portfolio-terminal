@@ -1083,3 +1083,108 @@ describe('cloud revision conflict recovery', () => {
     expect(revision).toBe(7);
   });
 });
+
+
+describe('cloud push activity signaling', () => {
+  it('starts cloud activity only for a changed snapshot that needs a write', async () => {
+    let revision = 0;
+    let postCount = 0;
+    const onPushStart = vi.fn();
+    const snapshot = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500
+    };
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:test-nonce',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        getRevision: () => revision,
+        recordPulledRevision: (next) => { revision = next; },
+        setRevision: (next) => { revision = next; },
+        enqueueWrite: (operation) => operation(revision)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async (_input, init) => {
+        expect(String(init?.method || 'GET').toUpperCase()).toBe('POST');
+        postCount += 1;
+        return new Response(
+          JSON.stringify({ success: true, revision: postCount }),
+          { status: 200, headers: { ETag: `"${postCount}"` } }
+        );
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      onPushStart,
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    expect(await runtime.pushCloudState(snapshot, options)).toBe(true);
+    expect(onPushStart).toHaveBeenCalledTimes(1);
+    expect(postCount).toBe(1);
+
+    // A later scheduled checkpoint with the same payload is a confirmed no-op.
+    expect(await runtime.pushCloudState({ ...snapshot }, options)).toBe(true);
+    expect(onPushStart).toHaveBeenCalledTimes(1);
+    expect(postCount).toBe(1);
+  });
+
+  it('does not start cloud activity for retries blocked by a latched revision conflict', async () => {
+    let postCount = 0;
+    const onPushStart = vi.fn();
+    const runtime = createCloudStateSyncRuntime({
+      workerProxyUrl: 'https://portfolio.example.test',
+      getActiveGatewaySecret: () => 'test-secret',
+      encryptCloudPayload: async () => 'aesgcm:v2:test-ciphertext:test-nonce',
+      decryptCloudPayload: async (payload) => ({ plaintext: payload, legacy: false }),
+      readCloudRevision: (headers) => {
+        const etag = headers?.get('ETag');
+        return etag ? Number(etag.replaceAll('"', '')) : null;
+      },
+      revisionCoordinator: {
+        recordPulledRevision: () => {},
+        setRevision: () => {},
+        enqueueWrite: (operation) => operation(0)
+      },
+      processRollovers: () => false,
+      loadSavedState: (fallback) => fallback,
+      loadSavedHistory: () => ({ brokerExecutedTrades: [], cashflows: [] }),
+      saveState: () => true,
+      normalizeFreedomTrades: () => [],
+      fetchImpl: async () => {
+        postCount += 1;
+        return new Response(
+          JSON.stringify({ error: 'Stale revision.' }),
+          { status: 409, headers: { ETag: '"1"' } }
+        );
+      }
+    });
+    const options = {
+      secret: 'test-secret',
+      onPushStart,
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+    const snapshot = { positions: { AAPL: { ticker: 'AAPL', shares: 10 } }, balance: 500 };
+
+    expect(await runtime.pushCloudState(snapshot, options)).toBe(false);
+    expect(onPushStart).toHaveBeenCalledTimes(1);
+    expect(postCount).toBe(1);
+
+    // The conflict latch rejects this scheduled retry before a write begins.
+    expect(await runtime.pushCloudState(snapshot, options)).toBe(false);
+    expect(onPushStart).toHaveBeenCalledTimes(1);
+    expect(postCount).toBe(1);
+  });
+});
