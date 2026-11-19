@@ -34,6 +34,7 @@ import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portf
 import { createStartupCloudWriteGate } from './src/services/startupCloudWriteGate';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
+import { createAdminGuestPreviewRuntime } from './src/services/adminGuestPreviewRuntime';
 import {
   createPortfolioAutoRefreshScheduler,
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -63,6 +64,8 @@ import {
   getCurrentUser,
   listUsers,
   logoutAccount,
+  startAdminGuestPreviewSession,
+  endAdminGuestPreviewSession,
   clearFreedomTradeNetStreamSnapshotCache,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
@@ -88,6 +91,7 @@ import {
   saveSavedHistory,
   saveApiKeys,
   saveGatewaySecret,
+  setGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
 } from './src/services/storage';
@@ -2044,6 +2048,27 @@ async function startApp(secret: string) {
   await portfolioAuthenticatedStartupRuntime.startApp(secret);
 }
 
+const adminGuestPreviewRuntime = createAdminGuestPreviewRuntime({
+  getAccountRole: () => currentAccountRole,
+  getActiveGatewaySecret: () => getGatewaySecret(),
+  getActiveView: () => String(portfolioStore.getState().activeView || ''),
+  setActiveGatewaySecret: setGatewaySecret,
+  setPortfolioGatewaySecret: (secret) => portfolioStore.setState({ gatewaySecret: secret }),
+  setActiveView,
+  startPreviewSession: startAdminGuestPreviewSession,
+  endPreviewSession: endAdminGuestPreviewSession,
+  validateGatewaySecret,
+  clearSavedGatewaySecret: async () => {
+    saveGatewaySecret('');
+    await persistGatewaySecret();
+  },
+  startWorkspace: startApp,
+  showAuthContainer,
+  showToast: (message, variant) => {
+    showToast(translateText(message, getAppLanguage()), variant);
+  }
+});
+
 const portfolioStartupRuntime = createPortfolioStartupRuntime({
   isInitialized: () => appInitialized,
   setInitialized: (initialized) => { appInitialized = initialized; },
@@ -2162,6 +2187,18 @@ function bindStartupActions() {
   });
 
   portfolioSessionRuntime.bindLogout();
+  addUiEventListener('auth:admin-preview-start', (event) => {
+    void adminGuestPreviewRuntime.start(event.detail.userId).then(
+      () => event.detail.resolve(),
+      (error) => event.detail.resolve(error instanceof Error ? error.message : 'Could not open guest preview.')
+    );
+  });
+  addUiEventListener('auth:admin-preview-return', (event) => {
+    void adminGuestPreviewRuntime.returnToAdmin().then(
+      () => event.detail.resolve(),
+      (error) => event.detail.resolve(error instanceof Error ? error.message : 'Could not return to the administrator workspace.')
+    );
+  });
   addUiEventListener('settings:pull-cloud-state', () => {
     if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
     void syncCloudState('pull', { replaceLocalState: true });

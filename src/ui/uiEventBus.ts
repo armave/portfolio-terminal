@@ -4,7 +4,9 @@ import type { PortfolioSettings } from '../domain/portfolioSettings';
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'auth:logout': undefined;
-  'auth:user-changed': { user: { id: string; name: string; role: "guest" | "admin"; language: "en" | "ru"; createdAt: string } | null };
+  'auth:user-changed': { user: { id: string; name: string; role: "guest" | "admin"; language: "en" | "ru"; createdAt: string; isImpersonating?: boolean; impersonatedById?: string; impersonatedByName?: string } | null };
+  'auth:admin-preview-start': { userId: string; resolve: (error?: string) => void };
+  'auth:admin-preview-return': { resolve: (error?: string) => void };
   'auth:visibility': { isOpen: boolean };
   'settings:backup-import-request': undefined;
   'settings:backup-import-file': { file: File };
