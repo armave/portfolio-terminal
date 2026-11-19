@@ -1,3 +1,5 @@
+import { logSafeDiagnostic } from './safeDiagnostics';
+
 const AUTOMATIC_REPAIR_ATTEMPT_QUERY = '_pt_auto_repair';
 
 const BROWSER_REPAIR_OPERATION_TIMEOUT_MS = 3_000;
@@ -84,7 +86,7 @@ export async function repairBrowserProfile(
       }
     }
   } catch (error) {
-    console.warn('[Browser Repair]: Could not unregister the app service worker.', error);
+    logSafeDiagnostic('warn', 'startup', error);
   }
 
   let precacheCachesDeleted = 0;
@@ -97,11 +99,11 @@ export async function repairBrowserProfile(
       try {
         if (await withOperationTimeout(dependencies.deleteCache(name), operationTimeoutMs)) precacheCachesDeleted += 1;
       } catch (error) {
-        console.warn('[Browser Repair]: Could not remove an app precache.', error);
+        logSafeDiagnostic('warn', 'startup', error);
       }
     }
   } catch (error) {
-    console.warn('[Browser Repair]: Could not inspect browser app caches.', error);
+    logSafeDiagnostic('warn', 'startup', error);
   }
 
   const reloadUrl = new URL(appScope.href);
