@@ -1072,7 +1072,7 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
     methodology: {
       runsPerViewport, minimumRunsPerViewport, viewports,
       sampling: 'Each run uses a fresh isolated browser context with service workers blocked; samples are collected sequentially on one fixed GitHub-hosted runner image and Chromium build.',
-      thresholdPolicy: 'No pass/fail performance thresholds are inferred from this artifact. Establish thresholds only after reviewing repeated same-runner baselines and known variance.'
+      thresholdPolicy: 'No pass/fail performance thresholds are inferred from this artifact. Establish thresholds only after reviewing repeated same-runner baselines and known variance.',
       readiness: 'Authenticated bootstrap, intact 100-position fixture after mocked broker refresh, visible Market Insights panel and rendered Trades closed-history row',
       stageTimings: { authShellReadyMs: 'Bootstrap prompt', authenticationMs: 'Admin authentication', fixtureHydrationMs: 'Local synthetic fixture hydration', brokerRefreshAndParityMs: 'Mocked broker refresh and fixture parity', portfolioRenderReadyMs: 'Portfolio render readiness', tradesDeskReadyMs: 'Trades desk lazy-load and first row readiness' },
       missingMeasurements: 'Unsupported metrics remain null and are excluded from summaries'
