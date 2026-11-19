@@ -271,6 +271,7 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'Portfolio sync': 'Синхронизация портфеля',
   'Conflict': 'Конфликт',
   'Connecting': 'Подключение',
+  'Setup required': 'Требуется настройка',
   'Not checked': 'Не проверено',
   'Synced': 'Синхронизировано',
   'Syncing': 'Синхронизация',
