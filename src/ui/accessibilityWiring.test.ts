@@ -298,6 +298,18 @@ describe('Stage 10 accessibility wiring', () => {
     expect(app).toContain("void syncCloudState('pull', { replaceLocalState: true });");
   });
 
+  it('prevents deferred local writes from undoing an explicit cloud replacement', () => {
+    const app = readSource('../../app.ts');
+    const gate = readSource('../services/startupCloudWriteGate.ts');
+
+    expect(app).toContain('startupCloudWriteGate.beginConfirmedReplacement()');
+    expect(app).toContain('if (activeCloudStateWrite) await activeCloudStateWrite;');
+    expect(app).toContain('startupCloudWriteGate.finishConfirmedReplacement(succeeded, wasStartupSuppressed)');
+    expect(app).toContain('if (gistSyncTimeout) clearTimeout(gistSyncTimeout);');
+    expect(gate).toContain('pending = false;');
+    expect(gate).toContain("return 'discarded';");
+  });
+
   it('gives new user credentials explicit accessible names', () => {
     const source = readSource('../components/SettingsDesk.tsx');
     expect(source).toContain('aria-label="User name"');
