@@ -430,13 +430,13 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       />
 
       <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
-        <a href="#settings-account-section">{translateText('Account')}</a>
-        <a href="#settings-data-section">{translateText('Data & Sync')}</a>
-        {account?.role === 'admin' && <a href="#settings-access-section">{translateText('Access management')}</a>}
-        {permissions.canEditPortfolioSettings && <a href="#settings-portfolio-section">{translateText('Portfolio planning settings')}</a>}
-        {permissions.canEditBrokerRules && <a href="#settings-broker-section">{translateText('Broker & Trading')}</a>}
-        <a href="#settings-maintenance-section">{translateText('Diagnostics & Maintenance')}</a>
-        <a href="#settings-help-section">{translateText('Methodology & Help')}</a>
+        <a href="#settings-account-section"><span>{translateText('Account')}</span><small>{translateText('Profile & language')}</small></a>
+        <a href="#settings-data-section"><span>{translateText('Data & Sync')}</span><small>{translateText('Refresh & backups')}</small></a>
+        {account?.role === 'admin' && <a href="#settings-access-section"><span>{translateText('Access management')}</span><small>{translateText('Users & roles')}</small></a>}
+        {permissions.canEditPortfolioSettings && <a href="#settings-portfolio-section"><span>{translateText('Portfolio planning settings')}</span><small>{translateText('Planning defaults')}</small></a>}
+        {permissions.canEditBrokerRules && <a href="#settings-broker-section"><span>{translateText('Broker & Trading')}</span><small>{translateText('Rates & commissions')}</small></a>}
+        <a href="#settings-maintenance-section"><span>{translateText('Diagnostics & Maintenance')}</span><small>{translateText('Device & recovery')}</small></a>
+        <a href="#settings-help-section"><span>{translateText('Methodology & Help')}</span><small>{translateText('Calculations & guidance')}</small></a>
       </nav>
 
       <section id="settings-account-section" class="settings-section" aria-labelledby="settingsAccountTitle">

@@ -240,6 +240,32 @@ describe('guest Settings layout', () => {
 });
 
 
+describe('Settings section navigation layout', () => {
+  it('keeps each section label informative with a compact supporting description', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<nav class="settings-section-nav"');
+    for (const label of [
+      'Profile & language',
+      'Refresh & backups',
+      'Users & roles',
+      'Planning defaults',
+      'Rates & commissions',
+      'Device & recovery',
+      'Calculations & guidance'
+    ]) {
+      expect(source).toContain(label);
+    }
+    expect(source).toContain('<small>{translateText(');
+  });
+
+  it('uses compact responsive grid navigation rather than horizontally scrolling chips on mobile', () => {
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    expect(styles).toContain('#settingsDesk .settings-section-nav a small');
+    expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
+    expect(styles).not.toContain('flex-wrap: nowrap;\n    overflow-x: auto;\n    overscroll-behavior-inline: contain;');
+  });
+});
+
 describe('Settings information architecture', () => {
   it('provides role-aware section navigation and separates high-risk maintenance', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
