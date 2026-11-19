@@ -2630,10 +2630,12 @@ describe('portfolio store subscriber failure isolation', () => {
       expect(store.getState().balance).toBe(-125);
       expect(laterSubscriber).toHaveBeenCalledTimes(1);
       expect(laterSubscriber).toHaveBeenCalledWith(store.getState(), 'durable');
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to notify a portfolio state subscriber:',
-        error
-      );
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toEqual({
+        type: 'client_diagnostic',
+        category: 'portfolio-store',
+        errorClass: 'unknown'
+      });
     } finally {
       consoleError.mockRestore();
     }
@@ -2655,10 +2657,12 @@ describe('portfolio store subscriber failure isolation', () => {
       expect(store.getState().activeView).toBe('SETTINGS');
       expect(laterSubscriber).toHaveBeenCalledTimes(1);
       expect(laterSubscriber).toHaveBeenCalledWith('SETTINGS');
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to notify a portfolio active-view subscriber:',
-        error
-      );
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toEqual({
+        type: 'client_diagnostic',
+        category: 'portfolio-store',
+        errorClass: 'unknown'
+      });
     } finally {
       consoleError.mockRestore();
     }
