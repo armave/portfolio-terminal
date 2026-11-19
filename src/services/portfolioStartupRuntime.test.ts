@@ -61,6 +61,7 @@ describe('portfolio startup runtime', () => {
 
     expect(fixture.calls).toEqual(['restore', 'initialized:true', 'hide-auth', 'start-app']);
     expect(fixture.isInitialized()).toBe(true);
+    expect(fixture.dependencies.onUnauthenticatedStartupSettled).not.toHaveBeenCalled();
     expect(fixture.dependencies.onStartupFailure).not.toHaveBeenCalled();
   });
 
