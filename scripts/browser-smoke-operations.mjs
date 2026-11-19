@@ -1120,7 +1120,7 @@ try {
   if (await visibleSettingsDesk().locator('.settings-device-details[open]').count() !== 0 ||
       await visibleSettingsDesk().locator('.settings-maintenance-advanced[open]').count() !== 0 ||
       await visibleSettingsDesk().locator('#settingsUserManagement[open]').count() !== 0 ||
-      await visibleSettingsDesk().locator('#settingsUserManagement form.settings-user-form').count() !== 0) {
+      await visibleSettingsDesk().locator('#settingsUserManagement form.settings-user-form').isVisible()) {
     throw new Error('Technical diagnostics, advanced maintenance, and user management should be collapsed by default.');
   }
   if (await page.locator('#settingsDesk').filter({ visible: true }).count() !== 1) {
