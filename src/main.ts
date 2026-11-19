@@ -8,6 +8,7 @@ import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
 import { pwaUpdateRuntime } from './services/pwaUpdateRuntime';
 import { isOnlyOpenAppClient, isPageRefreshNavigation } from './services/pwaRefreshUpdate';
+import { logSafeDiagnostic } from './services/safeDiagnostics';
 import {
   consumeAutomaticRepairAttemptMarker,
   repairCurrentBrowserAppCache
@@ -57,7 +58,7 @@ async function applyWaitingUpdateAfterRefresh(): Promise<void> {
   } catch (error) {
     // Fail closed: keep the worker waiting and let the ordinary close/reopen
     // lifecycle apply it later rather than forcing activation after a failed probe.
-    console.warn('[PWA]: Could not safely apply the waiting update on refresh.', error);
+    logSafeDiagnostic('warn', 'startup', error);
   } finally {
     refreshUpdateActivationInFlight = false;
   }
@@ -108,13 +109,13 @@ applyStagedServiceWorkerUpdate = registerSW({
     // Check after registration and every 30 minutes while the page is visible.
     // Returning to a visible tab catches up if the interval elapsed in the background.
     pwaUpdateRuntime.start(() => registration.update().catch((error) => {
-      console.warn('[PWA]: Could not check for a newer Portfolio Terminal app shell.', error);
+      logSafeDiagnostic('warn', 'startup', error);
       throw error;
     }));
   },
   onRegisterError: (error) => {
     pwaUpdateRuntime.markError();
-    console.warn('[PWA]: Could not register the Portfolio Terminal service worker.', error);
+    logSafeDiagnostic('warn', 'startup', error);
   }
 });
 
@@ -132,7 +133,7 @@ const startupRecoveryWatchdog = createStartupRecoveryWatchdog({
     emitUiEvent('app:startup-state', { visible: true, failed: true });
   },
   onRepairError: (error) => {
-    console.error('[Startup Watchdog]: Automatic browser repair could not complete.', error);
+    logSafeDiagnostic('error', 'startup', error);
   }
 });
 
