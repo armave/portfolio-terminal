@@ -149,6 +149,8 @@ export interface SyncOptions {
   showToast?: (msg: string, type: string) => void;
   logAppMessage?: (msg: string) => void;
   onStatusChange?: (status: 'synced' | 'error' | 'conflict') => void;
+  /** Start the UI activity state only after a changed snapshot is ready to be written. */
+  onPushStart?: () => void;
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
   onEncryptionMigrationFailure?: (error: Error) => void;
@@ -1037,6 +1039,8 @@ async function performPushCloudState(
     }
     const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
     if (!isCurrentSession()) return false;
+    // Do not flash the sync indicator for unchanged snapshots or a latched conflict.
+    handlers.onPushStart?.();
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', workerProxyUrl);
