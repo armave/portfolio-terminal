@@ -9,7 +9,7 @@ describe('PWA update registration policy', () => {
 
     expect(handler).toBeDefined();
     expect(handler).toContain('pwaUpdateRuntime.markUpdateAvailable()');
-    expect(handler).not.toMatch(/updateServiceWorker|skipWaiting|location\\.reload/);
-    expect(viteConfig).toMatch(/registerType:\\s*'prompt'/);
+    expect(handler).not.toMatch(/updateServiceWorker|skipWaiting|location\.reload/);
+    expect(viteConfig).toMatch(/registerType:\s*'prompt'/);
   });
 });
