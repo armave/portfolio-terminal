@@ -19,7 +19,7 @@ describe('app localization', () => {
   });
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
-      'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud portfolio',
+      'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',
       'Cloud pull', 'Cloud write', 'Background reconciliation', 'Succeeded', 'Conflict', 'Failed',
       'HTTP status', 'Expected revision', 'Observed revision',
       'No cloud synchronization attempts have been recorded in this tab session.',
