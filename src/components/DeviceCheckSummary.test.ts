@@ -100,7 +100,7 @@ describe('Device Check summary diagnostics', () => {
   });
 
   it('shows checking while device diagnostics have not loaded', () => {
-    expect(getDeviceHealth(null, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('checking');
+    expect(getDeviceHealth(null, { status: 'idle', text: '' })).toBe('checking');
   });
 
   it('summarizes device readiness without treating offline as local storage failure', () => {
