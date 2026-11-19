@@ -560,11 +560,11 @@ describe('background cloud conflict reconciliation', () => {
           if (getCount === 1) {
             return response(200, { encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(base))}:nonce` }, 1);
           }
-          return remoteStatus === 404
-            ? response(404, { error: 'Workspace was reset.' }, 2)
-            : response(200, {
-              encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remoteAfterConflict))}:nonce`
-            }, 2);
+          if (remoteStatus === 404) return response(404, { error: 'Workspace was reset.' }, 2);
+          if (remoteStatus !== 200) return response(remoteStatus, { error: 'Temporary cloud service failure.' });
+          return response(200, {
+            encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remoteAfterConflict))}:nonce`
+          }, 2);
         }
         postCount += 1;
         const body = JSON.parse(String(init?.body || '{}'));
@@ -671,6 +671,37 @@ describe('background cloud conflict reconciliation', () => {
       operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
       expectedRevision: 1, observedRevision: 2
     });
+  });
+
+  it('reports HTTP server failures even when the error response has no revision header', async () => {
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 10 } },
+      balance: 500,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const { runtime, base } = createRuntime(remote, 503);
+    const options = {
+      secret: 'test-secret',
+      getState: () => ({
+        ...base,
+        positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+        balance: 300,
+        lastUpdated: 250
+      }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: () => true,
+      showToast: () => {},
+      logAppMessage: () => {}
+    };
+
+    await runtime.pullCloudState(options);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+    expect(getCloudSyncDiagnostics()).toContainEqual(expect.objectContaining({
+      operation: 'reconcile', outcome: 'conflict', reason: 'http-server-error', httpStatus: 503,
+      expectedRevision: 1
+    }));
   });
 
   it('keeps a conflict blocked when both devices changed protected financial state differently', async () => {
