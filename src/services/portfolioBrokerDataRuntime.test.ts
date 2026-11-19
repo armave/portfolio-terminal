@@ -188,7 +188,7 @@ describe('portfolio broker data runtime', () => {
 
     expect(fixture.dependencies.restoreGatewaySecret).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith(expect.anything());
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
     expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([existing, newest]));
     expect(fixture.events).toContainEqual({
       type: 'broker:executed-trades',
