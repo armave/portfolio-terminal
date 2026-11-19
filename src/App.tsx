@@ -344,6 +344,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       refreshAccountInfo: () => brokerDataRuntime.refreshAccountInfo(session),
       refreshAccountInfoForWait: () => brokerDataRuntime.loadFreedomAccount(session),
       refreshExecutedTrades: () => brokerDataRuntime.loadExecutedTrades(session),
+      refreshExecutedTradesForWait: () => brokerDataRuntime.refreshExecutedTrades(session),
       refreshActiveOrders: () => brokerDataRuntime.loadActiveOrders(session)
     });
   }, [currentUser?.id, currentUser?.role]);
