@@ -3,6 +3,7 @@ import { useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
+import { StartupOverlay } from './components/StartupOverlay';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
@@ -580,23 +581,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           if (file && permissions.canManageBackups) emitUiEvent('settings:backup-import-file', { file });
         }}
       />}
-      {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
-        <div class="startup-loading__content">
-          <div class="startup-loading__mark" aria-hidden="true">PT</div>
-          <div class="startup-loading__title">PORTFOLIO TERMINAL</div>
-          <div class="startup-loading__message">{startupState.failed ? 'Could not finish initializing the app.' : 'Initializing your portfolio…'}</div>
-          {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
-          <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
-          {startupState.failed && <>
-            <div class="startup-loading__hint">{'Your saved portfolio and sign-in credentials will be kept.'}</div>
-            <div class="startup-loading__actions">
-              <button type="button" onClick={() => emitUiEvent('app:startup-repair', undefined)}>Repair this browser</button>
-              <button type="button" onClick={() => emitUiEvent('app:startup-retry', undefined)}>Retry</button>
-              <button type="button" onClick={() => emitUiEvent('app:startup-offline', undefined)}>Continue offline</button>
-            </div>
-          </>}
-        </div>
-      </div>}
+      {startupState.visible && <StartupOverlay
+        failed={startupState.failed}
+        onRetry={() => emitUiEvent('app:startup-retry', undefined)}
+        onContinueOffline={() => emitUiEvent('app:startup-offline', undefined)}
+        onRepair={() => emitUiEvent('app:startup-repair', undefined)}
+      />}
     </>
   );
 }

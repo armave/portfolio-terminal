@@ -86,6 +86,18 @@ describe('app localization', () => {
       'Check now',
       'Open the app again to retry update detection.'
     ];
+    const startupCopy = [
+      'WORKSPACE STARTUP',
+      'STARTUP NEEDS ATTENTION',
+      'Preparing your workspace',
+      'Restoring saved data and preparing the active page.',
+      'The app is checking its first page before opening.',
+      'Repair app cache',
+      'Repair clears only this app’s cached files. Your portfolio and sign-in data are kept.'
+    ];
+    for (const copy of startupCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
     for (const copy of pwaCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
     }
