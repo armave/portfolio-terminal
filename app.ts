@@ -795,18 +795,28 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     return false;
   }
   const confirmedReplacement = mode === 'pull' && pullOptions.replaceLocalState === true;
+  const requestSession = currentAccountSessionGuard.capture();
   const wasStartupSuppressed = confirmedReplacement
     ? startupCloudWriteGate.beginConfirmedReplacement()
     : false;
+  const finishConfirmedReplacement = (succeeded: boolean): void => {
+    const disposition = startupCloudWriteGate.finishConfirmedReplacement(succeeded, wasStartupSuppressed);
+    if (disposition === 'flush') flushDeferredStartupCloudWrite();
+  };
   if (confirmedReplacement) {
     // Cancel a debounced pre-pull checkpoint and prevent store subscribers from
     // queuing another one while the user-confirmed cloud snapshot is applied.
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
     if (activeCloudStateWrite) await activeCloudStateWrite;
+    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) {
+      finishConfirmedReplacement(false);
+      return false;
+    }
   }
-  const requestSession = currentAccountSessionGuard.capture();
-  const succeeded = await syncCloudStateService(mode, {
+  let succeeded: boolean;
+  try {
+    succeeded = await syncCloudStateService(mode, {
     state,
     getState: () => state,
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
@@ -839,10 +849,18 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
           ? { text: 'Cloud sync conflict — recovery required', status: 'conflict' }
           : { text: 'Sync failed', status: 'error' });
     }
-  });
+    });
+  } catch (error) {
+    if (confirmedReplacement && requestSession && currentAccountSessionGuard.isCurrent(requestSession)) {
+      finishConfirmedReplacement(false);
+    }
+    throw error;
+  }
   if (confirmedReplacement) {
-    const disposition = startupCloudWriteGate.finishConfirmedReplacement(succeeded, wasStartupSuppressed);
-    if (disposition === 'flush') flushDeferredStartupCloudWrite();
+    // A session transition owns the gate now; never release another account's
+    // startup suppression from a request belonging to the previous session.
+    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) return false;
+    finishConfirmedReplacement(succeeded);
   } else if (mode === 'pull' && succeeded && currentAccountRole === 'admin') {
     // A normal accepted startup pull may release writes deferred during hydration.
     releaseStartupCloudWrites();
