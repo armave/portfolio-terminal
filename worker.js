@@ -13,9 +13,20 @@ const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
 
+const SAFE_PROVIDER_METRIC_NAMES = new Set(["cache_hit", "inflight_dedup", "provider_cooldown", "provider_request", "provider_failure"]);
+const SAFE_PROVIDER_METRIC_PROVIDERS = new Set(["freedom_quote", "finnhub", "twelvedata", "finnhub_history", "finnhub_calendar", "finnhub_market_status", "finnhub_events", "yahoo_quote"]);
+
 function providerMetric(metric, fields = {}) {
-    // Do not include credentials, raw upstream URLs, or account data in telemetry.
-    console.info(JSON.stringify({ type: "provider_metric", metric, ...fields }));
+    // Metrics are intentionally non-identifying: never spread caller fields.
+    const values = fields && typeof fields === "object" && !Array.isArray(fields) ? fields : {};
+    const entry = {
+        type: "provider_metric",
+        metric: SAFE_PROVIDER_METRIC_NAMES.has(metric) ? metric : "unknown",
+        provider: SAFE_PROVIDER_METRIC_PROVIDERS.has(values.provider) ? values.provider : "unknown"
+    };
+    if (Number.isFinite(values.durationMs) && values.durationMs >= 0) entry.durationMs = values.durationMs;
+    if (typeof values.success === "boolean") entry.success = values.success;
+    console.info(JSON.stringify(entry));
 }
 
 async function withProviderCache(provider, key, fetcher) {
