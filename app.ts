@@ -31,6 +31,7 @@ import { repairCurrentBrowserAppCache } from './src/services/browserProfileRepai
 import { createPortfolioEquitySyncRuntime } from './src/services/portfolioEquitySyncRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
+import { createStartupCloudWriteGate } from './src/services/startupCloudWriteGate';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
@@ -587,8 +588,8 @@ async function pullGuestPortfolioSnapshot(): Promise<boolean> {
   return refreshGuestPortfolioSnapshot();
 }
 
-let startupCloudWritesSuppressed = true;
-let startupCloudWritePending = false;
+const startupCloudWriteGate = createStartupCloudWriteGate();
+let activeCloudStateWrite: Promise<boolean> | null = null;
 // The refresh timer is configured before workspace hydration. Keep every scheduled
 // quote/broker/history refresh idle until the authenticated startup pull has settled.
 let initialWorkspaceSyncSettled = false;
@@ -701,29 +702,34 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
     return false;
   }
 
-  if (startupCloudWritesSuppressed) {
-    startupCloudWritePending = true;
-    return false;
-  }
+  if (startupCloudWriteGate.deferWrite()) return false;
 
   portfolioStore.setState({ lastUpdated: Date.now() });
   state = portfolioStore.getState();
 
   const doPush = async (): Promise<boolean> => {
     setCloudStatus('syncing', 'WRITING...');
-    try {
-      const ok = await syncCloudState('push');
-      if (ok) {
-        setCloudStatus('synced', 'UPDATED');
-        return true;
-      }
+    const request = (async (): Promise<boolean> => {
+      try {
+        const ok = await syncCloudState('push');
+        if (ok) {
+          setCloudStatus('synced', 'UPDATED');
+          return true;
+        }
 
-      setCloudStatus('error', 'FAIL');
-      return false;
-    } catch (err: any) {
-      logAppMessage(`[KV Cloud Sync Error]: ${err.message}`);
-      setCloudStatus('error', 'FAIL');
-      return false;
+        setCloudStatus('error', 'FAIL');
+        return false;
+      } catch (err: any) {
+        logAppMessage(`[KV Cloud Sync Error]: ${err.message}`);
+        setCloudStatus('error', 'FAIL');
+        return false;
+      }
+    })();
+    activeCloudStateWrite = request;
+    try {
+      return await request;
+    } finally {
+      if (activeCloudStateWrite === request) activeCloudStateWrite = null;
     }
   };
 
@@ -769,12 +775,7 @@ function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceL
   emitUiEvent('app:scroll-workspace');
 }
 
-function releaseStartupCloudWrites(): void {
-  if (!startupCloudWritesSuppressed) return;
-  startupCloudWritesSuppressed = false;
-  if (!startupCloudWritePending) return;
-
-  startupCloudWritePending = false;
+function flushDeferredStartupCloudWrite(): void {
   launchBackgroundTask(
     async () => {
       const saved = await pushStateToCloud();
@@ -784,20 +785,44 @@ function releaseStartupCloudWrites(): void {
   );
 }
 
+function releaseStartupCloudWrites(): void {
+  if (startupCloudWriteGate.releaseAfterAcceptedStartupPull()) flushDeferredStartupCloudWrite();
+}
+
 async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') return pullGuestPortfolioSnapshot();
     return false;
   }
+  const confirmedReplacement = mode === 'pull' && pullOptions.replaceLocalState === true;
   const requestSession = currentAccountSessionGuard.capture();
-  const succeeded = await syncCloudStateService(mode, {
-    state,
+  const wasStartupSuppressed = confirmedReplacement
+    ? startupCloudWriteGate.beginConfirmedReplacement()
+    : false;
+  const finishConfirmedReplacement = (succeeded: boolean): void => {
+    const disposition = startupCloudWriteGate.finishConfirmedReplacement(succeeded, wasStartupSuppressed);
+    if (disposition === 'flush') flushDeferredStartupCloudWrite();
+  };
+  if (confirmedReplacement) {
+    // Cancel a debounced pre-pull checkpoint and prevent store subscribers from
+    // queuing another one while the user-confirmed cloud snapshot is applied.
+    const hadDebouncedCloudWrite = gistSyncTimeout !== null;
+    if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
+    gistSyncTimeout = null;
+    if (hadDebouncedCloudWrite) startupCloudWriteGate.deferWrite();
+    if (activeCloudStateWrite) await activeCloudStateWrite;
+    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) return false;
+  }
+  let succeeded: boolean;
+  try {
+    succeeded = await syncCloudStateService(mode, {
+      state,
     getState: () => state,
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
     protectLocalEditsDuringPull: pullOptions.protectLocalEditsDuringPull === true,
     replaceLocalState: pullOptions.replaceLocalState === true,
-    onLocalChangesPreserved: () => { startupCloudWritePending = true; },
+    onLocalChangesPreserved: () => { startupCloudWriteGate.deferWrite(); },
     pullCloudAndRewriteLocal,
     applyAutoReconciledState: (parsedState) => {
       // Apply a validated background merge without switching desks or scrolling
@@ -823,10 +848,20 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
           ? { text: 'Cloud sync conflict — recovery required', status: 'conflict' }
           : { text: 'Sync failed', status: 'error' });
     }
-  });
-  if (mode === 'pull' && succeeded && currentAccountRole === 'admin') {
-    // A confirmed pull refreshes the revision baseline. Only then may writes
-    // deferred during startup or a failed earlier pull be released.
+    });
+  } catch (error) {
+    if (confirmedReplacement && requestSession && currentAccountSessionGuard.isCurrent(requestSession)) {
+      finishConfirmedReplacement(false);
+    }
+    throw error;
+  }
+  if (confirmedReplacement) {
+    // A session transition owns the gate now; never release another account's
+    // startup suppression from a request belonging to the previous session.
+    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) return false;
+    finishConfirmedReplacement(succeeded);
+  } else if (mode === 'pull' && succeeded && currentAccountRole === 'admin') {
+    // A normal accepted startup pull may release writes deferred during hydration.
     releaseStartupCloudWrites();
   }
   return succeeded;
@@ -1935,7 +1970,7 @@ function hideAuthContainer() {
 }
 
 const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartupRuntime({
-  beginWorkspaceActivation: () => { startupCloudWritesSuppressed = true; },
+  beginWorkspaceActivation: () => startupCloudWriteGate.beginWorkspaceActivation(),
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
@@ -1993,6 +2028,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     // Only the owner workspace may release its deferred cloud writes.
     if (currentAccountRole === 'admin') releaseStartupCloudWrites();
   },
+  onWorkspaceSyncSettled: () => emitUiEvent('app:initial-workspace-sync-settled'),
   hideStartupLoading,
   reportBackgroundStartupError: (_task, error) => {
     logSafeDiagnostic('warn', 'startup', error);
@@ -2023,6 +2059,7 @@ const portfolioStartupRuntime = createPortfolioStartupRuntime({
   showAuthContainer,
   hideAuthContainer,
   startApp,
+  onUnauthenticatedStartupSettled: () => emitUiEvent('app:initial-workspace-sync-settled'),
   onStartupFailure: (error) => {
     logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();

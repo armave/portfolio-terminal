@@ -26,6 +26,8 @@ export interface PortfolioAuthenticatedStartupDependencies {
   finishInitialQuoteRefresh: () => void;
   renderBoardAnalystConsensus: () => void;
   recoverPendingCloudWrites: () => Promise<void>;
+  /** Notify the shell after the authenticated initial cloud/guest snapshot has settled. */
+  onWorkspaceSyncSettled?: () => void;
   hideStartupLoading: () => void;
   reportBackgroundStartupError?: (task: StartupBackgroundTask, error: unknown) => void;
 }
@@ -146,6 +148,7 @@ export function createPortfolioAuthenticatedStartupRuntime(
       // A timeout, HTTP failure, or protected conflict is not a valid revision
       // baseline. Keep queued local writes suppressed until a later pull succeeds.
       if (workspaceSyncAccepted) recoverPendingCloudWritesInBackground();
+      dependencies.onWorkspaceSyncSettled?.();
     });
   };
 

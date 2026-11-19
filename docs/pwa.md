@@ -31,7 +31,7 @@ The reconnect banner is not a synchronization command. Existing role-specific re
 
 The app checks for a new service-worker version immediately after registration and then every 30 minutes while the page is visible. Returning to a visible tab triggers a catch-up check when at least 30 minutes have elapsed since the previous attempt. Settings → Diagnostics & Maintenance shows the latest update-check state and timestamp, and offers a safe Check now action.
 
-Update detection only stages a waiting worker. The app does not call `skipWaiting` or force activation during startup or while the workspace is in use. With `registerType: 'prompt'`, the browser can activate the waiting worker after all tabs controlled by the older worker have been closed; the next app launch then uses the updated shell. This keeps an app-shell release from reloading a page while its authenticated cloud reconciliation may still be in flight. First controller acquisition does not force a reload.
+Update detection only stages a waiting worker. The app does not activate it during ordinary startup or immediately when a new version is detected. With `registerType: 'prompt'`, the waiting worker remains staged until either all older app tabs are closed and the browser activates it naturally, or the user explicitly refreshes the page. On a refresh, the new page waits until the startup overlay is dismissed and the initial workspace decision has settled: authenticated admin/guest cloud reconciliation must finish, while the unauthenticated sign-in/setup screen is immediately eligible because no authenticated cloud pull is pending. It then asks the waiting worker how many open clients belong to the app scope and activates the update only when it is the sole app tab. If other app tabs are open, the update stays staged; close those tabs and refresh again. This avoids forcing a reload across another active workspace while still letting a single-tab refresh install the new shell without requiring a separate close-and-relaunch. First controller acquisition does not force a reload.
 
 An update-check failure after successful service-worker registration is shown as a check failure, not as proof that the app is out of date; the runtime retries on the next interval. If registration itself fails, Settings explains that reopening the app is required to retry registration. Check now performs another detection attempt only when a registration is available; it never forces a reload or activates a waiting worker.
 
@@ -43,13 +43,15 @@ Do not switch back to unconditional `autoUpdate` activation or clear localStorag
 
 `npm run test:pwa` runs the production build through Vite preview with Playwright service workers enabled. It verifies the generated manifest and icon URLs, the Apple touch icon, exact app scope, an active app-scoped service-worker registration, one Workbox precache containing the app document/entry-script/stylesheet, exclusion of API URLs from that precache, and a cold offline navigation that displays the offline status.
 
-The existing unit suite separately tests install-event capture, user-initiated prompting, iOS detection, reconnect verification, failed service checks, retry, and stale connectivity-probe races. Existing browser performance and Operations journeys remain isolated from service-worker caching to preserve reproducible measurements.
+The existing unit suite separately tests install-event capture, user-initiated prompting, refresh-navigation detection, fail-closed multi-tab update checks, the service-worker client-count message, iOS detection, reconnect verification, failed service checks, retry, and stale connectivity-probe races. Existing browser performance and Operations journeys remain isolated from service-worker caching to preserve reproducible measurements.
 
 ## Manual release verification
 
 After exact-head GitHub Actions pass, verify on real devices:
 - Android Chrome: install prompt, accepted install, standalone launch and relaunch.
-- Desktop Chrome/Edge: install prompt, standalone launch, a 30-minute visible-tab update check, Settings status, and a staged update that activates only after all older app tabs are closed.
+- Android Chrome and desktop Chrome/Edge: stage an update, refresh with one app tab open, and verify that the new shell activates only after authenticated startup is ready.
+- Multi-tab update safety: leave a second Portfolio Terminal tab open, refresh the first tab, and verify that neither tab is forced to reload; close the second tab, refresh again, and verify that the waiting worker activates and the refreshed tab reloads once.
+- Confirm an ordinary app launch and background update detection do not activate a waiting worker without a page refresh or the normal all-tabs-closed lifecycle.
 - iPhone/iPad Safari: Add to Home Screen guidance, touch icon, standalone launch and status-bar appearance.
 - Offline restart: cached shell opens, authenticated data remains unavailable until identity is verified online.
 - Reconnection: banner remains while the application status endpoint is unavailable and clears only after a successful status response.

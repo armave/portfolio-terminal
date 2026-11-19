@@ -81,7 +81,7 @@ describe('app localization', () => {
       'Automatically checks every 30 minutes',
       'Last checked',
       'Not checked yet',
-      'The update will install automatically the next time you open the app.',
+      'Close other Portfolio Terminal tabs, then refresh this page to install the update.',
       'The app will retry automatically. You can also check again now.',
       'Check now',
       'Open the app again to retry update detection.'
