@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
+import { getCloudSyncDiagnostics } from './cloudSyncDiagnostics';
 
 describe('cloud state compact serialization', () => {
   it('preserves the immutable source sale-event link when compacting closed trades', async () => {
@@ -633,6 +634,10 @@ describe('background cloud conflict reconciliation', () => {
       selectedTicker: 'MSFT'
     });
     expect(counts()).toEqual({ getCount: 2, postCount: 2, revision: 3 });
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
+      expectedRevision: 1, observedRevision: 2
+    });
   });
 
   it('accepts a newer remote-only financial snapshot without posting it again', async () => {
@@ -662,6 +667,10 @@ describe('background cloud conflict reconciliation', () => {
     expect(applied).toMatchObject({ positions: { AAPL: { ticker: 'AAPL', shares: 8 } }, balance: 600 });
     expect(posted).toHaveLength(1);
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1, revision: 2 });
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
+      expectedRevision: 1, observedRevision: 2
+    });
   });
 
   it('keeps a conflict blocked when both devices changed protected financial state differently', async () => {
@@ -699,6 +708,10 @@ describe('background cloud conflict reconciliation', () => {
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
     expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
     expect(posted).toHaveLength(1);
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'conflict', reason: 'overlapping-edits',
+      httpStatus: 200, expectedRevision: 1, observedRevision: 2
+    });
   });
 
   it('leaves legacy embedded history to the normal migration flow', async () => {
@@ -726,6 +739,9 @@ describe('background cloud conflict reconciliation', () => {
     expect(applied).toBe(false);
     expect(posted).toHaveLength(1);
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'conflict', reason: 'legacy-history-requires-migration'
+    });
   });
 
   it('does not auto-adopt a missing cloud record over a previously populated base', async () => {
@@ -744,6 +760,9 @@ describe('background cloud conflict reconciliation', () => {
     expect(applied).toBe(false);
     expect(posted).toHaveLength(1);
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'conflict', reason: 'remote-record-missing', httpStatus: 404
+    });
   });
 
   it('does not attempt background reconciliation without an accepted base snapshot', async () => {
@@ -777,6 +796,9 @@ describe('background cloud conflict reconciliation', () => {
       logAppMessage: () => {}
     })).toBe(false);
     expect(requests).toBe(1);
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'conflict', reason: 'no-accepted-baseline'
+    });
   });
 });
 
