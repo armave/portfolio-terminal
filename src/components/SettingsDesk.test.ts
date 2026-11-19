@@ -34,8 +34,7 @@ describe('expandable user management and guest preview actions', () => {
     expect(source).toContain("user.role === 'guest'");
     expect(source).toContain("translateText('View as')");
     expect(source).toContain("translateText('Shared workspace')");
-    expect(source).toContain('account?.isImpersonating');
-    expect(source).toContain("translateText('Use Return to admin above to leave preview mode.')");
+    expect(source).toContain("!account?.isImpersonating &&");
   });
 });
 

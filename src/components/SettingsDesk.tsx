@@ -460,13 +460,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               </label>}
             </div>
             {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
-            <div class={'settings-account-actions grid grid-cols-1 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
-              {account?.isImpersonating
-                ? <p class="rounded border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200" role="note">
-                    {translateText('Use Return to admin above to leave preview mode.')}
-                  </p>
-                : <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>}
-            </div>
+            {!account?.isImpersonating && <div class={'settings-account-actions grid grid-cols-1 gap-2 ' + (account?.role === 'guest' ? 'settings-account-actions--guest' : '')}>
+              <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-9 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">{translateText('Sign out')}</button>
+            </div>}
           </div>
         </div>
       </section>
