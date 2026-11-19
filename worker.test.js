@@ -33,6 +33,7 @@ function tamperAesGcmV2Tag(payload) {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
+import { logServerDiagnostic } from './safeServerDiagnostics.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
 
 describe('production Margin Intelligence digest enforcement', () => {
@@ -1214,6 +1215,7 @@ describe('gateway browser-origin boundary', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe(appOrigin);
     expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
     expect(response.headers.get('ETag')).toBe('"4"');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('rejects browser origins outside the configured personal-app allowlist', async () => {
@@ -2266,6 +2268,34 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(await store.ctx.storage.get('cloud-write-idempotency:record')).toBeUndefined();
   });
 
+  it('marks empty, current, and stale cloud-state reads as non-cacheable', async () => {
+    const store = makeDurableObject();
+
+    const missing = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('Cache-Control')).toBe('no-store');
+
+    const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'first' })
+    }));
+    expect(firstWrite.status).toBe(200);
+
+    const staleWrite = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'stale' })
+    }));
+    expect(staleWrite.status).toBe(409);
+    expect(staleWrite.headers.get('Cache-Control')).toBe('no-store');
+
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(latest.status).toBe(200);
+    expect(latest.headers.get('Cache-Control')).toBe('no-store');
+    expect(latest.headers.get('ETag')).toBe('"1"');
+  });
+
   it('accepts a write at the current revision and rejects a stale write', async () => {
     const store = makeDurableObject();
     const firstWrite = await store.fetch(new Request('https://worker.test/api/state', {
@@ -3026,6 +3056,27 @@ describe('Worker request hardening', () => {
     expect(response.status).toBe(200);
   }, 15_000);
 
+  it('does not return raw Gemini upstream exception details to the client', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(
+      new Error('https://generativelanguage.googleapis.com/private?key=provider-secret AAPL')
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'hello' })
+    }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
+
+    expect(response.status).toBe(502);
+    const body = await response.text();
+    expect(body).toMatch(/"error":"Model models\/[a-z0-9.-]+ fetch failed\."/);
+    expect(body).not.toContain('generativelanguage.googleapis.com');
+    expect(body).not.toContain('provider-secret');
+    expect(body).not.toContain('AAPL');
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -3282,13 +3333,15 @@ describe('Cloudflare authentication edge rate limiting', () => {
     await worker.fetch(authRequest('/api/auth/login'), env);
     await worker.fetch(authRequest('/api/auth/me'), env);
     await worker.fetch(authRequest('/api/auth/users'), env);
+    await worker.fetch(authRequest('/api/auth/preview'), env);
 
     expect(env.limiter.limit.mock.calls.map(([argument]) => argument.key)).toEqual([
       `auth:/api/auth/login:${clientIp}`,
       `auth:/api/auth/me:${clientIp}`,
-      `auth:/api/auth/users:${clientIp}`
+      `auth:/api/auth/users:${clientIp}`,
+      `auth:/api/auth/preview:${clientIp}`
     ]);
-    expect(env.doFetch).toHaveBeenCalledTimes(3);
+    expect(env.doFetch).toHaveBeenCalledTimes(4);
   });
 
   it('fails closed in production when the required binding is missing', async () => {
@@ -5751,5 +5804,42 @@ describe("Freedom daily historical candles", () => {
       error: "Freedom history date range is invalid or exceeds the one-year limit."
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("server diagnostic log redaction", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("emits only an allowlisted server event and never serializes the supplied error", () => {
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new Error("https://broker.example/private?token=secret AAPL $12,345");
+    logServerDiagnostic("error", "gemini_provider_failed", error);
+    expect(output).toHaveBeenCalledOnce();
+    const entry = String(output.mock.calls[0][0]);
+    expect(entry).toContain('"type":"server_diagnostic"');
+    expect(entry).toContain('"category":"gemini_provider_failed"');
+    for (const secret of ["broker.example", "token=secret", "AAPL", "$12,345"]) {
+      expect(entry).not.toContain(secret);
+    }
+  });
+
+  it("rejects caller-controlled diagnostic categories", () => {
+    const output = vi.spyOn(console, "warn").mockImplementation(() => {});
+    logServerDiagnostic("warn", "account-secret-token");
+    expect(String(output.mock.calls[0][0])).toBe('{"type":"server_diagnostic","category":"unknown"}');
+  });
+
+  it("keeps Worker and Durable Object failure call sites free of raw error serialization", () => {
+    const workerSource = readFileSync(new URL("./worker.js", import.meta.url), "utf8");
+    const stateStoreSource = readFileSync(new URL("./state-store.js", import.meta.url), "utf8");
+    expect(workerSource).not.toContain('console.error("Persistent TradeNet quote socket failed", error)');
+    expect(workerSource).not.toContain('console.error("Persistent TradeNet account socket failed", error)');
+    expect(workerSource).not.toContain('console.error("Persistent TradeNet Market Depth socket failed", error)');
+    expect(workerSource).not.toContain('console.error("Account Durable Object request failed", error)');
+    expect(workerSource).not.toContain('console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message)');
+    expect(stateStoreSource).not.toContain('error instanceof Error ? error.message : "unknown error"');
+    expect(workerSource).toContain('logServerDiagnostic("error", "tradenet_quote_stream_failed", error)');
+    expect(stateStoreSource).toContain('logServerDiagnostic("warn", "session_cleanup_deferred", error)');
   });
 });

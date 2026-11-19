@@ -1,12 +1,14 @@
 // Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
+import { logServerDiagnostic } from "./safeServerDiagnostics.js";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match, Idempotency-Key",
-  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed"
+  "Access-Control-Expose-Headers": "ETag, Idempotency-Replayed",
+  "Cache-Control": "no-store"
 };
 
 function jsonResponse(body, status = 200, revision = null) {
@@ -89,6 +91,7 @@ const AUTH_LOGIN_RATE_LIMIT_MAX_IPS = 1024;
 const AUTH_LOGIN_FAILURE_CLEANUP_BATCH = 128;
 const AUTH_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const AUTH_ADMIN_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_ADMIN_PREVIEW_SESSION_TTL_MS = 30 * 60 * 1000;
 const AUTH_LEGACY_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTH_SESSION_MAX_PER_USER = 5;
 const AUTH_SESSION_CLEANUP_BATCH_SIZE = 100;
@@ -1603,6 +1606,51 @@ export class PortfolioStateDO {
     });
   }
 
+  async isActiveAdminSessionRecord(sessionKey, adminUserId, users, now = Date.now()) {
+    if (typeof sessionKey !== "string" ||
+        !sessionKey.startsWith(AUTH_SESSION_PREFIX) ||
+        typeof adminUserId !== "string") return false;
+    const session = await this.ctx.storage.get(sessionKey);
+    const admin = users.find((user) => user.id === adminUserId);
+    if (!session || session.userId !== adminUserId || !admin || admin.role !== "admin" ||
+        session.sessionType === "admin-preview") return false;
+
+    const index = await this.ctx.storage.get(userSessionIndexKey(adminUserId));
+    if (index) {
+      const indexed = Array.isArray(index.sessions) &&
+        index.sessions.length <= AUTH_SESSION_MAX_PER_USER &&
+        index.sessions.some((entry) => entry?.key === sessionKey);
+      if (!Number.isSafeInteger(index.generation) ||
+          session.sessionVersion !== index.generation || !indexed) return false;
+    } else if (session.sessionVersion !== undefined && session.sessionVersion !== 0) {
+      return false;
+    }
+
+    const issuedAt = Number.isFinite(session.issuedAt) ? session.issuedAt : NaN;
+    const policyExpiry = issuedAt + AUTH_ADMIN_SESSION_TTL_MS;
+    const expiresAt = Number.isFinite(session.expiresAt)
+      ? Math.min(session.expiresAt, policyExpiry)
+      : policyExpiry;
+    return Number.isFinite(issuedAt) && Number.isFinite(expiresAt) && expiresAt > now;
+  }
+
+  async issueAdminPreviewSession(guest, adminSession) {
+    const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const issuedAt = Date.now();
+    const expiresAt = issuedAt + AUTH_ADMIN_PREVIEW_SESSION_TTL_MS;
+    const sessionKey = AUTH_SESSION_PREFIX + await digestHex(token);
+    await this.ctx.storage.put(sessionKey, {
+      userId: guest.id,
+      issuedAt,
+      expiresAt,
+      sessionVersion: 0,
+      sessionType: "admin-preview",
+      parentAdminSessionKey: adminSession.sessionKey,
+      parentAdminUserId: adminSession.user.id
+    });
+    return { token, user: publicUser(guest), expiresAt };
+  }
+
   async cleanupExpiredSessions({ force = false } = {}) {
     const now = Date.now();
     if (!force) {
@@ -1645,7 +1693,8 @@ export class PortfolioStateDO {
       const user = session && usersById.get(session.userId);
       let invalid = !user;
       let index = null;
-      if (user) {
+      const isPreviewSession = session?.sessionType === "admin-preview";
+      if (user && !isPreviewSession) {
         index = await this.ctx.storage.get(userSessionIndexKey(user.id));
         if (index) {
           const indexed = Array.isArray(index.sessions) &&
@@ -1659,20 +1708,33 @@ export class PortfolioStateDO {
           invalid = true;
         }
       }
+      if (isPreviewSession && (
+        !user || user.role !== "guest" ||
+        !(await this.isActiveAdminSessionRecord(
+          session.parentAdminSessionKey,
+          session.parentAdminUserId,
+          users,
+          now
+        ))
+      )) invalid = true;
 
       if (!invalid) {
         const issuedAt = Number.isFinite(session.issuedAt)
           ? session.issuedAt
-          : user.role === "guest" && Number.isFinite(session.expiresAt)
+          : !isPreviewSession && user.role === "guest" && Number.isFinite(session.expiresAt)
             ? session.expiresAt - AUTH_LEGACY_SESSION_TTL_MS
             : NaN;
-        const ttl = user.role === "guest" ? AUTH_GUEST_SESSION_TTL_MS : AUTH_ADMIN_SESSION_TTL_MS;
+        const ttl = isPreviewSession
+          ? AUTH_ADMIN_PREVIEW_SESSION_TTL_MS
+          : user.role === "guest" ? AUTH_GUEST_SESSION_TTL_MS : AUTH_ADMIN_SESSION_TTL_MS;
         const policyExpiry = issuedAt + ttl;
-        const expiresAt = user.role === "guest"
-          ? policyExpiry
-          : Number.isFinite(session.expiresAt)
-            ? Math.min(session.expiresAt, policyExpiry)
-            : policyExpiry;
+        const expiresAt = isPreviewSession
+          ? Number.isFinite(session.expiresAt) ? Math.min(session.expiresAt, policyExpiry) : NaN
+          : user.role === "guest"
+            ? policyExpiry
+            : Number.isFinite(session.expiresAt)
+              ? Math.min(session.expiresAt, policyExpiry)
+              : policyExpiry;
 
         if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= now) {
           invalid = true;
@@ -1709,7 +1771,7 @@ export class PortfolioStateDO {
     try {
       await this.cleanupExpiredSessions();
     } catch (error) {
-      console.warn("Session cleanup deferred:", error instanceof Error ? error.message : "unknown error");
+      logServerDiagnostic("warn", "session_cleanup_deferred", error);
     }
 
     const authorization = request.headers.get("Authorization") || "";
@@ -1726,26 +1788,46 @@ export class PortfolioStateDO {
       return null;
     }
 
-    const index = await this.ctx.storage.get(userSessionIndexKey(user.id));
-    if (index) {
-      const indexed = Array.isArray(index.sessions) &&
-        index.sessions.length <= AUTH_SESSION_MAX_PER_USER &&
-        index.sessions.some((entry) => entry?.key === sessionKey);
-      if (!Number.isSafeInteger(index.generation) ||
-          session.sessionVersion !== index.generation || !indexed) {
+    const isPreviewSession = session.sessionType === "admin-preview";
+    if (isPreviewSession) {
+      const parentActive = user.role === "guest" &&
+        await this.isActiveAdminSessionRecord(
+          session.parentAdminSessionKey,
+          session.parentAdminUserId,
+          await this.getAuthUsers()
+        );
+      if (!parentActive || session.sessionVersion !== 0) {
         await this.ctx.storage.delete(sessionKey);
-        await this.removeSessionFromIndex(user.id, sessionKey);
         return null;
       }
-    } else if (session.sessionVersion !== undefined && session.sessionVersion !== 0) {
-      // A session issued under an index cannot remain valid if its index is lost.
-      await this.ctx.storage.delete(sessionKey);
-      return null;
+    } else {
+      const index = await this.ctx.storage.get(userSessionIndexKey(user.id));
+      if (index) {
+        const indexed = Array.isArray(index.sessions) &&
+          index.sessions.length <= AUTH_SESSION_MAX_PER_USER &&
+          index.sessions.some((entry) => entry?.key === sessionKey);
+        if (!Number.isSafeInteger(index.generation) ||
+            session.sessionVersion !== index.generation || !indexed) {
+          await this.ctx.storage.delete(sessionKey);
+          await this.removeSessionFromIndex(user.id, sessionKey);
+          return null;
+        }
+      } else if (session.sessionVersion !== undefined && session.sessionVersion !== 0) {
+        // A session issued under an index cannot remain valid if its index is lost.
+        await this.ctx.storage.delete(sessionKey);
+        return null;
+      }
     }
 
     let issuedAt;
     let expiresAt;
-    if (user.role === "guest") {
+    if (isPreviewSession) {
+      issuedAt = Number.isFinite(session.issuedAt) ? session.issuedAt : NaN;
+      const policyExpiry = issuedAt + AUTH_ADMIN_PREVIEW_SESSION_TTL_MS;
+      expiresAt = Number.isFinite(session.expiresAt)
+        ? Math.min(session.expiresAt, policyExpiry)
+        : NaN;
+    } else if (user.role === "guest") {
       // Existing guest sessions stored a seven-day expiry. Reconstruct their
       // original issue time and preserve the existing 30-day lifetime policy.
       issuedAt = Number.isFinite(session.issuedAt)
@@ -1781,14 +1863,21 @@ export class PortfolioStateDO {
       });
     }
 
-    return { user, sessionKey };
+    return {
+      user,
+      sessionKey,
+      ...(isPreviewSession ? {
+        sessionType: "admin-preview",
+        impersonatedBy: (await this.getAuthUsers()).find((candidate) => candidate.id === session.parentAdminUserId) || null
+      } : {})
+    };
   }
 
   async issueSession(user) {
     try {
       await this.cleanupExpiredSessions();
     } catch (error) {
-      console.warn("Session cleanup deferred during issuance:", error instanceof Error ? error.message : "unknown error");
+      logServerDiagnostic("warn", "session_cleanup_deferred_during_issuance", error);
     }
 
     const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
@@ -1927,6 +2016,24 @@ export class PortfolioStateDO {
       return authJson(await this.issueSession(user), 201);
     }
 
+    if (request.method === "POST" && pathname === "/api/auth/preview") {
+      const adminSession = await this.resolveSession(request);
+      if (!adminSession) return authJson({ error: "Authentication required." }, 401);
+      if (adminSession.user.role !== "admin" || adminSession.sessionType === "admin-preview") {
+        return authJson({ error: "Administrator access required." }, 403);
+      }
+      const guestUserId = typeof body.userId === "string" ? body.userId.trim() : "";
+      if (!guestUserId || guestUserId.length > 128) {
+        return authJson({ error: "A valid guest account is required." }, 400);
+      }
+      const guest = (await this.getAuthUsers()).find((user) => user.id === guestUserId);
+      if (!guest) return authJson({ error: "User not found." }, 404);
+      if (guest.role !== "guest") {
+        return authJson({ error: "Only guest accounts have a separate dashboard to preview." }, 400);
+      }
+      return authJson(await this.issueAdminPreviewSession(guest, adminSession), 201);
+    }
+
     if (request.method === "POST" && pathname === "/api/auth/login") {
       // Throttle before account lookup and PBKDF2 work. Every attempt from the
       // same network address shares one bucket, regardless of submitted name.
@@ -1980,7 +2087,30 @@ export class PortfolioStateDO {
 
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
-    if (request.method === "GET" && pathname === "/api/auth/me") return authJson({ user: publicUser(session.user) });
+    if (session.sessionType === "admin-preview" &&
+        !(request.method === "POST" && pathname === "/api/auth/preview/return") &&
+        request.method !== "GET") {
+      return authJson({ error: "Administrator preview sessions are read-only." }, 403);
+    }
+    if (request.method === "POST" && pathname === "/api/auth/preview/return") {
+      if (session.sessionType !== "admin-preview") {
+        return authJson({ error: "No administrator preview is active." }, 400);
+      }
+      await this.ctx.storage.delete(session.sessionKey);
+      return authJson({ success: true });
+    }
+    if (request.method === "GET" && pathname === "/api/auth/me") {
+      return authJson({
+        user: {
+          ...publicUser(session.user),
+          ...(session.sessionType === "admin-preview" && session.impersonatedBy ? {
+            isImpersonating: true,
+            impersonatedById: session.impersonatedBy.id,
+            impersonatedByName: session.impersonatedBy.name
+          } : {})
+        }
+      });
+    }
     if (request.method === "POST" && pathname === "/api/auth/me") {
       if (!isSupportedLanguage(body.language)) {
         return authJson({ error: "Language must be either en or ru." }, 400);

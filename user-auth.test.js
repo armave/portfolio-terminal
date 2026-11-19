@@ -205,6 +205,113 @@ describe("Durable Object account authentication", () => {
     expect(denied.status).toBe(403);
   });
 
+  it("issues a short-lived, read-only guest preview token bound to the active admin session", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Preview Guest",
+      password: "another-long-password-123"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    const guest = (await created.json()).user;
+    const guestLogin = await request(store, "/api/auth/login", {
+      name: guest.name,
+      password: "another-long-password-123"
+    });
+    const guestSession = await guestLogin.json();
+    const guestIndexBefore = await storage.get("auth:user-sessions:" + guest.id);
+
+    const started = await request(store, "/api/auth/preview", { userId: guest.id }, admin.token);
+    expect(started.status).toBe(201);
+    const preview = await started.json();
+    expect(preview.user).toMatchObject({ id: guest.id, role: "guest" });
+    expect(preview.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(preview.expiresAt - Date.now()).toBeLessThanOrEqual(30 * 60 * 1000);
+    const previewKey = await sessionStorageKey(preview.token);
+    expect(await storage.get(previewKey)).toMatchObject({
+      userId: guest.id,
+      sessionType: "admin-preview",
+      parentAdminUserId: admin.user.id
+    });
+    expect((await storage.get("auth:user-sessions:" + guest.id)).sessions)
+      .toEqual(guestIndexBefore.sessions);
+
+    const previewMe = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + preview.token }
+    }));
+    expect(await previewMe.json()).toMatchObject({
+      user: {
+        id: guest.id,
+        role: "guest",
+        isImpersonating: true,
+        impersonatedById: admin.user.id,
+        impersonatedByName: admin.user.name
+      }
+    });
+
+    const deniedLanguageChange = await request(store, "/api/auth/me", { language: "ru" }, preview.token);
+    expect(deniedLanguageChange.status).toBe(403);
+    const deniedDirectoryRead = await store.fetch(new Request("https://durable.test/api/auth/users", {
+      headers: { Authorization: "Bearer " + preview.token }
+    }));
+    expect(deniedDirectoryRead.status).toBe(403);
+
+    const returned = await request(store, "/api/auth/preview/return", {}, preview.token);
+    expect(returned.status).toBe(200);
+    expect(await returned.json()).toEqual({ success: true });
+    expect(await storage.get(previewKey)).toBeUndefined();
+    const invalidPreview = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + preview.token }
+    }));
+    expect(invalidPreview.status).toBe(401);
+    const adminStillValid = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + admin.token }
+    }));
+    expect(await adminStillValid.json()).toMatchObject({ user: { id: admin.user.id, role: "admin" } });
+    expect(await storage.get("auth:user-sessions:" + guest.id)).toMatchObject(guestIndexBefore);
+    expect(guestSession.token).toBeTruthy();
+  });
+
+  it("prevents guest/admin impersonation and revokes a preview when its parent admin session ends", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const secondAdmin = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Second Admin",
+      password: "another-long-password-123",
+      role: "admin"
+    }, admin.token);
+    const secondAdminUser = (await secondAdmin.json()).user;
+    const guestCreated = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Target Guest",
+      password: "another-long-password-123"
+    }, admin.token);
+    const guest = (await guestCreated.json()).user;
+
+    const adminTarget = await request(store, "/api/auth/preview", { userId: secondAdminUser.id }, admin.token);
+    expect(adminTarget.status).toBe(400);
+    const guestLogin = await request(store, "/api/auth/login", {
+      name: guest.name,
+      password: "another-long-password-123"
+    });
+    const guestSession = await guestLogin.json();
+    const guestAttempt = await request(store, "/api/auth/preview", { userId: guest.id }, guestSession.token);
+    expect(guestAttempt.status).toBe(403);
+
+    const started = await request(store, "/api/auth/preview", { userId: guest.id }, admin.token);
+    const preview = await started.json();
+    const logout = await request(store, "/api/auth/logout", {}, admin.token);
+    expect(logout.status).toBe(200);
+    const previewMe = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + preview.token }
+    }));
+    expect(previewMe.status).toBe(401);
+  });
+
   it("rejects incorrect passwords and does not allow the final admin to be demoted", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const { store } = createStore();
