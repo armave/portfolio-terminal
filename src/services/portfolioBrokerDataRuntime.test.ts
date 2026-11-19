@@ -196,6 +196,22 @@ describe('portfolio broker data runtime', () => {
     });
   });
 
+  it('coalesces concurrent Manual Sync history catch-ups for the same session', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchExecutedTrades: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const first = fixture.runtime.refreshExecutedTrades(fixture.session);
+    const second = fixture.runtime.refreshExecutedTrades(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1));
+    resolveFetch?.([trade('coalesced-manual-sale')]);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a newer live execution update when the manual REST catch-up resolves afterward', async () => {
     const original = trade('shared-live-id', 'sell', '2026-11-10T12:00:00.000Z', { price: 100, profit: 5 });
     const liveUpdated = trade('shared-live-id', 'sell', '2026-11-10T12:00:00.000Z', { price: 125, profit: 30 });
