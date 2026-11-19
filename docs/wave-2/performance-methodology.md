@@ -134,3 +134,34 @@ This initial implementation is a pure domain calculation foundation. It does not
 - perform historical FX conversion.
 
 These are intentional integration gates while the other Wave 2 streams run in parallel. Until those contracts land, the calculation APIs are exercised with typed observations and independent known-answer fixtures only. No production/live broker performance result is claimed.
+
+
+## 10. Authenticated desktop/mobile performance baseline (#559)
+
+The authenticated browser journey is implemented in `scripts/browser-smoke-operations.mjs` and emits `artifacts/authenticated-portfolio-performance.json`. It remains separate from the unauthenticated app-shell baseline.
+
+### Fixed workload and readiness contract
+
+Each sample uses a fresh Chromium browser context with service workers blocked and a local-only deterministic synthetic account. The fixture contains 100 active positions, 200 stable open lots, 10 linked closed trades and 220 transaction-journal events. Before accepting a sample, the script verifies that the full fixture survives startup and the deterministic mocked broker refresh with every fixture journal event present exactly once. The sample then waits for the Market Insights portfolio panel and ticker content, opens the Trades desk, and waits for a rendered closed-history row.
+
+No broker orders are placed. Broker/quote responses are mocked; measurements do not represent live TradeNet latency, quote freshness, account value, or production investment performance.
+
+### Measurement profile
+
+- Desktop: Chromium, 1440×900.
+- Mobile: Chromium, 390×844.
+- Use one GitHub-hosted `ubuntu-24.04` runner image and Playwright-managed Chromium. Preserve OS release, architecture, CPU model/count, Node version, runner image metadata and Chromium version.
+- Manual workflow dispatch defaults to 10 sequential fresh-context samples per viewport. Keep routine PR CI at its smaller sample count; do not turn a noisy 3-run smoke into a performance gate.
+- Timings cover auth-shell readiness, authentication, synthetic fixture hydration, mocked broker refresh plus fixture parity, portfolio render readiness and Trades lazy-load/first-row readiness. Also capture FCP, LCP and CLS when supported, resource transfer bytes/count, heap use when Chromium exposes it, and DOM node count.
+- Unsupported metrics remain `null`; they are excluded from that metric's sample count and summaries, never replaced with zero.
+- The report includes exact commit/ref/workflow metadata, a timestamp, and explicit data-classification metadata. It contains synthetic financial values only.
+
+### Statistics and interpretation
+
+For each viewport and metric, report valid sample count, minimum, p25, median, p75, nearest-rank p95, maximum, arithmetic mean, population variance, standard deviation, interquartile range and Tukey outlier run numbers. The 10-sample p95 is descriptive, not a stable production percentile. Compare desktop only with desktop and mobile only with mobile, and only across matching runner image, CPU class, Node and Chromium profiles.
+
+Do not set hard pass/fail performance thresholds from one 10-run sample. Record the first accepted baseline and gather repeat runs on equivalent runner profiles before choosing thresholds; explain thresholds using measured variance and regression impact. The current fresh-context workflow is a cold-context measurement, not a claim of an empty OS/browser disk cache.
+
+### Acceptance evidence still required
+
+A code change or successful synthetic CI job does not create the missing measurement record. Issue #559 remains open until an operator dispatches the workflow with at least 10 runs per viewport, reviews the artifact, records exact tested SHA/workflow URL, documents median/p95/variance and bundle size, and justifies any thresholds without concealing slower scenarios. No user identifiers or customer financial data may appear in the report.

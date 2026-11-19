@@ -61,6 +61,8 @@ export function summarizePerformanceViewport(samples) {
   return {
     elapsedToPortfolioReadyMs: summarizePerformanceSamples(samples, 'elapsedToPortfolioReadyMs'),
     elapsedToTradesDeskReadyMs: summarizePerformanceSamples(samples, 'elapsedToTradesDeskReadyMs'),
+    coldStartupToPortfolioReadyMs: summarizePerformanceSamples(samples, 'elapsedToPortfolioReadyMs'),
+    coldStartupToTradesReadyMs: summarizePerformanceSamples(samples, 'elapsedToTradesDeskReadyMs'),
     authShellReadyMs: summarizePerformanceSamples(samples, 'authShellReadyMs'),
     authenticationMs: summarizePerformanceSamples(samples, 'authenticationMs'),
     fixtureHydrationMs: summarizePerformanceSamples(samples, 'fixtureHydrationMs'),
