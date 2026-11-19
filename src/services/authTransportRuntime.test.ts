@@ -243,4 +243,22 @@ describe('auth transport runtime', () => {
     expect(init.body).toBe('{}');
   });
 
+  it('logs session-validation failures through the safe diagnostic allowlist', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sentinel = new TypeError('https://worker.example/api/auth/me?token=diagnostic-secret');
+    const fetchImpl = vi.fn().mockRejectedValue(sentinel) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    try {
+      await expect(runtime.validateGatewaySecret('session-token')).resolves.toBe(false);
+      const output = warnSpy.mock.calls.flat().join(' ');
+      expect(output).toContain('"category":"auth"');
+      expect(output).toContain('"errorClass":"type-error"');
+      expect(output).not.toContain('worker.example');
+      expect(output).not.toContain('diagnostic-secret');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
 });

@@ -1,6 +1,7 @@
 import type { AppLanguage } from './i18n';
 import { clearCloudSyncDiagnostics } from './cloudSyncDiagnostics';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
+import { logSafeDiagnostic } from './safeDiagnostics';
 
 export interface AuthUser {
   id: string;
@@ -56,7 +57,8 @@ export interface AuthTransportRuntime {
 export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDependencies): AuthTransportRuntime {
   const fetchImpl = dependencies.fetchImpl ?? ((input, init) => fetch(input, init));
   const now = dependencies.now || Date.now;
-  const warn = dependencies.warn || ((...args: unknown[]) => console.warn(...args));
+  const warn = dependencies.warn || ((...args: unknown[]) =>
+    logSafeDiagnostic('warn', 'auth', args.length > 1 ? args[args.length - 1] : undefined));
   const AUTH_READ_TTL_MS = 15_000;
   const CURRENT_USER_READ_TTL_MS = 5_000;
   const authReadRequests = new Map<string, Promise<unknown>>();

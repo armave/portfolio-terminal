@@ -1,4 +1,5 @@
 import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { logSafeDiagnostic } from './safeDiagnostics';
 
 export type StartupAccountRole = 'admin' | 'guest' | null;
 export type StartupIntervalHandle = ReturnType<typeof setInterval>;
@@ -64,7 +65,7 @@ export function createPortfolioStartupLifecycleRuntime(
 
   const handleStartupRepair = (): void => {
     void Promise.resolve(dependencies.repairBrowserAppCache()).catch((error) => {
-      console.error('[Browser Repair]: Could not repair the app cache.', error);
+      logSafeDiagnostic('error', 'startup', error);
       dependencies.setStartupState(true, true);
     });
   };

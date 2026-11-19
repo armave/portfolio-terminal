@@ -156,4 +156,28 @@ describe('portfolio startup lifecycle runtime', () => {
     expect(fixture.dependencies.continueStartupOffline).not.toHaveBeenCalled();
     expect(fixture.dependencies.repairBrowserAppCache).not.toHaveBeenCalled();
   });
+  it('redacts startup repair exception details from diagnostics', async () => {
+    const fixture = createFixture();
+    const sentinel = 'https://worker.example/startup?token=diagnostic-secret';
+    fixture.dependencies.repairBrowserAppCache = vi.fn(async () => { throw new Error(sentinel); });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const runtime = createPortfolioStartupLifecycleRuntime(fixture.dependencies);
+    const unbind = runtime.bind();
+
+    try {
+      emitUiEvent('app:startup-repair');
+      await vi.waitFor(() => {
+        expect(fixture.dependencies.setStartupState).toHaveBeenCalledWith(true, true);
+      });
+      const output = errorSpy.mock.calls.flat().join(' ');
+      expect(output).toContain('"category":"startup"');
+      expect(output).toContain('"errorClass":"unknown"');
+      expect(output).not.toContain('worker.example');
+      expect(output).not.toContain('diagnostic-secret');
+    } finally {
+      unbind();
+      errorSpy.mockRestore();
+    }
+  });
+
 });

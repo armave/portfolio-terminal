@@ -105,6 +105,29 @@ describe('browser profile repair', () => {
     );
     expect(reload).toHaveBeenCalledTimes(1);
   });
+  it('redacts browser API exception details from repair diagnostics', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sentinel = 'https://broker.example/private?token=diagnostic-secret';
+    try {
+      await repairBrowserProfile({
+        appBaseUrl: '/portfolio-terminal/',
+        origin: 'https://example.test',
+        getServiceWorkerRegistration: async () => { throw new Error(sentinel); },
+        getCacheNames: async () => { throw new Error(sentinel); },
+        deleteCache: vi.fn(),
+        reload: vi.fn()
+      });
+      const output = warnSpy.mock.calls.flat().join(' ');
+      expect(output).toContain('"type":"client_diagnostic"');
+      expect(output).toContain('"category":"startup"');
+      expect(output).toContain('"errorClass":"unknown"');
+      expect(output).not.toContain('broker.example');
+      expect(output).not.toContain('diagnostic-secret');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
 });
 
 describe('automatic browser repair marker', () => {
