@@ -676,20 +676,24 @@ async function tryAutoReconcileCloudConflict(
     if (!isCurrentSession()) return false;
 
     const latestRevision = readCloudRevision(response.headers);
+    // Classify an HTTP failure before requiring a revision header: error responses
+    // commonly omit ETag, but their status is the most actionable diagnostic.
+    if (response.status !== 404 && !response.ok) {
+      return fail(classifyCloudSyncFailure(undefined, response.status), response.status, latestRevision ?? undefined);
+    }
+    // A previously populated workspace disappearing may represent an explicit
+    // destructive reset. Never auto-adopt an empty snapshot over that base.
+    if (response.status === 404 && Object.keys(base).length > 0) {
+      return fail('remote-record-missing', 404, latestRevision ?? undefined);
+    }
     if (!Number.isSafeInteger(latestRevision) || latestRevision === null || latestRevision <= expectedRevision) {
       return fail('latest-revision-unavailable', response.status, latestRevision ?? undefined);
     }
 
     let remoteState: CloudStateRecord;
     if (response.status === 404) {
-      // A previously populated workspace disappearing may represent an explicit
-      // destructive reset. Never auto-adopt an empty snapshot over that base.
-      if (Object.keys(base).length > 0) {
-        return fail('remote-record-missing', 404, latestRevision);
-      }
       remoteState = {};
     } else {
-      if (!response.ok) return fail(classifyCloudSyncFailure(undefined, response.status), response.status, latestRevision);
       const body: unknown = await response.json();
       if (!isCurrentSession()) return false;
       if (!isRecord(body) || !hasAesGcmV2Envelope(body.encryptedPayload)) {
