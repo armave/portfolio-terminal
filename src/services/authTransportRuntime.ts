@@ -8,6 +8,9 @@ export interface AuthUser {
   role: "guest" | "admin";
   language: AppLanguage;
   createdAt: string;
+  isImpersonating?: boolean;
+  impersonatedById?: string;
+  impersonatedByName?: string;
 }
 export interface AuthSession {
   token: string;
@@ -33,6 +36,8 @@ export interface AuthTransportRuntime {
   getAuthStatus: () => Promise<{ setupRequired: boolean; userCount: number }>;
   loginAccount: (name: string, password: string) => Promise<AuthSession>;
   bootstrapAdmin: (name: string, password: string, bootstrapSecret: string) => Promise<AuthSession>;
+  startAdminGuestPreview: (guestUserId: string) => Promise<AuthSession>;
+  endAdminGuestPreview: () => Promise<void>;
   getCurrentUser: () => Promise<AuthUser>;
   listUsers: () => Promise<AuthUser[]>;
   /** Returns this session's in-memory directory snapshot synchronously, including stale rows during revalidation. */
@@ -192,6 +197,36 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     return session;
   };
 
+  const startAdminGuestPreview = async (guestUserId: string): Promise<AuthSession> => {
+    const token = dependencies.getActiveGatewaySecret();
+    if (!token) throw new Error("Not signed in.");
+    const normalizedUserId = typeof guestUserId === "string" ? guestUserId.trim() : "";
+    if (!normalizedUserId || normalizedUserId.length > 128) {
+      throw new Error("A valid guest account is required.");
+    }
+    const session = normalizeAuthSession(await authRequest<AuthSession>("/api/auth/preview", {
+      method: "POST", token, body: { userId: normalizedUserId }
+    }));
+    if (session.user.role !== "guest") {
+      throw new Error("Only guest accounts have a separate dashboard to preview.");
+    }
+    clearCloudSyncDiagnostics();
+    clearRequestCaches();
+    if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
+    return session;
+  };
+
+  const endAdminGuestPreview = async (): Promise<void> => {
+    const token = dependencies.getActiveGatewaySecret();
+    if (!token) throw new Error("Not signed in.");
+    await authRequest<{ success: boolean }>("/api/auth/preview/return", {
+      method: "POST", token, body: {}
+    });
+    clearCloudSyncDiagnostics();
+    clearRequestCaches();
+    if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
+  };
+
   const getCurrentUser = (): Promise<AuthUser> => {
     const token = dependencies.getActiveGatewaySecret();
     if (!token) return Promise.reject(new Error("Not signed in."));
@@ -312,6 +347,8 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     getAuthStatus,
     loginAccount,
     bootstrapAdmin,
+    startAdminGuestPreview,
+    endAdminGuestPreview,
     getCurrentUser,
     listUsers,
     getCachedUsers,
