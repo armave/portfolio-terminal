@@ -16,6 +16,7 @@ import {
 const pageWasRefreshed = typeof performance !== 'undefined' &&
   isPageRefreshNavigation(performance.getEntriesByType('navigation')[0]?.type);
 let startupOverlayDismissed = false;
+let initialWorkspaceSyncSettled = false;
 let registeredServiceWorker: ServiceWorkerRegistration | null = null;
 let applyStagedServiceWorkerUpdate: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let refreshUpdateActivationInFlight = false;
@@ -146,6 +147,10 @@ addUiEventListener('app:startup-state', (event) => {
 addUiEventListener('app:startup-overlay-dismissed', () => {
   clearStartupWatchdog();
   startupOverlayDismissed = true;
+  void applyWaitingUpdateAfterRefresh();
+});
+addUiEventListener('app:initial-workspace-sync-settled', () => {
+  initialWorkspaceSyncSettled = true;
   void applyWaitingUpdateAfterRefresh();
 });
 
