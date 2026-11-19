@@ -41,6 +41,26 @@ describe('cloud sync diagnostics', () => {
     expect(store.getSnapshot()).toEqual([saved]);
   });
 
+  it('truncates previously stored history to the latest three entries', () => {
+    const storage = createStorage();
+    const savedEntries = Array.from({ length: 6 }, (_, index) => ({
+      timestamp: 1_800_000_000_005 - index,
+      operation: 'pull' as const,
+      outcome: 'success' as const,
+      reason: 'confirmed' as const
+    }));
+    storage.setItem('portfolio_cloud_sync_diagnostics_v1', JSON.stringify(savedEntries));
+
+    const store = createCloudSyncDiagnosticsStore(() => storage);
+
+    expect(store.getSnapshot().map((entry) => entry.timestamp)).toEqual([
+      1_800_000_000_005,
+      1_800_000_000_004,
+      1_800_000_000_003
+    ]);
+    expect(JSON.parse(storage.getItem('portfolio_cloud_sync_diagnostics_v1') || '[]')).toHaveLength(3);
+  });
+
   it('restores valid diagnostics after a page refresh and ignores unknown fields', () => {
     const storage = createStorage();
     const first = createCloudSyncDiagnosticsStore(() => storage);
@@ -61,7 +81,7 @@ describe('cloud sync diagnostics', () => {
     }]);
   });
 
-  it('publishes new entries and caps retained history at eight entries', () => {
+  it('publishes new entries and caps retained history at the latest three entries', () => {
     const storage = createStorage();
     const store = createCloudSyncDiagnosticsStore(() => storage);
     const snapshots: number[] = [];
@@ -75,9 +95,18 @@ describe('cloud sync diagnostics', () => {
       });
     }
 
-    expect(store.getSnapshot()).toHaveLength(8);
-    expect(store.getSnapshot()[0].timestamp).toBe(1_800_000_000_009);
-    expect(snapshots).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8]);
+    expect(store.getSnapshot()).toHaveLength(3);
+    expect(store.getSnapshot().map((entry) => entry.timestamp)).toEqual([
+      1_800_000_000_009,
+      1_800_000_000_008,
+      1_800_000_000_007
+    ]);
+    expect(snapshots).toEqual([0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3]);
+    expect(JSON.parse(storage.getItem('portfolio_cloud_sync_diagnostics_v1') || '[]').map((entry: { timestamp: number }) => entry.timestamp)).toEqual([
+      1_800_000_000_009,
+      1_800_000_000_008,
+      1_800_000_000_007
+    ]);
   });
 
   it('rejects unsupported diagnostic fields and clears only its own metadata', () => {

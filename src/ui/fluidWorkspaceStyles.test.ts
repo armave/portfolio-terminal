@@ -207,10 +207,18 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('id="settingsDesk"');
     expect(settingsSource).toContain('settings-user-form');
     expect(settingsSource).toContain('settings-user-panel');
+    expect(settingsSource).toContain('settings-user-cards');
+    expect(settingsSource).toContain('md:hidden');
+    expect(settingsSource).toContain('hidden min-w-0 md:block');
+    expect(settingsSource).toContain('settings-user-card-fields');
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
     expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
     expect(fluidStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('#settingsDesk.settings-subsection>summary');
+    expect(stylesheet).toMatch(/#settingsDesk \.settings-subsection>summary,\s*#settingsDesk \.settings-device-details>summary\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
+    expect(stylesheet).toContain('#settingsDesk .settings-device-details>summary::before');
+    expect(stylesheet).toContain('#settingsDesk .settings-device-details[open]>summary::before');
+    expect(stylesheet).toMatch(/#settingsDesk \.settings-user-card-fields input,\s*#settingsDesk \.settings-user-card-fields select\s*\{[^}]*min-height:\s*2\.75rem;/s);
     expect(fluidStyles).toMatch(/@container\s+settings-workspace\s*\(min-width:\s*54rem\)/);
     expect(fluidStyles).toMatch(/#settingsDesk \.settings-table-scroll table\s*\{[^}]*min-width:\s*49rem/s);
   });

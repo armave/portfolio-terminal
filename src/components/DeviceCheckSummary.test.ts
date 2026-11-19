@@ -139,6 +139,7 @@ describe('Device Check progressive disclosure', () => {
     expect(source).toContain("['Cloud portfolio', getPortfolioSyncLabel(cloudSyncStatus)]");
     expect(source).toContain("['App shell cache', appShellCacheLabel(diagnostics.appShellCache)]");
     expect(source).toContain("label('Cloud synchronization diagnostics')");
+    expect(source).toContain('cloudSyncDiagnostics.slice(0, 3)');
     expect(source).toContain('subscribeCloudSyncDiagnostics(setCloudSyncDiagnostics)');
   });
 });
