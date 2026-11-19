@@ -2,9 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuthSession, AuthUser } from './authTransportRuntime';
 import { createAdminGuestPreviewRuntime } from './adminGuestPreviewRuntime';
 
-const admin: AuthUser = {
-  id: 'admin-1', name: 'Admin', role: 'admin', language: 'en', createdAt: '2026-01-01T00:00:00.000Z'
-};
 const guest: AuthUser = {
   id: 'guest-1', name: 'Guest', role: 'guest', language: 'ru', createdAt: '2026-01-01T00:00:00.000Z'
 };

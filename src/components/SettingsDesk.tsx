@@ -694,8 +694,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                       {user.role === 'guest'
                         ? <button type="button" aria-label={translateText('View as') + ' ' + user.name} disabled={savingUser || viewingUserId !== null} onClick={() => void handleViewAsUser(user)} class="mr-2 min-h-11 rounded border border-cyan-900/70 bg-cyan-950/60 px-2 py-1.5 text-cyan-200 disabled:opacity-50">{viewingUserId === user.id ? translateText('Opening…') : translateText('View as')}</button>
                         : <span class="mr-2 text-[10px] text-slate-500" title={translateText('Admin accounts share the same owner workspace.')}>{translateText('Shared workspace')}</span>}
-                      <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
-                      {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
+                      <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                      {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
                     </td>
                   </tr>)}</tbody>
               </table></TableScrollRegion>

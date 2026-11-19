@@ -337,7 +337,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {currentUser?.isImpersonating && (
         <aside
           class="mx-auto mb-3 flex w-full max-w-6xl flex-col gap-3 rounded-xl border border-amber-700/70 bg-amber-950/35 p-3 text-amber-100 shadow-lg sm:flex-row sm:items-center sm:justify-between"
-          role="status"
+          role="region"
+          aria-label={translateText('Guest preview', getAppLanguage())}
           aria-live="polite"
         >
           <div class="min-w-0">
