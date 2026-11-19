@@ -17,6 +17,8 @@ export interface PortfolioStartupRuntimeDependencies {
   showAuthContainer: () => void;
   hideAuthContainer: () => void;
   startApp: (secret: string) => Promise<void>;
+  /** Signal that no authenticated workspace/cloud pull is pending on the auth screen. */
+  onUnauthenticatedStartupSettled?: () => void;
   onStartupFailure: (error: unknown) => void;
 }
 
@@ -54,6 +56,7 @@ export function createPortfolioStartupRuntime(
         dependencies.showBalanceView();
         dependencies.hideStartupLoading();
         dependencies.showAuthContainer();
+        dependencies.onUnauthenticatedStartupSettled?.();
       }
     } catch (error) {
       dependencies.setInitialized(false);

@@ -85,6 +85,12 @@ export default defineConfig({
     startupCriticalCssPlugin(),
     VitePWA({
       registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+      },
       includeAssets: ['ico.svg', 'pwa-180.png', 'pwa-192.png'],
       manifest: {
         name: 'Portfolio Terminal',
@@ -111,10 +117,6 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        cleanupOutdatedCaches: true
-      }
     })
   ],
   server: {

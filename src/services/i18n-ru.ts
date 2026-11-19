@@ -1355,7 +1355,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Automatically checks every 30 minutes': 'Автоматическая проверка каждые 30 минут',
   'Last checked': 'Последняя проверка',
   'Not checked yet': 'Проверка ещё не выполнялась',
-  'The update will install automatically the next time you open the app.': 'Обновление установится автоматически при следующем запуске приложения.',
+  'Close other Portfolio Terminal tabs, then refresh this page to install the update.': 'Закройте другие вкладки Portfolio Terminal, затем обновите эту страницу, чтобы установить обновление.',
   'The app will retry automatically. You can also check again now.': 'Приложение повторит проверку автоматически. Вы также можете проверить сейчас.',
   'Check now': 'Проверить сейчас',
   'Open the app again to retry update detection.': 'Откройте приложение снова, чтобы повторить проверку обновлений.',
