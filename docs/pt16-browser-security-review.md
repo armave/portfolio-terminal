@@ -42,7 +42,7 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 | Surface | Current evidence | Required control/test |
 |---|---|---|
-| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Keep text interpolation; add a hostile markup fixture proving it is inert |
+| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Preserve direct text-child interpolation; AST regression checks the headline/body JSX nodes and rejects raw-HTML DOM sinks. A browser-level active-origin XSS test remains separate |
 | News article URL | Provider-supplied URL is used as an external anchor destination | Allow only absolute HTTP(S), reject executable/non-web schemes and credential-bearing URLs; retain `noopener noreferrer` |
 | Stocktwits stream URL | Provider-supplied `streamUrl` was rendered directly as an external anchor | Validate through the existing absolute HTTP(S)-only URL boundary; suppress the link for unsafe/malformed destinations; retain `noopener noreferrer` |
 | Imported backup data | JSON passes a validation/normalization boundary before the store commit | Test hostile strings and malformed structures remain data, never executable markup |
@@ -55,6 +55,8 @@ A focused article-link implementation is tracked in [PR #564](https://github.com
 The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). The Stocktwits community-feed link now uses the same validated destination boundary and suppresses unsafe provider-supplied URLs in [PR #627](https://github.com/armave/portfolio-terminal/pull/627). These bounded fixes close those link paths only; they do not complete the broader active-origin credential or CSP review.
 
 The follow-up regression suite in [the URL safety tests](../src/features/quotes/marketInsightsContent.test.ts) exercises absolute HTTP(S) acceptance and rejection of executable/non-web schemes, protocol-relative and malformed destinations, embedded credentials, non-string values, and overlong input. This protects the existing URL boundary; it does not replace the broader href/src/navigation sink audit or the CSP and account-lifecycle review.
+
+The company-news dialog now has a TypeScript-AST regression in [`MarketNewsArticleDialog.security.test.ts`](../src/components/MarketNewsArticleDialog.security.test.ts). It identifies the labelled headline and article-body JSX elements, verifies provider-controlled values remain direct Preact text-child expressions, and rejects raw HTML insertion APIs in that component. This is a source-structure regression, not a browser penetration test or proof against an actively compromised origin; the broader hostile-content browser journey and credential review remain open.
 
 ## 4. Browser credential exposure
 
