@@ -4,6 +4,16 @@ import type { CloudStatus } from '../ui/uiStateStore';
 
 export type CloudSyncTone = 'neutral' | 'success' | 'pending' | 'warning' | 'conflict' | 'error';
 
+/** Avoid flashing the header activity dot for short cloud checkpoints. */
+export const CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS = 700;
+
+export function resolveCloudSyncDisplayTone(
+  tone: CloudSyncTone,
+  pendingDelayElapsed: boolean
+): CloudSyncTone {
+  return tone === 'pending' && !pendingDelayElapsed ? 'neutral' : tone;
+}
+
 export function resolveCloudSyncTone(
   cloudStatus: CloudStatus,
   cloudSyncStatus: CloudStatus
@@ -80,12 +90,27 @@ export function CloudSyncIndicator({
   const statusLabel = resolveCloudSyncLabel(cloudStatus, tone, language);
   const lastSyncedAt = cloudSyncStatus.lastSyncedAt ?? null;
   const [now, setNow] = useState(() => Date.now());
+  const [pendingDelayElapsed, setPendingDelayElapsed] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (tone !== 'pending') {
+      setPendingDelayElapsed(false);
+      return;
+    }
+    const timeoutId = window.setTimeout(
+      () => setPendingDelayElapsed(true),
+      CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [tone]);
+
+  const displayTone = resolveCloudSyncDisplayTone(tone, pendingDelayElapsed);
 
   const relativeTime = tone === 'success' || lastSyncedAt
     ? formatRelativeSyncTime(lastSyncedAt, now, language)
@@ -106,7 +131,7 @@ export function CloudSyncIndicator({
   return (
     <div
       id="cloudStatus"
-      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${tone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
+      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
       aria-live="polite"
       aria-atomic="true"
     >
