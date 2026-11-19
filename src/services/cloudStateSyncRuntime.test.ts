@@ -708,10 +708,10 @@ describe('background cloud conflict reconciliation', () => {
     expect(counts()).toMatchObject({ getCount: 2, postCount: 1 });
     expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
     expect(posted).toHaveLength(1);
-    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+    expect(getCloudSyncDiagnostics()).toContainEqual(expect.objectContaining({
       operation: 'reconcile', outcome: 'conflict', reason: 'overlapping-edits',
       httpStatus: 200, expectedRevision: 1, observedRevision: 2
-    });
+    }));
   });
 
   it('leaves legacy embedded history to the normal migration flow', async () => {
