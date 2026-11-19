@@ -19,6 +19,12 @@ cleanupOutdatedCaches();
 // Preserve the generated worker's app-shell fallback for scoped SPA navigation.
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 
+// When a replacement worker is explicitly activated, claim the refreshed page
+// so the client receives controllerchange and reloads against the new shell.
+self.addEventListener('activate', (event: ExtendableEvent) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const message = event.data as { type?: unknown } | null;
   if (message?.type === 'SKIP_WAITING') {
