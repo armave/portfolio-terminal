@@ -305,6 +305,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
   }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
+  const previousDeskViewRef = useRef(activeDeskView);
+
+  useEffect(() => {
+    const previousView = previousDeskViewRef.current;
+    previousDeskViewRef.current = activeDeskView;
+    if (previousView === activeDeskView || startupState.visible || authOpen) return;
+
+    const frame = requestAnimationFrame(() => {
+      mainWorkspaceRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start'
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDeskView, authOpen, startupState.visible]);
+
   // Broker data reads are session-bound in the broker data runtime. App remains
   // the single owner of portfolio state and injects its account/session boundary.
   useEffect(() => {
