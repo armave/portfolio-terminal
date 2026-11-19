@@ -83,7 +83,7 @@ function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
   );
 }
 
-export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: { accountId: string; isSessionCurrent?: () => boolean }) {
+export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
   const state = usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -244,7 +244,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
 
   useEffect(() => {
     const cashflows = state.cashflows || [];
-    if (!isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
+    if (!isWorkspaceSyncReady || !isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
     const key = allocationInputKey;
     if (key === lastRecalculationKey.current) {
       setCashflowAllocationReady(true);
@@ -261,13 +261,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     return () => {
       active = false;
     };
-  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);
+  }, [isWorkspaceSyncReady, cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false,
     isOperationActive: () => boolean = () => true
   ): Promise<boolean> => {
-    const isOperationCurrent = () => isSessionCurrent() && isOperationActive();
+    const isOperationCurrent = () => isWorkspaceSyncReady && isSessionCurrent() && isOperationActive();
     if (!isOperationCurrent()) return false;
     try {
       // An empty confirmed snapshot is still a calculation input: it must clear
@@ -399,7 +399,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   };
 
   const syncCashflowsFromFreedom = async () => {
-    if (!isSessionCurrent() || cashflowSyncStarted.current) return;
+    if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     let completed = false;
     try {
@@ -453,7 +453,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   };
 
   const retryCashflowSync = () => {
-    if (!isSessionCurrent() || cashflowSyncStarted.current) return;
+    if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return;
     setCashflowSyncMessage('');
     setCashflowSyncReady(false);
     void syncCashflowsFromFreedom();
@@ -485,9 +485,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   };
 
   useEffect(() => {
-    if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;
+    if (!isWorkspaceSyncReady || !cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;
     void syncCashflowsFromFreedom();
-  }, [cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
+  }, [isWorkspaceSyncReady, cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
 
   useEffect(() => {
     const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {

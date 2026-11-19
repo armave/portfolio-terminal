@@ -708,7 +708,6 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   state = portfolioStore.getState();
 
   const doPush = async (): Promise<boolean> => {
-    setCloudStatus('syncing', 'WRITING...');
     const request = (async (): Promise<boolean> => {
       try {
         const ok = await syncCloudState('push');
@@ -838,6 +837,10 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     },
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logAppMessage,
+    onPushStart: () => {
+      setCloudStatus('syncing', 'WRITING...');
+      setCloudSyncStatus({ text: 'Cloud sync in progress', status: 'syncing' });
+    },
     onStatusChange: (status) => {
       const synced = status === 'synced';
       const conflict = status === 'conflict';
