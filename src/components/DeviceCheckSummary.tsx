@@ -3,7 +3,7 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { getAuthStatus } from '../services/api';
 import { getCloudSyncDiagnostics, subscribeCloudSyncDiagnostics } from '../services/cloudSyncDiagnostics';
 import type { CloudSyncDiagnostic, CloudSyncDiagnosticReason } from '../services/cloudSyncDiagnostics';
-import { useCloudSyncStatus } from '../ui/uiStateStore';
+import { useCloudStatus, useCloudSyncStatus } from '../ui/uiStateStore';
 
 type ServiceWorkerState = 'active' | 'registered' | 'not_registered' | 'unsupported' | 'error';
 type AppShellCacheState = 'available' | 'incomplete' | 'not_registered' | 'unsupported' | 'error';
@@ -80,6 +80,14 @@ export function getApplicationApiLabel(status: DeviceDiagnostics['applicationApi
   return status === 'reachable' ? 'Reachable' : 'Unavailable';
 }
 
+export function getCloudRequestLabel(status: { status: string; text: string }): string {
+  if (status.status === 'synced') return 'Last request confirmed';
+  if (status.status === 'syncing') return 'Request in progress';
+  if (status.status === 'error') return 'Last request failed';
+  if (/secret/i.test(status.text)) return 'Setup required';
+  return 'Not checked';
+}
+
 export function getPortfolioSyncLabel(status: { status: string; text: string }): string {
   if (status.status === 'synced') return 'Synced';
   if (status.status === 'syncing') return 'Syncing';
@@ -90,6 +98,7 @@ export function getPortfolioSyncLabel(status: { status: string; text: string }):
 
 export function getDeviceHealth(
   diagnostics: Pick<DeviceDiagnostics, 'online' | 'localStorageAvailable' | 'secureContext' | 'applicationApiStatus'> | null,
+  cloudStatus: { status: string; text: string },
   cloudSyncStatus: { status: string; text: string }
 ): DeviceHealth {
   if (!diagnostics) return 'checking';
@@ -97,6 +106,7 @@ export function getDeviceHealth(
     !diagnostics.localStorageAvailable ||
     !diagnostics.secureContext ||
     diagnostics.applicationApiStatus === 'unavailable' ||
+    cloudStatus.status === 'error' ||
     cloudSyncStatus.status === 'error' ||
     cloudSyncStatus.status === 'conflict'
   ) {
@@ -253,6 +263,10 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'Error': 'Ошибка',
   'Application API': 'API приложения',
   'Reachable': 'Доступен',
+  'Cloud request': 'Облачный запрос',
+  'Last request confirmed': 'Последний запрос подтверждён',
+  'Last request failed': 'Последний запрос завершился ошибкой',
+  'Request in progress': 'Выполняется запрос',
   'Cloud portfolio': 'Облачный портфель',
   'Portfolio sync': 'Синхронизация портфеля',
   'Conflict': 'Конфликт',
@@ -316,12 +330,12 @@ function healthTone(health: DeviceHealth): string {
 }
 
 function diagnosticTone(value: string): string {
-  if (['Available', 'Secure', 'Active', 'Synced', 'Reachable', 'Online (browser-reported)', 'Installed', 'Cached app shell available'].includes(value)) {
+  if (['Available', 'Secure', 'Active', 'Synced', 'Reachable', 'Last request confirmed', 'Online (browser-reported)', 'Installed', 'Cached app shell available'].includes(value)) {
     return 'text-emerald-300';
   }
-  if (['Unavailable', 'Not secure', 'Error', 'Failed'].includes(value)) return 'text-rose-300';
+  if (['Unavailable', 'Not secure', 'Error', 'Failed', 'Last request failed'].includes(value)) return 'text-rose-300';
   if (value === 'Conflict') return 'text-amber-200';
-  if (['Offline', 'Setup required', 'Not checked', 'No recent sync result', 'Not registered', 'Registered, not active', 'App shell cache incomplete', 'Service worker not registered'].includes(value)) {
+  if (['Offline', 'Setup required', 'Not checked', 'No recent sync result', 'Request in progress', 'Not registered', 'Registered, not active', 'App shell cache incomplete', 'Service worker not registered'].includes(value)) {
     return 'text-amber-200';
   }
   return 'text-slate-200';
@@ -386,6 +400,7 @@ function diagnosticReasonLabel(reason: CloudSyncDiagnosticReason): string {
 }
 
 export function DeviceCheckSummary() {
+  const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
   const [cloudSyncDiagnostics, setCloudSyncDiagnostics] = useState<CloudSyncDiagnostic[]>(() => getCloudSyncDiagnostics());
   const [diagnostics, setDiagnostics] = useState<DeviceDiagnostics | null>(null);
@@ -434,12 +449,13 @@ export function DeviceCheckSummary() {
     };
   }, []);
 
-  const health = getDeviceHealth(diagnostics, cloudSyncStatus);
+  const health = getDeviceHealth(diagnostics, cloudStatus, cloudSyncStatus);
 
   const primaryRows: Array<[string, string]> = diagnostics ? [
     ['Network', diagnostics.online ? 'Online (browser-reported)' : 'Offline'],
     ['Local storage', diagnostics.localStorageAvailable ? 'Available' : 'Unavailable'],
     ['Application API', getApplicationApiLabel(diagnostics.applicationApiStatus)],
+    ['Cloud request', getCloudRequestLabel(cloudStatus)],
     ['Cloud portfolio', getPortfolioSyncLabel(cloudSyncStatus)]
   ] : [];
 
