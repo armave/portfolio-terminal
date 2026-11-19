@@ -13,8 +13,10 @@ import {
   repairCurrentBrowserAppCache
 } from './services/browserProfileRepairRuntime';
 
-const pageWasRefreshed = typeof performance !== 'undefined' &&
-  isPageRefreshNavigation(performance.getEntriesByType('navigation')[0]?.type);
+const pageNavigation = typeof performance === 'undefined'
+  ? undefined
+  : performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+const pageWasRefreshed = isPageRefreshNavigation(pageNavigation?.type);
 let startupOverlayDismissed = false;
 let initialWorkspaceSyncSettled = false;
 let registeredServiceWorker: ServiceWorkerRegistration | null = null;
@@ -22,23 +24,30 @@ let applyStagedServiceWorkerUpdate: ((reloadPage?: boolean) => Promise<void>) | 
 let refreshUpdateActivationInFlight = false;
 
 async function applyWaitingUpdateAfterRefresh(): Promise<void> {
+  const registration = registeredServiceWorker;
+  const waitingWorker = registration?.waiting;
   if (
     !pageWasRefreshed ||
     !startupOverlayDismissed ||
+    !initialWorkspaceSyncSettled ||
     refreshUpdateActivationInFlight ||
-    !registeredServiceWorker?.waiting ||
+    !registration ||
+    !waitingWorker ||
     !navigator.serviceWorker.controller ||
     !applyStagedServiceWorkerUpdate
   ) return;
 
-  const waitingWorker = registeredServiceWorker.waiting;
   refreshUpdateActivationInFlight = true;
   try {
     // The waiting worker counts all open clients in this app's scope. Only
     // activate after an explicit page refresh when this is the sole app tab.
     // Older tabs may not know this protocol, so the count is owned by the SW.
     const isOnlyOpenTab = await isOnlyOpenAppClient(waitingWorker);
-    if (!isOnlyOpenTab || registeredServiceWorker.waiting !== waitingWorker) {
+    if (
+      !isOnlyOpenTab ||
+      registration.waiting !== waitingWorker ||
+      registeredServiceWorker !== registration
+    ) {
       if (!isOnlyOpenTab) {
         console.info('[PWA]: Update remains staged because another Portfolio Terminal tab is still open. Close the other tab and refresh again to apply it.');
       }
