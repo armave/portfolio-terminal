@@ -1,4 +1,5 @@
 import type { AppLanguage } from './i18n';
+import { clearCloudSyncDiagnostics } from './cloudSyncDiagnostics';
 import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 
 export interface AuthUser {
@@ -175,15 +176,21 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
   const getAuthStatus = (): Promise<{ setupRequired: boolean; userCount: number }> =>
     authRequest("/api/auth/status");
 
-  const loginAccount = async (name: string, password: string): Promise<AuthSession> =>
-    normalizeAuthSession(await authRequest<AuthSession>("/api/auth/login", {
+  const loginAccount = async (name: string, password: string): Promise<AuthSession> => {
+    const session = normalizeAuthSession(await authRequest<AuthSession>("/api/auth/login", {
       method: "POST", body: { name, password }
     }));
+    clearCloudSyncDiagnostics();
+    return session;
+  };
 
-  const bootstrapAdmin = async (name: string, password: string, bootstrapSecret: string): Promise<AuthSession> =>
-    normalizeAuthSession(await authRequest<AuthSession>("/api/auth/bootstrap", {
+  const bootstrapAdmin = async (name: string, password: string, bootstrapSecret: string): Promise<AuthSession> => {
+    const session = normalizeAuthSession(await authRequest<AuthSession>("/api/auth/bootstrap", {
       method: "POST", body: { name, password, bootstrapSecret }
     }));
+    clearCloudSyncDiagnostics();
+    return session;
+  };
 
   const getCurrentUser = (): Promise<AuthUser> => {
     const token = dependencies.getActiveGatewaySecret();
@@ -294,6 +301,7 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
   const logoutAccount = async (): Promise<void> => {
     const token = dependencies.getActiveGatewaySecret();
     if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
+    clearCloudSyncDiagnostics();
     clearRequestCaches();
     if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
   };

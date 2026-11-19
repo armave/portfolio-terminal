@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAuthTransportRuntime } from './authTransportRuntime';
+import { clearCloudSyncDiagnostics, getCloudSyncDiagnostics, recordCloudSyncDiagnostic } from './cloudSyncDiagnostics';
 
 const admin = {
   id: 'admin-1',
@@ -162,6 +163,24 @@ describe('auth transport runtime', () => {
     const { runtime } = createRuntime(fetchImpl);
 
     await expect(runtime.listUsers()).rejects.toThrow('user directory response was invalid');
+  });
+
+  it('clears tab-scoped cloud diagnostics when the account session changes', async () => {
+    clearCloudSyncDiagnostics();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'login-token', user: guest, expiresAt: 99 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 })) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    recordCloudSyncDiagnostic({ operation: 'push', outcome: 'conflict', reason: 'revision-conflict', httpStatus: 409 });
+    expect(getCloudSyncDiagnostics()).toHaveLength(1);
+    await runtime.loginAccount('Guest', 'password');
+    expect(getCloudSyncDiagnostics()).toEqual([]);
+
+    recordCloudSyncDiagnostic({ operation: 'pull', outcome: 'error', reason: 'http-unauthorized', httpStatus: 401 });
+    expect(getCloudSyncDiagnostics()).toHaveLength(1);
+    await runtime.logoutAccount();
+    expect(getCloudSyncDiagnostics()).toEqual([]);
   });
 
   it('clears cached identity and invokes application-wide cache clearing after logout', async () => {

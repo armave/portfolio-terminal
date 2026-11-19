@@ -17,6 +17,43 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes cloud synchronization diagnostics in Russian', () => {
+    const cloudDiagnosticCopy = [
+      'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',
+      'Cloud pull', 'Cloud write', 'Background reconciliation', 'Succeeded', 'Conflict', 'Failed',
+      'HTTP status', 'Expected revision', 'Observed revision',
+      'No cloud synchronization attempts have been recorded in this tab session.',
+      'Diagnostics are kept only in this browser tab session and contain status metadata, not portfolio data, credentials, or encrypted payloads.',
+      'Application API reachability checks the public status endpoint only; it does not confirm authenticated portfolio synchronization.',
+      'Cloud operation was confirmed.',
+      'Independent changes were reconciled automatically.',
+      'The cloud request could not start because the session credential is unavailable.',
+      'The cloud record is missing even though this device previously accepted a populated revision.',
+      'The server rejected a stale revision because a newer cloud snapshot exists.',
+      'This device and the cloud both changed protected portfolio data differently.',
+      'The transaction journal contains conflicting event identity or history data.',
+      'The cloud service rejected the session as unauthenticated.',
+      'The current account is not authorized for this cloud operation.',
+      'The application server returned an error while handling the cloud request.',
+      'The application server rejected the cloud request.',
+      'The cloud request timed out before a complete response was received.',
+      'The browser could not complete the request to the cloud service.',
+      'The encrypted cloud snapshot could not be decrypted or authenticated.',
+      'The cloud response failed payload validation.',
+      'The local browser store could not commit the accepted cloud snapshot.',
+      'The portfolio store rejected the cloud snapshot; local data was retained.',
+      'No accepted in-memory merge baseline was available for safe background recovery.',
+      'The latest cloud revision could not be confirmed for a conditional retry.',
+      'The cloud snapshot contains legacy history that requires the normal migration flow.',
+      'Local data changed while a background merge was being prepared; the merge was cancelled.',
+      'The conditional cloud write lost another revision race or was rejected.',
+      'The cloud operation failed for an unclassified reason.'
+    ];
+    for (const copy of cloudDiagnosticCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes PWA installation, offline and app-shell diagnostics in Russian', () => {
     const pwaCopy = [
       'Install Portfolio Terminal',

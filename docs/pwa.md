@@ -15,6 +15,10 @@ The reconnect check reads only the public application setup/status response. It 
 
 Device Check now reports whether the app-scoped Workbox precache contains the document, entry script and stylesheet. This is a static-shell check, not a promise that authentication or financial data is available offline.
 
+Device Check also probes the public `/api/auth/status` endpoint and labels that result **Application API**. This confirms only that the Worker/auth-status path responded; it does not read a portfolio, authenticate the active session, or prove that the encrypted cloud-state record is available. **Cloud request** reports the most recent request outcome, while **Cloud portfolio** and **Portfolio sync** report the current portfolio synchronization result. These indicators are intentionally separate because a request failure can occur before a sync result is confirmed.
+
+The expandable **Cloud synchronization diagnostics** section shows the latest eight cloud pull, write, and background-reconciliation outcomes. Entries use an allowlist of operation, outcome, reason, HTTP status, and revision numbers; raw error messages, URLs, account identifiers, credentials, encrypted payloads, and portfolio data are never retained. The small diagnostic history lives in the current tab's `sessionStorage` so it survives a page refresh but is discarded when that tab session ends. It is also cleared after a successful sign-in, account bootstrap, or sign-out so one account's sync metadata is not shown to another account on a shared device. It is best-effort troubleshooting metadata, not an audit log or a replacement for the encrypted cloud record.
+
 ## Offline and security boundary
 
 Workbox precaches the static application shell and static assets only. No runtime caching rule is added for Worker API responses. The PWA must not cache authenticated state, guest projections, portfolio snapshots, cloud history, broker balances, active orders, quotes, session credentials or encryption keys.
