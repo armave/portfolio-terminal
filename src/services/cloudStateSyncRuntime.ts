@@ -6,6 +6,7 @@ import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from '
 import type { PortfolioState } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { reconcileCloudStateSnapshots } from './cloudSnapshotReconciliation';
+import { recordCloudSyncDiagnostic, type CloudSyncDiagnosticReason } from './cloudSyncDiagnostics';
 
 // The Worker accepts 20 MiB request bodies. AES-GCM's base64 envelope expands
 // plaintext by roughly 4/3, so keep enough headroom for the envelope and JSON wrapper.
@@ -105,6 +106,37 @@ function cloudStateFingerprint(snapshot: CloudStateRecord): string {
   delete fingerprintState.lastUpdated;
   return canonicalCloudStateValue(fingerprintState);
 }
+
+function classifyCloudSyncFailure(error: unknown, httpStatus?: number): CloudSyncDiagnosticReason {
+  if (httpStatus === 401) return 'http-unauthorized';
+  if (httpStatus === 403) return 'http-forbidden';
+  if (typeof httpStatus === 'number' && httpStatus >= 500) return 'http-server-error';
+  if (typeof httpStatus === 'number' && httpStatus >= 400) return 'http-error';
+  const name = error && typeof error === 'object' && 'name' in error
+    ? String((error as { name?: unknown }).name || '')
+    : '';
+  const message = errorMessage(error).toLowerCase();
+  if (
+    name === 'AbortError' || name === 'TimeoutError' ||
+    message.includes('timed out') || message.includes('timeout')
+  ) return 'timeout';
+  if (
+    name === 'OperationError' || name === 'DataError' ||
+    message.includes('decrypt') || message.includes('cipher') || message.includes('encryption')
+  ) return 'decryption-failed';
+  if (message.includes('transaction journal') || message.includes('transaction event') || message.includes('history conflicts')) {
+    return 'transaction-history-conflict';
+  }
+  if (message.includes('could not be saved') || message.includes('storage availability') || message.includes('local storage')) {
+    return 'local-storage-failed';
+  }
+  if (message.includes('invalid') || message.includes('malformed') || message.includes('could not be parsed')) {
+    return 'invalid-payload';
+  }
+  if (error instanceof TypeError) return 'network';
+  return 'unknown';
+}
+
 
 export interface SyncOptions {
   state?: CloudStateInput;
@@ -301,12 +333,15 @@ async function pullCloudState(
   const pullBaseline = handlers.protectLocalEditsDuringPull
     ? prepareCloudStateSnapshot(handlers.getState?.() || state)
     : null;
+  let diagnosticHttpStatus: number | undefined;
+  let diagnosticObservedRevision: number | undefined;
   const stalePullFallback = (): CloudStateRecord => {
     reportResult?.(false);
     return loadSavedState(toCloudStateRecord(state));
   };
 
   if (!currentSecret) {
+    recordCloudSyncDiagnostic({ operation: 'pull', outcome: 'error', reason: 'missing-credentials' });
     handlers.onStatusChange?.('error');
     reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
@@ -325,7 +360,9 @@ async function pullCloudState(
     });
     if (!isCurrentSession()) return stalePullFallback();
 
+    diagnosticHttpStatus = res.status;
     const pulledRevision = readCloudRevision(res.headers);
+    diagnosticObservedRevision = pulledRevision ?? undefined;
 
     if (res.status === 404) {
       // A missing record is an empty baseline only when this device has never
@@ -338,6 +375,10 @@ async function pullCloudState(
         (Number.isSafeInteger(knownRevision) && knownRevision > 0)
       );
       if (previouslyPopulated) {
+        recordCloudSyncDiagnostic({
+          operation: 'pull', outcome: 'conflict', reason: 'remote-record-missing',
+          httpStatus: 404, expectedRevision: knownRevision, observedRevision: pulledRevision ?? undefined
+        });
         cloudStateConflictSecret = currentSecret;
         const conflictMessage = translateText(
           'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
@@ -350,6 +391,11 @@ async function pullCloudState(
         return loadSavedState(toCloudStateRecord(state));
       }
 
+      recordCloudSyncDiagnostic({
+        operation: 'pull', outcome: 'success', reason: 'confirmed', httpStatus: 404,
+        expectedRevision: revisionCoordinator.getRevision?.() ?? 0,
+        observedRevision: pulledRevision ?? undefined
+      });
       if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
       cloudStateBaseSnapshots.set(currentSecret, {});
       handlers.onStatusChange?.('synced');
@@ -476,6 +522,10 @@ async function pullCloudState(
         remoteSnapshot
       );
       if (!reconciledSnapshot) {
+        recordCloudSyncDiagnostic({
+          operation: 'pull', outcome: 'conflict', reason: 'overlapping-edits',
+          httpStatus: 200, observedRevision: pulledRevision ?? undefined
+        });
         // A local edit and a remote financial edit both landed after the
         // startup baseline. Keep the current device data and block writes until
         // the user resolves the cloud conflict; never silently replace either.
@@ -496,6 +546,12 @@ async function pullCloudState(
       try {
         pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true);
       } catch (applicationError) {
+        recordCloudSyncDiagnostic({
+          operation: 'pull', outcome: 'conflict',
+          reason: classifyCloudSyncFailure(applicationError) === 'transaction-history-conflict'
+            ? 'transaction-history-conflict' : 'local-apply-rejected',
+          httpStatus: 200, observedRevision: pulledRevision ?? undefined
+        });
         cloudStateConflictSecret = currentSecret;
         throw applicationError;
       }
@@ -508,6 +564,10 @@ async function pullCloudState(
     // local edit was preserved, the follow-up push must compare against this
     // remote snapshot rather than pretending the server already has that edit.
     cloudStateBaseSnapshots.set(currentSecret, remoteSnapshot);
+    recordCloudSyncDiagnostic({
+      operation: 'pull', outcome: 'success', reason: 'confirmed',
+      httpStatus: diagnosticHttpStatus, observedRevision: pulledRevision ?? undefined
+    });
     // Clear a previous conflict only after the local store accepted the snapshot.
     if (cloudStateConflictSecret === currentSecret) cloudStateConflictSecret = null;
 
@@ -564,6 +624,12 @@ async function pullCloudState(
   } catch (err: unknown) {
     if (!isCurrentSession()) return stalePullFallback();
     const message = errorMessage(err);
+    const failureReason = classifyCloudSyncFailure(err, diagnosticHttpStatus);
+    recordCloudSyncDiagnostic({
+      operation: 'pull', outcome: failureReason === 'transaction-history-conflict' ? 'conflict' : 'error',
+      reason: failureReason, httpStatus: diagnosticHttpStatus,
+      observedRevision: diagnosticObservedRevision
+    });
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'error');
     reportResult?.(false);
     logSafeDiagnostic('error', 'cloud-sync', err);
@@ -587,8 +653,19 @@ async function tryAutoReconcileCloudConflict(
 ): Promise<boolean> {
   const applyReconciledState = handlers.applyAutoReconciledState;
   const base = cloudStateBaseSnapshots.get(secret);
-  if (!applyReconciledState || !base) return false;
   const isCurrentSession = handlers.isCurrentSession || (() => true);
+  const fail = (
+    reason: CloudSyncDiagnosticReason,
+    httpStatus?: number,
+    observedRevision?: number
+  ): false => {
+    recordCloudSyncDiagnostic({
+      operation: 'reconcile', outcome: 'conflict', reason,
+      httpStatus, expectedRevision, observedRevision
+    });
+    return false;
+  };
+  if (!applyReconciledState || !base) return fail('no-accepted-baseline');
 
   try {
     const response = await fetchWithTimeout(apiUrl('/api/state'), {
@@ -599,24 +676,32 @@ async function tryAutoReconcileCloudConflict(
     if (!isCurrentSession()) return false;
 
     const latestRevision = readCloudRevision(response.headers);
+    // Classify an HTTP failure before requiring a revision header: error responses
+    // commonly omit ETag, but their status is the most actionable diagnostic.
+    if (response.status !== 404 && !response.ok) {
+      return fail(classifyCloudSyncFailure(undefined, response.status), response.status, latestRevision ?? undefined);
+    }
+    // A previously populated workspace disappearing may represent an explicit
+    // destructive reset. Never auto-adopt an empty snapshot over that base.
+    if (response.status === 404 && Object.keys(base).length > 0) {
+      return fail('remote-record-missing', 404, latestRevision ?? undefined);
+    }
     if (!Number.isSafeInteger(latestRevision) || latestRevision === null || latestRevision <= expectedRevision) {
-      return false;
+      return fail('latest-revision-unavailable', response.status, latestRevision ?? undefined);
     }
 
     let remoteState: CloudStateRecord;
     if (response.status === 404) {
-      // A previously populated workspace disappearing may represent an explicit
-      // destructive reset. Never auto-adopt an empty snapshot over that base.
-      if (Object.keys(base).length > 0) return false;
       remoteState = {};
     } else {
-      if (!response.ok) return false;
       const body: unknown = await response.json();
-      if (!isCurrentSession() || !isRecord(body) || !hasAesGcmV2Envelope(body.encryptedPayload)) {
-        return false;
+      if (!isCurrentSession()) return false;
+      if (!isRecord(body) || !hasAesGcmV2Envelope(body.encryptedPayload)) {
+        return fail('invalid-payload', response.status, latestRevision);
       }
       const decrypted = await decryptCloudPayload(body.encryptedPayload, secret);
-      if (!isCurrentSession() || decrypted.legacy) return false;
+      if (!isCurrentSession()) return false;
+      if (decrypted.legacy) return fail('legacy-history-requires-migration', response.status, latestRevision);
       const parsed: unknown = JSON.parse(decrypted.plaintext);
       assertValidCloudPortfolioPayload(parsed);
       const parsedState = parsed as CloudStateRecord;
@@ -626,7 +711,7 @@ async function tryAutoReconcileCloudConflict(
         (Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length > 0) ||
         (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0)
       ) {
-        return false;
+        return fail('legacy-history-requires-migration', response.status, latestRevision);
       }
       processRollovers(parsedState);
       remoteState = prepareCloudStateSnapshot(parsedState);
@@ -635,7 +720,7 @@ async function tryAutoReconcileCloudConflict(
     const latestLocal = handlers.getState?.() || conflictedState;
     const localState = prepareCloudStateSnapshot(latestLocal);
     const merged = reconcileCloudStateSnapshots(base, localState, remoteState);
-    if (!merged) return false;
+    if (!merged) return fail('overlapping-edits', response.status, latestRevision);
 
     const mergedFingerprint = cloudStateFingerprint(merged);
     const remoteFingerprint = cloudStateFingerprint(remoteState);
@@ -643,21 +728,27 @@ async function tryAutoReconcileCloudConflict(
     if (mergedFingerprint !== remoteFingerprint) {
       const serialized = JSON.stringify(merged);
       const serializedBytes = new TextEncoder().encode(serialized).byteLength;
-      if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) return false;
+      if (serializedBytes > MAX_CLOUD_STATE_PLAINTEXT_BYTES) {
+        return fail('invalid-payload', response.status, latestRevision);
+      }
       encryptedMerged = await encryptCloudPayload(serialized, secret);
       if (!isCurrentSession()) return false;
 
       // Encryption is asynchronous. Refuse to apply the earlier candidate if
       // the user edited this device while the background merge was preparing.
       const localAfterEncryption = prepareCloudStateSnapshot(handlers.getState?.() || conflictedState);
-      if (cloudStateFingerprint(localAfterEncryption) !== cloudStateFingerprint(localState)) return false;
+      if (cloudStateFingerprint(localAfterEncryption) !== cloudStateFingerprint(localState)) {
+        return fail('local-edits-changed-during-merge', response.status, latestRevision);
+      }
     }
 
     // Advance the pull generation before importing state: store subscribers may
     // enqueue another save during import and must capture the refreshed revision.
     revisionCoordinator.recordPulledRevision(latestRevision);
     const applied = applyReconciledState(merged);
-    if (applied === false || !isCurrentSession()) return false;
+    if (applied === false || !isCurrentSession()) {
+      return fail('local-apply-rejected', response.status, latestRevision);
+    }
 
     if (mergedFingerprint !== remoteFingerprint) {
       const retry = await pushCloudWrite(apiUrl('/api/state'), {
@@ -665,7 +756,8 @@ async function tryAutoReconcileCloudConflict(
         headers: authHeaders(secret, `"${latestRevision}"`),
         body: JSON.stringify({ encryptedPayload: encryptedMerged })
       }, isCurrentSession);
-      if (!isCurrentSession() || !retry.ok) return false;
+      if (!isCurrentSession()) return false;
+      if (!retry.ok) return fail('conditional-retry-failed', retry.status, latestRevision);
       const savedRevision = readCloudRevision(retry.headers) ?? latestRevision + 1;
       revisionCoordinator.setRevision(savedRevision);
     }
@@ -673,12 +765,20 @@ async function tryAutoReconcileCloudConflict(
     cloudStateBaseSnapshots.set(secret, merged);
     cloudStatePushFingerprints.set(secret, mergedFingerprint);
     if (cloudStateConflictSecret === secret) cloudStateConflictSecret = null;
+    recordCloudSyncDiagnostic({
+      operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
+      expectedRevision, observedRevision: latestRevision
+    });
     handlers.onStatusChange?.('synced');
     (handlers.logAppMessage || ((_message: string) => logSafeDiagnostic('info', 'cloud-sync'))) (
       '[Cloud Conflict]: Non-conflicting changes were reconciled and synchronized in the background.'
     );
     return true;
-  } catch {
+  } catch (error) {
+    recordCloudSyncDiagnostic({
+      operation: 'reconcile', outcome: 'conflict',
+      reason: classifyCloudSyncFailure(error), expectedRevision
+    });
     // The original local snapshot remains available. Keep the conflict latch
     // set and let the existing recovery panel handle ambiguous or failed cases.
     return false;
@@ -898,15 +998,18 @@ async function performPushCloudState(
   } = handlers;
   const isCurrentSession = handlers.isCurrentSession || (() => true);
   if (!isCurrentSession()) return false;
+  let diagnosticHttpStatus: number | undefined;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});
   const currentSecret = handlers.secret || getActiveGatewaySecret();
 
   if (!currentSecret) {
+    recordCloudSyncDiagnostic({ operation: 'push', outcome: 'error', reason: 'missing-credentials' });
     showToast('Gateway Secret required to access cloud state.', 'error');
     return false;
   }
   if (cloudStateConflictSecret === currentSecret) {
+    recordCloudSyncDiagnostic({ operation: 'push', outcome: 'conflict', reason: 'revision-conflict', expectedRevision });
     handlers.onStatusChange?.('conflict');
     return false;
   }
@@ -918,6 +1021,10 @@ async function performPushCloudState(
     const stateToEncrypt = prepareCloudStateSnapshot(currentState);
     const stateFingerprint = cloudStateFingerprint(stateToEncrypt);
     if (cloudStatePushFingerprints.get(currentSecret) === stateFingerprint) {
+      recordCloudSyncDiagnostic({
+        operation: 'push', outcome: 'success', reason: 'confirmed', expectedRevision,
+        observedRevision: revisionCoordinator.getRevision?.()
+      });
       handlers.onStatusChange?.('synced');
       return true;
     }
@@ -939,9 +1046,14 @@ async function performPushCloudState(
       body: JSON.stringify(payload)
     }, isCurrentSession);
     if (!isCurrentSession()) return false;
+    diagnosticHttpStatus = res.status;
 
     if (!res.ok) {
       if (res.status === 409) {
+        recordCloudSyncDiagnostic({
+          operation: 'push', outcome: 'conflict', reason: 'revision-conflict',
+          httpStatus: 409, expectedRevision
+        });
         cloudStateConflictSecret = currentSecret;
         const details = await responseError(res);
         const reconciled = await tryAutoReconcileCloudConflict(
@@ -970,12 +1082,21 @@ async function performPushCloudState(
     if (savedRevision !== null) revisionCoordinator.setRevision(savedRevision);
     cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
     cloudStateBaseSnapshots.set(currentSecret, stateToEncrypt);
+    recordCloudSyncDiagnostic({
+      operation: 'push', outcome: 'success', reason: 'confirmed',
+      httpStatus: diagnosticHttpStatus, expectedRevision, observedRevision: savedRevision ?? undefined
+    });
 
     handlers.onStatusChange?.('synced');
     return true;
   } catch (err: unknown) {
     if (!isCurrentSession()) return false;
     const message = errorMessage(err);
+    recordCloudSyncDiagnostic({
+      operation: 'push', outcome: 'error',
+      reason: classifyCloudSyncFailure(err, diagnosticHttpStatus),
+      httpStatus: diagnosticHttpStatus, expectedRevision
+    });
     logSafeDiagnostic('error', 'cloud-sync', err);
     handlers.onStatusChange?.(cloudStateConflictSecret === currentSecret ? 'conflict' : 'error');
     showToast(`Cloud push failed: ${message}`, 'error');
