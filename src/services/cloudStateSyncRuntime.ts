@@ -1017,6 +1017,10 @@ async function performPushCloudState(
     const stateToEncrypt = prepareCloudStateSnapshot(currentState);
     const stateFingerprint = cloudStateFingerprint(stateToEncrypt);
     if (cloudStatePushFingerprints.get(currentSecret) === stateFingerprint) {
+      recordCloudSyncDiagnostic({
+        operation: 'push', outcome: 'success', reason: 'confirmed', expectedRevision,
+        observedRevision: revisionCoordinator.getRevision?.()
+      });
       handlers.onStatusChange?.('synced');
       return true;
     }
@@ -1042,6 +1046,10 @@ async function performPushCloudState(
 
     if (!res.ok) {
       if (res.status === 409) {
+        recordCloudSyncDiagnostic({
+          operation: 'push', outcome: 'conflict', reason: 'revision-conflict',
+          httpStatus: 409, expectedRevision
+        });
         cloudStateConflictSecret = currentSecret;
         const details = await responseError(res);
         const reconciled = await tryAutoReconcileCloudConflict(
