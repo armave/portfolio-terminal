@@ -6,6 +6,8 @@ export interface PortfolioBrokerRequestRuntimeDependencies {
   /** Waitable account-info refresh preserves the resolve(false) failure contract. */
   refreshAccountInfoForWait: () => Promise<boolean>;
   refreshExecutedTrades: () => Promise<boolean>;
+  /** Explicit Manual Sync path; ordinary startup requests stay stream-first. */
+  refreshExecutedTradesForWait?: () => Promise<boolean>;
   refreshActiveOrders: () => Promise<boolean>;
 }
 
@@ -43,7 +45,7 @@ export function bindPortfolioBrokerRequestRuntime(
     }),
     addBrokerEventListener('broker:request-executed-trades', () => run(dependencies.refreshExecutedTrades)),
     addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
-      resolveWaiter(dependencies.refreshExecutedTrades, request.resolve);
+      resolveWaiter(dependencies.refreshExecutedTradesForWait || dependencies.refreshExecutedTrades, request.resolve);
     }),
     addBrokerEventListener('broker:request-active-orders', () => run(dependencies.refreshActiveOrders)),
     addBrokerEventListener('broker:request-active-orders-and-wait', (request) => {

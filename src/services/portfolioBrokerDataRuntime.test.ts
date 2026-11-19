@@ -175,6 +175,63 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.getPortfolioExecutions()).toEqual([existingTrade]);
   });
 
+  it('performs a bounded REST catch-up for explicit Manual Sync while the account stream is connected', async () => {
+    const existing = trade('existing-history');
+    const newest = trade('new-manual-sale', 'sell', '2026-11-18T12:00:00.000Z');
+    const fixture = createFixture({
+      fetchExecutedTrades: vi.fn(async () => [newest])
+    });
+    fixture.setSaved([existing]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    await expect(fixture.runtime.refreshExecutedTrades(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.restoreGatewaySecret).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([existing, newest]));
+    expect(fixture.events).toContainEqual({
+      type: 'broker:executed-trades',
+      payload: fixture.getPortfolioExecutions()
+    });
+  });
+
+  it('coalesces concurrent Manual Sync history catch-ups for the same session', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchExecutedTrades: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const first = fixture.runtime.refreshExecutedTrades(fixture.session);
+    const second = fixture.runtime.refreshExecutedTrades(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1));
+    resolveFetch?.([trade('coalesced-manual-sale')]);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a newer live execution update when the manual REST catch-up resolves afterward', async () => {
+    const original = trade('shared-live-id', 'sell', '2026-11-10T12:00:00.000Z', { price: 100, profit: 5 });
+    const liveUpdated = trade('shared-live-id', 'sell', '2026-11-10T12:00:00.000Z', { price: 125, profit: 30 });
+    const staleRestRow = trade('shared-live-id', 'sell', '2026-11-10T12:00:00.000Z', { price: 110, profit: 15 });
+    const fixture = createFixture({
+      fetchExecutedTrades: vi.fn(async () => {
+        fixture.setPortfolioExecutions([liveUpdated]);
+        markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
+        return [staleRestRow];
+      })
+    });
+    fixture.setPortfolioExecutions([original]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    await expect(fixture.runtime.refreshExecutedTrades(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.getPortfolioExecutions()).toEqual([
+      expect.objectContaining({ id: 'shared-live-id', price: 125, profit: 30 })
+    ]);
+  });
+
   it('rejects a partial broker snapshot and retains the previous account state', async () => {
     const fixture = createFixture({
       fetchAccountInfo: vi.fn(async () => ({
