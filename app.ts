@@ -809,15 +809,12 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
     if (activeCloudStateWrite) await activeCloudStateWrite;
-    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) {
-      finishConfirmedReplacement(false);
-      return false;
-    }
+    if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) return false;
   }
   let succeeded: boolean;
   try {
     succeeded = await syncCloudStateService(mode, {
-    state,
+      state,
     getState: () => state,
     isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
