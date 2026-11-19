@@ -80,7 +80,8 @@ const AUTH_EDGE_RATE_LIMITED_PATHS = new Set([
     "/api/auth/login",
     "/api/auth/bootstrap",
     "/api/auth/users",
-    "/api/auth/me"
+    "/api/auth/me",
+    "/api/auth/preview"
 ]);
 const AUTH_EDGE_RATE_LIMIT_PERIOD_SECONDS = 60;
 

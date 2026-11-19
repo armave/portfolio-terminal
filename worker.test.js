@@ -3333,13 +3333,15 @@ describe('Cloudflare authentication edge rate limiting', () => {
     await worker.fetch(authRequest('/api/auth/login'), env);
     await worker.fetch(authRequest('/api/auth/me'), env);
     await worker.fetch(authRequest('/api/auth/users'), env);
+    await worker.fetch(authRequest('/api/auth/preview'), env);
 
     expect(env.limiter.limit.mock.calls.map(([argument]) => argument.key)).toEqual([
       `auth:/api/auth/login:${clientIp}`,
       `auth:/api/auth/me:${clientIp}`,
-      `auth:/api/auth/users:${clientIp}`
+      `auth:/api/auth/users:${clientIp}`,
+      `auth:/api/auth/preview:${clientIp}`
     ]);
-    expect(env.doFetch).toHaveBeenCalledTimes(3);
+    expect(env.doFetch).toHaveBeenCalledTimes(4);
   });
 
   it('fails closed in production when the required binding is missing', async () => {
