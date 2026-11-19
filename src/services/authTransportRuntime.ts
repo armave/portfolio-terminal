@@ -8,6 +8,9 @@ export interface AuthUser {
   role: "guest" | "admin";
   language: AppLanguage;
   createdAt: string;
+  isImpersonating?: boolean;
+  impersonatedById?: string;
+  impersonatedByName?: string;
 }
 export interface AuthSession {
   token: string;
@@ -30,9 +33,13 @@ export interface AuthTransportRuntimeDependencies {
 export interface AuthTransportRuntime {
   authRequest: <T>(path: string, options?: AuthRequestOptions) => Promise<T>;
   validateGatewaySecret: (secret: string) => Promise<boolean>;
+  /** Returns null only for an actual unauthorized/forbidden response; transport and server errors reject. */
+  getUserForGatewaySecret: (secret: string) => Promise<AuthUser | null>;
   getAuthStatus: () => Promise<{ setupRequired: boolean; userCount: number }>;
   loginAccount: (name: string, password: string) => Promise<AuthSession>;
   bootstrapAdmin: (name: string, password: string, bootstrapSecret: string) => Promise<AuthSession>;
+  startAdminGuestPreview: (guestUserId: string) => Promise<AuthSession>;
+  endAdminGuestPreview: () => Promise<void>;
   getCurrentUser: () => Promise<AuthUser>;
   listUsers: () => Promise<AuthUser[]>;
   /** Returns this session's in-memory directory snapshot synchronously, including stale rows during revalidation. */
@@ -173,6 +180,35 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     }
   };
 
+  const getUserForGatewaySecret = async (secret: string): Promise<AuthUser | null> => {
+    const cleanSecret = typeof secret === "string" ? secret.trim() : "";
+    if (!cleanSecret) return null;
+    return fetchAndConsumeWithTimeout(fetchImpl, new URL("/api/auth/me", dependencies.apiUrl), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-App-Auth": cleanSecret,
+        Authorization: `Bearer ${cleanSecret}`
+      },
+      cache: "no-store"
+    }, async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        if (currentUserCache?.token === cleanSecret) currentUserCache = null;
+        return null;
+      }
+      const payload = typeof response.json === "function"
+        ? await response.json().catch(() => null)
+        : null;
+      if (!response.ok) {
+        throw new Error(payload?.error || `Account session validation failed (HTTP ${response.status}).`);
+      }
+      const user = normalizeAuthUser(payload?.user);
+      if (!user) throw new Error("The authenticated user response was invalid.");
+      rememberCurrentUser(cleanSecret, user);
+      return user;
+    }, DEFAULT_REQUEST_TIMEOUT_MS);
+  };
+
   const getAuthStatus = (): Promise<{ setupRequired: boolean; userCount: number }> =>
     authRequest("/api/auth/status");
 
@@ -190,6 +226,36 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     }));
     clearCloudSyncDiagnostics();
     return session;
+  };
+
+  const startAdminGuestPreview = async (guestUserId: string): Promise<AuthSession> => {
+    const token = dependencies.getActiveGatewaySecret();
+    if (!token) throw new Error("Not signed in.");
+    const normalizedUserId = typeof guestUserId === "string" ? guestUserId.trim() : "";
+    if (!normalizedUserId || normalizedUserId.length > 128) {
+      throw new Error("A valid guest account is required.");
+    }
+    const session = normalizeAuthSession(await authRequest<AuthSession>("/api/auth/preview", {
+      method: "POST", token, body: { userId: normalizedUserId }
+    }));
+    if (session.user.role !== "guest") {
+      throw new Error("Only guest accounts have a separate dashboard to preview.");
+    }
+    clearCloudSyncDiagnostics();
+    clearRequestCaches();
+    if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
+    return session;
+  };
+
+  const endAdminGuestPreview = async (): Promise<void> => {
+    const token = dependencies.getActiveGatewaySecret();
+    if (!token) throw new Error("Not signed in.");
+    await authRequest<{ success: boolean }>("/api/auth/preview/return", {
+      method: "POST", token, body: {}
+    });
+    clearCloudSyncDiagnostics();
+    clearRequestCaches();
+    if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
   };
 
   const getCurrentUser = (): Promise<AuthUser> => {
@@ -309,9 +375,12 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
   return {
     authRequest,
     validateGatewaySecret,
+    getUserForGatewaySecret,
     getAuthStatus,
     loginAccount,
     bootstrapAdmin,
+    startAdminGuestPreview,
+    endAdminGuestPreview,
     getCurrentUser,
     listUsers,
     getCachedUsers,
