@@ -102,9 +102,19 @@ function loadEntries(storage: DiagnosticsStorage | null): CloudSyncDiagnostic[] 
   if (!storage) return [];
   try {
     const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeEntry).filter((entry): entry is CloudSyncDiagnostic => entry !== null).slice(0, MAX_ENTRIES)
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    const retained = parsed
+      .map(normalizeEntry)
+      .filter((entry): entry is CloudSyncDiagnostic => entry !== null)
+      .slice(0, MAX_ENTRIES);
+    if (retained.length !== parsed.length) {
+      try {
+        storage.setItem(STORAGE_KEY, JSON.stringify(retained));
+      } catch {
+        // Trimming legacy diagnostics is best-effort; storage failures never affect sync.
+      }
+    }
+    return retained;
   } catch {
     return [];
   }
