@@ -272,6 +272,7 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
           impersonatedByName: previewAdminUser.name
         };
         currentToken = `operations-preview-session-${guest.id}`;
+        call.issuedToken = currentToken;
         await json(route, 201, {
           token: currentToken,
           user: publicUser(guest),
@@ -1088,6 +1089,7 @@ try {
   await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits'), 'Stocktwits opt-in request');
 
   const visibleSettingsDesk = () => page.locator('#settingsDesk').filter({ visible: true }).first();
+  const userDirectoryReadsBeforeSettings = worker.count('GET', '/api/auth/users');
   const openUserManagement = async () => {
     const disclosure = visibleSettingsDesk().locator('#settingsUserManagement');
     await disclosure.waitFor({ state: 'visible', timeout: 10_000 });
@@ -1098,6 +1100,9 @@ try {
   };
   await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
+  if (worker.count('GET', '/api/auth/users') !== userDirectoryReadsBeforeSettings) {
+    throw new Error('Collapsed User management fetched the administrator directory before it was expanded.');
+  }
   const settingsNavigation = visibleSettingsDesk().getByRole('navigation', { name: 'Settings sections' });
   for (const target of [
     '#settings-account-section',
@@ -1193,7 +1198,12 @@ try {
       return saveButton instanceof HTMLButtonElement && !saveButton.disabled;
     }, name, { timeout: 10_000 });
   };
+  const directoryReadsBeforeExpand = worker.count('GET', '/api/auth/users');
   await openUserManagement();
+  await waitForCondition(
+    () => worker.count('GET', '/api/auth/users') > directoryReadsBeforeExpand,
+    'administrator directory loaded after expanding User management'
+  );
   const createUser = async (name, password) => {
     await visibleSettingsDesk().getByLabel('User name').fill(name);
     await visibleSettingsDesk().getByLabel('Password (6+ characters)').fill(password);
@@ -1262,8 +1272,11 @@ try {
   const rowForUser = (name) => visibleSettingsDesk().locator(`input[aria-label="Name for ${name}"]`)
     .locator('xpath=ancestor::tr[1]');
 
+  // Exercise the mobile guest card action and the separate, read-only preview session.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileGuestCard = visibleSettingsDesk().locator('.settings-user-card').filter({ hasText: 'Browser Guest Keep' });
   const previewCallsBefore = worker.count('POST', '/api/auth/preview');
-  await rowForUser('Browser Guest Keep').getByRole('button', { name: 'View as Browser Guest Keep' }).click();
+  await mobileGuestCard.getByRole('button', { name: 'View as Browser Guest Keep' }).click();
   await waitForCondition(
     () => worker.findCalls('POST', '/api/auth/preview').slice(previewCallsBefore)
       .some((call) => call.responseStatus === 201 && call.body.userId === 'operations-user-2'),
@@ -1272,9 +1285,20 @@ try {
   await page.getByRole('button', { name: 'Return to admin' }).waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByText('Guest preview: Browser Guest Keep').waitFor({ state: 'visible', timeout: 20_000 });
   const previewToken = worker.findCalls('POST', '/api/auth/preview').slice(previewCallsBefore)
-    .find((call) => call.responseStatus === 201)?.token;
+    .find((call) => call.responseStatus === 201)?.issuedToken;
   if (!previewToken || previewToken === 'operations-admin-session') {
     throw new Error('Guest preview did not use a separate temporary session token.');
+  }
+  const readOnlyStatus = await page.evaluate(async ({ url, token }) => {
+    const response = await fetch(url + '/api/auth/me', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': token },
+      body: JSON.stringify({ language: 'ru' })
+    });
+    return response.status;
+  }, { url: workerOrigin, token: previewToken });
+  if (readOnlyStatus !== 403) {
+    throw new Error('The guest preview allowed a write-capable account operation.');
   }
   const previewReturnCallsBefore = worker.count('POST', '/api/auth/preview/return');
   await page.getByRole('button', { name: 'Return to admin' }).click();
@@ -1289,6 +1313,7 @@ try {
   if (!adminIdentityAfterPreview || adminIdentityAfterPreview.token !== 'operations-admin-session') {
     throw new Error('Returning from preview did not restore the original administrator session.');
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
   const deleteRow = rowForUser('Browser Guest Delete');
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await deleteRow.getByRole('button', { name: 'Delete' }).click();

@@ -606,7 +606,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </div>
               <details
         id="settingsUserManagement"
-        class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+        class="group settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
         aria-labelledby="userManagementTitle"
         open={userManagementOpen}
         onToggle={(event) => setUserManagementOpen((event.currentTarget as HTMLDetailsElement).open)}
