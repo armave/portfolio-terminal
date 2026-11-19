@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   formatExactSyncTimestamp,
   formatRelativeSyncTime,
+  resolveCloudSyncDisplayTone,
   resolveCloudSyncLabel,
-  resolveCloudSyncTone
+  resolveCloudSyncTone,
+  CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS
 } from './CloudSyncIndicator';
 
 const status = (value: string, text = '') => ({ status: value, text });
@@ -76,5 +78,21 @@ describe('formatExactSyncTimestamp', () => {
     const timestamp = Date.UTC(2026, 10, 8, 19, 55, 34);
     expect(formatExactSyncTimestamp(timestamp, 'en')).toContain('Nov 8, 2026');
     expect(formatExactSyncTimestamp(null, 'en')).toBe('');
+  });
+});
+
+
+describe('resolveCloudSyncDisplayTone', () => {
+  it('suppresses short pending writes until the visibility delay elapses', () => {
+    expect(CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS).toBe(700);
+    expect(resolveCloudSyncDisplayTone('pending', false)).toBe('neutral');
+    expect(resolveCloudSyncDisplayTone('pending', true)).toBe('pending');
+  });
+
+  it('does not delay successful, warning, error, or conflict states', () => {
+    expect(resolveCloudSyncDisplayTone('success', false)).toBe('success');
+    expect(resolveCloudSyncDisplayTone('warning', false)).toBe('warning');
+    expect(resolveCloudSyncDisplayTone('error', false)).toBe('error');
+    expect(resolveCloudSyncDisplayTone('conflict', false)).toBe('conflict');
   });
 });
