@@ -180,3 +180,23 @@ describe('authenticated performance stage summaries', () => {
     });
   });
 });
+
+
+describe('extended baseline sample contract', () => {
+  it('accepts ten desktop/mobile samples without coercing unsupported browser metrics', () => {
+    const samples = Array.from({ length: 10 }, (_, run) => ({
+      run: run + 1,
+      authShellReadyMs: 100 + run,
+      firstContentfulPaintMs: run === 9 ? null : 80 + run,
+      totalResourceTransferBytes: 296_000,
+      largestContentfulPaintMs: null,
+      cumulativeLayoutShift: null
+    }));
+    const summary = summarizePerformanceSamples(samples, 'authShellReadyMs');
+    expect(summary.sampleCount).toBe(10);
+    expect(summary.median).toBe(104.5);
+    expect(summary.p95).toBe(109);
+    expect(summarizePerformanceSamples(samples, 'largestContentfulPaintMs').sampleCount).toBe(0);
+    expect(summarizePerformanceSamples(samples, 'cumulativeLayoutShift').median).toBeNull();
+  });
+});

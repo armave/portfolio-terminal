@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { arch, cpus, platform, release } from 'node:os';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
@@ -10,6 +11,7 @@ const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
 const appUrl = `http://${host}:${port}/portfolio-terminal/`;
 const workerOrigin = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 const outputPath = 'artifacts/browser-performance-baseline.json';
+const buildOutputPath = process.env.PERFORMANCE_BUILD_OUTPUT_PATH || 'dist';
 const runsPerViewport = parsePerformanceSampleCount(process.env.PERFORMANCE_BASELINE_RUNS, 3);
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -39,6 +41,17 @@ async function waitForPreview() {
     await delay(500);
   }
   throw new Error(`Vite preview did not become ready: ${lastError?.message || 'unknown error'}`);
+}
+
+async function measureBuildArtifactBytes(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  let totalBytes = 0;
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) totalBytes += await measureBuildArtifactBytes(path);
+    else if (entry.isFile()) totalBytes += (await stat(path)).size;
+  }
+  return totalBytes;
 }
 
 async function measure(viewport) {
@@ -151,6 +164,7 @@ try {
   for (const viewport of viewports) {
     results[viewport.name] = await measure(viewport);
   }
+  const buildArtifactBytes = await measureBuildArtifactBytes(buildOutputPath);
   const report = {
     schemaVersion: 2,
     generatedAt: new Date().toISOString(),
@@ -179,6 +193,7 @@ try {
       serviceWorkers: 'blocked to avoid cross-run cache contamination'
     },
     runsPerViewport,
+    buildArtifactBytes,
     statistics: Object.fromEntries(Object.entries(results).map(([name, samples]) => [name, summarizePerformanceViewport(samples)])),
     viewports: results
   };
@@ -189,7 +204,8 @@ try {
     const statistics = summarizePerformanceViewport(samples);
     const fcp = statistics.firstContentfulPaintMs;
     const auth = statistics.authShellReadyMs;
-    console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples)`);
+    const resourceBytes = statistics.totalResourceTransferBytes;
+    console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples; median transferred resources ${resourceBytes.median === null ? 'n/a' : Math.round(resourceBytes.median)} bytes; build artifact ${buildArtifactBytes} bytes)`);
   }
 } finally {
   await browser?.close();
