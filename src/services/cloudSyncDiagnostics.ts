@@ -43,7 +43,7 @@ export interface CloudSyncDiagnosticsStore {
 }
 
 const STORAGE_KEY = 'portfolio_cloud_sync_diagnostics_v1';
-const MAX_ENTRIES = 8;
+const MAX_ENTRIES = 3;
 const OPERATIONS = new Set<CloudSyncDiagnosticOperation>(['pull', 'push', 'reconcile']);
 const OUTCOMES = new Set<CloudSyncDiagnosticOutcome>(['success', 'conflict', 'error']);
 const REASONS = new Set<CloudSyncDiagnosticReason>([
