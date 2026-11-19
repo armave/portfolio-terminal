@@ -6,7 +6,6 @@ import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
-import { createStartupPwaUpdateGate } from './services/startupPwaUpdateGate';
 import { pwaUpdateRuntime } from './services/pwaUpdateRuntime';
 import {
   consumeAutomaticRepairAttemptMarker,
@@ -34,23 +33,14 @@ if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
   pwaUpdateRuntime.markUnsupported();
 }
 
-const startupPwaUpdateGate = createStartupPwaUpdateGate();
-let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => undefined;
-
-updateServiceWorker = registerSW({
+registerSW({
   immediate: true,
   onNeedRefresh: () => {
     pwaUpdateRuntime.markUpdateAvailable();
-    // Apply updates automatically while the initial loader is active. Once the
-    // user is in the workspace, leave the worker waiting until the next launch.
-    const applied = startupPwaUpdateGate.applyDuringStartup(() => {
-      void updateServiceWorker().catch((error) => {
-        console.warn('[PWA]: Could not activate the newer app shell during startup.', error);
-      });
-    });
-    if (!applied) {
-      console.info('[PWA]: An update is staged and will be applied automatically on the next app startup.');
-    }
+    // Keep the waiting worker staged. Activating it here would replace the
+    // current controller and reload a page whose cloud reconciliation may be
+    // in flight. The browser activates it after old controlled tabs are closed.
+    console.info('[PWA]: A newer app shell is staged and will activate after all tabs using the current app shell are closed.');
   },
   onRegisteredSW: (_serviceWorkerUrl, registration) => {
     if (!registration) {
@@ -98,7 +88,6 @@ function armStartupWatchdog(): void {
 
 addUiEventListener('app:startup-state', (event) => {
   if (event.detail.failed) {
-    startupPwaUpdateGate.closeStartupWindow();
     clearStartupWatchdog();
   } else if (event.detail.visible) {
     armStartupWatchdog();
@@ -106,10 +95,7 @@ addUiEventListener('app:startup-state', (event) => {
   // visible=false is only a request. App may keep the overlay mounted until
   // page-readiness checks finish, so keep the watchdog armed until that commit.
 });
-addUiEventListener('app:startup-overlay-dismissed', () => {
-  startupPwaUpdateGate.closeStartupWindow();
-  clearStartupWatchdog();
-});
+addUiEventListener('app:startup-overlay-dismissed', clearStartupWatchdog);
 
 /**
  * Ask browser autofill and common password managers to ignore ordinary app
