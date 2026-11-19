@@ -404,10 +404,12 @@ describe('storage service', () => {
       const loaded = loadSavedState(fallback);
 
       expect(loaded).toEqual(fallback);
-      expect(warnSpy).toHaveBeenCalledWith(
-        'Failed to parse saved state:',
-        expect.any(SyntaxError)
-      );
+      expect(warnSpy.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"browser-storage"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('broken_json');
       warnSpy.mockRestore();
     });
 
@@ -432,7 +434,12 @@ describe('storage service', () => {
         activeView: 'MSFT',
         balance: -250
       });
-      expect(warnSpy).toHaveBeenCalledWith('Failed to parse saved state:', expect.any(SyntaxError));
+      expect(warnSpy.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"browser-storage"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('broken_json');
       warnSpy.mockRestore();
     });
 
