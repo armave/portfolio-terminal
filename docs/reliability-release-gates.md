@@ -145,6 +145,12 @@ The app checks its registered service worker for updates on each page load and r
 
 Portfolio localStorage, IndexedDB, device credentials, account sessions, and other apps' caches are preserved. This is not a logout or portfolio reset.
 
+## Cloud-sync diagnostic retention and activity indication
+
+The Settings diagnostics panel keeps only the three newest cloud-sync events in the current browser tab's `sessionStorage`. Entries contain allowlisted operation/outcome/reason values and optional HTTP/revision metadata only; credentials, URLs, encrypted payloads, and portfolio data are excluded. New entries are prepended and replace the oldest entry, and previously stored longer lists are truncated when loaded. This is a troubleshooting view, not an audit ledger or a cross-session history.
+
+The header's pending activity state is signaled only when a changed portfolio snapshot is ready for an actual cloud write. Unchanged checkpoints do not flash the pending indicator. The data-write cadence, revision checks, encryption, and conflict handling remain independent of the diagnostic retention limit.
+
 ## Browser cloud-sync request deadlines
 
 Cloud state and closed-history requests are part of authenticated workspace startup. Each cloud request has a 15-second default deadline that covers both response headers and JSON body consumption. A timeout aborts the request; a cloud-state pull then retains the already recovered local workspace and reports sync unavailable rather than leaving the startup overlay pending indefinitely. Idempotent writes retain their existing bounded retry behavior, with each network attempt subject to the same request deadline.

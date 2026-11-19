@@ -43,7 +43,7 @@ export interface CloudSyncDiagnosticsStore {
 }
 
 const STORAGE_KEY = 'portfolio_cloud_sync_diagnostics_v1';
-const MAX_ENTRIES = 8;
+const MAX_ENTRIES = 3;
 const OPERATIONS = new Set<CloudSyncDiagnosticOperation>(['pull', 'push', 'reconcile']);
 const OUTCOMES = new Set<CloudSyncDiagnosticOutcome>(['success', 'conflict', 'error']);
 const REASONS = new Set<CloudSyncDiagnosticReason>([
@@ -102,9 +102,19 @@ function loadEntries(storage: DiagnosticsStorage | null): CloudSyncDiagnostic[] 
   if (!storage) return [];
   try {
     const parsed: unknown = JSON.parse(storage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeEntry).filter((entry): entry is CloudSyncDiagnostic => entry !== null).slice(0, MAX_ENTRIES)
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    const retained = parsed
+      .map(normalizeEntry)
+      .filter((entry): entry is CloudSyncDiagnostic => entry !== null)
+      .slice(0, MAX_ENTRIES);
+    if (retained.length !== parsed.length) {
+      try {
+        storage.setItem(STORAGE_KEY, JSON.stringify(retained));
+      } catch {
+        // Trimming legacy diagnostics is best-effort; storage failures never affect sync.
+      }
+    }
+    return retained;
   } catch {
     return [];
   }

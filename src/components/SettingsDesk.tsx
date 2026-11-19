@@ -565,33 +565,76 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="settings-user-heading flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
-            <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
-            <p class="mt-1 max-w-prose text-[10px] leading-relaxed text-slate-500">Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.</p>
+            <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">{translateText('User management')}</h3>
+            <p class="mt-1 max-w-prose text-[10px] leading-relaxed text-slate-500">{translateText('Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.')}</p>
           </div>
-          {account?.role === "admin" && <span class="shrink-0 rounded border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
+          {account?.role === "admin" && <span class="shrink-0 rounded border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[10px] uppercase tracking-wider text-emerald-400">{translateText('Admin controls')}</span>}
         </div>
         {account?.role === "admin" ? <>
           <form onSubmit={handleCreateUser} class="settings-user-form grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
-            <input type="text" aria-label="User name" minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder="User name" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
-            <input type="password" aria-label="Password (6+ characters)" minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder="Password (6+ characters)" autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
-            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label="New user role" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-center text-xs text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select>
-            <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-2 text-xs text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select>
-            <button type="submit" disabled={savingUser} class="min-h-11 min-w-11 rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
+            <input type="text" aria-label={translateText('User name')} minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder={translateText('User name')} class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
+            <input type="password" aria-label={translateText('Password (6+ characters)')} minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder={translateText('Password (6+ characters)')} autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
+            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label={translateText('New user role')} class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-center text-xs text-white"><option class="text-center" value="guest">{translateText('Guest')}</option><option class="text-center" value="admin">{translateText('Admin')}</option></select>
+            <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label={translateText('New user language')} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-2 text-xs text-white"><option class="text-center" value="en">{translateText('English')}</option><option class="text-center" value="ru">{translateText('Russian')}</option></select>
+            <button type="submit" disabled={savingUser} class="min-h-11 min-w-11 rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">{translateText('Add user')}</button>
           </form>
-          <TableScrollRegion label="User management table" className="table-scroll-wrapper settings-table-scroll"><table class="w-full min-w-[790px] text-left text-xs">
-            <caption class="sr-only">User management table</caption>
-            <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">Name</th><th scope="col" class="p-2">Role</th><th scope="col" class="p-2">Language</th><th scope="col" class="p-2">New password</th><th scope="col" class="p-2">Actions</th></tr></thead>
-            <tbody id="settingsUsersTableBody">
-              {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
-              {visibleUsers.map((user) => <tr key={user.id} class="border-t border-slate-800">
-                <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-                <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
-                <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>
-                <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-                <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
-                  {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
-              </tr>)}</tbody>
-          </table></TableScrollRegion>
+          <div id="settingsUsersCollection" class="min-w-0">
+            <div class="settings-user-cards grid grid-cols-1 gap-3 md:hidden" aria-label={translateText('User management table')}>
+              {initialUsersLoading && <p class="rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</p>}
+              {visibleUsers.map((user) => <article key={user.id} class="settings-user-card rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                <div class="settings-user-card-heading">
+                  <span class="min-w-0 break-words font-semibold text-slate-100">{editValues[user.id]?.name || user.name}</span>
+                  <span class="shrink-0 rounded border border-slate-700 bg-slate-950/70 px-2 py-1 text-[10px] font-semibold text-slate-300">
+                    {translateText((editValues[user.id]?.role ?? user.role) === 'admin' ? 'Admin' : 'Guest')}
+                  </span>
+                </div>
+                <div class="settings-user-card-fields grid grid-cols-1 gap-2">
+                  <label>
+                    <span>{translateText('Name')}</span>
+                    <input aria-label={translateText('Name for ') + user.name} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} />
+                  </label>
+                  <label>
+                    <span>{translateText('Role')}</span>
+                    <select aria-label={translateText('Role for ') + user.name} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))}>
+                      <option value="guest">{translateText('Guest')}</option>
+                      <option value="admin">{translateText('Admin')}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{translateText('Language')}</span>
+                    <select aria-label={translateText('Language for ') + user.name} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))}>
+                      <option value="en">{translateText('English')}</option>
+                      <option value="ru">{translateText('Russian')}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{translateText('New password')}</span>
+                    <input aria-label={translateText('New password for ') + user.name} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder={translateText('Leave blank to keep')} value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} />
+                  </label>
+                </div>
+                <div class="settings-user-card-actions">
+                  <button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                  {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-3 py-2 text-xs font-semibold text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
+                </div>
+              </article>)}
+            </div>
+            <div class="hidden min-w-0 md:block">
+              <TableScrollRegion label={translateText('User management table')} className="table-scroll-wrapper settings-table-scroll"><table class="w-full min-w-[790px] text-left text-xs">
+                <caption class="sr-only">{translateText('User management table')}</caption>
+                <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">{translateText('Name')}</th><th scope="col" class="p-2">{translateText('Role')}</th><th scope="col" class="p-2">{translateText('Language')}</th><th scope="col" class="p-2">{translateText('New password')}</th><th scope="col" class="p-2">{translateText('Actions')}</th></tr></thead>
+                <tbody id="settingsUsersTableBody">
+                  {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
+                  {visibleUsers.map((user) => <tr key={user.id} class="border-t border-slate-800">
+                    <td class="p-2"><input aria-label={translateText('Name for ') + user.name} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+                    <td class="p-2"><select aria-label={translateText('Role for ') + user.name} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">{translateText('Guest')}</option><option class="text-center" value="admin">{translateText('Admin')}</option></select></td>
+                    <td class="p-2"><select aria-label={translateText('Language for ') + user.name} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">{translateText('English')}</option><option class="text-center" value="ru">{translateText('Russian')}</option></select></td>
+                    <td class="p-2"><input aria-label={translateText('New password for ') + user.name} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder={translateText('Leave blank to keep')} value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+                    <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                      {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}</td>
+                  </tr>)}</tbody>
+              </table></TableScrollRegion>
+            </div>
+          </div>
           <TablePagination
             tableLabel={translateText('User management table')}
             page={usersPagination.currentPage}
@@ -602,9 +645,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             total={users.length}
             onPageChange={usersPagination.setPage}
             onPageSizeChange={usersPagination.setPageSize}
-            controlsId="settingsUsersTableBody"
+            controlsId="settingsUsersCollection"
+            className="settings-user-pagination"
           />
-        </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
+        </> : <p class="text-xs text-slate-400">{translateText('Only administrators can view or manage the user list.')}</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>
               {account?.role === 'admin' && <details
