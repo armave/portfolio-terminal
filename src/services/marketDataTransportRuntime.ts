@@ -315,7 +315,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       signal, ...(force ? { cache: 'no-store' as RequestCache } : {})
     }),
     onNewsError: (symbol, error) => {
-      warn('[Market News Error for ' + symbol + ']:', error instanceof Error ? error.message : error);
+      logSafeDiagnostic('warn', 'market-data', error);
     }
   });
   const fetchMarketNews = (ticker: string, force = false, signal?: AbortSignal): Promise<MarketNewsItem[]> =>
