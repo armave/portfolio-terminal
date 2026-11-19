@@ -3328,6 +3328,34 @@ describe('Cloudflare authentication edge rate limiting', () => {
     expect(env.doFetch).not.toHaveBeenCalled();
   });
 
+  it('logs over-limit auth events with only the fixed event type and allowlisted route', async () => {
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const privateBody = JSON.stringify({ username: 'private-auth-user', password: 'private-auth-password', token: 'private-auth-session-token' });
+    const response = await worker.fetch(authRequest('/api/auth/login', {}, privateBody), buildEnv({ decision: { success: false } }));
+    expect(response.status).toBe(429);
+    expect(output).toHaveBeenCalledOnce();
+    const event = JSON.parse(String(output.mock.calls[0][0]));
+    expect(event).toEqual({ type: 'auth_edge_rate_limited', route: '/api/auth/login' });
+    for (const secret of [clientIp, 'private-auth-user', 'private-auth-password', 'private-auth-session-token']) {
+      expect(JSON.stringify(event)).not.toContain(secret);
+    }
+  });
+
+  it('does not serialize limiter exceptions or auth request content on limiter failure', async () => {
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const privateBody = JSON.stringify({ username: 'error-auth-user', password: 'error-auth-password', token: 'error-auth-session-token' });
+    const env = buildEnv({ limiter: { limit: vi.fn().mockRejectedValue(new Error('private-binding-detail https://edge.example/?token=secret')) } });
+    const response = await worker.fetch(authRequest('/api/auth/login', {}, privateBody), env);
+    expect(response.status).toBe(503);
+    expect(output).toHaveBeenCalledOnce();
+    const event = JSON.parse(String(output.mock.calls[0][0]));
+    expect(event).toEqual({ type: 'auth_edge_rate_limit_error', route: '/api/auth/login' });
+    for (const secret of [clientIp, 'private-binding-detail', 'edge.example', 'token=secret', 'error-auth-user', 'error-auth-password', 'error-auth-session-token']) {
+      expect(JSON.stringify(event)).not.toContain(secret);
+    }
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
   it('uses independent route keys for login and account/password mutations', async () => {
     const env = buildEnv();
     await worker.fetch(authRequest('/api/auth/login'), env);
@@ -5830,6 +5858,50 @@ describe("server diagnostic log redaction", () => {
     expect(String(output.mock.calls[0][0])).toBe('{"type":"server_diagnostic","category":"unknown"}');
   });
 
+  it("captures only allowlisted provider metrics for success, cache, and failure paths", async () => {
+    const output = vi.spyOn(console, "info").mockImplementation(() => {});
+    const upstreamError = "https://provider.example/private?token=upstream-secret AAPL $12,345";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ quote: "ok", upstreamPayload: "provider-private-payload" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: upstreamError }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fetchQuote = (symbol) => worker.fetch(new Request(
+      "https://worker.test/?action=provider-quote&provider=finnhub&symbol=" + symbol,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), { GATEWAY_SECRET: "test-secret", FINNHUB_KEY: "private-provider-api-key" });
+
+    const first = await fetchQuote("LOGTESTA");
+    const cached = await fetchQuote("LOGTESTA");
+    const failed = await fetchQuote("LOGTESTB");
+    expect(first.status).toBe(200);
+    expect(cached.status).toBe(200);
+    expect(failed.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const events = output.mock.calls.map(([entry]) => JSON.parse(String(entry)));
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({ type: "provider_metric", metric: "provider_request", provider: "finnhub", success: true });
+    expect(events[0].durationMs).toEqual(expect.any(Number));
+    expect(events[1]).toEqual({ type: "provider_metric", metric: "cache_hit", provider: "finnhub" });
+    expect(events[2]).toMatchObject({ type: "provider_metric", metric: "provider_failure", provider: "finnhub" });
+    expect(events[2].durationMs).toEqual(expect.any(Number));
+
+    for (const event of events) {
+      expect(Object.keys(event).every((key) => ["type", "metric", "provider", "durationMs", "success"].includes(key))).toBe(true);
+      const serialized = JSON.stringify(event);
+      for (const secret of ["LOGTESTA", "LOGTESTB", "private-provider-api-key", "provider.example", "upstream-secret", "provider-private-payload", "AAPL", "$12,345"]) {
+        expect(serialized).not.toContain(secret);
+      }
+    }
+  });
+
   it("keeps Worker and Durable Object failure call sites free of raw error serialization", () => {
     const workerSource = readFileSync(new URL("./worker.js", import.meta.url), "utf8");
     const stateStoreSource = readFileSync(new URL("./state-store.js", import.meta.url), "utf8");
@@ -5837,7 +5909,7 @@ describe("server diagnostic log redaction", () => {
     expect(workerSource).not.toContain('console.error("Persistent TradeNet account socket failed", error)');
     expect(workerSource).not.toContain('console.error("Persistent TradeNet Market Depth socket failed", error)');
     expect(workerSource).not.toContain('console.error("Account Durable Object request failed", error)');
-    expect(workerSource).not.toContain('console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message)');
+    expect(workerSource).not.toContain("...fields");
     expect(stateStoreSource).not.toContain('error instanceof Error ? error.message : "unknown error"');
     expect(workerSource).toContain('logServerDiagnostic("error", "tradenet_quote_stream_failed", error)');
     expect(stateStoreSource).toContain('logServerDiagnostic("warn", "session_cleanup_deferred", error)');
