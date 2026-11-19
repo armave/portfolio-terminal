@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildHoldingsProjection,
@@ -228,6 +229,53 @@ describe('portfolio store snapshot subscriptions', () => {
     unsubscribe();
     store.setState({ balance: 123 });
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs failing subscribers without exposing exception details and still notifies other listeners', () => {
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const store = new PortfolioStore();
+      const error = new Error('https://private.example/?token=secret AAPL $12,345 account-private');
+      const failing = vi.fn(() => { throw error; });
+      const healthy = vi.fn();
+      store.subscribe(failing);
+      store.subscribe(healthy);
+
+      expect(store.setState({ balance: 321 })).toBe(true);
+      expect(failing).toHaveBeenCalledOnce();
+      expect(healthy).toHaveBeenCalledOnce();
+      expect(output).toHaveBeenCalledOnce();
+      const entry = String(output.mock.calls[0][0]);
+      expect(entry).toContain('"category":"portfolio-store"');
+      expect(entry).toContain('"errorClass":"unknown"');
+      for (const secret of ['private.example', 'token=secret', 'AAPL', '$12,345', 'account-private']) {
+        expect(entry).not.toContain(secret);
+      }
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it('logs active-view subscriber errors without serializing the exception', () => {
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const store = new PortfolioStore();
+      store.subscribeActiveView(() => { throw new Error('private-account-session-token'); });
+      store.setActiveView('BALANCE');
+      expect(output).toHaveBeenCalledOnce();
+      const entry = String(output.mock.calls[0][0]);
+      expect(entry).toContain('"category":"portfolio-store"');
+      expect(entry).not.toContain('private-account-session-token');
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it('uses safe diagnostics for persistence subscriber and device-view rollback failures', () => {
+    const storeSource = readFileSync(new URL('./portfolioStore.ts', import.meta.url), 'utf8');
+    expect(storeSource).toContain("logSafeDiagnostic('error', 'portfolio-store', error)");
+    expect(storeSource).toContain("logSafeDiagnostic('error', 'browser-storage', error)");
+    expect(storeSource).not.toContain("console.error('Could not restore the previous device desk");
   });
 });
 
@@ -2582,10 +2630,12 @@ describe('portfolio store subscriber failure isolation', () => {
       expect(store.getState().balance).toBe(-125);
       expect(laterSubscriber).toHaveBeenCalledTimes(1);
       expect(laterSubscriber).toHaveBeenCalledWith(store.getState(), 'durable');
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to notify a portfolio state subscriber:',
-        error
-      );
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toEqual({
+        type: 'client_diagnostic',
+        category: 'portfolio-store',
+        errorClass: 'unknown'
+      });
     } finally {
       consoleError.mockRestore();
     }
@@ -2607,10 +2657,12 @@ describe('portfolio store subscriber failure isolation', () => {
       expect(store.getState().activeView).toBe('SETTINGS');
       expect(laterSubscriber).toHaveBeenCalledTimes(1);
       expect(laterSubscriber).toHaveBeenCalledWith('SETTINGS');
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to notify a portfolio active-view subscriber:',
-        error
-      );
+      expect(consoleError).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toEqual({
+        type: 'client_diagnostic',
+        category: 'portfolio-store',
+        errorClass: 'unknown'
+      });
     } finally {
       consoleError.mockRestore();
     }

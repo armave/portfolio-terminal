@@ -142,6 +142,8 @@ const authTransportRuntime = createAuthTransportRuntime({
 export const getAuthStatus = authTransportRuntime.getAuthStatus;
 export const loginAccount = authTransportRuntime.loginAccount;
 export const bootstrapAdmin = authTransportRuntime.bootstrapAdmin;
+export const startAdminGuestPreviewSession = authTransportRuntime.startAdminGuestPreview;
+export const endAdminGuestPreviewSession = authTransportRuntime.endAdminGuestPreview;
 export const getCurrentUser = authTransportRuntime.getCurrentUser;
 export const listUsers = authTransportRuntime.listUsers;
 export const getCachedUsers = authTransportRuntime.getCachedUsers;
@@ -373,6 +375,7 @@ export const fetchMarketNews = marketDataTransportRuntime.fetchMarketNews;
 export const fetchStocktwitsStream = marketDataTransportRuntime.fetchStocktwitsStream;
 export const clearYahooDeepStockDataCache = marketDataTransportRuntime.clearYahooDeepStockDataCache;
 export const validateGatewaySecret = authTransportRuntime.validateGatewaySecret;
+export const getUserForGatewaySecret = authTransportRuntime.getUserForGatewaySecret;
 
 
 const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({

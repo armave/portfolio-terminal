@@ -24,6 +24,7 @@ import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefre
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
+import { logSafeDiagnostic } from './services/safeDiagnostics';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
 import { resolveActivePageRootId, watchPageRenderReadiness } from './services/pageRenderReadiness';
@@ -77,6 +78,7 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [previewReturnBusy, setPreviewReturnBusy] = useState(false);
   const [, setLanguageRevision] = useState(0);
   const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +140,25 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
     addToast(translateText(message, getAppLanguage()), 'error');
   }), []);
+
+  const handleReturnFromGuestPreview = useCallback(async () => {
+    if (previewReturnBusy) return;
+    setPreviewReturnBusy(true);
+    try {
+      const error = await new Promise<string | undefined>((resolve) => {
+        emitUiEvent('auth:admin-preview-return', { resolve });
+      });
+      if (error) addToast(translateText(error, getAppLanguage()), 'error');
+    } catch (error) {
+      addToast(
+        translateText(error instanceof Error ? error.message : 'Could not return to the administrator workspace.', getAppLanguage()),
+        'error'
+      );
+    } finally {
+      setPreviewReturnBusy(false);
+    }
+  }, [previewReturnBusy]);
+
 
   useEffect(() => {
     if (!permissions.canViewMarginDesk) {
@@ -285,6 +306,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
   }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
+  const previousDeskViewRef = useRef(activeDeskView);
+
+  useEffect(() => {
+    const previousView = previousDeskViewRef.current;
+    previousDeskViewRef.current = activeDeskView;
+    if (previousView === activeDeskView || startupState.visible || authOpen) return;
+
+    const frame = requestAnimationFrame(() => {
+      mainWorkspaceRef.current?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start'
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDeskView, authOpen, startupState.visible]);
+
   // Broker data reads are session-bound in the broker data runtime. App remains
   // the single owner of portfolio state and injects its account/session boundary.
   useEffect(() => {
@@ -300,7 +337,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       getClosedTrades: () => portfolioStore.getState().closedTrades || [],
       setBrokerExecutions: (executions) => portfolioStore.setState({ brokerExecutedTrades: executions }),
       emit: emitBrokerEvent,
-      logError: (message, error) => console.error(message, error)
+      logError: (_message, error) => logSafeDiagnostic('error', 'broker-data', error)
     });
 
     return bindPortfolioBrokerRequestRuntime({
@@ -314,6 +351,32 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   return (
     <>
+      {currentUser?.isImpersonating && (
+        <aside
+          class="mx-auto mb-3 flex w-full max-w-6xl flex-col gap-3 rounded-xl border border-amber-700/70 bg-amber-950/35 p-3 text-amber-100 shadow-lg sm:flex-row sm:items-center sm:justify-between"
+          role="region"
+          aria-label={translateText('Guest preview', getAppLanguage())}
+          aria-live="polite"
+        >
+          <div class="min-w-0">
+            <p class="text-sm font-bold">{translateText('Guest preview', getAppLanguage())}: {currentUser.name}</p>
+            <p class="mt-1 text-xs text-amber-200/80">
+              {translateText('Read-only preview', getAppLanguage())}
+              {currentUser.impersonatedByName ? ' · ' + currentUser.impersonatedByName : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={previewReturnBusy}
+            onClick={() => void handleReturnFromGuestPreview()}
+            class="min-h-11 shrink-0 rounded-lg border border-amber-500/70 bg-amber-900/70 px-4 py-2 text-xs font-bold text-amber-50 hover:bg-amber-800 disabled:opacity-50"
+          >
+            {previewReturnBusy
+              ? translateText('Returning to admin…', getAppLanguage())
+              : translateText('Return to admin', getAppLanguage())}
+          </button>
+        </aside>
+      )}
       {/* Active Position Header Panel */}
       <main
         ref={mainWorkspaceRef}

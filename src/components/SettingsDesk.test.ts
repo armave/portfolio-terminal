@@ -22,6 +22,22 @@ describe('toBrokerRulesFormValues', () => {
   });
 });
 
+describe('expandable user management and guest preview actions', () => {
+  it('keeps user management collapsed by default and provides guest-only preview actions', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('id="settingsUserManagement"');
+    expect(source).toContain('open={userManagementOpen}');
+    expect(source).toContain("onToggle={(event) => setUserManagementOpen");
+    expect(source).toContain('if (currentUser?.role !== "admin" || !userManagementOpen)');
+    expect(source).toContain("emitUiEvent('auth:admin-preview-start'");
+    expect(source).toContain("user.role === 'guest'");
+    expect(source).toContain("translateText('View as')");
+    expect(source).toContain("translateText('Shared workspace')");
+    expect(source).toContain("!account?.isImpersonating &&");
+  });
+});
+
 describe('automatic update settings', () => {
   it('documents role-specific refresh cadence and immediate resume behavior', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
@@ -223,6 +239,32 @@ describe('guest Settings layout', () => {
   });
 });
 
+
+describe('Settings section navigation layout', () => {
+  it('keeps each section label informative with a compact supporting description', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<nav class="settings-section-nav"');
+    for (const label of [
+      'Profile & language',
+      'Refresh & backups',
+      'Users & roles',
+      'Planning defaults',
+      'Rates & commissions',
+      'Device & recovery',
+      'Calculations & guidance'
+    ]) {
+      expect(source).toContain(label);
+    }
+    expect(source).toContain('<small>{translateText(');
+  });
+
+  it('uses compact responsive grid navigation rather than horizontally scrolling chips on mobile', () => {
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    expect(styles).toContain('#settingsDesk .settings-section-nav a small');
+    expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
+    expect(styles).not.toContain('flex-wrap: nowrap;\n    overflow-x: auto;\n    overscroll-behavior-inline: contain;');
+  });
+});
 
 describe('Settings information architecture', () => {
   it('provides role-aware section navigation and separates high-risk maintenance', () => {

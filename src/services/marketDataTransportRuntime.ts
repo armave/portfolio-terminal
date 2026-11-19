@@ -5,6 +5,7 @@ import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
 import type { YahooDeepStockData } from './yahooDeepDataContracts';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
 import { retryMarketDataRequest } from './marketDataRetry';
+import { logSafeDiagnostic } from './safeDiagnostics';
 
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
 export interface NormalizedFallbackQuote {
@@ -66,7 +67,6 @@ async function fetchMarketDataWithTimeout<T>(
 /** Owns Yahoo quote batching, deep-data cache wiring, fallback quotes and insights feeds. */
 export function createMarketDataTransportRuntime(dependencies: MarketDataTransportRuntimeDependencies): MarketDataTransportRuntime {
   const now = dependencies.now || Date.now;
-  const warn = dependencies.warn || ((...args: unknown[]) => console.warn(...args));
   const requestedTimeoutMs = dependencies.requestTimeoutMs ?? 12_000;
   const requestTimeoutMs = Number.isFinite(requestedTimeoutMs)
     ? Math.max(1, Math.min(60_000, requestedTimeoutMs))
@@ -245,7 +245,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
       rememberYahooDeepStockData(data);
       return data;
     } catch (error: unknown) {
-      warn(`[Yahoo Data Error for ${cleanTicker}]:`, error instanceof Error ? error.message : String(error));
+      logSafeDiagnostic('warn', 'market-data', error);
       return null;
     }
   };
@@ -314,8 +314,8 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     fetchStocktwits: (symbol, signal, force) => dependencies.proxyFetch('stocktwits', { symbol }, {
       signal, ...(force ? { cache: 'no-store' as RequestCache } : {})
     }),
-    onNewsError: (symbol, error) => {
-      warn('[Market News Error for ' + symbol + ']:', error instanceof Error ? error.message : error);
+    onNewsError: (_symbol, error) => {
+      logSafeDiagnostic('warn', 'market-data', error);
     }
   });
   const fetchMarketNews = (ticker: string, force = false, signal?: AbortSignal): Promise<MarketNewsItem[]> =>

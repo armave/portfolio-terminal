@@ -61,6 +61,19 @@ describe('auth transport runtime', () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('distinguishes invalid sessions from transient gateway validation failures', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'expired' }), { status: 401 })
+    ) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+    await expect(runtime.getUserForGatewaySecret('expired')).resolves.toBeNull();
+
+    const networkFailure = new TypeError('network is temporarily unavailable');
+    const failingRuntime = createRuntime(vi.fn().mockRejectedValue(networkFailure) as unknown as typeof fetch).runtime;
+    await expect(failingRuntime.getUserForGatewaySecret('session-token'))
+      .rejects.toThrow('network is temporarily unavailable');
+  });
+
   it('returns false for invalid sessions and empty tokens without network access', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'expired' }), { status: 401 })) as unknown as typeof fetch;
     const { runtime } = createRuntime(fetchImpl, '');
@@ -205,4 +218,29 @@ describe('auth transport runtime', () => {
     await expect(runtime.getAuthStatus()).resolves.toMatchObject({ setupRequired: true });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+  it('starts an administrator-bound read-only guest preview session with the active credential', async () => {
+    const preview = { token: 'preview-token', user: guest, expiresAt: 90_000 };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(preview), { status: 201 })) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    await expect(runtime.startAdminGuestPreview('guest-1')).resolves.toMatchObject(preview);
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toBe('https://worker.example/api/auth/preview');
+    expect(init.method).toBe('POST');
+    expect(init.headers['X-App-Auth']).toBe('session-token');
+    expect(JSON.parse(init.body)).toEqual({ userId: 'guest-1' });
+  });
+
+  it('closes the current preview session with the temporary token and does not call account logout', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 })) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    await expect(runtime.endAdminGuestPreview()).resolves.toBeUndefined();
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toBe('https://worker.example/api/auth/preview/return');
+    expect(init.method).toBe('POST');
+    expect(init.headers['X-App-Auth']).toBe('session-token');
+    expect(init.body).toBe('{}');
+  });
+
 });
