@@ -2059,6 +2059,7 @@ const portfolioStartupRuntime = createPortfolioStartupRuntime({
   showAuthContainer,
   hideAuthContainer,
   startApp,
+  onUnauthenticatedStartupSettled: () => emitUiEvent('app:initial-workspace-sync-settled'),
   onStartupFailure: (error) => {
     logSafeDiagnostic('error', 'startup', error);
     showStartupFailure();
