@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { h } from 'preact';
 import { describe, expect, it } from 'vitest';
 
 const dialogSource = readFileSync(new URL('./MarketNewsArticleDialog.tsx', import.meta.url), 'utf8');
@@ -8,8 +9,12 @@ describe('company news article untrusted text boundary', () => {
     // These represent hostile values returned by an untrusted news provider.
     const hostileHeadline = '<img src=x onerror="window.__ptXss=1">';
     const hostileBody = '<svg onload="window.__ptXss=2"><script>alert(1)</script></svg>';
-    expect(hostileHeadline).toContain('onerror=');
-    expect(hostileBody).toContain('onload=');
+    const headlineVNode = h('h2', null, hostileHeadline);
+    const bodyVNode = h('div', null, hostileBody);
+    expect(typeof headlineVNode.props.children).toBe('string');
+    expect(headlineVNode.props.children).toBe(hostileHeadline);
+    expect(typeof bodyVNode.props.children).toBe('string');
+    expect(bodyVNode.props.children).toBe(hostileBody);
 
     const headlineStart = dialogSource.indexOf('<h2 id="newsArticleModalTitle"');
     const headlineExpressionStart = dialogSource.indexOf('{article.headline', headlineStart);
