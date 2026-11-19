@@ -34,6 +34,7 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
     finishInitialQuoteRefresh: vi.fn(() => calls.push('quote-refresh-finish')),
     renderBoardAnalystConsensus: vi.fn(() => calls.push('analyst-consensus')),
     recoverPendingCloudWrites: vi.fn(async () => { calls.push('recover-cloud-writes'); }),
+    onWorkspaceSyncSettled: vi.fn(() => calls.push('workspace-sync-settled')),
     hideStartupLoading: vi.fn(() => calls.push('hide-loading')),
     reportBackgroundStartupError: vi.fn((task, error) => calls.push(`background-error:${task}:${String(error)}`))
   };
@@ -117,6 +118,22 @@ describe('portfolio authenticated startup runtime', () => {
       .toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
     expect(fixture.calls.indexOf('pull-shared-cloud-finished'))
       .toBeLessThan(fixture.calls.indexOf('recover-cloud-writes'));
+  });
+
+  it('signals PWA readiness only after the initial remote snapshot has settled', async () => {
+    const fixture = createFixture('admin');
+    let finishCloudPull!: () => void;
+    (fixture.dependencies.pullSharedCloudState as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<void>((resolve) => { finishCloudPull = resolve; })
+    );
+
+    await fixture.start();
+    await vi.waitFor(() => expect(fixture.dependencies.pullSharedCloudState).toHaveBeenCalledTimes(1));
+
+    expect(fixture.dependencies.onWorkspaceSyncSettled).not.toHaveBeenCalled();
+    finishCloudPull();
+    await vi.waitFor(() => expect(fixture.dependencies.onWorkspaceSyncSettled).toHaveBeenCalledTimes(1));
+    expect(fixture.calls.indexOf('pull-shared-cloud')).toBeLessThan(fixture.calls.indexOf('workspace-sync-settled'));
   });
 
   it('does not release queued cloud writes when the initial admin pull is rejected', async () => {
