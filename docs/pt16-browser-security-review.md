@@ -42,7 +42,7 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 | Surface | Current evidence | Required control/test |
 |---|---|---|
-| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Preserve direct text-child interpolation; AST regression checks the headline/body JSX nodes and rejects raw-HTML DOM sinks. A browser-level active-origin XSS test remains separate |
+| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Preserve direct text-child interpolation; A source-boundary regression locates the headline/body JSX regions and rejects raw-HTML DOM sinks. A browser-level active-origin XSS test remains separate |
 | News article URL | Provider-supplied URL is used as an external anchor destination | Allow only absolute HTTP(S), reject executable/non-web schemes and credential-bearing URLs; retain `noopener noreferrer` |
 | Stocktwits stream URL | Provider-supplied `streamUrl` was rendered directly as an external anchor | Validate through the existing absolute HTTP(S)-only URL boundary; suppress the link for unsafe/malformed destinations; retain `noopener noreferrer` |
 | Imported backup data | JSON passes a validation/normalization boundary before the store commit | Test hostile strings and malformed structures remain data, never executable markup |
