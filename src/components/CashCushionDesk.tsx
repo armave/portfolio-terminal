@@ -10,6 +10,7 @@ import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS, DEFAULT_GUEST_REFRESH_INTERVAL_MS } 
 import { getCachedUsers, listUsers, fetchYahooDeepStockData, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
+import { logSafeDiagnostic } from '../services/safeDiagnostics';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { balanceSyncReducer, createBalanceSyncState } from '../domain/balanceSyncState';
@@ -209,10 +210,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       })
       .catch((error) => {
         if (guestUsersRequestGeneration.current !== requestId) return;
-        console.warn(
-          'Unable to refresh guest account list:',
-          error instanceof Error ? error.message : 'Unknown error'
-        );
+        logSafeDiagnostic('warn', 'broker-data', error);
         dispatchGuestDirectory({
           type: 'failure',
           message: 'Could not load guest accounts.'

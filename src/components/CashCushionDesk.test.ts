@@ -26,6 +26,11 @@ describe('active tranche operation accessibility', () => {
     expect(deskSource).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400');
   });
 
+  it('routes guest-directory failures through the safe diagnostic allowlist', () => {
+    expect(deskSource).toContain("logSafeDiagnostic('warn', 'broker-data', error)");
+    expect(deskSource).not.toContain('error instanceof Error ? error.message');
+  });
+
   it('keeps tranche retry and disclosure actions touch-sized', () => {
     expect(deskSource).toContain('inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2 py-1');
     expect(deskSource).toContain('inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-amber-700/70');

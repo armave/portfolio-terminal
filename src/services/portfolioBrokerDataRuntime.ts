@@ -24,6 +24,7 @@ import {
   preservePersistedBrokerFeeAllocations
 } from '../domain/closedHistoryFees';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
+import { logSafeDiagnostic } from './safeDiagnostics';
 import {
   getFreedomAccountStreamSnapshotRevision,
   hasFreedomAccountStreamSnapshot,
@@ -134,7 +135,7 @@ export function createPortfolioBrokerDataRuntime(
     ((response) => brokerAdapter.normalizeActiveOrders(response).data);
   const normalizeOrderFills = dependencies.normalizeOrderFills ||
     ((response) => brokerAdapter.normalizeExecutionFills(response).data);
-  const logError = dependencies.logError || ((message, error) => console.error(message, error));
+  const logError = dependencies.logError || ((_message, error) => logSafeDiagnostic('error', 'broker-data', error));
 
   /**
    * Share one persistent-stream handshake across all initial broker loaders.

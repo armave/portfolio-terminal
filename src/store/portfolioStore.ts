@@ -67,6 +67,7 @@ import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './por
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 import { normalizePortfolioSettings } from '../domain/portfolioSettings';
+import { logSafeDiagnostic } from '../services/safeDiagnostics';
 
 export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 
@@ -954,7 +955,7 @@ export class PortfolioStore {
       } catch (error) {
         // A faulty view subscriber must not prevent other subscribers from
         // observing a committed navigation change.
-        console.error('Failed to notify a portfolio active-view subscriber:', error);
+        logSafeDiagnostic('error', 'portfolio-store', error);
       }
     });
   }
@@ -973,7 +974,7 @@ export class PortfolioStore {
         // State is already committed before notification. Isolate subscriber
         // failures so one consumer cannot starve the remaining subscribers or
         // make a successful mutation appear to have failed.
-        console.error('Failed to notify a portfolio state subscriber:', error);
+        logSafeDiagnostic('error', 'portfolio-store', error);
       }
     });
   }
@@ -983,7 +984,7 @@ export class PortfolioStore {
       try {
         listener(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
       } catch (error) {
-        console.error('Failed to notify the UI about a portfolio persistence error:', error);
+        logSafeDiagnostic('error', 'portfolio-store', error);
       }
     });
   }
@@ -1371,7 +1372,7 @@ export class PortfolioStore {
           else localStorage.setItem('portfolio_active_view', previousDeviceView);
         }
       } catch (error) {
-        console.error('Could not restore the previous device desk after a failed portfolio reset:', error);
+        logSafeDiagnostic('error', 'browser-storage', error);
       }
     }
     return committed;

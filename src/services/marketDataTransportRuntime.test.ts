@@ -81,6 +81,30 @@ describe('market data transport runtime', () => {
     });
   });
 
+  it('does not log provider exception messages or requested symbols on deep-data and news failures', async () => {
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const providerError = 'https://provider.example/?api_key=secret AAPL $12,345';
+      const proxyFetch = vi.fn(async () => { throw new Error(providerError); });
+      const { runtime } = createRuntime(proxyFetch);
+
+      await expect(runtime.fetchYahooStockData('AAPL')).resolves.toBeNull();
+      await expect(runtime.fetchMarketNews('AAPL')).rejects.toThrow(providerError);
+
+      expect(output).toHaveBeenCalledTimes(2);
+      for (const [logged] of output.mock.calls) {
+        const entry = String(logged);
+        expect(entry).toContain('"category":"market-data"');
+        expect(entry).toContain('"errorClass":"unknown"');
+        for (const secret of ['provider.example', 'api_key=secret', 'AAPL', '$12,345']) {
+          expect(entry).not.toContain(secret);
+        }
+      }
+    } finally {
+      output.mockRestore();
+    }
+  });
+
   it('does not reuse a last-known-good quote beyond its stale retention window', async () => {
     let now = 100;
     const proxyFetch = vi.fn()

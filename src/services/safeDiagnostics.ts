@@ -1,7 +1,7 @@
 export type SafeDiagnosticLevel = 'info' | 'warn' | 'error';
 export type SafeDiagnosticCategory =
   | 'browser-storage' | 'credential-storage' | 'cloud-sync' | 'closed-history'
-  | 'market-data' | 'broker-stream' | 'broker-data' | 'portfolio-rollover' | 'startup';
+  | 'market-data' | 'broker-stream' | 'broker-data' | 'portfolio-rollover' | 'startup' | 'portfolio-store';
 
 type SafeErrorClass = 'aborted' | 'storage-limit' | 'browser-security' | 'malformed-data' | 'crypto-operation' | 'type-error' | 'unknown';
 

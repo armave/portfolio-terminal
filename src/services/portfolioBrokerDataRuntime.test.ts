@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import type { FreedomPortfolioSnapshot } from './freedomAccountContracts';
@@ -480,6 +481,35 @@ describe('portfolio broker data runtime', () => {
 
     await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(false);
     expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:active-orders' }));
+  });
+
+  it('uses safe diagnostic logging for broker history failures when no logger is injected', async () => {
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const fixture = createFixture({
+        fetchExecutedTrades: vi.fn(async () => {
+          throw new Error('https://broker.example/?sid=private AAPL $12,345 account-private');
+        }),
+        logError: undefined
+      });
+
+      await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(false);
+
+      expect(output).toHaveBeenCalledOnce();
+      const entry = String(output.mock.calls[0][0]);
+      expect(entry).toContain('"category":"broker-data"');
+      expect(entry).toContain('"errorClass":"unknown"');
+      for (const secret of ['broker.example', 'sid=private', 'AAPL', '$12,345', 'account-private']) {
+        expect(entry).not.toContain(secret);
+      }
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it('keeps App broker runtime composition on the safe diagnostic boundary', () => {
+    const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(appSource).toContain("logError: (_message, error) => logSafeDiagnostic('error', 'broker-data', error)");
   });
 
   it('reports account-info provider failures only for the current session', async () => {
