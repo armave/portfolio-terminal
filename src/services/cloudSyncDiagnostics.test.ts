@@ -58,6 +58,7 @@ describe('cloud sync diagnostics', () => {
       1_800_000_000_004,
       1_800_000_000_003
     ]);
+    expect(JSON.parse(storage.getItem('portfolio_cloud_sync_diagnostics_v1') || '[]')).toHaveLength(3);
   });
 
   it('restores valid diagnostics after a page refresh and ignores unknown fields', () => {
@@ -101,6 +102,11 @@ describe('cloud sync diagnostics', () => {
       1_800_000_000_007
     ]);
     expect(snapshots).toEqual([0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3]);
+    expect(JSON.parse(storage.getItem('portfolio_cloud_sync_diagnostics_v1') || '[]').map((entry: { timestamp: number }) => entry.timestamp)).toEqual([
+      1_800_000_000_009,
+      1_800_000_000_008,
+      1_800_000_000_007
+    ]);
   });
 
   it('rejects unsupported diagnostic fields and clears only its own metadata', () => {
