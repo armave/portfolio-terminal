@@ -1160,7 +1160,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Cloud synchronization diagnostics": "Диагностика облачной синхронизации",
   "Application API": "API приложения",
   "Reachable": "Доступен",
-  "Cloud portfolio": "Облачный портфель",
   "Cloud pull": "Загрузка из облака",
   "Cloud write": "Запись в облако",
   "Background reconciliation": "Фоновое согласование",
