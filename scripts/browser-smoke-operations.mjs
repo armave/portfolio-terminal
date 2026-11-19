@@ -241,6 +241,13 @@ async function mockWorkerApi(page, { portfolioPositions, portfolioTransactionEve
       return;
     }
     if (pathname.startsWith('/api/auth/')) {
+      // A preview session and its parent administrator session remain distinct,
+      // concurrently valid credentials on the real Worker.
+      if (pathname === '/api/auth/me' && method === 'GET' &&
+          currentUser?.isImpersonating && previewAdminUser && token === previewAdminToken) {
+        await json(route, 200, { user: publicUser(previewAdminUser) }, {}, call);
+        return;
+      }
       if (!currentUser || token !== currentToken) {
         await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
