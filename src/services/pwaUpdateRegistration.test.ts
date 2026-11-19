@@ -11,8 +11,10 @@ describe('PWA update registration policy', () => {
     expect(handler).toBeDefined();
     expect(handler).toContain('pwaUpdateRuntime.markUpdateAvailable()');
     expect(handler).not.toMatch(/updateServiceWorker|skipWaiting|location\.reload/);
-    expect(entry).toContain('isPageRefreshNavigation(performance.getEntriesByType');
+    expect(entry).toContain('isPageRefreshNavigation(pageNavigation?.type)');
     expect(entry).toContain('startupOverlayDismissed');
+    expect(entry).toContain('initialWorkspaceSyncSettled');
+    expect(entry).toContain("'app:initial-workspace-sync-settled'");
     expect(entry).toContain('isOnlyOpenAppClient(waitingWorker)');
     expect(entry).toContain('onNeedReload:');
     expect(viteConfig).toMatch(/registerType:\s*'prompt'/);
@@ -21,5 +23,6 @@ describe('PWA update registration policy', () => {
     expect(serviceWorker).toContain("message?.type === 'SKIP_WAITING'");
     expect(serviceWorker).toContain('self.clients.matchAll');
     expect(serviceWorker).toContain('includeUncontrolled: true');
+    expect(serviceWorker).toContain('self.clients.claim()');
   });
 });
