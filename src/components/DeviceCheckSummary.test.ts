@@ -4,6 +4,7 @@ import {
   checkLocalStorageAvailability,
   getBrowserLabel,
   getApplicationApiLabel,
+  getCloudRequestLabel,
   getDeviceHealth,
   getDeviceTypeLabel,
   getOperatingSystemLabel,
@@ -62,6 +63,10 @@ describe('Device Check summary diagnostics', () => {
   it('separates application API reachability from cloud portfolio synchronization', () => {
     expect(getApplicationApiLabel('reachable')).toBe('Reachable');
     expect(getApplicationApiLabel('unavailable')).toBe('Unavailable');
+    expect(getCloudRequestLabel({ status: 'synced', text: 'READY' })).toBe('Last request confirmed');
+    expect(getCloudRequestLabel({ status: 'syncing', text: 'CONNECTING' })).toBe('Request in progress');
+    expect(getCloudRequestLabel({ status: 'error', text: 'UNAVAILABLE' })).toBe('Last request failed');
+    expect(getCloudRequestLabel({ status: 'idle', text: '' })).toBe('Not checked');
     expect(getPortfolioSyncLabel({ status: 'synced', text: 'Synced' })).toBe('Synced');
     expect(getPortfolioSyncLabel({ status: 'syncing', text: 'Syncing' })).toBe('Syncing');
     expect(getPortfolioSyncLabel({ status: 'conflict', text: 'Conflict' })).toBe('Conflict');
@@ -100,32 +105,27 @@ describe('Device Check summary diagnostics', () => {
   });
 
   it('shows checking while device diagnostics have not loaded', () => {
-    expect(getDeviceHealth(null, { status: 'idle', text: '' })).toBe('checking');
+    expect(getDeviceHealth(null, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('checking');
   });
 
-  it('summarizes device readiness without treating offline as local storage failure', () => {
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'reachable'
-    }, { status: 'synced', text: 'Synced' })).toBe('ready');
-    expect(getDeviceHealth({
-      online: false, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'reachable'
-    }, { status: 'idle', text: '' })).toBe('offline');
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: false, secureContext: true, applicationApiStatus: 'reachable'
-    }, { status: 'idle', text: '' })).toBe('attention');
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: true, secureContext: false, applicationApiStatus: 'reachable'
-    }, { status: 'idle', text: '' })).toBe('attention');
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'unavailable'
-    }, { status: 'idle', text: '' })).toBe('attention');
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'reachable'
-    }, { status: 'conflict', text: 'Conflict' })).toBe('attention');
-    expect(getDeviceHealth({
-      online: true, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'reachable'
-    }, { status: 'error', text: 'Sync failed' })).toBe('attention');
+  it('summarizes API, cloud request and portfolio sync states independently', () => {
+    const readyDevice = {
+      online: true, localStorageAvailable: true, secureContext: true, applicationApiStatus: 'reachable' as const
+    };
+    const offlineDevice = { ...readyDevice, online: false };
+    const unavailableApiDevice = { ...readyDevice, applicationApiStatus: 'unavailable' as const };
+
+    expect(getDeviceHealth(readyDevice, { status: 'synced', text: 'READY' }, { status: 'synced', text: 'Synced' })).toBe('ready');
+    expect(getDeviceHealth(offlineDevice, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('offline');
+    expect(getDeviceHealth({ ...readyDevice, localStorageAvailable: false }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
+    expect(getDeviceHealth({ ...readyDevice, secureContext: false }, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
+    expect(getDeviceHealth(unavailableApiDevice, { status: 'idle', text: '' }, { status: 'idle', text: '' })).toBe('attention');
+    expect(getDeviceHealth(readyDevice, { status: 'synced', text: 'READY' }, { status: 'conflict', text: 'Conflict' })).toBe('attention');
+    expect(getDeviceHealth(readyDevice, { status: 'synced', text: 'READY' }, { status: 'error', text: 'Sync failed' })).toBe('attention');
+    expect(getDeviceHealth(readyDevice, { status: 'error', text: 'UNAVAILABLE' }, { status: 'idle', text: '' })).toBe('attention');
   });
+
+
 });
 
 
@@ -135,6 +135,7 @@ describe('Device Check progressive disclosure', () => {
     expect(source).toContain('<details class="settings-device-details">');
     expect(source).toContain("label('Technical details')");
     expect(source).toContain("['Application API', getApplicationApiLabel(diagnostics.applicationApiStatus)]");
+    expect(source).toContain("['Cloud request', getCloudRequestLabel(cloudStatus)]");
     expect(source).toContain("['Cloud portfolio', getPortfolioSyncLabel(cloudSyncStatus)]");
     expect(source).toContain("['App shell cache', appShellCacheLabel(diagnostics.appShellCache)]");
     expect(source).toContain("label('Cloud synchronization diagnostics')");
