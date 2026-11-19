@@ -22,6 +22,21 @@ describe('toBrokerRulesFormValues', () => {
   });
 });
 
+describe('expandable user management and guest preview actions', () => {
+  it('keeps user management collapsed by default and provides guest-only preview actions', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('id="settingsUserManagement"');
+    expect(source).toContain('open={userManagementOpen}');
+    expect(source).toContain("onToggle={(event) => setUserManagementOpen");
+    expect(source).toContain("if (currentUser?.role !== 'admin' || !userManagementOpen)");
+    expect(source).toContain("emitUiEvent('auth:admin-preview-start'");
+    expect(source).toContain("user.role === 'guest'");
+    expect(source).toContain("translateText('View as')");
+    expect(source).toContain("translateText('Shared workspace')");
+  });
+});
+
 describe('automatic update settings', () => {
   it('documents role-specific refresh cadence and immediate resume behavior', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');

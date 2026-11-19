@@ -160,7 +160,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const hasCloudConflict = account?.role === 'admin' && cloudSyncStatus.status === 'conflict';
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
-  const [initialUsersLoading, setInitialUsersLoading] = useState(currentUser?.role === 'admin');
+  const [userManagementOpen, setUserManagementOpen] = useState(false);
+  const [initialUsersLoading, setInitialUsersLoading] = useState(false);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const usersLoadGenerationRef = useRef(0);
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"guest" | "admin">("guest");
@@ -179,10 +182,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const visibleUsers = sliceTablePage(users, usersPagination.currentPage, usersPagination.pageSize);
 
   const refreshUsers = async () => {
-    // The application already owns the verified session identity. Refresh only
-    // the admin directory here; a transient directory error must not sign out
-    // the active user or erase their account details from Settings.
-    if (currentUser?.role !== "admin") {
+    // Only request the admin directory while its disclosure panel is open.
+    // Ignore late responses after collapse or an account/role transition.
+    const generation = ++usersLoadGenerationRef.current;
+    if (currentUser?.role !== "admin" || !userManagementOpen) {
       setUsers([]);
       setEditValues({});
       setUsersError("");
@@ -190,10 +193,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
     try {
       const records = await listUsers();
+      if (generation !== usersLoadGenerationRef.current) return;
       setUsers(records);
       setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, language: user.language ?? "en", password: "" }])));
       setUsersError("");
     } catch (error) {
+      if (generation !== usersLoadGenerationRef.current) return;
       setUsersError(error instanceof Error ? error.message : "Could not load users.");
     }
   };
@@ -202,9 +207,30 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   }, [currentUser]);
 
   useEffect(() => {
-    setInitialUsersLoading(currentUser?.role === 'admin');
-    void refreshUsers().finally(() => setInitialUsersLoading(false));
-  }, [currentUser?.id, currentUser?.role]);
+    if (currentUser?.role !== 'admin') {
+      usersLoadGenerationRef.current += 1;
+      setInitialUsersLoading(false);
+      setUsers([]);
+      setEditValues({});
+      setUsersError("");
+      return;
+    }
+    if (!userManagementOpen) {
+      usersLoadGenerationRef.current += 1;
+      setInitialUsersLoading(false);
+      return;
+    }
+
+    setInitialUsersLoading(true);
+    const request = refreshUsers();
+    const generation = usersLoadGenerationRef.current;
+    void request.finally(() => {
+      if (usersLoadGenerationRef.current === generation) setInitialUsersLoading(false);
+    });
+    return () => {
+      if (usersLoadGenerationRef.current === generation) usersLoadGenerationRef.current += 1;
+    };
+  }, [currentUser?.id, currentUser?.role, userManagementOpen]);
 
   const handleCreateUser = async (event: Event) => {
     event.preventDefault();
@@ -262,6 +288,22 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       setLanguageError(error instanceof Error ? error.message : "Could not update language.");
     } finally {
       setSavingLanguage(false);
+    }
+  };
+
+  const handleViewAsUser = async (user: AuthUser) => {
+    if (savingUser || viewingUserId || account?.role !== 'admin' || user.role !== 'guest') return;
+    setViewingUserId(user.id);
+    setUsersError("");
+    try {
+      const error = await new Promise<string | undefined>((resolve) => {
+        emitUiEvent('auth:admin-preview-start', { userId: user.id, resolve });
+      });
+      if (error) setUsersError(error);
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : "Could not open guest preview.");
+    } finally {
+      setViewingUserId(null);
     }
   };
 
@@ -562,14 +604,24 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <h2 id="settingsAccessTitle">{translateText('Access management')}</h2>
           <p>{translateText('Manage administrator and guest accounts, roles, and portfolio access.')}</p>
         </div>
-              <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
-        <div class="settings-user-heading flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">{translateText('User management')}</h3>
-            <p class="mt-1 max-w-prose text-[10px] leading-relaxed text-slate-500">{translateText('Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.')}</p>
-          </div>
-          {account?.role === "admin" && <span class="shrink-0 rounded border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[10px] uppercase tracking-wider text-emerald-400">{translateText('Admin controls')}</span>}
-        </div>
+              <details
+        id="settingsUserManagement"
+        class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+        aria-labelledby="userManagementTitle"
+        open={userManagementOpen}
+        onToggle={(event) => setUserManagementOpen((event.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary class="settings-user-heading flex cursor-pointer list-none items-center justify-between gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500">
+          <span class="min-w-0">
+            <span id="userManagementTitle" class="block text-sm font-bold text-slate-200">{translateText('User management')}</span>
+            <span class="mt-1 block max-w-prose text-[10px] leading-relaxed text-slate-500">{translateText('Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.')}</span>
+          </span>
+          <span class="flex shrink-0 items-center gap-2">
+            {account?.role === "admin" && <span class="rounded border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[10px] uppercase tracking-wider text-emerald-400">{translateText('Admin controls')}</span>}
+            <span aria-hidden="true" class="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
+          </span>
+        </summary>
+        <div class="space-y-3 pt-2">
         {account?.role === "admin" ? <>
           <form onSubmit={handleCreateUser} class="settings-user-form grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
             <input type="text" aria-label={translateText('User name')} minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder={translateText('User name')} class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
@@ -613,8 +665,17 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   </label>
                 </div>
                 <div class="settings-user-card-actions">
-                  <button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
-                  {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-3 py-2 text-xs font-semibold text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
+                  {user.role === 'guest'
+                    ? <button
+                        type="button"
+                        aria-label={translateText('View as') + ' ' + user.name}
+                        disabled={savingUser || viewingUserId !== null}
+                        onClick={() => void handleViewAsUser(user)}
+                        class="min-h-11 rounded border border-cyan-900/70 bg-cyan-950/60 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-50"
+                      >{viewingUserId === user.id ? translateText('Opening…') : translateText('View as')}</button>
+                    : <span class="self-center text-[10px] text-slate-500" title={translateText('Admin accounts share the same owner workspace.')}>{translateText('Shared workspace')}</span>}
+                  <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                  {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-3 py-2 text-xs font-semibold text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
                 </div>
               </article>)}
             </div>
@@ -629,8 +690,13 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                     <td class="p-2"><select aria-label={translateText('Role for ') + user.name} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">{translateText('Guest')}</option><option class="text-center" value="admin">{translateText('Admin')}</option></select></td>
                     <td class="p-2"><select aria-label={translateText('Language for ') + user.name} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">{translateText('English')}</option><option class="text-center" value="ru">{translateText('Russian')}</option></select></td>
                     <td class="p-2"><input aria-label={translateText('New password for ') + user.name} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder={translateText('Leave blank to keep')} value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-                    <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
-                      {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}</td>
+                    <td class="whitespace-nowrap p-2">
+                      {user.role === 'guest'
+                        ? <button type="button" aria-label={translateText('View as') + ' ' + user.name} disabled={savingUser || viewingUserId !== null} onClick={() => void handleViewAsUser(user)} class="mr-2 min-h-11 rounded border border-cyan-900/70 bg-cyan-950/60 px-2 py-1.5 text-cyan-200 disabled:opacity-50">{viewingUserId === user.id ? translateText('Opening…') : translateText('View as')}</button>
+                        : <span class="mr-2 text-[10px] text-slate-500" title={translateText('Admin accounts share the same owner workspace.')}>{translateText('Shared workspace')}</span>}
+                      <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                      {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
+                    </td>
                   </tr>)}</tbody>
               </table></TableScrollRegion>
             </div>
@@ -650,7 +716,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           />
         </> : <p class="text-xs text-slate-400">{translateText('Only administrators can view or manage the user list.')}</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
-      </section>
+      </div>
+      </details>
               {account?.role === 'admin' && <details
         class="settings-subsection"
         open={tenantDirectoryOpen}
