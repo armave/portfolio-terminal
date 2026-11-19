@@ -2028,6 +2028,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     // Only the owner workspace may release its deferred cloud writes.
     if (currentAccountRole === 'admin') releaseStartupCloudWrites();
   },
+  onWorkspaceSyncSettled: () => emitUiEvent('app:initial-workspace-sync-settled'),
   hideStartupLoading,
   reportBackgroundStartupError: (_task, error) => {
     logSafeDiagnostic('warn', 'startup', error);
