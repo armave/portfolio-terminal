@@ -115,9 +115,15 @@ function classifyCloudSyncFailure(error: unknown, httpStatus?: number): CloudSyn
   const name = error && typeof error === 'object' && 'name' in error
     ? String((error as { name?: unknown }).name || '')
     : '';
-  if (name === 'AbortError' || name === 'TimeoutError') return 'timeout';
   const message = errorMessage(error).toLowerCase();
-  if (message.includes('decrypt') || message.includes('cipher') || message.includes('encryption')) return 'decryption-failed';
+  if (
+    name === 'AbortError' || name === 'TimeoutError' ||
+    message.includes('timed out') || message.includes('timeout')
+  ) return 'timeout';
+  if (
+    name === 'OperationError' || name === 'DataError' ||
+    message.includes('decrypt') || message.includes('cipher') || message.includes('encryption')
+  ) return 'decryption-failed';
   if (message.includes('transaction journal') || message.includes('transaction event') || message.includes('history conflicts')) {
     return 'transaction-history-conflict';
   }
