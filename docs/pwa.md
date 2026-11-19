@@ -49,7 +49,9 @@ The existing unit suite separately tests install-event capture, user-initiated p
 
 After exact-head GitHub Actions pass, verify on real devices:
 - Android Chrome: install prompt, accepted install, standalone launch and relaunch.
-- Desktop Chrome/Edge: install prompt, standalone launch, a 30-minute visible-tab update check, Settings status, and a staged update that activates only after all older app tabs are closed.
+- Android Chrome and desktop Chrome/Edge: stage an update, refresh with one app tab open, and verify that the new shell activates only after authenticated startup is ready.
+- Multi-tab update safety: leave a second Portfolio Terminal tab open, refresh the first tab, and verify that neither tab is forced to reload; close the second tab, refresh again, and verify that the waiting worker activates and the refreshed tab reloads once.
+- Confirm an ordinary app launch and background update detection do not activate a waiting worker without a page refresh or the normal all-tabs-closed lifecycle.
 - iPhone/iPad Safari: Add to Home Screen guidance, touch icon, standalone launch and status-bar appearance.
 - Offline restart: cached shell opens, authenticated data remains unavailable until identity is verified online.
 - Reconnection: banner remains while the application status endpoint is unavailable and clears only after a successful status response.
