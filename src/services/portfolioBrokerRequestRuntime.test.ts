@@ -75,6 +75,28 @@ describe('portfolio broker request runtime', () => {
     });
   });
 
+  it('uses the explicit catch-up loader only for waitable Manual Sync requests', async () => {
+    const dependencies: PortfolioBrokerRequestRuntimeDependencies = {
+      refreshAccountInfo: vi.fn(async () => true),
+      refreshAccountInfoForWait: vi.fn(async () => true),
+      refreshExecutedTrades: vi.fn(async () => true),
+      refreshExecutedTradesForWait: vi.fn(async () => true),
+      refreshActiveOrders: vi.fn(async () => true)
+    };
+    dispose = bindPortfolioBrokerRequestRuntime(dependencies);
+
+    (dependencies.refreshExecutedTrades as ReturnType<typeof vi.fn>).mockClear();
+    emitBrokerEvent('broker:request-executed-trades');
+    await vi.waitFor(() => expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1));
+
+    const resolve = vi.fn();
+    emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+    await vi.waitFor(() => expect(resolve).toHaveBeenCalledWith(true));
+
+    expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshExecutedTradesForWait).toHaveBeenCalledTimes(1);
+  });
+
   it('removes all request listeners when disposed', async () => {
     const dependencies: PortfolioBrokerRequestRuntimeDependencies = {
       refreshAccountInfo: vi.fn(async () => true),
