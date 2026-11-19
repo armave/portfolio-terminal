@@ -7,10 +7,51 @@ import { registerSW } from 'virtual:pwa-register';
 import { addUiEventListener, emitUiEvent } from './ui/uiEventBus';
 import { createStartupRecoveryWatchdog } from './services/startupRecoveryWatchdog';
 import { pwaUpdateRuntime } from './services/pwaUpdateRuntime';
+import { isOnlyOpenAppClient, isPageRefreshNavigation } from './services/pwaRefreshUpdate';
 import {
   consumeAutomaticRepairAttemptMarker,
   repairCurrentBrowserAppCache
 } from './services/browserProfileRepairRuntime';
+
+const pageWasRefreshed = typeof performance !== 'undefined' &&
+  isPageRefreshNavigation(performance.getEntriesByType('navigation')[0]?.type);
+let startupOverlayDismissed = false;
+let registeredServiceWorker: ServiceWorkerRegistration | null = null;
+let applyStagedServiceWorkerUpdate: ((reloadPage?: boolean) => Promise<void>) | null = null;
+let refreshUpdateActivationInFlight = false;
+
+async function applyWaitingUpdateAfterRefresh(): Promise<void> {
+  if (
+    !pageWasRefreshed ||
+    !startupOverlayDismissed ||
+    refreshUpdateActivationInFlight ||
+    !registeredServiceWorker?.waiting ||
+    !navigator.serviceWorker.controller ||
+    !applyStagedServiceWorkerUpdate
+  ) return;
+
+  const waitingWorker = registeredServiceWorker.waiting;
+  refreshUpdateActivationInFlight = true;
+  try {
+    // The waiting worker counts all open clients in this app's scope. Only
+    // activate after an explicit page refresh when this is the sole app tab.
+    // Older tabs may not know this protocol, so the count is owned by the SW.
+    const isOnlyOpenTab = await isOnlyOpenAppClient(waitingWorker);
+    if (!isOnlyOpenTab || registeredServiceWorker.waiting !== waitingWorker) {
+      if (!isOnlyOpenTab) {
+        console.info('[PWA]: Update remains staged because another Portfolio Terminal tab is still open. Close the other tab and refresh again to apply it.');
+      }
+      return;
+    }
+    await applyStagedServiceWorkerUpdate();
+  } catch (error) {
+    // Fail closed: keep the worker waiting and let the ordinary close/reopen
+    // lifecycle apply it later rather than forcing activation after a failed probe.
+    console.warn('[PWA]: Could not safely apply the waiting update on refresh.', error);
+  } finally {
+    refreshUpdateActivationInFlight = false;
+  }
+}
 
 let serviceWorkerReloadRequested = false;
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
@@ -33,19 +74,26 @@ if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
   pwaUpdateRuntime.markUnsupported();
 }
 
-registerSW({
+applyStagedServiceWorkerUpdate = registerSW({
   immediate: true,
   onNeedRefresh: () => {
     pwaUpdateRuntime.markUpdateAvailable();
-    // Keep the waiting worker staged. Activating it here would replace the
-    // current controller and reload a page whose cloud reconciliation may be
-    // in flight. The browser activates it after old controlled tabs are closed.
-    console.info('[PWA]: A newer app shell is staged and will activate after all tabs using the current app shell are closed.');
+    // Normal update detection only stages the worker. A refreshed page may
+    // apply it after startup if no other tab uses this app scope.
+    void applyWaitingUpdateAfterRefresh();
+  },
+  onNeedReload: () => {
+    // The guarded controllerchange listener above owns the single page reload.
   },
   onRegisteredSW: (_serviceWorkerUrl, registration) => {
     if (!registration) {
       pwaUpdateRuntime.markUnsupported();
       return;
+    }
+    registeredServiceWorker = registration;
+    if (registration.waiting) {
+      pwaUpdateRuntime.markUpdateAvailable();
+      void applyWaitingUpdateAfterRefresh();
     }
     // Check after registration and every 30 minutes while the page is visible.
     // Returning to a visible tab catches up if the interval elapsed in the background.
@@ -95,7 +143,11 @@ addUiEventListener('app:startup-state', (event) => {
   // visible=false is only a request. App may keep the overlay mounted until
   // page-readiness checks finish, so keep the watchdog armed until that commit.
 });
-addUiEventListener('app:startup-overlay-dismissed', clearStartupWatchdog);
+addUiEventListener('app:startup-overlay-dismissed', () => {
+  clearStartupWatchdog();
+  startupOverlayDismissed = true;
+  void applyWaitingUpdateAfterRefresh();
+});
 
 /**
  * Ask browser autofill and common password managers to ignore ordinary app
