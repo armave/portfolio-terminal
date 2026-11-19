@@ -5837,7 +5837,10 @@ describe("Freedom daily historical candles", () => {
 
 
 describe("server diagnostic log redaction", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   it("emits only an allowlisted server event and never serializes the supplied error", () => {
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -5859,6 +5862,8 @@ describe("server diagnostic log redaction", () => {
   });
 
   it("captures only allowlisted provider metrics for success, cache, and failure paths", async () => {
+    // The earlier Finnhub 429 validation deliberately leaves a provider-wide cooldown.
+    // Use Twelve Data here so this test measures log redaction, not cooldown reset behavior.
     const output = vi.spyOn(console, "info").mockImplementation(() => {});
     const upstreamError = "https://provider.example/private?token=upstream-secret AAPL $12,345";
     const fetchMock = vi.fn()
@@ -5873,9 +5878,9 @@ describe("server diagnostic log redaction", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const fetchQuote = (symbol) => worker.fetch(new Request(
-      "https://worker.test/?action=provider-quote&provider=finnhub&symbol=" + symbol,
+      "https://worker.test/?action=provider-quote&provider=twelvedata&symbol=" + symbol,
       { headers: { "X-App-Auth": "test-secret" } }
-    ), { GATEWAY_SECRET: "test-secret", FINNHUB_KEY: "private-provider-api-key" });
+    ), { GATEWAY_SECRET: "test-secret", TWELVE_KEY: "private-provider-api-key" });
 
     const first = await fetchQuote("LOGTESTA");
     const cached = await fetchQuote("LOGTESTA");
@@ -5887,10 +5892,10 @@ describe("server diagnostic log redaction", () => {
 
     const events = output.mock.calls.map(([entry]) => JSON.parse(String(entry)));
     expect(events).toHaveLength(3);
-    expect(events[0]).toMatchObject({ type: "provider_metric", metric: "provider_request", provider: "finnhub", success: true });
+    expect(events[0]).toMatchObject({ type: "provider_metric", metric: "provider_request", provider: "twelvedata", success: true });
     expect(events[0].durationMs).toEqual(expect.any(Number));
-    expect(events[1]).toEqual({ type: "provider_metric", metric: "cache_hit", provider: "finnhub" });
-    expect(events[2]).toMatchObject({ type: "provider_metric", metric: "provider_failure", provider: "finnhub" });
+    expect(events[1]).toEqual({ type: "provider_metric", metric: "cache_hit", provider: "twelvedata" });
+    expect(events[2]).toMatchObject({ type: "provider_metric", metric: "provider_failure", provider: "twelvedata" });
     expect(events[2].durationMs).toEqual(expect.any(Number));
 
     for (const event of events) {
