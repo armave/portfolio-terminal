@@ -15,7 +15,7 @@ export function summarizePerformanceSamples(samples, metric) {
   return {sampleCount:n,min:nums[0],p25,median,p75,p95:nums[Math.max(0,Math.ceil(n*.95)-1)],max:nums[n-1],mean,variance,standardDeviation:Math.sqrt(variance),interquartileRange:iqr,outlierRunNumbers:values.filter(x=>x.value<p25-1.5*iqr||x.value>p75+1.5*iqr).map(x=>x.run).sort((a,b)=>a-b)};
 }
 export function summarizePerformanceViewport(samples) {
-  const metrics=['elapsedToAuthReadyMs','elapsedToPortfolioReadyMs','elapsedToTradesDeskReadyMs','authShellReadyMs','authenticationMs','fixtureHydrationMs','brokerRefreshAndParityMs','portfolioRenderReadyMs','tradesDeskReadyMs','firstContentfulPaintMs','largestContentfulPaintMs','cumulativeLayoutShift','totalResourceTransferBytes','resourceCount','heapUsedBytes','domNodeCount'];
+  const metrics=['elapsedToPortfolioReadyMs','elapsedToTradesDeskReadyMs','authShellReadyMs','authenticationMs','fixtureHydrationMs','brokerRefreshAndParityMs','portfolioRenderReadyMs','tradesDeskReadyMs','firstContentfulPaintMs','largestContentfulPaintMs','cumulativeLayoutShift','totalResourceTransferBytes','resourceCount','heapUsedBytes','domNodeCount'];
   return Object.fromEntries(metrics.map(metric=>[metric,summarizePerformanceSamples(samples,metric)]));
 }
 export function buildPerformanceEnvironmentMetadata(input) {
