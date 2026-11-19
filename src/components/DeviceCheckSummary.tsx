@@ -490,7 +490,7 @@ export function DeviceCheckSummary() {
         <div class="space-y-2 pt-3">
           {cloudSyncDiagnostics.length === 0
             ? <p class="text-[11px] leading-5 text-slate-400">{label('No cloud synchronization attempts have been recorded in this tab session.')}</p>
-            : cloudSyncDiagnostics.slice(0, 5).map((entry) => (
+            : cloudSyncDiagnostics.slice(0, 8).map((entry) => (
                 <div key={entry.timestamp + '-' + entry.operation + '-' + entry.reason}
                   class="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2">
                   <div class="flex flex-wrap items-center justify-between gap-2">
