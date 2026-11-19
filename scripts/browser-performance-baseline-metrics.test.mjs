@@ -34,12 +34,16 @@ describe('summarizePerformanceSamples', () => {
     ], 'fcp')).toEqual({
       sampleCount: 3,
       min: 10,
+      p25: 10,
       median: 20,
+      p75: 30,
       p95: 30,
       max: 30,
       mean: 20,
       variance: expect.closeTo(66.6666666667),
-      standardDeviation: expect.closeTo(Math.sqrt(66.6666666667))
+      standardDeviation: expect.closeTo(Math.sqrt(66.6666666667)),
+      interquartileRange: 20,
+      outlierRunNumbers: []
     });
   });
 
@@ -51,21 +55,25 @@ describe('summarizePerformanceSamples', () => {
     expect(summarizePerformanceSamples([{ fcp: null }, { fcp: 'missing' }], 'fcp')).toEqual({
       sampleCount: 0,
       min: null,
+      p25: null,
       median: null,
+      p75: null,
       p95: null,
       max: null,
       mean: null,
       variance: null,
-      standardDeviation: null
+      standardDeviation: null,
+      interquartileRange: null,
+      outlierRunNumbers: []
     });
   });
 
   it('summarizes all viewport metrics without inventing missing values', () => {
     const summary = summarizePerformanceViewport([
-      { elapsedToAuthReadyMs: 100, firstContentfulPaintMs: null, totalResourceTransferBytes: 1_000 },
-      { elapsedToAuthReadyMs: 120, firstContentfulPaintMs: 80, totalResourceTransferBytes: 1_200 }
+      { authShellReadyMs: 100, firstContentfulPaintMs: null, totalResourceTransferBytes: 1_000 },
+      { authShellReadyMs: 120, firstContentfulPaintMs: 80, totalResourceTransferBytes: 1_200 }
     ]);
-    expect(summary.elapsedToAuthReadyMs.median).toBe(110);
+    expect(summary.authShellReadyMs.median).toBe(110);
     expect(summary.firstContentfulPaintMs.sampleCount).toBe(1);
     expect(summary.largestContentfulPaintMs.sampleCount).toBe(0);
     expect(summary.totalResourceTransferBytes.median).toBe(1_100);
