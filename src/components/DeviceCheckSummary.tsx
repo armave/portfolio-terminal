@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getAppLanguage, translateText } from '../services/i18n';
-import { useCloudStatus, useCloudSyncStatus } from '../ui/uiStateStore';
+import { getAuthStatus } from '../services/api';
+import { getCloudSyncDiagnostics, subscribeCloudSyncDiagnostics } from '../services/cloudSyncDiagnostics';
+import type { CloudSyncDiagnostic, CloudSyncDiagnosticReason } from '../services/cloudSyncDiagnostics';
+import { useCloudSyncStatus } from '../ui/uiStateStore';
 
 type ServiceWorkerState = 'active' | 'registered' | 'not_registered' | 'unsupported' | 'error';
 type AppShellCacheState = 'available' | 'incomplete' | 'not_registered' | 'unsupported' | 'error';
 type DeviceHealth = 'ready' | 'offline' | 'attention' | 'checking';
 
 export interface DeviceDiagnostics {
+  applicationApiStatus: 'reachable' | 'unavailable';
   browser: string;
   operatingSystem: string;
   deviceType: string;
@@ -72,32 +76,29 @@ export function checkLocalStorageAvailability(storage: Pick<Storage, 'setItem' |
   }
 }
 
-export function getCloudStorageLabel(status: { status: string; text: string }): string {
-  if (status.status === 'synced') return 'Available';
-  if (status.status === 'syncing') return 'Connecting';
-  if (status.status === 'error') return 'Unavailable';
-  if (/secret/i.test(status.text)) return 'Setup required';
-  return 'Not checked';
+export function getApplicationApiLabel(status: DeviceDiagnostics['applicationApiStatus']): string {
+  return status === 'reachable' ? 'Reachable' : 'Unavailable';
 }
 
 export function getPortfolioSyncLabel(status: { status: string; text: string }): string {
   if (status.status === 'synced') return 'Synced';
   if (status.status === 'syncing') return 'Syncing';
+  if (status.status === 'conflict') return 'Conflict';
   if (status.status === 'error') return 'Failed';
   return 'No recent sync result';
 }
 
 export function getDeviceHealth(
-  diagnostics: Pick<DeviceDiagnostics, 'online' | 'localStorageAvailable' | 'secureContext'> | null,
-  cloudStatus: { status: string; text: string },
+  diagnostics: Pick<DeviceDiagnostics, 'online' | 'localStorageAvailable' | 'secureContext' | 'applicationApiStatus'> | null,
   cloudSyncStatus: { status: string; text: string }
 ): DeviceHealth {
   if (!diagnostics) return 'checking';
   if (
     !diagnostics.localStorageAvailable ||
     !diagnostics.secureContext ||
-    cloudStatus.status === 'error' ||
-    cloudSyncStatus.status === 'error'
+    diagnostics.applicationApiStatus === 'unavailable' ||
+    cloudSyncStatus.status === 'error' ||
+    cloudSyncStatus.status === 'conflict'
   ) {
     return 'attention';
   }
@@ -178,7 +179,19 @@ async function readAppShellCacheState(): Promise<AppShellCacheState> {
   }
 }
 
+async function checkApplicationApi(): Promise<DeviceDiagnostics['applicationApiStatus']> {
+  try {
+    // This public status endpoint proves Worker/auth-service reachability only;
+    // it does not fetch portfolio data or prove that an authenticated cloud sync succeeded.
+    await getAuthStatus();
+    return 'reachable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
 async function collectDeviceDiagnostics(): Promise<DeviceDiagnostics> {
+  const applicationApiStatus = await checkApplicationApi();
   const userAgent = navigator.userAgent || '';
   const screenWidth = window.screen?.width || 0;
   const screenHeight = window.screen?.height || 0;
@@ -188,6 +201,7 @@ async function collectDeviceDiagnostics(): Promise<DeviceDiagnostics> {
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
   return {
+    applicationApiStatus,
     browser: getBrowserLabel(userAgent),
     operatingSystem: getOperatingSystemLabel(userAgent, navigator.platform || '', navigator.maxTouchPoints || 0),
     deviceType: getDeviceTypeLabel(userAgent),
@@ -237,11 +251,13 @@ const DEVICE_CHECK_RU: Record<string, string> = {
   'Not registered': 'Не зарегистрирован',
   'Unsupported': 'Не поддерживается',
   'Error': 'Ошибка',
-  'Cloud storage': 'Облачное хранилище',
-  'Connecting': 'Подключение',
-  'Setup required': 'Требуется настройка',
-  'Not checked': 'Не проверено',
+  'Application API': 'API приложения',
+  'Reachable': 'Доступен',
+  'Cloud portfolio': 'Облачный портфель',
   'Portfolio sync': 'Синхронизация портфеля',
+  'Conflict': 'Конфликт',
+  'Connecting': 'Подключение',
+  'Not checked': 'Не проверено',
   'Synced': 'Синхронизировано',
   'Syncing': 'Синхронизация',
   'Failed': 'Ошибка',
@@ -300,10 +316,11 @@ function healthTone(health: DeviceHealth): string {
 }
 
 function diagnosticTone(value: string): string {
-  if (['Available', 'Secure', 'Active', 'Synced', 'Online (browser-reported)', 'Installed', 'Cached app shell available'].includes(value)) {
+  if (['Available', 'Secure', 'Active', 'Synced', 'Reachable', 'Online (browser-reported)', 'Installed', 'Cached app shell available'].includes(value)) {
     return 'text-emerald-300';
   }
   if (['Unavailable', 'Not secure', 'Error', 'Failed'].includes(value)) return 'text-rose-300';
+  if (value === 'Conflict') return 'text-amber-200';
   if (['Offline', 'Setup required', 'Not checked', 'No recent sync result', 'Not registered', 'Registered, not active', 'App shell cache incomplete', 'Service worker not registered'].includes(value)) {
     return 'text-amber-200';
   }
@@ -326,9 +343,51 @@ function serviceWorkerLabel(value: ServiceWorkerState): string {
   return 'Error';
 }
 
+function diagnosticOperationLabel(operation: CloudSyncDiagnostic['operation']): string {
+  if (operation === 'pull') return 'Cloud pull';
+  if (operation === 'push') return 'Cloud write';
+  return 'Background reconciliation';
+}
+
+function diagnosticOutcomeLabel(outcome: CloudSyncDiagnostic['outcome']): string {
+  if (outcome === 'success') return 'Succeeded';
+  if (outcome === 'conflict') return 'Conflict';
+  return 'Failed';
+}
+
+const DIAGNOSTIC_REASON_LABELS: Record<CloudSyncDiagnosticReason, string> = {
+  confirmed: 'Cloud operation was confirmed.',
+  'auto-reconciled': 'Independent changes were reconciled automatically.',
+  'missing-credentials': 'The cloud request could not start because the session credential is unavailable.',
+  'remote-record-missing': 'The cloud record is missing even though this device previously accepted a populated revision.',
+  'revision-conflict': 'The server rejected a stale revision because a newer cloud snapshot exists.',
+  'overlapping-edits': 'This device and the cloud both changed protected portfolio data differently.',
+  'transaction-history-conflict': 'The transaction journal contains conflicting event identity or history data.',
+  'http-unauthorized': 'The cloud service rejected the session as unauthenticated.',
+  'http-forbidden': 'The current account is not authorized for this cloud operation.',
+  'http-server-error': 'The application server returned an error while handling the cloud request.',
+  'http-error': 'The application server rejected the cloud request.',
+  timeout: 'The cloud request timed out before a complete response was received.',
+  network: 'The browser could not complete the request to the cloud service.',
+  'decryption-failed': 'The encrypted cloud snapshot could not be decrypted or authenticated.',
+  'invalid-payload': 'The cloud response failed payload validation.',
+  'local-storage-failed': 'The local browser store could not commit the accepted cloud snapshot.',
+  'local-apply-rejected': 'The portfolio store rejected the cloud snapshot; local data was retained.',
+  'no-accepted-baseline': 'No accepted in-memory merge baseline was available for safe background recovery.',
+  'latest-revision-unavailable': 'The latest cloud revision could not be confirmed for a conditional retry.',
+  'legacy-history-requires-migration': 'The cloud snapshot contains legacy history that requires the normal migration flow.',
+  'local-edits-changed-during-merge': 'Local data changed while a background merge was being prepared; the merge was cancelled.',
+  'conditional-retry-failed': 'The conditional cloud write lost another revision race or was rejected.',
+  unknown: 'The cloud operation failed for an unclassified reason.'
+};
+
+function diagnosticReasonLabel(reason: CloudSyncDiagnosticReason): string {
+  return label(DIAGNOSTIC_REASON_LABELS[reason]);
+}
+
 export function DeviceCheckSummary() {
-  const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
+  const [cloudSyncDiagnostics, setCloudSyncDiagnostics] = useState<CloudSyncDiagnostic[]>(() => getCloudSyncDiagnostics());
   const [diagnostics, setDiagnostics] = useState<DeviceDiagnostics | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -340,6 +399,8 @@ export function DeviceCheckSummary() {
       setChecking(false);
     }
   };
+
+  useEffect(() => subscribeCloudSyncDiagnostics(setCloudSyncDiagnostics), []);
 
   useEffect(() => {
     void runCheck();
@@ -373,13 +434,13 @@ export function DeviceCheckSummary() {
     };
   }, []);
 
-  const health = getDeviceHealth(diagnostics, cloudStatus, cloudSyncStatus);
+  const health = getDeviceHealth(diagnostics, cloudSyncStatus);
 
   const primaryRows: Array<[string, string]> = diagnostics ? [
     ['Network', diagnostics.online ? 'Online (browser-reported)' : 'Offline'],
     ['Local storage', diagnostics.localStorageAvailable ? 'Available' : 'Unavailable'],
-    ['Cloud storage', getCloudStorageLabel(cloudStatus)],
-    ['Portfolio sync', getPortfolioSyncLabel(cloudSyncStatus)]
+    ['Application API', getApplicationApiLabel(diagnostics.applicationApiStatus)],
+    ['Cloud portfolio', getPortfolioSyncLabel(cloudSyncStatus)]
   ] : [];
 
   const technicalRows: Array<[string, string]> = diagnostics ? [
@@ -425,6 +486,34 @@ export function DeviceCheckSummary() {
       </div>
 
       <details class="settings-device-details">
+        <summary>{label('Cloud synchronization diagnostics')}</summary>
+        <div class="space-y-2 pt-3">
+          {cloudSyncDiagnostics.length === 0
+            ? <p class="text-[11px] leading-5 text-slate-400">{label('No cloud synchronization attempts have been recorded in this tab session.')}</p>
+            : cloudSyncDiagnostics.slice(0, 5).map((entry) => (
+                <div key={entry.timestamp + '-' + entry.operation + '-' + entry.reason}
+                  class="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-[11px] font-semibold text-slate-200">{label(diagnosticOperationLabel(entry.operation))} · {label(diagnosticOutcomeLabel(entry.outcome))}</span>
+                    <time class="text-[10px] text-slate-500">{formatCheckedAt(entry.timestamp)}</time>
+                  </div>
+                  <p class="mt-1 text-[11px] leading-5 text-slate-300">{diagnosticReasonLabel(entry.reason)}</p>
+                  {(entry.httpStatus !== undefined || entry.expectedRevision !== undefined || entry.observedRevision !== undefined) && (
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-800 pt-2 text-[10px] text-slate-500">
+                      {entry.httpStatus !== undefined && <span>{label('HTTP status')}: {entry.httpStatus}</span>}
+                      {entry.expectedRevision !== undefined && <span>{label('Expected revision')}: {entry.expectedRevision}</span>}
+                      {entry.observedRevision !== undefined && <span>{label('Observed revision')}: {entry.observedRevision}</span>}
+                    </div>
+                  )}
+                </div>
+              ))}
+        </div>
+        <p class="mt-3 border-t border-slate-800 pt-2 text-[10px] leading-4 text-slate-500">
+          {label('Diagnostics are kept only in this browser tab session and contain status metadata, not portfolio data, credentials, or encrypted payloads.')}
+        </p>
+      </details>
+
+      <details class="settings-device-details">
         <summary>{label('Technical details')}</summary>
         <div class="grid grid-cols-1 gap-2 pt-3 sm:grid-cols-2 lg:grid-cols-3">
           {technicalRows.map(([name, value]) => (
@@ -437,6 +526,8 @@ export function DeviceCheckSummary() {
         <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2 mt-3">
           <p class="max-w-3xl text-[10px] leading-4 text-slate-500">
             {label('Browser-reported network state does not confirm that the API or cloud service is reachable.')}
+            {' '}
+            {label('Application API reachability checks the public status endpoint only; it does not confirm authenticated portfolio synchronization.')}
             {' '}
             {label('The storage check writes and removes a temporary test value; no portfolio data is changed.')}
             {' '}{label('Browser and device details are inferred from browser-provided information and may be approximate.')}
