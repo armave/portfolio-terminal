@@ -167,3 +167,4 @@ const cloudSyncDiagnosticsStore = createCloudSyncDiagnosticsStore();
 export const getCloudSyncDiagnostics = cloudSyncDiagnosticsStore.getSnapshot;
 export const subscribeCloudSyncDiagnostics = cloudSyncDiagnosticsStore.subscribe;
 export const recordCloudSyncDiagnostic = cloudSyncDiagnosticsStore.record;
+export const clearCloudSyncDiagnostics = cloudSyncDiagnosticsStore.clear;
