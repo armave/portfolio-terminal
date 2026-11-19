@@ -77,6 +77,7 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [previewReturnBusy, setPreviewReturnBusy] = useState(false);
   const [, setLanguageRevision] = useState(0);
   const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +139,25 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
     addToast(translateText(message, getAppLanguage()), 'error');
   }), []);
+
+  const handleReturnFromGuestPreview = useCallback(async () => {
+    if (previewReturnBusy) return;
+    setPreviewReturnBusy(true);
+    try {
+      const error = await new Promise<string | undefined>((resolve) => {
+        emitUiEvent('auth:admin-preview-return', { resolve });
+      });
+      if (error) addToast(translateText(error, getAppLanguage()), 'error');
+    } catch (error) {
+      addToast(
+        translateText(error instanceof Error ? error.message : 'Could not return to the administrator workspace.', getAppLanguage()),
+        'error'
+      );
+    } finally {
+      setPreviewReturnBusy(false);
+    }
+  }, [previewReturnBusy]);
+
 
   useEffect(() => {
     if (!permissions.canViewMarginDesk) {
@@ -314,6 +334,31 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   return (
     <>
+      {currentUser?.isImpersonating && (
+        <aside
+          class="mx-auto mb-3 flex w-full max-w-6xl flex-col gap-3 rounded-xl border border-amber-700/70 bg-amber-950/35 p-3 text-amber-100 shadow-lg sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="min-w-0">
+            <p class="text-sm font-bold">{translateText('Guest preview', getAppLanguage())}: {currentUser.name}</p>
+            <p class="mt-1 text-xs text-amber-200/80">
+              {translateText('Read-only preview', getAppLanguage())}
+              {currentUser.impersonatedByName ? ' · ' + currentUser.impersonatedByName : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={previewReturnBusy}
+            onClick={() => void handleReturnFromGuestPreview()}
+            class="min-h-11 shrink-0 rounded-lg border border-amber-500/70 bg-amber-900/70 px-4 py-2 text-xs font-bold text-amber-50 hover:bg-amber-800 disabled:opacity-50"
+          >
+            {previewReturnBusy
+              ? translateText('Returning to admin…', getAppLanguage())
+              : translateText('Return to admin', getAppLanguage())}
+          </button>
+        </aside>
+      )}
       {/* Active Position Header Panel */}
       <main
         ref={mainWorkspaceRef}
