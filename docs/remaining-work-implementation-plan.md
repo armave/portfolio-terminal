@@ -47,6 +47,7 @@ This plan sequences the remaining work. It does not mark manual, security-review
 - First inventory all browser, Pages, Worker, Durable Object and third-party logging/telemetry sinks.
 - Obtain approval for purpose, field allowlist, retention, sampling, access and deletion before enabling new collection.
 - Then add bounded error categories and non-identifying correlation IDs; remove raw error/provider payload/URL logging where unsafe, and prove the policy with captured-log tests across success, failure, authentication and provider paths.
+- Bounded client-side residual-log remediation is tracked by [#623](https://github.com/armave/portfolio-terminal/issues/623) and implemented in [draft PR #624](https://github.com/armave/portfolio-terminal/pull/624): guest-directory, market-news/deep-data, broker-runtime fallback, and portfolio-store exception paths now use the existing allowlisted diagnostic helper. This does not enable telemetry collection or satisfy the broader sink inventory, privacy-policy, retention, correlation-ID, or live-log-review gates in #560.
 
 ### Wave 1 — close remaining PT-02 and live provider gates
 
