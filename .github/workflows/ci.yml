@@ -331,6 +331,7 @@ jobs:
     with:
       artifact_name: portfolio-terminal-dist
       reuse_build_artifact: true
+      performance_baseline_runs: ${{ github.event_name == 'workflow_dispatch' && inputs.performance_baseline_runs || 3 }}
 
   coverage:
     name: Coverage baseline and thresholds

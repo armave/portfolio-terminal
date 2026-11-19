@@ -53,7 +53,7 @@ async function measure(viewport) {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await page.addInitScript(() => {
-      window.__ptPerformance = { lcp: null, cls: 0 };
+      window.__ptPerformance = { lcp: null, cls: null };
       try {
         new PerformanceObserver((list) => {
           const entries = list.getEntries();
@@ -64,13 +64,14 @@ async function measure(viewport) {
         // LCP is unavailable in this browser; the report will retain null.
       }
       try {
+        window.__ptPerformance.cls = 0;
         new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
             if (!entry.hadRecentInput) window.__ptPerformance.cls += entry.value;
           }
         }).observe({ type: 'layout-shift', buffered: true });
       } catch {
-        // CLS is unavailable in this browser; the report will retain zero.
+        window.__ptPerformance.cls = null;
       }
     });
 
@@ -128,7 +129,7 @@ async function measure(viewport) {
       });
       samples.push({
         run,
-        elapsedToAuthReadyMs: Date.now() - startedAt,
+        authShellReadyMs: Date.now() - startedAt,
         ...metrics,
         pageErrorCount: pageErrors.length,
         pageErrors
@@ -151,7 +152,7 @@ try {
     results[viewport.name] = await measure(viewport);
   }
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     commitSha: process.env.GITHUB_SHA || null,
     ref: process.env.GITHUB_REF || null,
@@ -187,7 +188,7 @@ try {
   for (const [name, samples] of Object.entries(results)) {
     const statistics = summarizePerformanceViewport(samples);
     const fcp = statistics.firstContentfulPaintMs;
-    const auth = statistics.elapsedToAuthReadyMs;
+    const auth = statistics.authShellReadyMs;
     console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples)`);
   }
 } finally {

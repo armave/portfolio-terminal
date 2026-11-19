@@ -34,12 +34,16 @@ describe('summarizePerformanceSamples', () => {
     ], 'fcp')).toEqual({
       sampleCount: 3,
       min: 10,
+      p25: 10,
       median: 20,
+      p75: 30,
       p95: 30,
       max: 30,
       mean: 20,
       variance: expect.closeTo(66.6666666667),
-      standardDeviation: expect.closeTo(Math.sqrt(66.6666666667))
+      standardDeviation: expect.closeTo(Math.sqrt(66.6666666667)),
+      interquartileRange: 20,
+      outlierRunNumbers: []
     });
   });
 
@@ -51,21 +55,25 @@ describe('summarizePerformanceSamples', () => {
     expect(summarizePerformanceSamples([{ fcp: null }, { fcp: 'missing' }], 'fcp')).toEqual({
       sampleCount: 0,
       min: null,
+      p25: null,
       median: null,
+      p75: null,
       p95: null,
       max: null,
       mean: null,
       variance: null,
-      standardDeviation: null
+      standardDeviation: null,
+      interquartileRange: null,
+      outlierRunNumbers: []
     });
   });
 
   it('summarizes all viewport metrics without inventing missing values', () => {
     const summary = summarizePerformanceViewport([
-      { elapsedToAuthReadyMs: 100, firstContentfulPaintMs: null, totalResourceTransferBytes: 1_000 },
-      { elapsedToAuthReadyMs: 120, firstContentfulPaintMs: 80, totalResourceTransferBytes: 1_200 }
+      { authShellReadyMs: 100, firstContentfulPaintMs: null, totalResourceTransferBytes: 1_000 },
+      { authShellReadyMs: 120, firstContentfulPaintMs: 80, totalResourceTransferBytes: 1_200 }
     ]);
-    expect(summary.elapsedToAuthReadyMs.median).toBe(110);
+    expect(summary.authShellReadyMs.median).toBe(110);
     expect(summary.firstContentfulPaintMs.sampleCount).toBe(1);
     expect(summary.largestContentfulPaintMs.sampleCount).toBe(0);
     expect(summary.totalResourceTransferBytes.median).toBe(1_100);
@@ -121,6 +129,54 @@ describe('buildPerformanceEnvironmentMetadata', () => {
       browserVersion: null,
       headless: false,
       viewports: [{ name: 'mobile', width: 390, height: null }]
+    });
+  });
+});
+
+
+describe('authenticated performance stage summaries', () => {
+  it('summarizes stage, resource, DOM and optional heap measurements', () => {
+    const summary = summarizePerformanceViewport([
+      {
+        run: 1, authShellReadyMs: 100, authenticationMs: 200,
+        fixtureHydrationMs: 300, brokerRefreshAndParityMs: 400,
+        portfolioRenderReadyMs: 500, tradesDeskReadyMs: 600,
+        elapsedToPortfolioReadyMs: 1500, elapsedToTradesDeskReadyMs: 2100,
+        firstContentfulPaintMs: null, totalResourceTransferBytes: 1000,
+        heapUsedBytes: null, domNodeCount: 250
+      },
+      {
+        run: 2, authShellReadyMs: 120, authenticationMs: 180,
+        fixtureHydrationMs: 320, brokerRefreshAndParityMs: 380,
+        portfolioRenderReadyMs: 480, tradesDeskReadyMs: 620,
+        elapsedToPortfolioReadyMs: 1500, elapsedToTradesDeskReadyMs: 2120,
+        firstContentfulPaintMs: 80, totalResourceTransferBytes: 1200,
+        heapUsedBytes: 8000000, domNodeCount: 270
+      }
+    ]);
+
+    expect(summary.authShellReadyMs.median).toBe(110);
+    expect(summary.authenticationMs.median).toBe(190);
+    expect(summary.fixtureHydrationMs.median).toBe(310);
+    expect(summary.brokerRefreshAndParityMs.median).toBe(390);
+    expect(summary.portfolioRenderReadyMs.median).toBe(490);
+    expect(summary.tradesDeskReadyMs.median).toBe(610);
+    expect(summary.elapsedToPortfolioReadyMs.median).toBe(1500);
+    expect(summary.elapsedToTradesDeskReadyMs.median).toBe(2110);
+    expect(summary.firstContentfulPaintMs.sampleCount).toBe(1);
+    expect(summary.heapUsedBytes.sampleCount).toBe(1);
+    expect(summary.totalResourceTransferBytes.median).toBe(1100);
+    expect(summary.domNodeCount.median).toBe(260);
+  });
+
+  it('reports Tukey outlier sample numbers without losing their original run IDs', () => {
+    const summary = summarizePerformanceSamples([
+      { run: 1, metric: 1 }, { run: 2, metric: 2 },
+      { run: 3, metric: 3 }, { run: 4, metric: 4 },
+      { run: 5, metric: 5 }, { run: 6, metric: 100 }
+    ], 'metric');
+    expect(summary).toMatchObject({
+      p25: 2, p75: 5, interquartileRange: 3, outlierRunNumbers: [6]
     });
   });
 });

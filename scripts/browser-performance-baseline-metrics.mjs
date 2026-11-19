@@ -9,51 +9,71 @@ export function parsePerformanceSampleCount(value, fallback = 3) {
 
 export function summarizePerformanceSamples(samples, metric) {
   const values = samples
-    .map((sample) => sample?.[metric])
-    .filter((value) => typeof value === 'number' && Number.isFinite(value))
-    .sort((left, right) => left - right);
+    .map((sample, index) => ({
+      value: sample?.[metric],
+      run: Number.isSafeInteger(sample?.run) && sample.run > 0 ? sample.run : index + 1
+    }))
+    .filter((sample) => typeof sample.value === 'number' && Number.isFinite(sample.value))
+    .sort((left, right) => left.value - right.value);
 
   if (values.length === 0) {
     return {
-      sampleCount: 0,
-      min: null,
-      median: null,
-      p95: null,
-      max: null,
-      mean: null,
-      variance: null,
-      standardDeviation: null
+      sampleCount: 0, min: null, p25: null, median: null, p75: null,
+      p95: null, max: null, mean: null, variance: null,
+      standardDeviation: null, interquartileRange: null, outlierRunNumbers: []
     };
   }
 
-  const middle = Math.floor(values.length / 2);
-  const median = values.length % 2 === 0
-    ? (values[middle - 1] + values[middle]) / 2
-    : values[middle];
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / values.length;
-  const p95Index = Math.max(0, Math.ceil(values.length * 0.95) - 1);
+  const numericValues = values.map((sample) => sample.value);
+  const middle = Math.floor(numericValues.length / 2);
+  const median = numericValues.length % 2 === 0
+    ? (numericValues[middle - 1] + numericValues[middle]) / 2
+    : numericValues[middle];
+  const mean = numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length;
+  const variance = numericValues.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / numericValues.length;
+  const p95Index = Math.max(0, Math.ceil(numericValues.length * 0.95) - 1);
+  const p25 = numericValues[Math.max(0, Math.ceil(numericValues.length * 0.25) - 1)];
+  const p75 = numericValues[Math.max(0, Math.ceil(numericValues.length * 0.75) - 1)];
+  const interquartileRange = p75 - p25;
+  const lowerFence = p25 - (1.5 * interquartileRange);
+  const upperFence = p75 + (1.5 * interquartileRange);
 
   return {
-    sampleCount: values.length,
-    min: values[0],
+    sampleCount: numericValues.length,
+    min: numericValues[0],
+    p25,
     median,
-    p95: values[p95Index],
-    max: values[values.length - 1],
+    p75,
+    p95: numericValues[p95Index],
+    max: numericValues[numericValues.length - 1],
     mean,
     variance,
-    standardDeviation: Math.sqrt(variance)
+    standardDeviation: Math.sqrt(variance),
+    interquartileRange,
+    outlierRunNumbers: values
+      .filter((sample) => sample.value < lowerFence || sample.value > upperFence)
+      .map((sample) => sample.run)
+      .sort((left, right) => left - right)
   };
 }
 
 export function summarizePerformanceViewport(samples) {
   return {
-    elapsedToAuthReadyMs: summarizePerformanceSamples(samples, 'elapsedToAuthReadyMs'),
+    elapsedToPortfolioReadyMs: summarizePerformanceSamples(samples, 'elapsedToPortfolioReadyMs'),
+    elapsedToTradesDeskReadyMs: summarizePerformanceSamples(samples, 'elapsedToTradesDeskReadyMs'),
+    authShellReadyMs: summarizePerformanceSamples(samples, 'authShellReadyMs'),
+    authenticationMs: summarizePerformanceSamples(samples, 'authenticationMs'),
+    fixtureHydrationMs: summarizePerformanceSamples(samples, 'fixtureHydrationMs'),
+    brokerRefreshAndParityMs: summarizePerformanceSamples(samples, 'brokerRefreshAndParityMs'),
+    portfolioRenderReadyMs: summarizePerformanceSamples(samples, 'portfolioRenderReadyMs'),
+    tradesDeskReadyMs: summarizePerformanceSamples(samples, 'tradesDeskReadyMs'),
     firstContentfulPaintMs: summarizePerformanceSamples(samples, 'firstContentfulPaintMs'),
     largestContentfulPaintMs: summarizePerformanceSamples(samples, 'largestContentfulPaintMs'),
     cumulativeLayoutShift: summarizePerformanceSamples(samples, 'cumulativeLayoutShift'),
     totalResourceTransferBytes: summarizePerformanceSamples(samples, 'totalResourceTransferBytes'),
-    resourceCount: summarizePerformanceSamples(samples, 'resourceCount')
+    resourceCount: summarizePerformanceSamples(samples, 'resourceCount'),
+    heapUsedBytes: summarizePerformanceSamples(samples, 'heapUsedBytes'),
+    domNodeCount: summarizePerformanceSamples(samples, 'domNodeCount')
   };
 }
 
