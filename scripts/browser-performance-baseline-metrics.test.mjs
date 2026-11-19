@@ -163,6 +163,8 @@ describe('authenticated performance stage summaries', () => {
     expect(summary.tradesDeskReadyMs.median).toBe(610);
     expect(summary.elapsedToPortfolioReadyMs.median).toBe(1500);
     expect(summary.elapsedToTradesDeskReadyMs.median).toBe(2110);
+    expect(summary.coldStartupToPortfolioReadyMs.median).toBe(1500);
+    expect(summary.coldStartupToTradesReadyMs.median).toBe(2110);
     expect(summary.firstContentfulPaintMs.sampleCount).toBe(1);
     expect(summary.heapUsedBytes.sampleCount).toBe(1);
     expect(summary.totalResourceTransferBytes.median).toBe(1100);
