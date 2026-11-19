@@ -1,5 +1,5 @@
-export type CloudSyncDiagnosticOperation = 'pull' | 'push' | 'reconcile';
-export type CloudSyncDiagnosticOutcome = 'success' | 'conflict' | 'error';
+type CloudSyncDiagnosticOperation = 'pull' | 'push' | 'reconcile';
+type CloudSyncDiagnosticOutcome = 'success' | 'conflict' | 'error';
 export type CloudSyncDiagnosticReason =
   | 'confirmed'
   | 'auto-reconciled'
