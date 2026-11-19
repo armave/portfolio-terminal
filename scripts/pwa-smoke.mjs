@@ -88,14 +88,12 @@ try {
   // existing page is browser-timing dependent; the subsequent offline cold
   // navigation below proves that the worker actually serves the cached shell.
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), { timeout: 10_000 });
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), undefined, { timeout: 10_000 });
 
   const queryAppClientCount = (targetPage) => targetPage.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
     const worker = registration.active;
-    assertWorkerAvailable: {
-      if (!worker) throw new Error('The app service worker is not active.');
-    }
+    if (!worker) throw new Error('The app service worker is not active.');
     const channel = new MessageChannel();
     const result = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('The service worker did not answer the app-client query.')), 2_000);
@@ -117,7 +115,7 @@ try {
   assert.equal(await queryAppClientCount(page), 1, 'one open app tab must be reported as one scoped client');
   const secondAppPage = await context.newPage();
   await secondAppPage.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  await secondAppPage.waitForFunction(() => Boolean(navigator.serviceWorker.controller), { timeout: 10_000 });
+  await secondAppPage.waitForFunction(() => Boolean(navigator.serviceWorker.controller), undefined, { timeout: 10_000 });
   assert.equal(await queryAppClientCount(page), 2, 'the waiting-worker probe must see another open app tab');
   await secondAppPage.close();
   assert.equal(await queryAppClientCount(page), 1, 'closing the other app tab must restore the single-client state');
