@@ -76,7 +76,7 @@ describe('Trades cache-first rendering', () => {
     expect(app).toContain('isSessionCurrent={isAccountSessionCurrent}');
     expect(app).toContain('key={`closed-history-${accountSession?.identity ?? \'none\'}-${accountSession?.generation ?? -1}`}');
     expect(source).toContain('isSessionCurrent = () => true');
-    expect(source).toContain('if (!isSessionCurrent() || cashflowSyncStarted.current) return');
+    expect(source).toContain('if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return');
     expect(source).toContain('{ isCurrentSession: isSessionCurrent }');
   });
 
@@ -85,7 +85,7 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('if (!active || !isSessionCurrent()) return');
     expect(source).toContain('if (!isSessionCurrent()) return;\n      const fetchedRows = brokerAdapter.normalizeCashflows(response).data');
     expect(source).toContain('if (!saved || !isSessionCurrent()) return');
-    expect(source).toContain('const isOperationCurrent = () => isSessionCurrent() && isOperationActive();');
+    expect(source).toContain('const isOperationCurrent = () => isWorkspaceSyncReady && isSessionCurrent() && isOperationActive();');
     expect(source).toContain('if (!completed) cashflowSyncStarted.current = false');
     expect(source).toContain('if (isSessionCurrent()) {');
     expect(source).toContain('setCashflowSyncReady(true)');
