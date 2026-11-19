@@ -9,7 +9,7 @@ export interface AdminGuestPreviewRuntimeDependencies {
   setActiveView: (view: string) => void;
   startPreviewSession: (guestUserId: string) => Promise<AuthSession>;
   endPreviewSession: () => Promise<void>;
-  validateGatewaySecret: (secret: string) => Promise<boolean>;
+  getUserForGatewaySecret: (secret: string) => Promise<AuthUser | null>;
   clearSavedGatewaySecret: () => Promise<void>;
   startWorkspace: (secret: string) => Promise<void>;
   showAuthContainer: () => void;
@@ -93,8 +93,8 @@ export function createAdminGuestPreviewRuntime(
     const previousView = originalAdminView;
 
     try {
-      const adminSessionValid = await dependencies.validateGatewaySecret(adminSecret);
-      if (!adminSessionValid) {
+      const parentAdminUser = await dependencies.getUserForGatewaySecret(adminSecret);
+      if (!parentAdminUser) {
         originalAdminSecret = '';
         originalAdminView = '';
         dependencies.setActiveGatewaySecret('');

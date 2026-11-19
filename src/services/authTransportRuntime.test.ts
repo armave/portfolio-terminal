@@ -61,6 +61,19 @@ describe('auth transport runtime', () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('distinguishes invalid sessions from transient gateway validation failures', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'expired' }), { status: 401 })
+    ) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+    await expect(runtime.getUserForGatewaySecret('expired')).resolves.toBeNull();
+
+    const networkFailure = new TypeError('network is temporarily unavailable');
+    const failingRuntime = createRuntime(vi.fn().mockRejectedValue(networkFailure) as unknown as typeof fetch).runtime;
+    await expect(failingRuntime.getUserForGatewaySecret('session-token'))
+      .rejects.toThrow('network is temporarily unavailable');
+  });
+
   it('returns false for invalid sessions and empty tokens without network access', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'expired' }), { status: 401 })) as unknown as typeof fetch;
     const { runtime } = createRuntime(fetchImpl, '');

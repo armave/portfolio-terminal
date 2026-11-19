@@ -375,6 +375,7 @@ export const fetchMarketNews = marketDataTransportRuntime.fetchMarketNews;
 export const fetchStocktwitsStream = marketDataTransportRuntime.fetchStocktwitsStream;
 export const clearYahooDeepStockDataCache = marketDataTransportRuntime.clearYahooDeepStockDataCache;
 export const validateGatewaySecret = authTransportRuntime.validateGatewaySecret;
+export const getUserForGatewaySecret = authTransportRuntime.getUserForGatewaySecret;
 
 
 const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({

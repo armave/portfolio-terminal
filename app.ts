@@ -60,6 +60,7 @@ import {
   setSecretGetter,
   syncCloudState as syncCloudStateService,
   validateGatewaySecret,
+  getUserForGatewaySecret,
   getAuthStatus,
   getCurrentUser,
   listUsers,
@@ -2057,7 +2058,7 @@ const adminGuestPreviewRuntime = createAdminGuestPreviewRuntime({
   setActiveView,
   startPreviewSession: startAdminGuestPreviewSession,
   endPreviewSession: endAdminGuestPreviewSession,
-  validateGatewaySecret,
+  getUserForGatewaySecret,
   clearSavedGatewaySecret: async () => {
     saveGatewaySecret('');
     await persistGatewaySecret();

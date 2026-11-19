@@ -33,6 +33,8 @@ export interface AuthTransportRuntimeDependencies {
 export interface AuthTransportRuntime {
   authRequest: <T>(path: string, options?: AuthRequestOptions) => Promise<T>;
   validateGatewaySecret: (secret: string) => Promise<boolean>;
+  /** Returns null only for an actual unauthorized/forbidden response; transport and server errors reject. */
+  getUserForGatewaySecret: (secret: string) => Promise<AuthUser | null>;
   getAuthStatus: () => Promise<{ setupRequired: boolean; userCount: number }>;
   loginAccount: (name: string, password: string) => Promise<AuthSession>;
   bootstrapAdmin: (name: string, password: string, bootstrapSecret: string) => Promise<AuthSession>;
@@ -176,6 +178,35 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
       warn("Account session validation failed:", error);
       return false;
     }
+  };
+
+  const getUserForGatewaySecret = async (secret: string): Promise<AuthUser | null> => {
+    const cleanSecret = typeof secret === "string" ? secret.trim() : "";
+    if (!cleanSecret) return null;
+    return fetchAndConsumeWithTimeout(fetchImpl, new URL("/api/auth/me", dependencies.apiUrl), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-App-Auth": cleanSecret,
+        Authorization: `Bearer ${cleanSecret}`
+      },
+      cache: "no-store"
+    }, async (response) => {
+      if (response.status === 401 || response.status === 403) {
+        if (currentUserCache?.token === cleanSecret) currentUserCache = null;
+        return null;
+      }
+      const payload = typeof response.json === "function"
+        ? await response.json().catch(() => null)
+        : null;
+      if (!response.ok) {
+        throw new Error(payload?.error || `Account session validation failed (HTTP ${response.status}).`);
+      }
+      const user = normalizeAuthUser(payload?.user);
+      if (!user) throw new Error("The authenticated user response was invalid.");
+      rememberCurrentUser(cleanSecret, user);
+      return user;
+    }, DEFAULT_REQUEST_TIMEOUT_MS);
   };
 
   const getAuthStatus = (): Promise<{ setupRequired: boolean; userCount: number }> =>
@@ -344,6 +375,7 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
   return {
     authRequest,
     validateGatewaySecret,
+    getUserForGatewaySecret,
     getAuthStatus,
     loginAccount,
     bootstrapAdmin,

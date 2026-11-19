@@ -11,6 +11,7 @@ const previewSession: AuthSession = {
 
 function createFixture(options: {
   validate?: boolean;
+  validationError?: string;
   failPreviewWorkspace?: boolean;
   returnRole?: AuthUser['role'] | null;
 } = {}) {
@@ -27,7 +28,13 @@ function createFixture(options: {
     setActiveView: vi.fn((view: string) => { activeView = view; calls.push(`view:${view}`); }),
     startPreviewSession: vi.fn(async () => previewSession),
     endPreviewSession: vi.fn(async () => { calls.push('end-preview'); }),
-    validateGatewaySecret: vi.fn(async () => options.validate ?? true),
+    getUserForGatewaySecret: vi.fn(async () => {
+      if (options.validationError) throw new Error(options.validationError);
+      return options.validate === false ? null : {
+        id: 'admin-1', name: 'Admin', role: 'admin' as const,
+        language: 'en' as const, createdAt: '2026-01-01T00:00:00.000Z'
+      };
+    }),
     clearSavedGatewaySecret: vi.fn(async () => { calls.push('clear-saved-secret'); activeSecret = ''; }),
     startWorkspace: vi.fn(async (secret: string) => {
       calls.push(`start:${secret}`);
@@ -91,6 +98,20 @@ describe('administrator guest preview runtime', () => {
     expect(fixture.dependencies.showAuthContainer).toHaveBeenCalledTimes(1);
     expect(fixture.getState().activeRole).toBeNull();
     expect(fixture.runtime.isActive()).toBe(false);
+    expect(fixture.dependencies.endPreviewSession).not.toHaveBeenCalled();
+  });
+
+  it('preserves the saved administrator credential and active preview during transient validation failures', async () => {
+    const fixture = createFixture({ validationError: 'The network is temporarily unavailable.' });
+    await fixture.runtime.start(guest.id);
+
+    await expect(fixture.runtime.returnToAdmin()).rejects.toThrow('network is temporarily unavailable');
+    expect(fixture.runtime.isActive()).toBe(true);
+    expect(fixture.getState()).toMatchObject({
+      activeSecret: previewSession.token,
+      activeRole: 'guest'
+    });
+    expect(fixture.dependencies.clearSavedGatewaySecret).not.toHaveBeenCalled();
     expect(fixture.dependencies.endPreviewSession).not.toHaveBeenCalled();
   });
 
