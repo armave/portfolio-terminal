@@ -66,7 +66,7 @@ export function PwaUpdateStatus() {
         </p>
         {snapshot.status === 'update_waiting' && (
           <p class="mt-1 text-[11px] text-amber-200/80">
-            {translateText('The update will install automatically the next time you open the app.', language)}
+            {translateText('Close other Portfolio Terminal tabs, then refresh this page to install the update.', language)}
           </p>
         )}
         {snapshot.status === 'error' && (
