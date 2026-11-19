@@ -24,6 +24,7 @@ import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefre
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
+import { logSafeDiagnostic } from './services/safeDiagnostics';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 import { createMarginIntelligenceRuntime } from './features/ai/marginIntelligenceRuntime';
 import { resolveActivePageRootId, watchPageRenderReadiness } from './services/pageRenderReadiness';
@@ -336,7 +337,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       getClosedTrades: () => portfolioStore.getState().closedTrades || [],
       setBrokerExecutions: (executions) => portfolioStore.setState({ brokerExecutedTrades: executions }),
       emit: emitBrokerEvent,
-      logError: (message, error) => console.error(message, error)
+      logError: (_message, error) => logSafeDiagnostic('error', 'broker-data', error)
     });
 
     return bindPortfolioBrokerRequestRuntime({
