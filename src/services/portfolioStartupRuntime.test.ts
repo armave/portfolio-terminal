@@ -36,6 +36,7 @@ function createFixture(options: FixtureOptions = {}) {
       calls.push('start-app');
       if (options.startupError) throw options.startupError;
     }),
+    onUnauthenticatedStartupSettled: vi.fn(() => calls.push('unauthenticated-startup-settled')),
     onStartupFailure: vi.fn((error) => calls.push(`failure:${String(error)}`))
   };
   const runtime = createPortfolioStartupRuntime(dependencies);
@@ -70,7 +71,7 @@ describe('portfolio startup runtime', () => {
 
     expect(fixture.calls).toEqual([
       'restore', 'clear-secret', 'persist-secret', 'load-rules',
-      'clear-workspace', 'balance', 'hide-loading', 'show-auth'
+      'clear-workspace', 'balance', 'hide-loading', 'show-auth', 'unauthenticated-startup-settled'
     ]);
   });
 
@@ -82,7 +83,7 @@ describe('portfolio startup runtime', () => {
     expect(fixture.dependencies.clearSavedGatewaySecret).not.toHaveBeenCalled();
     expect(fixture.dependencies.persistGatewaySecret).not.toHaveBeenCalled();
     expect(fixture.calls).toEqual([
-      'restore', 'load-rules', 'clear-workspace', 'balance', 'hide-loading', 'show-auth'
+      'restore', 'load-rules', 'clear-workspace', 'balance', 'hide-loading', 'show-auth', 'unauthenticated-startup-settled'
     ]);
   });
 
