@@ -806,8 +806,10 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
   if (confirmedReplacement) {
     // Cancel a debounced pre-pull checkpoint and prevent store subscribers from
     // queuing another one while the user-confirmed cloud snapshot is applied.
+    const hadDebouncedCloudWrite = gistSyncTimeout !== null;
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
+    if (hadDebouncedCloudWrite) startupCloudWriteGate.deferWrite();
     if (activeCloudStateWrite) await activeCloudStateWrite;
     if (!requestSession || !currentAccountSessionGuard.isCurrent(requestSession)) return false;
   }
