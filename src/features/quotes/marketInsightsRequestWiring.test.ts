@@ -49,6 +49,17 @@ describe('Market Insights request lifecycle wiring', () => {
     expect(panel).toContain('currentStocktwitsData?.messages');
   });
 
+  it('uses the HTTP(S)-only external URL boundary for provider-supplied Stocktwits navigation', () => {
+    const panel = readSource('../../components/MarketInsightsPanel.tsx');
+    const urlPolicy = readSource('./marketInsightsContent.ts');
+    expect(panel).toContain('getSafeNewsArticleUrl(currentStocktwitsData?.streamUrl)');
+    expect(panel).toContain('{safeStocktwitsStreamUrl && (');
+    expect(panel).toContain('href={safeStocktwitsStreamUrl}');
+    expect(panel).not.toContain('href={currentStocktwitsData.streamUrl}');
+    expect(panel).toContain('target="_blank" rel="noopener noreferrer"');
+    expect(urlPolicy).toContain("url.protocol !== 'https:' && url.protocol !== 'http:'");
+  });
+
   it('closes and clears an open News article when the active ticker changes', () => {
     const panel = readSource('../../components/MarketInsightsPanel.tsx');
     const dialog = readSource('../../components/MarketNewsArticleDialog.tsx');

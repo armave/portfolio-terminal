@@ -44,6 +44,7 @@ No policy should be activated until a host-compatible rollout, violation review 
 |---|---|---|
 | News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Keep text interpolation; add a hostile markup fixture proving it is inert |
 | News article URL | Provider-supplied URL is used as an external anchor destination | Allow only absolute HTTP(S), reject executable/non-web schemes and credential-bearing URLs; retain `noopener noreferrer` |
+| Stocktwits stream URL | Provider-supplied `streamUrl` was rendered directly as an external anchor | Validate through the existing absolute HTTP(S)-only URL boundary; suppress the link for unsafe/malformed destinations; retain `noopener noreferrer` |
 | Imported backup data | JSON passes a validation/normalization boundary before the store commit | Test hostile strings and malformed structures remain data, never executable markup |
 | Provider errors | Error messages can originate outside the application | Render bounded, escaped text; never treat error text as markup |
 | AI/news prompt context | Provider text and article bodies are untrusted input | Keep it in an untrusted-content section; prompt-injection tests must not grant financial mutation authority |
@@ -51,7 +52,7 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 A focused article-link implementation is tracked in [PR #564](https://github.com/armave/portfolio-terminal/pull/564). That change rejects non-HTTP(S) article URLs. It is a partial mitigation, not completion of the full XSS audit.
 
-The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). This closes that additional link path but does not complete the broader active-origin credential or CSP review.
+The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). The Stocktwits community-feed link now uses the same validated destination boundary and suppresses unsafe provider-supplied URLs in [PR #627](https://github.com/armave/portfolio-terminal/pull/627). These bounded fixes close those link paths only; they do not complete the broader active-origin credential or CSP review.
 
 The follow-up regression suite in [the URL safety tests](../src/features/quotes/marketInsightsContent.test.ts) exercises absolute HTTP(S) acceptance and rejection of executable/non-web schemes, protocol-relative and malformed destinations, embedded credentials, non-string values, and overlong input. This protects the existing URL boundary; it does not replace the broader href/src/navigation sink audit or the CSP and account-lifecycle review.
 

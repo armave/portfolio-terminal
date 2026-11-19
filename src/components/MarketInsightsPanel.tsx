@@ -28,6 +28,7 @@ import {
 import {
   formatNewsRelativeTime,
   getClosestDatedMarketEvents,
+  getSafeNewsArticleUrl,
   getStocktwitsSentiment,
   getVisibleStocktwitsMessages
 } from '../features/quotes/marketInsightsContent';
@@ -353,6 +354,7 @@ function MarketInsightsPanelView() {
   // Keep terse and multi-cashtag standalone posts, but exclude bearish entries.
   // Apply the ten-post limit after those two content filters.
   const filteredStocktwitsMessages = getVisibleStocktwitsMessages(currentStocktwitsData?.messages ?? [], 10);
+  const safeStocktwitsStreamUrl = getSafeNewsArticleUrl(currentStocktwitsData?.streamUrl);
 
   const renderContent = () => {
     if (!ticker) {
@@ -1038,8 +1040,8 @@ function MarketInsightsPanelView() {
             aria-label="Refresh Stocktwits messages">
             {currentStocktwitsLoading ? 'Refreshing…' : stocktwitsRequested ? 'Refresh' : 'Load'}
           </button>
-          {currentStocktwitsData?.streamUrl && (
-            <a href={currentStocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
+          {safeStocktwitsStreamUrl && (
+            <a href={safeStocktwitsStreamUrl} target="_blank" rel="noopener noreferrer"
               class="inline-flex min-h-11 items-center text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
               Open Stocktwits ↗
             </a>
