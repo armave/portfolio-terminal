@@ -12,7 +12,7 @@ export function isPageRefreshNavigation(navigationType: string | undefined): boo
  * leave the update staged rather than unexpectedly replacing other open tabs.
  */
 export function isOnlyOpenAppClient(
-  waitingWorker: Pick<ServiceWorker, 'postMessage'>,
+  waitingWorker: { postMessage: (message: unknown, transfer: Transferable[]) => void },
   timeoutMs = 750
 ): Promise<boolean> {
   if (typeof MessageChannel === 'undefined') return Promise.resolve(false);
