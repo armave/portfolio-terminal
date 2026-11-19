@@ -1323,7 +1323,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   const deleteRow = rowForUser('Browser Guest Delete');
   page.once('dialog', (dialog) => { void dialog.accept(); });
-  await deleteRow.getByRole('button', { name: 'Delete' }).click();
+  await deleteRow.getByRole('button', { name: 'Delete', exact: true }).click();
   await deleteRow.waitFor({ state: 'detached', timeout: 10_000 });
 
   const keepRow = rowForUser('Browser Guest Keep');
