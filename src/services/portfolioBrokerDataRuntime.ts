@@ -342,7 +342,9 @@ export function createPortfolioBrokerDataRuntime(
           retainedExecutions
         );
         const liveOrdersAdvanced = getFreedomAccountStreamSnapshotRevision(session.identity, 'orders') > ordersRevisionAtStart;
-        const initialCurrentById = new Map(currentExecutionsAtStart.map((execution) => [execution.id, execution.snapshot]));
+        const initialCurrentById = new Map<string, string>(
+          currentExecutionsAtStart.map((execution) => [execution.id, execution.snapshot] as [string, string])
+        );
         const liveUpdatedExecutions = liveOrdersAdvanced
           ? latestCurrentExecutions.filter((execution) => {
             const id = execution.id == null ? '' : String(execution.id);
