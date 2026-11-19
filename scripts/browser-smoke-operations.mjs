@@ -877,6 +877,10 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
     { name: 'mobile', width: 390, height: 844 }
   ];
   const runsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_BASELINE_RUNS, 3);
+  const minimumRunsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_MINIMUM_RUNS, 1);
+  if (runsPerViewport < minimumRunsPerViewport) {
+    throw new Error(`Authenticated performance benchmark requires at least ${minimumRunsPerViewport} runs per viewport; received ${runsPerViewport}.`);
+  }
   const samples = [];
 
   for (const viewport of viewports) {
@@ -1038,7 +1042,8 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
   const statistics = Object.fromEntries(Object.entries(samplesByViewport).map(([name, group]) => [name, summarizePerformanceViewport(group)]));
   if (Object.values(samplesByViewport).some(group => group.length !== runsPerViewport)) throw new Error('Authenticated benchmark sample count mismatch.');
   await writeFile('artifacts/authenticated-portfolio-performance.json', JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 3,
+    generatedAt: new Date().toISOString(),
     commitSha: process.env.GITHUB_SHA || null,
     ref: process.env.GITHUB_REF || null,
     workflowRunId: process.env.GITHUB_RUN_ID || null,
@@ -1065,13 +1070,22 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
       replayValidation: 'The fixture is validated by Vitest against transaction-event schema, snapshot replay parity, stable-lot parity and linked closed-history parity before browser use'
     },
     methodology: {
-      runsPerViewport, viewports,
+      runsPerViewport, minimumRunsPerViewport, viewports,
+      sampling: 'Each run uses a fresh isolated browser context with service workers blocked; samples are collected sequentially on one fixed GitHub-hosted runner image and Chromium build.',
+      thresholdPolicy: 'No pass/fail performance thresholds are inferred from this artifact. Establish thresholds only after reviewing repeated same-runner baselines and known variance.'
       readiness: 'Authenticated bootstrap, intact 100-position fixture after mocked broker refresh, visible Market Insights panel and rendered Trades closed-history row',
       stageTimings: { authShellReadyMs: 'Bootstrap prompt', authenticationMs: 'Admin authentication', fixtureHydrationMs: 'Local synthetic fixture hydration', brokerRefreshAndParityMs: 'Mocked broker refresh and fixture parity', portfolioRenderReadyMs: 'Portfolio render readiness', tradesDeskReadyMs: 'Trades desk lazy-load and first row readiness' },
       missingMeasurements: 'Unsupported metrics remain null and are excluded from summaries'
     },
     statistics,
-    samples
+    samples,
+    dataClassification: {
+      containsCustomerData: false,
+      containsAccountIdentifiers: false,
+      containsCredentials: false,
+      containsProviderPayloads: false,
+      financialValues: 'synthetic fixture only'
+    }
   }, null, 2));
   console.log('Authenticated synthetic-portfolio performance fixture captured:', samples.length, 'samples.');
 }
