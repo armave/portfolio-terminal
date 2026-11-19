@@ -349,13 +349,12 @@ export function createPortfolioBrokerDataRuntime(
             return id && initialCurrentById.get(id) !== JSON.stringify(execution);
           })
           : [];
-        const providerMergedHistory = liveUpdatedExecutions.length > 0
-          ? mergeBrokerExecutionHistory(latestSavedExecutions, normalizedPageWithFees)
-          : retainedExecutions;
+        const providerMergedHistory = mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees);
         // If a newer validated account-stream event landed during REST, overlay
         // only the changed live execution rows so a stale provider page cannot win.
-        const mergedTrades = mergeBrokerExecutionHistory(providerMergedHistory,
-          liveUpdatedExecutions.length > 0 ? liveUpdatedExecutions : normalizedPageWithFees);
+        const mergedTrades = liveUpdatedExecutions.length > 0
+          ? mergeBrokerExecutionHistory(providerMergedHistory, liveUpdatedExecutions)
+          : providerMergedHistory;
         dependencies.setBrokerExecutions(mergedTrades);
 
         if (!hasCompleteBaseline) {
