@@ -1,5 +1,6 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
+  'Use Return to admin above to leave preview mode.': 'Чтобы выйти из режима просмотра, используйте кнопку «Вернуться к администратору» вверху.',
   'View as': 'Просмотр от имени',
   'Opening…': 'Открытие…',
   'Shared workspace': 'Общее рабочее пространство',

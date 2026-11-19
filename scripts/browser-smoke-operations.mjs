@@ -1291,6 +1291,10 @@ try {
   );
   await page.getByRole('button', { name: 'Return to admin' }).waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByText('Guest preview: Browser Guest Keep').waitFor({ state: 'visible', timeout: 20_000 });
+  if (await visibleSettingsDesk().getByRole('button', { name: 'Sign out', exact: true }).count() !== 0) {
+    throw new Error('Read-only guest preview exposed the normal Sign out action.');
+  }
+  await visibleSettingsDesk().getByText('Use Return to admin above to leave preview mode.').waitFor({ state: 'visible' });
   const previewToken = worker.findCalls('POST', '/api/auth/preview').slice(previewCallsBefore)
     .find((call) => call.responseStatus === 201)?.issuedToken;
   if (!previewToken || previewToken === 'operations-admin-session') {
