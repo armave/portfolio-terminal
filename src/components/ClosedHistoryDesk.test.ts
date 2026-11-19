@@ -44,6 +44,17 @@ describe('Trades cache-first rendering', () => {
     expect(app).toContain(': null}');
   });
 
+  it('defers cashflow and fee-allocation writes until the initial workspace pull settles', () => {
+    const app = readAppSource();
+    const source = readSource();
+    expect(app).toContain("addUiEventListener('app:initial-workspace-sync-settled', handleWorkspaceSyncSettled);");
+    expect(app).toContain('setWorkspaceSyncReady(false);');
+    expect(app).toContain('isWorkspaceSyncReady={workspaceSyncReady}');
+    expect(source).toContain('isWorkspaceSyncReady: boolean');
+    expect(source).toContain('if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return;');
+    expect(source).toContain('const isOperationCurrent = () => isWorkspaceSyncReady && isSessionCurrent() && isOperationActive();');
+  });
+
   it('subscribes only to state used by Trades and memoizes derived history rows', () => {
     const source = readSource();
     expect(source).toContain('usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual)');
@@ -97,7 +108,7 @@ describe('Trades cache-first rendering', () => {
       source.indexOf('const processCashflowRows'),
       source.indexOf('const syncCashflowsFromFreedom')
     );
-    expect(processEffect).toContain('const isOperationCurrent = () => isSessionCurrent() && isOperationActive();');
+    expect(processEffect).toContain('const isOperationCurrent = () => isWorkspaceSyncReady && isSessionCurrent() && isOperationActive();');
     expect(processEffect).toContain('buildClosedHistoryFeeAuditUpdate(');
     expect(processEffect).toContain('portfolioStore.commitClosedHistoryFeeSync(');
     expect(processEffect).not.toContain('portfolioStore.setState(nextState, false)');
@@ -184,7 +195,7 @@ describe('Trades cache-first rendering', () => {
 
   it('requests cashflows only after the broker execution refresh and only for a changed latest-trade checkpoint', () => {
     const source = readSource();
-    expect(source).toContain('if (!cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;');
+    expect(source).toContain('if (!isWorkspaceSyncReady || !cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;');
     expect(source).toContain('getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || \'no-trades\'');
     expect(source).toContain('getFreedomCashflowTradeCheckpoint(accountId)');
     expect(source).toContain('if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint)');
@@ -202,7 +213,7 @@ describe('Trades cache-first rendering', () => {
       source.indexOf('const allocationInputKey ='),
       source.indexOf('const processCashflowRows')
     );
-    expect(allocationEffect).toContain('}, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);');
+    expect(allocationEffect).toContain('}, [isWorkspaceSyncReady, cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);');
     expect(allocationEffect).not.toContain('state.positions,');
     expect(source).toContain('role="status"');
     expect(source).toContain('animate-spin');

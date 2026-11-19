@@ -125,6 +125,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const cloudSyncStatus = useCloudSyncStatus();
   const toasts = useToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false, readyRequested: false });
+  const [workspaceSyncReady, setWorkspaceSyncReady] = useState(false);
   const [exitComparisonRequest, setExitComparisonRequest] = useState<{ ticker?: string } | null>(null);
   const [buyMoreRequest, setBuyMoreRequest] = useState<{ ticker?: string } | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -185,6 +186,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       brokerSessionIdentityRef.current.setIdentity(user ? `${user.role}:${user.id}` : null);
       setMarketDepthTicker(null);
       setExitComparisonRequest(null);
+      setWorkspaceSyncReady(false);
       setCurrentUser(user);
       setAppLanguage(user?.language ?? 'en');
     };
@@ -203,6 +205,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('market:depth-request', handleMarketDepthRequest);
     addUiEventListener('auth:visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
+    const handleWorkspaceSyncSettled = () => setWorkspaceSyncReady(true);
+    addUiEventListener('app:initial-workspace-sync-settled', handleWorkspaceSyncSettled);
     const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => {
       if (event.detail.visible || event.detail.failed) {
         setStartupState({ ...event.detail, readyRequested: false });
@@ -221,6 +225,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('market:depth-request', handleMarketDepthRequest);
       removeUiEventListener('auth:visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
+      removeUiEventListener('app:initial-workspace-sync-settled', handleWorkspaceSyncSettled);
       removeUiEventListener('app:startup-state', handleStartupState);
       unsubscribeLanguage();
     };
@@ -516,6 +521,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
                 accountId={currentUser?.id || ''}
                 isSessionCurrent={isAccountSessionCurrent}
+                isWorkspaceSyncReady={workspaceSyncReady}
               />
             </Suspense></div>
             : null}
