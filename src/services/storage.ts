@@ -1052,7 +1052,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
     return fallback;
   } catch (err) {
-    console.warn('Storage unavailable; using in-memory portfolio state:', err);
+    logSafeDiagnostic('warn', 'browser-storage', err);
     return fallback;
   }
 }
