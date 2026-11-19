@@ -25,17 +25,13 @@ The reconnect banner is not a synchronization command. Existing role-specific re
 
 ## Service-worker updates and recovery
 
-The startup update gate is preserved and made observable:
-- the app checks for an update immediately after service-worker registration and then every 30 minutes while the page is visible;
-- returning to a visible tab triggers a catch-up check when at least 30 minutes have elapsed since the previous attempt;
-- Settings → Diagnostics & Maintenance shows the latest update-check state and timestamp, and offers a safe Check now action;
-- a check only discovers and stages updates; it does not bypass the startup activation gate;
-- updates discovered while the startup overlay is active can activate automatically;
-- updates discovered after startup remain waiting until the next app startup;
-- first controller acquisition does not force a reload;
-- startup cache repair removes only the app-scoped service worker and Workbox precache and preserves account data.
+The app checks for a new service-worker version immediately after registration and then every 30 minutes while the page is visible. Returning to a visible tab triggers a catch-up check when at least 30 minutes have elapsed since the previous attempt. Settings → Diagnostics & Maintenance shows the latest update-check state and timestamp, and offers a safe Check now action.
 
-An update-check failure after successful service-worker registration is shown as a check failure, not as proof that the app is out of date; the runtime retries on the next interval. If registration itself fails, Settings explains that reopening the app is required to retry registration. Check now performs another detection attempt only when a registration is available; it never forces a reload or applies a waiting worker mid-session.
+Update detection only stages a waiting worker. The app does not call `skipWaiting` or force activation during startup or while the workspace is in use. With `registerType: 'prompt'`, the browser can activate the waiting worker after all tabs controlled by the older worker have been closed; the next app launch then uses the updated shell. This keeps an app-shell release from reloading a page while its authenticated cloud reconciliation may still be in flight. First controller acquisition does not force a reload.
+
+An update-check failure after successful service-worker registration is shown as a check failure, not as proof that the app is out of date; the runtime retries on the next interval. If registration itself fails, Settings explains that reopening the app is required to retry registration. Check now performs another detection attempt only when a registration is available; it never forces a reload or activates a waiting worker.
+
+Startup cache repair removes only the app-scoped service worker and Workbox precache and preserves account data.
 
 Do not switch back to unconditional `autoUpdate` activation or clear localStorage/IndexedDB as part of PWA repair.
 
@@ -49,7 +45,7 @@ The existing unit suite separately tests install-event capture, user-initiated p
 
 After exact-head GitHub Actions pass, verify on real devices:
 - Android Chrome: install prompt, accepted install, standalone launch and relaunch.
-- Desktop Chrome/Edge: install prompt, standalone launch, a 30-minute visible-tab update check, Settings status, and safe update activation.
+- Desktop Chrome/Edge: install prompt, standalone launch, a 30-minute visible-tab update check, Settings status, and a staged update that activates only after all older app tabs are closed.
 - iPhone/iPad Safari: Add to Home Screen guidance, touch icon, standalone launch and status-bar appearance.
 - Offline restart: cached shell opens, authenticated data remains unavailable until identity is verified online.
 - Reconnection: banner remains while the application status endpoint is unavailable and clears only after a successful status response.
