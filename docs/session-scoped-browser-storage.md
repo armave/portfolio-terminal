@@ -59,7 +59,7 @@ A timeout does not delete the legacy migration source or replace the portfolio s
 
 ## Automatic browser app-shell repair
 
-The app checks its service worker for updates on each page load. Updates found while the initial startup overlay is active are automatically activated and the page reloads once under the replacement worker. After the overlay is dismissed, a newly discovered worker remains waiting and is automatically activated on the next app startup instead of forcing a mid-session reload. A first controller acquisition does not interrupt account creation or sign-in.
+The app checks its service worker for updates on each page load. Detection only stages a waiting worker; it does not force activation or reload the current page during startup or while a workspace is open. The browser can activate the waiting worker after all tabs controlled by the older worker have been closed, and the next app launch uses the updated shell. A first controller acquisition does not interrupt account creation or sign-in.
 
 After the account-scoped workspace has been activated, the full-screen startup overlay waits up to 12 seconds for the selected desk's initial render. If an optional lazy-loaded panel, font, or image remains pending, the shell is released and the affected desk keeps its own local loading fallback; navigation and recovery controls remain available. The startup watchdog stays armed until the overlay is actually removed, rather than being cancelled when dismissal is merely requested.
 
