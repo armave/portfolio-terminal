@@ -3,13 +3,14 @@ export type SafeDiagnosticCategory =
   | 'browser-storage' | 'credential-storage' | 'cloud-sync' | 'closed-history'
   | 'market-data' | 'broker-stream' | 'broker-data' | 'portfolio-rollover' | 'startup' | 'portfolio-store' | 'auth';
 
-type SafeErrorClass = 'aborted' | 'storage-limit' | 'browser-security' | 'malformed-data' | 'crypto-operation' | 'type-error' | 'unknown';
+type SafeErrorClass = 'aborted' | 'timeout' | 'storage-limit' | 'browser-security' | 'malformed-data' | 'crypto-operation' | 'type-error' | 'unknown';
 
 export function classifySafeDiagnosticError(error: unknown): SafeErrorClass {
   if (error === null || typeof error !== 'object') return 'unknown';
   const name = (error as { name?: unknown }).name;
   switch (name) {
     case 'AbortError': return 'aborted';
+    case 'TimeoutError': return 'timeout';
     case 'QuotaExceededError': return 'storage-limit';
     case 'SecurityError': return 'browser-security';
     case 'DataError':
