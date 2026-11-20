@@ -25,3 +25,8 @@ Market Insights has a separate research ticker selector in Combined view. It use
 Risk & financing remains visible. Performance, Projections and Market research are collapsible in Combined. First-use state is collapsed; the choices persist as allowlisted device preferences in the active account storage scope, outside financial portfolio state and cloud accounting. Heavy Performance and Market research panels mount only after first expansion. Single-ticker projection and research behavior remains expanded and unchanged.
 
 All new user-facing text is localized in English and Russian. The implementation does not change existing margin formulas, accounting semantics, permissions, broker API behavior or canonical PortfolioState.positions.
+
+
+## Company news quantity
+
+The Market Insights News tab defaults to showing 3 articles. Users can select a visible count from 3 through 10. This is a presentation-only limit applied to the loaded response; it does not change provider requests, cached data, or refresh behavior.
