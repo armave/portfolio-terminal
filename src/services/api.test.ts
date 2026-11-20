@@ -354,7 +354,7 @@ describe('proxy request coalescing', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('prioritizes core quote requests ahead of queued deep-data reads', async () => {
+  it('prioritizes critical quote and interactive history reads ahead of background deep-data', async () => {
     const resolvers: Array<(response: Response) => void> = [];
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       new Promise<Response>((resolve) => { resolvers.push(resolve); })

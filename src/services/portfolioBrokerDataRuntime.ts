@@ -74,7 +74,7 @@ export interface PortfolioBrokerDataRuntime {
   loadFreedomAccount: (session: SessionIdentityToken) => Promise<boolean>;
   refreshAccountInfo: (session: SessionIdentityToken) => Promise<boolean>;
   loadExecutedTrades: (session: SessionIdentityToken, priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
-  /** Explicit Manual Sync catch-up; bypasses connected-stream and recent-read shortcuts. */
+  /** Waitable history catch-up; interactive Manual Sync bypasses stream/recent-read shortcuts. */
   refreshExecutedTrades: (session: SessionIdentityToken, priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
   loadActiveOrders: (session: SessionIdentityToken) => Promise<boolean>;
 }

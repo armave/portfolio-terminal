@@ -2,9 +2,8 @@ import type {
   FreedomActiveOrder,
   FreedomPortfolioSnapshot
 } from './api';
-import type { BrokerDataQualityIssue, BrokerDataSnapshot } from '../types/broker';
+import type { BrokerDataQualityIssue, BrokerDataSnapshot, BrokerExecutionRequestPriority } from '../types/broker';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
-import type { BrokerExecutionRequestPriority } from '../types/broker';
 
 interface ActiveTrancheTypeRequest {
   ticker?: string;

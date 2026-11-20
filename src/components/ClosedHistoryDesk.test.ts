@@ -207,6 +207,7 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
     expect(source).not.toContain('if (brokerTradesLoading || !cashflowHistoryReady');
     expect(source).toContain('const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;');
+    expect(source).toContain("emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });");
     expect(source).toContain('const showBackgroundUpdateIndicator = useDelayedActivityVisibility(isBackgroundUpdating);');
     expect(source).toContain('showBackgroundUpdateIndicator && (');
     expect(source).toContain('const backgroundUpdateMessage = brokerTradesRefreshing');
