@@ -8,7 +8,7 @@ const lotsSource = readFileSync(new URL('../components/GuestTrancheHistory.tsx',
 const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
 const headerSource = readFileSync(new URL('../components/DeskPageHeader.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-const compactStyles = (source: string) => source.replace(/\\s+/g, '');
+const compactStyles = (source: string) => source.replace(/\s+/g, '');
 const russian = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
 
 describe('standard non-Margin page layout', () => {
