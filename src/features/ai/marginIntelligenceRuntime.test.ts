@@ -85,7 +85,7 @@ describe('Margin Intelligence runtime', () => {
       analysis: 'Saved analysis',
       digestRevision: 4,
       stale: true,
-      staleReasons: ['snapshot-changed'],
+      staleReasons: ['snapshot-changed', 'prompt-changed'],
       error: expect.stringContaining('translated:')
     });
     runtime.dispose();
@@ -124,7 +124,7 @@ describe('Margin Intelligence runtime', () => {
       key: 'position:AAPL',
       ticker: 'AAPL',
       analysis: 'AAPL evidence-based review',
-      promptVersion: 4,
+      promptVersion: 5,
       snapshotAsOf: nowIso()
     });
     expect(recorder.getState()).toMatchObject({
