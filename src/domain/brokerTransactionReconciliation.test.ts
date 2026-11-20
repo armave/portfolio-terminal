@@ -306,7 +306,7 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings.some(finding => finding.type === 'execution_match_ambiguous')).toBe(false);
   });
 
-  it('does not use a timestamp-free broker row for fallback matching without a stable execution reference', () => {
+  it('does not use a timestamp-free broker row for fallback matching or infer an absence from it', () => {
     const report = reconcile(
       [execution({ id: '', executedAt: null })],
       [appEvent('trade.buy')]
@@ -314,9 +314,8 @@ describe('reconcileBrokerActivity', () => {
 
     expect(report.status).toBe('partial');
     expect(report.matchedExecutionCount).toBe(0);
-    expect(report.findings).toContainEqual(expect.objectContaining({
-      type: 'execution_missing_in_app',
-      confidence: 'provisional'
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app'
     }));
   });
 
@@ -554,19 +553,18 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
-  it('keeps unmatched execution findings provisional while PT-02 journal coverage is incomplete', () => {
+  it('suppresses unmatched execution findings while PT-02 journal coverage is incomplete', () => {
     const report = reconcile(
       [execution({ id: 'unmatched' })],
       [],
       { appHistoryStatus: 'partial' }
     );
     expect(report.status).toBe('partial');
-    expect(report.findings).toContainEqual(expect.objectContaining({
-      type: 'execution_missing_in_app',
-      confidence: 'provisional'
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app'
     }));
     expect(report.warnings).toContain(
-      'App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.'
+      'App transaction journal coverage is incomplete; absence-based findings are suppressed.'
     );
   });
 
@@ -608,18 +606,14 @@ describe('reconcileBrokerActivity', () => {
 
     expect(report.status).toBe('partial');
     expect(report.matchedCashflowCount).toBe(0);
-    expect(report.findings).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        type: 'cashflow_unclassified',
-        brokerReferences: ['provider-unknown-activity'],
-        confidence: 'provisional'
-      }),
-      expect.objectContaining({
-        type: 'cashflow_missing_in_broker',
-        appEventIds: ['app-cash-adjustment'],
-        confidence: 'provisional'
-      })
-    ]));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      brokerReferences: ['provider-unknown-activity'],
+      confidence: 'provisional'
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_broker'
+    }));
   });
 
   it('matches a broker cash adjustment only when the provider explicitly labels an adjustment', () => {
@@ -784,14 +778,14 @@ describe('reconcileBrokerActivity', () => {
     const report = reconcile([], [appFeeWithoutAmount], { brokerCashflows: [brokerCashflow] });
     expect(report.matchedCashflowCount).toBe(0);
     expect(report.status).toBe('partial');
-    expect(report.findings).toContainEqual(expect.objectContaining({
-      type: 'cashflow_missing_in_broker',
-      appEventIds: ['fee-without-amount'],
-      confidence: 'provisional',
-      appValue: null
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_broker'
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_app'
     }));
     expect(report.warnings).toContain(
-      'One or more app cashflow events have no usable amount; matching is provisional.'
+      'One or more app cashflow events lack a usable amount or currency; matching is provisional.'
     );
     expect(report.findings.some(finding => finding.type === 'cashflow_currency_mismatch')).toBe(false);
   });
@@ -1001,10 +995,9 @@ describe('legacy closed-sale reconciliation fallback', () => {
     );
 
     expect(report.matchedLegacyClosedSaleCount).toBe(0);
-    expect(report.findings).toContainEqual(expect.objectContaining({
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
       type: 'execution_missing_in_app',
-      brokerReferences: ['historical-buy'],
-      confidence: 'provisional'
+      brokerReferences: ['historical-buy']
     }));
   });
 
@@ -1016,7 +1009,7 @@ describe('legacy closed-sale reconciliation fallback', () => {
     );
 
     expect(report.matchedLegacyClosedSaleCount).toBe(0);
-    expect(report.findings).toContainEqual(expect.objectContaining({
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
       type: 'execution_missing_in_app',
       brokerReferences: ['different-price']
     }));

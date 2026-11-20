@@ -1051,7 +1051,7 @@ export function reconcileBrokerActivity(
     matchedLegacyExecutionCount += candidates.length;
   }
 
-  for (const index of appExecutionAbsenceEvidenceComplete ? unmatchedBroker : []) {
+  for (const index of brokerExecutionAbsenceEvidenceComplete && appExecutionAbsenceEvidenceComplete ? unmatchedBroker : []) {
     if (ambiguousBrokerIndices.has(index)) continue;
     const row = uniqueBrokerRows[index];
     findings.push(makeFinding({
@@ -1067,7 +1067,7 @@ export function reconcileBrokerActivity(
       explanation: 'No corresponding app-authored trade was found in the available transaction journal.'
     }, confidence));
   }
-  for (const index of brokerExecutionAbsenceEvidenceComplete ? unmatchedApp : []) {
+  for (const index of brokerExecutionAbsenceEvidenceComplete && appExecutionAbsenceEvidenceComplete ? unmatchedApp : []) {
     if (ambiguousAppIndices.has(index)) continue;
     const row = appExecutions[index];
     findings.push(makeFinding({
@@ -1427,7 +1427,7 @@ export function reconcileBrokerActivity(
       }, confidence));
     }
   }
-  for (const index of appCashflowAbsenceEvidenceComplete ? unmatchedCashflowBroker : []) {
+  for (const index of brokerCashflowAbsenceEvidenceComplete && appCashflowAbsenceEvidenceComplete ? unmatchedCashflowBroker : []) {
     if (ambiguousCashflowBrokerIndices.has(index)) continue;
     const row = brokerCashflows[index];
     findings.push(makeFinding({
@@ -1443,7 +1443,7 @@ export function reconcileBrokerActivity(
       explanation: 'No corresponding app-authored cashflow event was found in the available journal.'
     }, confidence));
   }
-  for (const index of brokerCashflowAbsenceEvidenceComplete ? unmatchedCashflowApp : []) {
+  for (const index of brokerCashflowAbsenceEvidenceComplete && appCashflowAbsenceEvidenceComplete ? unmatchedCashflowApp : []) {
     if (ambiguousCashflowAppIndices.has(index)) continue;
     const row = appCashflows[index];
     findings.push(makeFinding({
