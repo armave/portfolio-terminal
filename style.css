@@ -6662,20 +6662,7 @@ table tbody tr:hover {
   display: none;
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  #settingsDesk .settings-section-nav-groups {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 
-  #settingsDesk .settings-section-nav-group:last-child {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  #settingsDesk .settings-section-nav-group:last-child h3 {
-    grid-column: 1 / -1;
-  }
-}
 
 @media (max-width: 767px) {
   #settingsDesk .settings-section {
@@ -6734,15 +6721,6 @@ table tbody tr:hover {
 }
 
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  #settingsDesk .settings-section-nav-group:last-child .settings-section-nav-links {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  #settingsDesk .settings-section {
-    scroll-margin-top: 18rem;
-  }
-}
+
+
