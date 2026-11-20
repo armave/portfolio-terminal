@@ -6568,3 +6568,36 @@ table tbody tr:hover {
   .market-insights-ticker-control { width:100%; }
   .market-insights-ticker-control select { width:100%; max-width:none; }
 }
+
+
+/* Anchor the Tranches action to a dedicated value column so it aligns reliably at desktop widths. */
+.portfolio-micro-basis .portfolio-micro-tranches-row {
+  display: grid;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > .portfolio-metric-label {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  text-align: right;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches > .tranche-details-trigger {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  align-self: flex-end;
+  justify-self: end;
+  margin: 0;
+}

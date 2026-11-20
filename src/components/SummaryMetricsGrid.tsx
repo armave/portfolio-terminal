@@ -1203,7 +1203,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               </span>
             </div>
             <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-              <div class="portfolio-micro-row">
+              <div class="portfolio-micro-row portfolio-micro-tranches-row">
                 <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
                 <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
                   {hiddenTrancheCount > 0 ? (

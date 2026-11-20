@@ -1118,6 +1118,14 @@ try {
   // Seed a deterministic local-only portfolio fixture without a command surface or broker order.
   await seedSyntheticPortfolio(page);
 
+  // Combined now starts with Market research collapsed; open it before validating
+  // provider error/recovery behavior and the ticker-scoped research experience.
+  const marketResearchDisclosure = page.locator('details[data-workspace-disclosure="research"]');
+  if (await marketResearchDisclosure.count()) {
+    const summary = marketResearchDisclosure.locator(':scope > summary');
+    if (!(await marketResearchDisclosure.evaluate(element => element.open))) await summary.click();
+  }
+
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
   await waitForCondition(
