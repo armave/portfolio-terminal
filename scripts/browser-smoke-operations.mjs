@@ -1171,6 +1171,15 @@ try {
   ) {
     throw new Error('Workspace navigation hover feedback is not immediate and color-only: ' + JSON.stringify(navigationMotion));
   }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reducedMotionDuration = await tradesNavigationButton.evaluate((element) =>
+    window.getComputedStyle(element).transitionDuration
+  );
+  if (reducedMotionDuration.split(',').some((duration) => Number.parseFloat(duration) > 0)) {
+    throw new Error('Button transitions must be disabled when reduced motion is requested: ' + reducedMotionDuration);
+  }
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
   // Inspect the destination section without mounting Trades ahead of the
   // Settings-specific user-directory assertions below.
   const tradesDeskAnimation = await page.locator('#closedHistoryContainer')

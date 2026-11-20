@@ -6470,9 +6470,12 @@ table tbody tr:hover {
 }
 
 /* Button feedback should acknowledge desktop pointer input immediately.
-   Keep visual state changes, but avoid paint-heavy filters and delayed transform/shadow motion. */
-button {
-  transition-property: color, background-color, border-color !important;
-  transition-duration: 90ms !important;
-  transition-delay: 0ms !important;
+   Keep visual state changes, but avoid paint-heavy filters and delayed transform/shadow motion.
+   Reduced-motion users retain the global zero-transition policy above. */
+@media (prefers-reduced-motion: no-preference) {
+  button {
+    transition-property: color, background-color, border-color !important;
+    transition-duration: 90ms !important;
+    transition-delay: 0ms !important;
+  }
 }
