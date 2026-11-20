@@ -979,6 +979,14 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
             JSON.stringify(persistedFixture));
         }
         stageTimings.brokerRefreshAndParityMs = Date.now() - brokerRefreshStartedAt;
+        // This performance sample uses a fresh browser context, so Combined's
+        // research disclosure starts closed. Expand it before measuring the
+        // authenticated Market Insights readiness path.
+        const researchDisclosure = page.locator('details[data-workspace-disclosure="research"]');
+        if (await researchDisclosure.count() &&
+            !(await researchDisclosure.evaluate(element => element.open))) {
+          await researchDisclosure.locator(':scope > summary').click();
+        }
         const portfolioRenderStartedAt = Date.now();
         await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
         await page.waitForFunction(
