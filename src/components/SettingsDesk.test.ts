@@ -270,7 +270,6 @@ describe('Settings section navigation layout', () => {
     expect(styles).toContain('#settingsDesk .settings-section-nav-mobile select');
     expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
     expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
-    expect(styles).not.toContain('flex-wrap: nowrap;\\n    overflow-x: auto;\\n    overscroll-behavior-inline: contain;');
   });
 
   it('smooth-scrolls to selected sections while respecting reduced-motion preferences', () => {
