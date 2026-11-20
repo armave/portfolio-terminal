@@ -106,7 +106,7 @@ describe('Combined workspace progressive disclosure', () => {
     expect(storageSource).toContain('getWorkspaceDisclosurePreferences');
     expect(storageSource).toContain('scopedStorageKey(STORAGE_KEY_WORKSPACE_DISCLOSURES)');
     expect(appSource).toContain('performanceHasOpened');
-    expect(appSource).toContain('marketResearchHasOpened');
+    expect(appSource).not.toContain('marketResearchHasOpened');
   });
 });
 
