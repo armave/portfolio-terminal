@@ -313,13 +313,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     previousDeskViewRef.current = activeDeskView;
     if (previousView === activeDeskView || startupState.visible || authOpen) return;
 
-    const frame = requestAnimationFrame(() => {
-      mainWorkspaceRef.current?.scrollIntoView({
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-        block: 'start'
-      });
-    });
-    return () => cancelAnimationFrame(frame);
+    // Keep the workspace in view without making navigation wait for a smooth scroll.
+    mainWorkspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, [activeDeskView, authOpen, startupState.visible]);
 
   // Broker data reads are session-bound in the broker data runtime. App remains

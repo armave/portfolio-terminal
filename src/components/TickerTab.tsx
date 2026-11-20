@@ -8,6 +8,7 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
+import { prefetchWorkspaceDesk } from '../ui/workspaceDeskPrefetch';
 import type { PortfolioState } from '../types/portfolio';
 
 type WorkspaceNavigationIconName = 'margin' | 'portfolio' | 'balance' | 'trades' | 'lots' | 'settings';
@@ -45,6 +46,8 @@ export const TickerTabs = memo(function TickerTabs({
     emitUiEvent('portfolio:set-active-view', { view });
     if (refreshQuotes) void handleRefreshQuotes();
   };
+
+  const prefetchView = (view: string) => prefetchWorkspaceDesk(view, isAdmin);
 
   const isCushionActive = activeView === 'CASH_CUSHION' || activeView === 'BALANCE';
   const isClosedHistoryActive = activeView === 'CLOSED_HISTORY';
@@ -88,6 +91,8 @@ export const TickerTabs = memo(function TickerTabs({
         <div class="workspace-nav-ticker-list" role="group" aria-label={translateText('MARGIN DESK', getAppLanguage())}>
           <button
             type="button"
+            onPointerEnter={() => prefetchView('COMBINED')}
+            onFocus={() => prefetchView('COMBINED')}
             onClick={() => selectView('COMBINED')}
             aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
             aria-pressed={activeView === 'COMBINED'}
@@ -107,7 +112,9 @@ export const TickerTabs = memo(function TickerTabs({
             <button
               key={ticker}
               type="button"
-              onClick={() => selectView(ticker)}
+              onPointerEnter={() => prefetchView('ticker')}
+            onFocus={() => prefetchView('ticker')}
+            onClick={() => selectView(ticker)}
               aria-label={`${translateText('Margin', getAppLanguage())}: ${ticker}`}
               aria-pressed={activeView === ticker}
               class={workspaceNavigationButtonClass(activeView === ticker && isMarginDeskActive, true)}
@@ -128,7 +135,9 @@ export const TickerTabs = memo(function TickerTabs({
       {isAdmin && tickers.length === 1 && (
         <button
           type="button"
-          onClick={() => selectView(tickers[0])}
+          onPointerEnter={() => prefetchView('tickers[0]')}
+            onFocus={() => prefetchView('tickers[0]')}
+            onClick={() => selectView(tickers[0])}
           aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
           aria-pressed={activeView === tickers[0]}
           class={workspaceNavigationButtonClass(activeView === tickers[0] && isMarginDeskActive, true)}
@@ -152,7 +161,9 @@ export const TickerTabs = memo(function TickerTabs({
           data-nav-index={0}
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
-          onClick={() => selectView('COMBINED')}
+          onPointerEnter={() => prefetchView('COMBINED')}
+            onFocus={() => prefetchView('COMBINED')}
+            onClick={() => selectView('COMBINED')}
           aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
           aria-pressed={isMarginDeskActive}
           class={workspaceNavigationButtonClass(isMarginDeskActive)}
@@ -165,7 +176,9 @@ export const TickerTabs = memo(function TickerTabs({
 
       <button
         type="button"
-        onClick={() => selectView('BALANCE')}
+        onPointerEnter={() => prefetchView('BALANCE')}
+            onFocus={() => prefetchView('BALANCE')}
+            onClick={() => selectView('BALANCE')}
         aria-label={translateText('Balance', getAppLanguage())}
         aria-pressed={isCushionActive}
         class={workspaceNavigationButtonClass(isCushionActive)}
@@ -184,7 +197,9 @@ export const TickerTabs = memo(function TickerTabs({
       {canViewGuestHistory && (
         <button
           type="button"
-          onClick={() => selectView('GUEST_HISTORY')}
+          onPointerEnter={() => prefetchView('GUEST_HISTORY')}
+            onFocus={() => prefetchView('GUEST_HISTORY')}
+            onClick={() => selectView('GUEST_HISTORY')}
           aria-label={translateText('History', getAppLanguage())}
           aria-pressed={isGuestHistoryActive}
           class={workspaceNavigationButtonClass(isGuestHistoryActive)}
@@ -203,7 +218,9 @@ export const TickerTabs = memo(function TickerTabs({
       {isAdmin && (
         <button
           type="button"
-          onClick={() => selectView('CLOSED_HISTORY')}
+          onPointerEnter={() => prefetchView('CLOSED_HISTORY')}
+            onFocus={() => prefetchView('CLOSED_HISTORY')}
+            onClick={() => selectView('CLOSED_HISTORY')}
           aria-label={translateText('Trades', getAppLanguage())}
           aria-pressed={isClosedHistoryActive}
           class={workspaceNavigationButtonClass(isClosedHistoryActive)}
@@ -223,7 +240,9 @@ export const TickerTabs = memo(function TickerTabs({
         id="settingsBtn"
         type="button"
         aria-pressed={isSettingsActive}
-        onClick={() => selectView('SETTINGS')}
+        onPointerEnter={() => prefetchView('SETTINGS')}
+            onFocus={() => prefetchView('SETTINGS')}
+            onClick={() => selectView('SETTINGS')}
         class={workspaceNavigationButtonClass(isSettingsActive)}
         data-nav-tab="true"
         data-nav-kind="settings"

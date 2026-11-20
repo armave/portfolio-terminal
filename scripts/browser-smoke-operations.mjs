@@ -1144,6 +1144,41 @@ try {
   await waitForCondition(() => worker.findCalls('GET', '/').some((call) => call.action === 'stocktwits'), 'Stocktwits opt-in request');
 
   const visibleSettingsDesk = () => page.locator('#settingsDesk').filter({ visible: true }).first();
+  const tradesNavigationButton = page.locator('[data-nav-kind="trades"]');
+  await tradesNavigationButton.hover();
+  const navigationMotion = await tradesNavigationButton.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    const toMilliseconds = (duration) => {
+      const value = Number.parseFloat(duration);
+      return duration.trim().endsWith('ms') ? value : value * 1_000;
+    };
+    const durations = style.transitionDuration.split(',').map(toMilliseconds);
+    const delays = style.transitionDelay.split(',').map(toMilliseconds);
+    return {
+      properties: style.transitionProperty.split(',').map((property) => property.trim()),
+      maxDurationMs: Math.max(0, ...durations),
+      maxDelayMs: Math.max(0, ...delays),
+      filter: style.filter,
+      transform: style.transform
+    };
+  });
+  if (
+    navigationMotion.maxDurationMs > 100 ||
+    navigationMotion.maxDelayMs > 0 ||
+    navigationMotion.properties.some((property) => ['filter', 'transform', 'box-shadow'].includes(property)) ||
+    navigationMotion.filter !== 'none' ||
+    navigationMotion.transform !== 'none'
+  ) {
+    throw new Error('Workspace navigation hover feedback is not immediate and color-only: ' + JSON.stringify(navigationMotion));
+  }
+  await tradesNavigationButton.click();
+  const visibleTradesDesk = page.locator('#closedHistoryContainer');
+  await visibleTradesDesk.waitFor({ state: 'visible', timeout: 20_000 });
+  const tradesDeskAnimation = await visibleTradesDesk.evaluate((element) => window.getComputedStyle(element).animationName);
+  if (tradesDeskAnimation !== 'none') {
+    throw new Error('Desk container should not run an extra entrance animation: ' + tradesDeskAnimation);
+  }
+
   const userDirectoryReadsBeforeSettings = worker.count('GET', '/api/auth/users');
   const openUserManagement = async () => {
     const disclosure = visibleSettingsDesk().locator('#settingsUserManagement');
@@ -1153,7 +1188,9 @@ try {
     }
     await disclosure.locator('form.settings-user-form').waitFor({ state: 'visible', timeout: 10_000 });
   };
-  await page.locator('#settingsBtn').click();
+  const settingsButton = page.locator('#settingsBtn');
+  await settingsButton.hover();
+  await settingsButton.click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   if (worker.count('GET', '/api/auth/users') !== userDirectoryReadsBeforeSettings) {
     throw new Error('Collapsed User management fetched the administrator directory before it was expanded.');
@@ -1517,7 +1554,9 @@ try {
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForAuthOverlay(page, false, worker);
-  await page.locator('#settingsBtn').click();
+  const settingsButton = page.locator('#settingsBtn');
+  await settingsButton.hover();
+  await settingsButton.click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   try {
     await page.waitForFunction(() => {
