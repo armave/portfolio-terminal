@@ -16,7 +16,10 @@ const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
 const HISTORY_RECORD_RECOVERY_KEY = 'closed-history-v1:last-known-good';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
+// Keep startup reads/opens short, but allow large account history snapshots more
+// time to be structured-cloned and committed by slower browser IndexedDB engines.
 const INDEXED_DB_OPERATION_TIMEOUT_MS = 2_000;
+const INDEXED_DB_HISTORY_WRITE_TIMEOUT_MS = 20_000;
 const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 const STORAGE_KEY_CASHFLOW_TRADE_CHECKPOINT = 'portfolio_tradenet_cashflow_trade_checkpoint_v1';
@@ -92,6 +95,12 @@ function scopedHistoryDatabaseName(scope = activePortfolioStorageScope): string 
   return scope === LEGACY_PORTFOLIO_STORAGE_SCOPE
     ? HISTORY_DATABASE_NAME
     : HISTORY_DATABASE_NAME + '::' + encodeURIComponent(scope);
+}
+
+function historyStorageTimeout(message: string): Error {
+  const error = new Error(message);
+  error.name = 'TimeoutError';
+  return error;
 }
 
 function resetHistoryStorageCache(): void {
@@ -183,7 +192,10 @@ function readLegacySavedHistorySnapshot(
   return null;
 }
 
-function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDatabase> {
+function openHistoryDatabase(
+  scope = activePortfolioStorageScope,
+  timeoutMs = INDEXED_DB_OPERATION_TIMEOUT_MS
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
       reject(new Error('IndexedDB is unavailable'));
@@ -195,8 +207,8 @@ function openHistoryDatabase(scope = activePortfolioStorageScope): Promise<IDBDa
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(new Error('Opening closed-history storage timed out.'));
-    }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      reject(historyStorageTimeout('Opening closed-history storage timed out.'));
+    }, timeoutMs);
     const rejectRequest = (error: Error) => {
       if (settled) return;
       settled = true;
@@ -316,9 +328,10 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
 async function writeHistoryRecordToIndexedDB(
   history: ClosedHistorySnapshot,
   scope = activePortfolioStorageScope,
-  resetRecovery = false
+  resetRecovery = false,
+  timeoutMs = INDEXED_DB_OPERATION_TIMEOUT_MS
 ): Promise<void> {
-  const db = await openHistoryDatabase(scope);
+  const db = await openHistoryDatabase(scope, timeoutMs);
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
@@ -327,13 +340,13 @@ async function writeHistoryRecordToIndexedDB(
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
-        reject(new Error('Writing closed-history storage timed out.'));
+        reject(historyStorageTimeout('Writing closed-history storage timed out.'));
         try {
           transaction.abort();
         } catch {
           // The transaction may already be inactive.
         }
-      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      }, timeoutMs);
       const resolveTransaction = () => {
         if (settled) return;
         settled = true;
@@ -661,7 +674,12 @@ async function persistSavedHistorySnapshot(
   const previousQueue = historyWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
   const nextWrite = previousQueue.catch(() => false).then(async () => {
     try {
-      await writeHistoryRecordToIndexedDB(snapshot, scope, options.resetRecovery === true);
+      await writeHistoryRecordToIndexedDB(
+        snapshot,
+        scope,
+        options.resetRecovery === true,
+        INDEXED_DB_HISTORY_WRITE_TIMEOUT_MS
+      );
       writeLocalHistoryRecoverySnapshot(snapshot, scope);
       removeLegacyHistorySidecar(scope);
       return true;

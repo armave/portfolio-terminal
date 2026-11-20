@@ -497,6 +497,16 @@ describe('cross-device financial header hierarchy', () => {
   });
 
 
+  it('keeps the Combined view summary as text and provides a ticker-only Tranches action', () => {
+    const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(combinedView).toContain('{tranchesText}');
+    expect(combinedView).not.toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('aria-haspopup="dialog"');
+    expect(singleTickerView).toContain('onClick={() => setTrancheModalOpen(true)}');
+  });
+
   it('opens all ticker purchase lots in the lazy tranche details dialog instead of expanding inline', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(singleTickerView).toContain('data-tranche-details-trigger');

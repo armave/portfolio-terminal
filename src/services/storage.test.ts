@@ -1145,6 +1145,77 @@ describe('storage service', () => {
   });
 
   describe('large history localStorage isolation', () => {
+    it('allows a large IndexedDB history commit to finish beyond the short startup deadline', async () => {
+      vi.useFakeTimers();
+      const values = new Map<string, unknown>();
+      const transaction = {
+        objectStore: () => store,
+        abort: vi.fn(),
+        oncomplete: null as ((event: Event) => void) | null,
+        onerror: null,
+        onabort: null
+      };
+      const store = {
+        get: vi.fn((key: string) => {
+          const request: {
+            result?: unknown;
+            onsuccess: ((event: Event) => void) | null;
+            onerror: ((event: Event) => void) | null;
+          } = { result: undefined, onsuccess: null, onerror: null };
+          queueMicrotask(() => {
+            request.result = values.get(key);
+            request.onsuccess?.call(request, new Event('success'));
+            if (key === 'closed-history-v1:last-known-good') {
+              setTimeout(() => transaction.oncomplete?.call(transaction, new Event('complete')), 3_000);
+            }
+          });
+          return request as unknown as IDBRequest<unknown>;
+        }),
+        put: vi.fn((value: unknown, key: string) => {
+          values.set(key, value);
+          return {} as IDBRequest<unknown>;
+        })
+      };
+      const database = {
+        objectStoreNames: { contains: () => true },
+        transaction: () => transaction,
+        close: vi.fn()
+      } as unknown as IDBDatabase;
+      const openRequest = {
+        result: database,
+        error: null,
+        onupgradeneeded: null,
+        onsuccess: null as ((event: Event) => void) | null,
+        onerror: null,
+        onblocked: null
+      };
+      try {
+        vi.stubGlobal('indexedDB', {
+          open: vi.fn(() => {
+            queueMicrotask(() => openRequest.onsuccess?.call(openRequest, new Event('success')));
+            return openRequest;
+          })
+        } as unknown as IDBFactory);
+
+        const history = {
+          brokerExecutedTrades: [{ id: 'large-history-write', raw: 'x'.repeat(2 * 1024 * 1024) }],
+          cashflows: []
+        };
+        const write = saveSavedHistory(history);
+        await vi.advanceTimersByTimeAsync(2_500);
+        expect(transaction.abort).not.toHaveBeenCalled();
+        expect(store.put).toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(3_000);
+        await expect(write).resolves.toBe(true);
+        await expect(flushSavedHistoryPersistence()).resolves.toBe(true);
+        expect(values.get('closed-history-v1')).toEqual(history);
+        expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+        vi.stubGlobal('indexedDB', undefined);
+      }
+    });
+
     it('stores large closed history in IndexedDB and keeps the localStorage sidecar absent', async () => {
       if (typeof indexedDB === 'undefined') return;
       const history = {
