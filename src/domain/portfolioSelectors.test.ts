@@ -6,6 +6,7 @@ import {
   getPortfolioProjectionInputs,
   getPortfolioProjectionTickers,
   getMarketInsightsTicker,
+  getMarginPositionMarketSummaries,
   isCurrentMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
@@ -258,5 +259,41 @@ describe('portfolio projection selectors', () => {
       { date: '2026-10-20' },
       { acquiredAt: Date.parse('2026-10-19T12:00:00Z') }
     ], '2026-10-28', new Date('2026-10-30T12:00:00Z'))).toBe('2026-10-19');
+  });
+});
+
+
+describe('Combined Margin position market summaries', () => {
+  it('calculates market value, weighted average entry and gross unrealized P&L from open lots', () => {
+    const rows = getMarginPositionMarketSummaries({
+      AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 120, pt: 135,
+        tranches: [{ qty: 4, price: 100 }, { qty: 6, price: 110 }]
+      }
+    } as unknown as BoardState['positions']);
+    expect(rows).toEqual([{
+      ticker: 'AAPL', shares: 10, costBasis: 1_060, averageEntryPrice: 106,
+      marketPrice: 120, marketValue: 1_200, unrealizedPnl: 140,
+      unrealizedPnlPct: (140 / 1_060) * 100, targetPrice: 135
+    }]);
+  });
+
+  it('keeps missing quotes and incomplete cost basis unavailable', () => {
+    const rows = getMarginPositionMarketSummaries({
+      AAPL: { ticker: 'AAPL', shares: 5, currentPrice: null, pt: 125, tranches: [{ qty: 5, price: 100 }] },
+      MSFT: { ticker: 'MSFT', shares: 2, currentPrice: 60, pt: 70, tranches: [{ qty: 2, price: Number.NaN }] }
+    } as unknown as BoardState['positions']);
+    expect(rows[0]).toMatchObject({ marketPrice: null, marketValue: null, unrealizedPnl: null });
+    expect(rows[1]).toMatchObject({ marketValue: 120, costBasis: null, averageEntryPrice: null, unrealizedPnl: null });
+  });
+
+  it('omits non-open positions and does not infer absent cost basis', () => {
+    const rows = getMarginPositionMarketSummaries({
+      AAPL: { ticker: 'AAPL', shares: 0, currentPrice: 100, tranches: [{ qty: 1, price: 90 }] },
+      NVDA: { ticker: 'NVDA', shares: 2, currentPrice: 50, tranches: [] }
+    } as unknown as BoardState['positions']);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].costBasis).toBeNull();
+    expect(rows[0].unrealizedPnl).toBeNull();
   });
 });
