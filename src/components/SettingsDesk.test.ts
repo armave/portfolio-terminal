@@ -360,8 +360,8 @@ describe('Settings synchronization and recovery experience', () => {
   it('keeps Settings navigation active-state aware and section visibility role-scoped', () => {
     expect(source).toContain('new IntersectionObserver');
     expect(source).toContain('aria-current={activeSettingsSection');
-    expect(source).toContain('permissions.canManageBackups && <a href="#settings-recovery-section"');
-    expect(source).toContain('account?.role === \'admin\' && <a href="#settings-access-section"');
+    expect(source).toContain("permissions.canManageBackups && renderSettingsSectionLink('settings-recovery-section'");
+    expect(source).toContain("account?.role === 'admin' && renderSettingsSectionLink('settings-access-section'");
   });
   it('requires explicit confirmation before changing an existing account role and indicates unsaved rows', () => {
     expect(source).toContain("Changing a user's role immediately changes their access and may revoke their sessions. Continue?");
