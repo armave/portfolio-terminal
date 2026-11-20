@@ -1491,6 +1491,7 @@ try {
   }
   const userUpdateCountBeforeFinalAdmin = worker.count('POST', '/api/auth/users');
   await adminRow.getByLabel('Role for Operations Admin').selectOption('guest');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await adminRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.findCalls('POST', '/api/auth/users').slice(userUpdateCountBeforeFinalAdmin)
