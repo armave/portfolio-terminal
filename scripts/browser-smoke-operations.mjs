@@ -1259,9 +1259,11 @@ try {
   await conflictPanel.waitFor({ state: 'visible', timeout: 10_000 });
   await conflictPanel.getByRole('heading', { name: 'Cloud data changed elsewhere' }).waitFor({ state: 'visible' });
 
+  const recoverySection = visibleSettingsDesk().locator('#settings-recovery-section');
+  await recoverySection.waitFor({ state: 'visible' });
   const [backupDownload] = await Promise.all([
     page.waitForEvent('download'),
-    conflictPanel.getByRole('button', { name: 'Export local backup' }).click()
+    recoverySection.getByRole('button', { name: 'Export portfolio backup as JSON' }).click()
   ]);
   if (!backupDownload.suggestedFilename().toLowerCase().endsWith('.json')) {
     throw new Error('Cloud conflict recovery did not export a JSON backup.');
@@ -1269,7 +1271,7 @@ try {
 
   const statePullsBeforeRecovery = worker.count('GET', '/api/state');
   page.once('dialog', (dialog) => { void dialog.accept(); });
-  await conflictPanel.getByRole('button', { name: 'Pull latest shared portfolio' }).click();
+  await recoverySection.getByRole('button', { name: 'Replace local portfolio from cloud' }).click();
   await waitForCondition(
     () => worker.count('GET', '/api/state') > statePullsBeforeRecovery,
     'confirmed pull of the latest shared portfolio'
