@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const marker = '/* Fluid workspace layout: adapt to the space each desk actually receives. */';
-const compactStyles = (source: string) => source.replace(/\\s+/g, '');
+const compactStyles = (source: string) => source.replace(/\s+/g, '');
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
 
 describe('fluid workspace styles', () => {

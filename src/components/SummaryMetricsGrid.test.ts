@@ -488,10 +488,10 @@ describe('cross-device financial header hierarchy', () => {
     expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
-    expect(styles).toContain('.portfolio-micro-basis .portfolio-micro-row > .portfolio-tranches-value {');
+    expect(styles).toMatch(/\.portfolio-micro-basis\s+\.portfolio-micro-row\s*>\s*\.portfolio-tranches-value\s*\{/);
     expect(styles).toContain('box-sizing: border-box;');
     expect(styles).toContain('justify-self: stretch;');
-    expect(styles).toContain('.portfolio-micro-basis #boardTranches > .tranche-details-trigger {');
+    expect(styles).toMatch(/\.portfolio-micro-basis\s+#boardTranches\s*>\s*\.tranche-details-trigger\s*\{/);
     expect(styles).toContain('width: max-content;');
     expect(styles).toContain('justify-self: end;');
   });
