@@ -17,7 +17,7 @@ import {
   applyMarketHistoryCorrectionsToResult,
   createMarketHistoryCorrectionEvent
 } from '../services/marketHistoryCorrections';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { renderStocktwitsBody } from '../features/quotes/stocktwitsMessagePresentation';
 import { MarketNewsArticleDialog } from './MarketNewsArticleDialog';
 import {
@@ -39,11 +39,9 @@ function isAbortError(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
 }
 
-const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsightsTicker({
-  activeView: state.activeView,
-  positions: state.positions,
-  selectedTicker: state.activeView
-});
+const selectMarketInsightsTicker = (state: BoardState): string => getMarketInsightsTicker(state);
+const selectMarketInsightsTickerOptions = (state: BoardState): string =>
+  Object.keys(state.positions || {}).join('\u001f');
 
 const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> = [
   { id: 'news', domId: 'insightTabNews', label: 'News' },
@@ -54,6 +52,10 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
 
 function MarketInsightsPanelView() {
   const ticker = usePortfolioSelector(selectMarketInsightsTicker);
+  const activeView = usePortfolioSelector(state => state.activeView);
+  const tickerOptionsKey = usePortfolioSelector(selectMarketInsightsTickerOptions);
+  const tickerOptions = tickerOptionsKey ? tickerOptionsKey.split('\u001f') : [];
+  const isCombinedView = activeView === 'COMBINED';
   const corporateActionHistory = usePortfolioSelector(state => state.corporateActionEvents || []);
   const marketHistoryCorrections = usePortfolioSelector(state => state.marketHistoryCorrections || []);
   const [historyCorrectionDraft, setHistoryCorrectionDraft] = useState<{
@@ -942,6 +944,29 @@ function MarketInsightsPanelView() {
             }
           </div>
         </div>
+        {isCombinedView && tickerOptions.length > 1 && (
+          <label class="market-insights-ticker-control">
+            <span>{translateText('Research ticker', getAppLanguage())}</span>
+            <select
+              id="marketInsightsTickerSelect"
+              aria-label={translateText('Select research ticker', getAppLanguage())}
+              value={ticker}
+              onChange={(event) => {
+                const nextTicker = (event.currentTarget as HTMLSelectElement).value;
+                if (tickerOptions.includes(nextTicker) && nextTicker !== ticker) {
+                  portfolioStore.setDerivedState({ selectedTicker: nextTicker }, false);
+                }
+              }}
+            >
+              {tickerOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+        )}
+        {isCombinedView && ticker && (
+          <p class="market-insights-research-note">
+            {translateText('Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.', getAppLanguage())}
+          </p>
+        )}
         {requestPlan.deepData && !error && (
           <button
             type="button"

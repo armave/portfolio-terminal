@@ -1114,4 +1114,15 @@ describe('Margin PT target information localization', () => {
       .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
   });
 
+
+  it('localizes the Combined Market Insights selector in Russian', () => {
+    for (const copy of [
+      'Research ticker',
+      'Select research ticker',
+      'Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.'
+    ]) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
 });

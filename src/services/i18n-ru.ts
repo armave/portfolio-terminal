@@ -1390,4 +1390,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'The app will retry automatically. You can also check again now.': 'Приложение повторит проверку автоматически. Вы также можете проверить сейчас.',
   'Check now': 'Проверить сейчас',
   'Open the app again to retry update detection.': 'Откройте приложение снова, чтобы повторить проверку обновлений.',
+  "Research ticker": "Тикер для анализа",
+  "Select research ticker": "Выбрать тикер для анализа",
+  "Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.": "Исследование компании относится к выбранному тикеру; ИИ-анализ портфеля охватывает весь портфель.",
 };
