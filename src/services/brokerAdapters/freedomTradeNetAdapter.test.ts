@@ -166,6 +166,35 @@ describe('Freedom TradeNet broker adapter', () => {
     expect(snapshot.warnings).toContain('TradeNet balance row without a currency was excluded.');
   });
 
+  it('classifies sanitized unknown-currency stream markers as a partial snapshot', () => {
+    const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
+    const snapshot = adapter.normalizePortfolio({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: '100' }, { curr: '' }],
+        pos: [
+          { curr: 'USD', i: 'AAPL.US', q: 2 },
+          { curr: '' }
+        ]
+      } } }
+    }, { source: 'websocket', receivedAt: 1_800_000_000_000 });
+
+    expect(snapshot.quality).toBe('partial');
+    expect(snapshot.source).toBe('websocket');
+    expect(snapshot.receivedAt).toBe(1_800_000_000_000);
+    expect(snapshot.data.balances).toEqual([{
+      currency: 'USD', amount: 100, forecastIn: 0, forecastOut: 0, t2In: 0, t2Out: 0
+    }]);
+    expect(snapshot.data.positions).toMatchObject([{ ticker: 'AAPL.US', quantity: 2 }]);
+    expect(snapshot.warnings).toEqual(expect.arrayContaining([
+      'TradeNet balance row without a currency was excluded.',
+      'TradeNet position row without a currency was excluded.'
+    ]));
+    expect(snapshot.positionIntegrityIssues).toEqual([
+      expect.objectContaining({ ticker: 'ROW 2', code: 'invalid_broker_position' })
+    ]);
+  });
+
   it('marks negative quantities as partial and preserves raw position evidence without guessing short direction', () => {
     const adapter = createFreedomTradeNetBrokerAdapter(createTransport());
     const snapshot = adapter.normalizePortfolio({
