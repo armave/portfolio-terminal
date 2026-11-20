@@ -1273,8 +1273,13 @@ try {
     throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
   }
 
-  // Tablet retains grouped navigation but accounts for its two-row sticky layout.
+  // Tablet retains the three purpose-based navigation groups in a compact three-column layout.
   await page.setViewportSize({ width: 768, height: 900 });
+  const tabletNavColumns = await visibleSettingsDesk().locator('.settings-section-nav-groups')
+    .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  if (tabletNavColumns !== 3) {
+    throw new Error('Tablet Settings navigation should retain three aligned groups; found ' + tabletNavColumns + ' columns.');
+  }
   const tabletDataSection = visibleSettingsDesk().locator('#settings-data-section');
   await tabletDataSection.evaluate((element) => {
     const originalScrollIntoView = element.scrollIntoView.bind(element);
