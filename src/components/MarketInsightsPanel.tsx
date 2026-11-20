@@ -81,6 +81,7 @@ function MarketInsightsPanelView() {
   const [stockData, setStockData] = useState<YahooDeepStockData | null>(null);
   const [stockDataTicker, setStockDataTicker] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<MarketNewsItem[]>([]);
+  const [newsDisplayLimit, setNewsDisplayLimit] = useState(3);
   const [selectedNews, setSelectedNews] = useState<{ ticker: string; article: MarketNewsItem } | null>(null);
   const currentSelectedNews = selectedNews?.ticker === ticker ? selectedNews.article : null;
   const [newsLoading, setNewsLoading] = useState(false);
@@ -404,9 +405,27 @@ function MarketInsightsPanelView() {
       return (
         <div class="news-feed-enter space-y-2 mt-2">
           {currentNewsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
-          <p class="text-[10px] text-slate-500">{currentNewsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(currentNewsUpdatedAt / 1000) * 1000)}` : ''}{currentNewsLoading ? ' · Refreshing…' : ''}</p>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-[10px] text-slate-500">{currentNewsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(currentNewsUpdatedAt / 1000) * 1000)}` : ''}{currentNewsLoading ? ' · Refreshing…' : ''}</p>
+            <label class="inline-flex items-center gap-1.5 text-[10px] text-slate-400">
+              <span>{translateText('News count', getAppLanguage())}</span>
+              <select
+                aria-label={translateText('News count', getAppLanguage())}
+                value={newsDisplayLimit}
+                onChange={event => {
+                  const value = Number((event.currentTarget as HTMLSelectElement).value);
+                  if (Number.isInteger(value) && value >= 3 && value <= 10) setNewsDisplayLimit(value);
+                }}
+                class="min-h-8 rounded border border-slate-700 bg-slate-900 px-2 text-[10px] text-slate-200"
+              >
+                {Array.from({ length: 8 }, (_, index) => index + 3).map(value => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div class="news-feed-list h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" role="region" aria-label="Company news articles" tabIndex={0}>
-            {currentNewsData.map((n, idx) => (
+            {currentNewsData.slice(0, newsDisplayLimit).map((n, idx) => (
               <button
                 key={n.id || n.url || idx}
                 type="button"
