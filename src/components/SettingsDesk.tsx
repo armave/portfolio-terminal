@@ -485,6 +485,49 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
+  const navigateToSettingsSection = (sectionId: string) => {
+    if (!SETTINGS_SECTION_IDS.includes(sectionId as (typeof SETTINGS_SECTION_IDS)[number])) return;
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+
+    setActiveSettingsSection(sectionId);
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start'
+    });
+
+    const nextHash = `#${sectionId}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(window.history.state, '', nextHash);
+    }
+  };
+
+  const handleSettingsSectionLinkClick = (event: MouseEvent) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.currentTarget as HTMLAnchorElement;
+    const sectionId = link.hash.slice(1);
+    if (!sectionId) return;
+    event.preventDefault();
+    navigateToSettingsSection(sectionId);
+  };
+
+  const renderSettingsSectionLink = (
+    sectionId: (typeof SETTINGS_SECTION_IDS)[number],
+    title: string,
+    description: string
+  ) => (
+    <a
+      href={`#${sectionId}`}
+      class={activeSettingsSection === sectionId ? 'is-active' : undefined}
+      aria-current={activeSettingsSection === sectionId ? 'location' : undefined}
+      onClick={handleSettingsSectionLinkClick}
+    >
+      <span>{translateText(title)}</span>
+      <small>{translateText(description)}</small>
+    </a>
+  );
+
   return (
     <div id="settingsDesk" class="settings-desk min-w-0">
       <DeskPageHeader
@@ -493,14 +536,54 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       />
 
       <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
-        <a href="#settings-account-section" class={activeSettingsSection === 'settings-account-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-account-section' ? 'location' : undefined}><span>{translateText('Account')}</span><small>{translateText('Profile & language')}</small></a>
-        <a href="#settings-data-section" class={activeSettingsSection === 'settings-data-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-data-section' ? 'location' : undefined}><span>{translateText('Data & Sync')}</span><small>{translateText('Live status & cadence')}</small></a>
-        {permissions.canManageBackups && <a href="#settings-recovery-section" class={activeSettingsSection === 'settings-recovery-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-recovery-section' ? 'location' : undefined}><span>{translateText('Backup & recovery')}</span><small>{translateText('Export, import & restore')}</small></a>}
-        {account?.role === 'admin' && <a href="#settings-access-section" class={activeSettingsSection === 'settings-access-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-access-section' ? 'location' : undefined}><span>{translateText('Access management')}</span><small>{translateText('Users & roles')}</small></a>}
-        {permissions.canEditPortfolioSettings && <a href="#settings-portfolio-section" class={activeSettingsSection === 'settings-portfolio-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-portfolio-section' ? 'location' : undefined}><span>{translateText('Portfolio planning settings')}</span><small>{translateText('Planning defaults')}</small></a>}
-        {permissions.canEditBrokerRules && <a href="#settings-broker-section" class={activeSettingsSection === 'settings-broker-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-broker-section' ? 'location' : undefined}><span>{translateText('Broker & Trading')}</span><small>{translateText('Financing & commissions')}</small></a>}
-        <a href="#settings-maintenance-section" class={activeSettingsSection === 'settings-maintenance-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-maintenance-section' ? 'location' : undefined}><span>{translateText('Diagnostics & Security')}</span><small>{translateText('Device & application health')}</small></a>
-        <a href="#settings-help-section" class={activeSettingsSection === 'settings-help-section' ? 'is-active' : undefined} aria-current={activeSettingsSection === 'settings-help-section' ? 'location' : undefined}><span>{translateText('Methodology & Help')}</span><small>{translateText('Calculations & guidance')}</small></a>
+        <div class="settings-section-nav-groups">
+          <div class="settings-section-nav-group" role="group" aria-label={translateText('Workspace')}>
+            <h3>{translateText('Workspace')}</h3>
+            <div class="settings-section-nav-links">
+              {renderSettingsSectionLink('settings-account-section', 'Account', 'Profile & language')}
+              {renderSettingsSectionLink('settings-data-section', 'Data & Sync', 'Live status & cadence')}
+            </div>
+          </div>
+          {(permissions.canManageBackups || permissions.canEditPortfolioSettings || permissions.canEditBrokerRules) && <div class="settings-section-nav-group" role="group" aria-label={translateText('Portfolio')}>
+            <h3>{translateText('Portfolio')}</h3>
+            <div class="settings-section-nav-links">
+              {permissions.canManageBackups && renderSettingsSectionLink('settings-recovery-section', 'Backup & recovery', 'Export, import & restore')}
+              {permissions.canEditPortfolioSettings && renderSettingsSectionLink('settings-portfolio-section', 'Portfolio planning settings', 'Planning defaults')}
+              {permissions.canEditBrokerRules && renderSettingsSectionLink('settings-broker-section', 'Broker & Trading', 'Financing & commissions')}
+            </div>
+          </div>}
+          <div class="settings-section-nav-group" role="group" aria-label={translateText('Management & help')}>
+            <h3>{translateText('Management & help')}</h3>
+            <div class="settings-section-nav-links">
+              {account?.role === 'admin' && renderSettingsSectionLink('settings-access-section', 'Access management', 'Users & roles')}
+              {renderSettingsSectionLink('settings-maintenance-section', 'Diagnostics & Security', 'Device & application health')}
+              {renderSettingsSectionLink('settings-help-section', 'Methodology & Help', 'Calculations & guidance')}
+            </div>
+          </div>
+        </div>
+        <label class="settings-section-nav-mobile">
+          <span>{translateText('Jump to section')}</span>
+          <select
+            aria-label={translateText('Jump to Settings section')}
+            value={activeSettingsSection}
+            onChange={(event) => navigateToSettingsSection((event.currentTarget as HTMLSelectElement).value)}
+          >
+            <optgroup label={translateText('Workspace')}>
+              <option value="settings-account-section">{translateText('Account')} — {translateText('Profile & language')}</option>
+              <option value="settings-data-section">{translateText('Data & Sync')} — {translateText('Live status & cadence')}</option>
+            </optgroup>
+            {(permissions.canManageBackups || permissions.canEditPortfolioSettings || permissions.canEditBrokerRules) && <optgroup label={translateText('Portfolio')}>
+              {permissions.canManageBackups && <option value="settings-recovery-section">{translateText('Backup & recovery')} — {translateText('Export, import & restore')}</option>}
+              {permissions.canEditPortfolioSettings && <option value="settings-portfolio-section">{translateText('Portfolio planning settings')} — {translateText('Planning defaults')}</option>}
+              {permissions.canEditBrokerRules && <option value="settings-broker-section">{translateText('Broker & Trading')} — {translateText('Financing & commissions')}</option>}
+            </optgroup>}
+            <optgroup label={translateText('Management & help')}>
+              {account?.role === 'admin' && <option value="settings-access-section">{translateText('Access management')} — {translateText('Users & roles')}</option>}
+              <option value="settings-maintenance-section">{translateText('Diagnostics & Security')} — {translateText('Device & application health')}</option>
+              <option value="settings-help-section">{translateText('Methodology & Help')} — {translateText('Calculations & guidance')}</option>
+            </optgroup>
+          </select>
+        </label>
       </nav>
 
       <section id="settings-account-section" class="settings-section" aria-labelledby="settingsAccountTitle">
