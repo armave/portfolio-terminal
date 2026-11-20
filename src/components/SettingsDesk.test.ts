@@ -314,7 +314,7 @@ describe('Settings synchronization and recovery experience', () => {
     expect(source).toContain('Assigned holdings & LOTS history');
     expect(source).toContain('Fixed 60-second cadence');
     expect(source).toContain('Event-driven when healthy');
-    expect(source).not.toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+    expect(source).not.toContain('Market quotes and administrator workspace checkpoints follow the selected interval.');
   });
   it('shows manual-sync source results without presenting them as live connection telemetry', () => {
     expect(source).toContain('getManualSyncSourceResults(manualSyncResult)');
