@@ -33,9 +33,9 @@ describe('broker reconciliation localization', () => {
     expect(translateBrokerReconciliationCopy('Reconcile broker activity', 'ru')).toBe('Сверить активность брокера');
     expect(translateBrokerReconciliationCopy('Commission currency differs', 'ru')).toBe('Валюта комиссии отличается');
     expect(translateBrokerReconciliationCopy(
-      'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.',
+      'Absence-based findings are shown only when broker history and app journal coverage are complete. Resolution and writeback are not available in this read-only review.',
       'ru'
-    )).toContain('предварительными');
+    )).toContain('полном охвате');
   });
 
   it('localizes ambiguous broker cashflow matching evidence in Russian', () => {

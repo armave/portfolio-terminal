@@ -123,7 +123,7 @@ const RU_COPY: Record<string, string> = {
   'App event': 'Событие приложения',
   'Showing first 30 findings': 'Показаны первые 30 расхождений',
   'No transaction-level differences were found in the available records.': 'В доступных записях расхождений на уровне транзакций не обнаружено.',
-  'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.': 'Несовпавшие записи остаются предварительными до полного охвата журнала транзакций. В этой проверке доступны только просмотр и сверка, без исправлений и записи данных.',
+  'Absence-based findings are shown only when broker history and app journal coverage are complete. Resolution and writeback are not available in this read-only review.': 'Выводы об отсутствии записей показываются только при полном охвате истории брокера и журнала приложения. Исправления и запись изменений недоступны в этой проверке только для чтения.',
   'Legacy closed-sale summaries are matched only when the broker sell fills agree on ticker, date, total quantity and weighted price. They do not establish historical buy executions or cashflows.': 'Исторические сводки закрытых продаж сопоставляются только при совпадении тикера, даты, общего количества и средневзвешенной цены исполнений продажи. Они не подтверждают исторические покупки или денежные потоки.',
   'Legacy closed sales are app summaries, not transaction-journal events.': 'Исторические закрытые продажи — это сводки приложения, а не события журнала транзакций.',
   'The broker execution history is incomplete; absence-based findings are suppressed.': 'История исполнений брокера неполная; выводы об отсутствии записей не делаются.',
