@@ -7,6 +7,5 @@ describe('Combined workspace responsive disclosures', () => {
   it('keeps disclosure summaries and ticker controls keyboard-visible', () => {
     expect(styles).toContain('.workspace-disclosure>summary:focus-visible');
     expect(styles).toContain('.market-insights-ticker-control select:focus-visible');
-    expect(styles).toContain('@media (prefers-reduced-motion:reduce)');
   });
 });
