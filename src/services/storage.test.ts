@@ -25,6 +25,8 @@ import {
   clearBrokerRules,
   getQuoteRefreshInterval,
   saveQuoteRefreshInterval,
+  getWorkspaceDisclosurePreferences,
+  saveWorkspaceDisclosurePreferences,
   saveApiKeys,
   hasFreedomCashflowHistoryBaseline,
   hasFreedomTradeHistoryBaseline,
@@ -795,6 +797,42 @@ describe('storage service', () => {
       saveQuoteRefreshInterval(0, 'guest');
       expect(storageMap.has('quote_refresh_interval')).toBe(false);
       expect(storageMap.has('quote_refresh_interval_guest_v1')).toBe(false);
+    });
+  });
+
+  describe('workspace disclosure preferences', () => {
+    it('isolates panel choices between owner and guest scopes', async () => {
+      await activatePortfolioStorageScope('owner');
+      saveWorkspaceDisclosurePreferences({ performanceOpen: true, projectionsOpen: false, researchOpen: true });
+      expect(getWorkspaceDisclosurePreferences()).toEqual({
+        performanceOpen: true, projectionsOpen: false, researchOpen: true
+      });
+
+      await activatePortfolioStorageScope('guest:combined-disclosures-a');
+      expect(getWorkspaceDisclosurePreferences()).toEqual({});
+      saveWorkspaceDisclosurePreferences({ researchOpen: false });
+      expect(getWorkspaceDisclosurePreferences()).toEqual({ researchOpen: false });
+
+      await activatePortfolioStorageScope('guest:combined-disclosures-b');
+      expect(getWorkspaceDisclosurePreferences()).toEqual({});
+      await activatePortfolioStorageScope('owner');
+      expect(getWorkspaceDisclosurePreferences()).toEqual({
+        performanceOpen: true, projectionsOpen: false, researchOpen: true
+      });
+      await activatePortfolioStorageScope('legacy');
+    });
+
+    it('ignores malformed values and unknown fields', () => {
+      storageMap.set('portfolio_workspace_disclosures_v1', JSON.stringify({
+        performanceOpen: 'yes', projectionsOpen: true, researchOpen: false, unrelated: 'ignored'
+      }));
+      expect(getWorkspaceDisclosurePreferences()).toEqual({ projectionsOpen: true, researchOpen: false });
+    });
+
+    it('handles unavailable browser storage safely', () => {
+      vi.stubGlobal('localStorage', undefined);
+      expect(getWorkspaceDisclosurePreferences()).toEqual({});
+      expect(() => saveWorkspaceDisclosurePreferences({ researchOpen: true })).not.toThrow();
     });
   });
 

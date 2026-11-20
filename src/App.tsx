@@ -19,6 +19,7 @@ import { getAccountPermissions } from './domain/accountPermissions';
 import { addToast, useToasts } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
+import { getWorkspaceDisclosurePreferences, saveWorkspaceDisclosurePreferences, type WorkspaceDisclosurePreferences } from './services/storage';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { DEFAULT_ADMIN_REFRESH_INTERVAL_MS } from './services/portfolioAutoRefresh';
 import { emitBrokerEvent } from './services/brokerEventBus';
@@ -80,7 +81,29 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [previewReturnBusy, setPreviewReturnBusy] = useState(false);
   const [, setLanguageRevision] = useState(0);
+  const [workspaceDisclosurePreferences, setWorkspaceDisclosurePreferences] = useState<WorkspaceDisclosurePreferences>(
+    () => getWorkspaceDisclosurePreferences()
+  );
+  const [performanceHasOpened, setPerformanceHasOpened] = useState(
+    () => getWorkspaceDisclosurePreferences().performanceOpen === true
+  );
+  const [marketResearchHasOpened, setMarketResearchHasOpened] = useState(
+    () => getWorkspaceDisclosurePreferences().researchOpen === true
+  );
   const permissions = getAccountPermissions(currentUser?.role);
+
+  useEffect(() => {
+    const preferences = getWorkspaceDisclosurePreferences();
+    setWorkspaceDisclosurePreferences(preferences);
+    setPerformanceHasOpened(preferences.performanceOpen === true);
+    setMarketResearchHasOpened(preferences.researchOpen === true);
+  }, [currentUser?.id, currentUser?.role]);
+
+  const updateWorkspaceDisclosurePreference = (key: keyof WorkspaceDisclosurePreferences, open: boolean) => {
+    const next = { ...workspaceDisclosurePreferences, [key]: open };
+    setWorkspaceDisclosurePreferences(next);
+    saveWorkspaceDisclosurePreferences(next);
+  };
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
   const previousCurrentUserRef = useRef<AuthUser | null>(null);
@@ -490,12 +513,47 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               </div>
 
               {permissions.isAdmin && activeDeskView === 'COMBINED' && (
-                <Suspense fallback={<DeskLoading title="Preparing performance" message="Loading portfolio performance…" accent="cyan" />}>
-                  <PortfolioPerformancePanel />
-                </Suspense>
+                <details
+                  class="workspace-disclosure"
+                  data-workspace-disclosure="performance"
+                  open={workspaceDisclosurePreferences.performanceOpen ?? false}
+                  onToggle={(event) => {
+                    const open = (event.currentTarget as HTMLDetailsElement).open;
+                    updateWorkspaceDisclosurePreference('performanceOpen', open);
+                    if (open) setPerformanceHasOpened(true);
+                  }}
+                >
+                  <summary>
+                    <span>{translateText('Performance history', getAppLanguage())}</span>
+                    <span>{translateText('Cash-flow-adjusted portfolio returns', getAppLanguage())}</span>
+                  </summary>
+                  {(performanceHasOpened || workspaceDisclosurePreferences.performanceOpen === true) && (
+                    <div class="workspace-disclosure__content">
+                      <Suspense fallback={<DeskLoading title={translateText('Preparing performance', getAppLanguage())} message={translateText('Loading portfolio performance…', getAppLanguage())} accent="cyan" />}>
+                        <PortfolioPerformancePanel />
+                      </Suspense>
+                    </div>
+                  )}
+                </details>
               )}
 
               <div id="marginDataWorkspace" class="margin-data-workspace">
+                <details
+                  class={"workspace-disclosure " + (activeDeskView === 'COMBINED' ? "" : "workspace-disclosure--always-open")}
+                  data-workspace-disclosure="projections"
+                  open={activeDeskView !== 'COMBINED' || (workspaceDisclosurePreferences.projectionsOpen ?? false)}
+                  onToggle={(event) => {
+                    if (activeDeskView === 'COMBINED') {
+                      updateWorkspaceDisclosurePreference('projectionsOpen', (event.currentTarget as HTMLDetailsElement).open);
+                    }
+                  }}
+                >
+                  {activeDeskView === 'COMBINED' && (
+                    <summary>
+                      <span>{translateText('Projections', getAppLanguage())}</span>
+                      <span>{translateText('Modeled net proceeds, fees, financing and account balance by date.', getAppLanguage())}</span>
+                    </summary>
+                  )}
                 {/* Projection Table */}
                 <TableScrollRegion
                   label={translateText('Portfolio projection by date', getAppLanguage())}
@@ -524,15 +582,38 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     ><MemoProjectionsTable /></tbody>
                   </table>
                 </TableScrollRegion>
+                </details>
+                <details
+                  class={"workspace-disclosure workspace-disclosure--research " + (activeDeskView === 'COMBINED' ? "" : "workspace-disclosure--always-open")}
+                  data-workspace-disclosure="research"
+                  open={activeDeskView !== 'COMBINED' || (workspaceDisclosurePreferences.researchOpen ?? false)}
+                  onToggle={(event) => {
+                    if (activeDeskView === 'COMBINED') {
+                      const open = (event.currentTarget as HTMLDetailsElement).open;
+                      updateWorkspaceDisclosurePreference('researchOpen', open);
+                      if (open) setMarketResearchHasOpened(true);
+                    }
+                  }}
+                >
+                  {activeDeskView === 'COMBINED' && (
+                    <summary>
+                      <span>{translateText('Market research', getAppLanguage())}</span>
+                      <span>{translateText('Company news, fundamentals, earnings and analyst context.', getAppLanguage())}</span>
+                    </summary>
+                  )}
                 <section
                   id="marketInsightsPanel"
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
                   aria-label={translateText('Market insights', getAppLanguage())}
-                >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
-                  <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
-                    <MarketInsightsPanel />
-                  </Suspense>
-                ) : null}</section>
+                >
+                  {(activeDeskView !== 'COMBINED' || marketResearchHasOpened || workspaceDisclosurePreferences.researchOpen === true) &&
+                    (activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
+                      <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
+                        <MarketInsightsPanel />
+                      </Suspense>
+                    ) : null)}
+                </section>
+                </details>
               </div>
             </div>
           </div>}

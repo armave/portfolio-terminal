@@ -6548,3 +6548,26 @@ table tbody tr:hover {
  .combined-position-card dd.is-negative { color:#fb7185; }
  .combined-position-card dd.is-muted { color:#94a3b8; }
 }
+
+
+.workspace-disclosure { min-width:0; overflow:clip; border:1px solid rgba(148,163,184,.18); border-radius:.85rem; background:rgba(15,23,42,.32); }
+.workspace-disclosure>summary { display:flex; min-height:3.1rem; align-items:center; justify-content:space-between; gap:.75rem; padding:.75rem .95rem; color:#e2e8f0; cursor:pointer; list-style:none; font-size:.78rem; font-weight:750; }
+.workspace-disclosure>summary::-webkit-details-marker { display:none; }
+.workspace-disclosure>summary::after { content:'+'; color:#94a3b8; font-size:1rem; }
+.workspace-disclosure[open]>summary::after { content:'−'; }
+.workspace-disclosure>summary span:last-child { margin-left:auto; color:#94a3b8; font-size:.66rem; font-weight:450; text-align:right; }
+.workspace-disclosure>summary:focus-visible { outline:2px solid #22d3ee; outline-offset:-3px; }
+.workspace-disclosure--always-open>summary { display:none; }
+.market-insights-ticker-control { display:inline-flex; min-width:9rem; flex-direction:column; gap:.2rem; color:#94a3b8; font-size:.62rem; font-weight:650; }
+.market-insights-ticker-control select { min-height:2.55rem; max-width:14rem; padding:.35rem .65rem; border:1px solid rgba(148,163,184,.28); border-radius:.55rem; color:#e2e8f0; background:#0b1220; font-size:.82rem; }
+.market-insights-ticker-control select:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; }
+.market-insights-research-note { margin:.2rem 0 0; color:#94a3b8; font-size:.64rem; }
+@media (max-width:767px) {
+  .workspace-disclosure>summary { align-items:flex-start; }
+  .workspace-disclosure>summary span:last-child { max-width:48%; line-height:1.4; }
+  .market-insights-ticker-control { width:100%; }
+  .market-insights-ticker-control select { width:100%; max-width:none; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .workspace-disclosure { transition:none !important; animation:none !important; }
+}
