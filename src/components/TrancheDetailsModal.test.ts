@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import type { TrancheItem } from '../types/portfolio';
 import { buildTrancheDetailsRows } from './TrancheDetailsModal';
 
-const compactStyles = (source: string) => source.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '').replaceAll(String.fromCharCode(13), '').replaceAll(String.fromCharCode(9), '');
 
 describe('tranche details rows', () => {
   it('uses saved purchase lots and broker-resolved quantities without changing source records', () => {
@@ -70,7 +69,7 @@ describe('tranche details rows', () => {
       stylesheet.indexOf('/* Purchase tranche ledger modal')
     );
 
-    expect(compactStyles(summaryStyles)).toContain('.portfolio-health-summary-column>.portfolio-micro-summary--redesigned{');
+    expect(summaryStyles).toMatch(/\\.portfolio-health-summary-column\\s*>\\s*\\.portfolio-micro-summary--redesigned\\s*\\{/);
     expect(summaryStyles).toContain('"market basis"');
     expect(summaryStyles).not.toContain('"costs costs"');
     expect(summaryStyles).toContain('grid-template-rows: auto;');
