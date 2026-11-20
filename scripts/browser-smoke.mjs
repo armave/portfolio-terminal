@@ -1508,6 +1508,7 @@ try {
 
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');
+  await page.locator('.settings-danger-zone > summary').click();
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await page.getByRole('button', { name: 'Reset local and cloud portfolio data' }).click();
   await waitForCondition(
