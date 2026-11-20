@@ -113,8 +113,8 @@ export const TickerTabs = memo(function TickerTabs({
               key={ticker}
               type="button"
               onPointerEnter={() => prefetchView(ticker)}
-            onFocus={() => prefetchView(ticker)}
-            onClick={() => selectView(ticker)}
+              onFocus={() => prefetchView(ticker)}
+              onClick={() => selectView(ticker)}
               aria-label={`${translateText('Margin', getAppLanguage())}: ${ticker}`}
               aria-pressed={activeView === ticker}
               class={workspaceNavigationButtonClass(activeView === ticker && isMarginDeskActive, true)}
@@ -136,8 +136,8 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onPointerEnter={() => prefetchView(tickers[0])}
-            onFocus={() => prefetchView(tickers[0])}
-            onClick={() => selectView(tickers[0])}
+          onFocus={() => prefetchView(tickers[0])}
+          onClick={() => selectView(tickers[0])}
           aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
           aria-pressed={activeView === tickers[0]}
           class={workspaceNavigationButtonClass(activeView === tickers[0] && isMarginDeskActive, true)}
@@ -162,8 +162,8 @@ export const TickerTabs = memo(function TickerTabs({
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           onPointerEnter={() => prefetchView('COMBINED')}
-            onFocus={() => prefetchView('COMBINED')}
-            onClick={() => selectView('COMBINED')}
+          onFocus={() => prefetchView('COMBINED')}
+          onClick={() => selectView('COMBINED')}
           aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
           aria-pressed={isMarginDeskActive}
           class={workspaceNavigationButtonClass(isMarginDeskActive)}
@@ -177,8 +177,8 @@ export const TickerTabs = memo(function TickerTabs({
       <button
         type="button"
         onPointerEnter={() => prefetchView('BALANCE')}
-            onFocus={() => prefetchView('BALANCE')}
-            onClick={() => selectView('BALANCE')}
+        onFocus={() => prefetchView('BALANCE')}
+        onClick={() => selectView('BALANCE')}
         aria-label={translateText('Balance', getAppLanguage())}
         aria-pressed={isCushionActive}
         class={workspaceNavigationButtonClass(isCushionActive)}
@@ -198,8 +198,8 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onPointerEnter={() => prefetchView('GUEST_HISTORY')}
-            onFocus={() => prefetchView('GUEST_HISTORY')}
-            onClick={() => selectView('GUEST_HISTORY')}
+          onFocus={() => prefetchView('GUEST_HISTORY')}
+          onClick={() => selectView('GUEST_HISTORY')}
           aria-label={translateText('History', getAppLanguage())}
           aria-pressed={isGuestHistoryActive}
           class={workspaceNavigationButtonClass(isGuestHistoryActive)}
@@ -219,8 +219,8 @@ export const TickerTabs = memo(function TickerTabs({
         <button
           type="button"
           onPointerEnter={() => prefetchView('CLOSED_HISTORY')}
-            onFocus={() => prefetchView('CLOSED_HISTORY')}
-            onClick={() => selectView('CLOSED_HISTORY')}
+          onFocus={() => prefetchView('CLOSED_HISTORY')}
+          onClick={() => selectView('CLOSED_HISTORY')}
           aria-label={translateText('Trades', getAppLanguage())}
           aria-pressed={isClosedHistoryActive}
           class={workspaceNavigationButtonClass(isClosedHistoryActive)}
@@ -241,8 +241,8 @@ export const TickerTabs = memo(function TickerTabs({
         type="button"
         aria-pressed={isSettingsActive}
         onPointerEnter={() => prefetchView('SETTINGS')}
-            onFocus={() => prefetchView('SETTINGS')}
-            onClick={() => selectView('SETTINGS')}
+        onFocus={() => prefetchView('SETTINGS')}
+        onClick={() => selectView('SETTINGS')}
         class={workspaceNavigationButtonClass(isSettingsActive)}
         data-nav-tab="true"
         data-nav-kind="settings"

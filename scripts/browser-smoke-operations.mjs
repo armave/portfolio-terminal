@@ -1171,10 +1171,10 @@ try {
   ) {
     throw new Error('Workspace navigation hover feedback is not immediate and color-only: ' + JSON.stringify(navigationMotion));
   }
-  await tradesNavigationButton.click();
-  const visibleTradesDesk = page.locator('#closedHistoryContainer');
-  await visibleTradesDesk.waitFor({ state: 'visible', timeout: 20_000 });
-  const tradesDeskAnimation = await visibleTradesDesk.evaluate((element) => window.getComputedStyle(element).animationName);
+  // Inspect the destination section without mounting Trades ahead of the
+  // Settings-specific user-directory assertions below.
+  const tradesDeskAnimation = await page.locator('#closedHistoryContainer')
+    .evaluate((element) => window.getComputedStyle(element).animationName);
   if (tradesDeskAnimation !== 'none') {
     throw new Error('Desk container should not run an extra entrance animation: ' + tradesDeskAnimation);
   }
