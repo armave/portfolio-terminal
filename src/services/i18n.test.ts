@@ -983,6 +983,12 @@ describe('app localization', () => {
     )).toBe('Сохранённый анализ Margin Intelligence ещё требует обновления шифрования. Повторите миграцию в настройках.');
   });
 
+  it('discloses Gemini data processing for Margin Intelligence in Russian', () => {
+    expect(translateText('When a Margin Intelligence review is generated, selected portfolio facts and up to 12 recent news headlines and summaries are sent to Google Gemini. The generated review and selected source metadata are saved as an encrypted cloud digest.', 'ru')).toBe(
+      'При создании анализа Margin Intelligence выбранные факты портфеля и до 12 последних заголовков и кратких описаний новостей отправляются в Google Gemini. Сформированный анализ и метаданные выбранных источников сохраняются в зашифрованной облачной записи.'
+    );
+  });
+
   it('localizes the resumable Margin Intelligence encryption migration controls', () => {
     const migrationCopy = [
       'Continue migration',

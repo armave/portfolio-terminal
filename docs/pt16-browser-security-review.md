@@ -99,3 +99,20 @@ Controls to verify:
 - Obtain security review before enforcing CSP or changing hosting/deployment configuration.
 
 **This review does not claim CSP is deployed, that all XSS sinks have been audited, or that browser credentials are protected from an active same-origin compromise.**
+
+
+## 7. Bounded source-level security regression — 2026-11-20
+
+The client test suite now enforces a source-level regression guard that rejects production-source use of raw HTML insertion APIs (`dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `srcdoc` and `document.write`). It also checks the reviewed navigation boundaries:
+
+- `BoardExternalLinks` constructs URLs only from fixed Finviz, Stocktwits and TradingView hosts, URL-encodes the ticker, and uses `noopener noreferrer`.
+- News article, Margin Intelligence source-card and Stocktwits stream links pass through the shared absolute HTTP(S)-only validator, which rejects embedded URL credentials; these external anchors use `noopener noreferrer`.
+- Settings section links are same-document fragment navigation.
+
+This is a source-level regression guard for the enumerated sinks, not a complete `href`/`src`/navigation inventory, browser penetration test or proof against active-origin compromise. Credential-exposure journeys, logout/account-switch isolation review and hostile imported/provider content browser coverage remain open.
+
+### CSP and production headers — still blocked
+
+The hosted client is GitHub Pages and is published by the `actions/deploy-pages` workflow. The repository does not configure response headers for the static HTML origin. The Worker is a separate API origin and cannot set headers on the Pages document. `index.html` has no CSP policy, and the Vite build injects startup-critical inline CSS/style attributes.
+
+No CSP meta policy or fictitious Pages `_headers` file was added. A meta policy would not provide a report-only response-header rollout and is not equivalent to an enforceable host response-header strategy for all directives. CSP remains unapproved/unimplemented until the hosting/header mechanism, inline-style strategy and production endpoint inventory are reviewed against the actual built artifact and all required app journeys.

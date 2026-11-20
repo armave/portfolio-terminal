@@ -394,6 +394,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Select or mention an active stock before requesting an AI simulation, comparison, or quote.': 'Выберите активную акцию или укажите её тикер, прежде чем запрашивать ИИ-симуляцию, сравнение или котировку.',
   'Close': 'Закрыть',
   'Read-only · No broker orders are changed': 'Только просмотр · заявки брокеру не изменяются',
+  'When a Margin Intelligence review is generated, selected portfolio facts and up to 12 recent news headlines and summaries are sent to Google Gemini. The generated review and selected source metadata are saved as an encrypted cloud digest.': 'При создании анализа Margin Intelligence выбранные факты портфеля и до 12 последних заголовков и кратких описаний новостей отправляются в Google Gemini. Сформированный анализ и метаданные выбранных источников сохраняются в зашифрованной облачной записи.',
   'Tick': 'Шаг цены',
   'Bid': 'Покупка',
   'Ask': 'Продажа',
