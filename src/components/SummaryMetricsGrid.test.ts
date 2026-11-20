@@ -351,6 +351,7 @@ describe('header carry-break-even formatting', () => {
 describe('cross-device financial header hierarchy', () => {
   const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+const compactStyles = (source: string) => source.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '').replaceAll(String.fromCharCode(13), '').replaceAll(String.fromCharCode(9), '');
 
   it('keeps decision KPIs and stacks the compact financial summary above Account Equity Health', () => {
     expect(source).toContain('data-header-metric={metric}');
@@ -485,13 +486,13 @@ describe('cross-device financial header hierarchy', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(singleTickerView).toContain('id="boardTranches" class="portfolio-metric-value portfolio-tranches-value');
     expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-micro-basis>.portfolio-micro-row{');
-    expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
+    expect(compactStyles(styles)).toContain('.portfolio-micro-basis .portfolio-tranches-value{');
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
-    expect(styles).toContain('.portfolio-micro-basis .portfolio-micro-row > .portfolio-tranches-value {');
+    expect(compactStyles(styles)).toContain('.portfolio-micro-basis .portfolio-micro-row>.portfolio-tranches-value{');
     expect(styles).toContain('box-sizing: border-box;');
     expect(styles).toContain('justify-self: stretch;');
-    expect(styles).toContain('.portfolio-micro-basis #boardTranches > .tranche-details-trigger {');
+    expect(compactStyles(styles)).toContain('.portfolio-micro-basis #boardTranches>.tranche-details-trigger{');
     expect(styles).toContain('width: max-content;');
     expect(styles).toContain('justify-self: end;');
   });
