@@ -3983,7 +3983,7 @@ table tbody tr:hover {
   display: grid;
   gap: clamp(0.65rem, 1.2cqw, 1rem);
   min-width: 0;
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 7rem;
 }
 
 #settingsDesk .settings-section-heading {
@@ -4006,13 +4006,21 @@ table tbody tr:hover {
 }
 
 #settingsDesk .settings-section-nav {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
   gap: 0.35rem;
   min-width: 0;
   max-width: 100%;
   padding: 0.15rem 0 0.65rem;
-  border-bottom: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+  border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+  border-radius: 0.8rem;
+  padding: 0.45rem;
+  background: color-mix(in srgb, var(--surface-primary, #0b1220) 94%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0.6rem 1.4rem rgb(0 0 0 / 0.18);
 }
 
 #settingsDesk .settings-section-nav a {
@@ -4054,6 +4062,19 @@ table tbody tr:hover {
   color: rgb(165 243 252);
 }
 
+#settingsDesk .settings-section-nav a.is-active,
+#settingsDesk .settings-section-nav a[aria-current="location"] {
+  border-color: rgb(34 211 238 / 0.72);
+  background: rgb(8 47 73 / 0.58);
+  color: rgb(207 250 254);
+  box-shadow: inset 0 0 0 1px rgb(34 211 238 / 0.12);
+}
+
+#settingsDesk .settings-section-nav a:focus-visible {
+  outline: 2px solid var(--border-focus, rgb(34 211 238));
+  outline-offset: 2px;
+}
+
 #settingsDesk .settings-data-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4067,6 +4088,73 @@ table tbody tr:hover {
   border-radius: var(--surface-radius, 0.875rem);
   background: rgba(15, 23, 42, 0.34);
 }
+
+#settingsDesk .settings-cadence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+#settingsDesk .settings-cadence-grid>div {
+  display: grid; gap: 0.25rem; min-width: 0; padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border-subtle); border-radius: 0.65rem; background: rgb(15 23 42 / 0.42);
+}
+#settingsDesk .settings-cadence-grid span { color: var(--text-muted); font-size: 0.68rem; line-height: 1.4; }
+#settingsDesk .settings-cadence-grid strong { color: var(--text-primary); font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+#settingsDesk .settings-manual-sync-results {
+  display: grid; gap: 0.65rem; min-width: 0; padding: 0.8rem;
+  border: 1px solid var(--border-card); border-radius: 0.75rem; background: rgb(15 23 42 / 0.48);
+}
+#settingsDesk .settings-manual-sync-heading {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem;
+}
+#settingsDesk .settings-manual-sync-heading h3 { color: var(--text-primary); font-size: 0.8rem; font-weight: 750; }
+#settingsDesk .settings-manual-sync-heading p,
+#settingsDesk .settings-manual-sync-footnote { color: var(--text-muted); font-size: 0.67rem; line-height: 1.5; }
+#settingsDesk .settings-manual-sync-results ul {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.35rem 0.75rem; margin: 0; padding: 0; list-style: none;
+}
+#settingsDesk .settings-manual-sync-results li {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.65rem; min-width: 0;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 0.7rem;
+}
+#settingsDesk .settings-manual-sync-results li strong,
+#settingsDesk .settings-manual-sync-heading>span { font-size: 0.68rem; font-weight: 750; }
+#settingsDesk .settings-manual-sync-results .is-success,
+#settingsDesk .settings-manual-sync-heading .is-success { color: rgb(110 231 183); }
+#settingsDesk .settings-manual-sync-results .is-warning,
+#settingsDesk .settings-manual-sync-heading .is-warning { color: rgb(253 230 138); }
+#settingsDesk .settings-subsection-heading { display: grid; gap: 0.25rem; }
+#settingsDesk .settings-subsection-heading h3 { color: var(--text-primary); font-size: 0.82rem; font-weight: 750; }
+#settingsDesk .settings-subsection-heading p { max-width: 72ch; color: var(--text-muted); font-size: 0.69rem; line-height: 1.5; }
+#settingsDesk .settings-user-dirty { color: rgb(253 230 138); font-size: 0.65rem; font-weight: 700; }
+#settingsDesk .settings-danger-zone {
+  min-width: 0; border: 1px solid rgb(127 29 29 / 0.75); border-radius: 0.75rem; background: rgb(69 10 10 / 0.16);
+}
+#settingsDesk .settings-danger-zone>summary {
+  min-height: 2.75rem; padding: 0.8rem 0.9rem; color: rgb(252 165 165); cursor: pointer; font-size: 0.76rem; font-weight: 750;
+}
+#settingsDesk .settings-danger-zone-content {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.8rem; padding: 0 0.9rem 0.9rem;
+}
+#settingsDesk .settings-danger-zone-content>div:first-child { flex: 1 1 18rem; min-width: 0; }
+#settingsDesk .settings-danger-zone-content h3 { color: rgb(254 202 202); font-size: 0.76rem; font-weight: 750; }
+#settingsDesk .settings-danger-zone-content p { margin-top: 0.25rem; color: rgb(252 165 165 / 0.82); font-size: 0.68rem; line-height: 1.5; }
+#settingsDesk .settings-danger-zone-content button { min-height: 2.75rem; width: auto; }
+#settingsDesk .settings-cloud-recovery-panel { border-color: rgb(120 53 15 / 0.7); background: rgb(69 26 3 / 0.18); }
+#settingsDesk .settings-field-group-heading {
+  grid-column: 1 / -1; padding: 0.5rem 0 0.1rem; border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary); font-size: 0.74rem; font-weight: 750;
+}
+#settingsDesk .settings-form-helper { color: var(--text-muted); font-size: 0.7rem; line-height: 1.5; }
+#settingsDesk .settings-rules-form label { min-width: 0; font-size: 0.74rem; line-height: 1.4; }
+#settingsDesk .settings-rules-form input,
+#settingsDesk .settings-rules-form select {
+  box-sizing: border-box; min-width: 0; min-height: 2.75rem; padding-inline: 0.65rem; font-size: 0.84rem;
+}
+#settingsDesk .settings-panel .settings-user-card-actions button:disabled { cursor: not-allowed; }
+
 
 #settingsDesk .settings-subsection {
   min-width: 0;
@@ -4141,6 +4229,8 @@ table tbody tr:hover {
 
 @media (max-width: 640px) {
   #settingsDesk .settings-section-nav {
+    top: 0.25rem;
+    padding: 0.35rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.3rem;
   }
