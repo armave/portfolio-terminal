@@ -160,7 +160,7 @@ Portfolio localStorage, IndexedDB, device credentials, account sessions, and oth
 
 The Settings diagnostics panel keeps only the three newest cloud-sync events in the current browser tab's `sessionStorage`. Entries contain allowlisted operation/outcome/reason values and optional HTTP/revision metadata only; credentials, URLs, encrypted payloads, and portfolio data are excluded. New entries are prepended and replace the oldest entry, and previously stored longer lists are truncated when loaded. This is a troubleshooting view, not an audit ledger or a cross-session history.
 
-The header's pending activity state is signaled only when a changed portfolio snapshot is ready for an actual cloud write. Unchanged checkpoints do not flash the pending indicator. The data-write cadence, revision checks, encryption, and conflict handling remain independent of the diagnostic retention limit.
+The header's pending activity state is signaled only when a changed portfolio snapshot is ready for an actual cloud write. Unchanged checkpoints do not flash the pending indicator. The header uses the shared delayed-activity controller: pending work is shown only after 700 ms, then remains visually continuous for at least 650 ms once shown. A new pending operation during that hold cancels the pending hide rather than restarting the show delay. The minimum duration is presentation-only; error and revision-conflict states override it immediately, while the underlying write cadence, revision checks, encryption, and conflict handling remain unchanged.
 
 ## Browser cloud-sync request deadlines
 
