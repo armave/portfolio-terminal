@@ -8,7 +8,7 @@
 
 Startup continues to restore and validate identity before resolving the account role and hydrating the correct workspace. The existing encrypted admin workspace, guest projection, cloud revision, and history boundaries remain independent.
 
-The initial live-price refresh remains best-effort background work so a slow market-data provider cannot hold the restored workspace behind the startup overlay. Its read-only transport requests now enter the shared scheduler at critical priority. Broker positions, active orders, private account-stream tickets, and quote-stream tickets also receive critical priority.
+The initial live-price refresh remains best-effort background work so a slow market-data provider cannot hold the restored workspace behind the startup overlay. Its read-only transport requests now enter the shared scheduler at critical priority. Broker positions, active orders, private account-stream tickets, and quote-stream tickets also receive critical priority. Initial full execution-history backfills and scheduled broker catch-ups remain background reads. Trades/Cash Cushion desk refreshes and retries, plus Manual Sync history reads, carry interactive priority so active work is not queued behind deep-data reads.
 
 For scheduled administrator refreshes, quote refresh and supplemental broker catch-up run as the two core branches. Closed History checkpointing now waits for both branches; workspace-state synchronization follows the history checkpoint. This prevents lower-priority persistence work from competing with still-running first-class quote or broker reads. Guest refresh remains snapshot/LOTS hydration followed by quotes for the resulting assignment set.
 
@@ -30,8 +30,12 @@ Priority classification:
 | Priority | Request families |
 |---|---|
 | Critical | Initial quote reads, provider-quote fallback, broker positions/orders, account and quote stream tickets, broker snapshot/order fallback |
-| Interactive | News, Stocktwits, market status, Market Depth ticket/data |
-| Background | Deep stock data, execution-history backfill, cashflows, historical market data, calendars and event feeds |
+| Interactive | Foreground Trades/Cash Cushion execution-history reads and retries, Manual Sync history catch-up, news, Stocktwits, market status, Market Depth ticket/data |
+| Background | Initial/full execution-history backfill, scheduled execution-history catch-up, deep stock data, cashflows, historical market data, calendars and event feeds |
+
+Ordinary background incremental execution-history reads may reuse a successful result for at most three seconds when the same account session generation and date cursor are unchanged. Only a successful read is remembered; failures are never cached. Foreground desk and Manual Sync reads bypass this reuse window. The guard stores only the last successful cursor/time and republishes the latest merged local execution snapshot; it does not retain or replace broker history.
+
+Trades background activity indicators wait 400 ms before appearing and remain visible for at least 650 ms once shown. The accessible label follows the active phase (execution refresh, saved-history hydration, cashflow refresh, or fee recalculation). Cached/app-owned trade rows remain visible while those operations run.
 
 Authentication, encrypted workspace state, guest workspace projections, cloud-history records, and all financial writes remain outside this scheduler. The scheduler does not merge endpoints or alter server authorization.
 

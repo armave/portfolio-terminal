@@ -33,6 +33,7 @@ import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../dom
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
 import { buildClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
+import { useDelayedActivityVisibility } from '../ui/delayedActivityVisibility';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
@@ -125,7 +126,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
     dispatchBrokerExecutionHistory({ type: 'refresh' });
-    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
   };
   useEffect(() => {
     let active = true;
@@ -571,7 +572,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       dispatchBrokerExecutionHistory({ type: 'failure' });
     });
     dispatchBrokerExecutionHistory({ type: 'refresh' });
-    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
     return () => {
       removeTradesListener();
       removeErrorListener();
@@ -639,6 +640,14 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   } = tradeSummary;
   const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
   const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;
+  const showBackgroundUpdateIndicator = useDelayedActivityVisibility(isBackgroundUpdating);
+  const backgroundUpdateMessage = brokerTradesRefreshing
+    ? 'Refreshing TradeNet execution history in the background…'
+    : !cashflowHistoryReady
+      ? 'Restoring saved trade history in the background…'
+      : !cashflowSyncReady
+        ? 'Refreshing TradeNet cashflow history in the background…'
+        : 'Recalculating trade fees in the background…';
 
   // Only block the desk when there is nothing cached or app-owned to display.
   // Cloud reconciliation and fee refreshes continue independently in the background.
@@ -656,8 +665,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         title={(
           <>
             {translateText('Trades', getAppLanguage())}
-            {isBackgroundUpdating && (
-              <span role="status" aria-label={translateText('Updating saved trade calculations in the background…', getAppLanguage())} title={translateText('Updating saved trade calculations in the background…', getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
+            {showBackgroundUpdateIndicator && (
+              <span role="status" aria-label={translateText(backgroundUpdateMessage, getAppLanguage())} title={translateText(backgroundUpdateMessage, getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
                 <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
                 </svg>

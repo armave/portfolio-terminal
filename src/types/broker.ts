@@ -12,6 +12,7 @@ export interface BrokerAuthenticationState {
 
 export type BrokerSnapshotQuality = 'complete' | 'partial' | 'empty';
 export type BrokerSnapshotSource = 'rest' | 'websocket' | 'cache' | 'manual' | 'unknown';
+export type BrokerExecutionRequestPriority = 'background' | 'interactive';
 
 export type BrokerPositionIntegrityIssueCode =
   | 'short_position_unsupported'
@@ -188,7 +189,7 @@ interface BrokerAdapterCapabilities {
 export interface BrokerAdapterTransport {
   fetchPortfolio(): Promise<unknown>;
   fetchActiveOrders(): Promise<unknown>;
-  fetchExecutions(fromDate?: string): Promise<unknown>;
+  fetchExecutions(fromDate?: string, priority?: BrokerExecutionRequestPriority): Promise<unknown>;
   fetchCashflows(fromDate?: string): Promise<unknown>;
 }
 
@@ -204,7 +205,7 @@ export interface BrokerAdapter {
   readonly capabilities: BrokerAdapterCapabilities;
   readonly fetchPortfolio: () => Promise<unknown>;
   readonly fetchActiveOrders: () => Promise<unknown>;
-  readonly fetchExecutions: (fromDate?: string) => Promise<unknown>;
+  readonly fetchExecutions: (fromDate?: string, priority?: BrokerExecutionRequestPriority) => Promise<unknown>;
   readonly fetchCashflows: (fromDate?: string) => Promise<unknown>;
   readonly getAuthenticationState: (input?: {
     authenticated?: boolean;

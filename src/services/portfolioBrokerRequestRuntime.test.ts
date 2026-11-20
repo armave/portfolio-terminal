@@ -42,11 +42,12 @@ describe('portfolio broker request runtime', () => {
     (dependencies.refreshActiveOrders as ReturnType<typeof vi.fn>).mockClear();
 
     emitBrokerEvent('broker:request-account-info');
-    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
     emitBrokerEvent('broker:request-active-orders');
 
     await vi.waitFor(() => {
       expect(dependencies.refreshAccountInfo).toHaveBeenCalledTimes(1);
+      expect(dependencies.refreshExecutedTrades).toHaveBeenCalledWith('interactive');
       expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1);
       expect(dependencies.refreshActiveOrders).toHaveBeenCalledTimes(1);
     });
@@ -90,10 +91,11 @@ describe('portfolio broker request runtime', () => {
     await vi.waitFor(() => expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1));
 
     const resolve = vi.fn();
-    emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+    emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve, priority: 'interactive' });
     await vi.waitFor(() => expect(resolve).toHaveBeenCalledWith(true));
 
     expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshExecutedTradesForWait).toHaveBeenCalledWith('interactive');
     expect(dependencies.refreshExecutedTradesForWait).toHaveBeenCalledTimes(1);
   });
 

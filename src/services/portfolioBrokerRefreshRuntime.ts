@@ -1,15 +1,16 @@
 import { emitBrokerEvent } from './brokerEventBus';
+import type { BrokerExecutionRequestPriority } from '../types/broker';
 
 /** Typed event emitter seam used by the broker request/wait adapter. */
 export type BrokerEventEmitter = typeof emitBrokerEvent;
 
 export interface PortfolioBrokerRefreshRuntime {
   requestAccountInfo: () => void;
-  requestExecutedTrades: () => void;
+  requestExecutedTrades: (priority?: BrokerExecutionRequestPriority) => void;
   requestActiveOrders: () => void;
   requestAll: () => void;
   refreshAccountInfo: () => Promise<boolean>;
-  refreshExecutedTrades: () => Promise<boolean>;
+  refreshExecutedTrades: (priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
   refreshActiveOrders: () => Promise<boolean>;
 }
 
@@ -22,14 +23,20 @@ export function createPortfolioBrokerRefreshRuntime(
   emit: BrokerEventEmitter = emitBrokerEvent
 ): PortfolioBrokerRefreshRuntime {
   const requestAccountInfo = (): void => emit('broker:request-account-info');
-  const requestExecutedTrades = (): void => emit('broker:request-executed-trades');
+  const requestExecutedTrades = (priority?: BrokerExecutionRequestPriority): void => {
+    if (priority) emit('broker:request-executed-trades', { priority });
+    else emit('broker:request-executed-trades');
+  };
   const requestActiveOrders = (): void => emit('broker:request-active-orders');
 
   const refreshAccountInfo = (): Promise<boolean> => new Promise((resolve) => {
     emit('broker:request-account-info-and-wait', { resolve });
   });
-  const refreshExecutedTrades = (): Promise<boolean> => new Promise((resolve) => {
-    emit('broker:request-executed-trades-and-wait', { resolve });
+  const refreshExecutedTrades = (priority?: BrokerExecutionRequestPriority): Promise<boolean> => new Promise((resolve) => {
+    emit('broker:request-executed-trades-and-wait', {
+      resolve,
+      ...(priority ? { priority } : {})
+    });
   });
   const refreshActiveOrders = (): Promise<boolean> => new Promise((resolve) => {
     emit('broker:request-active-orders-and-wait', { resolve });

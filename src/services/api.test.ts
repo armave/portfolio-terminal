@@ -374,20 +374,29 @@ describe('proxy request coalescing', () => {
     const backgroundDeepData = proxyFetch('', { symbol: 'META' }, { method: 'POST' });
     storage.setGatewaySecret('new-session-secret');
     const nextQuote = proxyFetch('quote', { symbol: 'TSLA' }, { cache: 'no-store' });
-    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 4, queued: 2 });
+    const foregroundTrades = fetchFreedomTradeNetTrades('2026-11-20', 'interactive');
+    expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 4, queued: 3 });
 
     resolvers[0](response());
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(new URL(fetchMock.mock.calls[4][0] as string).searchParams.get('action')).toBe('quote');
     expect(new Headers(fetchMock.mock.calls[4][1]?.headers).get('X-App-Auth')).toBe('new-session-secret');
 
-    for (let index = 1; index < 5; index += 1) resolvers[index](response());
+    // Free one slot: the interactive history request must precede background deep-data.
+    resolvers[1](response());
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
-    expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.has('action')).toBe(false);
-    expect(new Headers(fetchMock.mock.calls[5][1]?.headers).get('X-App-Auth')).toBe('old-session-secret');
-    resolvers[5](response());
+    expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.get('action')).toBe('freedom-trades');
+    expect(new URL(fetchMock.mock.calls[5][0] as string).searchParams.get('fromDate')).toBe('2026-11-20');
+    expect(new Headers(fetchMock.mock.calls[5][1]?.headers).get('X-App-Auth')).toBe('new-session-secret');
 
-    await Promise.all([...initialQuotes, backgroundDeepData, nextQuote]);
+    resolvers[5](response());
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(7));
+    expect(new URL(fetchMock.mock.calls[6][0] as string).searchParams.has('action')).toBe(false);
+    expect(new Headers(fetchMock.mock.calls[6][1]?.headers).get('X-App-Auth')).toBe('old-session-secret');
+
+    for (const index of [2, 3, 4, 6]) resolvers[index](response());
+
+    await Promise.all([...initialQuotes, backgroundDeepData, nextQuote, foregroundTrades]);
     expect(getApiRequestSchedulerSnapshot()).toMatchObject({ active: 0, queued: 0 });
   });
 });

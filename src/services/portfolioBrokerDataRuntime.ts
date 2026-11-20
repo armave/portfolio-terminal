@@ -2,6 +2,7 @@ import { emitBrokerEvent } from './brokerEventBus';
 import { brokerAdapterRegistry } from './brokerAdapters/registry';
 import type {
   BrokerAdapter,
+  BrokerExecutionRequestPriority,
   BrokerDataQualityIssue,
   BrokerDataSnapshot,
   BrokerSnapshotQuality
@@ -31,6 +32,9 @@ import {
   isFreedomAccountStreamConnected
 } from './freedomAccountStreamHealth';
 
+export const RECENT_EXECUTION_HISTORY_READ_REUSE_MS = 3_000;
+const MAX_RECENT_EXECUTION_HISTORY_READS = 32;
+
 export interface PortfolioBrokerDataRuntimeDependencies {
   /** Start the app-owned persistent account stream before one-shot REST fallbacks. */
   startAccountStream?: (sessionKey: string) => Promise<boolean> | boolean;
@@ -46,7 +50,7 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   restoreGatewaySecret?: () => Promise<string>;
   fetchAccountInfo?: () => Promise<unknown>;
   normalizeAccountInfo?: (response: unknown) => FreedomPortfolioSnapshot;
-  fetchExecutedTrades?: (fromDate?: string) => Promise<unknown>;
+  fetchExecutedTrades?: (fromDate?: string, priority?: BrokerExecutionRequestPriority) => Promise<unknown>;
   normalizeExecutedTrades?: (response: unknown) => FreedomExecutedTrade[];
   loadSavedBrokerExecutions?: () => FreedomExecutedTrade[];
   getCurrentBrokerExecutions: () => FreedomExecutedTrade[];
@@ -62,14 +66,16 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   ) => Promise<void>;
   emit?: BrokerEventEmitter;
   logError?: (message: string, error: unknown) => void;
+  /** Injectable clock for short successful-read reuse tests. */
+  now?: () => number;
 }
 
 export interface PortfolioBrokerDataRuntime {
   loadFreedomAccount: (session: SessionIdentityToken) => Promise<boolean>;
   refreshAccountInfo: (session: SessionIdentityToken) => Promise<boolean>;
-  loadExecutedTrades: (session: SessionIdentityToken) => Promise<boolean>;
-  /** Explicit Manual Sync catch-up; bypasses the connected-stream cache shortcut. */
-  refreshExecutedTrades: (session: SessionIdentityToken) => Promise<boolean>;
+  loadExecutedTrades: (session: SessionIdentityToken, priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
+  /** Explicit Manual Sync catch-up; bypasses connected-stream and recent-read shortcuts. */
+  refreshExecutedTrades: (session: SessionIdentityToken, priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
   loadActiveOrders: (session: SessionIdentityToken) => Promise<boolean>;
 }
 
@@ -85,6 +91,8 @@ export function createPortfolioBrokerDataRuntime(
   const tradesRequests = new Map<string, Promise<boolean>>();
   const activeOrdersRequests = new Map<string, Promise<boolean>>();
   const accountStreamStartRequests = new Map<string, Promise<boolean>>();
+  const recentSuccessfulTradesReads = new Map<string, { fromDate?: string; completedAt: number }>();
+  const now = dependencies.now || Date.now;
   const requestedStreamStartupGraceMs = dependencies.accountStreamStartupGraceMs ?? 1_200;
   const streamStartupGraceMs = Number.isFinite(requestedStreamStartupGraceMs)
     ? Math.max(0, Math.min(5_000, requestedStreamStartupGraceMs))
@@ -274,7 +282,11 @@ export function createPortfolioBrokerDataRuntime(
     }
   };
 
-  const loadExecutedTrades = async (session: SessionIdentityToken, forceRest = false): Promise<boolean> => {
+  const loadExecutedTrades = async (
+    session: SessionIdentityToken,
+    requestPriority: BrokerExecutionRequestPriority = 'background',
+    forceRest = false
+  ): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
     const accountId = dependencies.getAccountId();
     const hasCompleteBaseline = hasHistoryBaseline(accountId);
@@ -326,7 +338,19 @@ export function createPortfolioBrokerDataRuntime(
           )
           : undefined;
 
-        const response = await fetchExecutedTrades(fromDate);
+        if (hasCompleteBaseline && !forceProviderRefresh && requestPriority === 'background') {
+          const recent = recentSuccessfulTradesReads.get(sessionRequestKey);
+          if (recent?.fromDate === fromDate) {
+            const age = now() - recent.completedAt;
+            if (age >= 0 && age < RECENT_EXECUTION_HISTORY_READ_REUSE_MS) {
+              // Reuse only the timestamp/cursor; publish the latest merged local snapshot.
+              return publishCachedExecutions();
+            }
+          }
+          if (recent) recentSuccessfulTradesReads.delete(sessionRequestKey);
+        }
+
+        const response = await fetchExecutedTrades(fromDate, requestPriority);
         if (!dependencies.isSessionCurrent(session)) return false;
 
         const normalizedPage = normalizeExecutedTrades(response);
@@ -369,6 +393,14 @@ export function createPortfolioBrokerDataRuntime(
         if (!dependencies.isSessionCurrent(session)) return false;
         // Broker executions remain separate from app-owned ClosedTrade rows.
         emit('broker:executed-trades', mergedTrades);
+        if (hasCompleteBaseline && !forceProviderRefresh && requestPriority === 'background') {
+          recentSuccessfulTradesReads.delete(sessionRequestKey);
+          recentSuccessfulTradesReads.set(sessionRequestKey, { fromDate, completedAt: now() });
+          if (recentSuccessfulTradesReads.size > MAX_RECENT_EXECUTION_HISTORY_READS) {
+            const oldestSessionKey = recentSuccessfulTradesReads.keys().next().value;
+            if (oldestSessionKey !== undefined) recentSuccessfulTradesReads.delete(oldestSessionKey);
+          }
+        }
         return true;
       } catch (error) {
         if (!dependencies.isSessionCurrent(session)) return false;
@@ -476,8 +508,11 @@ export function createPortfolioBrokerDataRuntime(
   return {
     loadFreedomAccount,
     refreshAccountInfo,
-    loadExecutedTrades: (session) => loadExecutedTrades(session),
-    refreshExecutedTrades: (session) => loadExecutedTrades(session, true),
+    loadExecutedTrades: (session, priority) => loadExecutedTrades(session, priority),
+    // Interactive catch-up (Manual Sync) must bypass cached/read shortcuts.
+    // Scheduled background catch-up keeps the connected-stream and recent-read paths.
+    refreshExecutedTrades: (session, priority = 'interactive') =>
+      loadExecutedTrades(session, priority, priority === 'interactive'),
     loadActiveOrders
   };
 }

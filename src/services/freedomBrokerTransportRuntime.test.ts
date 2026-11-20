@@ -37,6 +37,16 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
   });
 
+  it('forwards an explicit foreground history priority to the shared scheduler', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await runtime.fetchFreedomTradeNetTrades('2026-11-20', 'interactive');
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-trades',
+      { fromDate: '2026-11-20' },
+      { cache: 'no-store', requestPriority: 'interactive' }
+    );
+  });
+
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {

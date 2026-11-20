@@ -343,8 +343,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     return bindPortfolioBrokerRequestRuntime({
       refreshAccountInfo: () => brokerDataRuntime.refreshAccountInfo(session),
       refreshAccountInfoForWait: () => brokerDataRuntime.loadFreedomAccount(session),
-      refreshExecutedTrades: () => brokerDataRuntime.loadExecutedTrades(session),
-      refreshExecutedTradesForWait: () => brokerDataRuntime.refreshExecutedTrades(session),
+      refreshExecutedTrades: (priority) => brokerDataRuntime.loadExecutedTrades(session, priority),
+      refreshExecutedTradesForWait: (priority) => brokerDataRuntime.refreshExecutedTrades(session, priority),
       refreshActiveOrders: () => brokerDataRuntime.loadActiveOrders(session)
     });
   }, [currentUser?.id, currentUser?.role]);

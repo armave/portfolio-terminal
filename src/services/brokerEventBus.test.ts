@@ -86,6 +86,18 @@ describe('typed broker event bus', () => {
     unsubscribe();
   });
 
+  it('delivers execution-history priority and keeps payload-free requests compatible', () => {
+    const listener = vi.fn();
+    const unsubscribe = addBrokerEventListener('broker:request-executed-trades', listener);
+
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
+    expect(listener).toHaveBeenCalledWith({ priority: 'interactive' });
+
+    emitBrokerEvent('broker:request-executed-trades');
+    expect(listener).toHaveBeenLastCalledWith(undefined);
+    unsubscribe();
+  });
+
   it('supports payload-free refresh requests and multiple subscribers', () => {
     const first = vi.fn();
     const second = vi.fn();
