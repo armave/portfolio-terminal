@@ -1305,9 +1305,16 @@ try {
   }
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reducedMotionTarget = visibleSettingsDesk().locator('#settings-data-section');
+  await reducedMotionTarget.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
   await mobileSectionPicker.selectOption('settings-data-section');
-  const reducedMotionBehavior = await visibleSettingsDesk().locator('#settings-data-section')
-    .getAttribute('data-settings-scroll-behavior');
+  const reducedMotionBehavior = await reducedMotionTarget.getAttribute('data-settings-scroll-behavior');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   if (reducedMotionBehavior !== 'auto') {
     throw new Error('Settings navigation should use instant scrolling when reduced motion is requested.');
