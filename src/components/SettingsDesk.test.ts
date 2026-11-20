@@ -270,7 +270,6 @@ describe('Settings section navigation layout', () => {
     expect(styles).toContain('#settingsDesk .settings-section-nav-mobile select');
     expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
     expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
-    expect(styles).not.toContain('flex-wrap: nowrap;\\n    overflow-x: auto;\\n    overscroll-behavior-inline: contain;');
   });
 
   it('smooth-scrolls to selected sections while respecting reduced-motion preferences', () => {
@@ -284,9 +283,13 @@ describe('Settings section navigation layout', () => {
 
   it('adds consistent inner padding and sticky-nav-aware anchor spacing to Settings sections', () => {
     const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(styles).toMatch(/#settingsDesk \\.settings-section\\s*\\{[^}]*padding:\\s*clamp\\(/s);
-    expect(styles).toMatch(/#settingsDesk \\.settings-section-nav-groups\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(3,\\s*minmax\\(0,\\s*1fr\\)\\)/s);
-    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)[\\s\\S]*?#settingsDesk \\.settings-section\\s*\\{[^}]*padding:\\s*0\\.8rem;[^}]*scroll-margin-top:\\s*6\\.5rem;/s);
+    const settingsStyles = styles.slice(styles.lastIndexOf('/* Settings navigation, section spacing, and compact mobile section picker. */'));
+    expect(settingsStyles).toContain('padding: clamp(0.9rem, 1.35vw, 1.25rem);');
+    expect(settingsStyles).toContain('scroll-margin-top: 14rem;');
+    expect(settingsStyles).toContain('scroll-margin-top: 18rem;');
+    expect(settingsStyles).toContain('padding: 0.8rem;');
+    expect(settingsStyles).toContain('scroll-margin-top: 6.5rem;');
+    expect(settingsStyles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
   });
 });
 

@@ -6599,7 +6599,7 @@ table tbody tr:hover {
   border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.1));
   border-radius: var(--surface-radius, 0.875rem);
   background: rgb(15 23 42 / 0.2);
-  scroll-margin-top: 13rem;
+  scroll-margin-top: 14rem;
 }
 
 #settingsDesk .settings-section-nav {
@@ -6730,5 +6730,19 @@ table tbody tr:hover {
 
   #settingsDesk .settings-section-nav {
     padding: 0.4rem;
+  }
+}
+
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  #settingsDesk .settings-section-nav-group:last-child .settings-section-nav-links {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  #settingsDesk .settings-section {
+    scroll-margin-top: 18rem;
   }
 }

@@ -17,6 +17,19 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes grouped Settings navigation labels in Russian', () => {
+    const settingsNavigationLabels = [
+      'Workspace',
+      'Portfolio',
+      'Management & help',
+      'Jump to section',
+      'Jump to Settings section'
+    ];
+    for (const label of settingsNavigationLabels) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+  });
+
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
       'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',

@@ -1240,6 +1240,125 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
+  // Verify grouped desktop navigation, smooth anchor scrolling, and section surface spacing.
+  const desktopBrokerSection = visibleSettingsDesk().locator('#settings-broker-section');
+  await desktopBrokerSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-broker-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-broker-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-broker-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 224) <= 3);
+  }, null, { timeout: 5_000 });
+  const desktopSectionLayout = await desktopBrokerSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (desktopSectionLayout.scrollBehavior !== 'smooth' ||
+      desktopSectionLayout.sectionTop < desktopSectionLayout.navigationBottom - 2 ||
+      Math.abs(desktopSectionLayout.sectionTop - 224) > 3 ||
+      desktopSectionLayout.paddingTop < 12 ||
+      desktopSectionLayout.paddingInline < 12) {
+    throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
+  }
+
+  // Tablet retains grouped navigation but accounts for its two-row sticky layout.
+  await page.setViewportSize({ width: 768, height: 900 });
+  const tabletDataSection = visibleSettingsDesk().locator('#settings-data-section');
+  await tabletDataSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-data-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-data-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-data-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 288) <= 3);
+  }, null, { timeout: 5_000 });
+  const tabletSectionLayout = await tabletDataSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0
+    };
+  });
+  if (tabletSectionLayout.scrollBehavior !== 'smooth' ||
+      tabletSectionLayout.sectionTop < tabletSectionLayout.navigationBottom - 2 ||
+      Math.abs(tabletSectionLayout.sectionTop - 288) > 3) {
+    throw new Error('Tablet Settings navigation anchor spacing is incorrect: ' + JSON.stringify(tabletSectionLayout));
+  }
+
+  // Mobile uses the shorter native section picker; reduced-motion users skip animated scrolling.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileSectionPicker = visibleSettingsDesk().getByLabel('Jump to Settings section');
+  if (!(await mobileSectionPicker.isVisible()) ||
+      await visibleSettingsDesk().locator('.settings-section-nav-groups').isVisible()) {
+    throw new Error('Mobile Settings should show the compact section picker instead of desktop navigation groups.');
+  }
+  const mobileMaintenanceSection = visibleSettingsDesk().locator('#settings-maintenance-section');
+  await mobileMaintenanceSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await mobileSectionPicker.selectOption('settings-maintenance-section');
+  await page.waitForFunction(() => window.location.hash === '#settings-maintenance-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-maintenance-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 104) <= 3);
+  }, null, { timeout: 5_000 });
+  const mobileSectionLayout = await mobileMaintenanceSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (mobileSectionLayout.scrollBehavior !== 'smooth' ||
+      mobileSectionLayout.sectionTop < mobileSectionLayout.navigationBottom - 2 ||
+      Math.abs(mobileSectionLayout.sectionTop - 104) > 3 ||
+      mobileSectionLayout.paddingTop < 10 ||
+      mobileSectionLayout.paddingInline < 10) {
+    throw new Error('Mobile Settings navigation or section spacing is incorrect: ' + JSON.stringify(mobileSectionLayout));
+  }
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reducedMotionTarget = visibleSettingsDesk().locator('#settings-data-section');
+  await reducedMotionTarget.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await mobileSectionPicker.selectOption('settings-data-section');
+  const reducedMotionBehavior = await reducedMotionTarget.getAttribute('data-settings-scroll-behavior');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  if (reducedMotionBehavior !== 'auto') {
+    throw new Error('Settings navigation should use instant scrolling when reduced motion is requested.');
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // Exercise conflict recovery through the immediate refresh requested by the cadence control.
   const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
   const statePostsBeforeConflict = worker.count('POST', '/api/state');
