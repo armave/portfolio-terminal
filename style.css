@@ -6187,6 +6187,7 @@ table tbody tr:hover {
 .portfolio-micro-basis #boardTranches > .tranche-details-trigger {
   display: inline-flex;
   width: max-content;
+  min-width: fit-content;
   max-width: 100%;
   align-self: flex-end;
   justify-self: end;
