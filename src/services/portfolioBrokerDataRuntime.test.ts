@@ -241,6 +241,41 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(4);
   });
 
+  it('does not let a foreground desk read join an in-flight background incremental read', async () => {
+    const existing = trade('existing-history', 'sell', '2026-10-28T12:00:00.000Z');
+    const backgroundSale = trade('background-sale', 'sell', '2026-10-28T13:00:00.000Z');
+    const interactiveSale = trade('interactive-sale', 'sell', '2026-10-28T14:00:00.000Z');
+    const pendingResponses: Array<(value: unknown) => void> = [];
+    const fetchExecutedTrades = vi.fn(
+      (_fromDate?: string, _priority?: 'background' | 'interactive') =>
+        new Promise<unknown>((resolve) => pendingResponses.push(resolve))
+    );
+    const fixture = createFixture({ fetchExecutedTrades });
+    fixture.setSaved([existing]);
+
+    const backgroundRequest = fixture.runtime.loadExecutedTrades(fixture.session, 'background');
+    await vi.waitFor(() => expect(fetchExecutedTrades).toHaveBeenCalledTimes(1));
+
+    const interactiveRequest = fixture.runtime.loadExecutedTrades(fixture.session, 'interactive');
+    await vi.waitFor(() => expect(fetchExecutedTrades).toHaveBeenCalledTimes(2));
+
+    expect(fetchExecutedTrades).toHaveBeenNthCalledWith(1, '2026-10-28', 'background');
+    expect(fetchExecutedTrades).toHaveBeenNthCalledWith(2, '2026-10-28', 'interactive');
+
+    // Resolve the interactive request first; the later background response
+    // must merge with it rather than replacing its execution row.
+    pendingResponses[1]([interactiveSale]);
+    await expect(interactiveRequest).resolves.toBe(true);
+    pendingResponses[0]([backgroundSale]);
+    await expect(backgroundRequest).resolves.toBe(true);
+
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([
+      existing,
+      interactiveSale,
+      backgroundSale
+    ]));
+  });
+
   it('performs a bounded REST catch-up for explicit Manual Sync while the account stream is connected', async () => {
     const existing = trade('existing-history');
     const newest = trade('new-manual-sale', 'sell', '2026-11-18T12:00:00.000Z');

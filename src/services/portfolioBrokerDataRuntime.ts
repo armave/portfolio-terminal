@@ -309,7 +309,14 @@ export function createPortfolioBrokerDataRuntime(
     };
     if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity) && !forceProviderRefresh) return publishCachedExecutions();
     const sessionRequestKey = getSessionIdentityRequestKey(session);
-    const requestKey = forceProviderRefresh ? `${sessionRequestKey}:manual-rest` : sessionRequestKey;
+    // A foreground desk read must not inherit an already-queued background
+    // incremental read for the same completed baseline. Keep initial full
+    // backfills coalesced, but split priority slots after baseline hydration.
+    const requestKey = forceProviderRefresh
+      ? `${sessionRequestKey}:manual-rest`
+      : hasCompleteBaseline
+        ? `${sessionRequestKey}:${requestPriority}`
+        : sessionRequestKey;
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
 
