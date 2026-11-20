@@ -1,13 +1,14 @@
 import { addBrokerEventListener } from './brokerEventBus';
+import type { BrokerExecutionRequestPriority } from '../types/broker';
 
 export interface PortfolioBrokerRequestRuntimeDependencies {
   /** Normal account-info refresh; owns stale-session error publication. */
   refreshAccountInfo: () => Promise<boolean>;
   /** Waitable account-info refresh preserves the resolve(false) failure contract. */
   refreshAccountInfoForWait: () => Promise<boolean>;
-  refreshExecutedTrades: () => Promise<boolean>;
+  refreshExecutedTrades: (priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
   /** Explicit Manual Sync path; ordinary startup requests stay stream-first. */
-  refreshExecutedTradesForWait?: () => Promise<boolean>;
+  refreshExecutedTradesForWait?: (priority?: BrokerExecutionRequestPriority) => Promise<boolean>;
   refreshActiveOrders: () => Promise<boolean>;
 }
 
@@ -43,9 +44,12 @@ export function bindPortfolioBrokerRequestRuntime(
     addBrokerEventListener('broker:request-account-info-and-wait', (request) => {
       resolveWaiter(dependencies.refreshAccountInfoForWait, request.resolve);
     }),
-    addBrokerEventListener('broker:request-executed-trades', () => run(dependencies.refreshExecutedTrades)),
+    addBrokerEventListener('broker:request-executed-trades', (request) => {
+      run(() => dependencies.refreshExecutedTrades(request?.priority));
+    }),
     addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
-      resolveWaiter(dependencies.refreshExecutedTradesForWait || dependencies.refreshExecutedTrades, request.resolve);
+      const operation = dependencies.refreshExecutedTradesForWait || dependencies.refreshExecutedTrades;
+      resolveWaiter(() => operation(request.priority), request.resolve);
     }),
     addBrokerEventListener('broker:request-active-orders', () => run(dependencies.refreshActiveOrders)),
     addBrokerEventListener('broker:request-active-orders-and-wait', (request) => {

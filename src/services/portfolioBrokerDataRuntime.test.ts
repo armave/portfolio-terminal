@@ -6,6 +6,7 @@ import type { SessionIdentityToken } from '../utils/sessionIdentityGuard';
 import { createFreedomTradeNetBrokerAdapter } from './brokerAdapters/freedomTradeNetAdapter';
 import {
   createPortfolioBrokerDataRuntime,
+  RECENT_EXECUTION_HISTORY_READ_REUSE_MS,
   type PortfolioBrokerDataRuntimeDependencies
 } from './portfolioBrokerDataRuntime';
 import {
@@ -170,9 +171,109 @@ describe('portfolio broker data runtime', () => {
     await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(true);
 
     expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
-    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith(undefined);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith(undefined, 'background');
     expect(fixture.dependencies.markHistoryBaseline).toHaveBeenCalledWith('admin-1');
     expect(fixture.getPortfolioExecutions()).toEqual([existingTrade]);
+  });
+
+  it('keeps scheduled background catch-up stream-first when the account stream is current', async () => {
+    const cached = trade('stream-cached-trade');
+    const fixture = createFixture();
+    fixture.setSaved([cached]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    await expect(fixture.runtime.refreshExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
+    expect(fixture.events).toContainEqual({
+      type: 'broker:executed-trades',
+      payload: [cached]
+    });
+  });
+
+  it('does not reuse a failed background history read', async () => {
+    const existing = trade('existing-history', 'sell', '2026-10-28T12:00:00.000Z');
+    const newest = trade('new-sale-after-failure', 'sell', '2026-10-28T13:00:00.000Z');
+    const fetchExecutedTrades = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary broker outage'))
+      .mockResolvedValueOnce([newest]);
+    const fixture = createFixture({ fetchExecutedTrades });
+    fixture.setSaved([existing]);
+
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(false);
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+
+    expect(fetchExecutedTrades).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses only a recent successful background incremental read for the same session and cursor', async () => {
+    let timestamp = 1_800_000_000_000;
+    const existing = trade('existing-history', 'sell', '2026-10-28T12:00:00.000Z');
+    const newest = trade('new-same-day-sale', 'sell', '2026-10-28T13:00:00.000Z');
+    const fixture = createFixture({
+      now: () => timestamp,
+      fetchExecutedTrades: vi.fn(async () => [newest])
+    });
+    fixture.setSaved([existing]);
+
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(fixture.events[fixture.events.length - 1]).toEqual({
+      type: 'broker:executed-trades',
+      payload: expect.arrayContaining([expect.objectContaining({ id: 'new-same-day-sale' })])
+    });
+
+    // Foreground desk work bypasses the recent background checkpoint.
+    await expect(fixture.runtime.refreshExecutedTrades(fixture.session)).resolves.toBe(true);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(2);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenLastCalledWith('2026-10-28', 'interactive');
+
+    // Another session identity cannot inherit the first session's success.
+    await expect(fixture.runtime.loadExecutedTrades({
+      identity: 'admin:2',
+      generation: 2
+    }, 'background')).resolves.toBe(true);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(3);
+
+    timestamp += RECENT_EXECUTION_HISTORY_READ_REUSE_MS + 1;
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not let a foreground desk read join an in-flight background incremental read', async () => {
+    const existing = trade('existing-history', 'sell', '2026-10-28T12:00:00.000Z');
+    const backgroundSale = trade('background-sale', 'sell', '2026-10-28T13:00:00.000Z');
+    const interactiveSale = trade('interactive-sale', 'sell', '2026-10-28T14:00:00.000Z');
+    const pendingResponses: Array<(value: unknown) => void> = [];
+    const fetchExecutedTrades = vi.fn(
+      (_fromDate?: string, _priority?: 'background' | 'interactive') =>
+        new Promise<unknown>((resolve) => pendingResponses.push(resolve))
+    );
+    const fixture = createFixture({ fetchExecutedTrades });
+    fixture.setSaved([existing]);
+
+    const backgroundRequest = fixture.runtime.loadExecutedTrades(fixture.session, 'background');
+    await vi.waitFor(() => expect(fetchExecutedTrades).toHaveBeenCalledTimes(1));
+
+    const interactiveRequest = fixture.runtime.loadExecutedTrades(fixture.session, 'interactive');
+    await vi.waitFor(() => expect(fetchExecutedTrades).toHaveBeenCalledTimes(2));
+
+    expect(fetchExecutedTrades).toHaveBeenNthCalledWith(1, '2026-10-28', 'background');
+    expect(fetchExecutedTrades).toHaveBeenNthCalledWith(2, '2026-10-28', 'interactive');
+
+    // Resolve the interactive request first; the later background response
+    // must merge with it rather than replacing its execution row.
+    pendingResponses[1]([interactiveSale]);
+    await expect(interactiveRequest).resolves.toBe(true);
+    pendingResponses[0]([backgroundSale]);
+    await expect(backgroundRequest).resolves.toBe(true);
+
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([
+      existing,
+      interactiveSale,
+      backgroundSale
+    ]));
   });
 
   it('performs a bounded REST catch-up for explicit Manual Sync while the account stream is connected', async () => {
@@ -188,6 +289,7 @@ describe('portfolio broker data runtime', () => {
 
     expect(fixture.dependencies.restoreGatewaySecret).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith('2026-10-28', 'interactive');
     expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([existing, newest]));
     expect(fixture.events).toContainEqual({
       type: 'broker:executed-trades',
@@ -398,7 +500,7 @@ describe('portfolio broker data runtime', () => {
 
     await expect(fixture.runtime.loadExecutedTrades(fixture.session)).resolves.toBe(true);
 
-    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith('2026-10-27');
+    expect(fixture.dependencies.fetchExecutedTrades).toHaveBeenCalledWith('2026-10-27', 'background');
     expect(fixture.getPortfolioExecutions()).toHaveLength(2);
     expect(fixture.getPortfolioExecutions()[0].marginFeeAllocations).toEqual({ 'guest-1': 2.5 });
     expect(fixture.events[fixture.events.length - 1]?.type).toBe('broker:executed-trades');

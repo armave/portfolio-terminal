@@ -1,8 +1,10 @@
+import type { BrokerExecutionRequestPriority } from '../types/broker';
+
 export interface FreedomBrokerTransportRuntimeDependencies {
   proxyFetch: (
     action?: string,
     queryParams?: Record<string, string | number | boolean | undefined | null>,
-    fetchOptions?: RequestInit & { secret?: string; state?: Record<string, any> }
+    fetchOptions?: RequestInit & { secret?: string; state?: Record<string, any>; requestPriority?: BrokerExecutionRequestPriority }
   ) => Promise<any>;
   getActiveGatewaySecret: () => string;
   recordMetric?: (metric: string, details?: Record<string, unknown>) => void;
@@ -11,7 +13,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 
 export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
-  fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
+  fetchFreedomTradeNetTrades: (fromDate?: string, priority?: BrokerExecutionRequestPriority) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
   fetchFreedomTradeNetQuoteStreamOnce: (symbol: string, fetchOptions?: RequestInit) => Promise<unknown | null>;
   fetchFreedomCashflows: (fromDate?: string) => Promise<unknown>;
@@ -129,9 +131,16 @@ export function createFreedomBrokerTransportRuntime(
       'freedom_portfolio'
     );
 
-  const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
+  const fetchFreedomTradeNetTrades = (
+    fromDate?: string,
+    priority?: BrokerExecutionRequestPriority
+  ): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
-    return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
+    return dependencies.proxyFetch(
+      'freedom-trades',
+      startDate ? { fromDate: startDate } : undefined,
+      { cache: 'no-store', ...(priority ? { requestPriority: priority } : {}) }
+    );
   };
 
   const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>

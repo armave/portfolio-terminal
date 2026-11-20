@@ -241,7 +241,8 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).not.toContain('settings-desk desk-content-reveal');
     expect(appSource).toContain('<div class="desk-content-reveal">');
     expect(fluidStyles).toMatch(/@keyframes desk-content-reveal/);
-    expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+180ms/);
+    expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+100ms/);
+    expect(stylesheet).not.toMatch(/\.desk-view-transition:not\(\.hidden\)\s*\{[^}]*animation:/s);
   });
 });
 

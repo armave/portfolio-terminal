@@ -98,6 +98,17 @@ A 10-sample p95 is descriptive (nearest-rank p95 is the maximum at this sample s
 
 No numeric production SLO is declared by this PR. The first deliverable is a repeatable, attributable baseline rather than an arbitrary threshold.
 
+### Desktop interaction responsiveness
+
+The navigation path should acknowledge pointer and keyboard intent without adding a visible motion wait:
+
+- Generic button feedback is limited to short color, background and border transitions (at most 100 ms); it does not animate brightness filters, transforms or shadows by default.
+- Switching an already-mounted desk does not replay a parent-section entrance animation or wait for smooth scrolling. The workspace is positioned immediately after the active-view state changes.
+- Lazy desk chunks are preloaded only when the matching navigation destination receives pointer hover or keyboard focus. This reduces first-open code-fetch latency without eagerly loading every desk during startup.
+- The Operations Browser Journey checks the built app's computed navigation transition and desk-container animation. Unit tests cover role-aware prefetch mapping, duplicate intent coalescing and retry after a failed preload.
+
+This is a UI behavior contract, not a production performance SLO. Browser timing observations remain environment-dependent and must not be reported as live-broker or user-device performance guarantees.
+
 ### Candidate service-level indicators
 
 | Indicator | Definition | Evidence source |
