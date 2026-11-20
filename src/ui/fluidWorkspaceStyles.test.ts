@@ -228,6 +228,7 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toContain('#settingsDesk .settings-manual-sync-results');
     expect(fluidStyles).toContain('#settingsDesk .settings-danger-zone');
     expect(fluidStyles).toContain('#settingsDesk .settings-field-group-heading');
+    expect(fluidStyles).toMatch(/@media\\s*\\(max-width:\\s*640px\\)[\\s\\S]*?#settingsDesk \\.settings-section\\s*\\{[^}]*scroll-margin-top:\\s*14rem;/s);
     expect(fluidStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('#settingsDesk.settings-subsection>summary');
     expect(stylesheet).toMatch(/#settingsDesk \.settings-subsection>summary,\s*#settingsDesk \.settings-device-details>summary\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
     expect(stylesheet).toContain('#settingsDesk .settings-device-details>summary::before');
