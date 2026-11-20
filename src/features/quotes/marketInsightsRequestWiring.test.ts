@@ -45,7 +45,7 @@ describe('Market Insights request lifecycle wiring', () => {
     expect(panel).toContain('stockDataTicker === ticker ? stockData : null');
     expect(panel).toContain('hasCurrentNews ? newsData : []');
     expect(panel).toContain('hasCurrentStocktwits ? stocktwitsData : null');
-    expect(panel).toContain('currentNewsData.map((n, idx) =>');
+    expect(panel).toContain('currentNewsData.slice(0, newsDisplayLimit).map((n, idx) =>');
     expect(panel).toContain('currentStocktwitsData?.messages');
   });
 
