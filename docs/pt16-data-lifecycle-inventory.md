@@ -130,3 +130,17 @@ The implementation contract should make export and deletion explicit and separat
 7. Verify exact-head CI and obtain security/privacy review before enabling new collection or deletion behavior.
 
 **This document records an inventory and proposed contract. It does not claim that a global retention schedule, account deletion workflow or cryptographic-erasure capability is implemented or approved.**
+
+
+## 10. Implemented AI input-minimization slice — 2026-11-20
+
+The Margin Intelligence prompt boundary now constructs a new allowlisted context object rather than serializing the full application context. The prompt version is incremented so previously saved reviews are marked stale and regenerated under the new input contract.
+
+- Portfolio context includes selected calculated account/valuation/margin-risk values, the focus position and its last eight supported entry lots, plus at most 12 compact summaries of other open positions. Excess positions are counted but not serialized.
+- Article input is capped at 12 items. The model receives source ID, ticker, bounded headline/source text, optional publication timestamp and bounded summary. Article URLs are not included in the prompt.
+- News coverage includes ticker, status, fetch timestamp and counts only. Raw provider error text is excluded.
+- Credentials, tokens, user/account identifiers, broker-assumption objects, unrelated preferences and unknown fields are excluded by the allowlist.
+- The modal now discloses that selected portfolio facts and up to 12 recent news headlines/summaries are sent to Google Gemini, and that the result/source metadata are saved as an encrypted cloud digest. The disclosure is localized in English and Russian.
+- Article and provider text remain untrusted data; the prompt explicitly instructs the model not to follow embedded commands. The Gemini route is a text-generation proxy and this feature remains read-only; this is not a formal prompt-injection certification or proof of provider retention behavior.
+
+These controls reduce the fields disclosed by this feature. They do not establish Google's data-retention terms, delete previously stored digests, establish a retention schedule, or replace data-owner/privacy approval. Account deletion, backup expiry, external Gist-copy handling, captured production-log review and provider processing disclosure remain owner/reviewer decisions.

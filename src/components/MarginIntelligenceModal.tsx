@@ -143,6 +143,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">{translateText('Gemini · Margin Intelligence', getAppLanguage())}</div>
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
             <p class="mt-1 text-xs text-slate-400">{translateText('Read-only · No broker orders are changed', getAppLanguage())}</p>
+            <p class="mt-2 text-[11px] leading-5 text-slate-500">{translateText('When a Margin Intelligence review is generated, selected portfolio facts and up to 12 recent news headlines and summaries are sent to Google Gemini. The generated review and selected source metadata are saved as an encrypted cloud digest.', getAppLanguage())}</p>
             <p class="mt-1 text-[11px] text-slate-500" title={data.syncedAt ? new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US') : translateText('No server-synced digest yet', getAppLanguage())}>{relativeSyncLabel(data.syncedAt, now)}{data.syncedAt ? ` · ${new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}` : ''}</p>
             <p class="mt-1 text-[11px] text-slate-500">{translateText('Portfolio snapshot', getAppLanguage())}: {dateTimeLabel(data.snapshotAsOf)}</p>
           </div>

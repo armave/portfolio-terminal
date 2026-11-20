@@ -18,4 +18,10 @@ describe('Margin Intelligence source article links', () => {
     expect(source).toContain('rel="noopener noreferrer"');
     expect(source).not.toContain('href={article.url}');
   });
+  it('discloses the external AI provider and the data sent for analysis', () => {
+    const source = readFileSync(new URL('./MarginIntelligenceModal.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('When a Margin Intelligence review is generated, selected portfolio facts and up to 12 recent news headlines and summaries are sent to Google Gemini. The generated review and selected source metadata are saved as an encrypted cloud digest.');
+    expect(source).toContain('translateText(');
+  });
+
 });
