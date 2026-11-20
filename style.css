@@ -5703,43 +5703,46 @@ table tbody tr:hover {
   padding-inline: 0.35rem;
 }
 
-/* Position financial summary: Share and Tranches are equal-height peer panels;
-   commissions and accrued interest live inside the Tranches panel. */
+/* One compact financial summary surface for market value and position basis. */
 .portfolio-health-summary-column > .portfolio-micro-summary--redesigned {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+  grid-template-rows: auto;
   grid-template-areas: "market basis";
-  align-items: stretch;
-  gap: 0.7rem;
-  padding: 0.7rem;
+  align-items: start;
+  align-content: start;
+  gap: 0;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0.75rem 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 0.95rem;
   background:
     radial-gradient(circle at 0% 0%, rgba(34, 211, 238, 0.055), transparent 58%),
     linear-gradient(145deg, rgba(9, 15, 27, 0.98), rgba(15, 23, 42, 0.94));
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .portfolio-micro-summary--redesigned > .portfolio-micro-column {
   display: flex;
   flex-direction: column;
   align-self: stretch;
-  height: 100%;
+  height: auto;
   min-width: 0;
   min-height: 0;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.46);
-  padding: 0.85rem;
-  gap: 0.7rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.25rem 0.65rem;
+  gap: 0.55rem;
 }
 
 .portfolio-micro-summary--redesigned > .portfolio-micro-market {
   grid-area: market;
   order: 1;
   border-left: 0 !important;
-  box-shadow: inset 2px 0 0 rgba(34, 211, 238, 0.5);
+  padding-left: 0.25rem;
 }
 
 .portfolio-micro-summary--redesigned > .portfolio-micro-basis {
@@ -5748,32 +5751,32 @@ table tbody tr:hover {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  border-left: 0 !important;
-  box-shadow: inset 2px 0 0 rgba(52, 211, 153, 0.45);
+  border-left: 1px solid rgba(148, 163, 184, 0.17) !important;
+  padding-left: 1rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 0.75rem;
-  margin-top: auto;
+  align-items: start;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
   min-width: 0;
   border: 0 !important;
   border-top: 1px solid rgba(148, 163, 184, 0.17) !important;
   border-radius: 0;
   background: transparent;
-  padding: 0.8rem 0.1rem 0.1rem;
+  padding: 0.55rem 0.05rem 0.05rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-micro-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
-  gap: 0.25rem;
+  justify-content: flex-start;
+  gap: 0.2rem;
   min-width: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.2rem 0.25rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-metric-label {
@@ -5782,21 +5785,21 @@ table tbody tr:hover {
   color: #94a3b8;
   font-size: 0.64rem;
   font-weight: 750;
-  letter-spacing: 0.055em;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-metric-value {
   width: 100%;
   text-align: left;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row {
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row .portfolio-metric-label {
@@ -5808,6 +5811,7 @@ table tbody tr:hover {
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row .portfolio-metric-value {
+  min-width: 0;
   font-size: 0.86rem;
   font-weight: 750;
   line-height: 1.4;
@@ -5816,8 +5820,8 @@ table tbody tr:hover {
 
 .portfolio-micro-summary--redesigned .portfolio-micro-market-primary .portfolio-metric-value {
   color: #f8fafc;
-  font-size: 1rem;
-  line-height: 1.5;
+  font-size: 0.98rem;
+  line-height: 1.4;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-quote-meta {
@@ -5865,6 +5869,19 @@ table tbody tr:hover {
     grid-template-areas:
       "market"
       "basis";
+    padding: 0.65rem 0.7rem;
+  }
+
+  .portfolio-micro-summary--redesigned > .portfolio-micro-market,
+  .portfolio-micro-summary--redesigned > .portfolio-micro-basis {
+    padding-inline: 0.25rem;
+  }
+
+  .portfolio-micro-summary--redesigned > .portfolio-micro-basis {
+    margin-top: 0.45rem;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(148, 163, 184, 0.17);
+    padding-top: 0.7rem;
   }
 }
 
