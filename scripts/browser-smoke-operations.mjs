@@ -1240,6 +1240,80 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
+  // Verify grouped desktop navigation, smooth anchor scrolling, and section surface spacing.
+  const desktopBrokerSection = visibleSettingsDesk().locator('#settings-broker-section');
+  await desktopBrokerSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-broker-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-broker-section');
+  await page.waitForTimeout(700);
+  const desktopSectionLayout = await desktopBrokerSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (desktopSectionLayout.scrollBehavior !== 'smooth' ||
+      desktopSectionLayout.sectionTop < desktopSectionLayout.navigationBottom - 2 ||
+      desktopSectionLayout.paddingTop < 12 ||
+      desktopSectionLayout.paddingInline < 12) {
+    throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
+  }
+
+  // Mobile uses the shorter native section picker; reduced-motion users skip animated scrolling.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileSectionPicker = visibleSettingsDesk().getByLabel('Jump to Settings section');
+  if (!(await mobileSectionPicker.isVisible()) ||
+      await visibleSettingsDesk().locator('.settings-section-nav-groups').isVisible()) {
+    throw new Error('Mobile Settings should show the compact section picker instead of desktop navigation groups.');
+  }
+  const mobileHelpSection = visibleSettingsDesk().locator('#settings-help-section');
+  await mobileHelpSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await mobileSectionPicker.selectOption('settings-help-section');
+  await page.waitForFunction(() => window.location.hash === '#settings-help-section');
+  await page.waitForTimeout(700);
+  const mobileSectionLayout = await mobileHelpSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (mobileSectionLayout.scrollBehavior !== 'smooth' ||
+      mobileSectionLayout.sectionTop < mobileSectionLayout.navigationBottom - 2 ||
+      mobileSectionLayout.paddingTop < 10 ||
+      mobileSectionLayout.paddingInline < 10) {
+    throw new Error('Mobile Settings navigation or section spacing is incorrect: ' + JSON.stringify(mobileSectionLayout));
+  }
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mobileSectionPicker.selectOption('settings-data-section');
+  const reducedMotionBehavior = await visibleSettingsDesk().locator('#settings-data-section')
+    .getAttribute('data-settings-scroll-behavior');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  if (reducedMotionBehavior !== 'auto') {
+    throw new Error('Settings navigation should use instant scrolling when reduced motion is requested.');
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // Exercise conflict recovery through the immediate refresh requested by the cadence control.
   const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
   const statePostsBeforeConflict = worker.count('POST', '/api/state');
