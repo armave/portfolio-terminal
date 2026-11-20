@@ -87,16 +87,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [performanceHasOpened, setPerformanceHasOpened] = useState(
     () => getWorkspaceDisclosurePreferences().performanceOpen === true
   );
-  const [marketResearchHasOpened, setMarketResearchHasOpened] = useState(
-    () => getWorkspaceDisclosurePreferences().researchOpen === true
-  );
   const permissions = getAccountPermissions(currentUser?.role);
 
   useEffect(() => {
     const preferences = getWorkspaceDisclosurePreferences();
     setWorkspaceDisclosurePreferences(preferences);
     setPerformanceHasOpened(preferences.performanceOpen === true);
-    setMarketResearchHasOpened(preferences.researchOpen === true);
   }, [currentUser?.id, currentUser?.role]);
 
   const updateWorkspaceDisclosurePreference = (key: keyof WorkspaceDisclosurePreferences, open: boolean) => {
@@ -575,12 +571,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
                   aria-label={translateText('Market insights', getAppLanguage())}
                 >
-                  {(activeDeskView !== 'COMBINED' || marketResearchHasOpened || workspaceDisclosurePreferences.researchOpen === true) &&
-                    (activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
-                      <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
-                        <MarketInsightsPanel />
-                      </Suspense>
-                    ) : null)}
+                  {activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
+                    <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
+                      <MarketInsightsPanel />
+                    </Suspense>
+                  ) : null}
                 </section>
                 </div>
               </div>
