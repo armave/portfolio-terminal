@@ -15,13 +15,27 @@ import {
 } from './BrokerTransactionReconciliation';
 
 describe('broker reconciliation localization', () => {
+  it('localizes absence-qualification warnings in Russian', () => {
+    for (const warning of [
+      'App transaction journal coverage is incomplete; absence-based findings are suppressed.',
+      'Broker execution evidence is incomplete; absence-based findings are suppressed.',
+      'App execution evidence is incomplete; absence-based findings are suppressed.',
+      'Broker cashflow evidence is incomplete; absence-based findings are suppressed.',
+      'App cashflow evidence is incomplete; absence-based findings are suppressed.'
+    ]) {
+      expect(translateBrokerReconciliationCopy(warning, 'ru'), warning)
+        .toContain('выводы об отсутствии записей не делаются');
+    }
+  });
+
+
   it('provides Russian translations for review labels and safety explanations', () => {
     expect(translateBrokerReconciliationCopy('Reconcile broker activity', 'ru')).toBe('Сверить активность брокера');
     expect(translateBrokerReconciliationCopy('Commission currency differs', 'ru')).toBe('Валюта комиссии отличается');
     expect(translateBrokerReconciliationCopy(
-      'Unmatched records remain provisional until transaction journal coverage is complete. Resolution and writeback are not available in this read-only review.',
+      'Absence-based findings are shown only when broker history and app journal coverage are complete. Resolution and writeback are not available in this read-only review.',
       'ru'
-    )).toContain('предварительными');
+    )).toContain('полном охвате');
   });
 
   it('localizes ambiguous broker cashflow matching evidence in Russian', () => {
@@ -36,7 +50,7 @@ describe('broker reconciliation localization', () => {
       'ru'
     )).toContain('ручная проверка');
     expect(translateBrokerReconciliationCopy(
-      'One or more app cashflow events have no usable amount; matching is provisional.',
+      'One or more app cashflow events lack a usable amount or currency; matching is provisional.',
       'ru'
     )).toContain('предварительное');
   });

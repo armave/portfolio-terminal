@@ -404,10 +404,12 @@ describe('storage service', () => {
       const loaded = loadSavedState(fallback);
 
       expect(loaded).toEqual(fallback);
-      expect(warnSpy).toHaveBeenCalledWith(
-        'Failed to parse saved state:',
-        expect.any(SyntaxError)
-      );
+      expect(warnSpy.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"browser-storage"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('broken_json');
       warnSpy.mockRestore();
     });
 
@@ -432,7 +434,12 @@ describe('storage service', () => {
         activeView: 'MSFT',
         balance: -250
       });
-      expect(warnSpy).toHaveBeenCalledWith('Failed to parse saved state:', expect.any(SyntaxError));
+      expect(warnSpy.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"browser-storage"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('broken_json');
       warnSpy.mockRestore();
     });
 
@@ -740,7 +747,12 @@ describe('storage service', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('tradernet_rules_v1', '{"broken');
       expect(loadBrokerRules()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledWith('Failed to parse saved broker rules:', expect.any(SyntaxError));
+      expect(warnSpy.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"browser-storage"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('malformed-secret');
       warnSpy.mockRestore();
       clearBrokerRules();
       expect(loadBrokerRules()).toBeNull();
@@ -813,7 +825,11 @@ describe('storage service', () => {
 
       expect(loadSavedHistory()).toEqual(expected);
       expect(storageMap.get('portfolio_closed_history_v1')).toBe(damagedSidecar);
-      expect(warning).toHaveBeenCalledWith('Failed to parse saved closed history:', expect.any(SyntaxError));
+      expect(warning.mock.calls.some(([entry]) => {
+        const value = String(entry);
+        return value.includes('"category":"closed-history"') &&
+          value.includes('"errorClass":"malformed-data"');
+      })).toBe(true);
     });
 
     it('restores a corrupt IndexedDB history row from its last-known-good record without merging rows', async () => {
