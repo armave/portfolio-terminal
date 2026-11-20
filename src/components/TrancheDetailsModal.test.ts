@@ -69,7 +69,7 @@ describe('tranche details rows', () => {
       stylesheet.indexOf('/* Purchase tranche ledger modal')
     );
 
-    expect(summaryStyles).toMatch(/\\.portfolio-health-summary-column\\s*>\\s*\\.portfolio-micro-summary--redesigned\\s*\\{/);
+    expect(summaryStyles).toContain('.portfolio-health-summary-column>.portfolio-micro-summary--redesigned {');
     expect(summaryStyles).toContain('"market basis"');
     expect(summaryStyles).not.toContain('"costs costs"');
     expect(summaryStyles).toContain('grid-template-rows: auto;');
