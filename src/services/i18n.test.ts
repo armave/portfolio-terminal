@@ -1115,3 +1115,30 @@ describe('Margin PT target information localization', () => {
   });
 
 });
+
+
+describe('Settings refinements localization', () => {
+  it('translates the new recovery, synchronization and financial-group labels', () => {
+    const copy = [
+      'Backup & recovery',
+      'Live status & cadence',
+      'Last manual sync',
+      'Manual sync reports the result of that request only; it is not a live connection monitor.',
+      'Danger zone',
+      'Reset portfolio data',
+      'Portfolio risk guardrails',
+      'New-position defaults',
+      'Broker financing & rollover',
+      'Margin risk thresholds',
+      'Trading commissions',
+      'Cloud recovery',
+      'Replace local portfolio from cloud',
+      'Manage automatic refresh preferences and review the last confirmed workspace synchronization.',
+      'Understand how portfolio metrics are calculated, what data sources support them, and where model limitations apply.'
+    ];
+    for (const english of copy) {
+      expect(RU_TRANSLATIONS[english], english).toBeTruthy();
+      expect(translateText(english, 'ru'), english).not.toBe(english);
+    }
+  });
+});
