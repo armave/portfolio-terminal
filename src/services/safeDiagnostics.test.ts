@@ -7,6 +7,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('safe client diagnostics', () => {
   it.each([
     [new DOMException('contains-secret-token', 'AbortError'), 'aborted'],
+    [Object.assign(new Error('private history write details'), { name: 'TimeoutError' }), 'timeout']
     [new DOMException('contains-secret-token', 'QuotaExceededError'), 'storage-limit'],
     [new DOMException('contains-secret-token', 'SecurityError'), 'browser-security'],
     [new SyntaxError('https://private.example/path?token=secret'), 'malformed-data'],
