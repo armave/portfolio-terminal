@@ -76,7 +76,7 @@ describe('delayed activity visibility', () => {
     expect(controller.isVisible()).toBe(true);
 
     controller.setActive(false);
-    vi.advanceTimersByTime(349);
+    vi.advanceTimersByTime(49);
     expect(controller.isVisible()).toBe(true);
     vi.advanceTimersByTime(1);
     expect(controller.isVisible()).toBe(false);
