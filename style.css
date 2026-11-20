@@ -6450,7 +6450,7 @@ table tbody tr:hover {
   width: 100%;
   min-width: 0;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   text-align: right;
@@ -6987,7 +6987,7 @@ table tbody tr:hover {
   width: 100%;
   min-width: 0;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   text-align: right;

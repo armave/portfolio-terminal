@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const marker = '/* Fluid workspace layout: adapt to the space each desk actually receives. */';
-const compactStyles = (source: string) => source.replace(/\\s+/g, '');
+const compactStyles = (source: string) => source.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '').replaceAll(String.fromCharCode(13), '').replaceAll(String.fromCharCode(9), '');
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
 
 describe('fluid workspace styles', () => {
@@ -63,6 +63,7 @@ describe('fluid workspace styles', () => {
 
   it('aligns the Tranches row label and action control', () => {
     expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*>\s*\.portfolio-micro-row\s*\{[^}]*align-items:\s*center;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis \.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*\{[^}]*justify-content:\s*flex-end;/s);
     expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*\{[^}]*align-items:\s*flex-end;[^}]*text-align:\s*right;/s);
     expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
   });
