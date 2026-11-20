@@ -1695,7 +1695,8 @@ export default {
         const tenantDirectoryPath = pathname === "/api/tenants" || pathname.startsWith("/api/tenants/");
 // Keep the tenant route allowlist exact; the Durable Object rechecks the same contract and fails closed.
                 const tenantMembershipRoute = /^\/api\/tenants\/[A-Za-z0-9_-]{8,80}\/memberships(?:\/revoke)?$/.test(pathname);
-        const tenantDirectoryRoute = pathname === "/api/tenants" || tenantMembershipRoute;
+        const tenantKeyProvisionRoute = /^\/api\/tenants\/[A-Za-z0-9_-]{8,80}\/key\/provision$/.test(pathname);
+        const tenantDirectoryRoute = pathname === "/api/tenants" || tenantMembershipRoute || tenantKeyProvisionRoute;
         if (tenantDirectoryPath && !["GET", "POST"].includes(request.method)) {
             return new Response(JSON.stringify({ error: "Tenant directory routes only support GET and POST." }), {
                 status: 405,

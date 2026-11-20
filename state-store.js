@@ -1,6 +1,7 @@
 // Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
 import { logServerDiagnostic } from "./safeServerDiagnostics.js";
+import { createTenantKeyRecord, isTenantKmsConfigured } from "./tenant-key-service.js";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",
@@ -102,6 +103,10 @@ const AUTH_USER_SESSION_INDEX_PREFIX = "auth:user-sessions:";
 
 const TENANT_DIRECTORY_KEY = "tenant:directory:v1";
 const TENANT_AUDIT_PREFIX = "tenant:audit:v1:";
+const TENANT_KEY_RECORD_PREFIX = "tenant:key:v1:";
+const TENANT_KEY_ACTIVE_PREFIX = "tenant:key-active:v1:";
+const TENANT_KEY_PROVISIONING_PREFIX = "tenant:key-provisioning:v1:";
+const TENANT_KEY_PROVISIONING_STALE_MS = 2 * 60 * 1000;
 const LEGACY_TENANT_ID = "legacy-tenant-v1";
 const LEGACY_WORKSPACE_ID = "legacy-workspace-v1";
 const LEGACY_PORTFOLIO_ID = "legacy-portfolio-v1";
@@ -3112,6 +3117,165 @@ export class PortfolioStateDO {
     });
   }
 
+  async handleTenantKeyProvision(session, tenantId) {
+    const pointerKey = TENANT_KEY_ACTIVE_PREFIX + tenantId;
+    const recordKey = TENANT_KEY_RECORD_PREFIX + tenantId + ":1";
+    const pendingKey = TENANT_KEY_PROVISIONING_PREFIX + tenantId;
+    const reservation = await this.ctx.storage.transaction(async (transaction) => {
+      const directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      if (!isTenantDirectoryRecord(directory)) {
+        return { error: "Tenant directory is unavailable or requires recovery.", status: 503 };
+      }
+      const tenant = directory.tenants.find((item) => item.id === tenantId && item.status === "active");
+      const owner = directory.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === session.user.id &&
+        item.status === "active" && item.role === "owner" &&
+        item.capabilities?.includes("tenant.members.manage")
+      );
+      if (!tenant || !owner) {
+        return { error: "Tenant not found or key administration is not permitted.", status: 404 };
+      }
+      const pointer = await transaction.get(pointerKey);
+      if (pointer !== undefined) {
+        const record = await transaction.get(
+          TENANT_KEY_RECORD_PREFIX + tenantId + ":" + pointer?.keyVersion
+        );
+        if (!pointer || pointer.version !== 1 || pointer.status !== "active" ||
+            pointer.tenantId !== tenantId || !/^[0-9a-f-]{36}$/i.test(pointer.keyId || "") ||
+            !Number.isSafeInteger(pointer.keyVersion) || pointer.keyVersion < 1 ||
+            !record || record.schemaVersion !== 1 || record.provider !== "aws-kms" ||
+            record.status !== "active" || record.tenantId !== tenantId ||
+            record.keyId !== pointer.keyId || record.keyVersion !== pointer.keyVersion ||
+            typeof record.kmsKeyArn !== "string" || typeof record.wrappedDek !== "string" ||
+            !record.wrappedDek) {
+          return { error: "Tenant key metadata requires recovery; no changes were made.", status: 503 };
+        }
+        return { existing: pointer };
+      }
+      const pending = await transaction.get(pendingKey);
+      if (pending !== undefined) {
+        if (!pending || pending.version !== 1 ||
+            typeof pending.operationId !== "string" || !Number.isFinite(pending.createdAt)) {
+          return { error: "Tenant key provisioning state requires recovery.", status: 503 };
+        }
+        if (Date.now() - pending.createdAt < TENANT_KEY_PROVISIONING_STALE_MS) {
+          return { error: "Tenant key provisioning is already in progress.", status: 409 };
+        }
+      }
+      const operationId = crypto.randomUUID();
+      await transaction.put(pendingKey, { version: 1, operationId, createdAt: Date.now() });
+      return { operationId };
+    });
+    if (reservation.error) return jsonResponse({ error: reservation.error }, reservation.status);
+    if (reservation.existing) {
+      return jsonResponse({
+        success: true,
+        key: {
+          provider: "aws-kms", custody: "managed", encryptionMode: "server-mediated",
+          status: "active", keyId: reservation.existing.keyId,
+          keyVersion: reservation.existing.keyVersion
+        },
+        financialDataEnabled: false,
+        alreadyProvisioned: true
+      });
+    }
+
+    let configured = false;
+    try {
+      configured = isTenantKmsConfigured(this.env);
+    } catch {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Managed tenant key custody is not configured correctly." }, 503);
+    }
+    if (!configured) {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Managed tenant key custody is not configured." }, 503);
+    }
+
+    let keyRecord;
+    try {
+      keyRecord = await createTenantKeyRecord(this.env, tenantId);
+    } catch {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Tenant key provisioning failed; existing data was not changed." }, 503);
+    }
+
+    const committed = await this.ctx.storage.transaction(async (transaction) => {
+      const directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      const pending = await transaction.get(pendingKey);
+      if (!isTenantDirectoryRecord(directory)) {
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+        return { error: "Tenant directory is unavailable or requires recovery.", status: 503 };
+      }
+      const tenant = directory.tenants.find((item) => item.id === tenantId && item.status === "active");
+      const owner = directory.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === session.user.id &&
+        item.status === "active" && item.role === "owner" &&
+        item.capabilities?.includes("tenant.members.manage")
+      );
+      if (!tenant || !owner) {
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+        return { error: "Tenant not found or key administration is not permitted.", status: 404 };
+      }
+      if (pending?.operationId !== reservation.operationId) {
+        return { error: "Tenant key provisioning changed; refresh and retry.", status: 409 };
+      }
+      const pointer = await transaction.get(pointerKey);
+      if (pointer !== undefined) {
+        if (!pointer || pointer.version !== 1 || pointer.status !== "active" ||
+            pointer.tenantId !== tenantId || !/^[0-9a-f-]{36}$/i.test(pointer.keyId || "") ||
+            !Number.isSafeInteger(pointer.keyVersion) || pointer.keyVersion < 1) {
+          return { error: "Tenant key metadata requires recovery; no changes were made.", status: 503 };
+        }
+        await transaction.delete(pendingKey);
+        return { pointer, alreadyProvisioned: true };
+      }
+      if (await transaction.get(recordKey) !== undefined) {
+        return { error: "Tenant key metadata exists without an active pointer; recovery is required.", status: 503 };
+      }
+      await transaction.put(recordKey, keyRecord);
+      const activePointer = {
+        version: 1, tenantId, keyId: keyRecord.keyId, keyVersion: keyRecord.keyVersion,
+        kmsKeyArn: keyRecord.kmsKeyArn, status: "active", updatedAt: keyRecord.createdAt
+      };
+      await transaction.put(pointerKey, activePointer);
+      await transaction.delete(pendingKey);
+      await transaction.put(tenantAuditKey(), {
+        version: 1, eventId: crypto.randomUUID(), type: "tenant_key_provisioned",
+        provider: "aws-kms", tenantId, keyId: keyRecord.keyId,
+        keyVersion: keyRecord.keyVersion, actorUserId: session.user.id,
+        recordedAt: keyRecord.createdAt
+      });
+      return { pointer: activePointer, alreadyProvisioned: false };
+    });
+    if (committed.error) {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: committed.error }, committed.status);
+    }
+    return jsonResponse({
+      success: true,
+      key: {
+        provider: "aws-kms", custody: "managed", encryptionMode: "server-mediated",
+        status: "active", keyId: committed.pointer.keyId,
+        keyVersion: committed.pointer.keyVersion
+      },
+      financialDataEnabled: false,
+      alreadyProvisioned: Boolean(committed.alreadyProvisioned)
+    }, committed.alreadyProvisioned ? 200 : 201);
+  }
+
   async handleTenantDirectory(request) {
     const session = await this.resolveSession(request);
     if (!session) return jsonResponse({ error: "Authentication required." }, 401);
@@ -3152,6 +3316,14 @@ export class PortfolioStateDO {
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
+
+    const keyProvisionRoute = pathname.match(/^\/api\/tenants\/([A-Za-z0-9_-]{8,80})\/key\/provision$/);
+    if (keyProvisionRoute) {
+      if (Object.keys(body).length !== 0) {
+        return jsonResponse({ error: "Key provisioning does not accept request fields." }, 400);
+      }
+      return this.handleTenantKeyProvision(session, keyProvisionRoute[1]);
     }
 
     if (pathname === "/api/tenants") {
