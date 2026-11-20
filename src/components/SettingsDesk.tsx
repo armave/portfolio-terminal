@@ -642,7 +642,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   </p>
                 </div>
               </div>
-              <p class="text-[11px] text-amber-100">{translateText('Use the backup and cloud recovery controls below. Export a copy before replacing local data.')}</p>
+              <p class="text-[11px] text-amber-100">{translateText('Pull cloud replaces this device's local portfolio with the latest shared cloud snapshot. Unsynced changes can be lost. Export a JSON backup before pulling or resetting.')}</p>
 
             </section>}
         <div class="settings-panel settings-cloud-recovery-panel space-y-3">
