@@ -849,9 +849,28 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                 </span>
               </div>
               <div class="portfolio-micro-column portfolio-micro-basis" role="group" aria-label={translateText('POSITION BASIS', getAppLanguage())}>
-                <div class="portfolio-micro-row">
-                  <span class="portfolio-metric-label text-[10px]">{translateText('Shares / Your PT', getAppLanguage())}</span>
-                  <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
+                <div class="portfolio-micro-row portfolio-micro-tranches-row">
+                  <span class="portfolio-metric-label text-[10px]">{translateText('Tranches', getAppLanguage())}</span>
+                  <div id="boardTranches" class="portfolio-metric-value portfolio-tranches-value text-xs sm:text-sm">
+                    {hiddenTrancheCount > 0 ? (
+                      <button
+                        ref={trancheButtonRef}
+                        type="button"
+                        class="tranche-details-trigger"
+                        aria-haspopup="dialog"
+                        aria-controls="trancheDetailsDialog"
+                        aria-label={translateText('View {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}
+                        data-tranche-details-trigger
+                        data-tranche-count={hiddenTrancheCount}
+                        onClick={() => setTrancheModalOpen(true)}
+                      >
+                        <span>{translateText('View {count} tranches', getAppLanguage()).replace('{count}', String(hiddenTrancheCount))}</span>
+                        <span class="tranche-details-trigger-icon" aria-hidden="true">↗</span>
+                      </button>
+                    ) : (
+                      <span class="text-slate-500">—</span>
+                    )}
+                  </div>
                 </div>
                 <div class="portfolio-micro-row">
                   <span class="portfolio-metric-label text-[10px]">{translateText('Total Invested', getAppLanguage())}</span>
