@@ -68,6 +68,8 @@ export interface PortfolioBrokerDataRuntime {
   loadFreedomAccount: (session: SessionIdentityToken) => Promise<boolean>;
   refreshAccountInfo: (session: SessionIdentityToken) => Promise<boolean>;
   loadExecutedTrades: (session: SessionIdentityToken) => Promise<boolean>;
+  /** Explicit Manual Sync catch-up; bypasses the connected-stream cache shortcut. */
+  refreshExecutedTrades: (session: SessionIdentityToken) => Promise<boolean>;
   loadActiveOrders: (session: SessionIdentityToken) => Promise<boolean>;
 }
 
@@ -272,10 +274,13 @@ export function createPortfolioBrokerDataRuntime(
     }
   };
 
-  const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
+  const loadExecutedTrades = async (session: SessionIdentityToken, forceRest = false): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
     const accountId = dependencies.getAccountId();
     const hasCompleteBaseline = hasHistoryBaseline(accountId);
+    // Manual Sync may request one bounded catch-up only after a complete baseline
+    // exists. Initial backfills continue to share the ordinary startup request.
+    const forceProviderRefresh = forceRest && hasCompleteBaseline;
     // A first history backfill is independent of the live order stream. Start
     // the socket alongside it, but never let a connected socket skip the baseline.
     const accountStreamStart = ensureAccountStream(session);
@@ -290,8 +295,9 @@ export function createPortfolioBrokerDataRuntime(
       emit('broker:executed-trades', cachedExecutions);
       return true;
     };
-    if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
-    const requestKey = getSessionIdentityRequestKey(session);
+    if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity) && !forceProviderRefresh) return publishCachedExecutions();
+    const sessionRequestKey = getSessionIdentityRequestKey(session);
+    const requestKey = forceProviderRefresh ? `${sessionRequestKey}:manual-rest` : sessionRequestKey;
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
 
@@ -304,10 +310,15 @@ export function createPortfolioBrokerDataRuntime(
           emit('broker:executed-trades-error');
           return false;
         }
-        if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
+        if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity) && !forceProviderRefresh) return publishCachedExecutions();
 
         const savedExecutions = loadSavedBrokerExecutions();
         const currentExecutions = dependencies.getCurrentBrokerExecutions();
+        const currentExecutionsAtStart = currentExecutions.map((execution) => ({
+          id: execution.id == null ? '' : String(execution.id),
+          snapshot: JSON.stringify(execution)
+        }));
+        const ordersRevisionAtStart = getFreedomAccountStreamSnapshotRevision(session.identity, 'orders');
         const fromDate = hasCompleteBaseline
           ? getLatestClosedTradeDate(
             [...savedExecutions, ...currentExecutions],
@@ -317,7 +328,6 @@ export function createPortfolioBrokerDataRuntime(
 
         const response = await fetchExecutedTrades(fromDate);
         if (!dependencies.isSessionCurrent(session)) return false;
-        if (hasCompleteBaseline && isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
 
         const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;
@@ -331,10 +341,22 @@ export function createPortfolioBrokerDataRuntime(
           normalizedPage,
           retainedExecutions
         );
-        const mergedTrades = mergeBrokerExecutionHistory(
-          retainedExecutions,
-          normalizedPageWithFees
+        const liveOrdersAdvanced = getFreedomAccountStreamSnapshotRevision(session.identity, 'orders') > ordersRevisionAtStart;
+        const initialCurrentById = new Map<string, string>(
+          currentExecutionsAtStart.map((execution) => [execution.id, execution.snapshot] as [string, string])
         );
+        const liveUpdatedExecutions = liveOrdersAdvanced
+          ? latestCurrentExecutions.filter((execution) => {
+            const id = execution.id == null ? '' : String(execution.id);
+            return id && initialCurrentById.get(id) !== JSON.stringify(execution);
+          })
+          : [];
+        const providerMergedHistory = mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees);
+        // If a newer validated account-stream event landed during REST, overlay
+        // only the changed live execution rows so a stale provider page cannot win.
+        const mergedTrades = liveUpdatedExecutions.length > 0
+          ? mergeBrokerExecutionHistory(providerMergedHistory, liveUpdatedExecutions)
+          : providerMergedHistory;
         dependencies.setBrokerExecutions(mergedTrades);
 
         if (!hasCompleteBaseline) {
@@ -451,5 +473,11 @@ export function createPortfolioBrokerDataRuntime(
     }
   };
 
-  return { loadFreedomAccount, refreshAccountInfo, loadExecutedTrades, loadActiveOrders };
+  return {
+    loadFreedomAccount,
+    refreshAccountInfo,
+    loadExecutedTrades: (session) => loadExecutedTrades(session),
+    refreshExecutedTrades: (session) => loadExecutedTrades(session, true),
+    loadActiveOrders
+  };
 }

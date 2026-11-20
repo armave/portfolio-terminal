@@ -38,7 +38,7 @@ No retention duration is invented here. Where the repository does not define ret
 | JSON export/import | Structured backup containing financial snapshot and supported history/journal fields | Import validates shape and commits atomically; backups can contain highly sensitive data | Define encryption-at-rest expectations, storage advice, export completeness and user deletion of copies |
 | Optional GitHub Gist | Auxiliary encrypted provider-key file; README says Gemini key and GitHub PAT are not stored in the Gist payload | User-configured external copy; encryption depends on the user's Gemini key | Define disconnect/delete semantics and disclose that copies outside the app require separate removal |
 | AI prompts/results | Investment context and user-selected research sent to Gemini through the AI path | AI output is not the financial calculation authority; consequential mutations require app confirmation | Inventory exact prompt fields, provider processing/disclosure, minimization, user controls and retention |
-| Logs/telemetry | Provider metrics, route/error categories and some remaining raw error-message paths | Partial sanitization exists; #560 tracks full inventory and redaction | Approve field allowlist, retention, access, sampling and captured-log tests |
+| Logs/telemetry | Client diagnostic categories; Worker/DO server diagnostic categories; auth-edge route events; existing provider request/cache metrics | Selected browser paths use allowlisted diagnostics with sentinel-based captured-log regressions (PRs #624 and #641). Worker/DO exceptions use fixed-category `logServerDiagnostic`; auth-edge over-limit and limiter-failure tests assert only fixed event type and allowlisted route. Provider-metric output uses fixed metric/provider allowlists plus optional finite duration and boolean success (Worker commit `613d95a`); deployment passed in [run #44508197210](https://github.com/armave/portfolio-terminal/actions/runs/44508197210), Cloudflare version `a7a00111-962b-42f2-9a7b-3a586e8f57e2`. The telemetry test isolation follow-up [PR #643](https://github.com/armave/portfolio-terminal/pull/643) merged at main SHA `8d2ffb19ff638eafacea3480e802bcde06bf8825`; exact-head unit/financial/browser/security/Pages evidence passed (runs #44535957644, #44535957701, #44535957418 and #44535957385). The provider-metric console sink remains present; configured retention/access and complete Pages/third-party sink inventory have not been evidenced. HTTP API `error.message` response fields are a separate response surface, not a console log | Complete browser, Pages, Worker, DO and third-party sink inventory; approve purpose, field allowlist, retention, access, sampling and deletion; test non-identifying correlation IDs and review production logs |
 
 ## 4. Reset is not equivalent to deletion
 
@@ -130,3 +130,17 @@ The implementation contract should make export and deletion explicit and separat
 7. Verify exact-head CI and obtain security/privacy review before enabling new collection or deletion behavior.
 
 **This document records an inventory and proposed contract. It does not claim that a global retention schedule, account deletion workflow or cryptographic-erasure capability is implemented or approved.**
+
+
+## 10. Implemented AI input-minimization slice — 2026-11-20
+
+The Margin Intelligence prompt boundary now constructs a new allowlisted context object rather than serializing the full application context. The prompt version is incremented so previously saved reviews are marked stale and regenerated under the new input contract.
+
+- Portfolio context includes selected calculated account/valuation/margin-risk values, the focus position and its last eight supported entry lots, plus at most 12 compact summaries of other open positions. Excess positions are counted but not serialized.
+- Article input is capped at 12 items. The model receives source ID, ticker, bounded headline/source text, optional publication timestamp and bounded summary. Article URLs are not included in the prompt.
+- News coverage includes ticker, status, fetch timestamp and counts only. Raw provider error text is excluded.
+- Credentials, tokens, user/account identifiers, broker-assumption objects, unrelated preferences and unknown fields are excluded by the allowlist.
+- The modal now discloses that selected portfolio facts and up to 12 recent news headlines/summaries are sent to Google Gemini, and that the result/source metadata are saved as an encrypted cloud digest. The disclosure is localized in English and Russian.
+- Article and provider text remain untrusted data; the prompt explicitly instructs the model not to follow embedded commands. The Gemini route is a text-generation proxy and this feature remains read-only; this is not a formal prompt-injection certification or proof of provider retention behavior.
+
+These controls reduce the fields disclosed by this feature. They do not establish Google's data-retention terms, delete previously stored digests, establish a retention schedule, or replace data-owner/privacy approval. Account deletion, backup expiry, external Gist-copy handling, captured production-log review and provider processing disclosure remain owner/reviewer decisions.

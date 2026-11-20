@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { arch, cpus, platform, release } from 'node:os';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
@@ -10,6 +11,7 @@ const port = Number(process.env.PERFORMANCE_BASELINE_PORT || 4175);
 const appUrl = `http://${host}:${port}/portfolio-terminal/`;
 const workerOrigin = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 const outputPath = 'artifacts/browser-performance-baseline.json';
+const buildOutputPath = process.env.PERFORMANCE_BUILD_OUTPUT_PATH || 'dist';
 const runsPerViewport = parsePerformanceSampleCount(process.env.PERFORMANCE_BASELINE_RUNS, 3);
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -41,6 +43,17 @@ async function waitForPreview() {
   throw new Error(`Vite preview did not become ready: ${lastError?.message || 'unknown error'}`);
 }
 
+async function measureBuildArtifactBytes(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  let totalBytes = 0;
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) totalBytes += await measureBuildArtifactBytes(path);
+    else if (entry.isFile()) totalBytes += (await stat(path)).size;
+  }
+  return totalBytes;
+}
+
 async function measure(viewport) {
   const samples = [];
   for (let run = 1; run <= runsPerViewport; run += 1) {
@@ -53,7 +66,7 @@ async function measure(viewport) {
     page.on('pageerror', (error) => pageErrors.push(error.message));
 
     await page.addInitScript(() => {
-      window.__ptPerformance = { lcp: null, cls: 0 };
+      window.__ptPerformance = { lcp: null, cls: null };
       try {
         new PerformanceObserver((list) => {
           const entries = list.getEntries();
@@ -64,13 +77,14 @@ async function measure(viewport) {
         // LCP is unavailable in this browser; the report will retain null.
       }
       try {
+        window.__ptPerformance.cls = 0;
         new PerformanceObserver((list) => {
           for (const entry of list.getEntries()) {
             if (!entry.hadRecentInput) window.__ptPerformance.cls += entry.value;
           }
         }).observe({ type: 'layout-shift', buffered: true });
       } catch {
-        // CLS is unavailable in this browser; the report will retain zero.
+        window.__ptPerformance.cls = null;
       }
     });
 
@@ -128,7 +142,7 @@ async function measure(viewport) {
       });
       samples.push({
         run,
-        elapsedToAuthReadyMs: Date.now() - startedAt,
+        authShellReadyMs: Date.now() - startedAt,
         ...metrics,
         pageErrorCount: pageErrors.length,
         pageErrors
@@ -150,8 +164,9 @@ try {
   for (const viewport of viewports) {
     results[viewport.name] = await measure(viewport);
   }
+  const buildArtifactBytes = await measureBuildArtifactBytes(buildOutputPath);
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     commitSha: process.env.GITHUB_SHA || null,
     ref: process.env.GITHUB_REF || null,
@@ -178,6 +193,7 @@ try {
       serviceWorkers: 'blocked to avoid cross-run cache contamination'
     },
     runsPerViewport,
+    buildArtifactBytes,
     statistics: Object.fromEntries(Object.entries(results).map(([name, samples]) => [name, summarizePerformanceViewport(samples)])),
     viewports: results
   };
@@ -187,8 +203,9 @@ try {
   for (const [name, samples] of Object.entries(results)) {
     const statistics = summarizePerformanceViewport(samples);
     const fcp = statistics.firstContentfulPaintMs;
-    const auth = statistics.elapsedToAuthReadyMs;
-    console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples)`);
+    const auth = statistics.authShellReadyMs;
+    const resourceBytes = statistics.totalResourceTransferBytes;
+    console.log(`${name}: FCP median ${fcp.median === null ? 'n/a' : Math.round(fcp.median)}ms / p95 ${fcp.p95 === null ? 'n/a' : Math.round(fcp.p95)}ms; auth-shell median ${auth.median === null ? 'n/a' : Math.round(auth.median)}ms / p95 ${auth.p95 === null ? 'n/a' : Math.round(auth.p95)}ms (${runsPerViewport} samples; median transferred resources ${resourceBytes.median === null ? 'n/a' : Math.round(resourceBytes.median)} bytes; build artifact ${buildArtifactBytes} bytes)`);
   }
 } finally {
   await browser?.close();

@@ -1,3 +1,4 @@
+import { logSafeDiagnostic } from './safeDiagnostics';
 import type { BrokerAssumptions } from '../types/portfolio';
 import {
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -144,7 +145,7 @@ function readLegacySavedHistorySnapshot(
     try {
       raw = storage.getItem(key);
     } catch (error) {
-      console.warn('Failed to read legacy closed history from localStorage:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
       continue;
     }
     if (!raw) continue;
@@ -156,12 +157,12 @@ function readLegacySavedHistorySnapshot(
           storage.setItem(sidecarKey, raw);
           console.warn('Recovered closed history from a scoped local recovery copy.');
         } catch (error) {
-          console.warn('Recovered closed history in memory; browser storage repair is pending:', error);
+          logSafeDiagnostic('warn', 'closed-history', error);
         }
       }
       return history;
     } catch (error) {
-      console.warn('Failed to parse saved closed history:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     }
   }
 
@@ -304,7 +305,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
     try {
       await writeHistoryRecordToIndexedDB(snapshot, scope, true);
     } catch (error) {
-      console.warn('Closed-history data was recovered in memory but its IndexedDB repair did not complete:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     }
   }
   if (snapshot) writeLocalHistoryRecoverySnapshot(snapshot, scope);
@@ -415,7 +416,7 @@ async function writeLegacyHistoryFallback(
     storage.setItem(sidecarKey, serialized);
     return true;
   } catch (error) {
-    console.warn('Closed history could not be written to the legacy localStorage fallback:', error);
+    logSafeDiagnostic('warn', 'closed-history', error);
     return false;
   }
 }
@@ -432,7 +433,7 @@ function writeLocalHistoryRecoverySnapshot(
     storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope), serialized);
     return true;
   } catch (error) {
-    console.warn('Could not update the bounded local history recovery copy:', error);
+    logSafeDiagnostic('warn', 'closed-history', error);
     return false;
   }
 }
@@ -441,7 +442,7 @@ function removeLegacyHistorySidecar(scope = activePortfolioStorageScope): void {
   try {
     getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
   } catch (error) {
-    console.warn('Could not remove the migrated localStorage history copy:', error);
+    logSafeDiagnostic('warn', 'closed-history', error);
   }
 }
 
@@ -472,7 +473,7 @@ export function initializeSavedHistoryStorage(
     } catch (error) {
       cachedHistory = legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
       lastPersistedHistory = null;
-      console.warn('IndexedDB closed-history storage is unavailable; using the legacy cache when possible:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     }
     historyStorageInitialized = true;
   })().finally(() => {
@@ -664,7 +665,7 @@ async function persistSavedHistorySnapshot(
       removeLegacyHistorySidecar(scope);
       return true;
     } catch (indexedDbError) {
-      console.warn('Could not persist closed history in IndexedDB; trying the bounded legacy fallback:', indexedDbError);
+      logSafeDiagnostic('warn', 'closed-history', indexedDbError);
       return await writeLegacyHistoryFallback(snapshot, scope, options.resetRecovery === true);
     }
   });
@@ -802,7 +803,7 @@ function persistPortfolioSnapshot(
     );
     if (options.brokerRules) brokerRulesJson = JSON.stringify(options.brokerRules);
   } catch (err) {
-    console.error('Failed to serialize portfolio snapshot:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
     return { success: false, stateChanged: false, savedAt: null };
   }
 
@@ -820,7 +821,7 @@ function persistPortfolioSnapshot(
     try {
       previousRules = storage.getItem(brokerRulesKey);
     } catch (err) {
-      console.error('Failed to inspect existing broker rules before saving:', err);
+      logSafeDiagnostic('error', 'browser-storage', err);
       return { success: false, stateChanged: false, savedAt: null };
     }
     if (previousRules && previousRules !== brokerRulesJson && parseJsonRecord(previousRules)) {
@@ -838,7 +839,7 @@ function persistPortfolioSnapshot(
       if (!previousValues.has(key)) previousValues.set(key, storage.getItem(key));
     }
   } catch (err) {
-    console.error('Failed to inspect existing portfolio snapshot before saving:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
     return { success: false, stateChanged: false, savedAt: null };
   }
 
@@ -880,10 +881,10 @@ function persistPortfolioSnapshot(
         if (previous === null) storage.removeItem(key);
         else storage.setItem(key, previous);
       } catch (rollbackError) {
-        console.error(`Failed to restore local storage key "${key}" after an incomplete portfolio save:`, rollbackError);
+        logSafeDiagnostic('error', 'browser-storage', rollbackError);
       }
     }
-    console.error('Failed to save portfolio snapshot; attempted local changes were rolled back:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
     return { success: false, stateChanged: false, savedAt: null };
   }
 
@@ -966,7 +967,7 @@ export function saveState<TState extends object>(
     void persistSavedHistorySnapshot({ brokerExecutedTrades, cashflows }, scope, { resetRecovery }).then((saved) => {
       if (!saved) console.warn('Portfolio state was saved, but its local closed-history cache could not be updated. Cloud history remains separate.');
     }).catch((error) => {
-      console.warn('Portfolio state was saved, but the local closed-history cache update failed:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     });
   }
 
@@ -974,7 +975,7 @@ export function saveState<TState extends object>(
     try {
       onPushToGist(false);
     } catch (err) {
-      console.error('Failed to trigger Gist sync:', err);
+      logSafeDiagnostic('error', 'cloud-sync', err);
     }
   }
   return true;
@@ -1002,7 +1003,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       try {
         raw = storage.getItem(key);
       } catch (err) {
-        console.warn('Storage unavailable; using in-memory portfolio state:', err);
+        logSafeDiagnostic('warn', 'browser-storage', err);
         return fallback;
       }
       if (!raw || !raw.trim()) continue;
@@ -1013,7 +1014,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
           try {
             JSON.parse(raw);
           } catch (err) {
-            console.warn('Failed to parse saved state:', err);
+            logSafeDiagnostic('warn', 'browser-storage', err);
           }
         }
         continue;
@@ -1026,7 +1027,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
           storage.setItem(canonicalKey, raw);
           console.warn('Recovered the local portfolio snapshot from a scoped recovery copy.');
         } catch (error) {
-          console.warn('Recovered local portfolio data in memory; browser storage repair is pending:', error);
+          logSafeDiagnostic('warn', 'browser-storage', error);
         }
       }
 
@@ -1051,7 +1052,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
     return fallback;
   } catch (err) {
-    console.warn('Storage unavailable; using in-memory portfolio state:', err);
+    logSafeDiagnostic('warn', 'browser-storage', err);
     return fallback;
   }
 }
@@ -1120,7 +1121,7 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
         db.close();
       }
     } catch (error) {
-      console.warn('Could not clear IndexedDB closed history:', error);
+      logSafeDiagnostic('warn', 'closed-history', error);
     }
   }
   try {
@@ -1128,7 +1129,7 @@ export async function clearSavedHistoryPersistence(): Promise<void> {
     storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY, scope));
     storage?.removeItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope));
   } catch (error) {
-    console.warn('Could not clear legacy closed history:', error);
+    logSafeDiagnostic('warn', 'closed-history', error);
   }
   if (scope === activePortfolioStorageScope) resetHistoryStorageCache();
 }
@@ -1159,7 +1160,7 @@ export function loadBrokerRules(): unknown {
         JSON.parse(raw);
         console.warn('Saved broker rules have an invalid root shape; trying the recovery copy.');
       } catch (err) {
-        console.warn('Failed to parse saved broker rules:', err);
+        logSafeDiagnostic('warn', 'browser-storage', err);
       }
     }
 
@@ -1171,11 +1172,11 @@ export function loadBrokerRules(): unknown {
       storage.setItem(key, recoveryRaw);
       console.warn('Recovered broker assumptions from a scoped local recovery copy.');
     } catch (error) {
-      console.warn('Recovered broker assumptions in memory; browser storage repair is pending:', error);
+      logSafeDiagnostic('warn', 'browser-storage', error);
     }
     return recovered;
   } catch (err) {
-    console.warn('Browser storage is unavailable while reading broker rules:', err);
+    logSafeDiagnostic('warn', 'browser-storage', err);
     return null;
   }
 }
@@ -1198,7 +1199,7 @@ export function saveBrokerRules(rules: BrokerAssumptions): void {
     }
     storage.setItem(key, JSON.stringify(rules));
   } catch (err) {
-    console.error('Failed to save broker rules:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
   }
 }
 
@@ -1209,7 +1210,7 @@ export function clearBrokerRules(): void {
     storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES));
     storage.removeItem(scopedStorageKey(STORAGE_KEY_RULES_RECOVERY));
   } catch (err) {
-    console.error('Failed to clear broker rules:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
   }
 }
 
@@ -1250,7 +1251,7 @@ export function saveQuoteRefreshInterval(
     const key = scope === 'guest' ? STORAGE_KEY_GUEST_REFRESH_INTERVAL : STORAGE_KEY_REFRESH_INTERVAL;
     storage.setItem(key, String(interval));
   } catch (err) {
-    console.error('Failed to save quote refresh interval:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
   }
 }
 
@@ -1267,6 +1268,6 @@ export function clearLocalData(): void {
       scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
     ]);
   } catch (err) {
-    console.error('Failed to clear local data:', err);
+    logSafeDiagnostic('error', 'browser-storage', err);
   }
 }

@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { arch, cpus, platform, release } from 'node:os';
-import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount } from './browser-performance-baseline-metrics.mjs';
+import { buildPerformanceEnvironmentMetadata, parsePerformanceSampleCount, summarizePerformanceViewport } from './browser-performance-baseline-metrics.mjs';
 import { buildAuthenticatedPortfolioFixture } from './authenticated-portfolio-fixture.mjs';
 
 const host = '127.0.0.1';
@@ -877,6 +877,10 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
     { name: 'mobile', width: 390, height: 844 }
   ];
   const runsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_BASELINE_RUNS, 3);
+  const minimumRunsPerViewport = parsePerformanceSampleCount(process.env.AUTHENTICATED_PERFORMANCE_MINIMUM_RUNS, 1);
+  if (runsPerViewport < minimumRunsPerViewport) {
+    throw new Error(`Authenticated performance benchmark requires at least ${minimumRunsPerViewport} runs per viewport; received ${runsPerViewport}.`);
+  }
   const samples = [];
 
   for (const viewport of viewports) {
@@ -891,10 +895,11 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
       const fixture = buildAuthenticatedPortfolioFixture(Date.now());
       const worker = await mockWorkerApi(page, { portfolioPositions: fixture.positions, portfolioTransactionEvents: fixture.transactionEvents, ignoreCloudStatePulls: true });
       const startedAt = Date.now();
+      const stageTimings = {};
 
       try {
         await page.addInitScript(() => {
-          window.__ptAuthenticatedPerformance = { lcp: null, cls: 0 };
+          window.__ptAuthenticatedPerformance = { lcp: null, cls: null };
           try {
             new PerformanceObserver((list) => {
               const entries = list.getEntries();
@@ -905,13 +910,14 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
             // LCP is unavailable in this browser; the report will retain null.
           }
           try {
+            window.__ptAuthenticatedPerformance.cls = 0;
             new PerformanceObserver((list) => {
               for (const entry of list.getEntries()) {
                 if (!entry.hadRecentInput) window.__ptAuthenticatedPerformance.cls += entry.value;
               }
             }).observe({ type: 'layout-shift', buffered: true });
           } catch {
-            // CLS is unavailable in this browser; the report will retain zero.
+            window.__ptAuthenticatedPerformance.cls = null;
           }
         });
 
@@ -921,17 +927,23 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
           null,
           { timeout: 20_000 }
         );
+        stageTimings.authShellReadyMs = Date.now() - startedAt;
+        const authenticationStartedAt = Date.now();
         await submitAuth(page, {
           name: 'Performance Admin',
           password: 'performance-admin-password',
           bootstrapSecret: 'operations-smoke-secret'
         });
         await waitForAuthOverlay(page, false);
+        stageTimings.authenticationMs = Date.now() - authenticationStartedAt;
 
         const combinedPortfolio = page.getByRole('button', { name: 'COMBINED PORTFOLIO' });
         if (await combinedPortfolio.count()) await combinedPortfolio.click();
 
+        const fixtureStartedAt = Date.now();
         await seedAuthenticatedPerformancePortfolio(page, fixture, worker);
+        stageTimings.fixtureHydrationMs = Date.now() - fixtureStartedAt;
+        const brokerRefreshStartedAt = Date.now();
 
         await waitForCondition(
           () => worker.findCalls('GET', '/').some((call) => call.action === 'freedom-positions' && call.responseStatus === 200),
@@ -966,16 +978,28 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
           throw new Error('Authenticated synthetic portfolio changed during startup or mocked broker reconciliation: ' +
             JSON.stringify(persistedFixture));
         }
+        stageTimings.brokerRefreshAndParityMs = Date.now() - brokerRefreshStartedAt;
+        const portfolioRenderStartedAt = Date.now();
         await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
         await page.waitForFunction(
           () => document.querySelector('#marketInsightsTicker')?.textContent?.includes('AAPL'),
           null,
           { timeout: 20_000 }
         );
-        await page.evaluate(() => new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve))
-        ));
-
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        stageTimings.portfolioRenderReadyMs = Date.now() - portfolioRenderStartedAt;
+        const elapsedToPortfolioReadyMs = Date.now() - startedAt;
+        const tradesStartedAt = Date.now();
+        await page.getByRole('button', { name: 'Trades' }).click();
+        await page.locator('#closedHistoryContainer .desk-page-header__title').waitFor({ state: 'visible', timeout: 20_000 });
+        await page.waitForFunction(() => {
+          const row = document.querySelector('#closedTradesTableBody tr');
+          return Boolean(row && !row.querySelector('td[colspan="8"]'));
+        }, null, { timeout: 20_000 });
+        stageTimings.tradesDeskReadyMs = Date.now() - tradesStartedAt;
+        const elapsedToTradesDeskReadyMs = Date.now() - startedAt;
+        const closedTradeRowCount = await page.locator('#closedTradesTableBody tr').count();
+        if (!closedTradeRowCount) throw new Error('Synthetic closed-history rows did not render.');
         const metrics = await page.evaluate(() => {
           const navigation = performance.getEntriesByType('navigation')[0];
           const paint = (name) => performance.getEntriesByName(name)[0]?.startTime ?? null;
@@ -988,7 +1012,9 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
             totalResourceTransferBytes: resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
             resourceCount: resources.length,
             largestContentfulPaintMs: window.__ptAuthenticatedPerformance?.lcp ?? null,
-            cumulativeLayoutShift: window.__ptAuthenticatedPerformance?.cls ?? null
+            cumulativeLayoutShift: window.__ptAuthenticatedPerformance?.cls ?? null,
+            heapUsedBytes: Number.isFinite(performance.memory?.usedJSHeapSize) ? performance.memory.usedJSHeapSize : null,
+            domNodeCount: document.getElementsByTagName('*').length
           };
         });
         if (pageErrors.length) throw new Error('Authenticated performance browser errors: ' + pageErrors.join('; '));
@@ -998,7 +1024,11 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
           viewport: { name: viewport.name, width: viewport.width, height: viewport.height },
           authenticatedRole: 'admin',
           syntheticPortfolio: fixture.summary,
-          elapsedToPortfolioReadyMs: Date.now() - startedAt,
+          closedTradeRowCount,
+          elapsedToPortfolioReadyMs,
+          elapsedToTradesDeskReadyMs,
+          stageTimings,
+          ...stageTimings,
           ...metrics
         });
       } finally {
@@ -1008,8 +1038,16 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
   }
 
   await mkdir('artifacts', { recursive: true });
+  const samplesByViewport = Object.fromEntries(viewports.map(viewport => [viewport.name, samples.filter(sample => sample.viewport.name === viewport.name)]));
+  const statistics = Object.fromEntries(Object.entries(samplesByViewport).map(([name, group]) => [name, summarizePerformanceViewport(group)]));
+  if (Object.values(samplesByViewport).some(group => group.length !== runsPerViewport)) throw new Error('Authenticated benchmark sample count mismatch.');
   await writeFile('artifacts/authenticated-portfolio-performance.json', JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 3,
+    generatedAt: new Date().toISOString(),
+    commitSha: process.env.GITHUB_SHA || null,
+    ref: process.env.GITHUB_REF || null,
+    workflowRunId: process.env.GITHUB_RUN_ID || null,
+    runsPerViewport,
     environment: buildPerformanceEnvironmentMetadata({
       platform: platform(),
       osRelease: release(),
@@ -1032,12 +1070,22 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
       replayValidation: 'The fixture is validated by Vitest against transaction-event schema, snapshot replay parity, stable-lot parity and linked closed-history parity before browser use'
     },
     methodology: {
-      runsPerViewport,
-      viewports,
-      readiness: 'Market Insights panel visible, selected ticker is AAPL, and the 100-position fixture remains persisted after mocked broker refresh',
-      timing: 'Elapsed wall-clock time from navigation start through authenticated seeded portfolio readiness'
+      runsPerViewport, minimumRunsPerViewport, viewports,
+      sampling: 'Each run uses a fresh isolated browser context with service workers blocked; samples are collected sequentially on one fixed GitHub-hosted runner image and Chromium build.',
+      thresholdPolicy: 'No pass/fail performance thresholds are inferred from this artifact. Establish thresholds only after reviewing repeated same-runner baselines and known variance.',
+      readiness: 'Authenticated bootstrap, intact 100-position fixture after mocked broker refresh, visible Market Insights panel and rendered Trades closed-history row',
+      stageTimings: { authShellReadyMs: 'Bootstrap prompt', authenticationMs: 'Admin authentication', fixtureHydrationMs: 'Local synthetic fixture hydration', brokerRefreshAndParityMs: 'Mocked broker refresh and fixture parity', portfolioRenderReadyMs: 'Portfolio render readiness', tradesDeskReadyMs: 'Trades desk lazy-load and first row readiness' },
+      missingMeasurements: 'Unsupported metrics remain null and are excluded from summaries'
     },
-    samples
+    statistics,
+    samples,
+    dataClassification: {
+      containsCustomerData: false,
+      containsAccountIdentifiers: false,
+      containsCredentials: false,
+      containsProviderPayloads: false,
+      financialValues: 'synthetic fixture only'
+    }
   }, null, 2));
   console.log('Authenticated synthetic-portfolio performance fixture captured:', samples.length, 'samples.');
 }

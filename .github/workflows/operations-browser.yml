@@ -89,7 +89,7 @@ jobs:
       - name: Exercise account and Settings journeys in production browser
         id: operations_browser
         env:
-          AUTHENTICATED_PERFORMANCE_BASELINE_RUNS: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.performance_baseline_runs) || '3' }}
+          AUTHENTICATED_PERFORMANCE_BASELINE_RUNS: ${{ inputs.performance_baseline_runs }}
         run: node scripts/browser-smoke-operations.mjs
 
       - name: Upload authenticated synthetic-portfolio performance baseline

@@ -26,6 +26,7 @@ This directory contains maintained product and engineering references, current o
 ## Security and release quality
 
 - [Picomatch ReDoS backport](ci/picomatch-redos-backport.md) — temporary, source-attributed v2/v4 backports, dependency resolution, regression evidence and retirement conditions.
+- [Tenant KMS operations](tenant-kms-operations.md) — AWS KMS / IAM Roles Anywhere setup, Worker secret configuration, key provisioning and operational gates.
 
 - [Tenant KMS operations](tenant-kms-operations.md) — AWS KMS / IAM Roles Anywhere setup, Worker secret configuration, key provisioning and operational gates.
 - [PT-16 tenant-key lifecycle ADR](pt16-tenant-key-lifecycle-adr.md) — proposed DEK/KEK ownership, versioned envelopes, unwrap boundary and rotation/recovery state machine.
@@ -33,7 +34,7 @@ This directory contains maintained product and engineering references, current o
 - [PT-16 browser security review](pt16-browser-security-review.md) — GitHub Pages CSP boundary, XSS surfaces and credential-exposure test plan.
 
 - [PT-16 security and data-lifecycle threat model](security-threat-model-pt-16.md) — observed controls and residual risks; not a penetration test.
-- [Reliability, performance, observability, and release gates](reliability-release-gates.md) — exact-head CI, browser evidence, and operational limits.
+- [Reliability, performance, observability, and release gates](reliability-release-gates.md) — exact-head CI, authenticated synthetic portfolio/Trades performance evidence, and operational limits.
 - [CI coverage baseline — 2026-11-17](ci/coverage-baseline-2026-11-17.md) — measured V8 coverage, selected financial/store/Worker modules, and aggregate regression floors.
 - [GitHub repository settings follow-up](ci/github-settings-follow-up.md) — manual branch-ruleset and Cloudflare production-environment steps that cannot be represented by workflow files.
 

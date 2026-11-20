@@ -297,13 +297,17 @@ export function reconcileBrokerActivity(
   const amountTolerance = input.amountTolerance ?? 0.01;
   const priceTolerance = input.priceTolerance ?? 0.01;
   const appStatus = input.appHistoryStatus ?? 'partial';
+  let brokerExecutionAbsenceEvidenceComplete = input.executionStatus === 'complete';
+  let appExecutionAbsenceEvidenceComplete = appStatus === 'complete';
+  let brokerCashflowAbsenceEvidenceComplete = input.cashflowStatus === 'complete';
+  let appCashflowAbsenceEvidenceComplete = appStatus === 'complete';
   let confidence: BrokerActivityFinding['confidence'] =
     input.executionStatus === 'complete' && input.cashflowStatus === 'complete' && appStatus === 'complete'
       ? 'confirmed' : 'provisional';
   const warnings: string[] = [];
   if (input.executionStatus !== 'complete') warnings.push('Broker execution history is incomplete; absence-based findings are suppressed.');
   if (input.cashflowStatus !== 'complete') warnings.push('Broker cashflow history is incomplete; absence-based findings are suppressed.');
-  if (appStatus !== 'complete') warnings.push('App transaction journal coverage is incomplete; unmatched records are provisional and are not treated as confirmed omissions.');
+  if (appStatus !== 'complete') warnings.push('App transaction journal coverage is incomplete; absence-based findings are suppressed.');
 
   const findings: BrokerActivityFinding[] = [];
   let sourceDataIncomplete = false;
@@ -314,6 +318,7 @@ export function reconcileBrokerActivity(
       normalizedExecutionRows.push(row);
       if (/^(?:anonymous:|fallback-)/i.test(row.id)) {
         sourceDataIncomplete = true;
+        brokerExecutionAbsenceEvidenceComplete = false;
         warnings.push('One or more broker executions lack a provider-stable execution ID; matching is provisional.');
       }
       const missingSourceFields: string[] = [];
@@ -323,12 +328,14 @@ export function reconcileBrokerActivity(
       if (row.side !== 'sell' && row.fee === null) missingSourceFields.push('Broker execution commission');
       if (missingSourceFields.length > 0) {
         sourceDataIncomplete = true;
+        brokerExecutionAbsenceEvidenceComplete = false;
         confidence = 'provisional';
         warnings.push('One or more broker executions lack verifiable price, commission, currency or timestamp evidence; matching is provisional.');
       }
       return;
     }
     sourceDataIncomplete = true;
+    brokerExecutionAbsenceEvidenceComplete = false;
     warnings.push('One or more broker execution rows could not be classified; affected rows were excluded from matching.');
     const tickerValue = ticker((raw as BrokerExecution | null)?.ticker);
     const ref = text((raw as BrokerExecution | null)?.id);
@@ -395,6 +402,7 @@ export function reconcileBrokerActivity(
       appEventIds: [],
       explanation: 'The same broker execution identifier appears with conflicting facts. No revision was selected because the feed does not identify which record supersedes the other.'
     }, 'provisional'));
+    brokerExecutionAbsenceEvidenceComplete = false;
     warnings.push('One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.');
   }
   uniqueBrokerRows.sort((a, b) => a.id.localeCompare(b.id));
@@ -414,10 +422,18 @@ export function reconcileBrokerActivity(
     }
     if (missingSourceFields.length > 0) {
       sourceDataIncomplete = true;
+      appExecutionAbsenceEvidenceComplete = false;
       confidence = 'provisional';
       warnings.push('One or more app-authored executions lack verifiable quantity, price, currency or commission evidence; matching is provisional.');
     }
   });
+  if (!brokerExecutionAbsenceEvidenceComplete && input.executionStatus === 'complete') {
+    warnings.push('Broker execution evidence is incomplete; absence-based findings are suppressed.');
+  }
+  if (!appExecutionAbsenceEvidenceComplete && appStatus === 'complete') {
+    warnings.push('App execution evidence is incomplete; absence-based findings are suppressed.');
+  }
+
   const legacyClosedSales = (input.legacyClosedTrades ?? [])
     .map(normalizeLegacyClosedSale)
     .filter((row): row is NormalizedLegacyClosedSale => row !== null);
@@ -1035,7 +1051,7 @@ export function reconcileBrokerActivity(
     matchedLegacyExecutionCount += candidates.length;
   }
 
-  for (const index of unmatchedBroker) {
+  for (const index of brokerExecutionAbsenceEvidenceComplete && appExecutionAbsenceEvidenceComplete ? unmatchedBroker : []) {
     if (ambiguousBrokerIndices.has(index)) continue;
     const row = uniqueBrokerRows[index];
     findings.push(makeFinding({
@@ -1051,7 +1067,7 @@ export function reconcileBrokerActivity(
       explanation: 'No corresponding app-authored trade was found in the available transaction journal.'
     }, confidence));
   }
-  for (const index of unmatchedApp) {
+  for (const index of brokerExecutionAbsenceEvidenceComplete && appExecutionAbsenceEvidenceComplete ? unmatchedApp : []) {
     if (ambiguousAppIndices.has(index)) continue;
     const row = appExecutions[index];
     findings.push(makeFinding({
@@ -1076,11 +1092,17 @@ export function reconcileBrokerActivity(
       normalizedCashflowRows.push(row);
       if (/^anonymous:/i.test(row.id) || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)) {
         sourceDataIncomplete = true;
+        brokerCashflowAbsenceEvidenceComplete = false;
         warnings.push('One or more broker cashflows lack a provider-stable cashflow ID; matching is provisional.');
+      }
+      if (!row.currency || row.at === null) {
+        sourceDataIncomplete = true;
+        brokerCashflowAbsenceEvidenceComplete = false;
       }
       return;
     }
     sourceDataIncomplete = true;
+    brokerCashflowAbsenceEvidenceComplete = false;
     warnings.push('One or more broker cashflow rows could not be classified; affected rows were excluded from matching.');
     const ref = text((raw as BrokerCashflow | null)?.id);
     findings.push(makeFinding({
@@ -1118,6 +1140,7 @@ export function reconcileBrokerActivity(
         }, confidence));
       } else {
         sourceDataIncomplete = true;
+        brokerCashflowAbsenceEvidenceComplete = false;
         conflictingCashflowIds.add(row.id);
         const priorIndex = brokerCashflows.findIndex(candidate => candidate.id === row.id);
         if (priorIndex >= 0) brokerCashflows.splice(priorIndex, 1);
@@ -1142,12 +1165,19 @@ export function reconcileBrokerActivity(
   }
   if (sourceDataIncomplete) confidence = 'provisional';
   appCashflows.forEach(event => {
-    if (eventAmount(event) === null) {
+    if (eventAmount(event) === null || !currency(event.currency)) {
       sourceDataIncomplete = true;
+      appCashflowAbsenceEvidenceComplete = false;
       confidence = 'provisional';
-      warnings.push('One or more app cashflow events have no usable amount; matching is provisional.');
+      warnings.push('One or more app cashflow events lack a usable amount or currency; matching is provisional.');
     }
   });
+  if (!brokerCashflowAbsenceEvidenceComplete && input.cashflowStatus === 'complete') {
+    warnings.push('Broker cashflow evidence is incomplete; absence-based findings are suppressed.');
+  }
+  if (!appCashflowAbsenceEvidenceComplete && appStatus === 'complete') {
+    warnings.push('App cashflow evidence is incomplete; absence-based findings are suppressed.');
+  }
   const unmatchedCashflowBroker = new Set(brokerCashflows.map((_, index) => index));
   let matchedCashflowCount = 0;
   const unmatchedCashflowApp = new Set(appCashflows.map((_, index) => index));
@@ -1397,7 +1427,7 @@ export function reconcileBrokerActivity(
       }, confidence));
     }
   }
-  for (const index of unmatchedCashflowBroker) {
+  for (const index of brokerCashflowAbsenceEvidenceComplete && appCashflowAbsenceEvidenceComplete ? unmatchedCashflowBroker : []) {
     if (ambiguousCashflowBrokerIndices.has(index)) continue;
     const row = brokerCashflows[index];
     findings.push(makeFinding({
@@ -1413,7 +1443,7 @@ export function reconcileBrokerActivity(
       explanation: 'No corresponding app-authored cashflow event was found in the available journal.'
     }, confidence));
   }
-  for (const index of unmatchedCashflowApp) {
+  for (const index of brokerCashflowAbsenceEvidenceComplete && appCashflowAbsenceEvidenceComplete ? unmatchedCashflowApp : []) {
     if (ambiguousCashflowAppIndices.has(index)) continue;
     const row = appCashflows[index];
     findings.push(makeFinding({

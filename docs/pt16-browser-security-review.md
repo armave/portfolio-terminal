@@ -42,8 +42,9 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 | Surface | Current evidence | Required control/test |
 |---|---|---|
-| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Keep text interpolation; add a hostile markup fixture proving it is inert |
+| News headline/summary | `MarketNewsArticleDialog` renders article text as Preact text children, not injected HTML | Preserve direct text-child interpolation; A source-boundary regression locates the headline/body JSX regions and rejects raw-HTML DOM sinks. A browser-level active-origin XSS test remains separate |
 | News article URL | Provider-supplied URL is used as an external anchor destination | Allow only absolute HTTP(S), reject executable/non-web schemes and credential-bearing URLs; retain `noopener noreferrer` |
+| Stocktwits stream URL | Provider-supplied `streamUrl` was rendered directly as an external anchor | Validate through the existing absolute HTTP(S)-only URL boundary; suppress the link for unsafe/malformed destinations; retain `noopener noreferrer` |
 | Imported backup data | JSON passes a validation/normalization boundary before the store commit | Test hostile strings and malformed structures remain data, never executable markup |
 | Provider errors | Error messages can originate outside the application | Render bounded, escaped text; never treat error text as markup |
 | AI/news prompt context | Provider text and article bodies are untrusted input | Keep it in an untrusted-content section; prompt-injection tests must not grant financial mutation authority |
@@ -51,9 +52,11 @@ No policy should be activated until a host-compatible rollout, violation review 
 
 A focused article-link implementation is tracked in [PR #564](https://github.com/armave/portfolio-terminal/pull/564). That change rejects non-HTTP(S) article URLs. It is a partial mitigation, not completion of the full XSS audit.
 
-The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). This closes that additional link path but does not complete the broader active-origin credential or CSP review.
+The Margin Intelligence source-card URL sink also uses the same HTTP(S)-only validator and safe external-link attributes in [PR #581](https://github.com/armave/portfolio-terminal/pull/581). The Stocktwits community-feed link now uses the same validated destination boundary and suppresses unsafe provider-supplied URLs in [PR #627](https://github.com/armave/portfolio-terminal/pull/627). These bounded fixes close those link paths only; they do not complete the broader active-origin credential or CSP review.
 
 The follow-up regression suite in [the URL safety tests](../src/features/quotes/marketInsightsContent.test.ts) exercises absolute HTTP(S) acceptance and rejection of executable/non-web schemes, protocol-relative and malformed destinations, embedded credentials, non-string values, and overlong input. This protects the existing URL boundary; it does not replace the broader href/src/navigation sink audit or the CSP and account-lifecycle review.
+
+The company-news dialog now has a focused source-boundary regression in [`MarketNewsArticleDialog.security.test.ts`](../src/components/MarketNewsArticleDialog.security.test.ts), delivered by [PR #629](https://github.com/armave/portfolio-terminal/pull/629). It passes hostile image/SVG/event-handler strings through Preact VNodes and asserts they remain string children, locates the labelled headline and article-body JSX regions to pin the component's direct text-child expressions, and rejects common raw HTML insertion APIs in that component. This is a source-structure regression, not a browser penetration test or proof against an actively compromised origin; the broader hostile-content browser journey and credential review remain open.
 
 ## 4. Browser credential exposure
 
@@ -96,3 +99,20 @@ Controls to verify:
 - Obtain security review before enforcing CSP or changing hosting/deployment configuration.
 
 **This review does not claim CSP is deployed, that all XSS sinks have been audited, or that browser credentials are protected from an active same-origin compromise.**
+
+
+## 7. Bounded source-level security regression — 2026-11-20
+
+The client test suite now enforces a source-level regression guard that rejects production-source use of raw HTML insertion APIs (`dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `srcdoc` and `document.write`). It also checks the reviewed navigation boundaries:
+
+- `BoardExternalLinks` constructs URLs only from fixed Finviz, Stocktwits and TradingView hosts, URL-encodes the ticker, and uses `noopener noreferrer`.
+- News article, Margin Intelligence source-card and Stocktwits stream links pass through the shared absolute HTTP(S)-only validator, which rejects embedded URL credentials; these external anchors use `noopener noreferrer`.
+- Settings section links are same-document fragment navigation.
+
+This is a source-level regression guard for the enumerated sinks, not a complete `href`/`src`/navigation inventory, browser penetration test or proof against active-origin compromise. Credential-exposure journeys, logout/account-switch isolation review and hostile imported/provider content browser coverage remain open.
+
+### CSP and production headers — still blocked
+
+The hosted client is GitHub Pages and is published by the `actions/deploy-pages` workflow. The repository does not configure response headers for the static HTML origin. The Worker is a separate API origin and cannot set headers on the Pages document. `index.html` has no CSP policy, and the Vite build injects startup-critical inline CSS/style attributes.
+
+No CSP meta policy or fictitious Pages `_headers` file was added. A meta policy would not provide a report-only response-header rollout and is not equivalent to an enforceable host response-header strategy for all directives. CSP remains unapproved/unimplemented until the hosting/header mechanism, inline-style strategy and production endpoint inventory are reviewed against the actual built artifact and all required app journeys.
