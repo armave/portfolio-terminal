@@ -1251,7 +1251,10 @@ try {
   });
   await settingsNavigation.locator('a[href="#settings-broker-section"]').click();
   await page.waitForFunction(() => window.location.hash === '#settings-broker-section');
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-broker-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 224) <= 3);
+  }, null, { timeout: 5_000 });
   const desktopSectionLayout = await desktopBrokerSection.evaluate((element) => {
     const navigation = document.querySelector('#settingsDesk .settings-section-nav');
     return {
@@ -1264,6 +1267,7 @@ try {
   });
   if (desktopSectionLayout.scrollBehavior !== 'smooth' ||
       desktopSectionLayout.sectionTop < desktopSectionLayout.navigationBottom - 2 ||
+      Math.abs(desktopSectionLayout.sectionTop - 224) > 3 ||
       desktopSectionLayout.paddingTop < 12 ||
       desktopSectionLayout.paddingInline < 12) {
     throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
@@ -1276,18 +1280,21 @@ try {
       await visibleSettingsDesk().locator('.settings-section-nav-groups').isVisible()) {
     throw new Error('Mobile Settings should show the compact section picker instead of desktop navigation groups.');
   }
-  const mobileHelpSection = visibleSettingsDesk().locator('#settings-help-section');
-  await mobileHelpSection.evaluate((element) => {
+  const mobileMaintenanceSection = visibleSettingsDesk().locator('#settings-maintenance-section');
+  await mobileMaintenanceSection.evaluate((element) => {
     const originalScrollIntoView = element.scrollIntoView.bind(element);
     element.scrollIntoView = (options) => {
       element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
       originalScrollIntoView(options);
     };
   });
-  await mobileSectionPicker.selectOption('settings-help-section');
-  await page.waitForFunction(() => window.location.hash === '#settings-help-section');
-  await page.waitForTimeout(700);
-  const mobileSectionLayout = await mobileHelpSection.evaluate((element) => {
+  await mobileSectionPicker.selectOption('settings-maintenance-section');
+  await page.waitForFunction(() => window.location.hash === '#settings-maintenance-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-maintenance-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 104) <= 3);
+  }, null, { timeout: 5_000 });
+  const mobileSectionLayout = await mobileMaintenanceSection.evaluate((element) => {
     const navigation = document.querySelector('#settingsDesk .settings-section-nav');
     return {
       scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
@@ -1299,6 +1306,7 @@ try {
   });
   if (mobileSectionLayout.scrollBehavior !== 'smooth' ||
       mobileSectionLayout.sectionTop < mobileSectionLayout.navigationBottom - 2 ||
+      Math.abs(mobileSectionLayout.sectionTop - 104) > 3 ||
       mobileSectionLayout.paddingTop < 10 ||
       mobileSectionLayout.paddingInline < 10) {
     throw new Error('Mobile Settings navigation or section spacing is incorrect: ' + JSON.stringify(mobileSectionLayout));
