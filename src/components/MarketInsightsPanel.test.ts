@@ -16,3 +16,14 @@ describe('Combined Market Insights ticker selection', () => {
     expect(source).toContain('isCombinedView && tickerOptions.length > 1');
   });
 });
+
+
+describe('Market Insights news quantity control', () => {
+  it('defaults to three visible articles and allows a bounded choice from three through ten', () => {
+    expect(source).toContain('const [newsDisplayLimit, setNewsDisplayLimit] = useState(3)');
+    expect(source).toContain('currentNewsData.slice(0, newsDisplayLimit)');
+    expect(source).toContain('value >= 3 && value <= 10');
+    expect(source).toContain('Array.from({ length: 8 }, (_, index) => index + 3)');
+    expect(source).toContain("translateText('News count', getAppLanguage())");
+  });
+});
