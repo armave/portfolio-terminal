@@ -858,8 +858,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <p>{translateText('Configure app-side planning guardrails and defaults for newly observed broker positions.')}</p>
         </div>
         <div class="settings-panel space-y-3">
-          <p class="text-xs leading-relaxed text-slate-400">{translateText('These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.')}
-          <p class="settings-form-helper">{translateText('Planning defaults do not modify existing lots, cost basis, journal entries, or broker records.')}</p></p>
+          <div class="space-y-1">
+            <p class="text-xs leading-relaxed text-slate-400">{translateText('These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.')}</p>
+            <p class="settings-form-helper">{translateText('Planning defaults do not modify existing lots, cost basis, journal entries, or broker records.')}</p>
+          </div>
           <form id="portfolioSettingsForm" class="settings-rules-form space-y-3" onSubmit={(event) => {
             event.preventDefault();
             const form = event.currentTarget as HTMLFormElement;
