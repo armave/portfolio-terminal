@@ -1471,6 +1471,7 @@ try {
   // backup and confirm a reset of local portfolio plus revisioned cloud history.
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#settingsDesk #settings-recovery-section').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'administrator Settings desk');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export portfolio backup as JSON' }).click();
@@ -1509,6 +1510,8 @@ try {
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');
   const dangerZone = page.locator('#settingsDesk details.settings-danger-zone');
+  await dangerZone.waitFor({ state: 'attached', timeout: 20_000 });
+  await dangerZone.locator('summary').waitFor({ state: 'visible', timeout: 20_000 });
   await dangerZone.locator('summary').click();
   const dangerZoneExpanded = await dangerZone.evaluate((element) => element.open);
   if (!dangerZoneExpanded) {
