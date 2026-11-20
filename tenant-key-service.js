@@ -399,10 +399,22 @@ function validateKeyRecord(record, tenantId) {
       !/^[0-9a-f-]{36}$/i.test(record.keyId || "") ||
       !Number.isSafeInteger(record.keyVersion) || record.keyVersion < 1 ||
       typeof record.kmsKeyArn !== "string" ||
+      !/^arn:(aws|aws-us-gov|aws-cn|aws-iso|aws-iso-b):kms:[a-z0-9-]+:\d{12}:key\/[A-Za-z0-9-]+$/.test(record.kmsKeyArn) ||
+      record.encryptionContextVersion !== 1 ||
+      !requiredString(record.createdAt, 80) || !Number.isFinite(Date.parse(record.createdAt)) ||
       typeof record.wrappedDek !== "string" || record.wrappedDek.length > 16_384) {
     throw new TenantKeyServiceError("tenant_key_record_invalid", 409);
   }
   decodeBase64(record.wrappedDek);
+}
+
+export function isTenantKeyRecordValid(record, tenantId) {
+  try {
+    validateKeyRecord(record, tenantId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRecordContext(context, keyRecord) {
@@ -453,6 +465,9 @@ async function unwrapTenantKey(env, keyRecord, tenantId, usages) {
   validateKeyRecord(keyRecord, tenantId);
   const configuration = readConfiguration(env);
   if (!configuration) throw new TenantKeyServiceError("kms_not_configured", 503);
+  if (keyRecord.kmsKeyArn !== configuration.keyArn) {
+    throw new TenantKeyServiceError("tenant_key_kms_key_mismatch", 409);
+  }
   const context = await kmsEncryptionContext(tenantId, keyRecord.keyId, keyRecord.keyVersion);
   const result = await kmsRequest(env, "Decrypt", {
     CiphertextBlob: keyRecord.wrappedDek,
@@ -561,8 +576,10 @@ export async function rewrapTenantDek(env, keyRecord, destinationKeyArn) {
   const destinationMatch = destinationKeyArn?.match(
     /^arn:(aws|aws-us-gov|aws-cn|aws-iso|aws-iso-b):kms:([a-z0-9-]+):\d{12}:key\/[A-Za-z0-9-]+$/
   );
+  const configuredArnParts = configuration.keyArn.split(":");
   if (!destinationMatch || destinationMatch[2] !== configuration.region ||
-      destinationMatch[1] !== configuration.keyArn.split(":")[1]) {
+      destinationMatch[1] !== configuredArnParts[1] ||
+      destinationMatch[0].split(":")[4] !== configuredArnParts[4]) {
     throw new TenantKeyServiceError("kms_destination_invalid", 400);
   }
   const context = await kmsEncryptionContext(keyRecord.tenantId, keyRecord.keyId, keyRecord.keyVersion);

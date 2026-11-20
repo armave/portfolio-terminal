@@ -1,7 +1,7 @@
 // Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
 import { logServerDiagnostic } from "./safeServerDiagnostics.js";
-import { createTenantKeyRecord, isTenantKmsConfigured } from "./tenant-key-service.js";
+import { createTenantKeyRecord, isTenantKeyRecordValid, isTenantKmsConfigured } from "./tenant-key-service.js";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",
@@ -3143,11 +3143,9 @@ export class PortfolioStateDO {
         if (!pointer || pointer.version !== 1 || pointer.status !== "active" ||
             pointer.tenantId !== tenantId || !/^[0-9a-f-]{36}$/i.test(pointer.keyId || "") ||
             !Number.isSafeInteger(pointer.keyVersion) || pointer.keyVersion < 1 ||
-            !record || record.schemaVersion !== 1 || record.provider !== "aws-kms" ||
-            record.status !== "active" || record.tenantId !== tenantId ||
+            !isTenantKeyRecordValid(record, tenantId) ||
             record.keyId !== pointer.keyId || record.keyVersion !== pointer.keyVersion ||
-            typeof record.kmsKeyArn !== "string" || typeof record.wrappedDek !== "string" ||
-            !record.wrappedDek) {
+            pointer.kmsKeyArn !== record.kmsKeyArn) {
           return { error: "Tenant key metadata requires recovery; no changes were made.", status: 503 };
         }
         return { existing: pointer };
