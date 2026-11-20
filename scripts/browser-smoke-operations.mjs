@@ -1291,13 +1291,13 @@ try {
   );
 
   // Create two users, then exercise editing and deletion through the actual Settings form.
-  const waitForUserSaveReady = async (name) => {
+  const waitForUserRowClean = async (name) => {
     await page.waitForFunction((userName) => {
       const row = Array.from(Array.from(Array.from(document.querySelectorAll('#settingsDesk')).find((desk) => desk.getClientRects().length > 0)?.querySelectorAll('tbody tr') || [])).find((candidate) =>
         candidate.querySelector('input')?.getAttribute('aria-label') === `Name for ${userName}`
       );
       const saveButton = row?.querySelector('button[type="button"]');
-      return saveButton instanceof HTMLButtonElement && !saveButton.disabled;
+      return saveButton instanceof HTMLButtonElement && saveButton.disabled;
     }, name, { timeout: 10_000 });
   };
   const directoryReadsBeforeExpand = worker.count('GET', '/api/auth/users');
@@ -1366,7 +1366,7 @@ try {
         visibleRows, alerts, recentRequests
       }));
     }
-    await waitForUserSaveReady(name);
+    await waitForUserRowClean(name);
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
   await createUser('Browser Guest Keep', 'keep-guest-password');
@@ -1436,7 +1436,7 @@ try {
       user.language === 'ru' && user.password === 'updated-guest-password'),
     'user rename, role, language and password update'
   );
-  await waitForUserSaveReady('Browser Guest Updated');
+  await waitForUserRowClean('Browser Guest Updated');
 
   const updatedRow = rowForUser('Browser Guest Updated');
   await updatedRow.getByLabel('Role for Browser Guest Updated').selectOption('guest');
@@ -1446,7 +1446,7 @@ try {
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'guest'),
     'guest role restoration'
   );
-  await waitForUserSaveReady('Browser Guest Updated');
+  await waitForUserRowClean('Browser Guest Updated');
 
   // Tenant directory is lazy-mounted only after its advanced ownership disclosure opens.
   // Exercise owner metadata creation, least-privilege guest grant, and guest projection-only view.
