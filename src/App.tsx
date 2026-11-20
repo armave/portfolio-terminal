@@ -538,22 +538,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               )}
 
               <div id="marginDataWorkspace" class="margin-data-workspace">
-                <details
-                  class={"workspace-disclosure " + (activeDeskView === 'COMBINED' ? "" : "workspace-disclosure--always-open")}
-                  data-workspace-disclosure="projections"
-                  open={activeDeskView !== 'COMBINED' || (workspaceDisclosurePreferences.projectionsOpen ?? false)}
-                  onToggle={(event) => {
-                    if (activeDeskView === 'COMBINED') {
-                      updateWorkspaceDisclosurePreference('projectionsOpen', (event.currentTarget as HTMLDetailsElement).open);
-                    }
-                  }}
-                >
-                  {activeDeskView === 'COMBINED' && (
-                    <summary>
-                      <span>{translateText('Projections', getAppLanguage())}</span>
-                      <span>{translateText('Modeled net proceeds, fees, financing and account balance by date.', getAppLanguage())}</span>
-                    </summary>
-                  )}
+                <div class="workspace-panel" data-workspace-panel="projections">
                 {/* Projection Table */}
                 <TableScrollRegion
                   label={translateText('Portfolio projection by date', getAppLanguage())}
@@ -582,25 +567,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     ><MemoProjectionsTable /></tbody>
                   </table>
                 </TableScrollRegion>
-                </details>
-                <details
-                  class={"workspace-disclosure workspace-disclosure--research " + (activeDeskView === 'COMBINED' ? "" : "workspace-disclosure--always-open")}
-                  data-workspace-disclosure="research"
-                  open={activeDeskView !== 'COMBINED' || (workspaceDisclosurePreferences.researchOpen ?? false)}
-                  onToggle={(event) => {
-                    if (activeDeskView === 'COMBINED') {
-                      const open = (event.currentTarget as HTMLDetailsElement).open;
-                      updateWorkspaceDisclosurePreference('researchOpen', open);
-                      if (open) setMarketResearchHasOpened(true);
-                    }
-                  }}
-                >
-                  {activeDeskView === 'COMBINED' && (
-                    <summary>
-                      <span>{translateText('Market research', getAppLanguage())}</span>
-                      <span>{translateText('Company news, fundamentals, earnings and analyst context.', getAppLanguage())}</span>
-                    </summary>
-                  )}
+
+                </div>
+                <div class="workspace-panel workspace-panel--research" data-workspace-panel="research">
                 <section
                   id="marketInsightsPanel"
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
@@ -613,7 +582,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                       </Suspense>
                     ) : null)}
                 </section>
-                </details>
+                </div>
               </div>
             </div>
           </div>}
