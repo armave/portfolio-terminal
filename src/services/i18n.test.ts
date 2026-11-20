@@ -1149,3 +1149,7 @@ describe('Margin PT target information localization', () => {
   });
 
 });
+  it('localizes the Market Insights news count control in Russian', () => {
+    expect(translateText('News count', 'ru')).toBe('Количество новостей');
+  });
+
