@@ -1,12 +1,12 @@
-export type WorkspaceDeskPrefetchKey =
+type WorkspaceDeskPrefetchKey =
   | 'balance'
   | 'trades'
   | 'guest-history'
   | 'settings'
   | 'margin';
 
-export type WorkspaceDeskModuleLoader = () => Promise<unknown>;
-export type WorkspaceDeskModuleLoaders = Record<WorkspaceDeskPrefetchKey, WorkspaceDeskModuleLoader>;
+type WorkspaceDeskModuleLoader = () => Promise<unknown>;
+type WorkspaceDeskModuleLoaders = Record<WorkspaceDeskPrefetchKey, WorkspaceDeskModuleLoader>;
 
 function resolveWorkspaceDeskPrefetchKey(view: string, isAdmin: boolean): WorkspaceDeskPrefetchKey | null {
   if (view === 'BALANCE' || view === 'CASH_CUSHION') return 'balance';
