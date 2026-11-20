@@ -222,6 +222,12 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
     expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
+    expect(fluidStyles).toMatch(/#settingsDesk \.settings-section-nav\s*\{[^}]*position:\s*sticky;/s);
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav a.is-active');
+    expect(fluidStyles).toContain('#settingsDesk .settings-cadence-grid');
+    expect(fluidStyles).toContain('#settingsDesk .settings-manual-sync-results');
+    expect(fluidStyles).toContain('#settingsDesk .settings-danger-zone');
+    expect(fluidStyles).toContain('#settingsDesk .settings-field-group-heading');
     expect(fluidStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('#settingsDesk.settings-subsection>summary');
     expect(stylesheet).toMatch(/#settingsDesk \.settings-subsection>summary,\s*#settingsDesk \.settings-device-details>summary\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
     expect(stylesheet).toContain('#settingsDesk .settings-device-details>summary::before');
