@@ -1508,7 +1508,7 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
     if (refreshMode === 'recover' || refreshMode === 'fallback') {
       const results = await Promise.all([
         portfolioBrokerRefreshRuntime.refreshAccountInfo(),
-        portfolioBrokerRefreshRuntime.refreshExecutedTrades(),
+        portfolioBrokerRefreshRuntime.refreshExecutedTrades('background'),
         portfolioBrokerRefreshRuntime.refreshActiveOrders()
       ]);
       return results.every(Boolean);
@@ -2114,7 +2114,7 @@ function bindStartupActions() {
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
     refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
-    refreshExecutedTrades: portfolioBrokerRefreshRuntime.refreshExecutedTrades,
+    refreshExecutedTrades: () => portfolioBrokerRefreshRuntime.refreshExecutedTrades('interactive'),
     refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,
     refreshQuotes: () => refreshAllLivePrices(true),
     pushCloud: async () => {

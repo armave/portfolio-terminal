@@ -173,7 +173,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   };
   const retryExecutedTrades = () => {
     dispatchBrokerExecutionHistory({ type: 'refresh' });
-    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
   };
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
   // Preserve raw split-field input while the portfolio store rerenders.
@@ -277,7 +277,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       });
     });
     dispatchBrokerExecutionHistory({ type: 'refresh' });
-    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
     return () => {
       removeTradesListener();
       removeErrorListener();

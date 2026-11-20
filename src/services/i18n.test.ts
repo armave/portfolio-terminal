@@ -184,6 +184,18 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes Trades background activity phases in Russian', () => {
+    const tradesActivityCopy = [
+      'Refreshing TradeNet execution history in the background…',
+      'Restoring saved trade history in the background…',
+      'Refreshing TradeNet cashflow history in the background…',
+      'Recalculating trade fees in the background…'
+    ];
+    for (const copy of tradesActivityCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes guest assigned-data refresh status in Russian', () => {
     const guestSyncCopy = [
       'Assigned data synchronization',

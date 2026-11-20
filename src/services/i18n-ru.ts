@@ -1264,6 +1264,10 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Stress sensitivity exceeds the finite calculation range.": "Результат сценарного анализа выходит за допустимый числовой диапазон.",
   "Stress sensitivity is unavailable.": "Сценарный анализ недоступен.",
 
+  "Refreshing TradeNet execution history in the background…": "Обновление истории исполнений TradeNet в фоновом режиме…",
+  "Restoring saved trade history in the background…": "Восстановление сохранённой истории сделок в фоновом режиме…",
+  "Refreshing TradeNet cashflow history in the background…": "Обновление истории денежных потоков TradeNet в фоновом режиме…",
+  "Recalculating trade fees in the background…": "Перерасчёт комиссий по сделкам в фоновом режиме…",
   "Assigned data synchronization": "Синхронизация назначенных данных",
   "Assigned data refresh confirmed": "Обновление назначенных данных подтверждено",
   "Assigned data refresh in progress": "Выполняется обновление назначенных данных",

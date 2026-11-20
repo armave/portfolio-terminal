@@ -36,6 +36,26 @@ describe('portfolio broker refresh runtime', () => {
     expect(emit).toHaveBeenNthCalledWith(3, 'broker:request-active-orders');
   });
 
+  it('carries an explicit priority through execution-history request events', async () => {
+    const emit = vi.fn() as unknown as BrokerEventEmitter;
+    const runtime = createPortfolioBrokerRefreshRuntime(emit);
+
+    runtime.requestExecutedTrades('interactive');
+    expect(emit).toHaveBeenCalledWith('broker:request-executed-trades', { priority: 'interactive' });
+
+    const waitableEmit = vi.fn((type: string, payload: unknown) => {
+      if (type === 'broker:request-executed-trades-and-wait') {
+        (payload as { resolve: (success: boolean) => void }).resolve(true);
+      }
+    });
+    const waitableRuntime = createPortfolioBrokerRefreshRuntime(waitableEmit as unknown as BrokerEventEmitter);
+    await expect(waitableRuntime.refreshExecutedTrades('interactive')).resolves.toBe(true);
+    expect(waitableEmit).toHaveBeenCalledWith('broker:request-executed-trades-and-wait', {
+      resolve: expect.any(Function),
+      priority: 'interactive'
+    });
+  });
+
   it('resolves each waitable broker request from its corresponding broker event', async () => {
     const runtime = createPortfolioBrokerRefreshRuntime();
 

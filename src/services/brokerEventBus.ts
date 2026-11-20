@@ -2,7 +2,7 @@ import type {
   FreedomActiveOrder,
   FreedomPortfolioSnapshot
 } from './api';
-import type { BrokerDataQualityIssue, BrokerDataSnapshot } from '../types/broker';
+import type { BrokerDataQualityIssue, BrokerDataSnapshot, BrokerExecutionRequestPriority } from '../types/broker';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 interface ActiveTrancheTypeRequest {
@@ -40,8 +40,11 @@ export interface BrokerEventPayloads {
   'broker:active-orders-error': undefined;
   'broker:request-account-info': undefined;
   'broker:request-account-info-and-wait': { resolve: (success: boolean) => void };
-  'broker:request-executed-trades': undefined;
-  'broker:request-executed-trades-and-wait': { resolve: (success: boolean) => void };
+  'broker:request-executed-trades': { priority?: BrokerExecutionRequestPriority } | undefined;
+  'broker:request-executed-trades-and-wait': {
+    resolve: (success: boolean) => void;
+    priority?: BrokerExecutionRequestPriority;
+  };
   'broker:request-active-orders': undefined;
   'broker:request-active-orders-and-wait': { resolve: (success: boolean) => void };
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;

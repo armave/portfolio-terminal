@@ -293,7 +293,7 @@ export function createFreedomTradeNetBrokerAdapter(
     },
     fetchPortfolio: () => transport.fetchPortfolio(),
     fetchActiveOrders: () => transport.fetchActiveOrders(),
-    fetchExecutions: (fromDate) => transport.fetchExecutions(fromDate),
+    fetchExecutions: (fromDate, priority) => transport.fetchExecutions(fromDate, priority),
     fetchCashflows: (fromDate) => transport.fetchCashflows(fromDate),
     getAuthenticationState: (input = {}): BrokerAuthenticationState => {
       const checkedAt = input.checkedAt ?? Date.now();
