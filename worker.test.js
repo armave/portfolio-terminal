@@ -1979,6 +1979,38 @@ describe('PortfolioStateDO TradeNet portfolio stream sanitization', () => {
     expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: false, acc: [], pos: [] })).toBeNull();
     expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: true, acc: [] })).toBeNull();
   });
+
+  it('preserves unclassified-currency rows as minimal markers for partial client-side validation', () => {
+    const store = makeStore();
+    const result = store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true,
+      acc: [
+        { curr: 'USD', s: '100' },
+        { s: '500', private_account: 'must-not-forward' },
+        { curr: 'EUR', s: '250' },
+        null
+      ],
+      pos: [
+        { curr: 'USD', i: 'AAPL.US', q: 2 },
+        { i: 'MSFT.US', q: 3, private_account: 'must-not-forward' },
+        { curr: 'EUR', i: 'SAP', q: 4 }
+      ]
+    });
+
+    expect(result).toEqual({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 100, currval: null, forecast_in: 0, forecast_out: 0, t2_in: 0, t2_out: 0 }, { curr: '' }, { curr: '' }],
+        pos: [{ i: 'AAPL.US', name: 'AAPL.US', q: 2, curr: 'USD', mkt_price: null, market_value: null,
+          bal_price_a: null, profit_close: null, acc_pos_id: null, instr_id: null, issue_nb: null,
+          t: null, k: null, go: null, vm: null }, { curr: '' }]
+      } } }
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('must-not-forward');
+    expect(serialized).not.toContain('EUR');
+    expect(serialized).not.toContain('SAP');
+  });
 });
 
 describe('PortfolioStateDO optimistic concurrency', () => {
@@ -4461,6 +4493,85 @@ describe('Durable Object private portfolio and orders stream', () => {
       expect(serialized).not.toContain('private-login');
       expect(serialized).not.toContain('hidden');
       expect(store.freedomAccountUpstreamReady).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('Durable Object TradeNet rejected SID recovery', () => {
+  function makeStore() {
+    const values = new Map();
+    const storage = {
+      get: async key => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async key => values.delete(key),
+      transaction: async callback => callback({
+        get: async key => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async key => values.delete(key)
+      })
+    };
+    return new PortfolioStateDO({ storage }, {});
+  }
+
+  function stubRejectedUpgrade(status) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status,
+      webSocket: null,
+      headers: new Headers()
+    }));
+  }
+
+  it.each([401, 403])('invalidates the cached SID rejected by the account stream upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 's'.repeat(48), expiresAt: Date.now() + 60_000 };
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomAccountUpstream()).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([401, 403])('invalidates the cached SID rejected by the quote stream upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'q'.repeat(48), expiresAt: Date.now() + 60_000 };
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomQuoteUpstream(['AAPL.US'])).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([401, 403])('invalidates the cached SID rejected by the Market Depth upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'd'.repeat(48), expiresAt: Date.now() + 60_000 };
+    const session = { streamId: 'stream-1', symbol: 'AAPL.US' };
+    store.freedomDepthStreams.set(session.streamId, session);
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomMarketDepthUpstream(session)).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not invalidate a newer SID when an older in-flight socket upgrade is rejected', async () => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'o'.repeat(48), expiresAt: Date.now() + 60_000 };
+    const replacement = { sid: 'n'.repeat(48), expiresAt: Date.now() + 60_000 };
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      store.freedomTradeNetSession = replacement;
+      return { status: 401, webSocket: null, headers: new Headers() };
+    }));
+    try {
+      await expect(store.connectFreedomQuoteUpstream(['AAPL.US'])).rejects.toMatchObject({ status: 401 });
+      expect(store.freedomTradeNetSession).toBe(replacement);
     } finally {
       vi.unstubAllGlobals();
     }

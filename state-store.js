@@ -692,6 +692,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the Market Depth WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -720,7 +721,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", event => {
-      void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data);
+      void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data, sid);
     });
     socket.addEventListener("close", event => {
       if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
@@ -758,7 +759,7 @@ export class PortfolioStateDO {
     }
   }
 
-  async handleFreedomMarketDepthUpstreamMessage(session, socket, rawMessage) {
+  async handleFreedomMarketDepthUpstreamMessage(session, socket, rawMessage, sid) {
     if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
     const text = typeof rawMessage === "string" ? rawMessage : String(rawMessage || "");
     if (new TextEncoder().encode(text).byteLength > FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES) {
@@ -774,6 +775,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production Market Depth session.");
         session.waiter?.reject(error);
         this.sendFreedomMarketDepthError(session, error.message);
@@ -925,6 +927,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the persistent portfolio/orders WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -960,7 +963,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", (event) => {
-      void this.handleFreedomAccountUpstreamMessage(socket, event?.data);
+      void this.handleFreedomAccountUpstreamMessage(socket, event?.data, sid);
     });
     socket.addEventListener("close", () => {
       if (this.freedomAccountUpstream !== socket) return;
@@ -1014,11 +1017,18 @@ export class PortfolioStateDO {
       const number = Number(value);
       return Number.isFinite(number) ? number : null;
     };
-    const usdRows = (rows) => rows.filter((row) =>
-      row && typeof row === "object" && !Array.isArray(row) &&
-      String(row.curr ?? row.base_currency ?? "").toUpperCase() === "USD"
-    );
+    const usdRows = (rows) => rows.flatMap((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return [{ curr: "" }];
+      const currency = String(row.curr ?? row.base_currency ?? "").trim().toUpperCase();
+      // Keep an empty-currency marker so the client adapter can classify the
+      // snapshot as partial instead of treating an unknown-currency row as absent.
+      if (!currency) return [{ curr: "" }];
+      return currency === "USD" ? [row] : [];
+    });
     const acc = usdRows(source.acc).map((row) => {
+      if (String(row.curr ?? row.base_currency ?? "").trim().toUpperCase() !== "USD") {
+        return { curr: "" };
+      }
       const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
       if (amount === null) throw new Error("TradeNet account stream contains a USD balance without a valid amount.");
       return {
@@ -1032,6 +1042,9 @@ export class PortfolioStateDO {
       };
     });
     const pos = usdRows(source.pos).map((row) => {
+      if (String(row.curr ?? row.base_currency ?? "").trim().toUpperCase() !== "USD") {
+        return { curr: "" };
+      }
       const quantity = numberOrNull(row.q);
       if (quantity === null) throw new Error("TradeNet account stream contains a USD position without a valid signed quantity.");
       const ticker = String(row.i ?? row.base_contract_code ?? "").trim();
@@ -1136,7 +1149,7 @@ export class PortfolioStateDO {
     };
   }
 
-  async handleFreedomAccountUpstreamMessage(socket, rawMessage) {
+  async handleFreedomAccountUpstreamMessage(socket, rawMessage, sid) {
     if (this.freedomAccountUpstream !== socket) return;
     let packet;
     try {
@@ -1150,6 +1163,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production account stream.");
         this.freedomAccountUpstreamWaiter?.reject(error);
         this.freedomAccountUpstreamReady = false;
@@ -1296,6 +1310,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the persistent quote WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -1329,7 +1344,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", (event) => {
-      void this.handleFreedomQuoteUpstreamMessage(socket, event?.data);
+      void this.handleFreedomQuoteUpstreamMessage(socket, event?.data, sid);
     });
     socket.addEventListener("close", () => {
       if (this.freedomQuoteUpstream !== socket) return;
@@ -1370,7 +1385,7 @@ export class PortfolioStateDO {
     }
   }
 
-  async handleFreedomQuoteUpstreamMessage(socket, rawMessage) {
+  async handleFreedomQuoteUpstreamMessage(socket, rawMessage, sid) {
     if (this.freedomQuoteUpstream !== socket) return;
     let packet;
     try {
@@ -1384,6 +1399,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production quote session.");
         this.freedomQuoteUpstreamWaiter?.reject(error);
         this.freedomQuoteUpstreamReady = false;
