@@ -515,7 +515,8 @@ describe('Combined Margin data quality and position comparison', () => {
     expect(source).toContain("view: 'BALANCE'");
     expect(source).toContain("translateText('Missing or stale inputs are not treated as zero.'");
     expect(source).toContain('<CombinedPositionsTable');
-    expect(source).toContain('getMarginPositionMarketSummaries');
+    const positionsSource = readFileSync(new URL('./CombinedPositionsTable.tsx', import.meta.url), 'utf8');
+    expect(positionsSource).toContain('getMarginPositionMarketSummaries(positions)');
   });
 });
 

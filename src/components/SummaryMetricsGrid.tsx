@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { calculateCombinedMetrics, getMarginPositionMarketSummaries, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
