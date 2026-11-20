@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
-import { calculateCombinedMetrics, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { calculateCombinedMetrics, getMarginPositionMarketSummaries, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { FREEDOM_BROKER_TIME_ZONE } from '../domain/brokerAssumptions';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { getUsEquityMarketSession } from '../services/marketSession';
@@ -33,6 +33,7 @@ import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
 import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
+import { CombinedPositionsTable } from './CombinedPositionsTable';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -631,8 +632,13 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
     totalMarginCharged += openMarginCharged;
 
     const totalComms = totalCommBuy + totalCommSell;
-    const totalUnrealized = unpricedMarginPositionCount === 0 ? totalMarketValue - totalInvested : null;
-    const unrealizedPct = totalUnrealized !== null && totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
+    const totalUnrealized = tickers.length > 0 && unpricedMarginPositionCount === 0 &&
+      Number.isFinite(totalMarketValue) && Number.isFinite(totalInvested)
+      ? totalMarketValue - totalInvested
+      : null;
+    const unrealizedPct = totalUnrealized !== null && totalInvested > 0
+      ? (totalUnrealized / totalInvested) * 100
+      : Number.NaN;
     const totalDebt = Math.max(0, -(Number(state.balance) || 0));
     const dailyAccrual = totalDebt * dailyRate;
 
@@ -644,7 +650,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         : translateText('None', getAppLanguage());
 
     const investedText = `${formatUSD(totalInvested)} | ${translateText('Across {count} assets', getAppLanguage()).replace('{count}', String(tickers.length))}`;
-    const unSign = (totalUnrealized ?? 0) >= 0 ? '+' : '';
+    const unSign = totalUnrealized !== null && totalUnrealized >= 0 ? '+' : '';
     const commsText = `${formatUSD(totalComms)} (${formatUSD(totalCommBuy)} ${translateText('buy', getAppLanguage())} / ${formatUSD(
       totalCommSell
     )} ${translateText('sell', getAppLanguage())})`;
@@ -757,28 +763,49 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
       calculatedAt: Date.now()
     });
 
+    const unpricedCashHoldingCount = Math.max(0, valuation.unpricedHoldings - unpricedMarginPositionCount);
+    const marginQuoteIssueTickers = tickers.filter((ticker) => {
+      const position = state.positions![ticker];
+      return Number(position.shares) > 0 &&
+        getQuoteFreshness(position, Date.now(), refreshIntervalMs) !== 'fresh';
+    });
+    const dataQualityLabel = valuationStatus === 'incomplete'
+      ? 'Incomplete'
+      : risk.status === 'unavailable'
+        ? 'Unavailable'
+        : valuationStatus === 'provisional' || risk.status === 'provisional'
+          ? 'Provisional estimate'
+          : 'Current';
+    const dataQualityHasIssues = unpricedMarginPositionCount > 0 || unpricedCashHoldingCount > 0 ||
+      valuationQuoteSummary.stale > 0 || valuationQuoteSummary.delayed > 0 ||
+      valuationQuoteSummary.unknown > 0 || valuationQuoteSummary.unavailable > 0 ||
+      brokerBalanceIsStale || risk.status !== 'available';
+
     return (
       <>
         <section class="portfolio-header-kpis text-center" aria-label={translateText('Portfolio key indicators', getAppLanguage())}>
+          <PortfolioHeaderMetric metric="account-equity" label={translateText('Account equity', getAppLanguage())} value={equityText} />
           <PortfolioHeaderMetric
-            metric="net-target-return"
-            label={translateText('Net return at targets', getAppLanguage())}
-            value={totalInvested > 0 ? (netTargetReturnPct >= 0 ? '+' : '') + netTargetReturnPct.toFixed(2) + '%' : '—'}
-            valueId="boardNetTargetReturn"
-            valueClass={totalInvested <= 0 ? 'is-muted' : netTargetReturnPct >= 0 ? 'is-positive' : 'is-negative'}
+            metric="margin-market-value"
+            label={translateText('Margin position value', getAppLanguage())}
+            value={tickers.length > 0 && pricedMarginPositionCount > 0
+              ? (unpricedMarginPositionCount > 0 ? '≥' : '') + formatUSD(totalMarketValue)
+              : '—'}
+            valueClass={unpricedMarginPositionCount > 0 ? 'is-warning' : ''}
+            detail={unpricedMarginPositionCount > 0
+              ? translateText('Some Margin positions are not priced', getAppLanguage())
+              : translateText('Based on tracked Margin positions', getAppLanguage())}
           />
           <PortfolioHeaderMetric
-            metric="carry-break-even"
-            label={translateText('Post-sale balance floor', getAppLanguage())}
-            value={getHeaderBreakevenValue(breakevenText)}
-            valueId="daysToBreakeven"
-            valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
-            valueClass="is-carry"
-          />
-          <PortfolioHeaderMetric
-            metric="account-equity"
-            label={translateText('Account equity', getAppLanguage())}
-            value={equityText}
+            metric="gross-unrealized-pnl"
+            label={translateText('Gross unrealized P&L', getAppLanguage())}
+            value={totalUnrealized !== null && Number.isFinite(totalUnrealized) && Number.isFinite(unrealizedPct)
+              ? (totalUnrealized >= 0 ? '+' : '') + formatUSD(totalUnrealized)
+              : '—'}
+            valueClass={totalUnrealized === null ? 'is-muted' : totalUnrealized >= 0 ? 'is-positive' : 'is-negative'}
+            detail={Number.isFinite(unrealizedPct) && totalInvested > 0
+              ? (unrealizedPct >= 0 ? '+' : '') + unrealizedPct.toFixed(2) + '% ' + translateText('on cost basis', getAppLanguage())
+              : translateText('Requires complete quotes and cost basis', getAppLanguage())}
           />
           <PortfolioHeaderMetric
             metric="margin-debt"
@@ -796,10 +823,73 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             detail={getHeaderRiskDetail(risk)}
           />
         </section>
+        <section class="portfolio-scenario-outlook" aria-label={translateText('Scenario outlook', getAppLanguage())}>
+          <h2 class="portfolio-section-heading">{translateText('Scenario outlook', getAppLanguage())}</h2>
+          <div class="portfolio-scenario-outlook__grid">
+            <PortfolioHeaderMetric
+              metric="net-target-return"
+              label={translateText('Net return at targets', getAppLanguage())}
+              value={totalInvested > 0 ? (netTargetReturnPct >= 0 ? '+' : '') + netTargetReturnPct.toFixed(2) + '%' : '—'}
+              valueId="boardNetTargetReturn"
+              valueClass={totalInvested <= 0 ? 'is-muted' : netTargetReturnPct >= 0 ? 'is-positive' : 'is-negative'}
+              detail={translateText('After modeled commissions and financing', getAppLanguage())}
+            />
+            <PortfolioHeaderMetric
+              metric="carry-break-even"
+              label={translateText('Post-sale balance floor', getAppLanguage())}
+              value={getHeaderBreakevenValue(breakevenText)}
+              valueId="daysToBreakeven"
+              valueTitle={translateText('Estimated time until post-sale balance breaches the configured floor', getAppLanguage())}
+              valueClass="is-carry"
+            />
+          </div>
+        </section>
 
+
+        <section class="portfolio-data-quality-summary" aria-label={translateText('Risk data quality', getAppLanguage())}>
+          <div class="portfolio-data-quality-summary__heading">
+            <span>{translateText('Risk data quality', getAppLanguage())}</span>
+            <strong data-valuation-quality={dataQualityLabel}>{translateText(dataQualityLabel, getAppLanguage())}</strong>
+          </div>
+          <div class="portfolio-data-quality-summary__issues">
+            {marginQuoteIssueTickers.map((ticker) => {
+              const position = state.positions![ticker];
+              const quoteStatus = getUsableMarketPrice(position.currentPrice) === null
+                ? 'unavailable'
+                : getQuoteFreshness(position, Date.now(), refreshIntervalMs);
+              return (
+                <button
+                  key={ticker}
+                  type="button"
+                  onClick={() => emitUiEvent('portfolio:set-active-view', { view: ticker })}
+                  aria-label={translateText('Open Margin position {ticker}', getAppLanguage()).replace('{ticker}', ticker)}
+                >
+                  {ticker} · {translateText(quoteStatus, getAppLanguage())}
+                </button>
+              );
+            })}
+            {unpricedCashHoldingCount > 0 && (
+              <button type="button" onClick={() => emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' })}>
+                {translateText('Review Balance holdings ({count})', getAppLanguage()).replace('{count}', String(unpricedCashHoldingCount))}
+              </button>
+            )}
+            {valuationQuoteSummary.stale > 0 && <span>{translateText('{count} stale quotes', getAppLanguage()).replace('{count}', String(valuationQuoteSummary.stale))}</span>}
+            {valuationQuoteSummary.delayed > 0 && <span>{translateText('{count} delayed quotes', getAppLanguage()).replace('{count}', String(valuationQuoteSummary.delayed))}</span>}
+            {valuationQuoteSummary.unknown > 0 && <span>{translateText('{count} quotes with unknown freshness', getAppLanguage()).replace('{count}', String(valuationQuoteSummary.unknown))}</span>}
+            {brokerBalanceIsStale && <span>{translateText('Broker balance stale', getAppLanguage())}</span>}
+            {!dataQualityHasIssues && <span>{translateText('All tracked quote inputs are current.', getAppLanguage())}</span>}
+          </div>
+          <p>{translateText('Missing or stale inputs are not treated as zero.', getAppLanguage())}</p>
+          {risk.status === 'provisional' && (
+            <p class="margin-risk-confidence-note">
+              {translateText('Risk is provisional because at least one valuation or broker margin input is assumption-based, stale, delayed or unknown.', getAppLanguage())}
+            </p>
+          )}
+        </section>
 
         <div class="portfolio-risk-tools-row">
           <div class="portfolio-health-summary-column">
+            <h2 class="portfolio-section-heading">{translateText('Risk & financing', getAppLanguage())}</h2>
             <section class="portfolio-micro-summary portfolio-micro-summary--redesigned" aria-label={translateText('Portfolio financial summary', getAppLanguage())}>
               <div class="portfolio-micro-column portfolio-micro-market" role="group" aria-label={translateText('MARKET VALUATION', getAppLanguage())}>
                 <div class="portfolio-micro-row portfolio-micro-market-primary">
@@ -812,11 +902,18 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
                           {translateText('Unrealized return unavailable', getAppLanguage())} ({translateText('Unpriced positions', getAppLanguage())}: {unpricedMarginPositionCount})
                         </span>
                       </>
-                    ) : (
+                    ) : totalUnrealized !== null && Number.isFinite(unrealizedPct) ? (
                       <>
                         {formatUSD(totalMarketValue)} -{' '}
-                        <span class={totalUnrealized !== null && totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {unSign}{formatUSD(totalUnrealized ?? 0)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                        <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {unSign}{formatUSD(totalUnrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {formatUSD(totalMarketValue)}
+                        <br></br><span class="block text-amber-300">
+                          {translateText('Gross unrealized P&L unavailable', getAppLanguage())}
                         </span>
                       </>
                     )}
@@ -887,6 +984,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             <MarginMarketTools isAdmin={isAdmin} />
           </div>
         </div>
+        <CombinedPositionsTable positions={state.positions} refreshIntervalMs={refreshIntervalMs} isAdmin={isAdmin} />
       </>
     );
   }
