@@ -340,7 +340,7 @@ export function createPortfolioBrokerDataRuntime(
 
         if (hasCompleteBaseline && !forceProviderRefresh && requestPriority === 'background') {
           const recent = recentSuccessfulTradesReads.get(sessionRequestKey);
-          if (recent?.fromDate === fromDate) {
+          if (recent && recent.fromDate === fromDate) {
             const age = now() - recent.completedAt;
             if (age >= 0 && age < RECENT_EXECUTION_HISTORY_READ_REUSE_MS) {
               // Reuse only the timestamp/cursor; publish the latest merged local snapshot.
