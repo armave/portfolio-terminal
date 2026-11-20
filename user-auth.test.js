@@ -1200,3 +1200,57 @@ describe("Managed tenant key provisioning", () => {
   });
 });
 
+describe("Worker tenant key route authorization boundary", () => {
+  it("allows only the exact tenant key provisioning route through the Worker allowlist", async () => {
+    const forwarded = [];
+    const doStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === "/api/auth/verify") {
+          return new Response(JSON.stringify({
+            user: { id: "tenant-owner-01", role: "admin" }
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        forwarded.push(request);
+        return new Response(JSON.stringify({ success: true }), { status: 201 });
+      })
+    };
+    const env = {
+      PORTFOLIO_STATE_DO: {
+        idFromName: () => "portfolio_state",
+        get: () => doStub
+      }
+    };
+
+    const allowed = await worker.fetch(new Request(
+      "https://worker.test/api/tenants/tenant-example-0001/key/provision",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer valid-owner-session"
+        },
+        body: "{}"
+      }
+    ), env);
+    expect(allowed.status).toBe(201);
+    expect(forwarded).toHaveLength(1);
+    expect(new URL(forwarded[0].url).pathname)
+      .toBe("/api/tenants/tenant-example-0001/key/provision");
+
+    const rejected = await worker.fetch(new Request(
+      "https://worker.test/api/tenants/tenant-example-0001/key/provision/extra",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer valid-owner-session"
+        },
+        body: "{}"
+      }
+    ), env);
+    expect(rejected.status).toBe(404);
+    expect(forwarded).toHaveLength(1);
+  });
+});
+
