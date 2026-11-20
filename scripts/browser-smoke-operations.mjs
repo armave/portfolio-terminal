@@ -1296,7 +1296,8 @@ try {
       const row = Array.from(Array.from(Array.from(document.querySelectorAll('#settingsDesk')).find((desk) => desk.getClientRects().length > 0)?.querySelectorAll('tbody tr') || [])).find((candidate) =>
         candidate.querySelector('input')?.getAttribute('aria-label') === `Name for ${userName}`
       );
-      const saveButton = row?.querySelector('button[type="button"]');
+      const saveButton = Array.from(row?.querySelectorAll('button') || [])
+        .find((button) => button.textContent?.trim() === 'Save');
       return saveButton instanceof HTMLButtonElement && saveButton.disabled;
     }, name, { timeout: 10_000 });
   };
