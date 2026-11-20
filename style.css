@@ -6598,7 +6598,7 @@ table tbody tr:hover {
   border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.1));
   border-radius: var(--surface-radius, 0.875rem);
   background: rgb(15 23 42 / 0.2);
-  scroll-margin-top: 13rem;
+  scroll-margin-top: 14rem;
 }
 
 #settingsDesk .settings-section-nav {
