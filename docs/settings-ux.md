@@ -15,7 +15,7 @@ The Settings desk organizes preferences and administration without changing port
 7. Diagnostics & Security — device health, app updates, and administrator-only advanced maintenance.
 8. Methodology & Help — read-only explanations of calculations and data limitations.
 
-The section navigation is sticky, responsive, role-aware, and marks the currently visible section. Keyboard focus remains visible and reduced-motion preferences are respected.
+The section navigation is sticky, grouped into Workspace, Portfolio, and Management & help on desktop/tablet, and uses a compact grouped section picker on mobile. Selecting a section scrolls smoothly to its heading, updates the URL fragment, and keeps the active section synchronized with scrolling. Reduced-motion preferences disable animated scrolling. Settings sections use consistent inner padding and sticky-navigation-aware anchor offsets.
 
 ## Synchronization status semantics
 
