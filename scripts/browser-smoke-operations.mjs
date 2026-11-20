@@ -1429,6 +1429,7 @@ try {
   await keepRow.getByLabel('Role for Browser Guest Keep').selectOption('admin');
   await keepRow.getByLabel('Language for Browser Guest Keep').selectOption('ru');
   await keepRow.getByLabel('New password for Browser Guest Keep').fill('updated-guest-password');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await keepRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'admin' &&
@@ -1439,6 +1440,7 @@ try {
 
   const updatedRow = rowForUser('Browser Guest Updated');
   await updatedRow.getByLabel('Role for Browser Guest Updated').selectOption('guest');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await updatedRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'guest'),
