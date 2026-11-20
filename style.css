@@ -6532,7 +6532,7 @@ table tbody tr:hover {
 .combined-position-pnl.is-positive { color:#34d399; }
 .combined-position-pnl.is-negative { color:#fb7185; }
 .combined-position-pnl.is-muted { color:#94a3b8; }
-.combined-position-cards { display:none; }
+.combined-position-cards { display:none; margin:0; padding:0; list-style:none; }
 @media (max-width:767px) {
  .portfolio-scenario-outlook__grid { grid-template-columns:minmax(0,1fr); }
  .combined-positions-table-region { display:none; }
@@ -6567,7 +6567,4 @@ table tbody tr:hover {
   .workspace-disclosure>summary span:last-child { max-width:48%; line-height:1.4; }
   .market-insights-ticker-control { width:100%; }
   .market-insights-ticker-control select { width:100%; max-width:none; }
-}
-@media (prefers-reduced-motion:reduce) {
-  .workspace-disclosure { transition:none !important; animation:none !important; }
 }

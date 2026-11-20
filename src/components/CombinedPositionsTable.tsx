@@ -152,9 +152,9 @@ export function CombinedPositionsTable({ positions, refreshIntervalMs, isAdmin }
               </tbody>
             </table>
           </TableScrollRegion>
-          <div class="combined-position-cards" role="list" aria-label={translateText('Portfolio positions', language)}>
+          <ul class="combined-position-cards" aria-label={translateText('Portfolio positions', language)}>
             {sortedRows.map(row => (
-              <article class="combined-position-card" role="listitem" key={row.ticker}>
+              <li class="combined-position-card" key={row.ticker}>
                 <header>
                   <button type="button" class="combined-position-ticker" onClick={() => openPosition(row.ticker)}
                     aria-label={translateText('Open Margin position {ticker}', language).replace('{ticker}', row.ticker)}>
@@ -173,9 +173,9 @@ export function CombinedPositionsTable({ positions, refreshIntervalMs, isAdmin }
                   <div><dt>{translateText('Quote status', language)}</dt><dd>{quoteStatus(row)}</dd></div>
                 </dl>
                 {badge(row)}
-              </article>
+              </li>
             ))}
-          </div>
+          </ul>
         </>
       )}
     </section>
