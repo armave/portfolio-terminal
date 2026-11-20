@@ -1127,6 +1127,40 @@ describe('Margin PT target information localization', () => {
       .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
   });
 
+
+  it('localizes the Combined Market Insights selector in Russian', () => {
+    for (const copy of [
+      'Research ticker',
+      'Select research ticker',
+      'Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.'
+    ]) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
+
+  it('localizes the Combined Margin page, comparison and disclosure UI in Russian', () => {
+    const copy = [
+      'Margin position value', 'Gross unrealized P&L', 'Some Margin positions are not priced',
+      'Based on tracked Margin positions', 'Requires complete quotes and cost basis',
+      'Gross unrealized P&L unavailable', 'on cost basis', 'Scenario outlook',
+      'After modeled commissions and financing', 'Risk data quality', 'All tracked quote inputs are current.',
+      'Missing or stale inputs are not treated as zero.', '{count} stale quotes', '{count} delayed quotes',
+      '{count} quotes with unknown freshness', 'Broker balance stale', 'Review Balance holdings ({count})',
+      'Risk is provisional because at least one valuation or broker margin input is assumption-based, stale, delayed or unknown.',
+      'Risk & financing', 'Portfolio positions',
+      'Compare current market value, gross unrealized P&L and target prices. Select a ticker to open its Margin page.',
+      'No active Margin positions to compare.', 'Portfolio positions comparison table', 'Last price',
+      'Return', 'Margin weight', 'Open Margin position {ticker}', 'positions',
+      'Research ticker', 'Select research ticker',
+      'Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.',
+      'Performance history', 'Cash-flow-adjusted portfolio returns', 'Projections',
+      'Modeled net proceeds, fees, financing and account balance by date.', 'Market research',
+      'Company news, fundamentals, earnings and analyst context.'
+    ];
+    for (const item of copy) expect(translateText(item, 'ru'), item).not.toBe(item);
+  });
+
 });
 
 
@@ -1155,3 +1189,7 @@ describe('Settings refinements localization', () => {
     }
   });
 });
+  it('localizes the Market Insights news count control in Russian', () => {
+    expect(translateText('News count', 'ru')).toBe('Количество новостей');
+  });
+

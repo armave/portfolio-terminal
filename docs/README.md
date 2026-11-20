@@ -23,6 +23,7 @@ This directory contains maintained product and engineering references, current o
 - [REST and socket request audit](request-optimization-audit-2026-11-12.md) — request families and startup/refresh behavior.
 - [Request orchestration R03–R05](request-orchestration-r03-r05-2026-11-13.md) — shared request lifecycle and regression gates.
 - [Shared table pagination](table-pagination-pattern.md) — the supported reusable pagination pattern.
+- [Combined Margin workspace UX](combined-workspace-ux.md) — KPI hierarchy, position comparison, risk data quality, research context and disclosures.
 
 ## Security and release quality
 

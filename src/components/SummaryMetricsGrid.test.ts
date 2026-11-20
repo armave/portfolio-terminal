@@ -355,11 +355,17 @@ describe('cross-device financial header hierarchy', () => {
   it('keeps decision KPIs and stacks the compact financial summary above Account Equity Health', () => {
     expect(source).toContain('data-header-metric={metric}');
     const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
+    const headline = combinedView.slice(combinedView.indexOf('class="portfolio-header-kpis'), combinedView.indexOf('</section>'));
+    expect(headline).toContain('metric="account-equity"');
+    expect(headline).toContain('metric="margin-market-value"');
+    expect(headline).toContain('metric="gross-unrealized-pnl"');
+    expect(headline).toContain('metric="margin-debt"');
+    expect(headline).toContain('metric="margin-risk"');
+    expect(headline).not.toContain('metric="net-target-return"');
+    expect(headline).not.toContain('metric="carry-break-even"');
+    expect(combinedView).toContain('class="portfolio-scenario-outlook"');
     expect(combinedView).toContain('metric="net-target-return"');
     expect(combinedView).toContain('metric="carry-break-even"');
-    expect(combinedView).toContain('metric="account-equity"');
-    expect(combinedView).toContain('metric="margin-debt"');
-    expect(combinedView).toContain('metric="margin-risk"');
     expect(combinedView.indexOf('class="portfolio-header-kpis"')).toBeLessThan(
       combinedView.indexOf('class="portfolio-risk-tools-row"')
     );
@@ -491,6 +497,16 @@ describe('cross-device financial header hierarchy', () => {
   });
 
 
+  it('keeps the Combined view summary as text and provides a ticker-only Tranches action', () => {
+    const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
+    const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
+    expect(combinedView).toContain('{tranchesText}');
+    expect(combinedView).not.toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('data-tranche-details-trigger');
+    expect(singleTickerView).toContain('aria-haspopup="dialog"');
+    expect(singleTickerView).toContain('onClick={() => setTrancheModalOpen(true)}');
+  });
+
   it('opens all ticker purchase lots in the lazy tranche details dialog instead of expanding inline', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(singleTickerView).toContain('data-tranche-details-trigger');
@@ -499,4 +515,19 @@ describe('cross-device financial header hierarchy', () => {
     expect(singleTickerView).not.toContain('boardTranchesOverflow');
     expect(singleTickerView).not.toContain('expandedTrancheTicker');
   });
+
+describe('Combined Margin data quality and position comparison', () => {
+  it('shows input quality and adds a separate position comparison surface', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('class="portfolio-data-quality-summary"');
+    expect(source).toContain('data-valuation-quality={dataQualityLabel}');
+    expect(source).toContain('marginQuoteIssueTickers.map');
+    expect(source).toContain("view: 'BALANCE'");
+    expect(source).toContain("translateText('Missing or stale inputs are not treated as zero.'");
+    expect(source).toContain('<CombinedPositionsTable');
+    const positionsSource = readFileSync(new URL('./CombinedPositionsTable.tsx', import.meta.url), 'utf8');
+    expect(positionsSource).toContain('getMarginPositionMarketSummaries(positions)');
+  });
+});
+
 });
