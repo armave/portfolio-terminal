@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getAppLanguage, translateText } from '../services/i18n';
 import type { CloudStatus } from '../ui/uiStateStore';
+import {
+  ACTIVITY_INDICATOR_MIN_VISIBLE_MS,
+  useDelayedActivityVisibility
+} from '../ui/delayedActivityVisibility';
 
 export type CloudSyncTone = 'neutral' | 'success' | 'pending' | 'warning' | 'conflict' | 'error';
 
 /** Avoid flashing the header activity dot for short cloud checkpoints. */
 export const CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS = 700;
+export const CLOUD_SYNC_PENDING_MIN_VISIBLE_MS = ACTIVITY_INDICATOR_MIN_VISIBLE_MS;
 
 export function resolveCloudSyncDisplayTone(
   tone: CloudSyncTone,
-  pendingDelayElapsed: boolean
+  pendingIndicatorVisible: boolean
 ): CloudSyncTone {
-  return tone === 'pending' && !pendingDelayElapsed ? 'neutral' : tone;
+  if (tone === 'pending') return pendingIndicatorVisible ? 'pending' : 'neutral';
+  // Keep adjacent successful operations visually continuous. Failure and conflict
+  // states always take precedence over this presentation-only minimum duration.
+  if (tone === 'success' && pendingIndicatorVisible) return 'pending';
+  return tone;
 }
 
 export function resolveCloudSyncTone(
@@ -87,30 +96,21 @@ export function CloudSyncIndicator({
 }) {
   const language = getAppLanguage();
   const tone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
-  const statusLabel = resolveCloudSyncLabel(cloudStatus, tone, language);
   const lastSyncedAt = cloudSyncStatus.lastSyncedAt ?? null;
   const [now, setNow] = useState(() => Date.now());
-  const [pendingDelayElapsed, setPendingDelayElapsed] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const pendingIndicatorVisible = useDelayedActivityVisibility(tone === 'pending', {
+    showDelayMs: CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS,
+    minimumVisibleMs: CLOUD_SYNC_PENDING_MIN_VISIBLE_MS
+  });
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(intervalId);
   }, []);
 
-  useEffect(() => {
-    if (tone !== 'pending') {
-      setPendingDelayElapsed(false);
-      return;
-    }
-    const timeoutId = window.setTimeout(
-      () => setPendingDelayElapsed(true),
-      CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [tone]);
-
-  const displayTone = resolveCloudSyncDisplayTone(tone, pendingDelayElapsed);
+  const displayTone = resolveCloudSyncDisplayTone(tone, pendingIndicatorVisible);
+  const statusLabel = resolveCloudSyncLabel(cloudStatus, displayTone, language);
 
   const relativeTime = tone === 'success' || lastSyncedAt
     ? formatRelativeSyncTime(lastSyncedAt, now, language)
