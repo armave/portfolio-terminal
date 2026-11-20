@@ -10,7 +10,7 @@ export interface DelayedActivityVisibilityController {
   dispose: () => void;
 }
 
-interface DelayedActivityVisibilityOptions {
+export interface DelayedActivityVisibilityOptions {
   showDelayMs?: number;
   minimumVisibleMs?: number;
   now?: () => number;
@@ -106,11 +106,17 @@ export function createDelayedActivityVisibilityController(
   };
 }
 
-/** Preact hook for delayed, minimum-duration background activity indicators. */
-export function useDelayedActivityVisibility(active: boolean): boolean {
+/**
+ * Preact hook for delayed, minimum-duration background activity indicators.
+ * Timing options are captured when the hook first mounts and should be stable.
+ */
+export function useDelayedActivityVisibility(
+  active: boolean,
+  options: DelayedActivityVisibilityOptions = {}
+): boolean {
   const controllerRef = useRef<DelayedActivityVisibilityController | null>(null);
   if (!controllerRef.current) {
-    controllerRef.current = createDelayedActivityVisibilityController();
+    controllerRef.current = createDelayedActivityVisibilityController(options);
   }
   const [visible, setVisible] = useState(controllerRef.current.isVisible());
 
