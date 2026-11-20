@@ -1,5 +1,9 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
+  'Jump to Settings section': 'Перейти к разделу настроек',
+  'Jump to section': 'Перейти к разделу',
+  'Management & help': 'Управление и справка',
+  'Workspace': 'Рабочая область',
   'View as': 'Просмотр от имени',
   'Opening…': 'Открытие…',
   'Shared workspace': 'Общее рабочее пространство',
