@@ -3170,6 +3170,129 @@ describe('PortfolioStateDO payload validation', () => {
     expect(latest.headers.get('ETag')).toBe('"0"');
   });
 
+  function makeSqliteLimitedStore({ failChunkWriteAt = 0 } = {}) {
+    const values = new Map();
+    const maximumValueBytes = 512 * 1024;
+    let chunkWrites = 0;
+    const valueBytes = (value) => typeof value === 'string'
+      ? new TextEncoder().encode(value).byteLength
+      : new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const putValue = async (target, key, value) => {
+      if (valueBytes(value) > maximumValueBytes) throw new Error('SQLITE_TOOBIG: simulated row limit');
+      if (String(key).includes(':chunk:')) {
+        chunkWrites += 1;
+        if (failChunkWriteAt > 0 && chunkWrites === failChunkWriteAt) {
+          throw new Error('Simulated chunk storage failure.');
+        }
+      }
+      target.set(key, value);
+    };
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => putValue(values, key, value),
+      delete: async (key) => values.delete(key),
+      transaction: async (callback) => {
+        const staged = new Map(values);
+        const transaction = {
+          get: async (key) => staged.get(key),
+          put: async (key, value) => putValue(staged, key, value),
+          delete: async (key) => staged.delete(key)
+        };
+        const result = await callback(transaction);
+        values.clear();
+        for (const [key, value] of staged) values.set(key, value);
+        return result;
+      }
+    };
+    return { store: new PortfolioStateDO({ storage }, {}), values };
+  }
+
+  it('chunks large encrypted history below the SQLite row ceiling and reassembles it with its revision', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const encryptedPayload = 'x'.repeat(3 * 1024 * 1024);
+    const serialized = JSON.stringify({ encryptedPayload });
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-history-chunked-write-0001'
+    };
+    const write = () => store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST', headers, body: serialized
+    }));
+
+    const first = await write();
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+    const manifest = values.get('historyRecord');
+    expect(manifest).toMatchObject({
+      format: 'cloud-record-chunks-v1',
+      revision: 1,
+      byteLength: new TextEncoder().encode(serialized).byteLength
+    });
+    const chunkEntries = [...values.entries()].filter(([key]) => key.startsWith('historyRecord:chunk:1:'));
+    expect(chunkEntries).toHaveLength(manifest.chunkCount);
+    expect(chunkEntries.every(([, value]) => new TextEncoder().encode(value).byteLength <= 512 * 1024)).toBe(true);
+
+    const read = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"1"');
+    expect(await read.text()).toBe(serialized);
+
+    const replay = await write();
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get('ETag')).toBe('"1"');
+    expect(replay.headers.get('Idempotency-Replayed')).toBe('true');
+
+    const replacement = await store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' },
+      body: JSON.stringify({ encryptedPayload: 'compact-replacement' })
+    }));
+    expect(replacement.status).toBe(200);
+    expect(replacement.headers.get('ETag')).toBe('"2"');
+    expect([...values.keys()].some((key) => key.startsWith('historyRecord:chunk:1:'))).toBe(false);
+    const latest = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'compact-replacement' });
+    expect(latest.headers.get('ETag')).toBe('"2"');
+  });
+
+  it('chunks oversized portfolio snapshots using the same bounded record format', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const encryptedPayload = 'y'.repeat(2 * 1024 * 1024);
+    const serialized = JSON.stringify({ encryptedPayload });
+    const write = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: serialized
+    }));
+    expect(write.status).toBe(200);
+    const read = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await read.text()).toBe(serialized);
+    expect(values.get('record')).toMatchObject({ format: 'cloud-record-chunks-v1', revision: 1 });
+  });
+
+  it('leaves the previous cloud record untouched when a chunk write fails', async () => {
+    const { store, values } = makeSqliteLimitedStore({ failChunkWriteAt: 2 });
+    const encryptedPayload = 'z'.repeat(2 * 1024 * 1024);
+    await expect(store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload })
+    }))).rejects.toThrow('Simulated chunk storage failure.');
+    expect(values.has('historyRecord')).toBe(false);
+    expect([...values.keys()].some((key) => key.startsWith('historyRecord:chunk:'))).toBe(false);
+  });
+
+  it('continues to read existing single-record cloud history during the chunked-format rollout', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const legacy = JSON.stringify({ encryptedPayload: 'existing-history-record' });
+    values.set('historyRecord', { payload: legacy, revision: 7 });
+    const read = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"7"');
+    expect(await read.text()).toBe(legacy);
+  });
+
   it('rejects oversized cloud payloads before writing', async () => {
     const store = makeStore();
     const response = await store.fetch(new Request('https://worker.test/api/state', {

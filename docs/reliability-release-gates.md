@@ -125,6 +125,12 @@ This is a UI behavior contract, not a production performance SLO. Browser timing
 
 Targets must be decided after the relevant data is collected. A missing observation must remain missing; it must not be converted to a zero-latency or healthy reading.
 
+## Cloud snapshot storage bounds
+
+The Worker accepts encrypted cloud snapshot writes up to 20 MiB, but a SQLite-backed Durable Object cannot safely store an entire history/state envelope as one row at that size. The Durable Object therefore keeps ordinary small records in the legacy single-value format and writes larger state/history envelopes as 256 KiB Base64-encoded chunks plus a compact manifest. The manifest carries the existing revision and a SHA-256 checksum; reads reassemble and verify the complete payload before returning it with the same ETag. Missing, malformed, or checksum-mismatched chunks return an error rather than a partial/empty success.
+
+Chunk creation, manifest replacement, removal of the previous generation, and the existing idempotency receipt remain inside the same Durable Object storage transaction. This preserves compare-and-swap revisions, retry replay behavior, and atomic replacement. Existing single-record state/history values remain readable during rollout. The public API contract and encryption boundary do not change: the browser continues to send and receive the same encrypted JSON envelope.
+
 ## 4. Privacy-safe operational observability
 
 Operational telemetry should describe service behavior, not expose users' investments.

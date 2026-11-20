@@ -35,6 +35,11 @@ const FREEDOM_DEPTH_STREAM_HANDSHAKE_TIMEOUT_MS = 10_000;
 const FREEDOM_DEPTH_STREAM_MAX_SESSIONS = 4;
 const FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES = 256 * 1024;
 const FREEDOM_DEPTH_STREAM_MAX_PENDING_UPDATES = 20;
+// SQLite-backed Durable Object rows are smaller than the Worker request limit.
+// Keep each encrypted state/history chunk comfortably below the row ceiling.
+const CLOUD_RECORD_MAX_BYTES = 20 * 1024 * 1024;
+const CLOUD_RECORD_CHUNK_BYTES = 256 * 1024;
+const CLOUD_RECORD_CHUNK_FORMAT = "cloud-record-chunks-v1";
 
 async function fetchFreedomTradeNetWebSocket(url) {
   const controller = new AbortController();
@@ -347,6 +352,70 @@ function toHex(bytes) {
 }
 async function digestHex(value) {
   return toHex(await crypto.subtle.digest("SHA-256", authEncoder.encode(value)));
+}
+
+function cloudRecordChunkKey(recordKey, revision, index) {
+  return `${recordKey}:chunk:${revision}:${index}`;
+}
+
+function isChunkedCloudRecord(record) {
+  return Boolean(
+    record && typeof record === "object" &&
+    record.format === CLOUD_RECORD_CHUNK_FORMAT &&
+    Number.isSafeInteger(record.revision) && record.revision > 0 &&
+    Number.isSafeInteger(record.byteLength) && record.byteLength > CLOUD_RECORD_CHUNK_BYTES &&
+    record.byteLength <= CLOUD_RECORD_MAX_BYTES &&
+    Number.isSafeInteger(record.chunkCount) &&
+    record.chunkCount === Math.ceil(record.byteLength / CLOUD_RECORD_CHUNK_BYTES) &&
+    record.chunkCount <= Math.ceil(CLOUD_RECORD_MAX_BYTES / CLOUD_RECORD_CHUNK_BYTES) &&
+    typeof record.sha256 === "string" && /^[a-f0-9]{64}$/.test(record.sha256)
+  );
+}
+
+function encodeCloudRecordChunk(bytes) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += 32 * 1024) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 32 * 1024, bytes.byteLength)));
+  }
+  return btoa(binary);
+}
+
+function decodeCloudRecordChunk(value, expectedByteLength) {
+  if (typeof value !== "string") return null;
+  let binary;
+  try {
+    binary = atob(value);
+  } catch {
+    return null;
+  }
+  if (binary.length !== expectedByteLength) return null;
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function readChunkedCloudRecordPayload(storage, recordKey, record) {
+  if (!isChunkedCloudRecord(record)) throw new Error("Stored cloud record manifest is invalid.");
+  const chunks = await Promise.all(Array.from({ length: record.chunkCount }, (_, index) =>
+    storage.get(cloudRecordChunkKey(recordKey, record.revision, index))
+  ));
+  const bytes = new Uint8Array(record.byteLength);
+  let offset = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    const expectedLength = Math.min(CLOUD_RECORD_CHUNK_BYTES, record.byteLength - offset);
+    const decoded = decodeCloudRecordChunk(chunks[index], expectedLength);
+    if (!decoded) throw new Error("Stored cloud record chunk is missing or malformed.");
+    bytes.set(decoded, offset);
+    offset += decoded.byteLength;
+  }
+  if (offset !== record.byteLength) throw new Error("Stored cloud record length does not match its manifest.");
+  const payload = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  if (await digestHex(payload) !== record.sha256) {
+    throw new Error("Stored cloud record checksum does not match its manifest.");
+  }
+  return payload;
 }
 async function derivePasswordHash(password, salt) {
   // Cloudflare Workers rejects a single PBKDF2 deriveBits call above 100,000
@@ -3772,7 +3841,19 @@ export class PortfolioStateDO {
       if (!record) {
         return jsonResponse({ error: "Portfolio state not found." }, 404, 0);
       }
-      return new Response(record.payload, {
+      let payload = record.payload;
+      if (record.format === CLOUD_RECORD_CHUNK_FORMAT) {
+        try {
+          payload = await readChunkedCloudRecordPayload(this.ctx.storage, recordKey, record);
+        } catch {
+          // Never return a partial snapshot or an empty successful response.
+          return jsonResponse({ error: "Stored cloud record is incomplete or could not be verified." }, 503, record.revision ?? null);
+        }
+      }
+      if (typeof payload !== "string") {
+        return jsonResponse({ error: "Stored cloud record is invalid." }, 503, record.revision ?? null);
+      }
+      return new Response(payload, {
         status: 200,
         headers: { ...CORS_HEADERS, ETag: `"${record.revision}"` }
       });
@@ -3788,7 +3869,7 @@ export class PortfolioStateDO {
     }
 
     const contentLength = Number(request.headers.get("Content-Length") || 0);
-    if (Number.isFinite(contentLength) && contentLength > 20 * 1024 * 1024) {
+    if (Number.isFinite(contentLength) && contentLength > CLOUD_RECORD_MAX_BYTES) {
       return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
     }
     if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
@@ -3806,7 +3887,7 @@ export class PortfolioStateDO {
           const { done, value } = await bodyReader.read();
           if (done) break;
           receivedBytes += value.byteLength;
-          if (receivedBytes > 20 * 1024 * 1024) {
+          if (receivedBytes > CLOUD_RECORD_MAX_BYTES) {
             await bodyReader.cancel("Cloud state payload exceeds the configured limit.");
             return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
           }
@@ -3868,11 +3949,25 @@ export class PortfolioStateDO {
         (!idempotencyKey || idempotencyKey.length > 180 || !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey))) {
       return jsonResponse({ error: "Invalid Idempotency-Key header." }, 400);
     }
+    // Serialize and size the exact request envelope before opening the storage
+    // transaction. SQLite rows stay small; the public request limit remains 20 MiB.
+    const serializedBody = JSON.stringify(body);
+    const serializedBytes = authEncoder.encode(serializedBody);
+    if (serializedBytes.byteLength > CLOUD_RECORD_MAX_BYTES) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
+    }
+    const chunkableRecord = recordKey === "record" || recordKey === "historyRecord";
+    const shouldChunkRecord = chunkableRecord && serializedBytes.byteLength > CLOUD_RECORD_CHUNK_BYTES;
+    const cloudChunks = shouldChunkRecord
+      ? Array.from({ length: Math.ceil(serializedBytes.byteLength / CLOUD_RECORD_CHUNK_BYTES) }, (_, index) => {
+          const start = index * CLOUD_RECORD_CHUNK_BYTES;
+          return encodeCloudRecordChunk(serializedBytes.subarray(start, start + CLOUD_RECORD_CHUNK_BYTES));
+        })
+      : [];
     // Hash the exact request envelope, never store ciphertext or financial payloads
-    // a second time in the idempotency receipt.
-    const idempotencyFingerprint = idempotencyKey
-      ? await digestHex(JSON.stringify(body))
-      : null;
+    // a second time in the idempotency receipt or chunk manifest.
+    const serializedDigest = shouldChunkRecord || idempotencyKey ? await digestHex(serializedBody) : null;
+    const idempotencyFingerprint = idempotencyKey ? serializedDigest : null;
     const receiptStorageKey = "cloud-write-idempotency:" + recordKey;
 
     const result = await this.ctx.storage.transaction(async (transactionStorage) => {
@@ -3915,7 +4010,30 @@ export class PortfolioStateDO {
       }
 
       const nextRevision = currentRevision + 1;
-      await transactionStorage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      if (shouldChunkRecord) {
+        for (let index = 0; index < cloudChunks.length; index += 1) {
+          await transactionStorage.put(
+            cloudRecordChunkKey(recordKey, nextRevision, index),
+            cloudChunks[index]
+          );
+        }
+        await transactionStorage.put(recordKey, {
+          format: CLOUD_RECORD_CHUNK_FORMAT,
+          revision: nextRevision,
+          chunkCount: cloudChunks.length,
+          byteLength: serializedBytes.byteLength,
+          sha256: serializedDigest
+        });
+      } else {
+        await transactionStorage.put(recordKey, { payload: serializedBody, revision: nextRevision });
+      }
+      // Revisions are immutable during the transaction. Remove the previous
+      // generation only after the new manifest/single-record value is staged.
+      if (isChunkedCloudRecord(current)) {
+        for (let index = 0; index < current.chunkCount; index += 1) {
+          await transactionStorage.delete(cloudRecordChunkKey(recordKey, current.revision, index));
+        }
+      }
       if (idempotencyKey && idempotencyFingerprint) {
         // Keep a small rolling window of receipts. The seven-day TTL bounds
         // stale keys; the count cap bounds Durable Object storage growth.
