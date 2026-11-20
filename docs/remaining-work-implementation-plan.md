@@ -102,6 +102,8 @@ This plan sequences the remaining work. It does not mark manual, security-review
 - Add adversarial public Worker tests for guessed IDs, wrong tenant, same-tenant without grant, guest-to-admin escalation, alternate routes, batch requests and revoked active streams.
 - Obtain security review before enabling financial routing.
 
+- **Bounded safe-directory hardening delivered on main** at [b97534690cbfd6f3ced577a4db30f437af306d2e](https://github.com/armave/portfolio-terminal/commit/b97534690cbfd6f3ced577a4db30f437af306d2e): persisted tenant metadata now fails closed on duplicate identifiers, broken ownership references, role-capability escalation and stale/duplicate active grants. Corruption tests prove the stored directory is preserved on rejection. [Cloudflare Worker deployment #44688202036](https://github.com/armave/portfolio-terminal/actions/runs/44688202036) and [Financial Integrity Regression #44688202219](https://github.com/armave/portfolio-terminal/actions/runs/44688202219) passed on the exact SHA. This is one metadata-integrity slice, not complete #556 ownership authorization or approval for tenant financial routing.
+
 **#557 — isolated tenant Durable Object**
 - Implement only after #556 authorization and #549/#550 key contracts are accepted.
 - Add tenant-scoped storage and an authenticated Worker-to-DO trust assertion; reject client-controlled tenant/DO routing and direct invocation.
