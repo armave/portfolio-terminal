@@ -46,7 +46,7 @@ describe('automatic update settings', () => {
     expect(source).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
     expect(source).toContain('refreshNow: true');
     expect(source).toContain('Assigned-stock quotes follow the selected interval. Your assigned holdings and LOTS history refresh independently every 60 seconds. Returning to the app triggers a fresh role-scoped refresh.');
-    expect(source).toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+    expect(source).toContain('Market quotes and administrator workspace checkpoints follow the selected interval.');
     expect(source).toContain('Automatic refresh interval');
     expect(source).toContain('md:justify-start justify-center');
     expect(source).not.toContain('md:justify-left');
