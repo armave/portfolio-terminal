@@ -285,7 +285,7 @@ describe('Settings section navigation layout', () => {
     const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
     const settingsStyles = styles.slice(styles.lastIndexOf('/* Settings navigation, section spacing, and compact mobile section picker. */'));
     expect(settingsStyles).toContain('padding: clamp(0.9rem, 1.35vw, 1.25rem);');
-    expect(settingsStyles).toContain('scroll-margin-top: 13rem;');
+    expect(settingsStyles).toContain('scroll-margin-top: 14rem;');
     expect(settingsStyles).toContain('padding: 0.8rem;');
     expect(settingsStyles).toContain('scroll-margin-top: 6.5rem;');
     expect(settingsStyles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
