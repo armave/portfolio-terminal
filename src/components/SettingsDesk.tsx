@@ -642,7 +642,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   </p>
                 </div>
               </div>
-              <p class="text-[11px] text-amber-100">{translateText('Pull cloud replaces this device's local portfolio with the latest shared cloud snapshot. Unsynced changes can be lost. Export a JSON backup before pulling or resetting.')}</p>
+              <p class="text-[11px] text-amber-100">{translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}</p>
+              <p class="text-[11px] text-amber-100">{translateText('Export a JSON backup before pulling cloud state or resetting the portfolio.')}</p>
 
             </section>}
         <div class="settings-panel settings-cloud-recovery-panel space-y-3">
