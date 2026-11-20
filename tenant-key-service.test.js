@@ -67,10 +67,11 @@ function makeAwsMock({ dataKey = new Uint8Array(32).fill(0x5a) } = {}) {
     if (url.includes("rolesanywhere.")) {
       return response({
         credentialSet: [{
+          roleArn: "arn:aws:iam::123456789012:role/PortfolioTerminalKms",
           credentials: {
-            accessKeyId: "ASIAEXAMPLEACCESSKEY",
-            secretAccessKey: "temporary-secret-access-key",
-            sessionToken: "temporary-session-token",
+            accessKeyId: "TEST_ACCESS_KEY_ID_NOT_A_REAL_AWS_KEY",
+            secretAccessKey: "TEST_SECRET_ACCESS_KEY_PLACEHOLDER",
+            sessionToken: "TEST_SESSION_TOKEN_PLACEHOLDER",
             expiration: new Date(Date.now() + 20 * 60 * 1000).toISOString()
           }
         }]
@@ -129,9 +130,12 @@ describe("AWS KMS tenant key service", () => {
     expect(calls[0].body.durationSeconds).toBe(900);
 
     expect(calls[1].headers.get("Authorization")).toContain(
-      "AWS4-HMAC-SHA256 Credential=ASIAEXAMPLEACCESSKEY/"
+      "AWS4-HMAC-SHA256 Credential=TEST_ACCESS_KEY_ID_NOT_A_REAL_AWS_KEY/"
     );
-    expect(calls[1].headers.get("X-Amz-Security-Token")).toBe("temporary-session-token");
+    expect(calls[0].headers.get("Authorization")).toContain(
+      "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date;x-amz-x509"
+    );
+    expect(calls[1].headers.get("X-Amz-Security-Token")).toBe("TEST_SESSION_TOKEN_PLACEHOLDER");
     expect(calls[1].headers.get("X-Amz-Target")).toBe(
       "TrentService.GenerateDataKeyWithoutPlaintext"
     );
@@ -152,8 +156,31 @@ describe("AWS KMS tenant key service", () => {
       kmsKeyArn: KMS_KEY_ARN,
       wrappedDek: toBase64(new Uint8Array([1, 2, 3, 4, 5, 6]))
     });
-    expect(JSON.stringify(record)).not.toContain("temporary-secret-access-key");
+    expect(JSON.stringify(record)).not.toContain("TEST_SECRET_ACCESS_KEY_PLACEHOLDER");
     expect(JSON.stringify(record)).not.toContain("5a".repeat(32));
+  });
+
+  it("rejects credentials issued for a role other than the configured KMS role", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const env = await makeConfiguration();
+    const { fetchMock } = makeAwsMock();
+    fetchMock.mockImplementationOnce(async () => response({
+      credentialSet: [{
+        roleArn: "arn:aws:iam::123456789012:role/UnexpectedRole",
+        credentials: {
+          accessKeyId: "TEST_ACCESS_KEY_ID_NOT_A_REAL_AWS_KEY",
+          secretAccessKey: "TEST_SECRET_ACCESS_KEY_PLACEHOLDER",
+          sessionToken: "TEST_SESSION_TOKEN_PLACEHOLDER",
+          expiration: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+        }
+      }]
+    }, 201));
+
+    await expect(createTenantKeyRecord(env, "tenant-example-0005")).rejects.toMatchObject({
+      code: "kms_credentials_invalid",
+      status: 503
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("encrypts and decrypts server-side with tenant/resource AAD and never returns the DEK", async () => {

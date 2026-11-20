@@ -206,7 +206,7 @@ async function importRolesAnywhereSigningKey(configuration) {
 
 function normalizeHeaders(entries) {
   return entries
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .map(([name, value]) => name + ":" + String(value).trim().replace(/\s+/g, " ") + "\n")
     .join("");
 }
@@ -279,9 +279,12 @@ async function signedRolesAnywhereFetch(configuration) {
     throw new TenantKeyServiceError("kms_credentials_invalid", 503);
   }
   const credentialSet = payload?.credentialSet;
-  const credentials = Array.isArray(credentialSet) && credentialSet.length === 1
-    ? (credentialSet[0]?.credentials || {})
-    : {};
+  if (!Array.isArray(credentialSet) || credentialSet.length !== 1 ||
+      credentialSet[0]?.roleArn !== configuration.roleArn ||
+      !credentialSet[0]?.credentials || typeof credentialSet[0].credentials !== "object") {
+    throw new TenantKeyServiceError("kms_credentials_invalid", 503);
+  }
+  const credentials = credentialSet[0].credentials;
   const accessKeyId = credentials.accessKeyId || credentials.AccessKeyId;
   const secretAccessKey = credentials.secretAccessKey || credentials.SecretAccessKey;
   const sessionToken = credentials.sessionToken || credentials.SessionToken;
