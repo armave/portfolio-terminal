@@ -4132,6 +4132,7 @@ table tbody tr:hover {
   min-width: 0; border: 1px solid rgb(127 29 29 / 0.75); border-radius: 0.75rem; background: rgb(69 10 10 / 0.16);
 }
 #settingsDesk .settings-danger-zone>summary {
+  justify-content: center;
   min-height: 2.75rem; padding: 0.8rem 0.9rem; color: rgb(252 165 165); cursor: pointer; font-size: 0.76rem; font-weight: 750;
 }
 #settingsDesk .settings-danger-zone-content {
