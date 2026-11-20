@@ -353,3 +353,11 @@ describe('Settings synchronization and recovery experience', () => {
     expect(source).toContain('id="annualMarginRateInput"');
   });
 });
+
+
+describe('Settings semantic markup', () => {
+  it('does not nest paragraph elements in Settings content', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/<p\\b[^>]*>(?:(?!<\\/p\\s*>)[\\s\\S])*?<p\\b/);
+  });
+});
