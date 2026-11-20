@@ -1447,4 +1447,5 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Calculations & guidance": "Расчёты и справка",
   "Portfolio ownership": "Владение портфелем",
   "Metric methodology and data notes": "Методология показателей и примечания о данных",
+  "Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.": "При загрузке из облака локальный портфель на этом устройстве заменяется общей облачной копией. Несинхронизированные изменения могут быть потеряны.",
 };
