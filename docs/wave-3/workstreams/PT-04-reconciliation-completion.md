@@ -74,3 +74,16 @@ A broker execution without a source timestamp cannot use ticker/side/quantity al
 Execution-currency differences are reported only when the stable provider fill reference proves the two records are the same execution. Cross-currency fallback candidates are not paired, and numeric execution-price comparisons run only when both records have the same known currency; no FX conversion is attempted.
 
 The matcher remains deterministic and read-only. Ambiguous rows are not counted as confirmed missing records, and no portfolio position, FIFO lot, cash, debt, fee, cost basis or P&L value is changed. Authenticated TradeNet and multi-device acceptance remain separate manual gates.
+
+
+## Absence-based finding qualification — implemented on 2026-11-20
+
+Transaction-level reconciliation now gates each absence conclusion against the history required to support it:
+
+- A broker execution or cashflow is not labelled missing from the app while app journal coverage or the relevant app-side comparison evidence is incomplete.
+- An app execution or cashflow is not labelled missing from the broker while the corresponding broker history is partial, stale, unavailable, or contains unclassifiable/unstable source rows.
+- Missing identity/comparison fields and conflicting broker revisions also disable absence conclusions for the affected history. The report remains visibly provisional and explains that absence-based findings are suppressed.
+- Directly observed matched-pair discrepancies, duplicates, unclassified rows and ambiguity evidence remain visible with provisional confidence where appropriate.
+- The change is deterministic and read-only. It does not modify PT-02 events, canonical positions, FIFO lots, balances, fees, debt, cost basis or realized P&L.
+
+Vitest regressions cover all four directional gates, malformed broker rows, incomplete app evidence and preservation of observed provisional mismatches. This is CI-verifiable behavior; authenticated live-provider verification remains a separate manual gate.

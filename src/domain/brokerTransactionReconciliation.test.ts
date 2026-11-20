@@ -15,6 +15,12 @@ function execution(overrides: Partial<BrokerExecution> = {}): BrokerExecution {
     raw: {}, ...overrides
   };
 }
+function cashflow(overrides: Partial<BrokerCashflow> = {}): BrokerCashflow {
+  return {
+    id: 'cashflow-1', date: new Date(at).toISOString(), type: 'dividend',
+    amount: 5, currency: 'USD', raw: {}, ...overrides
+  };
+}
 function appEvent(
   type: PortfolioTransactionEventType,
   overrides: Partial<Parameters<typeof createPortfolioTransactionEvent>[0]> = {}
@@ -41,6 +47,120 @@ function reconcile(
   });
 }
 
+
+describe('absence-based finding qualification', () => {
+  it('suppresses app-only execution claims while broker execution history is partial', () => {
+    const report = reconcile([], [appEvent('trade.buy')], { executionStatus: 'partial' });
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_broker'
+    }));
+    expect(report.warnings).toContain(
+      'Broker execution history is incomplete; absence-based findings are suppressed.'
+    );
+  });
+
+  it('suppresses broker-only execution claims while app journal coverage is incomplete', () => {
+    const report = reconcile([execution()], [], { appHistoryStatus: 'partial' });
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app'
+    }));
+    expect(report.warnings).toContain(
+      'App transaction journal coverage is incomplete; absence-based findings are suppressed.'
+    );
+  });
+
+  it('suppresses app-only cashflow claims while broker cashflow history is partial', () => {
+    const report = reconcile([], [
+      appEvent('dividend', { externalCashFlowAmount: 5 })
+    ], { cashflowStatus: 'partial' });
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_broker'
+    }));
+  });
+
+  it('suppresses broker-only cashflow claims while app journal coverage is incomplete', () => {
+    const report = reconcile([], [], {
+      brokerCashflows: [cashflow()],
+      appHistoryStatus: 'partial'
+    });
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_app'
+    }));
+  });
+
+  it('suppresses app-only execution claims when broker history contains an unclassifiable row', () => {
+    const report = reconcile(
+      [execution({ quantity: null })],
+      [appEvent('trade.buy')]
+    );
+
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_unclassified'
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_broker'
+    }));
+  });
+
+  it('suppresses broker-only execution claims when app execution identity evidence is incomplete', () => {
+    const report = reconcile(
+      [execution()],
+      [appEvent('trade.buy', { quantity: undefined })]
+    );
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'execution_missing_in_app'
+    }));
+    expect(report.warnings).toContain(
+      'App execution evidence is incomplete; absence-based findings are suppressed.'
+    );
+  });
+
+  it('suppresses app-only cashflow claims when broker cashflow rows are unclassified', () => {
+    const report = reconcile([], [
+      appEvent('dividend', { externalCashFlowAmount: 5 })
+    ], { brokerCashflows: [cashflow({ type: 'provider-specific-event' })] });
+
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified'
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_broker'
+    }));
+  });
+
+  it('suppresses broker-only cashflow claims when app amount evidence is missing', () => {
+    const report = reconcile([], [
+      appEvent('dividend', {
+        externalCashFlowAmount: undefined,
+        cashDelta: undefined,
+        grossAmount: undefined,
+        netAmount: undefined
+      })
+    ], { brokerCashflows: [cashflow()] });
+
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_app'
+    }));
+  });
+
+  it('retains observed mismatches as provisional findings when a feed is partial', () => {
+    const report = reconcile(
+      [execution({ quantity: 3 })],
+      [appEvent('trade.buy')],
+      { executionStatus: 'partial' }
+    );
+
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_quantity_mismatch',
+      confidence: 'provisional'
+    }));
+  });
+});
 
 describe('broker execution feed readiness', () => {
   it.each([
