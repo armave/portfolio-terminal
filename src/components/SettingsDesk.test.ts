@@ -272,7 +272,9 @@ describe('Settings information architecture', () => {
     for (const section of [
       'settings-account-section',
       'settings-data-section',
+      'settings-recovery-section',
       'settings-access-section',
+      'settings-portfolio-section',
       'settings-broker-section',
       'settings-maintenance-section',
       'settings-help-section'
@@ -333,7 +335,7 @@ describe('Settings synchronization and recovery experience', () => {
     expect(source).toContain('new IntersectionObserver');
     expect(source).toContain('aria-current={activeSettingsSection');
     expect(source).toContain('permissions.canManageBackups && <a href="#settings-recovery-section"');
-    expect(source).toContain("account?.role === 'admin' && <a href="#settings-access-section"");
+    expect(source).toContain('account?.role === \'admin\' && <a href="#settings-access-section"');
   });
   it('requires explicit confirmation before changing an existing account role and indicates unsaved rows', () => {
     expect(source).toContain("Changing a user's role immediately changes their access and may revoke their sessions. Continue?");
