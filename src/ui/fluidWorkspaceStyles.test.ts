@@ -41,7 +41,6 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-label\s*\{[^}]*font-size:\s*0\.72rem;/s);
     expect(stylesheet).toMatch(/\.portfolio-health-summary-column\s*\.portfolio-micro-row\s*\.portfolio-metric-value\s*\{[^}]*font-size:\s*0\.88rem;/s);
   });
-  });
 
   it('uses two-column Market Tools grids when the panel has enough width', () => {
     expect(stylesheet).toMatch(/\.portfolio-market-tools\s*\{[^}]*container-name:\s*portfolio-market-tools;/s);
@@ -89,7 +88,6 @@ describe('fluid workspace styles', () => {
     expect(redesignedStyles).toContain('border-top: 1px solid rgba(148, 163, 184, 0.17);');
     expect(redesignedStyles).toContain('border-left: 0 !important;');
     expect(redesignedStyles).toContain('@container portfolio-health-summary (max-width: 24rem)');
-  });
   });
 
   it('styles the tranche details modal and keeps the lot table independently scrollable', () => {
