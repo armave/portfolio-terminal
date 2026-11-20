@@ -258,11 +258,35 @@ describe('Settings section navigation layout', () => {
     expect(source).toContain('<small>{translateText(');
   });
 
-  it('uses compact responsive grid navigation rather than horizontally scrolling chips on mobile', () => {
+  it('uses grouped desktop navigation and a compact native section picker on mobile', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(styles).toContain('#settingsDesk .settings-section-nav a small');
+    expect(source).toContain('settings-section-nav-groups');
+    expect(source).toContain('settings-section-nav-mobile');
+    expect(source).toContain('<optgroup label={translateText(\'Workspace\')}>');
+    expect(source).toContain('<optgroup label={translateText(\'Portfolio\')}>');
+    expect(source).toContain('<optgroup label={translateText(\'Management & help\')}>');
+    expect(styles).toContain('#settingsDesk .settings-section-nav-group');
+    expect(styles).toContain('#settingsDesk .settings-section-nav-mobile select');
+    expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
     expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
-    expect(styles).not.toContain('flex-wrap: nowrap;\n    overflow-x: auto;\n    overscroll-behavior-inline: contain;');
+    expect(styles).not.toContain('flex-wrap: nowrap;\\n    overflow-x: auto;\\n    overscroll-behavior-inline: contain;');
+  });
+
+  it('smooth-scrolls to selected sections while respecting reduced-motion preferences', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches");
+    expect(source).toContain("behavior: prefersReducedMotion ? 'auto' : 'smooth'");
+    expect(source).toContain("block: 'start'");
+    expect(source).toContain("window.history.replaceState(window.history.state, '', nextHash);");
+    expect(source).toContain('target.scrollIntoView({');
+  });
+
+  it('adds consistent inner padding and sticky-nav-aware anchor spacing to Settings sections', () => {
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    expect(styles).toMatch(/#settingsDesk \\.settings-section\\s*\\{[^}]*padding:\\s*clamp\\(/s);
+    expect(styles).toMatch(/#settingsDesk \\.settings-section-nav-groups\\s*\\{[^}]*grid-template-columns:\\s*repeat\\(3,\\s*minmax\\(0,\\s*1fr\\)\\)/s);
+    expect(styles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)[\\s\\S]*?#settingsDesk \\.settings-section\\s*\\{[^}]*padding:\\s*0\\.8rem;[^}]*scroll-margin-top:\\s*6\\.5rem;/s);
   });
 });
 
