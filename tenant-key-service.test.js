@@ -66,12 +66,14 @@ function makeAwsMock({ dataKey = new Uint8Array(32).fill(0x5a) } = {}) {
 
     if (url.includes("rolesanywhere.")) {
       return response({
-        credentials: {
-          accessKeyId: "ASIAEXAMPLEACCESSKEY",
-          secretAccessKey: "temporary-secret-access-key",
-          sessionToken: "temporary-session-token",
-          expiration: new Date(Date.now() + 20 * 60 * 1000).toISOString()
-        }
+        credentialSet: [{
+          credentials: {
+            accessKeyId: "ASIAEXAMPLEACCESSKEY",
+            secretAccessKey: "temporary-secret-access-key",
+            sessionToken: "temporary-session-token",
+            expiration: new Date(Date.now() + 20 * 60 * 1000).toISOString()
+          }
+        }]
       }, 201);
     }
 
@@ -213,7 +215,7 @@ describe("AWS KMS tenant key service", () => {
     vi.stubGlobal("crypto", webcrypto);
     const env = await makeConfiguration();
     const { fetchMock } = makeAwsMock();
-    fetchMock.mockImplementationOnce(async () => response({ credentials: {} }, 403));
+    fetchMock.mockImplementationOnce(async () => response({ credentialSet: [] }, 403));
     await expect(createTenantKeyRecord(env, "tenant-example-0004")).rejects.toMatchObject({
       code: "kms_credentials_rejected",
       status: 503

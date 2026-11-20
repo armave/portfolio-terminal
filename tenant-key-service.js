@@ -278,7 +278,10 @@ async function signedRolesAnywhereFetch(configuration) {
   try { payload = await response.json(); } catch {
     throw new TenantKeyServiceError("kms_credentials_invalid", 503);
   }
-  const credentials = payload?.credentials || {};
+  const credentialSet = payload?.credentialSet;
+  const credentials = Array.isArray(credentialSet) && credentialSet.length === 1
+    ? (credentialSet[0]?.credentials || {})
+    : {};
   const accessKeyId = credentials.accessKeyId || credentials.AccessKeyId;
   const secretAccessKey = credentials.secretAccessKey || credentials.SecretAccessKey;
   const sessionToken = credentials.sessionToken || credentials.SessionToken;
