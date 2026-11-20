@@ -536,7 +536,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       />
 
       <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
-        <div class="settings-section-nav-groups">
+        <div class={`settings-section-nav-groups ${account?.role === 'guest' ? 'settings-section-nav-groups--guest' : ''}`}>
           <div class="settings-section-nav-group" role="group" aria-label={translateText('Workspace')}>
             <h3>{translateText('Workspace')}</h3>
             <div class="settings-section-nav-links">
