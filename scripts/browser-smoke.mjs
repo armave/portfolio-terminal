@@ -1508,7 +1508,12 @@ try {
 
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');
-  await page.locator('#settingsDesk details.settings-danger-zone > summary').click();
+  const dangerZone = page.locator('#settingsDesk details.settings-danger-zone');
+  await dangerZone.locator('summary').click();
+  const dangerZoneExpanded = await dangerZone.evaluate((element) => element.open);
+  if (!dangerZoneExpanded) {
+    throw new Error('Settings Danger zone did not expand before the portfolio reset check.');
+  }
   const resetButton = page.getByRole('button', { name: 'Reset local and cloud portfolio data' });
   await resetButton.waitFor({ state: 'visible', timeout: 5_000 });
   page.once('dialog', (dialog) => { void dialog.accept(); });
