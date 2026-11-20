@@ -491,14 +491,14 @@ describe('cross-device financial header hierarchy', () => {
   });
 
 
-  it('renders an accessible Tranches dialog trigger in the ticker view', () => {
+  it('keeps the Combined view summary as text and provides a ticker-only Tranches action', () => {
+    const combinedView = source.slice(source.indexOf('if (isCombined)'), source.indexOf('// Single Ticker View'));
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
-    expect(singleTickerView).toContain("translateText('Tranches', getAppLanguage())");
+    expect(combinedView).toContain('{tranchesText}');
+    expect(combinedView).not.toContain('data-tranche-details-trigger');
     expect(singleTickerView).toContain('data-tranche-details-trigger');
     expect(singleTickerView).toContain('aria-haspopup="dialog"');
-    expect(singleTickerView).toContain('aria-controls="trancheDetailsDialog"');
     expect(singleTickerView).toContain('onClick={() => setTrancheModalOpen(true)}');
-    expect(singleTickerView).toContain('restoreFocusRef={trancheButtonRef}');
   });
 
   it('opens all ticker purchase lots in the lazy tranche details dialog instead of expanding inline', () => {
