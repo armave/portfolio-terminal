@@ -1287,7 +1287,7 @@ try {
   await page.waitForFunction(() => window.location.hash === '#settings-data-section');
   await page.waitForFunction(() => {
     const section = document.querySelector('#settings-data-section');
-    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 288) <= 3);
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 224) <= 3);
   }, null, { timeout: 5_000 });
   const tabletSectionLayout = await tabletDataSection.evaluate((element) => {
     const navigation = document.querySelector('#settingsDesk .settings-section-nav');
@@ -1299,7 +1299,7 @@ try {
   });
   if (tabletSectionLayout.scrollBehavior !== 'smooth' ||
       tabletSectionLayout.sectionTop < tabletSectionLayout.navigationBottom - 2 ||
-      Math.abs(tabletSectionLayout.sectionTop - 288) > 3) {
+      Math.abs(tabletSectionLayout.sectionTop - 224) > 3) {
     throw new Error('Tablet Settings navigation anchor spacing is incorrect: ' + JSON.stringify(tabletSectionLayout));
   }
 
