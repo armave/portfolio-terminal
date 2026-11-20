@@ -17,6 +17,19 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes grouped Settings navigation labels in Russian', () => {
+    const settingsNavigationLabels = [
+      'Workspace',
+      'Portfolio',
+      'Management & help',
+      'Jump to section',
+      'Jump to Settings section'
+    ];
+    for (const label of settingsNavigationLabels) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+  });
+
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
       'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',
@@ -1148,6 +1161,33 @@ describe('Margin PT target information localization', () => {
     for (const item of copy) expect(translateText(item, 'ru'), item).not.toBe(item);
   });
 
+});
+
+
+describe('Settings refinements localization', () => {
+  it('translates the new recovery, synchronization and financial-group labels', () => {
+    const copy = [
+      'Backup & recovery',
+      'Live status & cadence',
+      'Last manual sync',
+      'Manual sync reports the result of that request only; it is not a live connection monitor.',
+      'Danger zone',
+      'Reset portfolio data',
+      'Portfolio risk guardrails',
+      'New-position defaults',
+      'Broker financing & rollover',
+      'Margin risk thresholds',
+      'Trading commissions',
+      'Cloud recovery',
+      'Replace local portfolio from cloud',
+      'Manage automatic refresh preferences and review the last confirmed workspace synchronization.',
+      'Understand how portfolio metrics are calculated, what data sources support them, and where model limitations apply.'
+    ];
+    for (const english of copy) {
+      expect(RU_TRANSLATIONS[english], english).toBeTruthy();
+      expect(translateText(english, 'ru'), english).not.toBe(english);
+    }
+  });
 });
   it('localizes the Market Insights news count control in Russian', () => {
     expect(translateText('News count', 'ru')).toBe('Количество новостей');

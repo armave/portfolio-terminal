@@ -45,8 +45,8 @@ describe('automatic update settings', () => {
     expect(source).toContain('DEFAULT_GUEST_REFRESH_INTERVAL_MS');
     expect(source).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
     expect(source).toContain('refreshNow: true');
-    expect(source).toContain('Your assigned holdings, LOTS history and their market quotes refresh at the selected interval.');
-    expect(source).toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+    expect(source).toContain('Assigned-stock quotes follow the selected interval. Your assigned holdings and LOTS history refresh independently every 60 seconds. Returning to the app triggers a fresh role-scoped refresh.');
+    expect(source).toContain('Market quotes and administrator workspace checkpoints follow the selected interval.');
     expect(source).toContain('Automatic refresh interval');
     expect(source).toContain('md:justify-start justify-center');
     expect(source).not.toContain('md:justify-left');
@@ -246,11 +246,11 @@ describe('Settings section navigation layout', () => {
     expect(source).toContain('<nav class="settings-section-nav"');
     for (const label of [
       'Profile & language',
-      'Refresh & backups',
+      'Live status & cadence',
       'Users & roles',
       'Planning defaults',
-      'Rates & commissions',
-      'Device & recovery',
+      'Financing & commissions',
+      'Device & application health',
       'Calculations & guidance'
     ]) {
       expect(source).toContain(label);
@@ -258,11 +258,37 @@ describe('Settings section navigation layout', () => {
     expect(source).toContain('<small>{translateText(');
   });
 
-  it('uses compact responsive grid navigation rather than horizontally scrolling chips on mobile', () => {
+  it('uses grouped desktop navigation and a compact native section picker on mobile', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(styles).toContain('#settingsDesk .settings-section-nav a small');
+    expect(source).toContain('settings-section-nav-groups');
+    expect(source).toContain('settings-section-nav-mobile');
+    expect(source).toContain('<optgroup label={translateText(\'Workspace\')}>');
+    expect(source).toContain('<optgroup label={translateText(\'Portfolio\')}>');
+    expect(source).toContain('<optgroup label={translateText(\'Management & help\')}>');
+    expect(styles).toContain('#settingsDesk .settings-section-nav-group');
+    expect(styles).toContain('#settingsDesk .settings-section-nav-mobile select');
+    expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
     expect(styles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
-    expect(styles).not.toContain('flex-wrap: nowrap;\n    overflow-x: auto;\n    overscroll-behavior-inline: contain;');
+  });
+
+  it('smooth-scrolls to selected sections while respecting reduced-motion preferences', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches");
+    expect(source).toContain("behavior: prefersReducedMotion ? 'auto' : 'smooth'");
+    expect(source).toContain("block: 'start'");
+    expect(source).toContain("window.history.replaceState(window.history.state, '', nextHash);");
+    expect(source).toContain('target.scrollIntoView({');
+  });
+
+  it('adds consistent inner padding and sticky-nav-aware anchor spacing to Settings sections', () => {
+    const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    const settingsStyles = styles.slice(styles.lastIndexOf('/* Settings navigation, section spacing, and compact mobile section picker. */'));
+    expect(settingsStyles).toContain('padding: clamp(0.9rem, 1.35vw, 1.25rem);');
+    expect(settingsStyles).toContain('scroll-margin-top: 14rem;');
+    expect(settingsStyles).toContain('padding: 0.8rem;');
+    expect(settingsStyles).toContain('scroll-margin-top: 6.5rem;');
+    expect(settingsStyles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
   });
 });
 
@@ -272,7 +298,9 @@ describe('Settings information architecture', () => {
     for (const section of [
       'settings-account-section',
       'settings-data-section',
+      'settings-recovery-section',
       'settings-access-section',
+      'settings-portfolio-section',
       'settings-broker-section',
       'settings-maintenance-section',
       'settings-help-section'
@@ -283,7 +311,7 @@ describe('Settings information architecture', () => {
     expect(source).toContain("account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync'");
     expect(source).toContain("'Assigned data refresh confirmed'");
     expect(source).toContain("'Last successful assigned-data refresh'");
-    expect(source).toContain("account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization'");
+    expect(source).toContain("account?.role === 'guest' ? 'Assigned portfolio refresh status' : 'Cloud workspace status'");
   });
 });
 
@@ -296,8 +324,66 @@ describe('cloud conflict recovery in Settings', () => {
     expect(source).toContain("emitUiEvent('settings:export-backup')");
     expect(source).toContain("emitUiEvent('settings:pull-cloud-state')");
     expect(source).toContain("disabled={syncingPortfolio || hasCloudConflict}");
-    expect(source).toContain("translateText('Export local backup')");
-    expect(source).toContain("translateText('Pull latest shared portfolio')");
+    expect(source).toContain("translateText('Export portfolio backup as JSON')");
+    expect(source).toContain("translateText('Replace local portfolio from cloud')");
+    expect(source).toContain("The shared portfolio has a newer revision.");
     expect(source).toContain('No financial changes are merged automatically.');
+  });
+});
+
+
+describe('Settings synchronization and recovery experience', () => {
+  const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+  it('describes quote and supplemental refresh cadences separately for each role', () => {
+    expect(source).toContain('Market quotes & workspace checkpoints');
+    expect(source).toContain('Broker fallback & closed history');
+    expect(source).toContain('Assigned holdings & LOTS history');
+    expect(source).toContain('Fixed 60-second cadence');
+    expect(source).toContain('Event-driven when healthy');
+    expect(source).not.toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+  });
+  it('shows manual-sync source results without presenting them as live connection telemetry', () => {
+    expect(source).toContain('getManualSyncSourceResults(manualSyncResult)');
+    expect(source).toContain('Manual sync reports the result of that request only; it is not a live connection monitor.');
+    expect(source).toContain('settings-manual-sync-results');
+  });
+  it('keeps cloud replacement in recovery and reset isolated in the collapsed danger zone', () => {
+    expect(source).toContain('settings-recovery-section');
+    expect(source).toContain('settings-danger-zone');
+    expect(source).toContain('settings-cloud-recovery-panel');
+    expect(source).toContain("emitUiEvent('settings:pull-cloud-state')");
+    expect(source).toContain("emitUiEvent('settings:reset-to-blank-state')");
+    expect(source).not.toContain("translateText('Pull cloud')");
+    expect(source).toContain("translateText('Replace local portfolio from cloud')");
+    expect(source).toContain('disabled={syncingPortfolio || hasCloudConflict}');
+  });
+  it('keeps Settings navigation active-state aware and section visibility role-scoped', () => {
+    expect(source).toContain('new IntersectionObserver');
+    expect(source).toContain('aria-current={activeSettingsSection');
+    expect(source).toContain("permissions.canManageBackups && renderSettingsSectionLink('settings-recovery-section'");
+    expect(source).toContain("account?.role === 'admin' && renderSettingsSectionLink('settings-access-section'");
+  });
+  it('requires explicit confirmation before changing an existing account role and indicates unsaved rows', () => {
+    expect(source).toContain("Changing a user's role immediately changes their access and may revoke their sessions. Continue?");
+    expect(source).toContain('isUserEditDirty(user, editValues[user.id])');
+    expect(source).toContain('settings-user-dirty');
+  });
+  it('groups portfolio and broker assumptions without changing persisted field identifiers', () => {
+    expect(source).toContain('Portfolio risk guardrails');
+    expect(source).toContain('New-position defaults');
+    expect(source).toContain('Broker financing & rollover');
+    expect(source).toContain('Margin risk thresholds');
+    expect(source).toContain('Trading commissions');
+    expect(source).toContain('id="maintenanceMarginInput"');
+    expect(source).toContain('id="stopOutRatioInput"');
+    expect(source).toContain('id="annualMarginRateInput"');
+  });
+});
+
+
+describe('Settings semantic markup', () => {
+  it('does not nest paragraph elements in Settings content', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/<p\b[^>]*>(?:(?!<\/p\s*>)[\s\S])*?<p\b/);
   });
 });

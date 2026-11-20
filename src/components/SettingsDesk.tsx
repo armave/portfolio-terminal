@@ -24,6 +24,17 @@ import { PwaUpdateStatus } from './PwaUpdateStatus';
 import { MarginDigestSecurityPanel } from './MarginDigestSecurityPanel';
 
 
+const SETTINGS_SECTION_IDS = [
+  'settings-account-section',
+  'settings-data-section',
+  'settings-recovery-section',
+  'settings-access-section',
+  'settings-portfolio-section',
+  'settings-broker-section',
+  'settings-maintenance-section',
+  'settings-help-section'
+] as const;
+
 type PortfolioSettingsFormValues = {
   breakevenMinimumRemainingBalanceUsd: string;
   buyMoreMinimumEquityPercent: string;
@@ -116,22 +127,36 @@ function formatSettingsTimestamp(timestamp: number | null | undefined): string {
   }).format(new Date(timestamp));
 }
 
-function getManualSyncIssueLabels(result: ManualPortfolioSyncResult): string[] {
-  const issues: string[] = [];
+function getManualSyncSourceResults(result: ManualPortfolioSyncResult): Array<{ label: string; succeeded: boolean }> {
   if (result.role === 'admin') {
-    if (!result.brokerAccount) issues.push('Broker account');
-    if (!result.executedTrades) issues.push('Executed trades');
-    if (!result.activeOrders) issues.push('Active orders');
-    if (!result.quotes) issues.push('Market quotes');
-    if (!result.cloud) issues.push('Cloud portfolio');
-    if (!result.cloudHistory) issues.push('Closed history');
-  } else if (result.role === 'guest') {
-    if (!result.guestSnapshot) issues.push('Assigned portfolio');
-    if (!result.quotes) issues.push('Market quotes');
-  } else {
-    issues.push('Portfolio sync');
+    return [
+      { label: 'Broker account', succeeded: result.brokerAccount === true },
+      { label: 'Executed trades', succeeded: result.executedTrades === true },
+      { label: 'Active orders', succeeded: result.activeOrders === true },
+      { label: 'Market quotes', succeeded: result.quotes },
+      { label: 'Closed history', succeeded: result.cloudHistory === true },
+      { label: 'Cloud portfolio', succeeded: result.cloud === true }
+    ];
   }
-  return issues.length ? issues : ['Portfolio sync'];
+  if (result.role === 'guest') {
+    return [
+      { label: 'Assigned portfolio', succeeded: result.guestSnapshot === true },
+      { label: 'Market quotes', succeeded: result.quotes }
+    ];
+  }
+  return [{ label: 'Portfolio sync', succeeded: result.success }];
+}
+
+function isUserEditDirty(
+  user: AuthUser,
+  values: { name: string; role: 'guest' | 'admin'; language: AppLanguage; password: string } | undefined
+): boolean {
+  return Boolean(values && (
+    values.name !== user.name ||
+    values.role !== user.role ||
+    values.language !== (user.language ?? 'en') ||
+    values.password.length > 0
+  ));
 }
 
 export function SettingsDesk({ currentUser }: SettingsDeskProps) {
@@ -176,6 +201,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [tenantDirectoryOpen, setTenantDirectoryOpen] = useState(false);
   const [advancedMaintenanceOpen, setAdvancedMaintenanceOpen] = useState(false);
   const [manualSyncResult, setManualSyncResult] = useState<ManualPortfolioSyncResult | null>(null);
+  const [manualSyncCompletedAt, setManualSyncCompletedAt] = useState<number | null>(null);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<string>('settings-account-section');
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
   const usersPagination = useTablePagination('settings-users', users.length, 10);
@@ -205,6 +232,36 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   useEffect(() => {
     setAccount(currentUser);
   }, [currentUser]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const sections = SETTINGS_SECTION_IDS
+      .map((id) => document.getElementById(id))
+      .filter((section): section is HTMLElement => section !== null);
+    const visibleSections = new Set<Element>();
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) visibleSections.add(entry.target);
+        else visibleSections.delete(entry.target);
+      }
+      const current = [...visibleSections]
+        .map((section) => ({
+          id: (section as HTMLElement).id,
+          top: section.getBoundingClientRect().top
+        }))
+        .sort((left, right) => left.top - right.top)[0];
+      if (current) setActiveSettingsSection(current.id);
+    }, {
+      root: null,
+      rootMargin: '-14% 0px -68% 0px',
+      threshold: 0
+    });
+    sections.forEach((section) => observer.observe(section));
+    return () => {
+      observer.disconnect();
+      visibleSections.clear();
+    };
+  }, [account?.role]);
 
   useEffect(() => {
     if (currentUser?.role !== 'admin') {
@@ -252,8 +309,13 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   };
 
   const handleUpdateUser = async (userId: string) => {
+    const user = users.find((record) => record.id === userId);
     const values = editValues[userId];
-    if (!values || savingUser) return;
+    if (!user || !values || savingUser) return;
+    if (
+      values.role !== user.role &&
+      !window.confirm(translateText("Changing a user's role immediately changes their access and may revoke their sessions. Continue?"))
+    ) return;
     setSavingUser(true);
     setUsersError("");
     try {
@@ -416,11 +478,55 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     try {
       const result = await request;
       setManualSyncResult(result);
+      setManualSyncCompletedAt(Date.now());
     } finally {
       if (portfolioSyncPromise.current === request) portfolioSyncPromise.current = null;
       setSyncingPortfolio(false);
     }
   };
+
+  const navigateToSettingsSection = (sectionId: string) => {
+    if (!SETTINGS_SECTION_IDS.includes(sectionId as (typeof SETTINGS_SECTION_IDS)[number])) return;
+    const target = document.getElementById(sectionId);
+    if (!target) return;
+
+    setActiveSettingsSection(sectionId);
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start'
+    });
+
+    const nextHash = `#${sectionId}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(window.history.state, '', nextHash);
+    }
+  };
+
+  const handleSettingsSectionLinkClick = (event: MouseEvent) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.currentTarget as HTMLAnchorElement;
+    const sectionId = link.hash.slice(1);
+    if (!sectionId) return;
+    event.preventDefault();
+    navigateToSettingsSection(sectionId);
+  };
+
+  const renderSettingsSectionLink = (
+    sectionId: (typeof SETTINGS_SECTION_IDS)[number],
+    title: string,
+    description: string
+  ) => (
+    <a
+      href={`#${sectionId}`}
+      class={activeSettingsSection === sectionId ? 'is-active' : undefined}
+      aria-current={activeSettingsSection === sectionId ? 'location' : undefined}
+      onClick={handleSettingsSectionLinkClick}
+    >
+      <span>{translateText(title)}</span>
+      <small>{translateText(description)}</small>
+    </a>
+  );
 
   return (
     <div id="settingsDesk" class="settings-desk min-w-0">
@@ -430,13 +536,54 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       />
 
       <nav class="settings-section-nav" aria-label={translateText('Settings sections')}>
-        <a href="#settings-account-section"><span>{translateText('Account')}</span><small>{translateText('Profile & language')}</small></a>
-        <a href="#settings-data-section"><span>{translateText('Data & Sync')}</span><small>{translateText('Refresh & backups')}</small></a>
-        {account?.role === 'admin' && <a href="#settings-access-section"><span>{translateText('Access management')}</span><small>{translateText('Users & roles')}</small></a>}
-        {permissions.canEditPortfolioSettings && <a href="#settings-portfolio-section"><span>{translateText('Portfolio planning settings')}</span><small>{translateText('Planning defaults')}</small></a>}
-        {permissions.canEditBrokerRules && <a href="#settings-broker-section"><span>{translateText('Broker & Trading')}</span><small>{translateText('Rates & commissions')}</small></a>}
-        <a href="#settings-maintenance-section"><span>{translateText('Diagnostics & Maintenance')}</span><small>{translateText('Device & recovery')}</small></a>
-        <a href="#settings-help-section"><span>{translateText('Methodology & Help')}</span><small>{translateText('Calculations & guidance')}</small></a>
+        <div class={`settings-section-nav-groups ${account?.role === 'guest' ? 'settings-section-nav-groups--guest' : ''}`}>
+          <div class="settings-section-nav-group" role="group" aria-label={translateText('Workspace')}>
+            <h3>{translateText('Workspace')}</h3>
+            <div class="settings-section-nav-links">
+              {renderSettingsSectionLink('settings-account-section', 'Account', 'Profile & language')}
+              {renderSettingsSectionLink('settings-data-section', 'Data & Sync', 'Live status & cadence')}
+            </div>
+          </div>
+          {(permissions.canManageBackups || permissions.canEditPortfolioSettings || permissions.canEditBrokerRules) && <div class="settings-section-nav-group" role="group" aria-label={translateText('Portfolio')}>
+            <h3>{translateText('Portfolio')}</h3>
+            <div class="settings-section-nav-links">
+              {permissions.canManageBackups && renderSettingsSectionLink('settings-recovery-section', 'Backup & recovery', 'Export, import & restore')}
+              {permissions.canEditPortfolioSettings && renderSettingsSectionLink('settings-portfolio-section', 'Portfolio planning settings', 'Planning defaults')}
+              {permissions.canEditBrokerRules && renderSettingsSectionLink('settings-broker-section', 'Broker & Trading', 'Financing & commissions')}
+            </div>
+          </div>}
+          <div class="settings-section-nav-group" role="group" aria-label={translateText('Management & help')}>
+            <h3>{translateText('Management & help')}</h3>
+            <div class="settings-section-nav-links">
+              {account?.role === 'admin' && renderSettingsSectionLink('settings-access-section', 'Access management', 'Users & roles')}
+              {renderSettingsSectionLink('settings-maintenance-section', 'Diagnostics & Security', 'Device & application health')}
+              {renderSettingsSectionLink('settings-help-section', 'Methodology & Help', 'Calculations & guidance')}
+            </div>
+          </div>
+        </div>
+        <label class="settings-section-nav-mobile">
+          <span>{translateText('Jump to section')}</span>
+          <select
+            aria-label={translateText('Jump to Settings section')}
+            value={activeSettingsSection}
+            onChange={(event) => navigateToSettingsSection((event.currentTarget as HTMLSelectElement).value)}
+          >
+            <optgroup label={translateText('Workspace')}>
+              <option value="settings-account-section">{translateText('Account')} — {translateText('Profile & language')}</option>
+              <option value="settings-data-section">{translateText('Data & Sync')} — {translateText('Live status & cadence')}</option>
+            </optgroup>
+            {(permissions.canManageBackups || permissions.canEditPortfolioSettings || permissions.canEditBrokerRules) && <optgroup label={translateText('Portfolio')}>
+              {permissions.canManageBackups && <option value="settings-recovery-section">{translateText('Backup & recovery')} — {translateText('Export, import & restore')}</option>}
+              {permissions.canEditPortfolioSettings && <option value="settings-portfolio-section">{translateText('Portfolio planning settings')} — {translateText('Planning defaults')}</option>}
+              {permissions.canEditBrokerRules && <option value="settings-broker-section">{translateText('Broker & Trading')} — {translateText('Financing & commissions')}</option>}
+            </optgroup>}
+            <optgroup label={translateText('Management & help')}>
+              {account?.role === 'admin' && <option value="settings-access-section">{translateText('Access management')} — {translateText('Users & roles')}</option>}
+              <option value="settings-maintenance-section">{translateText('Diagnostics & Security')} — {translateText('Device & application health')}</option>
+              <option value="settings-help-section">{translateText('Methodology & Help')} — {translateText('Calculations & guidance')}</option>
+            </optgroup>
+          </select>
+        </label>
       </nav>
 
       <section id="settings-account-section" class="settings-section" aria-labelledby="settingsAccountTitle">
@@ -470,7 +617,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       <section id="settings-data-section" class="settings-section" aria-labelledby="settingsDataTitle">
         <div class="settings-section-heading">
           <h2 id="settingsDataTitle">{translateText('Data & synchronization')}</h2>
-          <p>{translateText('Manage automatic refresh, cloud synchronization, and portfolio recovery.')}</p>
+          <p>{translateText('Manage automatic refresh preferences and review the last confirmed workspace synchronization.')}</p>
         </div>
         <div class="settings-data-grid">
           <div class="settings-toolbar__card settings-refresh-card flex flex-col gap-3">
@@ -483,8 +630,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   onChange={handleIntervalChange}
                   aria-label={translateText('Automatic portfolio refresh interval')}
                   title={translateText(account?.role === 'guest'
-                    ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
-                    : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
+                    ? 'Assigned-stock quotes follow the selected interval. Your assigned holdings and LOTS history refresh independently every 60 seconds. Returning to the app triggers a fresh role-scoped refresh.'
+                    : 'Market quotes and administrator workspace checkpoints follow the selected interval. Broker REST fallback, executed-trade and active-order catch-up, Closed History and cashflows use separate refresh paths; healthy TradeNet streams update from events. Returning to the app triggers a fresh role-scoped refresh.')}
                   class="h-9 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
                 >
                   <option value="15000">{translateText('15 sec')}</option>
@@ -493,13 +640,24 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 </select>
               </label>
             </div>
-            <p class="settings-refresh-description text-left text-[10px] leading-relaxed text-slate-500">
+            <p class="settings-refresh-description text-left text-[11px] leading-relaxed text-slate-400">
               {translateText(account?.role === 'guest'
-                ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
-                : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
+                ? 'Assigned-stock quotes follow the selected interval. Your assigned holdings and LOTS history refresh independently every 60 seconds. Returning to the app triggers a fresh role-scoped refresh.'
+                : 'Market quotes and administrator workspace checkpoints follow the selected interval. Broker REST fallback, executed-trade and active-order catch-up, Closed History and cashflows use separate refresh paths; healthy TradeNet streams update from events. Returning to the app triggers a fresh role-scoped refresh.')}
             </p>
+            <div class="settings-cadence-grid" aria-label={translateText('Synchronization cadence')}>
+              {account?.role === 'guest' ? <>
+                <div><span>{translateText('Assigned-stock quotes')}</span><strong>{translateText('Selected interval')}</strong></div>
+                <div><span>{translateText('Assigned holdings & LOTS history')}</span><strong>{translateText('Fixed 60-second cadence')}</strong></div>
+                <div><span>{translateText('Manual refresh')}</span><strong>{translateText('Available on demand')}</strong></div>
+              </> : <>
+                <div><span>{translateText('Market quotes & workspace checkpoints')}</span><strong>{translateText('Selected interval')}</strong></div>
+                <div><span>{translateText('Broker fallback & closed history')}</span><strong>{translateText('Independent 60-second cadence')}</strong></div>
+                <div><span>{translateText('TradeNet account streams')}</span><strong>{translateText('Event-driven when healthy')}</strong></div>
+              </>}
+            </div>
             <div class="settings-sync-status flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2" role="status" aria-live="polite">
-              <span class="text-[11px] font-semibold text-slate-300">{translateText(account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization')}</span>
+              <span class="text-[11px] font-semibold text-slate-300">{translateText(account?.role === 'guest' ? 'Assigned portfolio refresh status' : 'Cloud workspace status')}</span>
               <span class={hasCloudConflict ? 'text-[11px] font-semibold text-amber-200' : cloudSyncStatus.status === 'synced' ? 'text-[11px] font-semibold text-emerald-300' : cloudSyncStatus.status === 'error' ? 'text-[11px] font-semibold text-rose-300' : 'text-[11px] font-semibold text-amber-200'}>
                 {translateText(account?.role === 'guest'
                   ? cloudSyncStatus.status === 'synced' ? 'Assigned data refresh confirmed' : cloudSyncStatus.status === 'syncing' ? 'Assigned data refresh in progress' : cloudSyncStatus.status === 'error' ? 'Assigned data refresh failed' : 'Assigned data refresh status not checked'
@@ -509,7 +667,47 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 {translateText(account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync')}: {formatSettingsTimestamp(cloudSyncStatus.lastSyncedAt)}
               </span>
             </div>
-            {hasCloudConflict && <section
+
+            <div class="settings-data-actions flex flex-wrap items-center gap-2">
+              {(account?.role === "admin" || account?.role === "guest") && <button
+                type="button"
+                onClick={() => void handleManualPortfolioSync()}
+                disabled={syncingPortfolio || hasCloudConflict}
+                aria-busy={syncingPortfolio}
+                aria-label={translateText('Sync portfolio')}
+                title={translateText(hasCloudConflict ? 'Resolve the cloud conflict before syncing' : 'Sync portfolio')}
+                class="settings-sync-button h-10 rounded border border-cyan-700 bg-cyan-950/40 px-3 text-xs font-bold text-cyan-200 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio now')}</button>}
+
+            </div>
+            {manualSyncResult && <section class="settings-manual-sync-results" role="status" aria-live="polite" aria-label={translateText('Last manual sync')}>
+              <div class="settings-manual-sync-heading">
+                <div>
+                  <h3>{translateText('Last manual sync')}</h3>
+                  <p>{translateText(manualSyncResult.success ? 'Completed' : 'Completed with issues')} · {formatSettingsTimestamp(manualSyncCompletedAt)}</p>
+                </div>
+                <span class={manualSyncResult.success ? 'is-success' : 'is-warning'}>{translateText(manualSyncResult.success ? 'Succeeded' : 'Completed with issues')}</span>
+              </div>
+              <ul>
+                {getManualSyncSourceResults(manualSyncResult).map((source) => <li key={source.label}>
+                  <span>{translateText(source.label)}</span>
+                  <strong class={source.succeeded ? 'is-success' : 'is-warning'}>{translateText(source.succeeded ? 'Succeeded' : 'Unavailable')}</strong>
+                </li>)}
+              </ul>
+              <p class="settings-manual-sync-footnote">{translateText('Manual sync reports the result of that request only; it is not a live connection monitor.')}</p>
+            </section>}
+
+
+          </div>
+        </div>
+      </section>
+
+      {permissions.canManageBackups && <section id="settings-recovery-section" class="settings-section" aria-labelledby="settingsRecoveryTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsRecoveryTitle">{translateText('Backup & recovery')}</h2>
+          <p>{translateText('Export a JSON snapshot or validate and import a previous backup. Recovery actions that replace local data are clearly separated from routine synchronization.')}</p>
+        </div>
+                    {hasCloudConflict && <section
               id="settingsCloudConflictRecovery"
               aria-labelledby="settingsCloudConflictTitle"
               role="alert"
@@ -527,48 +725,28 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   </p>
                 </div>
               </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => emitUiEvent('settings:export-backup')}
-                  aria-label={translateText('Export local backup')}
-                  class="min-h-10 rounded border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700"
-                >{translateText('Export local backup')}</button>
-                <button
-                  type="button"
-                  onClick={() => emitUiEvent('settings:pull-cloud-state')}
-                  aria-label={translateText('Pull latest shared portfolio')}
-                  class="min-h-10 rounded border border-amber-700 bg-amber-950/50 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-900/60"
-                >{translateText('Pull latest shared portfolio')}</button>
-              </div>
+              <p class="text-[11px] text-amber-100">{translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}</p>
+              <p class="text-[11px] text-amber-100">{translateText('Export a JSON backup before pulling cloud state or resetting the portfolio.')}</p>
+
             </section>}
-            <div class="settings-data-actions flex flex-wrap items-center gap-2">
-              {(account?.role === "admin" || account?.role === "guest") && <button
-                type="button"
-                onClick={() => void handleManualPortfolioSync()}
-                disabled={syncingPortfolio || hasCloudConflict}
-                aria-busy={syncingPortfolio}
-                aria-label={translateText('Sync portfolio')}
-                title={translateText(hasCloudConflict ? 'Resolve the cloud conflict before syncing' : 'Sync portfolio')}
-                class="settings-sync-button h-10 rounded border border-cyan-700 bg-cyan-950/40 px-3 text-xs font-bold text-cyan-200 hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-50"
-              >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio now')}</button>}
-              {account?.role === "admin" && <button
-                type="button"
-                onClick={() => emitUiEvent("settings:pull-cloud-state")}
-                title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}
-                aria-label={translateText('Replace local portfolio from KV cloud')}
-                class="h-10 rounded border border-purple-700 bg-slate-800 px-3 text-xs font-bold text-purple-300 hover:bg-slate-700"
-              >{translateText('Pull cloud')}</button>}
-            </div>
-            {manualSyncResult && <p class="text-[11px] leading-4 text-slate-300" role="status" aria-live="polite">
-              {translateText(manualSyncResult.success
-                ? 'Last manual sync completed successfully.'
-                : 'Last manual sync completed with issues. Check the activity log.')}
-            </p>}
-            {manualSyncResult && !manualSyncResult.success && <p class="text-[10px] leading-4 text-amber-200" role="status" aria-live="polite">
-              {translateText('Unavailable sources')}: {getManualSyncIssueLabels(manualSyncResult).map((label) => translateText(label)).join(', ')}
-            </p>}
-            {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-3 gap-2 border-t border-slate-800 pt-3">
+        <div class="settings-panel settings-cloud-recovery-panel space-y-3">
+          <div class="settings-subsection-heading">
+            <h3>{translateText('Cloud recovery')}</h3>
+            <p>{translateText("Replace this device's local portfolio with the latest shared cloud snapshot. Unsynced local changes can be lost; export a JSON backup first. The app will ask for confirmation before replacing data.")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => emitUiEvent('settings:pull-cloud-state')}
+            aria-label={translateText('Replace local portfolio from cloud')}
+            class="min-h-11 rounded border border-amber-700 bg-amber-950/40 px-3 py-2 text-xs font-bold text-amber-100 hover:bg-amber-900/60"
+          >{translateText('Replace local portfolio from cloud')}</button>
+        </div>
+        <div class="settings-panel settings-recovery-panel space-y-3">
+          <div class="settings-subsection-heading">
+            <h3>{translateText('Backup & import')}</h3>
+            <p>{translateText('Export a portable snapshot, or import a validated backup after reviewing its preview and confirming the replacement.')}</p>
+          </div>
+                      {permissions.canManageBackups && <div class="settings-backup-actions grid grid-cols-2 gap-2 border-t border-slate-800 pt-3">
               <button
                 type="button"
                 onClick={() => emitUiEvent('settings:export-backup')}
@@ -583,21 +761,30 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 aria-label={translateText('Import portfolio backup from JSON')}
                 class="h-10 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               >{translateText('Import')}</button>
-              <button
+
+            </div>}
+                      {permissions.canManageBackups && <div class="settings-data-safety-note flex w-full items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
+              <span aria-hidden="true" class="shrink-0 text-sm text-amber-300">⚠</span>
+              <p class="min-w-0 font-semibold text-left text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
+            </div>}
+        </div>
+        <details class="settings-danger-zone">
+          <summary>{translateText('Danger zone')}</summary>
+          <div class="settings-danger-zone-content">
+            <div>
+              <h3>{translateText('Reset portfolio data')}</h3>
+              <p>{translateText('Reset removes saved portfolio and history data locally and in cloud storage. Broker-held TradeNet records are not deleted and may reappear after refresh.')}</p>
+            </div>
+                          <button
                 type="button"
                 onClick={() => emitUiEvent('settings:reset-to-blank-state')}
                 title={translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}
                 aria-label={translateText('Reset local and cloud portfolio data')}
                 class="h-10 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               >{translateText('Reset')}</button>
-            </div>}
-            {permissions.canManageBackups && <div class="settings-data-safety-note flex w-full items-start gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-3 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
-              <span aria-hidden="true" class="shrink-0 text-sm text-amber-300">⚠</span>
-              <p class="min-w-0 font-semibold text-left text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
-            </div>}
           </div>
-        </div>
-      </section>
+        </details>
+      </section>}
 
 {account?.role === "admin" && <section id="settings-access-section" class="settings-section" aria-labelledby="settingsAccessTitle">
         <div class="settings-section-heading">
@@ -622,6 +809,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </span>
         </summary>
         <div class="space-y-3 pt-2">
+        <div class="settings-subsection-heading">
+          <h3>{translateText('Create account')}</h3>
+          <p>{translateText('Administrators share one owner workspace. Guests receive read-only projections for holdings explicitly assigned to them.')}</p>
+        </div>
         {account?.role === "admin" ? <>
           <form onSubmit={handleCreateUser} class="settings-user-form grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
             <input type="text" aria-label={translateText('User name')} minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder={translateText('User name')} class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
@@ -630,12 +821,17 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label={translateText('New user language')} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-2 text-xs text-white"><option class="text-center" value="en">{translateText('English')}</option><option class="text-center" value="ru">{translateText('Russian')}</option></select>
             <button type="submit" disabled={savingUser} class="min-h-11 min-w-11 rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">{translateText('Add user')}</button>
           </form>
+          <div class="settings-subsection-heading settings-existing-users-heading">
+            <h3>{translateText('Existing accounts')}</h3>
+            <p>{translateText('Review access, language, and account changes. Save is enabled only when a row has pending edits.')}</p>
+          </div>
           <div id="settingsUsersCollection" class="min-w-0">
             <div class="settings-user-cards grid grid-cols-1 gap-3 md:hidden" aria-label={translateText('User management table')}>
               {initialUsersLoading && <p class="rounded-lg border border-slate-800 bg-slate-900/70 p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</p>}
               {visibleUsers.map((user) => <article key={user.id} class="settings-user-card rounded-lg border border-slate-800 bg-slate-900/70 p-3">
                 <div class="settings-user-card-heading">
                   <span class="min-w-0 break-words font-semibold text-slate-100">{editValues[user.id]?.name || user.name}</span>
+                  {isUserEditDirty(user, editValues[user.id]) && <span class="settings-user-dirty">{translateText('Unsaved changes')}</span>}
                   <span class="shrink-0 rounded border border-slate-700 bg-slate-950/70 px-2 py-1 text-[10px] font-semibold text-slate-300">
                     {translateText((editValues[user.id]?.role ?? user.role) === 'admin' ? 'Admin' : 'Guest')}
                   </span>
@@ -674,7 +870,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                         class="min-h-11 rounded border border-cyan-900/70 bg-cyan-950/60 px-3 py-2 text-xs font-semibold text-cyan-200 disabled:opacity-50"
                       >{viewingUserId === user.id ? translateText('Opening…') : translateText('View as')}</button>
                     : <span class="self-center text-[10px] text-slate-500" title={translateText('Admin accounts share the same owner workspace.')}>{translateText('Shared workspace')}</span>}
-                  <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                  <button type="button" disabled={savingUser || viewingUserId !== null || !isUserEditDirty(user, editValues[user.id])} onClick={() => void handleUpdateUser(user.id)} class="min-h-11 rounded bg-slate-800 px-3 py-2 text-xs font-semibold text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
                   {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 rounded bg-rose-950 px-3 py-2 text-xs font-semibold text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
                 </div>
               </article>)}
@@ -686,7 +882,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 <tbody id="settingsUsersTableBody">
                   {initialUsersLoading && <tr><td colSpan={5} class="p-3 text-center text-xs text-slate-500" role="status">{translateText('Loading users…')}</td></tr>}
                   {visibleUsers.map((user) => <tr key={user.id} class="border-t border-slate-800">
-                    <td class="p-2"><input aria-label={translateText('Name for ') + user.name} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+                    <td class="p-2">
+                      <input aria-label={translateText('Name for ') + user.name} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" />
+                      {isUserEditDirty(user, editValues[user.id]) && <small class="settings-user-dirty">{translateText('Unsaved changes')}</small>}
+                    </td>
                     <td class="p-2"><select aria-label={translateText('Role for ') + user.name} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">{translateText('Guest')}</option><option class="text-center" value="admin">{translateText('Admin')}</option></select></td>
                     <td class="p-2"><select aria-label={translateText('Language for ') + user.name} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">{translateText('English')}</option><option class="text-center" value="ru">{translateText('Russian')}</option></select></td>
                     <td class="p-2"><input aria-label={translateText('New password for ') + user.name} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder={translateText('Leave blank to keep')} value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
@@ -694,7 +893,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                       {user.role === 'guest'
                         ? <button type="button" aria-label={translateText('View as') + ' ' + user.name} disabled={savingUser || viewingUserId !== null} onClick={() => void handleViewAsUser(user)} class="mr-2 min-h-11 rounded border border-cyan-900/70 bg-cyan-950/60 px-2 py-1.5 text-cyan-200 disabled:opacity-50">{viewingUserId === user.id ? translateText('Opening…') : translateText('View as')}</button>
                         : <span class="mr-2 text-[10px] text-slate-500" title={translateText('Admin accounts share the same owner workspace.')}>{translateText('Shared workspace')}</span>}
-                      <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
+                      <button type="button" disabled={savingUser || viewingUserId !== null || !isUserEditDirty(user, editValues[user.id])} onClick={() => void handleUpdateUser(user.id)} class="mr-2 min-h-11 min-w-11 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">{translateText('Save')}</button>
                       {user.id !== account.id && <button type="button" disabled={savingUser || viewingUserId !== null} onClick={() => void handleDeleteUser(user)} class="min-h-11 min-w-11 rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">{translateText('Delete')}</button>}
                     </td>
                   </tr>)}</tbody>
@@ -736,32 +935,16 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </details>}
       </section>}
 
-      <section id="settings-maintenance-section" class="settings-section" aria-labelledby="settingsMaintenanceTitle">
-        <div class="settings-section-heading">
-          <h2 id="settingsMaintenanceTitle">{translateText('Diagnostics & Maintenance')}</h2>
-          <p>{translateText('Check this device and open advanced security maintenance when needed.')}</p>
-        </div>
-        <PwaUpdateStatus />
-        <DeviceCheckSummary />
-        {account?.role === 'admin' && <details
-          class="settings-subsection settings-maintenance-advanced"
-          open={advancedMaintenanceOpen}
-          onToggle={(event) => setAdvancedMaintenanceOpen((event.currentTarget as HTMLDetailsElement).open)}
-        >
-          <summary>{translateText('Advanced maintenance')}</summary>
-          <div class="pt-3">
-            {advancedMaintenanceOpen && <MarginDigestSecurityPanel currentUserId={account.id} />}
-          </div>
-        </details>}
-      </section>
-
       {permissions.canEditPortfolioSettings && <section id="settings-portfolio-section" class="settings-section" aria-labelledby="settingsPortfolioTitle">
         <div class="settings-section-heading">
           <h2 id="settingsPortfolioTitle">{translateText('Portfolio planning settings')}</h2>
           <p>{translateText('Configure app-side planning guardrails and defaults for newly observed broker positions.')}</p>
         </div>
         <div class="settings-panel space-y-3">
-          <p class="text-xs leading-relaxed text-slate-400">{translateText('These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.')}</p>
+          <div class="space-y-1">
+            <p class="text-xs leading-relaxed text-slate-400">{translateText('These are application planning settings, not broker-reported limits or liquidation guarantees. Broker rules remain separate below.')}</p>
+            <p class="settings-form-helper">{translateText('Planning defaults do not modify existing lots, cost basis, journal entries, or broker records.')}</p>
+          </div>
           <form id="portfolioSettingsForm" class="settings-rules-form space-y-3" onSubmit={(event) => {
             event.preventDefault();
             const form = event.currentTarget as HTMLFormElement;
@@ -769,6 +952,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             emitUiEvent('settings:save-portfolio-settings', { settings: toPortfolioSettings(portfolioSettingValues) });
           }}>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div class="settings-field-group-heading">{translateText('Portfolio risk guardrails')}</div>
               <label class="flex flex-col gap-1 text-xs text-slate-300">
                 {translateText('Minimum post-sale account balance (USD)')}
                 <input type="number" step="1" min="-1000000" max="1000000" required value={portfolioSettingValues.breakevenMinimumRemainingBalanceUsd}
@@ -794,6 +978,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   onInput={(event) => setPortfolioSettingValues(current => ({ ...current, accountEquityHealthReferencePercent: (event.currentTarget as HTMLInputElement).value }))}
                   class="h-9 rounded border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100" />
               </label>
+              <div class="settings-field-group-heading">{translateText('New-position defaults')}</div>
               <label class="flex flex-col gap-1 text-xs text-slate-300">
                 {translateText('New margin-position target uplift (%)')}
                 <input type="number" step="0.5" min="0" max="200" required value={portfolioSettingValues.defaultMarginTargetUpsidePercent}
@@ -857,10 +1042,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 {translateText(brokerRulesDirty ? 'Save to apply these assumptions.' : 'Broker assumptions are saved in this browser.')}
               </span>
             </div>
+            <p class="text-[11px] leading-relaxed text-slate-400">{translateText('These browser-stored assumptions affect modeled financing and transaction costs. Confirm every value with your broker; they are not live broker-reported requirements.')}</p>
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              <div class="settings-field-group-heading">{translateText('Broker financing & rollover')}</div>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Annual margin rate (%)
                 <input
@@ -888,6 +1075,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   <option value="360">360 days</option>
                 </select>
               </label>
+              <label class="flex flex-col gap-1 text-[10px] text-slate-400">
+                Rollover time (Asia/Yerevan)
+                <input
+                  id="rolloverTimeInput"
+                  type="time"
+                  required
+                  value={ruleValues.rolloverTime}
+                  onInput={(e) => updateRuleValue('rolloverTime', (e.target as HTMLInputElement).value)}
+                  class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                />
+              </label>
+              <div class="settings-field-group-heading">{translateText('Margin risk thresholds')}</div>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Maintenance equity (%)
                 <input
@@ -925,17 +1124,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>
-              <label class="flex flex-col gap-1 text-[10px] text-slate-400">
-                Rollover time (Asia/Yerevan)
-                <input
-                  id="rolloverTimeInput"
-                  type="time"
-                  required
-                  value={ruleValues.rolloverTime}
-                  onInput={(e) => updateRuleValue('rolloverTime', (e.target as HTMLInputElement).value)}
-                  class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
-                />
-              </label>
+
+              <div class="settings-field-group-heading">{translateText('Trading commissions')}</div>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Commission / share ($)
                 <input
@@ -1004,10 +1194,29 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </details>
       </section>}
 
+      <section id="settings-maintenance-section" class="settings-section" aria-labelledby="settingsMaintenanceTitle">
+        <div class="settings-section-heading">
+          <h2 id="settingsMaintenanceTitle">{translateText('Diagnostics & Maintenance')}</h2>
+          <p>{translateText('Check device health and application updates. Advanced encryption maintenance remains administrator-only.')}</p>
+        </div>
+        <PwaUpdateStatus />
+        <DeviceCheckSummary />
+        {account?.role === 'admin' && <details
+          class="settings-subsection settings-maintenance-advanced"
+          open={advancedMaintenanceOpen}
+          onToggle={(event) => setAdvancedMaintenanceOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary>{translateText('Advanced maintenance')}</summary>
+          <div class="pt-3">
+            {advancedMaintenanceOpen && <MarginDigestSecurityPanel currentUserId={account.id} />}
+          </div>
+        </details>}
+      </section>
+
       <section id="settings-help-section" class="settings-section" aria-labelledby="settingsHelpTitle">
         <div class="settings-section-heading">
           <h2 id="settingsHelpTitle">{translateText('Methodology & Help')}</h2>
-          <p>{translateText('Understand how portfolio metrics are calculated and where model limitations apply.')}</p>
+          <p>{translateText('Understand how portfolio metrics are calculated, what data sources support them, and where model limitations apply.')}</p>
         </div>
         <details class="settings-subsection">
           <summary>{translateText('Metric methodology and data notes')}</summary>

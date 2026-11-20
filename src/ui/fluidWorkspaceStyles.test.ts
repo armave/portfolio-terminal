@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const marker = '/* Fluid workspace layout: adapt to the space each desk actually receives. */';
+const compactStyles = (source: string) => source.replace(/\\s+/g, '');
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
 
 describe('fluid workspace styles', () => {
@@ -68,14 +69,14 @@ describe('fluid workspace styles', () => {
 
   it('keeps market value and position basis inside one compact responsive panel', () => {
     const redesignedStyles = stylesheet.slice(
-      stylesheet.indexOf('.portfolio-health-summary-column > .portfolio-micro-summary--redesigned'),
+      stylesheet.indexOf('.portfolio-health-summary-column>.portfolio-micro-summary--redesigned'),
       stylesheet.indexOf('/* Purchase tranche ledger modal;')
     );
-    expect(redesignedStyles).toContain('"market basis"');
+    expect(compactStyles(redesignedStyles)).toContain('"marketbasis"');
     expect(redesignedStyles).toContain('grid-template-rows: auto;');
     expect(redesignedStyles).toContain('flex: 0 0 auto;');
     expect(redesignedStyles).toContain('min-height: 0;');
-    expect(redesignedStyles).toContain('.portfolio-micro-summary--redesigned > .portfolio-micro-column');
+    expect(compactStyles(redesignedStyles)).toContain('.portfolio-micro-summary--redesigned>.portfolio-micro-column');
     expect(redesignedStyles).toContain('border: 0;');
     expect(redesignedStyles).toContain('background: transparent;');
     expect(redesignedStyles).toContain('box-shadow: none;');
@@ -222,6 +223,16 @@ describe('desk transitions and supporting layouts', () => {
     expect(settingsSource).toContain('settings-broker-rules');
     expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
     expect(fluidStyles).toContain('#settingsDesk .settings-section-nav');
+    expect(fluidStyles).toMatch(/#settingsDesk \.settings-section-nav\s*\{[^}]*position:\s*sticky;/s);
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav a.is-active');
+    expect(fluidStyles).toContain('#settingsDesk .settings-cadence-grid');
+    expect(fluidStyles).toContain('#settingsDesk .settings-manual-sync-results');
+    expect(fluidStyles).toContain('#settingsDesk .settings-danger-zone');
+    expect(fluidStyles).toContain('#settingsDesk .settings-field-group-heading');
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav-groups');
+    expect(fluidStyles).toContain('#settingsDesk .settings-section-nav-mobile select');
+    expect(fluidStyles).toContain('padding: clamp(0.9rem, 1.35vw, 1.25rem);');
+    expect(fluidStyles).toContain('scroll-margin-top: 6.5rem;');
     expect(fluidStyles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('#settingsDesk.settings-subsection>summary');
     expect(stylesheet).toMatch(/#settingsDesk \.settings-subsection>summary,\s*#settingsDesk \.settings-device-details>summary\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/s);
     expect(stylesheet).toContain('#settingsDesk .settings-device-details>summary::before');
