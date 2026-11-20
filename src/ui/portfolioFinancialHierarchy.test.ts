@@ -98,8 +98,11 @@ describe('financial title and KPI single-source presentation', () => {
 describe('Combined workspace progressive disclosure', () => {
   it('wraps optional analysis in native disclosures and keeps preferences account-scoped', () => {
     expect(appSource).toContain('data-workspace-disclosure="performance"');
-    expect(appSource).toContain('data-workspace-disclosure="projections"');
-    expect(appSource).toContain('data-workspace-disclosure="research"');
+    expect(appSource).not.toContain('data-workspace-disclosure="projections"');
+    expect(appSource).not.toContain('data-workspace-disclosure="research"');
+    expect(appSource).toContain('data-workspace-panel="projections"');
+    expect(appSource).toContain('data-workspace-panel="research"');
+    expect(appSource).toContain('<MarketInsightsPanel />');
     expect(storageSource).toContain('getWorkspaceDisclosurePreferences');
     expect(storageSource).toContain('scopedStorageKey(STORAGE_KEY_WORKSPACE_DISCLOSURES)');
     expect(appSource).toContain('performanceHasOpened');
