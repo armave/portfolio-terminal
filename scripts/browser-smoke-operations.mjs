@@ -1188,9 +1188,8 @@ try {
     }
     await disclosure.locator('form.settings-user-form').waitFor({ state: 'visible', timeout: 10_000 });
   };
-  const settingsButton = page.locator('#settingsBtn');
-  await settingsButton.hover();
-  await settingsButton.click();
+  await page.locator('#settingsBtn').hover();
+  await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   if (worker.count('GET', '/api/auth/users') !== userDirectoryReadsBeforeSettings) {
     throw new Error('Collapsed User management fetched the administrator directory before it was expanded.');
@@ -1554,9 +1553,8 @@ try {
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForAuthOverlay(page, false, worker);
-  const settingsButton = page.locator('#settingsBtn');
-  await settingsButton.hover();
-  await settingsButton.click();
+  await page.locator('#settingsBtn').hover();
+  await page.locator('#settingsBtn').click();
   await visibleSettingsDesk().waitFor({ state: 'visible', timeout: 20_000 });
   try {
     await page.waitForFunction(() => {

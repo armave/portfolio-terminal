@@ -112,8 +112,8 @@ export const TickerTabs = memo(function TickerTabs({
             <button
               key={ticker}
               type="button"
-              onPointerEnter={() => prefetchView('ticker')}
-            onFocus={() => prefetchView('ticker')}
+              onPointerEnter={() => prefetchView(ticker)}
+            onFocus={() => prefetchView(ticker)}
             onClick={() => selectView(ticker)}
               aria-label={`${translateText('Margin', getAppLanguage())}: ${ticker}`}
               aria-pressed={activeView === ticker}
@@ -135,8 +135,8 @@ export const TickerTabs = memo(function TickerTabs({
       {isAdmin && tickers.length === 1 && (
         <button
           type="button"
-          onPointerEnter={() => prefetchView('tickers[0]')}
-            onFocus={() => prefetchView('tickers[0]')}
+          onPointerEnter={() => prefetchView(tickers[0])}
+            onFocus={() => prefetchView(tickers[0])}
             onClick={() => selectView(tickers[0])}
           aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
           aria-pressed={activeView === tickers[0]}
