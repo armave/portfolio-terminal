@@ -246,11 +246,11 @@ describe('Settings section navigation layout', () => {
     expect(source).toContain('<nav class="settings-section-nav"');
     for (const label of [
       'Profile & language',
-      'Refresh & backups',
+      'Live status & cadence',
       'Users & roles',
       'Planning defaults',
-      'Rates & commissions',
-      'Device & recovery',
+      'Financing & commissions',
+      'Device & application health',
       'Calculations & guidance'
     ]) {
       expect(source).toContain(label);
@@ -283,7 +283,7 @@ describe('Settings information architecture', () => {
     expect(source).toContain("account?.role === 'guest' ? 'Last successful assigned-data refresh' : 'Last successful cloud sync'");
     expect(source).toContain("'Assigned data refresh confirmed'");
     expect(source).toContain("'Last successful assigned-data refresh'");
-    expect(source).toContain("account?.role === 'guest' ? 'Assigned data synchronization' : 'Cloud synchronization'");
+    expect(source).toContain("account?.role === 'guest' ? 'Assigned portfolio refresh status' : 'Cloud workspace status'");
   });
 });
 
@@ -296,8 +296,58 @@ describe('cloud conflict recovery in Settings', () => {
     expect(source).toContain("emitUiEvent('settings:export-backup')");
     expect(source).toContain("emitUiEvent('settings:pull-cloud-state')");
     expect(source).toContain("disabled={syncingPortfolio || hasCloudConflict}");
-    expect(source).toContain("translateText('Export local backup')");
-    expect(source).toContain("translateText('Pull latest shared portfolio')");
+    expect(source).toContain("translateText('Export portfolio backup as JSON')");
+    expect(source).toContain("translateText('Replace local portfolio from cloud')");
+    expect(source).toContain("The shared portfolio has a newer revision.");
     expect(source).toContain('No financial changes are merged automatically.');
+  });
+});
+
+
+describe('Settings synchronization and recovery experience', () => {
+  const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+  it('describes quote and supplemental refresh cadences separately for each role', () => {
+    expect(source).toContain('Market quotes & workspace checkpoints');
+    expect(source).toContain('Broker fallback & closed history');
+    expect(source).toContain('Assigned holdings & LOTS history');
+    expect(source).toContain('Fixed 60-second cadence');
+    expect(source).toContain('Event-driven when healthy');
+    expect(source).not.toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+  });
+  it('shows manual-sync source results without presenting them as live connection telemetry', () => {
+    expect(source).toContain('getManualSyncSourceResults(manualSyncResult)');
+    expect(source).toContain('Manual sync reports the result of that request only; it is not a live connection monitor.');
+    expect(source).toContain('settings-manual-sync-results');
+  });
+  it('keeps cloud replacement in recovery and reset isolated in the collapsed danger zone', () => {
+    expect(source).toContain('settings-recovery-section');
+    expect(source).toContain('settings-danger-zone');
+    expect(source).toContain('settings-cloud-recovery-panel');
+    expect(source).toContain("emitUiEvent('settings:pull-cloud-state')");
+    expect(source).toContain("emitUiEvent('settings:reset-to-blank-state')");
+    expect(source).not.toContain("translateText('Pull cloud')");
+    expect(source).toContain("translateText('Replace local portfolio from cloud')");
+    expect(source).toContain('disabled={syncingPortfolio || hasCloudConflict}');
+  });
+  it('keeps Settings navigation active-state aware and section visibility role-scoped', () => {
+    expect(source).toContain('new IntersectionObserver');
+    expect(source).toContain('aria-current={activeSettingsSection');
+    expect(source).toContain('permissions.canManageBackups && <a href="#settings-recovery-section"');
+    expect(source).toContain("account?.role === 'admin' && <a href="#settings-access-section"");
+  });
+  it('requires explicit confirmation before changing an existing account role and indicates unsaved rows', () => {
+    expect(source).toContain("Changing a user's role immediately changes their access and may revoke their sessions. Continue?");
+    expect(source).toContain('isUserEditDirty(user, editValues[user.id])');
+    expect(source).toContain('settings-user-dirty');
+  });
+  it('groups portfolio and broker assumptions without changing persisted field identifiers', () => {
+    expect(source).toContain('Portfolio risk guardrails');
+    expect(source).toContain('New-position defaults');
+    expect(source).toContain('Broker financing & rollover');
+    expect(source).toContain('Margin risk thresholds');
+    expect(source).toContain('Trading commissions');
+    expect(source).toContain('id="maintenanceMarginInput"');
+    expect(source).toContain('id="stopOutRatioInput"');
+    expect(source).toContain('id="annualMarginRateInput"');
   });
 });
