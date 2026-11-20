@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const runtimeSource = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
 const summarySource = readFileSync(new URL('../components/SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+const storageSource = readFileSync(new URL('../services/storage.ts', import.meta.url), 'utf8');
 
 const renderBoardSource = readFileSync(new URL('./renderBoard.ts', import.meta.url), 'utf8');
 
@@ -93,4 +94,20 @@ describe('financial title and KPI single-source presentation', () => {
     expect(guestSource).not.toContain('Margin PT');
     expect(guestSource).toContain('guest-stock-value-section');
   });
+
+describe('Combined workspace progressive disclosure', () => {
+  it('wraps optional analysis in native disclosures and keeps preferences account-scoped', () => {
+    expect(appSource).toContain('data-workspace-disclosure="performance"');
+    expect(appSource).not.toContain('data-workspace-disclosure="projections"');
+    expect(appSource).not.toContain('data-workspace-disclosure="research"');
+    expect(appSource).toContain('data-workspace-panel="projections"');
+    expect(appSource).toContain('data-workspace-panel="research"');
+    expect(appSource).toContain('<MarketInsightsPanel />');
+    expect(storageSource).toContain('getWorkspaceDisclosurePreferences');
+    expect(storageSource).toContain('scopedStorageKey(STORAGE_KEY_WORKSPACE_DISCLOSURES)');
+    expect(appSource).toContain('performanceHasOpened');
+    expect(appSource).not.toContain('marketResearchHasOpened');
+  });
+});
+
 });

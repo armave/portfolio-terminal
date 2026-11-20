@@ -3983,7 +3983,7 @@ table tbody tr:hover {
   display: grid;
   gap: clamp(0.65rem, 1.2cqw, 1rem);
   min-width: 0;
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 7rem;
 }
 
 #settingsDesk .settings-section-heading {
@@ -4006,13 +4006,20 @@ table tbody tr:hover {
 }
 
 #settingsDesk .settings-section-nav {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
   gap: 0.35rem;
   min-width: 0;
   max-width: 100%;
-  padding: 0.15rem 0 0.65rem;
-  border-bottom: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+  border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
+  border-radius: 0.8rem;
+  padding: 0.45rem;
+  background: color-mix(in srgb, var(--surface-primary, #0b1220) 94%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0.6rem 1.4rem rgb(0 0 0 / 0.18);
 }
 
 #settingsDesk .settings-section-nav a {
@@ -4054,6 +4061,19 @@ table tbody tr:hover {
   color: rgb(165 243 252);
 }
 
+#settingsDesk .settings-section-nav a.is-active,
+#settingsDesk .settings-section-nav a[aria-current="location"] {
+  border-color: rgb(34 211 238 / 0.72);
+  background: rgb(8 47 73 / 0.58);
+  color: rgb(207 250 254);
+  box-shadow: inset 0 0 0 1px rgb(34 211 238 / 0.12);
+}
+
+#settingsDesk .settings-section-nav a:focus-visible {
+  outline: 2px solid var(--border-focus, rgb(34 211 238));
+  outline-offset: 2px;
+}
+
 #settingsDesk .settings-data-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4067,6 +4087,217 @@ table tbody tr:hover {
   border-radius: var(--surface-radius, 0.875rem);
   background: rgba(15, 23, 42, 0.34);
 }
+
+#settingsDesk .settings-cadence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+#settingsDesk .settings-cadence-grid>div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.65rem;
+  background: rgb(15 23 42 / 0.42);
+}
+
+#settingsDesk .settings-cadence-grid span {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+#settingsDesk .settings-cadence-grid strong {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+#settingsDesk .settings-manual-sync-results {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--border-card);
+  border-radius: 0.75rem;
+  background: rgb(15 23 42 / 0.48);
+}
+
+#settingsDesk .settings-manual-sync-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+#settingsDesk .settings-manual-sync-heading h3 {
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-manual-sync-heading p,
+#settingsDesk .settings-manual-sync-footnote {
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+#settingsDesk .settings-manual-sync-results ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#settingsDesk .settings-manual-sync-results li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+#settingsDesk .settings-manual-sync-results li strong,
+#settingsDesk .settings-manual-sync-heading>span {
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-manual-sync-results .is-success,
+#settingsDesk .settings-manual-sync-heading .is-success {
+  color: rgb(110 231 183);
+}
+
+#settingsDesk .settings-manual-sync-results .is-warning,
+#settingsDesk .settings-manual-sync-heading .is-warning {
+  color: rgb(253 230 138);
+}
+
+#settingsDesk .settings-subsection-heading {
+  display: grid;
+  gap: 0.25rem;
+}
+
+#settingsDesk .settings-subsection-heading h3 {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-subsection-heading p {
+  max-width: 72ch;
+  color: var(--text-muted);
+  font-size: 0.69rem;
+  line-height: 1.5;
+}
+
+#settingsDesk .settings-user-dirty {
+  color: rgb(253 230 138);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+#settingsDesk .settings-danger-zone {
+  min-width: 0;
+  border: 1px solid rgb(127 29 29 / 0.75);
+  border-radius: 0.75rem;
+  background: rgb(69 10 10 / 0.16);
+}
+
+#settingsDesk .settings-danger-zone>summary {
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.8rem 0.9rem;
+  color: rgb(252 165 165);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-danger-zone-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0 0.9rem 0.9rem;
+}
+
+#settingsDesk .settings-danger-zone-content>div:first-child {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+#settingsDesk .settings-danger-zone-content h3 {
+  color: rgb(254 202 202);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-danger-zone-content p {
+  margin-top: 0.25rem;
+  color: rgb(252 165 165 / 0.82);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+#settingsDesk .settings-danger-zone-content button {
+  min-height: 2.75rem;
+  width: auto;
+}
+
+#settingsDesk .settings-cloud-recovery-panel {
+  border-color: rgb(120 53 15 / 0.7);
+  background: rgb(69 26 3 / 0.18);
+}
+
+#settingsDesk .settings-field-group-heading {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0 0.1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+#settingsDesk .settings-form-helper {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+#settingsDesk .settings-rules-form label {
+  min-width: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+#settingsDesk .settings-rules-form input,
+#settingsDesk .settings-rules-form select {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding-inline: 0.65rem;
+  font-size: 0.84rem;
+}
+
+#settingsDesk .settings-panel .settings-user-card-actions button:disabled {
+  cursor: not-allowed;
+}
+
 
 #settingsDesk .settings-subsection {
   min-width: 0;
@@ -4140,7 +4371,13 @@ table tbody tr:hover {
 }
 
 @media (max-width: 640px) {
+  #settingsDesk .settings-section {
+    scroll-margin-top: 14rem;
+  }
+
   #settingsDesk .settings-section-nav {
+    top: 0.25rem;
+    padding: 0.35rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.3rem;
   }
@@ -5620,7 +5857,7 @@ table tbody tr:hover {
 }
 
 /* Align the Tranches label with its right-edge control and match the row below. */
-.portfolio-micro-basis > .portfolio-micro-row {
+.portfolio-micro-basis>.portfolio-micro-row {
   align-items: center;
 }
 
@@ -5635,13 +5872,13 @@ table tbody tr:hover {
   text-align: right;
 }
 
-.portfolio-micro-basis .portfolio-tranches-value > button {
+.portfolio-micro-basis .portfolio-tranches-value>button {
   align-self: flex-end;
   margin-left: auto;
   white-space: nowrap;
 }
 
-.portfolio-micro-basis .portfolio-tranches-value > #boardTranchesOverflow {
+.portfolio-micro-basis .portfolio-tranches-value>#boardTranchesOverflow {
   width: 100%;
   text-align: right;
 }
@@ -5703,77 +5940,80 @@ table tbody tr:hover {
   padding-inline: 0.35rem;
 }
 
-/* Position financial summary: Share and Tranches are equal-height peer panels;
-   commissions and accrued interest live inside the Tranches panel. */
-.portfolio-health-summary-column > .portfolio-micro-summary--redesigned {
+/* One compact financial summary surface for market value and position basis. */
+.portfolio-health-summary-column>.portfolio-micro-summary--redesigned {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+  grid-template-rows: auto;
   grid-template-areas: "market basis";
-  align-items: stretch;
-  gap: 0.7rem;
-  padding: 0.7rem;
+  align-items: start;
+  align-content: start;
+  gap: 0;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0.75rem 0.85rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 0.95rem;
   background:
     radial-gradient(circle at 0% 0%, rgba(34, 211, 238, 0.055), transparent 58%),
     linear-gradient(145deg, rgba(9, 15, 27, 0.98), rgba(15, 23, 42, 0.94));
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
-.portfolio-micro-summary--redesigned > .portfolio-micro-column {
+.portfolio-micro-summary--redesigned>.portfolio-micro-column {
   display: flex;
   flex-direction: column;
   align-self: stretch;
-  height: 100%;
+  height: auto;
   min-width: 0;
   min-height: 0;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.46);
-  padding: 0.85rem;
-  gap: 0.7rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.25rem 0.65rem;
+  gap: 0.55rem;
 }
 
-.portfolio-micro-summary--redesigned > .portfolio-micro-market {
+.portfolio-micro-summary--redesigned>.portfolio-micro-market {
   grid-area: market;
   order: 1;
   border-left: 0 !important;
-  box-shadow: inset 2px 0 0 rgba(34, 211, 238, 0.5);
+  padding-left: 0.25rem;
 }
 
-.portfolio-micro-summary--redesigned > .portfolio-micro-basis {
+.portfolio-micro-summary--redesigned>.portfolio-micro-basis {
   grid-area: basis;
   order: 2;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  border-left: 0 !important;
-  box-shadow: inset 2px 0 0 rgba(52, 211, 153, 0.45);
+  border-left: 1px solid rgba(148, 163, 184, 0.17) !important;
+  padding-left: 1rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: stretch;
-  gap: 0.75rem;
-  margin-top: auto;
+  align-items: start;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
   min-width: 0;
   border: 0 !important;
   border-top: 1px solid rgba(148, 163, 184, 0.17) !important;
   border-radius: 0;
   background: transparent;
-  padding: 0.8rem 0.1rem 0.1rem;
+  padding: 0.55rem 0.05rem 0.05rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-micro-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
-  gap: 0.25rem;
+  justify-content: flex-start;
+  gap: 0.2rem;
   min-width: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.2rem 0.25rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-metric-label {
@@ -5782,21 +6022,21 @@ table tbody tr:hover {
   color: #94a3b8;
   font-size: 0.64rem;
   font-weight: 750;
-  letter-spacing: 0.055em;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-costs .portfolio-metric-value {
   width: 100%;
   text-align: left;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row {
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row .portfolio-metric-label {
@@ -5808,6 +6048,7 @@ table tbody tr:hover {
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-row .portfolio-metric-value {
+  min-width: 0;
   font-size: 0.86rem;
   font-weight: 750;
   line-height: 1.4;
@@ -5816,8 +6057,8 @@ table tbody tr:hover {
 
 .portfolio-micro-summary--redesigned .portfolio-micro-market-primary .portfolio-metric-value {
   color: #f8fafc;
-  font-size: 1rem;
-  line-height: 1.5;
+  font-size: 0.98rem;
+  line-height: 1.4;
 }
 
 .portfolio-micro-summary--redesigned .portfolio-micro-quote-meta {
@@ -5859,12 +6100,25 @@ table tbody tr:hover {
 }
 
 @container portfolio-health-summary (max-width: 30rem) {
-  .portfolio-health-summary-column > .portfolio-micro-summary--redesigned {
+  .portfolio-health-summary-column>.portfolio-micro-summary--redesigned {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
     grid-template-areas:
       "market"
       "basis";
+    padding: 0.65rem 0.7rem;
+  }
+
+  .portfolio-micro-summary--redesigned>.portfolio-micro-market,
+  .portfolio-micro-summary--redesigned>.portfolio-micro-basis {
+    padding-inline: 0.25rem;
+  }
+
+  .portfolio-micro-summary--redesigned>.portfolio-micro-basis {
+    margin-top: 0.45rem;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(148, 163, 184, 0.17);
+    padding-top: 0.7rem;
   }
 }
 
@@ -6154,7 +6408,7 @@ table tbody tr:hover {
 
 /* The Tranches action occupies the full value grid cell while its button hugs
    the trailing edge; the label remains vertically centered by its row. */
-.portfolio-micro-basis .portfolio-micro-row > .portfolio-tranches-value {
+.portfolio-micro-basis .portfolio-micro-row>.portfolio-tranches-value {
   box-sizing: border-box;
   justify-self: stretch;
   width: 100%;
@@ -6167,15 +6421,49 @@ table tbody tr:hover {
   justify-content: center;
 }
 
-.portfolio-micro-basis #boardTranches > .tranche-details-trigger {
+.portfolio-micro-basis #boardTranches>.tranche-details-trigger {
   display: inline-flex;
   width: max-content;
+  min-width: fit-content;
   max-width: 100%;
   align-self: flex-end;
   justify-self: end;
   margin-inline: auto 0;
 }
 
+
+
+/* Keep the ticker Tranches action aligned to the trailing edge of its value column. */
+.portfolio-micro-basis .portfolio-micro-tranches-row {
+  display: grid;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > .portfolio-metric-label {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  text-align: right;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches > .tranche-details-trigger {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  align-self: flex-end;
+  justify-self: end;
+  margin: 0;
+}
 
 /* Compact, accessible date-range shortcuts for the guest History filter. */
 .guest-history-date-presets {
@@ -6334,7 +6622,7 @@ table tbody tr:hover {
 
 /* Mobile Settings: the shared page heading is screen-reader only here; remove its empty flow slot. */
 @media (max-width: 767px) {
-  #settingsDesk > .desk-page-header {
+  #settingsDesk>.desk-page-header {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -6448,17 +6736,17 @@ table tbody tr:hover {
     row-gap: 1rem;
   }
 
-  #cashCushionContainer .guest-stock-metrics-grid > div > p:first-child {
+  #cashCushionContainer .guest-stock-metrics-grid>div>p:first-child {
     font-size: 0.8rem;
     line-height: 1.4;
   }
 
-  #cashCushionContainer .guest-stock-metrics-grid > div > p:nth-child(2) {
+  #cashCushionContainer .guest-stock-metrics-grid>div>p:nth-child(2) {
     font-size: 1.05rem;
     line-height: 1.35;
   }
 
-  #cashCushionContainer .guest-stock-metrics-grid > div > p:nth-child(2) > span {
+  #cashCushionContainer .guest-stock-metrics-grid>div>p:nth-child(2)>span {
     font-size: 0.75rem;
     line-height: 1.35;
   }
@@ -6478,4 +6766,238 @@ table tbody tr:hover {
     transition-duration: 90ms !important;
     transition-delay: 0ms !important;
   }
+}
+
+
+/* Settings navigation, section spacing, and compact mobile section picker. */
+#settingsDesk .settings-section {
+  padding: clamp(0.9rem, 1.35vw, 1.25rem);
+  border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.1));
+  border-radius: var(--surface-radius, 0.875rem);
+  background: rgb(15 23 42 / 0.2);
+  scroll-margin-top: 14rem;
+}
+
+#settingsDesk .settings-section-nav {
+  display: block;
+  padding: 0.55rem;
+}
+
+#settingsDesk .settings-section-nav-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0.55rem;
+  min-width: 0;
+
+  &.settings-section-nav-groups--guest {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+#settingsDesk .settings-section-nav-group {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.65rem;
+  border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.1));
+  border-radius: 0.7rem;
+  background: rgb(15 23 42 / 0.34);
+}
+
+#settingsDesk .settings-section-nav-group h3 {
+  padding: 0 0.2rem 0.25rem;
+  border-bottom: 1px solid var(--border-subtle, rgb(51 65 85 / 0.1));
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+#settingsDesk .settings-section-nav-links {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+#settingsDesk .settings-section-nav a {
+  min-height: 2.65rem;
+  padding: 0.48rem 0.62rem;
+  border-radius: 0.6rem;
+}
+
+#settingsDesk .settings-section-nav a span {
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+#settingsDesk .settings-section-nav a small {
+  font-size: 0.6rem;
+}
+
+#settingsDesk .settings-section-nav-mobile {
+  display: none;
+}
+
+
+
+@media (max-width: 767px) {
+  #settingsDesk .settings-section {
+    padding: 0.8rem;
+    scroll-margin-top: 6.5rem;
+  }
+
+  #settingsDesk .settings-section-nav {
+    top: 0.25rem;
+    padding: 0.5rem;
+  }
+
+  #settingsDesk .settings-section-nav-groups {
+    display: none;
+  }
+
+  #settingsDesk .settings-section-nav-mobile {
+    display: grid;
+    gap: 0.3rem;
+    min-width: 0;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.62rem;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  #settingsDesk .settings-section-nav-mobile select {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.8rem;
+    padding: 0.55rem 2rem 0.55rem 0.7rem;
+    border: 1px solid rgb(34 211 238 / 0.38);
+    border-radius: 0.6rem;
+    background: rgb(15 23 42 / 0.9);
+    color: var(--text-primary, #f1f5f9);
+    font-size: 0.82rem;
+    font-weight: 650;
+    text-transform: none;
+  }
+
+  #settingsDesk .settings-section-nav-mobile select:focus-visible {
+    outline: 2px solid var(--border-focus, rgb(34 211 238));
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 380px) {
+  #settingsDesk .settings-section {
+    padding: 0.7rem;
+  }
+
+  #settingsDesk .settings-section-nav {
+    padding: 0.4rem;
+  }
+}
+/* Combined Margin comparison and decision hierarchy */
+.portfolio-scenario-outlook { display:grid; gap:.55rem; min-width:0; padding:.8rem; border:1px solid rgba(148,163,184,.16); border-radius:.8rem; background:rgba(15,23,42,.36); }
+.portfolio-section-heading { margin:0; color:#cbd5e1; font-size:.72rem; font-weight:800; letter-spacing:.055em; text-transform:uppercase; }
+.portfolio-scenario-outlook__grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem; }
+.portfolio-scenario-outlook .portfolio-header-metric { min-width:0; min-height:4.6rem; padding:.55rem .7rem; border:1px solid rgba(148,163,184,.13); border-radius:.65rem; background:rgba(2,6,23,.32); }
+.portfolio-data-quality-summary { display:grid; gap:.45rem; min-width:0; padding:.65rem .8rem; border:1px solid rgba(148,163,184,.18); border-radius:.75rem; background:rgba(15,23,42,.32); color:#cbd5e1; font-size:.72rem; }
+.portfolio-data-quality-summary__heading,.portfolio-data-quality-summary__issues { display:flex; flex-wrap:wrap; align-items:center; gap:.45rem .7rem; }
+.portfolio-data-quality-summary__heading { justify-content:space-between; font-weight:700; }
+.portfolio-data-quality-summary__heading strong { color:#e2e8f0; font-size:.7rem; }
+.portfolio-data-quality-summary__issues>span,.portfolio-data-quality-summary__issues>button { display:inline-flex; min-height:1.8rem; align-items:center; padding:.22rem .5rem; border:1px solid rgba(148,163,184,.2); border-radius:999px; color:#cbd5e1; background:rgba(2,6,23,.3); font-size:.67rem; }
+.portfolio-data-quality-summary__issues>button { cursor:pointer; }
+.portfolio-data-quality-summary__issues>button:hover { border-color:rgba(34,211,238,.5); color:#e0f2fe; }
+.portfolio-data-quality-summary>p,.margin-risk-confidence-note { margin:0; color:#94a3b8; font-size:.66rem; line-height:1.45; }
+.portfolio-health-summary-column>.portfolio-section-heading { padding:.1rem .1rem 0; }
+.combined-positions { display:grid; gap:.75rem; min-width:0; padding:.9rem; border:1px solid rgba(148,163,184,.18); border-radius:.9rem; background:rgba(2,6,23,.3); }
+.combined-positions__header { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:.45rem .8rem; }
+.combined-positions__header h2 { margin:0; color:#f1f5f9; font-size:.9rem; font-weight:800; }
+.combined-positions__header p { max-width:48rem; margin:.2rem 0 0; color:#94a3b8; font-size:.7rem; line-height:1.45; }
+.combined-positions__count { color:#94a3b8; font-size:.68rem; font-variant-numeric:tabular-nums; }
+.combined-positions__empty { margin:0; padding:1rem .5rem; color:#94a3b8; text-align:center; font-size:.78rem; }
+.combined-positions-table-region { min-width:0; border:1px solid rgba(148,163,184,.12); background:rgba(2,6,23,.28); }
+.combined-positions-table { width:100%; min-width:58rem; border-collapse:collapse; font-size:.72rem; }
+.combined-positions-table th,.combined-positions-table td { padding:.65rem .7rem; border-bottom:1px solid rgba(148,163,184,.12); color:#cbd5e1; text-align:right; white-space:nowrap; vertical-align:middle; }
+.combined-positions-table thead th { background:rgba(15,23,42,.72); color:#94a3b8; font-size:.64rem; font-weight:700; }
+.combined-positions-table th:first-child,.combined-positions-table td:first-child { position:sticky; left:0; z-index:2; min-width:8.25rem; text-align:left; background:#0b1220; }
+.combined-positions-table thead th:first-child { z-index:3; background:#111c2d; }
+.combined-position-sort-button { display:inline-flex; min-height:2.1rem; align-items:center; gap:.2rem; padding:.2rem .1rem; color:inherit; font:inherit; }
+.combined-position-sort-button:focus-visible,.combined-position-ticker:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; }
+.combined-position-ticker { display:inline-flex; min-height:2rem; align-items:center; color:#67e8f9; font-size:.78rem; font-weight:800; }
+.combined-position-quote-status { display:block; max-width:11rem; margin-top:.05rem; color:#94a3b8; font-size:.62rem; font-weight:400; line-height:1.35; white-space:normal; }
+.combined-position-pnl.is-positive { color:#34d399; }
+.combined-position-pnl.is-negative { color:#fb7185; }
+.combined-position-pnl.is-muted { color:#94a3b8; }
+.combined-position-cards { display:none; margin:0; padding:0; list-style:none; }
+@media (max-width:767px) {
+ .portfolio-scenario-outlook__grid { grid-template-columns:minmax(0,1fr); }
+ .combined-positions-table-region { display:none; }
+ .combined-position-cards { display:grid; gap:.65rem; min-width:0; }
+ .combined-position-card { display:grid; gap:.55rem; min-width:0; padding:.8rem; border:1px solid rgba(148,163,184,.17); border-radius:.75rem; background:rgba(15,23,42,.5); }
+ .combined-position-card>header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+ .combined-position-card__market-value { color:#f1f5f9; font-size:.9rem; font-variant-numeric:tabular-nums; }
+ .combined-position-card dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.65rem .8rem; margin:0; }
+ .combined-position-card dl>div { display:grid; min-width:0; gap:.18rem; }
+ .combined-position-card dt { color:#94a3b8; font-size:.62rem; }
+ .combined-position-card dd { margin:0; color:#e2e8f0; font-size:.76rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+ .combined-position-card dd.is-positive { color:#34d399; }
+ .combined-position-card dd.is-negative { color:#fb7185; }
+ .combined-position-card dd.is-muted { color:#94a3b8; }
+}
+
+
+.workspace-disclosure { min-width:0; overflow:clip; border:1px solid rgba(148,163,184,.18); border-radius:.85rem; background:rgba(15,23,42,.32); }
+.workspace-disclosure>summary { display:flex; min-height:3.1rem; align-items:center; justify-content:space-between; gap:.75rem; padding:.75rem .95rem; color:#e2e8f0; cursor:pointer; list-style:none; font-size:.78rem; font-weight:750; }
+.workspace-disclosure>summary::-webkit-details-marker { display:none; }
+.workspace-disclosure>summary::after { content:'+'; color:#94a3b8; font-size:1rem; }
+.workspace-disclosure[open]>summary::after { content:'−'; }
+.workspace-disclosure>summary span:last-child { margin-left:auto; color:#94a3b8; font-size:.66rem; font-weight:450; text-align:right; }
+.workspace-disclosure>summary:focus-visible { outline:2px solid #22d3ee; outline-offset:-3px; }
+.workspace-disclosure--always-open>summary { display:none; }
+.market-insights-ticker-control { display:inline-flex; min-width:9rem; flex-direction:column; gap:.2rem; color:#94a3b8; font-size:.62rem; font-weight:650; }
+.market-insights-ticker-control select { min-height:2.55rem; max-width:14rem; padding:.35rem .65rem; border:1px solid rgba(148,163,184,.28); border-radius:.55rem; color:#e2e8f0; background:#0b1220; font-size:.82rem; }
+.market-insights-ticker-control select:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; }
+.market-insights-research-note { margin:.2rem 0 0; color:#94a3b8; font-size:.64rem; }
+@media (max-width:767px) {
+  .workspace-disclosure>summary { align-items:flex-start; }
+  .workspace-disclosure>summary span:last-child { max-width:48%; line-height:1.4; }
+  .market-insights-ticker-control { width:100%; }
+  .market-insights-ticker-control select { width:100%; max-width:none; }
+}
+
+
+/* Anchor the Tranches action to a dedicated value column so it aligns reliably at desktop widths. */
+.portfolio-micro-basis .portfolio-micro-tranches-row {
+  display: grid;
+  grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > .portfolio-metric-label {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  text-align: right;
+}
+.portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches > .tranche-details-trigger {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  align-self: flex-end;
+  justify-self: end;
+  margin: 0;
 }

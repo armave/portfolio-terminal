@@ -17,6 +17,19 @@ describe('app localization', () => {
         .toEqual(placeholders(english));
     }
   });
+  it('localizes grouped Settings navigation labels in Russian', () => {
+    const settingsNavigationLabels = [
+      'Workspace',
+      'Portfolio',
+      'Management & help',
+      'Jump to section',
+      'Jump to Settings section'
+    ];
+    for (const label of settingsNavigationLabels) {
+      expect(translateText(label, 'ru'), label).not.toBe(label);
+    }
+  });
+
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
       'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',
@@ -1114,4 +1127,69 @@ describe('Margin PT target information localization', () => {
       .toBe('Целевые цены аналитиков — сторонние оценки, а не прогнозы или гарантированные результаты.');
   });
 
+
+  it('localizes the Combined Market Insights selector in Russian', () => {
+    for (const copy of [
+      'Research ticker',
+      'Select research ticker',
+      'Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.'
+    ]) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
+
+  it('localizes the Combined Margin page, comparison and disclosure UI in Russian', () => {
+    const copy = [
+      'Margin position value', 'Gross unrealized P&L', 'Some Margin positions are not priced',
+      'Based on tracked Margin positions', 'Requires complete quotes and cost basis',
+      'Gross unrealized P&L unavailable', 'on cost basis', 'Scenario outlook',
+      'After modeled commissions and financing', 'Risk data quality', 'All tracked quote inputs are current.',
+      'Missing or stale inputs are not treated as zero.', '{count} stale quotes', '{count} delayed quotes',
+      '{count} quotes with unknown freshness', 'Broker balance stale', 'Review Balance holdings ({count})',
+      'Risk is provisional because at least one valuation or broker margin input is assumption-based, stale, delayed or unknown.',
+      'Risk & financing', 'Portfolio positions',
+      'Compare current market value, gross unrealized P&L and target prices. Select a ticker to open its Margin page.',
+      'No active Margin positions to compare.', 'Portfolio positions comparison table', 'Last price',
+      'Return', 'Margin weight', 'Open Margin position {ticker}', 'positions',
+      'Research ticker', 'Select research ticker',
+      'Company research applies to the selected ticker; AI Portfolio Review remains portfolio-wide.',
+      'Performance history', 'Cash-flow-adjusted portfolio returns', 'Projections',
+      'Modeled net proceeds, fees, financing and account balance by date.', 'Market research',
+      'Company news, fundamentals, earnings and analyst context.'
+    ];
+    for (const item of copy) expect(translateText(item, 'ru'), item).not.toBe(item);
+  });
+
 });
+
+
+describe('Settings refinements localization', () => {
+  it('translates the new recovery, synchronization and financial-group labels', () => {
+    const copy = [
+      'Backup & recovery',
+      'Live status & cadence',
+      'Last manual sync',
+      'Manual sync reports the result of that request only; it is not a live connection monitor.',
+      'Danger zone',
+      'Reset portfolio data',
+      'Portfolio risk guardrails',
+      'New-position defaults',
+      'Broker financing & rollover',
+      'Margin risk thresholds',
+      'Trading commissions',
+      'Cloud recovery',
+      'Replace local portfolio from cloud',
+      'Manage automatic refresh preferences and review the last confirmed workspace synchronization.',
+      'Understand how portfolio metrics are calculated, what data sources support them, and where model limitations apply.'
+    ];
+    for (const english of copy) {
+      expect(RU_TRANSLATIONS[english], english).toBeTruthy();
+      expect(translateText(english, 'ru'), english).not.toBe(english);
+    }
+  });
+});
+  it('localizes the Market Insights news count control in Russian', () => {
+    expect(translateText('News count', 'ru')).toBe('Количество новостей');
+  });
+

@@ -61,16 +61,25 @@ describe('tranche details rows', () => {
     expect(rows[0].buyCommission).toBe(0);
   });
 
-  it('styles equal-height Share and Tranches panels with costs nested inside Tranches', () => {
+  it('styles one compact responsive panel for market value and position basis', () => {
     const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-    expect(stylesheet).toContain('portfolio-micro-summary--redesigned');
-    expect(stylesheet).toContain('"market basis"');
-    expect(stylesheet).not.toContain('"costs costs"');
-    expect(stylesheet).toContain('grid-template-rows: minmax(0, 1fr);');
-    expect(stylesheet).toContain('align-items: stretch;');
-    expect(stylesheet).toContain('margin-top: auto;');
-    expect(stylesheet).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
-    expect(stylesheet).toContain('@container portfolio-health-summary (max-width: 30rem)');
+    const summaryStyles = stylesheet.slice(
+      stylesheet.indexOf('/* One compact financial summary surface'),
+      stylesheet.indexOf('/* Purchase tranche ledger modal')
+    );
+
+    expect(summaryStyles).toMatch(/\.portfolio-health-summary-column\s*>\s*\.portfolio-micro-summary--redesigned\s*\{/);
+    expect(summaryStyles).toContain('"market basis"');
+    expect(summaryStyles).not.toContain('"costs costs"');
+    expect(summaryStyles).toContain('grid-template-rows: auto;');
+    expect(summaryStyles).toContain('flex: 0 0 auto;');
+    expect(summaryStyles).toContain('min-height: 0;');
+    expect(summaryStyles).toContain('background: transparent;');
+    expect(summaryStyles).toContain('box-shadow: none;');
+    expect(summaryStyles).not.toContain('margin-top: auto;');
+    expect(summaryStyles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
+    expect(summaryStyles).toContain('@container portfolio-health-summary (max-width: 30rem)');
+    expect(summaryStyles).toContain('@container portfolio-health-summary (max-width: 24rem)');
   });
 
   it('keeps the tranche dialog centered in the mobile viewport', () => {

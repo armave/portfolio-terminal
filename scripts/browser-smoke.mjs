@@ -626,7 +626,7 @@ async function assertStandardizedWorkspaceNavigation(page, role) {
 
 async function assertFinancialHeaderLayout(page, view) {
   const expectedMetrics = view === 'combined'
-    ? ['net-target-return', 'carry-break-even', 'account-equity', 'margin-debt', 'margin-risk']
+    ? ['account-equity', 'margin-market-value', 'gross-unrealized-pnl', 'margin-debt', 'margin-risk']
     : ['carry-break-even', 'allocated-equity', 'margin-debt', 'margin-risk'];
 
   for (const viewport of [
@@ -652,6 +652,11 @@ async function assertFinancialHeaderLayout(page, view) {
         .map((cell) => cell.getBoundingClientRect().width);
       const healthColumn = document.querySelector('.portfolio-risk-tools-row > .portfolio-health-summary-column');
       const summary = healthColumn?.querySelector('.portfolio-micro-summary');
+      const combinedPositions = document.querySelector('.combined-positions');
+      const positionsTable = document.querySelector('.combined-positions-table-region');
+      const positionsCards = document.querySelector('.combined-position-cards');
+      const dataQuality = document.querySelector('.portfolio-data-quality-summary');
+      const scenarioOutlook = document.querySelector('.portfolio-scenario-outlook');
       const marketSection = summary?.querySelector('.portfolio-micro-market');
       const basisSection = summary?.querySelector('.portfolio-micro-basis');
       const feesSection = basisSection?.querySelector('.portfolio-micro-costs');
@@ -686,6 +691,11 @@ async function assertFinancialHeaderLayout(page, view) {
       );
       return {
         metrics,
+        combinedPositionsVisible: Boolean(combinedPositions?.getClientRects().length),
+        positionsTableVisible: Boolean(positionsTable?.getClientRects().length),
+        positionsCardsVisible: Boolean(positionsCards?.getClientRects().length),
+        dataQualityVisible: Boolean(dataQuality?.getClientRects().length),
+        scenarioOutlookVisible: Boolean(scenarioOutlook?.getClientRects().length),
         projectionTableLayout: projectionTable ? getComputedStyle(projectionTable).tableLayout : null,
         projectionTableWidth: projectionTableBounds?.width ?? 0,
         projectionWrapperWidth: projectionWrapperBounds?.width ?? 0,
@@ -781,6 +791,17 @@ async function assertFinancialHeaderLayout(page, view) {
 
     if (JSON.stringify(layout.metrics) !== JSON.stringify(expectedMetrics)) {
       throw new Error('Unexpected ' + view + ' financial header KPI set at ' + viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (view === 'combined') {
+      if (!layout.combinedPositionsVisible || !layout.dataQualityVisible || !layout.scenarioOutlookVisible) {
+        throw new Error('Combined view must show positions, data quality and scenario outlook: ' + JSON.stringify(layout));
+      }
+      if (viewport.width < 768 && (!layout.positionsCardsVisible || layout.positionsTableVisible)) {
+        throw new Error('Combined positions must use mobile cards below tablet width: ' + JSON.stringify(layout));
+      }
+      if (viewport.width >= 768 && (!layout.positionsTableVisible || layout.positionsCardsVisible)) {
+        throw new Error('Combined positions must use a sortable table above mobile width: ' + JSON.stringify(layout));
+      }
     }
     if (layout.targetReturnCount !== (view === 'combined' ? 1 : 0)) {
       throw new Error('Ticker target return is duplicated or the Combined KPI is missing: ' + JSON.stringify(layout));
@@ -1223,7 +1244,7 @@ try {
   await combinedPortfolioTab.waitFor({ state: 'visible', timeout: 20_000 });
   await combinedPortfolioTab.click();
   if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
-    await page.locator('.portfolio-header-kpis [data-header-metric="net-target-return"]')
+    await page.locator('.portfolio-header-kpis [data-header-metric="account-equity"]')
       .waitFor({ state: 'visible', timeout: 20_000 });
     await assertFinancialHeaderLayout(page, 'combined');
   }
@@ -1487,6 +1508,8 @@ try {
 
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');
+  const dangerZoneSummary = page.locator('.settings-danger-zone > summary');
+  if (await dangerZoneSummary.count() > 0) await dangerZoneSummary.click();
   page.once('dialog', (dialog) => { void dialog.accept(); });
   await page.getByRole('button', { name: 'Reset local and cloud portfolio data' }).click();
   await waitForCondition(

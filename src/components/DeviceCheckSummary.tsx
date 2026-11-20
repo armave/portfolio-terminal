@@ -496,7 +496,7 @@ export function DeviceCheckSummary() {
         {primaryRows.map(([name, value]) => (
           <div key={name} class="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-slate-900/70 px-3 py-2">
             <span class="text-[10px] text-slate-500">{label(name)}</span>
-            <span class={'min-w-0 break-words text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
+            <span class={'min-w-0 text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
           </div>
         ))}
         {!diagnostics && <p class="col-span-full text-xs text-slate-400" role="status">{label('Checking…')}</p>}
@@ -536,7 +536,7 @@ export function DeviceCheckSummary() {
           {technicalRows.map(([name, value]) => (
             <div key={name} class="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-slate-900/70 px-3 py-2">
               <span class="text-[10px] text-slate-500">{label(name)}</span>
-              <span class={'min-w-0 break-words text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
+              <span class={'min-w-0 text-right text-[11px] font-semibold ' + diagnosticTone(value)}>{label(value)}</span>
             </div>
           ))}
         </div>

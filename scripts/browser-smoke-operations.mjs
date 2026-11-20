@@ -979,6 +979,14 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
             JSON.stringify(persistedFixture));
         }
         stageTimings.brokerRefreshAndParityMs = Date.now() - brokerRefreshStartedAt;
+        // This performance sample uses a fresh browser context, so Combined's
+        // research disclosure starts closed. Expand it before measuring the
+        // authenticated Market Insights readiness path.
+        const researchDisclosure = page.locator('details[data-workspace-disclosure="research"]');
+        if (await researchDisclosure.count() &&
+            !(await researchDisclosure.evaluate(element => element.open))) {
+          await researchDisclosure.locator(':scope > summary').click();
+        }
         const portfolioRenderStartedAt = Date.now();
         await page.locator('#marketInsightsPanel').waitFor({ state: 'visible', timeout: 20_000 });
         await page.waitForFunction(
@@ -1118,6 +1126,14 @@ try {
   // Seed a deterministic local-only portfolio fixture without a command surface or broker order.
   await seedSyntheticPortfolio(page);
 
+  // Combined now starts with Market research collapsed; open it before validating
+  // provider error/recovery behavior and the ticker-scoped research experience.
+  const marketResearchDisclosure = page.locator('details[data-workspace-disclosure="research"]');
+  if (await marketResearchDisclosure.count()) {
+    const summary = marketResearchDisclosure.locator(':scope > summary');
+    if (!(await marketResearchDisclosure.evaluate(element => element.open))) await summary.click();
+  }
+
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
   await waitForCondition(
@@ -1240,6 +1256,130 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
 
+  // Verify grouped desktop navigation, smooth anchor scrolling, and section surface spacing.
+  const desktopBrokerSection = visibleSettingsDesk().locator('#settings-broker-section');
+  await desktopBrokerSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-broker-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-broker-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-broker-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 224) <= 3);
+  }, null, { timeout: 5_000 });
+  const desktopSectionLayout = await desktopBrokerSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (desktopSectionLayout.scrollBehavior !== 'smooth' ||
+      desktopSectionLayout.sectionTop < desktopSectionLayout.navigationBottom - 2 ||
+      Math.abs(desktopSectionLayout.sectionTop - 224) > 3 ||
+      desktopSectionLayout.paddingTop < 12 ||
+      desktopSectionLayout.paddingInline < 12) {
+    throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
+  }
+
+  // Tablet retains the three purpose-based navigation groups in a compact three-column layout.
+  await page.setViewportSize({ width: 768, height: 900 });
+  const tabletNavColumns = await visibleSettingsDesk().locator('.settings-section-nav-groups')
+    .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+  if (tabletNavColumns !== 3) {
+    throw new Error('Tablet Settings navigation should retain three aligned groups; found ' + tabletNavColumns + ' columns.');
+  }
+  const tabletDataSection = visibleSettingsDesk().locator('#settings-data-section');
+  await tabletDataSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-data-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-data-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-data-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 224) <= 3);
+  }, null, { timeout: 5_000 });
+  const tabletSectionLayout = await tabletDataSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0
+    };
+  });
+  if (tabletSectionLayout.scrollBehavior !== 'smooth' ||
+      tabletSectionLayout.sectionTop < tabletSectionLayout.navigationBottom - 2 ||
+      Math.abs(tabletSectionLayout.sectionTop - 224) > 3) {
+    throw new Error('Tablet Settings navigation anchor spacing is incorrect: ' + JSON.stringify(tabletSectionLayout));
+  }
+
+  // Mobile uses the shorter native section picker; reduced-motion users skip animated scrolling.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileSectionPicker = visibleSettingsDesk().getByLabel('Jump to Settings section');
+  if (!(await mobileSectionPicker.isVisible()) ||
+      await visibleSettingsDesk().locator('.settings-section-nav-groups').isVisible()) {
+    throw new Error('Mobile Settings should show the compact section picker instead of desktop navigation groups.');
+  }
+  const mobileMaintenanceSection = visibleSettingsDesk().locator('#settings-maintenance-section');
+  await mobileMaintenanceSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await mobileSectionPicker.selectOption('settings-maintenance-section');
+  await page.waitForFunction(() => window.location.hash === '#settings-maintenance-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-maintenance-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 104) <= 3);
+  }, null, { timeout: 5_000 });
+  const mobileSectionLayout = await mobileMaintenanceSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0,
+      paddingTop: Number.parseFloat(getComputedStyle(element).paddingTop),
+      paddingInline: Number.parseFloat(getComputedStyle(element).paddingLeft)
+    };
+  });
+  if (mobileSectionLayout.scrollBehavior !== 'smooth' ||
+      mobileSectionLayout.sectionTop < mobileSectionLayout.navigationBottom - 2 ||
+      Math.abs(mobileSectionLayout.sectionTop - 104) > 3 ||
+      mobileSectionLayout.paddingTop < 10 ||
+      mobileSectionLayout.paddingInline < 10) {
+    throw new Error('Mobile Settings navigation or section spacing is incorrect: ' + JSON.stringify(mobileSectionLayout));
+  }
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reducedMotionTarget = visibleSettingsDesk().locator('#settings-data-section');
+  await reducedMotionTarget.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await mobileSectionPicker.selectOption('settings-data-section');
+  const reducedMotionBehavior = await reducedMotionTarget.getAttribute('data-settings-scroll-behavior');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  if (reducedMotionBehavior !== 'auto') {
+    throw new Error('Settings navigation should use instant scrolling when reduced motion is requested.');
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // Exercise conflict recovery through the immediate refresh requested by the cadence control.
   const syncButton = visibleSettingsDesk().getByRole('button', { name: 'Sync portfolio' });
   const statePostsBeforeConflict = worker.count('POST', '/api/state');
@@ -1259,9 +1399,11 @@ try {
   await conflictPanel.waitFor({ state: 'visible', timeout: 10_000 });
   await conflictPanel.getByRole('heading', { name: 'Cloud data changed elsewhere' }).waitFor({ state: 'visible' });
 
+  const recoverySection = visibleSettingsDesk().locator('#settings-recovery-section');
+  await recoverySection.waitFor({ state: 'visible' });
   const [backupDownload] = await Promise.all([
     page.waitForEvent('download'),
-    conflictPanel.getByRole('button', { name: 'Export local backup' }).click()
+    recoverySection.getByRole('button', { name: 'Export portfolio backup as JSON' }).click()
   ]);
   if (!backupDownload.suggestedFilename().toLowerCase().endsWith('.json')) {
     throw new Error('Cloud conflict recovery did not export a JSON backup.');
@@ -1269,7 +1411,7 @@ try {
 
   const statePullsBeforeRecovery = worker.count('GET', '/api/state');
   page.once('dialog', (dialog) => { void dialog.accept(); });
-  await conflictPanel.getByRole('button', { name: 'Pull latest shared portfolio' }).click();
+  await recoverySection.getByRole('button', { name: 'Replace local portfolio from cloud' }).click();
   await waitForCondition(
     () => worker.count('GET', '/api/state') > statePullsBeforeRecovery,
     'confirmed pull of the latest shared portfolio'
@@ -1289,13 +1431,14 @@ try {
   );
 
   // Create two users, then exercise editing and deletion through the actual Settings form.
-  const waitForUserSaveReady = async (name) => {
+  const waitForUserRowClean = async (name) => {
     await page.waitForFunction((userName) => {
       const row = Array.from(Array.from(Array.from(document.querySelectorAll('#settingsDesk')).find((desk) => desk.getClientRects().length > 0)?.querySelectorAll('tbody tr') || [])).find((candidate) =>
         candidate.querySelector('input')?.getAttribute('aria-label') === `Name for ${userName}`
       );
-      const saveButton = row?.querySelector('button[type="button"]');
-      return saveButton instanceof HTMLButtonElement && !saveButton.disabled;
+      const saveButton = Array.from(row?.querySelectorAll('button') || [])
+        .find((button) => button.textContent?.trim() === 'Save');
+      return saveButton instanceof HTMLButtonElement && saveButton.disabled;
     }, name, { timeout: 10_000 });
   };
   const directoryReadsBeforeExpand = worker.count('GET', '/api/auth/users');
@@ -1364,7 +1507,7 @@ try {
         visibleRows, alerts, recentRequests
       }));
     }
-    await waitForUserSaveReady(name);
+    await waitForUserRowClean(name);
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
   await createUser('Browser Guest Keep', 'keep-guest-password');
@@ -1427,22 +1570,24 @@ try {
   await keepRow.getByLabel('Role for Browser Guest Keep').selectOption('admin');
   await keepRow.getByLabel('Language for Browser Guest Keep').selectOption('ru');
   await keepRow.getByLabel('New password for Browser Guest Keep').fill('updated-guest-password');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await keepRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'admin' &&
       user.language === 'ru' && user.password === 'updated-guest-password'),
     'user rename, role, language and password update'
   );
-  await waitForUserSaveReady('Browser Guest Updated');
+  await waitForUserRowClean('Browser Guest Updated');
 
   const updatedRow = rowForUser('Browser Guest Updated');
   await updatedRow.getByLabel('Role for Browser Guest Updated').selectOption('guest');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await updatedRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.users.some((user) => user.name === 'Browser Guest Updated' && user.role === 'guest'),
     'guest role restoration'
   );
-  await waitForUserSaveReady('Browser Guest Updated');
+  await waitForUserRowClean('Browser Guest Updated');
 
   // Tenant directory is lazy-mounted only after its advanced ownership disclosure opens.
   // Exercise owner metadata creation, least-privilege guest grant, and guest projection-only view.
@@ -1486,6 +1631,7 @@ try {
   }
   const userUpdateCountBeforeFinalAdmin = worker.count('POST', '/api/auth/users');
   await adminRow.getByLabel('Role for Operations Admin').selectOption('guest');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
   await adminRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
     () => worker.findCalls('POST', '/api/auth/users').slice(userUpdateCountBeforeFinalAdmin)
