@@ -22,7 +22,7 @@ Market Insights has a separate research ticker selector in Combined view. It use
 
 ## Progressive disclosure
 
-Risk & financing remains visible. Performance, Projections and Market research are collapsible in Combined. First-use state is collapsed; the choices persist as allowlisted device preferences in the active account storage scope, outside financial portfolio state and cloud accounting. Heavy Performance and Market research panels mount only after first expansion. Single-ticker projection and research behavior remains expanded and unchanged.
+Risk & financing remains visible. Performance history is collapsible in Combined and its preference is stored as an allowlisted device preference in the active account storage scope, outside financial portfolio state and cloud accounting. Projections and Market research remain visible in the workspace; Market Insights mounts for the active workspace so its News tab and ticker-scoped research are available without a disclosure action.
 
 All new user-facing text is localized in English and Russian. The implementation does not change existing margin formulas, accounting semantics, permissions, broker API behavior or canonical PortfolioState.positions.
 
