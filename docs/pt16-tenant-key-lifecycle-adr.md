@@ -1,8 +1,8 @@
 # PT-16 — Tenant key ownership and versioned lifecycle
 
-**Status:** Proposed architecture for security review; not approved for production implementation.  
+**Status:** AWS KMS + IAM Roles Anywhere selected for a gated server-mediated implementation; production activation and tenant financial-data use remain blocked pending AWS account configuration, security review, and PT-02/PT-05 acceptance.  
 **Tracking:** [#549 — tenant-aware DEK/KEK design](https://github.com/armave/portfolio-terminal/issues/549), parent [#546 — PT-16 security lifecycle](https://github.com/armave/portfolio-terminal/issues/546), dependency [#539 — PT-05 tenancy](https://github.com/armave/portfolio-terminal/issues/539).  
-**Scope:** Design only. No key generation, migration, production secret change, or tenant data-plane enablement is included.
+**Scope:** Backend key-custody foundation and provisioning only. No production credentials are committed, no existing financial records are migrated, and no tenant financial-data read/write path is enabled.
 
 ## 1. Decision context
 
@@ -24,8 +24,8 @@ The shared workspace key, Gateway bootstrap secret, account passwords, session t
 
 The following is the recommended starting point for review:
 
-- **Platform KEK:** A dedicated, versioned wrapping key held only by a managed key service or a dedicated Worker secret with an explicit rotation owner. It is not the Gateway bootstrap secret. Selection of the actual key-management provider is an approval gate.
-- **Tenant DEK:** A cryptographically random 256-bit key generated for each canonical tenant and version. It is used for authenticated encryption of data belonging to that tenant.
+- **Platform KEK:** A dedicated symmetric AWS KMS key. The Worker authenticates through AWS IAM Roles Anywhere using a v3 RSA X.509 certificate and a PKCS#8 private key held as Worker secrets. AWS issues 15-minute temporary credentials; no long-lived AWS access key is stored.
+- **Tenant DEK:** A cryptographically random 256-bit key created with `GenerateDataKeyWithoutPlaintext`. Only the KMS-wrapped DEK is persisted. The Worker unwraps it transiently for server-side AES-256-GCM operations and never returns it to the browser.
 - **Optional scoped projection key:** A separate key/envelope for guest projections or narrowly shared records where the guest must not receive the tenant's full DEK. A guest grant must not implicitly reveal the tenant-wide key.
 - **Device key:** Remains device-local and serves only its existing browser-secret-storage purpose. It does not replace the tenant DEK or KEK.
 
@@ -35,9 +35,9 @@ Each DEK is stored at rest only as a wrapped envelope. Key metadata is stored wi
 
 The public Worker authenticates the session, resolves the canonical tenant/resource from the trusted directory and authorizes the requested action before any key operation. The trusted Worker/key-service boundary is the only component permitted to unwrap the platform KEK or retrieve an unwrapped tenant DEK.
 
-To preserve the current client-side AES-GCM snapshot model, the proposed protocol may issue a short-lived, resource-scoped key grant to an already-authorized browser client after server-side authorization. The browser receives only the tenant DEK needed for its authorized workspace operation; it never receives the KEK or wrapped key. The DEK is held in memory only and is not written to localStorage, sessionStorage, IndexedDB, URLs, logs or telemetry. Guest projection access uses a distinct scoped key and never returns the tenant-wide DEK.
+The selected implementation is **server-mediated encryption**. The Worker resolves the canonical tenant and authorizes the owner before provisioning or using a key. The browser receives neither the wrapped DEK nor the plaintext DEK. Plaintext data and the unwrapped DEK exist transiently inside the trusted Worker/DO boundary only. This changes the target tenant-data encryption boundary from the existing client-side shared-key model; the legacy workspace path remains unchanged until a separately approved migration.
 
-This design is **not zero-knowledge encryption**: an authorized browser and an active-origin compromise can observe any DEK granted to that browser. Revocation prevents future grants and requests, but cannot make a previously copied plaintext key disappear. If this residual risk is unacceptable, select a fully server-mediated encryption protocol instead; that would change the current client-side encryption trust model and must be treated as a separate architecture decision.
+This is **not zero-knowledge encryption**: the Worker processes plaintext and therefore becomes part of the trusted computing boundary. Guest projection keys and projection encryption are not yet implemented; no guest is allowed to use the tenant-wide key.
 
 ## 4. Versioned envelope contract
 
@@ -105,7 +105,7 @@ A restore must first authorize the tenant and validate the key envelope and key 
 
 Deletion requires a record-level inventory across active data, replicas, local device caches, user exports and retained backups. Cryptographic erasure may be claimed only after every recoverable copy of the relevant DEK and its wrapped form is covered by the approved deletion policy. Backup expiry and third-party Gist copies must be described honestly; removing the live record alone is not proof that all copies are gone.
 
-## 8. Required validation before implementation
+## 8. Required validation before tenant data-plane activation
 
 | Area | Required evidence |
 |---|---|
@@ -119,12 +119,24 @@ Deletion requires a record-level inventory across active data, replicas, local d
 | Deletion | Replica, local-cache, export and backup retention semantics are explicit |
 | Telemetry | Captured logs contain no DEK, KEK, wrapped key bytes, access token or financial payload |
 
-## 9. Approval gates and open decisions
+## 9. Implementation record
 
-Before implementing #550 or enabling #557:
+The backend foundation is implemented in `tenant-key-service.js` and `state-store.js`:
 
-1. Select and approve the key-management provider and KEK custody/rotation owner.
-2. Decide whether short-lived DEK delivery to an authorized browser is acceptable or a server-mediated protocol is required.
+- AWS IAM Roles Anywhere `CreateSession` uses a certificate-bound RSA signature and caches only temporary 15-minute AWS credentials in Worker memory.
+- AWS KMS `GenerateDataKeyWithoutPlaintext`, `Decrypt`, and `ReEncrypt` are supported. Tenant IDs are hashed in the KMS encryption context; key ID and key version are also bound.
+- AES-256-GCM envelopes bind tenant, workspace, portfolio, record type, key ID and version through authenticated additional data.
+- `POST /api/tenants/:tenantId/key/provision` is owner-authorized server-side, idempotent, transactionally persists the wrapped DEK and active pointer, and writes an audit event. It returns only opaque key metadata.
+- The Worker route allowlist explicitly includes the provisioning route. Missing or incomplete KMS configuration fails closed.
+
+This is a **key-custody and provisioning foundation**, not a tenant financial data plane. The encryption/decryption helpers are not yet wired into portfolio snapshots, history, digests, projections, backups or migration. No production AWS configuration is included in source control. The endpoint remains unavailable until an operator provisions the AWS resources and Worker secrets described in [Tenant KMS operations](tenant-kms-operations.md).
+
+## 10. Approval gates and open decisions
+
+Before implementing the full tenant data plane or enabling #557:
+
+1. Approve the AWS account, KMS key policy, IAM Roles Anywhere trust policy, certificate lifecycle, KEK custody/rotation owner and outage/recovery procedure.
+2. Review and accept the server-mediated plaintext trust boundary; browser DEK delivery is not part of the selected design.
 3. Approve separate projection-key semantics for guest access.
 4. Approve the envelope/AAD contract, version compatibility and cryptographic usage limits.
 5. Complete PT-02 mutation/recovery acceptance and PT-05 server authorization design.
@@ -133,25 +145,25 @@ Before implementing #550 or enabling #557:
 
 **No production key migration, independent tenant financial writes, or tenant cutover is authorized by this proposal.**
 
-## 10. Decision alternatives and explicit trade-offs
+## 11. Decision alternatives and explicit trade-offs
 
-This section is a review packet for [#549](https://github.com/armave/portfolio-terminal/issues/549), not an approval. The options below are intentionally left open; the proposed hierarchy in sections 3–7 must not be treated as an accepted implementation choice.
+This section records remaining trade-offs for [#549](https://github.com/armave/portfolio-terminal/issues/549). AWS KMS + IAM Roles Anywhere and server-mediated encryption are selected for the gated backend foundation; detailed operational controls and production acceptance remain subject to review.
 
 ### Key custody and cryptographic boundary
 
 | Option | Security boundary | Benefits | Costs and residual risks | Decision required |
 |---|---|---|---|---|
-| Managed key service / KMS-backed KEK | The provider protects and unwraps the platform KEK; the Worker is an authenticated caller | Dedicated key custody, provider audit controls and managed rotation facilities where supported | Provider availability and account configuration become production dependencies; pricing, recovery, residency and access policy vary by provider | Select provider, region, access policy, recovery owner and outage behavior |
+| Managed key service / KMS-backed KEK | AWS KMS protects the platform KEK; the Worker authenticates through IAM Roles Anywhere | Dedicated key custody, CloudTrail auditability and managed wrapping-key controls | Provider availability and account configuration become production dependencies; pricing, recovery, residency and access policy vary by region | Approve region, access policy, recovery owner and outage behavior |
 | Worker-held KEK secret | A versioned secret is available to the production Worker runtime | Fewer external components and a simpler deployment boundary | Secret access is tied to Worker deployment/operations; custody, rotation, audit and recovery become operator responsibilities; no assumption of HSM-backed custody | Identify custodians, reviewer approvals, rotation cadence and emergency recovery process |
 | Server-mediated data encryption | Browser sends validated plaintext to an authenticated Worker boundary; the server performs encryption/decryption | Tenant DEKs need not be returned to browser memory | The server processes plaintext; changes the current client-side encryption trust model and increases server responsibility, request size and availability coupling | Explicitly accept the new server trust boundary and prove logs, errors and operational tooling cannot expose plaintext |
 
-No provider or custody model is selected by this ADR. A Worker secret is not automatically equivalent to a managed HSM/KMS boundary, and a KMS integration must not be assumed available until its account, permissions and recovery path are verified.
+AWS KMS with IAM Roles Anywhere is selected for the gated implementation. A Worker-held X.509 private key is a workload identity credential, not a substitute KEK; AWS KMS remains the wrapping authority. The integration must not be treated as production-ready until its account, permissions, certificate lifecycle and recovery path are verified.
 
 ### Where encryption and plaintext may exist
 
 | Option | Browser access | Server access | Guest/projection implication |
 |---|---|---|---|
-| Short-lived scoped DEK grant | An authorized client can observe the granted DEK while it is in memory | Worker/key service unwraps and authorizes grants | Guest must use a separate projection key or a separately encrypted projection; never grant the tenant-wide DEK |
+| Short-lived scoped DEK grant (not selected) | An authorized client could observe the granted DEK while it is in memory | Lower server-side encryption work | Exposes tenant key material to the browser origin; guest would require a separate projection key |
 | Server-mediated encryption | Browser sees only the plaintext records it is authorized to display, not the DEK | Worker/DO necessarily sees plaintext during the operation | The server constructs the projection after validating the guest grant; key scope remains server-owned |
 
 A non-extractable IndexedDB device key protects its existing stored-secret use; it does not prevent an active-origin script from reading plaintext or a DEK deliberately delivered to that origin. Revocation can deny future requests and grants but cannot erase a key or plaintext already copied by an authorized or compromised client.
@@ -186,4 +198,4 @@ Record approvals without attaching secrets or key material:
 | PT-02 owner | Confirm journal/snapshot restore and recovery compatibility | Pending |
 | Product/authorization owner | Confirm guest projection and revocation contract | Pending |
 
-**Implementation remains blocked** until the required decisions are explicitly accepted and referenced by #549. This review packet does not provision keys, change production secrets, migrate encrypted records, or enable PT-05 tenant financial writes.
+**Tenant financial-data activation remains blocked** until the required operational and security decisions are explicitly accepted and referenced by #549. The backend foundation supports key provisioning, but no production AWS secrets are installed by this change; no existing records are migrated and no PT-05 tenant financial writes are enabled.
