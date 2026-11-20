@@ -4014,7 +4014,6 @@ table tbody tr:hover {
   gap: 0.35rem;
   min-width: 0;
   max-width: 100%;
-  padding: 0.15rem 0 0.65rem;
   border: 1px solid var(--border-subtle, rgb(51 65 85 / 0.7));
   border-radius: 0.8rem;
   padding: 0.45rem;
@@ -4228,6 +4227,10 @@ table tbody tr:hover {
 }
 
 @media (max-width: 640px) {
+  #settingsDesk .settings-section {
+    scroll-margin-top: 14rem;
+  }
+
   #settingsDesk .settings-section-nav {
     top: 0.25rem;
     padding: 0.35rem;
