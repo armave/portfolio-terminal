@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const marker = '/* Fluid workspace layout: adapt to the space each desk actually receives. */';
+const compactStyles = (source: string) => source.replace(/\\s+/g, '');
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
 
 describe('fluid workspace styles', () => {
@@ -68,14 +69,14 @@ describe('fluid workspace styles', () => {
 
   it('keeps market value and position basis inside one compact responsive panel', () => {
     const redesignedStyles = stylesheet.slice(
-      stylesheet.indexOf('.portfolio-health-summary-column > .portfolio-micro-summary--redesigned'),
+      stylesheet.indexOf('.portfolio-health-summary-column>.portfolio-micro-summary--redesigned'),
       stylesheet.indexOf('/* Purchase tranche ledger modal;')
     );
-    expect(redesignedStyles).toContain('"market basis"');
+    expect(compactStyles(redesignedStyles)).toContain('"marketbasis"');
     expect(redesignedStyles).toContain('grid-template-rows: auto;');
     expect(redesignedStyles).toContain('flex: 0 0 auto;');
     expect(redesignedStyles).toContain('min-height: 0;');
-    expect(redesignedStyles).toContain('.portfolio-micro-summary--redesigned > .portfolio-micro-column');
+    expect(compactStyles(redesignedStyles)).toContain('.portfolio-micro-summary--redesigned>.portfolio-micro-column');
     expect(redesignedStyles).toContain('border: 0;');
     expect(redesignedStyles).toContain('background: transparent;');
     expect(redesignedStyles).toContain('box-shadow: none;');

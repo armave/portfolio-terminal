@@ -8,6 +8,7 @@ const lotsSource = readFileSync(new URL('../components/GuestTrancheHistory.tsx',
 const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
 const headerSource = readFileSync(new URL('../components/DeskPageHeader.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+const compactStyles = (source: string) => source.replace(/\\s+/g, '');
 const russian = readFileSync(new URL('../services/i18n-ru.ts', import.meta.url), 'utf8');
 
 describe('standard non-Margin page layout', () => {
@@ -76,7 +77,7 @@ describe('standard non-Margin page layout', () => {
     expect(settingsSource).toContain('class="settings-desk min-w-0"');
     expect(settingsSource).not.toContain('settings-desk min-w-0 space-y-4');
     expect(styles).toContain('@media (max-width: 767px)');
-    expect(styles).toContain('#settingsDesk > .desk-page-header {');
+    expect(compactStyles(styles)).toContain('#settingsDesk>.desk-page-header{');
     expect(styles).toContain('position: absolute;');
     expect(styles).toContain('gap: 0.7rem;');
   });
@@ -86,8 +87,8 @@ describe('standard non-Margin page layout', () => {
     expect(styles).toContain('font-size: 0.8rem;');
     expect(styles).toContain('.quote-volume-badge {');
     expect(styles).toContain('font-size: 0.75rem;');
-    expect(styles).toContain('.guest-stock-metrics-grid > div > p:first-child {');
-    expect(styles).toContain('.guest-stock-metrics-grid > div > p:nth-child(2) {');
+    expect(compactStyles(styles)).toContain('.guest-stock-metrics-grid>div>p:first-child{');
+    expect(compactStyles(styles)).toContain('.guest-stock-metrics-grid>div>p:nth-child(2){');
   });
 
   it('localizes new desk page headings and descriptions in Russian', () => {
