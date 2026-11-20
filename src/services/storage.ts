@@ -35,6 +35,7 @@ const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_RULES_RECOVERY = 'tradernet_rules_v1_recovery_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 const STORAGE_KEY_GUEST_REFRESH_INTERVAL = 'quote_refresh_interval_guest_v1';
+const STORAGE_KEY_WORKSPACE_DISCLOSURES = 'portfolio_workspace_disclosures_v1';
 
 export interface ClosedHistorySnapshot {
   brokerExecutedTrades: unknown[];
@@ -1270,6 +1271,47 @@ export function saveQuoteRefreshInterval(
     storage.setItem(key, String(interval));
   } catch (err) {
     logSafeDiagnostic('error', 'browser-storage', err);
+  }
+}
+
+
+export interface WorkspaceDisclosurePreferences {
+  performanceOpen?: boolean;
+  projectionsOpen?: boolean;
+  researchOpen?: boolean;
+}
+
+/** Read only allowlisted disclosure preferences from the active account storage scope. */
+export function getWorkspaceDisclosurePreferences(): WorkspaceDisclosurePreferences {
+  const storage = getBrowserStorage();
+  if (!storage) return {};
+  try {
+    const saved = parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_WORKSPACE_DISCLOSURES)));
+    if (!saved) return {};
+    return {
+      ...(typeof saved.performanceOpen === 'boolean' ? { performanceOpen: saved.performanceOpen } : {}),
+      ...(typeof saved.projectionsOpen === 'boolean' ? { projectionsOpen: saved.projectionsOpen } : {}),
+      ...(typeof saved.researchOpen === 'boolean' ? { researchOpen: saved.researchOpen } : {})
+    };
+  } catch (error) {
+    logSafeDiagnostic('warn', 'browser-storage', error);
+    return {};
+  }
+}
+
+/** Persist only allowlisted disclosure preferences in the active account storage scope. */
+export function saveWorkspaceDisclosurePreferences(preferences: WorkspaceDisclosurePreferences): void {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+  const safePreferences: WorkspaceDisclosurePreferences = {
+    ...(typeof preferences.performanceOpen === 'boolean' ? { performanceOpen: preferences.performanceOpen } : {}),
+    ...(typeof preferences.projectionsOpen === 'boolean' ? { projectionsOpen: preferences.projectionsOpen } : {}),
+    ...(typeof preferences.researchOpen === 'boolean' ? { researchOpen: preferences.researchOpen } : {})
+  };
+  try {
+    storage.setItem(scopedStorageKey(STORAGE_KEY_WORKSPACE_DISCLOSURES), JSON.stringify(safePreferences));
+  } catch (error) {
+    logSafeDiagnostic('warn', 'browser-storage', error);
   }
 }
 

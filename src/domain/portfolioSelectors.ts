@@ -28,6 +28,63 @@ export function getPortfolioProjectionTickers(state: BoardState): string[] {
       .filter((ticker): ticker is string => Boolean(ticker));
 }
 
+
+export interface MarginPositionMarketSummary {
+  ticker: string;
+  shares: number;
+  costBasis: number | null;
+  averageEntryPrice: number | null;
+  marketPrice: number | null;
+  marketValue: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPnlPct: number | null;
+  targetPrice: number | null;
+}
+
+function finitePositiveMarketInput(value: unknown): number | null {
+  if (typeof value === 'boolean' || value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string' ? Number(value.trim()) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** Read-only active Margin position values for Combined comparison. */
+export function getMarginPositionMarketSummaries(
+  positions: BoardState['positions']
+): MarginPositionMarketSummary[] {
+  return Object.entries(positions || {}).flatMap(([ticker, position]) => {
+    if (!position) return [];
+    const shares = finitePositiveMarketInput(position.shares);
+    if (shares === null) return [];
+    const tranches = Array.isArray(position.tranches) ? position.tranches : [];
+    const hasCompleteCostBasis = tranches.length > 0 && tranches.every((tranche) => {
+      const quantity = finitePositiveMarketInput(tranche?.qty);
+      const entryPrice = finitePositiveMarketInput(tranche?.price);
+      return quantity !== null && entryPrice !== null && Number.isFinite(quantity * entryPrice);
+    });
+    const totalCost = hasCompleteCostBasis
+      ? tranches.reduce((sum, tranche) => sum + Number(tranche.qty) * Number(tranche.price), 0)
+      : Number.NaN;
+    const costBasis = Number.isFinite(totalCost) ? totalCost : null;
+    const marketPrice = getPositiveMarketPrice(position.currentPrice);
+    const totalValue = marketPrice === null ? Number.NaN : shares * marketPrice;
+    const marketValue = Number.isFinite(totalValue) ? totalValue : null;
+    const unrealizedPnl = marketValue !== null && costBasis !== null ? marketValue - costBasis : null;
+    const averageEntryPrice = costBasis !== null && Number.isFinite(costBasis / shares)
+      ? costBasis / shares
+      : null;
+    const unrealizedPnlPct = unrealizedPnl !== null && costBasis !== null && costBasis > 0
+      ? (unrealizedPnl / costBasis) * 100
+      : null;
+    return [{
+      ticker, shares, costBasis, averageEntryPrice, marketPrice, marketValue,
+      unrealizedPnl, unrealizedPnlPct, targetPrice: getPositiveMarketPrice(position.pt)
+    }];
+  });
+}
+
 /** Sum hypothetical net proceeds from target-price sales after the configured sell commission. */
 export function getPortfolioNetSaleProceeds(
   state: BoardState,
