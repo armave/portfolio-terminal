@@ -96,7 +96,6 @@ export function CloudSyncIndicator({
 }) {
   const language = getAppLanguage();
   const tone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
-  const statusLabel = resolveCloudSyncLabel(cloudStatus, tone, language);
   const lastSyncedAt = cloudSyncStatus.lastSyncedAt ?? null;
   const [now, setNow] = useState(() => Date.now());
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -111,6 +110,7 @@ export function CloudSyncIndicator({
   }, []);
 
   const displayTone = resolveCloudSyncDisplayTone(tone, pendingIndicatorVisible);
+  const statusLabel = resolveCloudSyncLabel(cloudStatus, displayTone, language);
 
   const relativeTime = tone === 'success' || lastSyncedAt
     ? formatRelativeSyncTime(lastSyncedAt, now, language)
