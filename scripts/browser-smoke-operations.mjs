@@ -1273,6 +1273,36 @@ try {
     throw new Error('Desktop Settings navigation or section spacing is incorrect: ' + JSON.stringify(desktopSectionLayout));
   }
 
+  // Tablet retains grouped navigation but accounts for its two-row sticky layout.
+  await page.setViewportSize({ width: 768, height: 900 });
+  const tabletDataSection = visibleSettingsDesk().locator('#settings-data-section');
+  await tabletDataSection.evaluate((element) => {
+    const originalScrollIntoView = element.scrollIntoView.bind(element);
+    element.scrollIntoView = (options) => {
+      element.setAttribute('data-settings-scroll-behavior', options?.behavior || 'unset');
+      originalScrollIntoView(options);
+    };
+  });
+  await settingsNavigation.locator('a[href="#settings-data-section"]').click();
+  await page.waitForFunction(() => window.location.hash === '#settings-data-section');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('#settings-data-section');
+    return Boolean(section && Math.abs(section.getBoundingClientRect().top - 288) <= 3);
+  }, null, { timeout: 5_000 });
+  const tabletSectionLayout = await tabletDataSection.evaluate((element) => {
+    const navigation = document.querySelector('#settingsDesk .settings-section-nav');
+    return {
+      scrollBehavior: element.getAttribute('data-settings-scroll-behavior'),
+      sectionTop: element.getBoundingClientRect().top,
+      navigationBottom: navigation?.getBoundingClientRect().bottom ?? 0
+    };
+  });
+  if (tabletSectionLayout.scrollBehavior !== 'smooth' ||
+      tabletSectionLayout.sectionTop < tabletSectionLayout.navigationBottom - 2 ||
+      Math.abs(tabletSectionLayout.sectionTop - 288) > 3) {
+    throw new Error('Tablet Settings navigation anchor spacing is incorrect: ' + JSON.stringify(tabletSectionLayout));
+  }
+
   // Mobile uses the shorter native section picker; reduced-motion users skip animated scrolling.
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileSectionPicker = visibleSettingsDesk().getByLabel('Jump to Settings section');
