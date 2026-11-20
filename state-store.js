@@ -132,17 +132,179 @@ const TENANT_ROLE_CAPABILITIES = Object.freeze({
   guest: ["portfolio.projection.read"]
 });
 
+function isTenantDirectoryObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isTenantDirectoryId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(value);
+}
+
+function isTenantDirectoryActorId(value) {
+  return value === null || (typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
+}
+
+function isTenantDirectoryTimestamp(value) {
+  return typeof value === "string" && value.length <= 80 && Number.isFinite(Date.parse(value));
+}
+
+function hasTenantDirectoryCapabilities(value, expected) {
+  return Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((capability) => typeof capability === "string") &&
+    new Set(value).size === value.length &&
+    expected.every((capability) => value.includes(capability));
+}
+
+function hasTenantDirectoryOptionalMetadata(value) {
+  return isTenantDirectoryTimestamp(value.createdAt) &&
+    isTenantDirectoryActorId(value.createdBy) &&
+    (value.updatedAt === undefined || isTenantDirectoryTimestamp(value.updatedAt)) &&
+    (value.legacy === undefined || typeof value.legacy === "boolean");
+}
+
 function isTenantDirectoryRecord(value) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
-    value.version === 1 && Number.isSafeInteger(value.revision) && value.revision >= 1 &&
-    Array.isArray(value.tenants) && Array.isArray(value.workspaces) &&
-    Array.isArray(value.portfolios) && Array.isArray(value.memberships) &&
-    Array.isArray(value.grants) &&
-    value.tenants.length <= TENANT_DIRECTORY_MAX_TENANTS &&
-    value.workspaces.length <= TENANT_DIRECTORY_MAX_WORKSPACES &&
-    value.portfolios.length <= TENANT_DIRECTORY_MAX_PORTFOLIOS &&
-    value.memberships.length <= TENANT_DIRECTORY_MAX_MEMBERSHIPS &&
-    value.grants.length <= TENANT_DIRECTORY_MAX_GRANTS);
+  if (!isTenantDirectoryObject(value) ||
+      value.version !== 1 || !Number.isSafeInteger(value.revision) || value.revision < 1 ||
+      !Array.isArray(value.tenants) || !Array.isArray(value.workspaces) ||
+      !Array.isArray(value.portfolios) || !Array.isArray(value.memberships) ||
+      !Array.isArray(value.grants) ||
+      value.tenants.length < 1 || value.tenants.length > TENANT_DIRECTORY_MAX_TENANTS ||
+      value.workspaces.length > TENANT_DIRECTORY_MAX_WORKSPACES ||
+      value.portfolios.length > TENANT_DIRECTORY_MAX_PORTFOLIOS ||
+      value.memberships.length > TENANT_DIRECTORY_MAX_MEMBERSHIPS ||
+      value.grants.length > TENANT_DIRECTORY_MAX_GRANTS ||
+      (value.createdAt !== undefined && !isTenantDirectoryTimestamp(value.createdAt)) ||
+      (value.updatedAt !== undefined && !isTenantDirectoryTimestamp(value.updatedAt))) {
+    return false;
+  }
+
+  const tenants = new Map();
+  for (const tenant of value.tenants) {
+    if (!isTenantDirectoryObject(tenant) ||
+        !isTenantDirectoryId(tenant.id) || tenants.has(tenant.id) ||
+        normalizeTenantDisplayName(tenant.name) !== tenant.name ||
+        !["active", "archived"].includes(tenant.status) ||
+        !hasTenantDirectoryOptionalMetadata(tenant)) {
+      return false;
+    }
+    tenants.set(tenant.id, tenant);
+  }
+
+  const workspaces = new Map();
+  for (const workspace of value.workspaces) {
+    if (!isTenantDirectoryObject(workspace) ||
+        !isTenantDirectoryId(workspace.id) || workspaces.has(workspace.id) ||
+        !tenants.has(workspace.tenantId) ||
+        normalizeTenantDisplayName(workspace.name) !== workspace.name ||
+        !["active", "archived"].includes(workspace.status) ||
+        !hasTenantDirectoryOptionalMetadata(workspace)) {
+      return false;
+    }
+    workspaces.set(workspace.id, workspace);
+  }
+
+  const portfolios = new Map();
+  for (const portfolio of value.portfolios) {
+    const workspace = isTenantDirectoryObject(portfolio)
+      ? workspaces.get(portfolio.workspaceId)
+      : null;
+    if (!isTenantDirectoryObject(portfolio) ||
+        !isTenantDirectoryId(portfolio.id) || portfolios.has(portfolio.id) ||
+        !tenants.has(portfolio.tenantId) || !workspace ||
+        workspace.tenantId !== portfolio.tenantId ||
+        normalizeTenantDisplayName(portfolio.name) !== portfolio.name ||
+        !["active", "archived"].includes(portfolio.status) ||
+        !hasTenantDirectoryOptionalMetadata(portfolio)) {
+      return false;
+    }
+    portfolios.set(portfolio.id, portfolio);
+  }
+
+  const memberships = new Map();
+  for (const membership of value.memberships) {
+    if (!isTenantDirectoryObject(membership) ||
+        !tenants.has(membership.tenantId) ||
+        typeof membership.userId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(membership.userId) ||
+        !Object.prototype.hasOwnProperty.call(TENANT_ROLE_CAPABILITIES, membership.role) ||
+        !["active", "revoked"].includes(membership.status) ||
+        !Number.isSafeInteger(membership.membershipVersion) || membership.membershipVersion < 1 ||
+        !hasTenantDirectoryCapabilities(membership.capabilities, TENANT_ROLE_CAPABILITIES[membership.role]) ||
+        !hasTenantDirectoryOptionalMetadata(membership)) {
+      return false;
+    }
+    const key = membership.tenantId + "\u0000" + membership.userId;
+    if (memberships.has(key)) return false;
+    memberships.set(key, membership);
+  }
+
+  const activeGrantKeys = new Set();
+  const activeGrantsByMembership = new Map();
+  const managerGrantCapabilities = TENANT_ROLE_CAPABILITIES.manager.filter((capability) =>
+    capability.startsWith("portfolio.")
+  );
+  const investorGrantCapabilities = TENANT_ROLE_CAPABILITIES.investor.filter((capability) =>
+    capability.startsWith("portfolio.")
+  );
+  const guestGrantCapabilities = ["portfolio.projection.read"];
+
+  for (const grant of value.grants) {
+    if (!isTenantDirectoryObject(grant) ||
+        !tenants.has(grant.tenantId) ||
+        typeof grant.userId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(grant.userId) ||
+        !["active", "revoked"].includes(grant.status) ||
+        !Number.isSafeInteger(grant.membershipVersion) || grant.membershipVersion < 1 ||
+        !hasTenantDirectoryOptionalMetadata(grant) ||
+        !portfolios.has(grant.portfolioId) ||
+        portfolios.get(grant.portfolioId).tenantId !== grant.tenantId) {
+      return false;
+    }
+
+    const membershipKey = grant.tenantId + "\u0000" + grant.userId;
+    const membership = memberships.get(membershipKey);
+    if (!membership) return false;
+
+    const isProjectionGrant = grant.scope === "projection" &&
+      hasTenantDirectoryCapabilities(grant.capabilities, guestGrantCapabilities);
+    const isPortfolioGrant = grant.scope === "portfolio" &&
+      (hasTenantDirectoryCapabilities(grant.capabilities, managerGrantCapabilities) ||
+        hasTenantDirectoryCapabilities(grant.capabilities, investorGrantCapabilities));
+    if (!isProjectionGrant && !isPortfolioGrant) return false;
+
+    if (grant.status === "active") {
+      if (membership.status !== "active" ||
+          grant.membershipVersion !== membership.membershipVersion ||
+          (membership.role === "guest" && !isProjectionGrant) ||
+          (membership.role !== "guest" && membership.role !== "owner" && !isPortfolioGrant) ||
+          membership.role === "owner" ||
+          (membership.role === "manager" &&
+            !hasTenantDirectoryCapabilities(grant.capabilities, managerGrantCapabilities)) ||
+          (membership.role === "investor" &&
+            !hasTenantDirectoryCapabilities(grant.capabilities, investorGrantCapabilities))) {
+        return false;
+      }
+      const grantKey = membershipKey + "\u0000" + grant.portfolioId;
+      if (activeGrantKeys.has(grantKey)) return false;
+      activeGrantKeys.add(grantKey);
+      activeGrantsByMembership.set(membershipKey, (activeGrantsByMembership.get(membershipKey) || 0) + 1);
+    }
+  }
+
+  for (const [membershipKey, membership] of memberships) {
+    const activeGrantCount = activeGrantsByMembership.get(membershipKey) || 0;
+    if (membership.status !== "active" && activeGrantCount !== 0) return false;
+    if (membership.status === "active" && membership.role === "owner" && activeGrantCount !== 0) return false;
+    if (membership.status === "active" && membership.role === "guest" && activeGrantCount !== 1) return false;
+    if (membership.status === "active" &&
+        (membership.role === "manager" || membership.role === "investor") &&
+        activeGrantCount < 1) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function normalizeTenantDisplayName(value, fallback = "") {

@@ -5576,6 +5576,87 @@ describe('Durable Object tenant directory ownership foundation', () => {
     expect(invalid.status).toBe(503);
     expect(values.get('tenant:directory:v1')).toMatchObject({ version: 1, tenants: [], memberships: [] });
   });
+
+  it('fails closed and preserves any tenant directory with inconsistent ownership or grant relationships', async () => {
+    const corruptions = [
+      {
+        name: 'duplicate tenant identifiers',
+        mutate: (directory) => directory.tenants.push(structuredClone(directory.tenants[0]))
+      },
+      {
+        name: 'workspace referencing a missing tenant',
+        mutate: (directory) => { directory.workspaces[0].tenantId = 'tenant-missing-123'; }
+      },
+      {
+        name: 'portfolio referencing a missing workspace',
+        mutate: (directory) => { directory.portfolios[0].workspaceId = 'workspace-missing-123'; }
+      },
+      {
+        name: 'membership with forged capabilities',
+        mutate: (directory) => { directory.memberships[0].capabilities.push('portfolio.transactions.write'); }
+      },
+      {
+        name: 'active grant with stale membership version',
+        mutate: (directory) => { directory.grants[0].membershipVersion += 1; }
+      },
+      {
+        name: 'grant referencing a portfolio in another tenant',
+        mutate: (directory) => { directory.grants[0].tenantId = 'tenant-other-123'; }
+      }
+    ];
+
+    for (const corruption of corruptions) {
+      const { store, values } = await makeTenantStore();
+      const initialized = await store.fetch(new Request('https://store.test/api/tenants', {
+        headers: headers('tenant-admin-token')
+      }));
+      expect(initialized.status, corruption.name + ' baseline').toBe(200);
+
+      const corruptedDirectory = structuredClone(values.get('tenant:directory:v1'));
+      corruption.mutate(corruptedDirectory);
+      values.set('tenant:directory:v1', corruptedDirectory);
+      const retainedCorruption = structuredClone(corruptedDirectory);
+
+      const response = await store.fetch(new Request('https://store.test/api/tenants', {
+        headers: headers('tenant-admin-token')
+      }));
+
+      expect(response.status, corruption.name).toBe(503);
+      expect(values.get('tenant:directory:v1'), corruption.name).toEqual(retainedCorruption);
+    }
+  });
+
+  it('rejects duplicate membership identities and duplicate active portfolio grants', async () => {
+    const { store, values } = await makeTenantStore();
+    const initialized = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(initialized.status).toBe(200);
+
+    const duplicateMemberships = structuredClone(values.get('tenant:directory:v1'));
+    duplicateMemberships.memberships.push(structuredClone(duplicateMemberships.memberships[0]));
+    values.set('tenant:directory:v1', duplicateMemberships);
+    const duplicateMembershipResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(duplicateMembershipResponse.status).toBe(503);
+    expect(values.get('tenant:directory:v1')).toEqual(duplicateMemberships);
+
+    const { store: grantStore, values: grantValues } = await makeTenantStore();
+    const grantInitialized = await grantStore.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(grantInitialized.status).toBe(200);
+    const duplicateGrants = structuredClone(grantValues.get('tenant:directory:v1'));
+    duplicateGrants.grants.push(structuredClone(duplicateGrants.grants[0]));
+    grantValues.set('tenant:directory:v1', duplicateGrants);
+    const duplicateGrantResponse = await grantStore.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(duplicateGrantResponse.status).toBe(503);
+    expect(grantValues.get('tenant:directory:v1')).toEqual(duplicateGrants);
+  });
+
 });
 
 describe('tenant directory Worker routing', () => {
