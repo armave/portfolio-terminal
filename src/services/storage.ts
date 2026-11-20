@@ -258,7 +258,7 @@ async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScop
         } catch {
           // The transaction may already be inactive.
         }
-      }, timeoutMs);
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
       const resolveTransaction = () => {
         if (settled) return;
         if (!currentRead || !recoveryRead) {
@@ -345,7 +345,7 @@ async function writeHistoryRecordToIndexedDB(
         } catch {
           // The transaction may already be inactive.
         }
-      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      }, timeoutMs);
       const resolveTransaction = () => {
         if (settled) return;
         settled = true;
