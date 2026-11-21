@@ -5,7 +5,8 @@ import {
   resolveCloudSyncDisplayTone,
   resolveCloudSyncLabel,
   resolveCloudSyncTone,
-  CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS
+  CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS,
+  CLOUD_SYNC_PENDING_MIN_VISIBLE_MS
 } from './CloudSyncIndicator';
 
 const status = (value: string, text = '') => ({ status: value, text });
@@ -85,14 +86,19 @@ describe('formatExactSyncTimestamp', () => {
 describe('resolveCloudSyncDisplayTone', () => {
   it('suppresses short pending writes until the visibility delay elapses', () => {
     expect(CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS).toBe(700);
+    expect(CLOUD_SYNC_PENDING_MIN_VISIBLE_MS).toBe(650);
     expect(resolveCloudSyncDisplayTone('pending', false)).toBe('neutral');
     expect(resolveCloudSyncDisplayTone('pending', true)).toBe('pending');
   });
 
-  it('does not delay successful, warning, error, or conflict states', () => {
+  it('holds a visible pending pulse briefly after a successful operation completes', () => {
     expect(resolveCloudSyncDisplayTone('success', false)).toBe('success');
-    expect(resolveCloudSyncDisplayTone('warning', false)).toBe('warning');
-    expect(resolveCloudSyncDisplayTone('error', false)).toBe('error');
-    expect(resolveCloudSyncDisplayTone('conflict', false)).toBe('conflict');
+    expect(resolveCloudSyncDisplayTone('success', true)).toBe('pending');
+  });
+
+  it('does not delay warning, error, or conflict states', () => {
+    expect(resolveCloudSyncDisplayTone('warning', true)).toBe('warning');
+    expect(resolveCloudSyncDisplayTone('error', true)).toBe('error');
+    expect(resolveCloudSyncDisplayTone('conflict', true)).toBe('conflict');
   });
 });

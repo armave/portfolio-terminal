@@ -59,6 +59,30 @@ describe('delayed activity visibility', () => {
     controller.dispose();
   });
 
+  it('keeps the header activity visible across closely adjacent operations', () => {
+    const controller = createDelayedActivityVisibilityController({
+      showDelayMs: 700,
+      minimumVisibleMs: 650
+    });
+    controller.setActive(true);
+    vi.advanceTimersByTime(700);
+    expect(controller.isVisible()).toBe(true);
+
+    controller.setActive(false);
+    vi.advanceTimersByTime(300);
+    expect(controller.isVisible()).toBe(true);
+    controller.setActive(true);
+    vi.advanceTimersByTime(300);
+    expect(controller.isVisible()).toBe(true);
+
+    controller.setActive(false);
+    vi.advanceTimersByTime(49);
+    expect(controller.isVisible()).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(controller.isVisible()).toBe(false);
+    controller.dispose();
+  });
+
   it('cleans up timers on disposal and tolerates repeated state changes', () => {
     const controller = createDelayedActivityVisibilityController();
     controller.setActive(true);

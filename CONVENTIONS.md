@@ -20,7 +20,7 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 
 9. **Scope and cleanup:** Inspect all connected callers, producers, consumers, tests, styles, and documentation before deleting or replacing a legacy path. Remove code only after proving it is unused or a no-op. Do not delete active runtime/Worker files because they are large or older, and do not add a framework or dependency without a concrete need. Never leave placeholders, truncated code, unused compatibility branches, or incomplete implementations.
 
-10. **Branch integration:** Start client-side refactors from the latest `main`. Review branch divergence before rebasing or cherry-picking; replay only changes whose intent is still valid, resolve conflicts semantically, and do not force-update unrelated in-flight branches. Keep client-side work in a reviewable pull request. Publish Worker/server-side changes through the designated `main` workflow.
+10. **Branch integration:** Start frontend, UI, client-side, and related documentation changes from the latest `dev` and submit them through a focused pull request targeting `dev`. Review branch divergence before rebasing or cherry-picking; replay only changes whose intent is still valid, resolve conflicts semantically, and do not force-update unrelated in-flight branches. Preserve production-only commits on `main`; do not replace `main` with `dev` or rewrite its ancestry during client delivery. Publish Worker/server-only changes through the designated direct-to-`main` deployment workflow, and separate mixed client/server delivery so the backward-compatible server change is deployed and verified first.
 
 11. **Validation:** Run the repository's full merge gate on the final change set:
     - `npm ci`
