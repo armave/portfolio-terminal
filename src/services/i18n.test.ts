@@ -209,6 +209,47 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes Trades search, filters and mobile-history controls in Russian', () => {
+    const tradesHistoryCopy = [
+      'Trade history filters',
+      'Search ticker',
+      'Search ticker or symbol',
+      'Date range',
+      'All time',
+      'Last 7 days',
+      'Last 30 days',
+      'Last 90 days',
+      'This year',
+      'Performance',
+      'All performance',
+      'Profitable',
+      'Losing',
+      'Breakeven',
+      'Unknown P&L',
+      'Funding',
+      'All funding',
+      'Unclassified',
+      'Source',
+      'All sources',
+      'App records',
+      'Summary reflects current filters',
+      'records',
+      'Clear filters',
+      'Closed trade performance summary',
+      'Refreshing TradeNet execution history…',
+      'No trades match the current filters',
+      'Funding and guest allocation',
+      'Net P&L',
+      'cash shares',
+      'margin shares',
+      'Funding type for trade',
+      'Guest for cash shares'
+    ];
+    for (const copy of tradesHistoryCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('localizes guest assigned-data refresh status in Russian', () => {
     const guestSyncCopy = [
       'Assigned data synchronization',

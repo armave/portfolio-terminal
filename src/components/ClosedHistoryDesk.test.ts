@@ -130,8 +130,8 @@ describe('Trades cache-first rendering', () => {
 
   it('uses shared pagination and clamps the rendered Trades page after a shrinking refresh', () => {
     const source = readSource();
-    expect(source).toContain("useTablePagination('closed-history', trades.length, 10)");
-    expect(source).toContain('sliceTablePage(trades, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain("useTablePagination('closed-history', filteredTrades.length, 10)");
+    expect(source).toContain('sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize)');
     expect(source).toContain('<TablePagination');
     // A requested page beyond the shortened result is clamped before slicing.
     expect(getTablePaginationRange(78, 9, 10)).toEqual({
@@ -206,12 +206,12 @@ describe('Trades cache-first rendering', () => {
     const source = readSource();
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
     expect(source).not.toContain('if (brokerTradesLoading || !cashflowHistoryReady');
-    expect(source).toContain('const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;');
     expect(source).toContain("emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });");
-    expect(source).toContain('const showBackgroundUpdateIndicator = useDelayedActivityVisibility(isBackgroundUpdating);');
-    expect(source).toContain('showBackgroundUpdateIndicator && (');
-    expect(source).toContain('const backgroundUpdateMessage = brokerTradesRefreshing');
-    expect(source).toContain('Refreshing TradeNet execution history in the background…');
+    expect(source).toContain('const showBrokerRefreshIndicator = useDelayedActivityVisibility(brokerTradesRefreshing, {');
+    expect(source).toContain('showDelayMs: 700');
+    expect(source).toContain('showBrokerRefreshIndicator && (');
+    expect(source).toContain('Refreshing TradeNet execution history…');
+    expect(source).not.toContain('backgroundSyncPending');
     expect(source).not.toContain('Updating saved trade calculations in the background…');
     expect(source).toContain('createFreedomMarginFeeAllocationInputKey(');
     expect(source).toContain('const allocationInputKey =');
@@ -232,6 +232,34 @@ describe('Trades cache-first rendering', () => {
 });
 
 
+describe('Trades history UX', () => {
+  it('filters before pagination and scopes the summary to the visible filter set', () => {
+    const source = readSource();
+    expect(source).toContain('filterClosedHistoryRows(trades, {');
+    expect(source).toContain("useTablePagination('closed-history', filteredTrades.length, 10)");
+    expect(source).toContain('sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain('summarizeClosedHistoryRows(filteredTrades)');
+    expect(source).toContain('Summary reflects current filters');
+    expect(source).toContain('knownProfitCount === 0 ?');
+  });
+
+  it('keeps mobile cards and desktop table while exposing the same allocation controls', () => {
+    const source = readSource();
+    expect(source).toContain('class="space-y-2 lg:hidden"');
+    expect(source).toContain('class="hidden lg:block closed-history-page-transition"');
+    expect(source.match(/<ClosedTradeAllocationControls/g)?.length).toBe(2);
+    expect(source).toContain('Funding and guest allocation');
+    expect(source).toContain('compact');
+  });
+
+  it('delays only the broker refresh indicator instead of combining unrelated background tasks', () => {
+    const source = readSource();
+    expect(source).toContain('useDelayedActivityVisibility(brokerTradesRefreshing, {');
+    expect(source).toContain('showDelayMs: 700');
+    expect(source).not.toContain('backgroundSyncPending');
+  });
+});
+
 describe('Trades broker quote reconciliation wiring', () => {
   it('passes current app quote provenance and broker snapshot metadata to the read-only review', () => {
     const source = readSource();
@@ -248,6 +276,7 @@ describe('Trades broker quote reconciliation wiring', () => {
 
 import {
   buildClosedHistoryRows,
+  filterClosedHistoryRows,
   summarizeClosedHistoryRows
 } from '../features/trades/closedHistoryRows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
@@ -360,6 +389,56 @@ describe('closed history row model', () => {
 
     expect(rows.map((row) => row.trade.id)).toEqual(['broker-sale', 'other-app']);
     expect(rows[0].source).toBe('tradenet');
+  });
+});
+
+describe('closed history filters', () => {
+  const now = Date.UTC(2026, 10, 21, 12, 0, 0);
+  const rows = [
+    { trade: { ticker: 'AAPL', exitDate: '2026-11-20T12:00:00.000Z' }, source: 'tradenet', profit: 25, allocationType: 'cash' },
+    { trade: { ticker: 'MSFT', exitDate: '2026-10-15T12:00:00.000Z' }, source: 'app', profit: -8, allocationType: 'margin' },
+    { trade: { ticker: 'TSLA', exitDate: '2026-11-19T12:00:00.000Z' }, source: 'tradenet', profit: 6, profitIsUpperBound: true, allocationType: 'mix' },
+    { trade: { ticker: 'NVDA', exitDate: '2026-01-01T12:00:00.000Z' }, source: 'app', profit: 0, allocationType: 'unclassified' },
+    { trade: { ticker: 'ORCL' }, source: 'app', profit: null, allocationType: 'unclassified' }
+  ];
+  const filters = {
+    query: '',
+    dateRange: 'all' as const,
+    performance: 'all' as const,
+    funding: 'all' as const,
+    source: 'all' as const
+  };
+
+  it('searches ticker case-insensitively and combines source and funding filters', () => {
+    expect(filterClosedHistoryRows(rows, { ...filters, query: 'aAp' }, now).map((row) => row.trade.ticker))
+      .toEqual(['AAPL']);
+    expect(filterClosedHistoryRows(rows, { ...filters, source: 'tradenet', funding: 'mix' }, now).map((row) => row.trade.ticker))
+      .toEqual(['TSLA']);
+  });
+
+  it('classifies only exact known P&L as profitable, losing or breakeven', () => {
+    expect(filterClosedHistoryRows(rows, { ...filters, performance: 'profitable' }, now).map((row) => row.trade.ticker))
+      .toEqual(['AAPL']);
+    expect(filterClosedHistoryRows(rows, { ...filters, performance: 'losing' }, now).map((row) => row.trade.ticker))
+      .toEqual(['MSFT']);
+    expect(filterClosedHistoryRows(rows, { ...filters, performance: 'breakeven' }, now).map((row) => row.trade.ticker))
+      .toEqual(['NVDA']);
+    expect(filterClosedHistoryRows(rows, { ...filters, performance: 'unknown' }, now).map((row) => row.trade.ticker))
+      .toEqual(['TSLA', 'ORCL']);
+  });
+
+  it('filters rolling windows and current year without admitting unknown or future dates', () => {
+    expect(filterClosedHistoryRows(rows, { ...filters, dateRange: '7d' }, now).map((row) => row.trade.ticker))
+      .toEqual(['AAPL', 'TSLA']);
+    expect(filterClosedHistoryRows(rows, { ...filters, dateRange: 'year' }, now).map((row) => row.trade.ticker))
+      .toEqual(['AAPL', 'TSLA', 'NVDA']);
+  });
+
+  it('does not mutate or rewrite the source rows', () => {
+    const filtered = filterClosedHistoryRows(rows, { ...filters, performance: 'unknown' }, now);
+    expect(filtered[0]).toBe(rows[2]);
+    expect(rows[2].profit).toBe(6);
+    expect(rows[2].profitIsUpperBound).toBe(true);
   });
 });
 

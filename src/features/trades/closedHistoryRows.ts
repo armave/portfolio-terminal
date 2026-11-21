@@ -267,3 +267,90 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
     winRate: profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0
   };
 }
+
+export type ClosedHistoryDateRange = 'all' | '7d' | '30d' | '90d' | 'year';
+export type ClosedHistoryPerformanceFilter = 'all' | 'profitable' | 'losing' | 'breakeven' | 'unknown';
+export type ClosedHistoryFundingFilter = 'all' | 'cash' | 'margin' | 'mix' | 'unclassified';
+export type ClosedHistorySourceFilter = 'all' | 'tradenet' | 'app';
+
+export interface ClosedHistoryFilters {
+  query: string;
+  dateRange: ClosedHistoryDateRange;
+  performance: ClosedHistoryPerformanceFilter;
+  funding: ClosedHistoryFundingFilter;
+  source: ClosedHistorySourceFilter;
+}
+
+interface FilterableClosedHistoryRow {
+  trade?: {
+    ticker?: unknown;
+    exitDate?: unknown;
+    sellDate?: unknown;
+    closedAt?: unknown;
+    date?: unknown;
+  };
+  source?: unknown;
+  profit?: number | null;
+  profitIsUpperBound?: boolean;
+  allocationType?: unknown;
+}
+
+function getClosedHistoryTimestamp(row: FilterableClosedHistoryRow): number {
+  const trade = row.trade;
+  const raw = trade?.exitDate ?? trade?.sellDate ?? trade?.closedAt ?? trade?.date;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    if (raw > 1e12) return raw;
+    if (raw > 20_000 && raw < 100_000) {
+      return Date.UTC(1899, 11, 30) + raw * 86_400_000;
+    }
+  }
+  const parsed = Date.parse(String(raw ?? ''));
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+function isKnownClosedTradeProfit(row: FilterableClosedHistoryRow): boolean {
+  return typeof row.profit === 'number' &&
+    Number.isFinite(row.profit) &&
+    row.profitIsUpperBound !== true;
+}
+
+/** Filter already-normalized display rows without changing their financial values. */
+export function filterClosedHistoryRows<T extends FilterableClosedHistoryRow>(
+  rows: readonly T[],
+  filters: ClosedHistoryFilters,
+  now = Date.now()
+): T[] {
+  const query = filters.query.trim().toLocaleLowerCase();
+  let earliestTimestamp = Number.NEGATIVE_INFINITY;
+  if (filters.dateRange === '7d') earliestTimestamp = now - 7 * 86_400_000;
+  else if (filters.dateRange === '30d') earliestTimestamp = now - 30 * 86_400_000;
+  else if (filters.dateRange === '90d') earliestTimestamp = now - 90 * 86_400_000;
+  else if (filters.dateRange === 'year') {
+    const current = new Date(now);
+    earliestTimestamp = new Date(current.getFullYear(), 0, 1).getTime();
+  }
+
+  return rows.filter((row) => {
+    if (query && !String(row.trade?.ticker ?? '').toLocaleLowerCase().includes(query)) return false;
+
+    if (filters.dateRange !== 'all') {
+      const timestamp = getClosedHistoryTimestamp(row);
+      if (!Number.isFinite(timestamp) || timestamp < earliestTimestamp || timestamp > now) return false;
+    }
+
+    const knownProfit = isKnownClosedTradeProfit(row);
+    if (filters.performance === 'unknown' && knownProfit) return false;
+    if (filters.performance === 'profitable' && (!knownProfit || Number(row.profit) <= 0)) return false;
+    if (filters.performance === 'losing' && (!knownProfit || Number(row.profit) >= 0)) return false;
+    if (filters.performance === 'breakeven' && (!knownProfit || Number(row.profit) !== 0)) return false;
+
+    if (filters.funding !== 'all' &&
+      String(row.allocationType ?? 'unclassified').toLowerCase() !== filters.funding) return false;
+
+    if (filters.source !== 'all' &&
+      String(row.source ?? '').toLowerCase() !== filters.source) return false;
+
+    return true;
+  });
+}
+

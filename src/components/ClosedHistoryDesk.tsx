@@ -32,7 +32,13 @@ import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from
 import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
-import { buildClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
+import { buildClosedHistoryRows, filterClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
+import type {
+  ClosedHistoryDateRange,
+  ClosedHistoryFundingFilter,
+  ClosedHistoryPerformanceFilter,
+  ClosedHistorySourceFilter
+} from '../features/trades/closedHistoryRows';
 import { useDelayedActivityVisibility } from '../ui/delayedActivityVisibility';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
@@ -81,6 +87,134 @@ function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
   return mergeBrokerExecutionHistory(
     savedExecutions,
     preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
+  );
+}
+
+
+function getClosedTradeDate(trade: any): Date | null {
+  const rawDate = trade?.exitDate || trade?.sellDate || trade?.closedAt || trade?.date;
+  let closedDate: Date | null = null;
+  if (typeof rawDate === 'number') closedDate = new Date(rawDate);
+  else if (typeof rawDate === 'string') {
+    const parsed = Date.parse(rawDate);
+    if (!Number.isNaN(parsed)) closedDate = new Date(parsed);
+  }
+  return closedDate && !Number.isNaN(closedDate.getTime()) ? closedDate : null;
+}
+
+function getClosedTradeDurationDays(trade: any): number | null {
+  const rawDuration = trade?.holdingDays ?? trade?.daysHeld;
+  let durationDays = rawDuration == null ? null : Number(rawDuration);
+  if (durationDays !== null && (!Number.isFinite(durationDays) || durationDays < 0)) durationDays = null;
+  if (
+    (durationDays === null || durationDays <= 0) &&
+    (trade?.buyDate || trade?.purchaseDate) &&
+    (trade?.sellDate || trade?.exitDate)
+  ) {
+    const buyTime = new Date(trade.buyDate || trade.purchaseDate).getTime();
+    const sellTime = new Date(trade.sellDate || trade.exitDate).getTime();
+    if (!Number.isNaN(buyTime) && !Number.isNaN(sellTime)) {
+      durationDays = Math.max(0, (sellTime - buyTime) / 86_400_000);
+    }
+  }
+  return durationDays;
+}
+
+function formatClosedTradeDate(date: Date | null): string {
+  return date
+    ? date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: '2-digit'
+    })
+    : translateText('Unknown', getAppLanguage());
+}
+
+function ClosedTradeAllocationControls({
+  row,
+  rowIndex,
+  guestUsers,
+  guestNameById,
+  savedAllocation,
+  compact = false
+}: {
+  row: any;
+  rowIndex: number;
+  guestUsers: AuthUser[];
+  guestNameById: Map<string, string>;
+  savedAllocation?: any;
+  compact?: boolean;
+}) {
+  const trade = row.trade || {};
+  const allocationType = row.allocationType || 'margin';
+  const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
+  const allocationKey = String(row.allocationKey || ((row.source || 'trade') + ':' + String(trade.id || rowIndex)));
+  const rowQuantity = Math.max(0, Number(trade.shares) || 0);
+  const selectedGuestId = savedAllocation
+    ? String(savedAllocation.guestId || '')
+    : assignedGuests.length === 1 ? assignedGuests[0].guestId : '';
+  const persistAllocation = (fundingType: 'cash' | 'margin' | 'mix', cashValue: number, guestId = selectedGuestId) => {
+    const cashQuantity = fundingType === 'cash' ? rowQuantity
+      : fundingType === 'margin' ? 0
+        : Math.min(rowQuantity, Math.max(0, Number(cashValue) || 0));
+    emitBrokerEvent('broker:set-closed-trade-allocation', {
+      rowId: allocationKey,
+      allocation: {
+        fundingType,
+        cashQuantity,
+        marginQuantity: Math.max(0, rowQuantity - cashQuantity),
+        guestId: fundingType === 'margin' ? '' : guestId
+      }
+    });
+  };
+  const updateMixCash = (value: string) => persistAllocation(
+    'mix',
+    resolveActiveTrancheMixInput(value, rowQuantity, row.cashQuantity)
+  );
+  const updateMixMargin = (value: string) => persistAllocation(
+    'mix',
+    rowQuantity - resolveActiveTrancheMixInput(value, rowQuantity, row.marginQuantity)
+  );
+  const ticker = String(trade.ticker || 'Trade');
+  const buttonBase = compact
+    ? 'inline-flex min-h-11 flex-1 items-center justify-center rounded px-2 py-1 text-[10px] font-bold'
+    : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold';
+  const groupClass = compact
+    ? 'flex w-full rounded-md border border-slate-700 p-0.5'
+    : 'inline-flex rounded-md border border-slate-700 p-0.5';
+
+  return (
+    <div class={`flex flex-col gap-1.5 ${compact ? 'items-stretch' : 'items-center'}`}>
+      <div class={groupClass} role="group" aria-label={translateText('Funding type for trade', getAppLanguage()) + ' ' + ticker}>
+        <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={buttonBase + (allocationType === 'cash' ? ' bg-cyan-950 text-cyan-300' : ' text-slate-500 hover:text-slate-300')}>Cash</button>
+        <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={buttonBase + (allocationType === 'margin' ? ' bg-amber-950 text-amber-300' : ' text-slate-500 hover:text-slate-300')}>Margin</button>
+        <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={buttonBase + (allocationType === 'mix' ? ' bg-violet-950 text-violet-300' : ' text-slate-500 hover:text-slate-300')}>Mix</button>
+      </div>
+      {allocationType === 'mix' && (
+        <div class={`flex items-center justify-center gap-2 rounded border border-slate-800 bg-slate-950/70 p-1.5 font-sans ${compact ? 'w-full flex-wrap' : ''}`}>
+          <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
+            {translateText('Cash shares', getAppLanguage())}
+            <input aria-label={ticker + ' ' + translateText('cash shares', getAppLanguage())} type="number" min="0" max={rowQuantity} step="any" value={row.cashQuantity} onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+          </label>
+          <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
+            {translateText('Margin shares', getAppLanguage())}
+            <input aria-label={ticker + ' ' + translateText('margin shares', getAppLanguage())} type="number" min="0" max={rowQuantity} step="any" value={row.marginQuantity} onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+          </label>
+        </div>
+      )}
+      {row.cashQuantity > 0 ? (
+        <select aria-label={translateText('Guest for cash shares', getAppLanguage()) + ' ' + ticker} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class={`max-w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center text-[10px] text-slate-200 ${compact ? 'w-full' : 'max-w-[11rem]'}`}>
+          <option value="">{translateText('Unassigned', getAppLanguage())}</option>
+          {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId}>{translateText('Guest unavailable', getAppLanguage())}</option>}
+          {guestUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+        </select>
+      ) : <span class="text-[9px] text-slate-600">{translateText('No cash allocation', getAppLanguage())}</span>}
+      {assignedGuests.length > 0 && !savedAllocation && assignedGuests.map((assignment) => (
+        <span key={assignment.guestId} class="text-[9px] text-cyan-300">
+          {guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)} · {Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -622,12 +756,39 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     }),
     [brokerTrades, brokerTradeMetrics, trancheAttributions, appTrades, state.closedTradeAllocations]
   );
-  const pagination = useTablePagination('closed-history', trades.length, 10);
-  const visibleTrades = sliceTablePage(trades, pagination.currentPage, pagination.pageSize);
-  const tradeSummary = useMemo(
-    () => summarizeClosedHistoryRows(trades),
-    [trades]
+  const [tradeSearchQuery, setTradeSearchQuery] = useState('');
+  const [dateRange, setDateRange] = useState<ClosedHistoryDateRange>('all');
+  const [performanceFilter, setPerformanceFilter] = useState<ClosedHistoryPerformanceFilter>('all');
+  const [fundingFilter, setFundingFilter] = useState<ClosedHistoryFundingFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<ClosedHistorySourceFilter>('all');
+  const filteredTrades = useMemo(
+    () => filterClosedHistoryRows(trades, {
+      query: tradeSearchQuery,
+      dateRange,
+      performance: performanceFilter,
+      funding: fundingFilter,
+      source: sourceFilter
+    }),
+    [trades, tradeSearchQuery, dateRange, performanceFilter, fundingFilter, sourceFilter]
   );
+  const pagination = useTablePagination('closed-history', filteredTrades.length, 10);
+  const visibleTrades = sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize);
+  const tradeSummary = useMemo(
+    () => summarizeClosedHistoryRows(filteredTrades),
+    [filteredTrades]
+  );
+  const hasActiveTradeFilters = Boolean(
+    tradeSearchQuery.trim() || dateRange !== 'all' || performanceFilter !== 'all' ||
+    fundingFilter !== 'all' || sourceFilter !== 'all'
+  );
+  const clearTradeFilters = () => {
+    setTradeSearchQuery('');
+    setDateRange('all');
+    setPerformanceFilter('all');
+    setFundingFilter('all');
+    setSourceFilter('all');
+    pagination.setPage(1);
+  };
   const {
     realizedNet,
     totalFees,
@@ -638,16 +799,12 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     averageHoldingDays,
     winRate
   } = tradeSummary;
-  const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
-  const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;
-  const showBackgroundUpdateIndicator = useDelayedActivityVisibility(isBackgroundUpdating);
-  const backgroundUpdateMessage = brokerTradesRefreshing
-    ? 'Refreshing TradeNet execution history in the background…'
-    : !cashflowHistoryReady
-      ? 'Restoring saved trade history in the background…'
-      : !cashflowSyncReady
-        ? 'Refreshing TradeNet cashflow history in the background…'
-        : 'Recalculating trade fees in the background…';
+  // Only broker execution refreshes animate the header. Cloud-history hydration,
+  // cashflow reconciliation and local fee calculation remain independent work.
+  const showBrokerRefreshIndicator = useDelayedActivityVisibility(brokerTradesRefreshing, {
+    showDelayMs: 700,
+    minimumVisibleMs: 650
+  });
 
   // Only block the desk when there is nothing cached or app-owned to display.
   // Cloud reconciliation and fee refreshes continue independently in the background.
@@ -665,8 +822,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         title={(
           <>
             {translateText('Trades', getAppLanguage())}
-            {showBackgroundUpdateIndicator && (
-              <span role="status" aria-label={translateText(backgroundUpdateMessage, getAppLanguage())} title={translateText(backgroundUpdateMessage, getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
+            {showBrokerRefreshIndicator && (
+              <span role="status" aria-label={translateText('Refreshing TradeNet execution history…', getAppLanguage())} title={translateText('Refreshing TradeNet execution history…', getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
                 <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
                 </svg>
@@ -770,16 +927,75 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
           >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
         </div>
       )}
-      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label="Closed trade performance summary">
+
+      <section class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-3" aria-label={translateText('Trade history filters', getAppLanguage())}>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Search ticker', getAppLanguage())}
+            <input id="closedHistorySearch" type="search" value={tradeSearchQuery} onInput={(event) => { setTradeSearchQuery((event.currentTarget as HTMLInputElement).value); pagination.setPage(1); }} placeholder={translateText('Search ticker or symbol', getAppLanguage())} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400" />
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Date range', getAppLanguage())}
+            <select id="closedHistoryDateRange" value={dateRange} onChange={(event) => { setDateRange((event.currentTarget as HTMLSelectElement).value as ClosedHistoryDateRange); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+              <option value="all">{translateText('All time', getAppLanguage())}</option>
+              <option value="7d">{translateText('Last 7 days', getAppLanguage())}</option>
+              <option value="30d">{translateText('Last 30 days', getAppLanguage())}</option>
+              <option value="90d">{translateText('Last 90 days', getAppLanguage())}</option>
+              <option value="year">{translateText('This year', getAppLanguage())}</option>
+            </select>
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Performance', getAppLanguage())}
+            <select id="closedHistoryPerformance" value={performanceFilter} onChange={(event) => { setPerformanceFilter((event.currentTarget as HTMLSelectElement).value as ClosedHistoryPerformanceFilter); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+              <option value="all">{translateText('All performance', getAppLanguage())}</option>
+              <option value="profitable">{translateText('Profitable', getAppLanguage())}</option>
+              <option value="losing">{translateText('Losing', getAppLanguage())}</option>
+              <option value="breakeven">{translateText('Breakeven', getAppLanguage())}</option>
+              <option value="unknown">{translateText('Unknown P&L', getAppLanguage())}</option>
+            </select>
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Funding', getAppLanguage())}
+            <select id="closedHistoryFunding" value={fundingFilter} onChange={(event) => { setFundingFilter((event.currentTarget as HTMLSelectElement).value as ClosedHistoryFundingFilter); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+              <option value="all">{translateText('All funding', getAppLanguage())}</option>
+              <option value="cash">{translateText('Cash', getAppLanguage())}</option>
+              <option value="margin">{translateText('Margin', getAppLanguage())}</option>
+              <option value="mix">{translateText('Mix', getAppLanguage())}</option>
+              <option value="unclassified">{translateText('Unclassified', getAppLanguage())}</option>
+            </select>
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Source', getAppLanguage())}
+            <select id="closedHistorySource" value={sourceFilter} onChange={(event) => { setSourceFilter((event.currentTarget as HTMLSelectElement).value as ClosedHistorySourceFilter); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+              <option value="all">{translateText('All sources', getAppLanguage())}</option>
+              <option value="tradenet">{translateText('TradeNet', getAppLanguage())}</option>
+              <option value="app">{translateText('App records', getAppLanguage())}</option>
+            </select>
+          </label>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p class="text-slate-400">{translateText('Summary reflects current filters', getAppLanguage())}</p>
+          <div class="flex items-center gap-3">
+            <span class="font-mono tabular-nums text-slate-300">{filteredTrades.length} / {trades.length} {translateText('records', getAppLanguage())}</span>
+            {hasActiveTradeFilters && (
+              <button type="button" onClick={clearTradeFilters} class="min-h-9 rounded border border-slate-700 px-3 font-semibold text-slate-300 transition hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+                {translateText('Clear filters', getAppLanguage())}
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label={translateText('Closed trade performance summary', getAppLanguage())}>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {realizedNet >= 0 ? '+' : '−'}{formatUSD(Math.abs(realizedNet))}
+            {knownProfitCount === 0 ? '—' : (realizedNet >= 0 ? '+' : '−') + formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
-          <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
+          <div class="mt-1 font-mono text-lg font-bold text-white">{knownProfitCount === 0 ? '—' : winRate.toFixed(1) + '%'}</div>
           <div class="text-[10px] text-slate-500">{translateText(`${winningTrades} of ${knownProfitCount} records with known profit profitable`, getAppLanguage())}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
@@ -792,7 +1008,64 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         </div>
       </div>
       
-      <div key={pagination.currentPage} class="closed-history-page-transition">
+
+      <div class="space-y-2 lg:hidden" aria-label={translateText('Closed trade history', getAppLanguage())}>
+        {visibleTrades.length === 0 ? (
+          <p role="status" class="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-8 text-center text-sm text-slate-500">
+            {trades.length > 0 ? translateText('No trades match the current filters', getAppLanguage()) : translateText('No closed trades recorded yet.', getAppLanguage())}
+          </p>
+        ) : visibleTrades.map((row, rowIndex) => {
+          const trade = row.trade as any;
+          const closedDate = getClosedTradeDate(trade);
+          const durationDays = getClosedTradeDurationDays(trade);
+          const profit = typeof row.profit === 'number' && Number.isFinite(row.profit) ? row.profit : null;
+          const profitText = profit === null
+            ? '—'
+            : (row.profitIsUpperBound === true ? '≤ ' : '') + (profit >= 0 ? '+' : '−') + formatUSD(Math.abs(profit));
+          const profitTone = profit === null || row.profitIsUpperBound === true
+            ? 'text-amber-300'
+            : profit >= 0 ? 'text-emerald-400' : 'text-rose-400';
+          const allocationKey = String(row.allocationKey || ((row.source || 'trade') + ':' + String(trade.id || rowIndex)));
+          const sourceLabel = row.source === 'tradenet' ? 'TradeNet' : translateText('App records', getAppLanguage());
+          return (
+            <article key={allocationKey} class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h2 class="font-semibold text-white">{String(trade.ticker || '—').replace('.US', '')}</h2>
+                  <p class="mt-0.5 text-[10px] text-slate-500">{formatClosedTradeDate(closedDate)} · {sourceLabel}</p>
+                </div>
+                <div class="shrink-0 text-right">
+                  <p class="text-[9px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Net P&L', getAppLanguage())}</p>
+                  <p class={`mt-0.5 font-mono text-base font-bold tabular-nums ${profitTone}`}>{profitText}</p>
+                </div>
+              </div>
+              <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-xs">
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Shares', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{trade.shares ?? '—'}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Duration', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Fees', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatUSD(Number(row.fees ?? 0))}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Commissions', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{row.commissionsComplete === false ? '≥' : ''}{formatUSD(Number(row.commissions ?? 0))}</p></div>
+              </div>
+              <details class="mt-3 border-t border-slate-800 pt-2">
+                <summary class="cursor-pointer list-none text-xs font-semibold text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+                  {translateText('Funding and guest allocation', getAppLanguage())}
+                </summary>
+                <div class="mt-2">
+                  <ClosedTradeAllocationControls
+                    row={row}
+                    rowIndex={rowIndex}
+                    guestUsers={guestUsers}
+                    guestNameById={guestNameById}
+                    savedAllocation={state.closedTradeAllocations?.[allocationKey]}
+                    compact
+                  />
+                </div>
+              </details>
+            </article>
+          );
+        })}
+      </div>
+
+      <div key={pagination.currentPage} class="hidden lg:block closed-history-page-transition">
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
@@ -826,88 +1099,19 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
                   >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
                 </div>
               </td></tr>
-            ) : trades.length === 0 ? (
+            ) : filteredTrades.length === 0 ? (
               <tr>
                 <td colSpan={8} class="py-8 text-center text-slate-500 italic">
-                  No closed trades recorded yet.
+                  {trades.length > 0 ? translateText('No trades match the current filters', getAppLanguage()) : translateText('No closed trades recorded yet.', getAppLanguage())}
                 </td>
               </tr>
             ) : (
               visibleTrades.map((row) => {
                 const { trade, index, source, profit: rowProfit, profitIsUpperBound, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
-                const allocationType = row.allocationType || 'margin';
-                const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
                 const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
-                const savedAllocation = state.closedTradeAllocations?.[allocationKey];
-                const rowQuantity = Math.max(0, Number((trade as any).shares) || 0);
-                const selectedGuestId = savedAllocation
-                  ? String(savedAllocation.guestId || '')
-                  : assignedGuests.length === 1 ? assignedGuests[0].guestId : '';
-                const persistAllocation = (fundingType: 'cash' | 'margin' | 'mix', cashValue: number, guestId = selectedGuestId) => {
-                  const cashQuantity = fundingType === 'cash' ? rowQuantity
-                    : fundingType === 'margin' ? 0
-                      : Math.min(rowQuantity, Math.max(0, Number(cashValue) || 0));
-                  emitBrokerEvent('broker:set-closed-trade-allocation', {
-                    rowId: allocationKey,
-                    allocation: {
-                      fundingType,
-                      cashQuantity,
-                      marginQuantity: Math.max(0, rowQuantity - cashQuantity),
-                      guestId: fundingType === 'margin' ? '' : guestId
-                    }
-                  });
-                };
-                const updateMixCash = (value: string) => persistAllocation(
-                  'mix',
-                  resolveActiveTrancheMixInput(value, rowQuantity, row.cashQuantity)
-                );
-                const updateMixMargin = (value: string) => persistAllocation(
-                  'mix',
-                  rowQuantity - resolveActiveTrancheMixInput(value, rowQuantity, row.marginQuantity)
-                );
-                // 1. Resolve Exit Date
-                const rawDate =
-                  (trade as any).exitDate ||
-                  (trade as any).sellDate ||
-                  (trade as any).closedAt ||
-                  (trade as any).date;
-
-                let closedDate: Date | null = null;
-                if (typeof rawDate === 'number') {
-                  closedDate = new Date(rawDate);
-                } else if (typeof rawDate === 'string') {
-                  const parsed = Date.parse(rawDate);
-                  if (!Number.isNaN(parsed)) closedDate = new Date(parsed);
-                }
-
-                const dateText =
-                  closedDate && !Number.isNaN(closedDate.getTime())
-                    ? closedDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: '2-digit'
-                    })
-                    : 'Unknown';
-
-                // 2. Resolve Duration in Days
-                const rawDuration = (trade as any).holdingDays ?? (trade as any).daysHeld;
-                let durationDays = rawDuration == null ? null : Number(rawDuration);
-                if (durationDays !== null && (!Number.isFinite(durationDays) || durationDays < 0)) durationDays = null;
-                if (
-                  (durationDays === null || durationDays <= 0) &&
-                  ((trade as any).buyDate || (trade as any).purchaseDate) &&
-                  ((trade as any).sellDate || (trade as any).exitDate)
-                ) {
-                  const bTime = new Date(
-                    (trade as any).buyDate || (trade as any).purchaseDate
-                  ).getTime();
-                  const sTime = new Date(
-                    (trade as any).sellDate || (trade as any).exitDate
-                  ).getTime();
-                  if (!Number.isNaN(bTime) && !Number.isNaN(sTime)) {
-                    durationDays = Math.max(0, (sTime - bTime) / 86400000);
-                  }
-                }
+                const closedDate = getClosedTradeDate(trade);
+                const dateText = formatClosedTradeDate(closedDate);
+                const durationDays = getClosedTradeDurationDays(trade);
 
                 // 3. Resolve Fees & Commissions
                 const fees = Number(rowFees ?? 0);
@@ -937,35 +1141,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
                       {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
                     </td>
                     <td data-label="Funding · guest · cash shares" class="py-2 px-3 whitespace-nowrap text-slate-300">
-                      <div class="flex flex-col items-center gap-1.5">
-                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}>
-                          <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={allocationType === 'cash' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-cyan-950 px-2 py-1 text-[10px] font-bold text-cyan-300' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Cash</button>
-                          <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={allocationType === 'margin' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-amber-950 px-2 py-1 text-[10px] font-bold text-amber-300' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Margin</button>
-                          <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={allocationType === 'mix' ? 'inline-flex min-h-11 min-w-11 items-center justify-center rounded bg-violet-950 px-2 py-1 text-[10px] font-bold text-violet-300' : 'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Mix</button>
-                        </div>
-                        {allocationType === 'mix' && (
-                          <div class="flex items-center justify-center gap-2 rounded border border-slate-800 bg-slate-950/70 p-1.5 font-sans">
-                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">Cash shares
-                              <input aria-label={String((trade as any).ticker || 'Trade') + ' cash shares'} type="number" min="0" max={rowQuantity} step="any" value={row.cashQuantity} onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
-                            </label>
-                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">Margin shares
-                              <input aria-label={String((trade as any).ticker || 'Trade') + ' margin shares'} type="number" min="0" max={rowQuantity} step="any" value={row.marginQuantity} onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
-                            </label>
-                          </div>
-                        )}
-                        {row.cashQuantity > 0 ? (
-                          <select aria-label={'Guest for ' + String((trade as any).ticker || 'trade') + ' cash shares'} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class="max-w-[11rem] rounded border border-slate-700 text-center bg-slate-950 px-2 py-1 text-[10px] text-slate-200">
-                            <option value="">Unassigned</option>
-                            {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId} class="text-center">Guest unavailable</option>}
-                            {guestUsers.map((user) => <option key={user.id} class="text-center" value={user.id}>{user.name}</option>)}
-                          </select>
-                        ) : <span class="text-[9px] text-slate-600">No cash allocation</span>}
-                        {assignedGuests.length > 0 && !savedAllocation && assignedGuests.map((assignment) => (
-                          <span key={assignment.guestId} class="text-[9px] text-cyan-300">
-                            {guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)} · {Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}
-                          </span>
-                        ))}
-                      </div>
+                      <ClosedTradeAllocationControls
+                        row={row}
+                        rowIndex={index}
+                        guestUsers={guestUsers}
+                        guestNameById={guestNameById}
+                        savedAllocation={state.closedTradeAllocations?.[allocationKey]}
+                      />
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
                       {formatUSD(fees)}
@@ -995,7 +1177,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         pageSize={pagination.pageSize}
         start={pagination.start}
         end={pagination.end}
-        total={trades.length}
+        total={filteredTrades.length}
         onPageChange={pagination.setPage}
         onPageSizeChange={pagination.setPageSize}
         className="closed-history-pagination pt-2"
