@@ -27,3 +27,10 @@ Paginate the rows users actually count:
 - For the projection table, which is nested inside an outer table body, render the pagination row with the same column span so the nested rows stay valid table markup.
 
 Page-size controls are deliberately compact, have a minimum 28px control height, are keyboard accessible, and use the shared English/Russian translation keys.
+
+## Filtering before pagination
+
+For tables with search or filters, derive the filtered row set first and pass its length to `useTablePagination`. Slice that same filtered array for rendering; do not paginate the unfiltered source and then filter only the current page. Reset to page 1 when a user changes a filter, while retaining the hook's automatic clamping for live data changes.
+
+Summaries must state whether they describe all history or the filtered result set. Classify incomplete values explicitly: an unknown or bounded P&L is not a profitable, losing, or break-even result, and date filters must not silently include rows with unknown dates. Preserve original display rows and financial values; filtering is presentation-only.
+
