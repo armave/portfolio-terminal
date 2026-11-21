@@ -476,7 +476,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Margin': 'Маржа',
   'Mix': 'Смешанное',
   'Unassigned': 'Не назначено',
-  'Unclassified': 'Не классифицировано',
   'Funding · guest · cash shares': 'Финансирование · гость · денежные акции',
   'Cash shares': 'Акции за денежные средства',
   'Margin shares': 'Маржинальные акции',
