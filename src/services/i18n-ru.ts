@@ -23,7 +23,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Unknown P&L': 'Неизвестная прибыль/убыток',
   'Funding': 'Финансирование',
   'All funding': 'Все типы финансирования',
-  'Unclassified': 'Не классифицировано',
   'Source': 'Источник',
   'All sources': 'Все источники',
   'App records': 'Записи приложения',

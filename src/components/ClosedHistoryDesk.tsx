@@ -963,7 +963,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               <option value="all">{translateText('All funding', getAppLanguage())}</option>
               <option value="cash">{translateText('Cash', getAppLanguage())}</option>
               <option value="margin">{translateText('Margin', getAppLanguage())}</option>
-              <option value="mix">{translateText('Mix', getAppLanguage())}</option>            </select>
+              <option value="mix">{translateText('Mix', getAppLanguage())}</option>
+            </select>
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Source', getAppLanguage())}
