@@ -243,7 +243,9 @@ describe('app localization', () => {
       'cash shares',
       'margin shares',
       'Funding type for trade',
-      'Guest for cash shares'
+      'Guest for cash shares',
+      'hrs',
+      'days'
     ];
     for (const copy of tradesHistoryCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);

@@ -120,6 +120,13 @@ function getClosedTradeDurationDays(trade: any): number | null {
   return durationDays;
 }
 
+function formatClosedTradeDuration(durationDays: number | null): string {
+  if (durationDays === null) return '—';
+  return durationDays < 1
+    ? Math.round(durationDays * 24) + ' ' + translateText('hrs', getAppLanguage())
+    : durationDays.toFixed(1) + ' ' + translateText('days', getAppLanguage());
+}
+
 function formatClosedTradeDate(date: Date | null): string {
   return date
     ? date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-GB', {
@@ -186,9 +193,9 @@ function ClosedTradeAllocationControls({
   return (
     <div class={`flex flex-col gap-1.5 ${compact ? 'items-stretch' : 'items-center'}`}>
       <div class={groupClass} role="group" aria-label={translateText('Funding type for trade', getAppLanguage()) + ' ' + ticker}>
-        <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={buttonBase + (allocationType === 'cash' ? ' bg-cyan-950 text-cyan-300' : ' text-slate-500 hover:text-slate-300')}>Cash</button>
-        <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={buttonBase + (allocationType === 'margin' ? ' bg-amber-950 text-amber-300' : ' text-slate-500 hover:text-slate-300')}>Margin</button>
-        <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={buttonBase + (allocationType === 'mix' ? ' bg-violet-950 text-violet-300' : ' text-slate-500 hover:text-slate-300')}>Mix</button>
+        <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={buttonBase + (allocationType === 'cash' ? ' bg-cyan-950 text-cyan-300' : ' text-slate-500 hover:text-slate-300')}>{translateText('Cash', getAppLanguage())}</button>
+        <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={buttonBase + (allocationType === 'margin' ? ' bg-amber-950 text-amber-300' : ' text-slate-500 hover:text-slate-300')}>{translateText('Margin', getAppLanguage())}</button>
+        <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={buttonBase + (allocationType === 'mix' ? ' bg-violet-950 text-violet-300' : ' text-slate-500 hover:text-slate-300')}>{translateText('Mix', getAppLanguage())}</button>
       </div>
       {allocationType === 'mix' && (
         <div class={`flex items-center justify-center gap-2 rounded border border-slate-800 bg-slate-950/70 p-1.5 font-sans ${compact ? 'w-full flex-wrap' : ''}`}>
@@ -252,7 +259,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const [cloudHistoryRetrying, setCloudHistoryRetrying] = useState(false);
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
-  const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
@@ -382,16 +388,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     if (!isWorkspaceSyncReady || !isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
     const key = allocationInputKey;
     if (key === lastRecalculationKey.current) {
-      setCashflowAllocationReady(true);
       return;
     }
-    setCashflowAllocationReady(false);
     let active = true;
     const isEffectCurrent = () => active && isSessionCurrent();
     void processCashflowRows(cashflows, false, isEffectCurrent).then((success) => {
       if (!isEffectCurrent()) return;
       if (success) lastRecalculationKey.current = key;
-      setCashflowAllocationReady(true);
     });
     return () => {
       active = false;
@@ -832,7 +835,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
           </>
         )}
         description={translateText('Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.', getAppLanguage())}
-        trailing={<div class="text-xs font-mono text-slate-500">{translateText(`${trades.length} records`, getAppLanguage())}</div>}
+        trailing={<div class="text-xs font-mono text-slate-500">{filteredTrades.length} / {trades.length} {translateText('records', getAppLanguage())}</div>}
       />
       
       <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
@@ -960,9 +963,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               <option value="all">{translateText('All funding', getAppLanguage())}</option>
               <option value="cash">{translateText('Cash', getAppLanguage())}</option>
               <option value="margin">{translateText('Margin', getAppLanguage())}</option>
-              <option value="mix">{translateText('Mix', getAppLanguage())}</option>
-              <option value="unclassified">{translateText('Unclassified', getAppLanguage())}</option>
-            </select>
+              <option value="mix">{translateText('Mix', getAppLanguage())}</option>            </select>
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Source', getAppLanguage())}
@@ -1041,7 +1042,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               </div>
               <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-xs">
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Shares', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{trade.shares ?? '—'}</p></div>
-                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Duration', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Duration', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatClosedTradeDuration(durationDays)}</p></div>
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Fees', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatUSD(Number(row.fees ?? 0))}</p></div>
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Commissions', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{row.commissionsComplete === false ? '≥' : ''}{formatUSD(Number(row.commissions ?? 0))}</p></div>
               </div>
@@ -1138,7 +1139,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
                       {(trade as any).shares ?? "—"}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
-                      {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
+                      {formatClosedTradeDuration(durationDays)}
                     </td>
                     <td data-label="Funding · guest · cash shares" class="py-2 px-3 whitespace-nowrap text-slate-300">
                       <ClosedTradeAllocationControls

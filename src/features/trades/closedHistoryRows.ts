@@ -270,7 +270,7 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
 
 export type ClosedHistoryDateRange = 'all' | '7d' | '30d' | '90d' | 'year';
 export type ClosedHistoryPerformanceFilter = 'all' | 'profitable' | 'losing' | 'breakeven' | 'unknown';
-export type ClosedHistoryFundingFilter = 'all' | 'cash' | 'margin' | 'mix' | 'unclassified';
+export type ClosedHistoryFundingFilter = 'all' | 'cash' | 'margin' | 'mix';
 export type ClosedHistorySourceFilter = 'all' | 'tradenet' | 'app';
 
 export interface ClosedHistoryFilters {

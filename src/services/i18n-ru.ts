@@ -1,5 +1,7 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
+  'days': 'дн.',
+  'hrs': 'ч',
   'Funding type for trade': 'Тип финансирования сделки',
   'cash shares': 'акции за счёт денежных средств',
   'margin shares': 'акции за счёт маржи',
