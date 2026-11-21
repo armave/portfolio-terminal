@@ -228,6 +228,7 @@ describe('app localization', () => {
       'Unknown P&L',
       'Funding',
       'All funding',
+      'Unclassified',
       'Source',
       'All sources',
       'App records',

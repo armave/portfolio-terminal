@@ -17,7 +17,7 @@ function readBrokerRuntimeSource(): string {
 describe('Trades USD amount formatting', () => {
   it('uses the shared currency formatter without adding duplicate dollar symbols', () => {
     const source = readSource();
-    expect(source).toContain("{realizedNet >= 0 ? '+' : '−'}{formatUSD(Math.abs(realizedNet))}");
+    expect(source).toContain("{knownProfitCount === 0 ? '—' : (realizedNet >= 0 ? '+' : '−') + formatUSD(Math.abs(realizedNet))}");
     expect(source).toContain("{formatUSD(totalFees)}");
     expect(source).toContain("{formatUSD(fees)}");
     expect(source).toContain('profitTextPrefix + sign + formatUSD(Math.abs(netProfit))');
@@ -61,7 +61,7 @@ describe('Trades cache-first rendering', () => {
     expect(source).not.toContain('usePortfolio()');
     expect(source).toContain('const trades = useMemo(');
     expect(source).toContain('buildClosedHistoryRows({');
-    expect(source).toContain('summarizeClosedHistoryRows(trades)');
+    expect(source).toContain('summarizeClosedHistoryRows(filteredTrades)');
     const model = readFileSync(new URL('../features/trades/closedHistoryRows.ts', import.meta.url), 'utf8');
     expect(model).toContain('time - previousTime <= 60 * 60 * 1000');
     expect(model).toContain('deduplicateClosedHistoryRows(appTrades, brokerRows)');
@@ -431,7 +431,7 @@ describe('closed history filters', () => {
     expect(filterClosedHistoryRows(rows, { ...filters, dateRange: '7d' }, now).map((row) => row.trade.ticker))
       .toEqual(['AAPL', 'TSLA']);
     expect(filterClosedHistoryRows(rows, { ...filters, dateRange: 'year' }, now).map((row) => row.trade.ticker))
-      .toEqual(['AAPL', 'TSLA', 'NVDA']);
+      .toEqual(['AAPL', 'MSFT', 'TSLA', 'NVDA']);
   });
 
   it('does not mutate or rewrite the source rows', () => {

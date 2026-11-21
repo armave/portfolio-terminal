@@ -191,7 +191,7 @@ describe('desk transitions and supporting layouts', () => {
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
 
   it('animates Trades pagination on a keyed block wrapper outside table internals', () => {
-    expect(closedSource).toContain('<div key={pagination.currentPage} class="closed-history-page-transition">');
+    expect(closedSource).toContain('<div key={pagination.currentPage} class="hidden lg:block closed-history-page-transition">');
     expect(closedSource).toContain('<tbody id="closedTradesTableBody"');
     expect(closedSource).toContain('className="closed-history-pagination pt-2"');
     expect(closedSource).toContain('controlsClassName="closed-history-pagination-controls"');

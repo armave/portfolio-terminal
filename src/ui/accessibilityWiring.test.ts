@@ -219,8 +219,10 @@ describe('Stage 10 accessibility wiring', () => {
   it('keeps Closed History funding controls at least 44px tall for touch use', () => {
     const source = readSource('../components/ClosedHistoryDesk.tsx');
 
-    expect(source).toContain("aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}");
-    expect(source.match(/inline-flex min-h-11 min-w-11 items-center justify-center/g)).toHaveLength(6);
+    expect(source).toContain("role=\"group\" aria-label={translateText('Funding type for trade', getAppLanguage()) + ' ' + ticker}");
+    expect(source).toContain("const buttonBase = compact");
+    expect(source).toContain("'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold'");
+    expect(source).toContain("'inline-flex min-h-11 flex-1 items-center justify-center rounded px-2 py-1 text-[10px] font-bold'");
     expect(source).toContain("aria-pressed={allocationType === 'cash'}");
     expect(source).toContain("aria-pressed={allocationType === 'margin'}");
     expect(source).toContain("aria-pressed={allocationType === 'mix'}");
