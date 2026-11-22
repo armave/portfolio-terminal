@@ -140,7 +140,7 @@ describe('commitPortfolioBackupImport', () => {
     expect(importFlow).not.toContain('previousState');
     expect(importFlow).not.toContain('saveState(state, pushStateToGist)');
     expect(importFlow.indexOf('commitPortfolioBackupImport('))
-      .toBeLessThan(importFlow.indexOf('await pushStateToGist(true)'));
+      .toBeLessThan(importFlow.indexOf('await pushStateToGist(true, true)'));
   });
 
   it('reports a failed atomic store commit without attempting a compensating import', () => {

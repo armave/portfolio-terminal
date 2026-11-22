@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { BrokerExecutionMetrics } from '../../domain/brokerExecutionMetrics';
 import type { ClosedTradeAttribution } from '../../domain/closedTradeAttribution';
 import type { FreedomExecutedTrade } from '../../types/freedomTrade';
-import { buildClosedHistoryRows, summarizeClosedHistoryRows } from './closedHistoryRows';
+import { buildClosedHistoryRows, sortClosedHistoryRows, summarizeClosedHistoryRows } from './closedHistoryRows';
 
 function createSell(overrides: Partial<FreedomExecutedTrade> = {}): FreedomExecutedTrade {
   return {
@@ -248,5 +248,32 @@ describe('broker closed-history net profit fallback', () => {
     );
 
     expect(row.profit).toBe(16.5);
+  });
+});
+
+
+describe('closed history sorting', () => {
+  const rows = [
+    { trade: { id: 'older', ticker: 'AAA', exitDate: '2026-11-10T10:00:00.000Z', shares: 2 }, profit: 25, profitIsUpperBound: false },
+    { trade: { id: 'newer', ticker: 'BBB', exitDate: '2026-11-20T10:00:00.000Z', shares: 8 }, profit: -10, profitIsUpperBound: false },
+    { trade: { id: 'unknown', ticker: 'CCC', exitDate: '2026-11-18T10:00:00.000Z', shares: 50 }, profit: null },
+    { trade: { id: 'bounded', ticker: 'DDD', exitDate: '2026-11-19T10:00:00.000Z', shares: 4 }, profit: 100, profitIsUpperBound: true },
+    { trade: { id: 'no-date', ticker: 'EEE', shares: 1 }, profit: 5, profitIsUpperBound: false }
+  ];
+  it('sorts newest and oldest dates while keeping unknown dates last', () => {
+    expect(sortClosedHistoryRows(rows, 'newest').map((row) => row.trade.id)).toEqual(['newer', 'bounded', 'unknown', 'older', 'no-date']);
+    expect(sortClosedHistoryRows(rows, 'oldest').map((row) => row.trade.id)).toEqual(['older', 'unknown', 'bounded', 'newer', 'no-date']);
+  });
+  it('ranks only exact net P&L values and keeps missing or upper-bound results last', () => {
+    expect(sortClosedHistoryRows(rows, 'profit-high').map((row) => row.trade.id)).toEqual(['older', 'no-date', 'newer', 'unknown', 'bounded']);
+    expect(sortClosedHistoryRows(rows, 'profit-low').map((row) => row.trade.id)).toEqual(['newer', 'no-date', 'older', 'unknown', 'bounded']);
+  });
+  it('sorts largest positions first without converting missing shares to zero', () => {
+    expect(sortClosedHistoryRows(rows, 'largest').map((row) => row.trade.id)).toEqual(['unknown', 'newer', 'bounded', 'older', 'no-date']);
+  });
+  it('does not mutate the original rows', () => {
+    const original = [...rows];
+    sortClosedHistoryRows(rows, 'profit-high');
+    expect(rows).toEqual(original);
   });
 });

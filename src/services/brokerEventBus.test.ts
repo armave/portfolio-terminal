@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addBrokerEventListener, emitBrokerEvent } from './brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent, getLastExecutedTradesRefreshAt } from './brokerEventBus';
 
 describe('typed broker event bus', () => {
   afterEach(() => {
@@ -135,5 +135,20 @@ describe('typed broker event bus', () => {
     removeAwaitableAccount();
     removeAwaitableTrades();
     removeAwaitableOrders();
+  });
+});
+
+
+describe('execution-history provider freshness', () => {
+  it('retains confirmed provider refreshes per authenticated session', () => {
+    const refresh = { source: 'rest' as const, completedAt: 1_800_000_000_000, sessionIdentity: 'admin:freshness-test' };
+    expect(getLastExecutedTradesRefreshAt(refresh.sessionIdentity)).toBeNull();
+    emitBrokerEvent('broker:executed-trades-refresh-complete', refresh);
+    expect(getLastExecutedTradesRefreshAt(refresh.sessionIdentity)).toBe(refresh.completedAt);
+    expect(getLastExecutedTradesRefreshAt('admin:another-session')).toBeNull();
+  });
+  it('does not accept invalid provider completion timestamps', () => {
+    emitBrokerEvent('broker:executed-trades-refresh-complete', { source: 'rest', completedAt: Number.NaN, sessionIdentity: 'admin:invalid-freshness-test' });
+    expect(getLastExecutedTradesRefreshAt('admin:invalid-freshness-test')).toBeNull();
   });
 });

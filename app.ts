@@ -695,7 +695,7 @@ function settleInitialWorkspaceSync(): void {
   portfolioEquitySyncRuntime.flushDeferredPerformanceSnapshot();
 }
 
-async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
+async function pushStateToCloud(forceImmediate = false, announceProgress = false): Promise<boolean> {
   if (!canWriteCloudState) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
@@ -715,7 +715,7 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   const doPush = async (): Promise<boolean> => {
     const request = (async (): Promise<boolean> => {
       try {
-        const ok = await syncCloudState('push');
+        const ok = await syncCloudState('push', { announceProgress });
         if (ok) {
           setCloudStatus('synced', 'UPDATED');
           return true;
@@ -793,7 +793,7 @@ function releaseStartupCloudWrites(): void {
   if (startupCloudWriteGate.releaseAfterAcceptedStartupPull()) flushDeferredStartupCloudWrite();
 }
 
-async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean } = {}) {
+async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean; announceProgress?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') return pullGuestPortfolioSnapshot();
     return false;
@@ -843,6 +843,7 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logAppMessage,
     onPushStart: () => {
+      if (pullOptions.announceProgress !== true) return;
       setCloudStatus('syncing', 'WRITING...');
       setCloudSyncStatus({ text: 'Cloud sync in progress', status: 'syncing' });
     },
@@ -927,7 +928,7 @@ async function resetToBlankState(): Promise<void> {
   }
 
   // Only enqueue remote writes after the complete local reset is durable.
-  pushStateToGist(true);
+  pushStateToGist(true, true);
   renderBoard();
   logAppMessage("[System]: Portfolio reset to a clean blank slate.");
 
@@ -1749,7 +1750,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   isWorkspaceReady: () => initialWorkspaceSyncSettled,
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
-  syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
+  syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true, false) : undefined,
   syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -1832,7 +1833,7 @@ async function importBackupFile(file: File) {
     state = portfolioStore.getState();
     // importState is already the atomic local commit; schedule cloud sync only
     // after it succeeds instead of persisting the same snapshot a second time.
-    await pushStateToGist(true);
+    await pushStateToGist(true, true);
     renderBoard();
     logAppMessage(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
   } catch (error) {
@@ -2119,7 +2120,7 @@ function bindStartupActions() {
     refreshQuotes: () => refreshAllLivePrices(true),
     pushCloud: async () => {
       state = portfolioStore.getState();
-      return pushStateToCloud(true);
+      return pushStateToCloud(true, true);
     },
     syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : Promise.resolve(false),
     pullGuestSnapshot: refreshGuestPortfolioSnapshot,

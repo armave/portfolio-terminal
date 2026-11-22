@@ -44,7 +44,7 @@ export function resolveCloudSyncLabel(
   tone: CloudSyncTone,
   language: ReturnType<typeof getAppLanguage>
 ): string {
-  if (tone === 'success') return translateText('Synced', language);
+  if (tone === 'success') return translateText('Saved', language);
   if (tone === 'conflict') return translateText('Conflict', language);
   if (tone === 'pending') {
     const isPending = String(cloudStatus.status || '').toLowerCase() === 'pending';
@@ -122,7 +122,7 @@ export function CloudSyncIndicator({
       ? `${translateText('Last synced', language)}: ${exactTime}`
       : translateText(cloudSyncStatus.text || cloudStatus.text || 'Offline', language);
   const accessibleText = [
-    'KV',
+    translateText('Cloud', language),
     statusLabel,
     relativeTime,
     exactTime ? `${translateText('Last synced', language)}: ${exactTime}` : ''
@@ -132,8 +132,6 @@ export function CloudSyncIndicator({
     <div
       id="cloudStatus"
       class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
-      aria-live="polite"
-      aria-atomic="true"
     >
       <button
         type="button"
