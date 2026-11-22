@@ -23,7 +23,7 @@ import { calculateFreedomMarginFeeAllocations, createFreedomMarginFeeAllocationI
 import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
 import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
-import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent, getLastExecutedTradesRefreshAt } from '../services/brokerEventBus';
 import { TablePagination } from './TablePagination';
 import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
@@ -31,11 +31,12 @@ import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from
 import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
-import { buildClosedHistoryRows, filterClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
+import { buildClosedHistoryRows, filterClosedHistoryRows, sortClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
 import type {
   ClosedHistoryDateRange,
   ClosedHistoryFundingFilter,
-  ClosedHistoryPerformanceFilter
+  ClosedHistoryPerformanceFilter,
+  ClosedHistorySortOrder
 } from '../features/trades/closedHistoryRows';
 import { useDelayedActivityVisibility } from '../ui/delayedActivityVisibility';
 
@@ -247,6 +248,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const brokerTradesRefreshing = brokerExecutionHistory.status === 'refreshing';
   const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
     brokerExecutionHistory.status === 'error';
+  const [lastBrokerRefreshAt, setLastBrokerRefreshAt] = useState(
+    () => getLastExecutedTradesRefreshAt(`admin:${accountId}`)
+  );
   const [brokerReconciliationOpen, setBrokerReconciliationOpen] = useState(false);
   const [BrokerReconciliationView, setBrokerReconciliationView] = useState<
     typeof import('./BrokerTransactionReconciliation').BrokerTransactionReconciliation | null
@@ -276,8 +280,18 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
     dispatchBrokerExecutionHistory({ type: 'refresh' });
-    emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
+    emitBrokerEvent('broker:request-executed-trades-and-wait', {
+      priority: 'interactive',
+      resolve: (succeeded) => {
+        if (!succeeded && isSessionCurrent()) dispatchBrokerExecutionHistory({ type: 'failure' });
+      }
+    });
   };
+  useEffect(() => addBrokerEventListener('broker:executed-trades-refresh-complete', (refresh) => {
+    if (refresh.source === 'rest' && refresh.sessionIdentity === `admin:${accountId}` && isSessionCurrent()) {
+      setLastBrokerRefreshAt(refresh.completedAt);
+    }
+  }), [accountId]);
   useEffect(() => {
     let active = true;
     void listUsers().then((users) => {
@@ -782,8 +796,10 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     }),
     [trades, tradeSearchQuery, dateRange, performanceFilter, fundingFilter]
   );
-  const pagination = useTablePagination('closed-history', filteredTrades.length, 10);
-  const visibleTrades = sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize);
+  const [sortOrder, setSortOrder] = useState<ClosedHistorySortOrder>('newest');
+  const sortedTrades = useMemo(() => sortClosedHistoryRows(filteredTrades, sortOrder), [filteredTrades, sortOrder]);
+  const pagination = useTablePagination('closed-history', sortedTrades.length, 10);
+  const visibleTrades = sliceTablePage(sortedTrades, pagination.currentPage, pagination.pageSize);
   const tradeSummary = useMemo(
     () => summarizeClosedHistoryRows(filteredTrades),
     [filteredTrades]
@@ -815,6 +831,12 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     showDelayMs: 700,
     minimumVisibleMs: 650
   });
+  const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';
+  const lastBrokerRefreshText = lastBrokerRefreshAt
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastBrokerRefreshAt))
+    : translateText('No provider refresh confirmed yet', getAppLanguage());
+  const brokerHistoryStatus = brokerTradesError ? 'Stale' : lastBrokerRefreshAt ? 'Updated' : brokerTrades.length > 0 ? 'Cached' : 'Not loaded';
+  const cashflowStatus = cashflowSyncMessage ? 'Needs attention' : cashflowHistoryReady && cashflowSyncReady ? 'Complete' : 'Pending';
 
   // Only block the desk when there is nothing cached or app-owned to display.
   // Cloud reconciliation and fee refreshes continue independently in the background.
@@ -829,21 +851,32 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   return (
     <section class="desk-page-content min-w-0 space-y-4" aria-label={translateText('Trades', getAppLanguage())}>
       <DeskPageHeader
-        title={(
-          <>
-            {translateText('Trades', getAppLanguage())}
-            {showBrokerRefreshIndicator && (
-              <span role="status" aria-label={translateText('Refreshing TradeNet execution history…', getAppLanguage())} title={translateText('Refreshing TradeNet execution history…', getAppLanguage())} class="inline-flex h-4 w-4 items-center justify-center text-purple-300">
-                <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
-                </svg>
-              </span>
-            )}
-          </>
-        )}
+        title={translateText('Trades', getAppLanguage())}
         description={translateText('Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.', getAppLanguage())}
-        trailing={<div class="text-xs font-mono text-slate-500">{filteredTrades.length} / {trades.length} {translateText('records', getAppLanguage())}</div>}
-      />
+        trailing={(
+          <div class="flex min-w-0 flex-col items-center gap-2 text-xs sm:items-end">
+            <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center sm:justify-end sm:text-right">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="text-slate-400">{translateText('TradeNet history', getAppLanguage())}</span>
+                <span class={brokerTradesError ? 'rounded border border-amber-700/70 px-1.5 py-0.5 font-semibold text-amber-200' : lastBrokerRefreshAt ? 'rounded border border-emerald-800/70 px-1.5 py-0.5 font-semibold text-emerald-300' : 'rounded border border-slate-700 px-1.5 py-0.5 font-semibold text-slate-300'}>{translateText(brokerHistoryStatus, getAppLanguage())}</span>
+              </span>
+              <span class="text-slate-400">{lastBrokerRefreshAt ? `${translateText('Last REST history refresh', getAppLanguage())}: ${lastBrokerRefreshText}` : lastBrokerRefreshText}</span>
+              <span class="text-slate-400">{translateText('Cashflow reconciliation', getAppLanguage())}: {translateText(cashflowStatus, getAppLanguage())}</span>
+              {showBrokerRefreshIndicator && (
+                <span role="status" aria-label={translateText('Refreshing TradeNet execution history…', getAppLanguage())} title={translateText('Refreshing TradeNet execution history…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-purple-300">
+                  <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
+                  </svg>
+                  {translateText('Refreshing history…', getAppLanguage())}
+                </span>
+              )}
+            </div>
+            <button type="button" onClick={retryBrokerTrades} disabled={brokerTradesRefreshing}
+              class="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-slate-700 px-3 font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={translateText('Refresh history', getAppLanguage())}>{translateText('Refresh history', getAppLanguage())}</button>
+          </div>
+        )}
+
       
       <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
         <button
@@ -927,19 +960,19 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
 
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-          <span>TradeNet refresh failed. Showing saved history, which may be out of date.</span>
+          <span>{translateText('TradeNet refresh failed. Showing saved history, which may be out of date.', getAppLanguage())}</span>
           <button
             type="button"
             onClick={retryBrokerTrades}
             disabled={brokerTradesRefreshing}
-            aria-label="Retry TradeNet history"
+            aria-label={translateText('Retry TradeNet history', getAppLanguage())}
             class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
-          >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
+          >{translateText('Retry', getAppLanguage())}</button>
         </div>
       )}
 
       <section class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-3" aria-label={translateText('Trade history filters', getAppLanguage())}>
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Search ticker', getAppLanguage())}
             <input id="closedHistorySearch" type="search" value={tradeSearchQuery} onInput={(event) => { setTradeSearchQuery((event.currentTarget as HTMLInputElement).value); pagination.setPage(1); }} placeholder={translateText('Search ticker or symbol', getAppLanguage())} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400" />
@@ -973,6 +1006,16 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               <option value="mix">{translateText('Mix', getAppLanguage())}</option>
             </select>
           </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Sort by', getAppLanguage())}
+            <select id="closedHistorySort" value={sortOrder} onChange={(event) => { setSortOrder((event.currentTarget as HTMLSelectElement).value as ClosedHistorySortOrder); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
+              <option value="newest">{translateText('Newest first', getAppLanguage())}</option>
+              <option value="oldest">{translateText('Oldest first', getAppLanguage())}</option>
+              <option value="profit-high">{translateText('Highest net P&L', getAppLanguage())}</option>
+              <option value="profit-low">{translateText('Lowest net P&L', getAppLanguage())}</option>
+              <option value="largest">{translateText('Largest position', getAppLanguage())}</option>
+            </select>
+          </label>
         </div>
         <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
           <p class="text-slate-400">{translateText('Summary reflects current filters', getAppLanguage())}</p>
@@ -989,22 +1032,24 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
 
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label={translateText('Closed trade performance summary', getAppLanguage())}>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
-          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{translateText(hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L', getAppLanguage())}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {knownProfitCount === 0 ? '—' : (realizedNet >= 0 ? '+' : '−') + formatUSD(Math.abs(realizedNet))}
           </div>
+          {hasUnknownProfit && <p class="mt-1 text-[10px] leading-relaxed text-slate-500">{translateText('Unknown or incomplete trade results are excluded from the net P&L total and win rate.', getAppLanguage())}</p>}
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
-          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{translateText('Win rate', getAppLanguage())}</div>
           <div class="mt-1 font-mono text-lg font-bold text-white">{knownProfitCount === 0 ? '—' : winRate.toFixed(1) + '%'}</div>
           <div class="text-[10px] text-slate-500">{translateText(`${winningTrades} of ${knownProfitCount} records with known profit profitable`, getAppLanguage())}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
-          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{translateText('Fees & commissions', getAppLanguage())}</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}{formatUSD(totalFees)}</div>
+          {hasIncompleteCommissions && <p class="mt-1 text-[10px] leading-relaxed text-slate-500">{translateText('Known fees and commissions are a lower bound; missing commission inputs may increase actual costs.', getAppLanguage())}</p>}
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
-          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{translateText('Avg. holding time', getAppLanguage())}</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
         </div>
       </div>
@@ -1042,6 +1087,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
                 <div class="shrink-0 text-right">
                   <p class="text-[9px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Net P&L', getAppLanguage())}</p>
                   <p class={`mt-0.5 font-mono text-base font-bold tabular-nums ${profitTone}`}>{profitText}</p>
+                   {row.profitIsUpperBound === true
+                     ? <p class="mt-1 max-w-56 text-[10px] leading-relaxed text-amber-300">{translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage())}</p>
+                     : profit === null
+                       ? <p class="mt-1 max-w-56 text-[10px] leading-relaxed text-slate-500">{translateText('Net P&L unavailable because required trade or cost-basis data is incomplete.', getAppLanguage())}</p>
+                       : null}
                 </div>
               </div>
               <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-xs">

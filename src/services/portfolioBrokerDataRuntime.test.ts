@@ -687,3 +687,23 @@ describe('portfolio broker data runtime', () => {
     expect(stale.events).toEqual([]);
   });
 });
+
+
+describe('execution-history provider refresh confirmation', () => {
+  it('publishes completion only after a successful REST history read', async () => {
+    const fixture = createFixture({ now: () => 1_800_000_000_123, fetchExecutedTrades: vi.fn(async () => [trade('provider-refresh')]) });
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+    expect(fixture.events).toContainEqual({
+      type: 'broker:executed-trades-refresh-complete',
+      payload: { source: 'rest', completedAt: 1_800_000_000_123, sessionIdentity: 'admin:1' }
+    });
+  });
+  it('does not report cached live-stream history as a new provider refresh', async () => {
+    const cached = trade('cached-stream-trade');
+    const fixture = createFixture();
+    fixture.setSaved([cached]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    await expect(fixture.runtime.loadExecutedTrades(fixture.session, 'background')).resolves.toBe(true);
+    expect(fixture.events.some((event) => event.type === 'broker:executed-trades-refresh-complete')).toBe(false);
+  });
+});

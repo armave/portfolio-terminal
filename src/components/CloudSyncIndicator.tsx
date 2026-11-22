@@ -44,7 +44,7 @@ export function resolveCloudSyncLabel(
   tone: CloudSyncTone,
   language: ReturnType<typeof getAppLanguage>
 ): string {
-  if (tone === 'success') return translateText('Synced', language);
+  if (tone === 'success') return translateText('Saved', language);
   if (tone === 'conflict') return translateText('Conflict', language);
   if (tone === 'pending') {
     const isPending = String(cloudStatus.status || '').toLowerCase() === 'pending';
@@ -122,7 +122,7 @@ export function CloudSyncIndicator({
       ? `${translateText('Last synced', language)}: ${exactTime}`
       : translateText(cloudSyncStatus.text || cloudStatus.text || 'Offline', language);
   const accessibleText = [
-    'KV',
+    translateText('Cloud', language),
     statusLabel,
     relativeTime,
     exactTime ? `${translateText('Last synced', language)}: ${exactTime}` : ''
@@ -131,9 +131,7 @@ export function CloudSyncIndicator({
   return (
     <div
       id="cloudStatus"
-      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
-      aria-live="polite"
-      aria-atomic="true"
+      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`
     >
       <button
         type="button"
@@ -144,7 +142,9 @@ export function CloudSyncIndicator({
         onClick={() => setDetailsOpen((open) => !open)}
       >
         <span class="cloud-sync-indicator__dot" aria-hidden="true" />
-        <span class="cloud-sync-indicator__primary">KV</span>
+        <span class="cloud-sync-indicator__primary">{translateText('Cloud', language)}</span>
+        <span class="cloud-sync-indicator__state" role="status" aria-live="polite">{statusLabel}</span>
+        {relativeTime && <span class="cloud-sync-indicator__time">{relativeTime}</span>}
       </button>
       {detailsText && (
         <span id="cloudStatusExactTime" class="cloud-sync-indicator__timestamp" role="tooltip">

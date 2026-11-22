@@ -332,6 +332,7 @@ interface FilterableClosedHistoryRow {
     sellDate?: unknown;
     closedAt?: unknown;
     date?: unknown;
+    shares?: unknown;
   };
   profit?: number | null;
   profitIsUpperBound?: boolean;
@@ -394,3 +395,37 @@ export function filterClosedHistoryRows<T extends FilterableClosedHistoryRow>(
   });
 }
 
+export type ClosedHistorySortOrder = 'newest' | 'oldest' | 'profit-high' | 'profit-low' | 'largest';
+
+/** Sort display rows without mutating them or treating unknown values as zero. */
+export function sortClosedHistoryRows<T extends FilterableClosedHistoryRow>(
+  rows: readonly T[],
+  sortOrder: ClosedHistorySortOrder
+): T[] {
+  const indexedRows = rows.map((row, index) => ({ row, index }));
+  indexedRows.sort((left, right) => {
+    let comparison = 0;
+    if (sortOrder === 'newest' || sortOrder === 'oldest') {
+      const leftTime = getClosedHistoryTimestamp(left.row);
+      const rightTime = getClosedHistoryTimestamp(right.row);
+      const leftKnown = Number.isFinite(leftTime);
+      const rightKnown = Number.isFinite(rightTime);
+      if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+      if (leftKnown && rightKnown) comparison = sortOrder === 'newest' ? rightTime - leftTime : leftTime - rightTime;
+    } else if (sortOrder === 'profit-high' || sortOrder === 'profit-low') {
+      const leftKnown = isKnownClosedTradeProfit(left.row);
+      const rightKnown = isKnownClosedTradeProfit(right.row);
+      if (leftKnown !== rightKnown) return leftKnown ? -1 : 1;
+      if (leftKnown && rightKnown) comparison = sortOrder === 'profit-high'
+        ? Number(right.row.profit) - Number(left.row.profit)
+        : Number(left.row.profit) - Number(right.row.profit);
+    } else {
+      const leftShares = finiteNumberOrNull(left.row.trade?.shares);
+      const rightShares = finiteNumberOrNull(right.row.trade?.shares);
+      if ((leftShares !== null) !== (rightShares !== null)) return leftShares !== null ? -1 : 1;
+      if (leftShares !== null && rightShares !== null) comparison = Math.abs(rightShares) - Math.abs(leftShares);
+    }
+    return comparison || left.index - right.index;
+  });
+  return indexedRows.map(({ row }) => row);
+}
