@@ -107,7 +107,7 @@ describe('resolveCloudSyncDisplayTone', () => {
 
 describe('cloud sync progress presentation', () => {
   it('keeps scheduled guest snapshot polling out of the global cloud-write progress state', () => {
-    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\\r\\n/g, '\\n');
+    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     const start = source.indexOf('async function refreshGuestPortfolioSnapshot');
     const end = source.indexOf('async function pullGuestPortfolioSnapshot', start);
     const guestRefresh = source.slice(start, end);
