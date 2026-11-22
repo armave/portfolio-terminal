@@ -131,7 +131,7 @@ export function CloudSyncIndicator({
   return (
     <div
       id="cloudStatus"
-      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`
+      class={`workspace-header-sync cloud-sync-indicator cloud-sync-indicator--${displayTone}${detailsOpen ? ' cloud-sync-indicator--details-open' : ''}`}
     >
       <button
         type="button"

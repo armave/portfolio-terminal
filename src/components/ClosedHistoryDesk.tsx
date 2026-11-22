@@ -876,8 +876,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               aria-label={translateText('Refresh history', getAppLanguage())}>{translateText('Refresh history', getAppLanguage())}</button>
           </div>
         )}
+      />
 
-      
       <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
         <button
           type="button"
