@@ -9,7 +9,8 @@ The Trades desk presents cached records immediately while keeping broker freshne
 - Re-emitting cached rows because a healthy stream is connected, or reusing a recent cached read, does not advance provider freshness.
 - The explicit **Refresh history** action uses the existing waitable interactive broker request so it performs a provider catch-up rather than merely replaying cached history.
 - A failed refresh leaves last-known-good history visible and labels it stale with a retry path.
-- The global cloud indicator represents encrypted cloud workspace synchronization, not broker freshness. Background checkpoint writes update the last-confirmed state without entering an animated pending state; explicit/manual operations may announce progress. Errors and revision conflicts remain visible.
+- The global cloud indicator represents encrypted cloud workspace synchronization, not broker freshness. Background checkpoint writes and scheduled guest-projection reads do not enter an animated pending state; explicit/manual operations own the aggregate progress state. Errors and revision conflicts remain visible.
+- Repeated Manual Sync requests within one authenticated session join the active request instead of launching duplicate provider calls. Requests from a different account session remain isolated, and late results from an old session cannot overwrite the current session's status.
 
 ## Sorting and filtering
 
