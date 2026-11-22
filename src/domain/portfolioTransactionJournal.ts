@@ -1235,7 +1235,7 @@ export function appendBrokerHistoryAuditEvents(
                 ? 'cash.withdrawal'
                 : text.includes('deposit') || text.includes('funding') || text.includes('credit')
                   ? 'cash.deposit'
-                  : /\\badjustment\\b|\\bcorrection\\b/.test(text)
+                  : /\badjustment\b|\bcorrection\b/.test(text)
                     ? 'cash.adjustment'
                     : null;
     // Unknown/provider-specific labels remain in the source cashflow history
