@@ -24,7 +24,6 @@ import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudi
 import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
-import { TableScrollRegion } from './TableScrollRegion';
 import { TablePagination } from './TablePagination';
 import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
@@ -36,8 +35,7 @@ import { buildClosedHistoryRows, filterClosedHistoryRows, summarizeClosedHistory
 import type {
   ClosedHistoryDateRange,
   ClosedHistoryFundingFilter,
-  ClosedHistoryPerformanceFilter,
-  ClosedHistorySourceFilter
+  ClosedHistoryPerformanceFilter
 } from '../features/trades/closedHistoryRows';
 import { useDelayedActivityVisibility } from '../ui/delayedActivityVisibility';
 
@@ -135,6 +133,18 @@ function formatClosedTradeDate(date: Date | null): string {
       year: '2-digit'
     })
     : translateText('Unknown', getAppLanguage());
+}
+
+function formatClosedTradePrice(value: unknown, currency: unknown): string {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return '—';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '—';
+  const formatted = numeric.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4
+  });
+  const currencyCode = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+  return currencyCode ? `${formatted} ${currencyCode}` : formatted;
 }
 
 function ClosedTradeAllocationControls({
@@ -763,16 +773,14 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const [dateRange, setDateRange] = useState<ClosedHistoryDateRange>('all');
   const [performanceFilter, setPerformanceFilter] = useState<ClosedHistoryPerformanceFilter>('all');
   const [fundingFilter, setFundingFilter] = useState<ClosedHistoryFundingFilter>('all');
-  const [sourceFilter, setSourceFilter] = useState<ClosedHistorySourceFilter>('all');
   const filteredTrades = useMemo(
     () => filterClosedHistoryRows(trades, {
       query: tradeSearchQuery,
       dateRange,
       performance: performanceFilter,
-      funding: fundingFilter,
-      source: sourceFilter
+      funding: fundingFilter
     }),
-    [trades, tradeSearchQuery, dateRange, performanceFilter, fundingFilter, sourceFilter]
+    [trades, tradeSearchQuery, dateRange, performanceFilter, fundingFilter]
   );
   const pagination = useTablePagination('closed-history', filteredTrades.length, 10);
   const visibleTrades = sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize);
@@ -782,14 +790,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   );
   const hasActiveTradeFilters = Boolean(
     tradeSearchQuery.trim() || dateRange !== 'all' || performanceFilter !== 'all' ||
-    fundingFilter !== 'all' || sourceFilter !== 'all'
+    fundingFilter !== 'all'
   );
   const clearTradeFilters = () => {
     setTradeSearchQuery('');
     setDateRange('all');
     setPerformanceFilter('all');
     setFundingFilter('all');
-    setSourceFilter('all');
     pagination.setPage(1);
   };
   const {
@@ -932,7 +939,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       )}
 
       <section class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-3" aria-label={translateText('Trade history filters', getAppLanguage())}>
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Search ticker', getAppLanguage())}
             <input id="closedHistorySearch" type="search" value={tradeSearchQuery} onInput={(event) => { setTradeSearchQuery((event.currentTarget as HTMLInputElement).value); pagination.setPage(1); }} placeholder={translateText('Search ticker or symbol', getAppLanguage())} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400" />
@@ -964,14 +971,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               <option value="cash">{translateText('Cash', getAppLanguage())}</option>
               <option value="margin">{translateText('Margin', getAppLanguage())}</option>
               <option value="mix">{translateText('Mix', getAppLanguage())}</option>
-            </select>
-          </label>
-          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-            {translateText('Source', getAppLanguage())}
-            <select id="closedHistorySource" value={sourceFilter} onChange={(event) => { setSourceFilter((event.currentTarget as HTMLSelectElement).value as ClosedHistorySourceFilter); pagination.setPage(1); }} class="min-h-10 w-full rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400">
-              <option value="all">{translateText('All sources', getAppLanguage())}</option>
-              <option value="tradenet">{translateText('TradeNet', getAppLanguage())}</option>
-              <option value="app">{translateText('App records', getAppLanguage())}</option>
             </select>
           </label>
         </div>
@@ -1011,7 +1010,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       </div>
       
 
-      <div class="space-y-2 lg:hidden" aria-label={translateText('Closed trade history', getAppLanguage())}>
+      <div key={pagination.currentPage} id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label={translateText('Closed trade history', getAppLanguage())}>
         {visibleTrades.length === 0 ? (
           <p role="status" class="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-8 text-center text-sm text-slate-500">
             {trades.length > 0 ? translateText('No trades match the current filters', getAppLanguage()) : translateText('No closed trades recorded yet.', getAppLanguage())}
@@ -1027,14 +1026,18 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
           const profitTone = profit === null || row.profitIsUpperBound === true
             ? 'text-amber-300'
             : profit >= 0 ? 'text-emerald-400' : 'text-rose-400';
+          const grossProfit = typeof row.grossProfit === 'number' && Number.isFinite(row.grossProfit)
+            ? row.grossProfit
+            : null;
           const allocationKey = String(row.allocationKey || ((row.source || 'trade') + ':' + String(trade.id || rowIndex)));
           const sourceLabel = row.source === 'tradenet' ? 'TradeNet' : translateText('App records', getAppLanguage());
           return (
-            <article key={allocationKey} class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+            <article key={allocationKey} class="min-w-0 rounded-lg border border-slate-800 bg-slate-950/60 p-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <h2 class="font-semibold text-white">{String(trade.ticker || '—').replace('.US', '')}</h2>
                   <p class="mt-0.5 text-[10px] text-slate-500">{formatClosedTradeDate(closedDate)} · {sourceLabel}</p>
+                  {closedDate && <p class="mt-0.5 text-[10px] text-slate-500">{formatRelativeTime(closedDate)}</p>}
                 </div>
                 <div class="shrink-0 text-right">
                   <p class="text-[9px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Net P&L', getAppLanguage())}</p>
@@ -1044,6 +1047,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               <div class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 text-xs">
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Shares', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{trade.shares ?? '—'}</p></div>
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Duration', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatClosedTradeDuration(durationDays)}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Avg. entry', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatClosedTradePrice(row.entryPrice, row.priceCurrency)}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Avg. exit', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatClosedTradePrice(row.exitPrice, row.priceCurrency)}</p></div>
+                <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Gross P&L', getAppLanguage())}</p><p class={grossProfit === null ? 'mt-0.5 font-mono text-slate-500' : grossProfit >= 0 ? 'mt-0.5 font-mono text-emerald-400' : 'mt-0.5 font-mono text-rose-400'}>{grossProfit === null ? '—' : (grossProfit >= 0 ? '+' : '−') + formatUSD(Math.abs(grossProfit))}</p></div>
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Fees', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{formatUSD(Number(row.fees ?? 0))}</p></div>
                 <div><p class="text-[9px] uppercase tracking-wide text-slate-500">{translateText('Commissions', getAppLanguage())}</p><p class="mt-0.5 font-mono text-slate-200">{row.commissionsComplete === false ? '≥' : ''}{formatUSD(Number(row.commissions ?? 0))}</p></div>
               </div>
@@ -1067,111 +1073,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         })}
       </div>
 
-      <div key={pagination.currentPage} class="hidden lg:block closed-history-page-transition">
-      <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
-        <table class="w-full min-w-[900px] text-left text-xs font-mono">
-          <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
-          <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
-            <tr>
-              <th scope="col" class="py-2.5 px-3">Ticker</th>
-              <th scope="col" class="py-2.5 px-3">Date Closed</th>
-              <th scope="col" class="py-2.5 px-3 text-right">Shares</th>
-              <th scope="col" class="py-2.5 px-3 text-right">Duration</th>
-              <th scope="col" class="py-2.5 px-3">Funding · guest · cash shares</th>
-              <th scope="col" class="py-2.5 px-3 text-right">Fees</th>
-              <th scope="col" class="py-2.5 px-3 text-right">Commissions</th>
-              <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
-            </tr>
-          </thead>
-          <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
-            {brokerTradesLoading && brokerTrades.length === 0 ? (
-              <tr><td colSpan={8} class="py-8 text-center text-slate-400">
-                <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
-              </td></tr>
-            ) : brokerTradesError && trades.length === 0 ? (
-              <tr><td colSpan={8} class="py-8 text-center text-rose-400">
-                <div class="flex flex-col items-center justify-center gap-2">
-                  <span>Unable to load TradeNet history. Please retry.</span>
-                  <button
-                    type="button"
-                    onClick={retryBrokerTrades}
-                    disabled={brokerTradesRefreshing}
-                    aria-label="Retry TradeNet history"
-                    class="rounded border border-rose-800/70 px-3 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
-                  >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
-                </div>
-              </td></tr>
-            ) : filteredTrades.length === 0 ? (
-              <tr>
-                <td colSpan={8} class="py-8 text-center text-slate-500 italic">
-                  {trades.length > 0 ? translateText('No trades match the current filters', getAppLanguage()) : translateText('No closed trades recorded yet.', getAppLanguage())}
-                </td>
-              </tr>
-            ) : (
-              visibleTrades.map((row) => {
-                const { trade, index, source, profit: rowProfit, profitIsUpperBound, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
-                const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
-                const closedDate = getClosedTradeDate(trade);
-                const dateText = formatClosedTradeDate(closedDate);
-                const durationDays = getClosedTradeDurationDays(trade);
-
-                // 3. Resolve Fees & Commissions
-                const fees = Number(rowFees ?? 0);
-
-                // 4. Resolve Net Profit
-                const netProfit = rowProfit === null ? null : Number(rowProfit ?? 0);
-
-                const isPositive = (netProfit ?? 0) >= 0;
-                const sign = isPositive ? '+' : '-';
-                const profitTextPrefix = profitIsUpperBound === true ? '≤ ' : '';
-
-                return (
-                    <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
-                    <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker?.replace('.US', '') || "—"}</td>
-                    <td class="py-2.5 px-3 whitespace-nowrap">
-                      <span>{dateText}</span>
-                      {closedDate && !Number.isNaN(closedDate.getTime()) ? (
-                        <span class="mt-0.5 block text-[10px] text-slate-500" title={dateText}>
-                          {formatRelativeTime(closedDate)}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap font-mono">
-                      {(trade as any).shares ?? "—"}
-                    </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
-                      {formatClosedTradeDuration(durationDays)}
-                    </td>
-                    <td data-label="Funding · guest · cash shares" class="py-2 px-3 whitespace-nowrap text-slate-300">
-                      <ClosedTradeAllocationControls
-                        row={row}
-                        rowIndex={index}
-                        guestUsers={guestUsers}
-                        guestNameById={guestNameById}
-                        savedAllocation={state.closedTradeAllocations?.[allocationKey]}
-                      />
-                    </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      {formatUSD(fees)}
-                    </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      {commissionsComplete === false ? '≥' : ''}{formatUSD(Number(rowCommissions ?? 0))}
-                    </td>
-                    <td
-                      class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${profitIsUpperBound === true ? 'text-amber-300' : isPositive ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      title={profitIsUpperBound === true ? translateText('Upper bound: missing commission inputs; actual net P&L may be lower.', getAppLanguage()) : undefined}
-                    >
-                      {netProfit === null ? "—" : profitTextPrefix + sign + formatUSD(Math.abs(netProfit))}
-                    </td>
-                    </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </TableScrollRegion>
-      </div>
       <TablePagination
         tableLabel={translateText('Closed trade history', getAppLanguage())}
         page={pagination.currentPage}
@@ -1184,7 +1085,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         onPageSizeChange={pagination.setPageSize}
         className="closed-history-pagination pt-2"
         controlsClassName="closed-history-pagination-controls"
-        controlsId="closedTradesTableBody"
+        controlsId="closedTradesHistory"
       />
     </section>
   );

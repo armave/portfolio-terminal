@@ -15,6 +15,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Losing': 'Убыточные',
   'Unknown P&L': 'Неизвестная прибыль/убыток',
   'Funding': 'Финансирование',
+  'Avg. exit': 'Средняя цена выхода',
+  'Gross P&L': 'Валовая прибыль/убыток',
   'All funding': 'Все типы финансирования',
   'All sources': 'Все источники',
   'App records': 'Записи приложения',
