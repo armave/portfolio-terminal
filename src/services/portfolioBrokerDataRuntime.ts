@@ -400,12 +400,12 @@ export function createPortfolioBrokerDataRuntime(
         if (!dependencies.isSessionCurrent(session)) return false;
         // Broker executions remain separate from app-owned ClosedTrade rows.
         const completedAt = now();
-        emit('broker:executed-trades', mergedTrades);
         emit('broker:executed-trades-refresh-complete', {
           source: 'rest',
           completedAt,
           sessionIdentity: session.identity
         });
+        emit('broker:executed-trades', mergedTrades);
         if (hasCompleteBaseline && !forceProviderRefresh && requestPriority === 'background') {
           recentSuccessfulTradesReads.delete(sessionRequestKey);
           recentSuccessfulTradesReads.set(sessionRequestKey, { fromDate, completedAt });
