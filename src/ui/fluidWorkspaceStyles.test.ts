@@ -161,15 +161,16 @@ describe('Margin projection and insights layout', () => {
     expect(projectionSource).not.toContain('colSpan={5}');
   });
 
-  it('animates Margin projection page rows and keeps pagination controls accessible and fluid', () => {
+  it('keeps Margin projection rows stable during pagination swaps and keeps controls accessible and fluid', () => {
     expect(projectionSource).toContain('projection-page-row');
     expect(projectionSource).toContain('controlsClassName="projection-pagination-controls"');
     expect(projectionSource).toContain('<TablePagination');
     expect(paginationSource).toContain('aria-live="polite"');
     expect(paginationSource).toContain('TABLE_PAGE_SIZE_OPTIONS');
     expect(fluidStyles).toContain('#projectionTableContainer .projection-page-row');
-    expect(fluidStyles).toContain('animation: projection-page-swap 160ms');
-    expect(fluidStyles).toContain('@keyframes projection-page-swap');
+    expect(fluidStyles).toContain('animation: none;');
+    expect(fluidStyles).not.toContain('animation: projection-page-swap');
+    expect(fluidStyles).not.toContain('@keyframes projection-page-swap');
     expect(fluidStyles).toContain('#projectionTableContainer .projection-pagination-controls');
     expect(fluidStyles).toContain('flex-wrap: wrap;');
   });
