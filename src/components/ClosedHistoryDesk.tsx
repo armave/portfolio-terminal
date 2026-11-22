@@ -732,7 +732,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
       dispatchBrokerExecutionHistory({ type: 'failure' });
     });
-    dispatchBrokerExecutionHistory({ type: 'refresh' });
+    // A cache-backed desk is already ready. Run the mount catch-up quietly;
+    // only the explicit Refresh history action should turn on the header spinner.
+    // With no cached rows the initial loading state remains visible until this read settles.
     emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });
     return () => {
       removeTradesListener();
