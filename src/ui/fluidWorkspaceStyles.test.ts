@@ -202,6 +202,21 @@ describe('desk transitions and supporting layouts', () => {
     expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
     expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+180ms/);
     expect(fluidStyles).toMatch(/\.closed-history-pagination-controls\s*\{[^}]*flex-wrap:\s*wrap;/s);
+    expect((stylesheet.match(/^\.closed-history-page-transition\s*\{/gm) ?? [])).toHaveLength(1);
+    expect(stylesheet).not.toContain('@keyframes closed-history-page-enter');
+    expect(stylesheet).not.toMatch(/:where\(tbody tr\)\s*\{[^}]*transition:\s*opacity/s);
+    expect(stylesheet).not.toMatch(/table tbody tr\s*\{[^}]*transition:\s*opacity/s);
+    expect(stylesheet).not.toMatch(/table tbody tr:hover\s*\{[^}]*transform:\s*translateY\(-1px\)/s);
+  });
+
+  it('limits control and toast transitions to the properties that actually change', () => {
+    const inputTransition = stylesheet.match(/input,\s*select\s*\{([^}]*)\}/s)?.[1] ?? '';
+    expect(inputTransition).toContain('color 140ms ease');
+    expect(inputTransition).toContain('background-color 140ms ease');
+    expect(inputTransition).toContain('border-color 140ms ease');
+    expect(inputTransition).not.toMatch(/\b(?:box-shadow|opacity|transform)\b/);
+    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-out');
+    expect(appSource).not.toContain('transition-all');
   });
 
   it('keeps Settings in the shared non-Margin workspace shell without a nested card', () => {
