@@ -190,13 +190,13 @@ describe('desk transitions and supporting layouts', () => {
   const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
 
-  it('animates Trades pagination on a keyed block wrapper outside table internals', () => {
-    expect(closedSource).toContain('<div key={pagination.currentPage} class="hidden lg:block closed-history-page-transition">');
-    expect(closedSource).toContain('<tbody id="closedTradesTableBody"');
+  it('animates Trades pagination on the responsive card list', () => {
+    expect(closedSource).toContain('<div key={pagination.currentPage} id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
+    expect(closedSource).not.toContain('<tbody id="closedTradesTableBody"');
     expect(closedSource).toContain('className="closed-history-pagination pt-2"');
     expect(closedSource).toContain('controlsClassName="closed-history-pagination-controls"');
-    expect(closedSource).toContain('controlsId="closedTradesTableBody"');
-    expect(closedSource).not.toContain('<tbody key={pagination.currentPage}');
+    expect(closedSource).toContain('controlsId="closedTradesHistory"');
+    expect(closedSource).not.toContain('<table');
     expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*display:\s*flow-root/s);
     expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
     expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+180ms/);

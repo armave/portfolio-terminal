@@ -264,11 +264,10 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('</TableScrollRegion>');
   });
 
-  it('gives Cash, LOTS, Closed History, and Settings data tables column headers', () => {
+  it('gives Cash, LOTS, and Settings data tables column headers', () => {
     const paths = [
       '../components/CashCushionDesk.tsx',
       '../components/GuestTrancheHistory.tsx',
-      '../components/ClosedHistoryDesk.tsx',
       '../components/SettingsDesk.tsx'
     ];
     for (const path of paths) {
@@ -276,6 +275,13 @@ describe('Stage 10 accessibility wiring', () => {
       expect(headers.length, path).toBeGreaterThan(0);
       expect(headers.every((tag) => tag.includes('scope="col"')), path).toBe(true);
     }
+  });
+
+  it('exposes closed trade history as a named region of semantic entries', () => {
+    const source = readSource('../components/ClosedHistoryDesk.tsx');
+    expect(source).toContain('aria-label={translateText(\'Closed trade history\', getAppLanguage())}');
+    expect(source).toContain('<article key={allocationKey}');
+    expect(source).not.toContain('<table');
   });
 
   it('uses the same positive-price fallback across broker cash refresh and tranche valuation', () => {

@@ -1000,13 +1000,14 @@ async function captureAuthenticatedPortfolioPerformance(browser) {
         const tradesStartedAt = Date.now();
         await page.getByRole('button', { name: 'Trades' }).click();
         await page.locator('#closedHistoryContainer .desk-page-header__title').waitFor({ state: 'visible', timeout: 20_000 });
-        await page.waitForFunction(() => {
-          const row = document.querySelector('#closedTradesTableBody tr');
-          return Boolean(row && !row.querySelector('td[colspan="8"]'));
-        }, null, { timeout: 20_000 });
+        await page.waitForFunction(() =>
+          document.querySelectorAll('#closedTradesHistory article').length > 0,
+          null,
+          { timeout: 20_000 }
+        );
         stageTimings.tradesDeskReadyMs = Date.now() - tradesStartedAt;
         const elapsedToTradesDeskReadyMs = Date.now() - startedAt;
-        const closedTradeRowCount = await page.locator('#closedTradesTableBody tr').count();
+        const closedTradeRowCount = await page.locator('#closedTradesHistory article').count();
         if (!closedTradeRowCount) throw new Error('Synthetic closed-history rows did not render.');
         const metrics = await page.evaluate(() => {
           const navigation = performance.getEntriesByType('navigation')[0];
