@@ -109,8 +109,9 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.setSyncStatus).toHaveBeenCalledTimes(2);
   });
 
-  it('does not let an older account sync overwrite the current account status', async () => {
-    let sessionKey = 'admin:first';
+  it('does not let an older authentication generation overwrite the current session status', async () => {
+    // Same account identity, new generation after sign-out/sign-in.
+    let sessionKey = 'admin:first:1';
     const quoteResults: Array<{ resolve: (succeeded: boolean) => void; promise: Promise<boolean> }> = [];
     const refreshQuotes = vi.fn(() => {
       let resolve: (succeeded: boolean) => void = () => undefined;
@@ -132,7 +133,7 @@ describe('portfolio sync runtime bindings', () => {
     emitUiEvent('portfolio:sync-request', { resolve: firstResolve });
     await vi.waitFor(() => expect(refreshQuotes).toHaveBeenCalledTimes(1));
 
-    sessionKey = 'admin:second';
+    sessionKey = 'admin:first:3';
     emitUiEvent('portfolio:sync-request', { resolve: secondResolve });
     await vi.waitFor(() => expect(refreshQuotes).toHaveBeenCalledTimes(2));
 
