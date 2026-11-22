@@ -113,7 +113,7 @@ describe('cloud sync progress presentation', () => {
     const guestRefresh = source.slice(start, end);
 
     expect(guestRefresh).not.toContain("setCloudStatus('syncing'");
-    expect(guestRefresh).not.toContain("setCloudSyncStatus({ text: 'Assigned data refresh in progress'");
+    expect(guestRefresh).not.toContain("setCloudSyncStatus(");
     expect(guestRefresh).toContain("getCloudSyncStatus().status !== 'syncing'");
     expect(guestRefresh).toContain("setCloudStatus('online', 'CONNECTED')");
   });
