@@ -83,13 +83,7 @@ body::before {
 
 input,
 select {
-  transition:
-    color 160ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    opacity 160ms ease,
-    transform 160ms ease;
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 
 #settings,
@@ -1789,10 +1783,6 @@ textarea {
   transform: translateY(1px);
 }
 
-:where(tbody tr) {
-  transition: opacity 140ms ease-out;
-}
-
 #marketInsightsContent {
   animation: insights-panel-enter 100ms ease-out both;
 }
@@ -1904,14 +1894,7 @@ textarea {
 }
 
 
-/* Table hover feedback remains compositor-friendly and does not affect row sizing. */
-table tbody tr {
-  transition: opacity 140ms ease-out, transform 140ms ease-out, background-color 140ms ease-out;
-}
 
-table tbody tr:hover {
-  transform: translateY(-1px);
-}
 
 
 
@@ -2679,23 +2662,7 @@ table tbody tr:hover {
 }
 
 
-/* Tables: keep page changes, pagination controls, and dense data surfaces composed. */
-.closed-history-page-transition {
-  transform-origin: top center;
-  animation: closed-history-page-enter 190ms var(--motion-fluid, cubic-bezier(0.2, 0.75, 0.25, 1)) both;
-}
 
-@keyframes closed-history-page-enter {
-  from {
-    opacity: 0.35;
-    transform: translateY(0.3rem);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .closed-history-pagination {
   min-width: 0;
@@ -3233,6 +3200,7 @@ table tbody tr:hover {
   flex: 0 0 auto;
   border-radius: 9999px;
   background: #64748b;
+  transition: background-color 140ms ease-out;
 }
 
 .cloud-sync-indicator__primary {
@@ -3261,7 +3229,6 @@ table tbody tr:hover {
 
 .cloud-sync-indicator--pending .cloud-sync-indicator__dot {
   background: var(--color-info);
-  animation: cloud-sync-pulse 1.2s ease-in-out infinite;
 }
 
 .cloud-sync-indicator--pending .cloud-sync-indicator__state {
@@ -3326,11 +3293,7 @@ table tbody tr:hover {
   display: block;
 }
 
-@keyframes cloud-sync-pulse {
-  50% {
-    opacity: 0.4;
-  }
-}
+
 
 @media (max-width: 640px) {
   .cloud-sync-indicator__trigger {
