@@ -401,6 +401,36 @@ describe('broker history audit events', () => {
     });
   });
 
+  it('does not turn unknown provider cashflow labels into account adjustments', () => {
+    const unknown = appendBrokerHistoryAuditEvents([], [], [{
+      id: 'provider-unknown-activity',
+      date: '2026-11-01',
+      type: 'Broker internal operation',
+      description: 'Provider-specific settlement activity',
+      amount: 25,
+      currency: 'USD'
+    }], 1_000);
+
+    const explicitAdjustment = appendBrokerHistoryAuditEvents([], [], [{
+      id: 'provider-explicit-adjustment',
+      date: '2026-11-01',
+      type: 'Account adjustment',
+      amount: 25,
+      currency: 'USD'
+    }], 1_000);
+
+    // The unknown source row remains available in the cashflow sidecar for PT-04
+    // to display as cashflow_unclassified; it creates no journal event.
+    expect(unknown).toHaveLength(0);
+    expect(explicitAdjustment).toHaveLength(1);
+    expect(explicitAdjustment[0]).toMatchObject({
+      type: 'cash.adjustment',
+      actor: { type: 'broker' },
+      externalReferenceId: 'provider-explicit-adjustment',
+      externalCashFlowAmount: 25
+    });
+  });
+
   it('deduplicates overlapping broker history pages by stable execution and cashflow IDs', () => {
     const firstPage = appendBrokerHistoryAuditEvents([], [
       {
