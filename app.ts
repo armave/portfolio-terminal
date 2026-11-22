@@ -587,7 +587,6 @@ async function refreshGuestPortfolioSnapshot(): Promise<boolean> {
   } catch (error) {
     if (getCloudSyncStatus().status !== 'syncing') {
       setCloudStatus('error', 'UNAVAILABLE');
-      setCloudSyncStatus({ text: 'Assigned data refresh failed', status: 'error' });
     }
     throw error;
   }
