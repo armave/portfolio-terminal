@@ -2118,9 +2118,12 @@ function bindStartupActions() {
   });
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
-    getAccountSessionKey: () => currentAccountRole && currentAccountId
-      ? `${currentAccountRole}:${currentAccountId}`
-      : null,
+    getAccountSessionKey: () => {
+      const session = currentAccountSessionGuard.capture();
+      // Include the generation so signing out and back into the same account
+      // cannot make an older sync appear current again.
+      return session ? `${session.identity}:${session.generation}` : null;
+    },
     refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
     refreshExecutedTrades: () => portfolioBrokerRefreshRuntime.refreshExecutedTrades('interactive'),
     refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,
