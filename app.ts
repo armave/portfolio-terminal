@@ -2118,6 +2118,9 @@ function bindStartupActions() {
   });
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
+    getAccountSessionKey: () => currentAccountRole && currentAccountId
+      ? `${currentAccountRole}:${currentAccountId}`
+      : null,
     refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
     refreshExecutedTrades: () => portfolioBrokerRefreshRuntime.refreshExecutedTrades('interactive'),
     refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,
