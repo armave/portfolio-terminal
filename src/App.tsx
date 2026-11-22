@@ -666,7 +666,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('margin:intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="polite">
-        {toasts.map((toast) => <div key={toast.id} role={toast.variant === 'error' ? 'alert' : 'status'} class={'pointer-events-auto rounded-lg border bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold shadow-lg backdrop-blur transition-all ' +
+        {toasts.map((toast) => <div key={toast.id} role={toast.variant === 'error' ? 'alert' : 'status'} class={'pointer-events-auto rounded-lg border bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold shadow-lg backdrop-blur transition-[opacity,transform] duration-200 ease-out ' +
           (toast.variant === 'error' ? 'border-rose-800 text-rose-200' :
             toast.variant === 'warning' ? 'border-amber-800 text-amber-200' :
               toast.variant === 'success' ? 'border-emerald-800 text-emerald-200' : 'border-slate-700 text-slate-200') +
