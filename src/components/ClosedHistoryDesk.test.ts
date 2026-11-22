@@ -243,13 +243,28 @@ describe('Trades history UX', () => {
     expect(source).toContain('knownProfitCount === 0 ?');
   });
 
-  it('keeps mobile cards and desktop table while exposing the same allocation controls', () => {
+  it('uses one responsive entry-card list at every viewport and removes the legacy table', () => {
     const source = readSource();
-    expect(source).toContain('class="space-y-2 lg:hidden"');
-    expect(source).toContain('class="hidden lg:block closed-history-page-transition"');
-    expect(source.match(/<ClosedTradeAllocationControls/g)?.length).toBe(2);
+    expect(source).toContain('id="closedTradesHistory" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
+    expect(source).not.toContain('hidden lg:block');
+    expect(source).not.toContain('<table');
+    expect(source).not.toContain('TableScrollRegion');
+    expect(source.match(/<ClosedTradeAllocationControls/g)?.length).toBe(1);
     expect(source).toContain('Funding and guest allocation');
+    expect(source).toContain("translateText('Avg. entry'");
+    expect(source).toContain("translateText('Avg. exit'");
+    expect(source).toContain("translateText('Gross P&L'");
+    expect(source).toContain('controlsId="closedTradesHistory"');
     expect(source).toContain('compact');
+  });
+
+  it('removes provenance from filters while preserving it on each trade entry', () => {
+    const source = readSource();
+    expect(source).not.toContain('sourceFilter');
+    expect(source).not.toContain('ClosedHistorySourceFilter');
+    expect(source).not.toContain('closedHistorySource');
+    expect(source).toContain("row.source === 'tradenet'");
+    expect(source).toContain('const sourceLabel = row.source ===');
   });
 
   it('delays only the broker refresh indicator instead of combining unrelated background tasks', () => {
@@ -314,7 +329,18 @@ describe('closed history row model', () => {
       [first, { buyCommission: 0.5, holdingDays: 10 }],
       [second, { buyCommission: 0.5, holdingDays: 20 }]
     ]);
-    const attributions = new Map<FreedomExecutedTrade, ClosedTradeAttribution>();
+    const attributions = new Map<FreedomExecutedTrade, ClosedTradeAttribution>([
+      [first, {
+        fundingType: 'cash', cashQuantity: 2, marginQuantity: 0,
+        guestAllocations: [], guestMetrics: {}, averagePrice: 80,
+        purchasedAt: Date.parse('2026-10-01T10:00:00.000Z'), unmatchedQuantity: 0
+      }],
+      [second, {
+        fundingType: 'cash', cashQuantity: 3, marginQuantity: 0,
+        guestAllocations: [], guestMetrics: {}, averagePrice: 90,
+        purchasedAt: Date.parse('2026-10-02T10:00:00.000Z'), unmatchedQuantity: 0
+      }]
+    ]);
     const rows = buildClosedHistoryRows({
       brokerTrades: [first, second],
       brokerTradeMetrics: metrics,
@@ -336,6 +362,10 @@ describe('closed history row model', () => {
       commissions: 3,
       feesTotal: 5,
       profit: 45,
+      grossProfit: 50,
+      entryPrice: 86,
+      exitPrice: 106,
+      priceCurrency: 'USD',
       allocationKey: 'broker:sell-1'
     });
     expect(rows[0].trade).toMatchObject({
@@ -345,6 +375,32 @@ describe('closed history row model', () => {
       price: 106,
       exitDate: '2026-11-10T11:00:00.000Z',
       holdingDays: 16
+    });
+  });
+
+  it('exposes stored app entry, exit and gross values without deriving missing values', () => {
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [],
+      brokerTradeMetrics: new Map(),
+      trancheAttributions: new Map(),
+      appTrades: [{
+        trade: {
+          id: 'app-sale', ticker: 'MSFT', shares: 4,
+          avgBuyPrice: 100, sellPrice: 115, grossProfit: 60,
+          exitDate: '2026-11-10T10:00:00.000Z', currency: 'USD'
+        },
+        source: 'app',
+        allocationType: 'unclassified',
+        guestAllocations: []
+      }]
+    });
+
+    expect(rows[0]).toMatchObject({
+      source: 'app',
+      entryPrice: 100,
+      exitPrice: 115,
+      grossProfit: 60,
+      priceCurrency: 'USD'
     });
   });
 
@@ -406,13 +462,12 @@ describe('closed history filters', () => {
     dateRange: 'all' as const,
     performance: 'all' as const,
     funding: 'all' as const,
-    source: 'all' as const
   };
 
-  it('searches ticker case-insensitively and combines source and funding filters', () => {
+  it('searches ticker case-insensitively and combines funding filters', () => {
     expect(filterClosedHistoryRows(rows, { ...filters, query: 'aAp' }, now).map((row) => row.trade.ticker))
       .toEqual(['AAPL']);
-    expect(filterClosedHistoryRows(rows, { ...filters, source: 'tradenet', funding: 'mix' }, now).map((row) => row.trade.ticker))
+    expect(filterClosedHistoryRows(rows, { ...filters, funding: 'mix' }, now).map((row) => row.trade.ticker))
       .toEqual(['TSLA']);
   });
 
@@ -432,6 +487,11 @@ describe('closed history filters', () => {
       .toEqual(['AAPL', 'TSLA']);
     expect(filterClosedHistoryRows(rows, { ...filters, dateRange: 'year' }, now).map((row) => row.trade.ticker))
       .toEqual(['AAPL', 'MSFT', 'TSLA', 'NVDA']);
+  });
+
+  it('keeps all sources in the same result set because provenance is not a filter', () => {
+    expect(filterClosedHistoryRows(rows, filters, now).map((row) => row.trade.ticker))
+      .toEqual(['AAPL', 'MSFT', 'TSLA', 'NVDA', 'ORCL']);
   });
 
   it('does not mutate or rewrite the source rows', () => {

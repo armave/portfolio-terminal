@@ -5,6 +5,21 @@ import { resolveClosedTradeAllocation } from '../../domain/closedTradeAllocation
 import type { ClosedTradeAllocation } from '../../types/portfolio';
 import type { FreedomExecutedTrade } from '../../types/freedomTrade';
 
+function firstPositivePrice(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return null;
+}
+
+function finiteNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 type ClosedHistoryAppRow = {
   trade: object;
   [key: string]: any;
@@ -110,6 +125,10 @@ export function buildClosedHistoryRows({
         allocationKey: 'broker:' + String(broker.id ?? ('tradenet-' + index)),
         profit,
         profitIsUpperBound,
+        grossProfit,
+        entryPrice: hasCompleteFifoCostBasis ? averageBuyPrice : null,
+        exitPrice: sellPrice,
+        priceCurrency: String(broker.currency ?? '').trim().toUpperCase(),
         fees,
         commissions,
         commissionsComplete,
@@ -145,6 +164,24 @@ export function buildClosedHistoryRows({
         const oldDuration = (previous.trade as any).holdingDays;
         const newDuration = (row.trade as any).holdingDays;
         const totalQty = oldQty + newQty;
+        const oldEntryPrice = previous.entryPrice;
+        const newEntryPrice = row.entryPrice;
+        previous.entryPrice = oldEntryPrice !== null && oldEntryPrice !== undefined &&
+          newEntryPrice !== null && newEntryPrice !== undefined && totalQty > 0
+          ? (oldEntryPrice * oldQty + newEntryPrice * newQty) / totalQty
+          : null;
+        const oldExitPrice = previous.exitPrice;
+        const newExitPrice = row.exitPrice;
+        previous.exitPrice = oldExitPrice !== null && oldExitPrice !== undefined &&
+          newExitPrice !== null && newExitPrice !== undefined && totalQty > 0
+          ? (oldExitPrice * oldQty + newExitPrice * newQty) / totalQty
+          : null;
+        previous.grossProfit = previous.grossProfit === null || row.grossProfit === null
+          ? null
+          : previous.grossProfit + row.grossProfit;
+        previous.priceCurrency = previous.priceCurrency === row.priceCurrency
+          ? previous.priceCurrency
+          : '';
         (previous.trade as any).shares = totalQty;
         (previous.trade as any).exitDate = (row.trade as any).exitDate;
         (previous.trade as any).sellDate = (row.trade as any).exitDate;
@@ -222,9 +259,19 @@ export function buildClosedHistoryRows({
       closedTradeAllocations?.[row.allocationKey],
       row.cashQuantity
     );
+    const trade = row.trade as any;
     return {
       ...row,
       ...allocation,
+      entryPrice: firstPositivePrice(row.entryPrice, trade.avgBuyPrice, trade.entryPrice),
+      exitPrice: firstPositivePrice(
+        row.exitPrice,
+        trade.sellPrice,
+        trade.exitPrice,
+        row.source === 'tradenet' ? trade.price : undefined
+      ),
+      grossProfit: finiteNumberOrNull(row.grossProfit) ?? finiteNumberOrNull(trade.grossProfit),
+      priceCurrency: String(row.priceCurrency ?? trade.currency ?? '').trim().toUpperCase(),
       allocationType: allocation.fundingType,
       allocationTypes: [allocation.fundingType]
     };
@@ -271,14 +318,12 @@ export function summarizeClosedHistoryRows(trades: readonly any[]): {
 export type ClosedHistoryDateRange = 'all' | '7d' | '30d' | '90d' | 'year';
 export type ClosedHistoryPerformanceFilter = 'all' | 'profitable' | 'losing' | 'breakeven' | 'unknown';
 export type ClosedHistoryFundingFilter = 'all' | 'cash' | 'margin' | 'mix';
-export type ClosedHistorySourceFilter = 'all' | 'tradenet' | 'app';
 
 export interface ClosedHistoryFilters {
   query: string;
   dateRange: ClosedHistoryDateRange;
   performance: ClosedHistoryPerformanceFilter;
   funding: ClosedHistoryFundingFilter;
-  source: ClosedHistorySourceFilter;
 }
 
 interface FilterableClosedHistoryRow {
@@ -289,7 +334,6 @@ interface FilterableClosedHistoryRow {
     closedAt?: unknown;
     date?: unknown;
   };
-  source?: unknown;
   profit?: number | null;
   profitIsUpperBound?: boolean;
   allocationType?: unknown;
@@ -346,9 +390,6 @@ export function filterClosedHistoryRows<T extends FilterableClosedHistoryRow>(
 
     if (filters.funding !== 'all' &&
       String(row.allocationType ?? 'unclassified').toLowerCase() !== filters.funding) return false;
-
-    if (filters.source !== 'all' &&
-      String(row.source ?? '').toLowerCase() !== filters.source) return false;
 
     return true;
   });
