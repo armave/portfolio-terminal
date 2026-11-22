@@ -75,7 +75,7 @@ export function buildClosedHistoryRows({
         ? directSellPrice
         : tradeValue > 0 && quantity > 0 ? tradeValue / quantity : null;
       const averageBuyPrice = attribution?.averagePrice;
-      const hasCompleteFifoCostBasis = Boolean(
+      const hasCompleteFifoEntryPrice = Boolean(
         attribution &&
         Number.isFinite(attribution.unmatchedQuantity) &&
         attribution.unmatchedQuantity <= 1e-8 &&
@@ -83,11 +83,10 @@ export function buildClosedHistoryRows({
         averageBuyPrice !== undefined &&
         Number.isFinite(averageBuyPrice) &&
         averageBuyPrice > 0 &&
-        sellPrice !== null &&
-        Number.isFinite(sellPrice) &&
-        sellPrice > 0 &&
         quantity > 0
       );
+      const hasCompleteFifoCostBasis = hasCompleteFifoEntryPrice &&
+        sellPrice !== null && Number.isFinite(sellPrice) && sellPrice > 0;
       // Prefer TradeNet's reported gross result. If it is absent, derive gross
       // P&L only from a complete FIFO match with a known acquisition cost and
       // a usable sell execution price; never price unmatched shares by guesswork.
@@ -126,7 +125,7 @@ export function buildClosedHistoryRows({
         profit,
         profitIsUpperBound,
         grossProfit,
-        entryPrice: hasCompleteFifoCostBasis ? averageBuyPrice : null,
+        entryPrice: hasCompleteFifoEntryPrice ? averageBuyPrice : null,
         exitPrice: sellPrice,
         priceCurrency: String(broker.currency ?? '').trim().toUpperCase(),
         fees,

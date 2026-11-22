@@ -404,6 +404,35 @@ describe('closed history row model', () => {
     });
   });
 
+  it('keeps a known FIFO entry price when the execution exit price is unavailable', () => {
+    const sell = createSellExecution('sell-without-price', 2, 100, '2026-11-10T10:00:00.000Z', {
+      price: null,
+      tradeValue: 0,
+      profit: null
+    });
+    const rows = buildClosedHistoryRows({
+      brokerTrades: [sell],
+      brokerTradeMetrics: new Map(),
+      trancheAttributions: new Map([[sell, {
+        fundingType: 'cash',
+        cashQuantity: 2,
+        marginQuantity: 0,
+        guestAllocations: [],
+        guestMetrics: {},
+        averagePrice: 80,
+        purchasedAt: Date.parse('2026-10-01T10:00:00.000Z'),
+        unmatchedQuantity: 0
+      }]]),
+      appTrades: []
+    });
+
+    expect(rows[0]).toMatchObject({
+      entryPrice: 80,
+      exitPrice: null,
+      grossProfit: null
+    });
+  });
+
   it('starts a new row when the gap from the previous same-ticker sell exceeds one hour', () => {
     const first = createSellExecution('sell-1', 2, 100, '2026-11-10T10:00:00.000Z');
     const second = createSellExecution('sell-2', 3, 110, '2026-11-10T11:00:00.001Z');
