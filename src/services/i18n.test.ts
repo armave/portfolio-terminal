@@ -1235,3 +1235,21 @@ describe('Settings refinements localization', () => {
     expect(translateText('News count', 'ru')).toBe('Количество новостей');
   });
 
+
+
+describe('Trades UX localization parity', () => {
+  it('localizes cloud status, provider freshness, sorting and financial quality explanations', () => {
+    const copy = [
+      'Cloud','Saved','TradeNet history','Last REST history refresh','No provider refresh confirmed yet',
+      'Refreshing history…','Refresh history','Sort by','Newest first','Oldest first','Highest net P&L',
+      'Lowest net P&L','Largest position','Cashflow reconciliation','Needs attention','Complete','Pending','Stale','Not loaded',
+      'Unknown or incomplete trade results are excluded from the net P&L total and win rate.',
+      'Known fees and commissions are a lower bound; missing commission inputs may increase actual costs.',
+      'Net P&L unavailable because required trade or cost-basis data is incomplete.'
+    ];
+    for (const english of copy) {
+      expect(RU_TRANSLATIONS[english], english).toBeTruthy();
+      expect(translateText(english, 'ru'), english).not.toBe(english);
+    }
+  });
+});

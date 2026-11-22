@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   formatExactSyncTimestamp,
@@ -43,7 +44,7 @@ describe('resolveCloudSyncTone', () => {
 
 describe('resolveCloudSyncLabel', () => {
   it('uses short state labels rather than the old verbose KV text', () => {
-    expect(resolveCloudSyncLabel(status('synced'), 'success', 'en')).toBe('Synced');
+    expect(resolveCloudSyncLabel(status('synced'), 'success', 'en')).toBe('Saved');
     expect(resolveCloudSyncLabel(status('syncing'), 'pending', 'en')).toBe('Syncing…');
     expect(resolveCloudSyncLabel(status('pending'), 'pending', 'en')).toBe('Pending');
     expect(resolveCloudSyncLabel(status('error'), 'error', 'en')).toBe('Failed');
@@ -100,5 +101,16 @@ describe('resolveCloudSyncDisplayTone', () => {
     expect(resolveCloudSyncDisplayTone('warning', true)).toBe('warning');
     expect(resolveCloudSyncDisplayTone('error', true)).toBe('error');
     expect(resolveCloudSyncDisplayTone('conflict', true)).toBe('conflict');
+  });
+});
+
+
+describe('cloud sync progress presentation', () => {
+  it('keeps scheduled checkpoints quiet while explicit sync operations announce progress', () => {
+    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    expect(source).toContain('async function pushStateToCloud(forceImmediate = false, announceProgress = false)');
+    expect(source).toContain("syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true, false) : undefined");
+    expect(source).toContain('if (pullOptions.announceProgress !== true) return;');
+    expect(source).toContain('return pushStateToCloud(true, true);');
   });
 });

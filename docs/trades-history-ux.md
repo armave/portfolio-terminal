@@ -1,0 +1,26 @@
+# Trades history UX contract
+
+The Trades desk presents cached records immediately while keeping broker freshness explicit.
+
+## Provider freshness and refresh
+
+- The Trades header distinguishes TradeNet execution history from cashflow reconciliation.
+- The displayed provider-refresh timestamp advances only after a successful TradeNet REST execution-history read.
+- Re-emitting cached rows because a healthy stream is connected, or reusing a recent cached read, does not advance provider freshness.
+- The explicit **Refresh history** action uses the existing waitable interactive broker request so it performs a provider catch-up rather than merely replaying cached history.
+- A failed refresh leaves last-known-good history visible and labels it stale with a retry path.
+- The global cloud indicator represents encrypted cloud workspace synchronization, not broker freshness. Background checkpoint writes update the last-confirmed state without entering an animated pending state; explicit/manual operations may announce progress. Errors and revision conflicts remain visible.
+
+## Sorting and filtering
+
+Filtering is applied before sorting and pagination. The summary remains scoped to the filtered rows. Sorting supports newest, oldest, exact highest/lowest net P&L, and largest position. Rows with unknown dates, missing P&L, upper-bound P&L, or missing share counts sort after known values; unknown financial values are never coerced to zero for ranking. Sort order and filters are presentation state and do not mutate portfolio records.
+
+## Financial quality explanations
+
+- Upper-bound net P&L is labeled as an upper bound when commission inputs are incomplete.
+- Unknown/incomplete net P&L is excluded from exact net P&L and win-rate totals.
+- Incomplete commissions explain that displayed known costs are a lower bound.
+- These explanations do not change accounting, FIFO matching, commission allocation, or any financial formula.
+
+All added user-facing copy must be localized in English and Russian. The feature is client-only; broker API contracts, Worker behavior, persisted portfolio schema, and canonical PortfolioState.positions remain unchanged.
+

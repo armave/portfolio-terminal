@@ -130,8 +130,8 @@ describe('Trades cache-first rendering', () => {
 
   it('uses shared pagination and clamps the rendered Trades page after a shrinking refresh', () => {
     const source = readSource();
-    expect(source).toContain("useTablePagination('closed-history', filteredTrades.length, 10)");
-    expect(source).toContain('sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain("useTablePagination('closed-history', sortedTrades.length, 10)");
+    expect(source).toContain('sliceTablePage(sortedTrades, pagination.currentPage, pagination.pageSize)');
     expect(source).toContain('<TablePagination');
     // A requested page beyond the shortened result is clamped before slicing.
     expect(getTablePaginationRange(78, 9, 10)).toEqual({
@@ -236,8 +236,8 @@ describe('Trades history UX', () => {
   it('filters before pagination and scopes the summary to the visible filter set', () => {
     const source = readSource();
     expect(source).toContain('filterClosedHistoryRows(trades, {');
-    expect(source).toContain("useTablePagination('closed-history', filteredTrades.length, 10)");
-    expect(source).toContain('sliceTablePage(filteredTrades, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain("useTablePagination('closed-history', sortedTrades.length, 10)");
+    expect(source).toContain('sliceTablePage(sortedTrades, pagination.currentPage, pagination.pageSize)');
     expect(source).toContain('summarizeClosedHistoryRows(filteredTrades)');
     expect(source).toContain('Summary reflects current filters');
     expect(source).toContain('knownProfitCount === 0 ?');
@@ -576,5 +576,32 @@ describe('Trades lot and closed-history parity wiring', () => {
     expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
     expect(source).toContain('positions={state.positions || {}}');
     expect(source).toContain('cashHoldings={state.cashCushion?.holdings || []}');
+  });
+});
+
+
+describe('Trades freshness, sorting and transparency UX', () => {
+  it('shows provider-confirmed freshness and uses a waitable provider catch-up action', () => {
+    const source = readSource();
+    expect(source).toContain('getLastExecutedTradesRefreshAt(`admin:${accountId}`)');
+    expect(source).toContain('broker:executed-trades-refresh-complete');
+    expect(source).toContain('broker:request-executed-trades-and-wait');
+    expect(source).toContain("translateText('Refresh history'");
+    expect(source).toContain("translateText('Last REST history refresh'");
+    expect(source).toContain("translateText('Cashflow reconciliation'");
+  });
+  it('adds sorting without changing filter-scoped summary calculations', () => {
+    const source = readSource();
+    expect(source).toContain("useState<ClosedHistorySortOrder>('newest')");
+    expect(source).toContain('sortClosedHistoryRows(filteredTrades, sortOrder)');
+    expect(source).toContain('summarizeClosedHistoryRows(filteredTrades)');
+    expect(source).toContain('id="closedHistorySort"');
+  });
+  it('explains incomplete net P&L and lower-bound cost totals', () => {
+    const source = readSource();
+    expect(source).toContain('Unknown or incomplete trade results are excluded from the net P&L total and win rate.');
+    expect(source).toContain('Known fees and commissions are a lower bound; missing commission inputs may increase actual costs.');
+    expect(source).toContain('Upper bound: missing commission inputs; actual net P&L may be lower.');
+    expect(source).toContain('Net P&L unavailable because required trade or cost-basis data is incomplete.');
   });
 });

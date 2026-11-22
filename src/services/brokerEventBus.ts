@@ -34,6 +34,11 @@ export interface BrokerEventPayloads {
   'broker:account-info-refresh-complete': undefined;
   'broker:account-info-error': BrokerDataQualityIssue | undefined;
   'broker:executed-trades': FreedomExecutedTrade[];
+  'broker:executed-trades-refresh-complete': {
+    source: 'rest';
+    completedAt: number;
+    sessionIdentity: string;
+  };
   'broker:live-order-fills': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
   'broker:active-orders': FreedomActiveOrder[];
@@ -56,6 +61,13 @@ export type BrokerEventName = keyof BrokerEventPayloads;
 type BrokerListener = (payload: unknown) => void;
 
 const listeners = new Map<BrokerEventName, Set<BrokerListener>>();
+const lastExecutedTradesRefreshBySession = new Map<string, number>();
+
+/** Return the last provider-confirmed execution-history refresh for this session. */
+export function getLastExecutedTradesRefreshAt(sessionIdentity: string): number | null {
+  const timestamp = lastExecutedTradesRefreshBySession.get(sessionIdentity);
+  return typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
 
 /** Publish an in-process broker update or request without using window DOM events. */
 export function emitBrokerEvent<K extends BrokerEventName>(
@@ -63,6 +75,18 @@ export function emitBrokerEvent<K extends BrokerEventName>(
   ...args: undefined extends BrokerEventPayloads[K] ? [payload?: BrokerEventPayloads[K]] : [payload: BrokerEventPayloads[K]]
 ): void {
   const payload = args[0];
+  if (type === 'broker:executed-trades-refresh-complete') {
+    const refresh = payload as BrokerEventPayloads['broker:executed-trades-refresh-complete'];
+    if (refresh && typeof refresh.sessionIdentity === 'string' && refresh.sessionIdentity.length > 0 &&
+      Number.isFinite(refresh.completedAt) && refresh.completedAt > 0) {
+      lastExecutedTradesRefreshBySession.delete(refresh.sessionIdentity);
+      lastExecutedTradesRefreshBySession.set(refresh.sessionIdentity, refresh.completedAt);
+      if (lastExecutedTradesRefreshBySession.size > 32) {
+        const oldestSession = lastExecutedTradesRefreshBySession.keys().next().value;
+        if (oldestSession !== undefined) lastExecutedTradesRefreshBySession.delete(oldestSession);
+      }
+    }
+  }
   listeners.get(type)?.forEach((listener) => listener(payload));
 }
 
