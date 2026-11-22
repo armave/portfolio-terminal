@@ -19,8 +19,8 @@ describe('Trades USD amount formatting', () => {
     const source = readSource();
     expect(source).toContain("{knownProfitCount === 0 ? '—' : (realizedNet >= 0 ? '+' : '−') + formatUSD(Math.abs(realizedNet))}");
     expect(source).toContain("{formatUSD(totalFees)}");
-    expect(source).toContain("{formatUSD(fees)}");
-    expect(source).toContain('profitTextPrefix + sign + formatUSD(Math.abs(netProfit))');
+    expect(source).toContain("{formatUSD(Number(row.fees ?? 0))}");
+    expect(source).toContain("formatUSD(Math.abs(profit))");
     expect(source).not.toContain('${formatUSD(');
     expect(source).not.toContain('"$" + formatUSD(');
   });
@@ -245,7 +245,7 @@ describe('Trades history UX', () => {
 
   it('uses one responsive entry-card list at every viewport and removes the legacy table', () => {
     const source = readSource();
-    expect(source).toContain('id="closedTradesHistory" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
+    expect(source).toContain('id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
     expect(source).not.toContain('hidden lg:block');
     expect(source).not.toContain('<table');
     expect(source).not.toContain('TableScrollRegion');

@@ -1010,7 +1010,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       </div>
       
 
-      <div id="closedTradesHistory" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label={translateText('Closed trade history', getAppLanguage())}>
+      <div key={pagination.currentPage} id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label={translateText('Closed trade history', getAppLanguage())}>
         {visibleTrades.length === 0 ? (
           <p role="status" class="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-8 text-center text-sm text-slate-500">
             {trades.length > 0 ? translateText('No trades match the current filters', getAppLanguage()) : translateText('No closed trades recorded yet.', getAppLanguage())}

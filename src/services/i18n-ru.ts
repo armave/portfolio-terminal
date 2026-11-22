@@ -18,6 +18,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Avg. exit': 'Средняя цена выхода',
   'Gross P&L': 'Валовая прибыль/убыток',
   'All funding': 'Все типы финансирования',
+  'All sources': 'Все источники',
   'App records': 'Записи приложения',
   'Summary reflects current filters': 'Сводка рассчитана по текущим фильтрам',
   'Clear filters': 'Сбросить фильтры',
