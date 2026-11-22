@@ -11,7 +11,7 @@ The Trades desk presents cached records immediately while keeping broker freshne
 - A failed refresh leaves last-known-good history visible and labels it stale with a retry path.
 - The automatic catch-up requested when Trades mounts is quiet when cached rows are already available. The header refresh indicator is reserved for the explicit **Refresh history** action; a desk with no cached records keeps its initial loading state until the first read settles.
 - The global cloud indicator represents encrypted cloud workspace synchronization, not broker freshness. Background checkpoint writes and scheduled guest-projection reads do not enter an animated pending state; explicit/manual operations own the aggregate progress state. Errors and revision conflicts remain visible.
-- Repeated Manual Sync requests within one authenticated session join the active request instead of launching duplicate provider calls. Requests from a different account session remain isolated, and late results from an old session cannot overwrite the current session's status.
+- Repeated Manual Sync requests within one authenticated session join the active request instead of launching duplicate provider calls. Requests from a different account session or a later authentication generation of the same account remain isolated, and late results from an old session cannot overwrite the current session's status.
 
 ## Sorting and filtering
 
