@@ -1222,7 +1222,7 @@ export function appendBrokerHistoryAuditEvents(
     if (!Number.isFinite(amount)) continue;
     const text = [raw.type, raw.description, raw.category].filter((v) => typeof v === 'string').join(' ').toLowerCase();
     const isCorporateAction = ['stock split', 'reverse split', 'merger', 'spin-off', 'spin off', 'reorganization', 'reorganisation', 'corporate action', 'symbol change', 'cash in lieu'].some((keyword) => text.includes(keyword));
-    const type: PortfolioTransactionEventType = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
+    const type: PortfolioTransactionEventType | null = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
       ? 'dividend'
       : isCorporateAction
         ? 'corporate-action'
@@ -1234,7 +1234,13 @@ export function appendBrokerHistoryAuditEvents(
               : text.includes('withdraw') || text.includes('debit') || amount < 0 && text.includes('outflow')
                 ? 'cash.withdrawal'
                 : text.includes('deposit') || text.includes('funding') || text.includes('credit')
-                  ? 'cash.deposit' : 'cash.adjustment';
+                  ? 'cash.deposit'
+                  : /\\badjustment\\b|\\bcorrection\\b/.test(text)
+                    ? 'cash.adjustment'
+                    : null;
+    // Unknown/provider-specific labels remain in the source cashflow history
+    // and are reported as unclassified by PT-04. Never invent a cash adjustment.
+    if (!type) continue;
     const isRefund = /refund|rebate|reversal|reversed/.test(text);
     const signedAmount = type === 'cash.deposit'
       ? Math.abs(amount)
