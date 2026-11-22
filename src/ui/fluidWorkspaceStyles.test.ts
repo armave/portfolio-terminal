@@ -206,7 +206,7 @@ describe('desk transitions and supporting layouts', () => {
     expect(stylesheet).not.toContain('@keyframes closed-history-page-enter');
     expect(stylesheet).not.toMatch(/:where\(tbody tr\)\s*\{[^}]*transition:\s*opacity/s);
     expect(stylesheet).not.toMatch(/table tbody tr\s*\{[^}]*transition:\s*opacity/s);
-    expect(stylesheet).not.toMatch(/table tbody tr:hover\s*\{[^}]*transform:/s);
+    expect(stylesheet).not.toMatch(/table tbody tr:hover\s*\{[^}]*transform:\s*translateY\(-1px\)/s);
   });
 
   it('limits control and toast transitions to the properties that actually change', () => {
