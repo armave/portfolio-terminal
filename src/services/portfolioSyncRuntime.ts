@@ -65,7 +65,9 @@ export function bindPortfolioSyncRuntime(
 
   const handleSyncRequest = (event: ManualSyncRequestEvent) => {
     const role = dependencies.getAccountRole();
-    const sessionKey = dependencies.getAccountSessionKey() || `role:${role || 'none'}`;
+    const getCurrentSessionKey = () => dependencies.getAccountSessionKey() ??
+      `role:${dependencies.getAccountRole() || 'none'}`;
+    const sessionKey = getCurrentSessionKey();
     const existing = activeSyncs.get(sessionKey);
     if (existing) {
       // Repeated clicks in one authenticated session join the same operation.
@@ -96,7 +98,7 @@ export function bindPortfolioSyncRuntime(
 
         // A late response from a signed-out or previous account may resolve its
         // caller, but must not overwrite the active account's status or toasts.
-        if (dependencies.getAccountSessionKey() === sessionKey) {
+        if (getCurrentSessionKey() === sessionKey) {
           notifySyncResult(result, dependencies);
           if (dependencies.getSyncStatus().status !== 'conflict') {
             dependencies.setSyncStatus({
@@ -109,7 +111,7 @@ export function bindPortfolioSyncRuntime(
         }
         return result;
       } catch (error) {
-        if (dependencies.getAccountSessionKey() === sessionKey) {
+        if (getCurrentSessionKey() === sessionKey) {
           const message = error instanceof Error ? error.message : String(error);
           if (dependencies.getSyncStatus().status !== 'conflict') {
             dependencies.setSyncStatus({ status: 'error', text: 'Sync failed' });
