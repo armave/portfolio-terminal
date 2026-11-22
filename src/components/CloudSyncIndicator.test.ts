@@ -11,6 +11,7 @@ import {
 } from './CloudSyncIndicator';
 
 const status = (value: string, text = '') => ({ status: value, text });
+const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 
 describe('resolveCloudSyncTone', () => {
   it('prioritizes sync failures over successful KV connectivity', () => {
@@ -92,7 +93,7 @@ describe('resolveCloudSyncDisplayTone', () => {
     expect(resolveCloudSyncDisplayTone('pending', true)).toBe('pending');
   });
 
-  it('holds a visible pending pulse briefly after a successful operation completes', () => {
+  it('holds a visible pending state briefly after a successful operation completes', () => {
     expect(resolveCloudSyncDisplayTone('success', false)).toBe('success');
     expect(resolveCloudSyncDisplayTone('success', true)).toBe('pending');
   });
@@ -104,6 +105,17 @@ describe('resolveCloudSyncDisplayTone', () => {
   });
 });
 
+describe('cloud sync indicator motion', () => {
+  it('keeps the pending dot steady and transitions only its status color', () => {
+    const baseDotRule = stylesheet.match(/\.cloud-sync-indicator__dot\s*\{([^}]*)\}/s)?.[1] ?? '';
+    const pendingDotRule = stylesheet.match(/\.cloud-sync-indicator--pending \.cloud-sync-indicator__dot\s*\{([^}]*)\}/s)?.[1] ?? '';
+
+    expect(baseDotRule).toContain('transition: background-color 140ms ease-out;');
+    expect(pendingDotRule).toContain('background: var(--color-info);');
+    expect(pendingDotRule).not.toMatch(/\banimation\s*:/);
+    expect(stylesheet).not.toContain('@keyframes cloud-sync-pulse');
+  });
+});
 
 describe('cloud sync progress presentation', () => {
   it('keeps scheduled guest snapshot polling out of the global cloud-write progress state', () => {
