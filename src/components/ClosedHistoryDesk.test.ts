@@ -258,6 +258,12 @@ describe('Trades history UX', () => {
     expect(source).toContain('compact');
   });
 
+  it('keeps the authenticated browser journey aligned with the responsive card list', () => {
+    const browserSource = readFileSync(new URL('../../scripts/browser-smoke-operations.mjs', import.meta.url), 'utf8');
+    expect(browserSource).toContain("#closedTradesHistory article");
+    expect(browserSource).not.toContain("#closedTradesTableBody");
+  });
+
   it('removes provenance from filters while preserving it on each trade entry', () => {
     const source = readSource();
     expect(source).not.toContain('sourceFilter');
