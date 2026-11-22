@@ -7,6 +7,8 @@ import {
 
 export interface PortfolioSyncRuntimeDependencies {
   getAccountRole: () => ManualPortfolioSyncOperations['role'];
+  /** Stable authenticated role/account scope; prevents cross-session sync coalescing. */
+  getAccountSessionKey: () => string | null;
   refreshQuotes: ManualPortfolioSyncOperations['refreshQuotes'];
   refreshBrokerAccount: ManualPortfolioSyncOperations['refreshBrokerAccount'];
   refreshExecutedTrades: ManualPortfolioSyncOperations['refreshExecutedTrades'];
@@ -59,12 +61,29 @@ function notifySyncResult(
 export function bindPortfolioSyncRuntime(
   dependencies: PortfolioSyncRuntimeDependencies
 ): () => void {
+  const activeSyncs = new Map<string, Promise<ManualPortfolioSyncResult>>();
+
   const handleSyncRequest = (event: ManualSyncRequestEvent) => {
+    const role = dependencies.getAccountRole();
+    const getCurrentSessionKey = () => dependencies.getAccountSessionKey() ??
+      `role:${dependencies.getAccountRole() || 'none'}`;
+    const sessionKey = getCurrentSessionKey();
+    const existing = activeSyncs.get(sessionKey);
+    if (existing) {
+      // Repeated clicks in one authenticated session join the same operation.
+      // They do not start duplicate provider requests or race the header status.
+      void existing.then(
+        (result) => event.detail.resolve(result),
+        () => event.detail.resolve({ role, success: false, quotes: false })
+      );
+      return;
+    }
+
     if (dependencies.getSyncStatus().status !== 'conflict') {
       dependencies.setSyncStatus({ status: 'syncing', text: 'Portfolio sync in progress' });
     }
-    void (async () => {
-      const role = dependencies.getAccountRole();
+
+    const request = (async (): Promise<ManualPortfolioSyncResult> => {
       try {
         const result = await runManualPortfolioSync({
           role,
@@ -76,33 +95,45 @@ export function bindPortfolioSyncRuntime(
           syncClosedHistory: dependencies.syncClosedHistory,
           pullGuestSnapshot: dependencies.pullGuestSnapshot
         });
-        notifySyncResult(result, dependencies);
-        if (dependencies.getSyncStatus().status !== 'conflict') {
-          dependencies.setSyncStatus({
-            status: result.success ? 'synced' : 'error',
-            text: result.role === 'guest'
-              ? result.success ? 'Assigned data refreshed' : 'Assigned data refresh failed'
-              : result.success ? 'Synced' : 'Sync failed'
-          });
+
+        // A late response from a signed-out or previous account may resolve its
+        // caller, but must not overwrite the active account's status or toasts.
+        if (getCurrentSessionKey() === sessionKey) {
+          notifySyncResult(result, dependencies);
+          if (dependencies.getSyncStatus().status !== 'conflict') {
+            dependencies.setSyncStatus({
+              status: result.success ? 'synced' : 'error',
+              text: result.role === 'guest'
+                ? result.success ? 'Assigned data refreshed' : 'Assigned data refresh failed'
+                : result.success ? 'Synced' : 'Sync failed'
+            });
+          }
         }
-        event.detail.resolve(result);
+        return result;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (dependencies.getSyncStatus().status !== 'conflict') {
-          dependencies.setSyncStatus({ status: 'error', text: 'Sync failed' });
+        if (getCurrentSessionKey() === sessionKey) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (dependencies.getSyncStatus().status !== 'conflict') {
+            dependencies.setSyncStatus({ status: 'error', text: 'Sync failed' });
+          }
+          dependencies.logAppMessage(`[Sync Error]: ${message}`);
+          dependencies.showToast(
+            dependencies.translateText('Could not sync portfolio. Check your connection and try again.'),
+            'error'
+          );
         }
-        dependencies.logAppMessage(`[Sync Error]: ${message}`);
-        dependencies.showToast(
-          dependencies.translateText('Could not sync portfolio. Check your connection and try again.'),
-          'error'
-        );
-        event.detail.resolve({
-          role,
-          success: false,
-          quotes: false
-        });
+        return { role, success: false, quotes: false };
       }
     })();
+
+    activeSyncs.set(sessionKey, request);
+    void request.then(
+      (result) => event.detail.resolve(result),
+      () => event.detail.resolve({ role, success: false, quotes: false })
+    );
+    void request.finally(() => {
+      if (activeSyncs.get(sessionKey) === request) activeSyncs.delete(sessionKey);
+    }).catch(() => undefined);
   };
 
   addUiEventListener('portfolio:sync-request', handleSyncRequest);

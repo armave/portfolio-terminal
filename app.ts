@@ -574,17 +574,20 @@ const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
 
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function refreshGuestPortfolioSnapshot(): Promise<boolean> {
-  setCloudStatus('syncing', 'CONNECTING');
-  setCloudSyncStatus({ text: 'Assigned data refresh in progress', status: 'syncing' });
   try {
     const refreshed = await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
     if (!refreshed) return false;
-    setCloudStatus('synced', 'READY');
-    setCloudSyncStatus({ text: 'Assigned data refreshed', status: 'synced', lastSyncedAt: Date.now() });
+    // Guest hydration is a read-only, server-scoped projection refresh, not a
+    // KV workspace write. Keep it out of the global write-progress animation;
+    // explicit Manual Sync owns the aggregate progress state.
+    if (getCloudSyncStatus().status !== 'syncing') {
+      setCloudStatus('online', 'CONNECTED');
+    }
     return true;
   } catch (error) {
-    setCloudStatus('error', 'UNAVAILABLE');
-    setCloudSyncStatus({ text: 'Assigned data refresh failed', status: 'error' });
+    if (getCloudSyncStatus().status !== 'syncing') {
+      setCloudStatus('error', 'UNAVAILABLE');
+    }
     throw error;
   }
 }
@@ -2114,6 +2117,12 @@ function bindStartupActions() {
   });
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
+    getAccountSessionKey: () => {
+      const session = currentAccountSessionGuard.capture();
+      // Include the generation so signing out and back into the same account
+      // cannot make an older sync appear current again.
+      return session ? `${session.identity}:${session.generation}` : null;
+    },
     refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
     refreshExecutedTrades: () => portfolioBrokerRefreshRuntime.refreshExecutedTrades('interactive'),
     refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,

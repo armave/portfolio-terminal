@@ -7,6 +7,10 @@ function createDependencies(
 ): PortfolioSyncRuntimeDependencies {
   return {
     getAccountRole: () => 'admin',
+    getAccountSessionKey: () => {
+      const role = overrides.getAccountRole ? overrides.getAccountRole() : 'admin';
+      return role ? `${role}:test-account` : null;
+    },
     refreshQuotes: vi.fn(async () => true),
     refreshBrokerAccount: vi.fn(async () => true),
     refreshExecutedTrades: vi.fn(async () => true),
@@ -67,6 +71,82 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.logAppMessage).toHaveBeenCalledWith(
       '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
     );
+  });
+
+  it('coalesces repeated manual Sync requests within the same authenticated session', async () => {
+    let releaseQuotes: (succeeded: boolean) => void = () => undefined;
+    const quoteRequest = new Promise<boolean>((resolve) => { releaseQuotes = resolve; });
+    const dependencies = createDependencies({
+      refreshQuotes: vi.fn(() => quoteRequest)
+    });
+    const firstResolve = vi.fn();
+    const secondResolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve: firstResolve });
+    await vi.waitFor(() => expect(dependencies.refreshQuotes).toHaveBeenCalledTimes(1));
+
+    emitUiEvent('portfolio:sync-request', { resolve: secondResolve });
+    await Promise.resolve();
+
+    expect(dependencies.refreshBrokerAccount).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshExecutedTrades).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshActiveOrders).toHaveBeenCalledTimes(1);
+    expect(dependencies.refreshQuotes).toHaveBeenCalledTimes(1);
+    expect(dependencies.setSyncStatus).toHaveBeenCalledTimes(1);
+    expect(firstResolve).not.toHaveBeenCalled();
+    expect(secondResolve).not.toHaveBeenCalled();
+
+    releaseQuotes(true);
+    await vi.waitFor(() => {
+      expect(firstResolve).toHaveBeenCalledTimes(1);
+      expect(secondResolve).toHaveBeenCalledTimes(1);
+    });
+    expect(secondResolve).toHaveBeenCalledWith(firstResolve.mock.calls[0][0]);
+    expect(dependencies.syncClosedHistory).toHaveBeenCalledTimes(1);
+    expect(dependencies.pushCloud).toHaveBeenCalledTimes(1);
+    expect(dependencies.showToast).toHaveBeenCalledTimes(1);
+    expect(dependencies.setSyncStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let an older authentication generation overwrite the current session status', async () => {
+    // Same account identity, new generation after sign-out/sign-in.
+    let sessionKey = 'admin:first:1';
+    const quoteResults: Array<{ resolve: (succeeded: boolean) => void; promise: Promise<boolean> }> = [];
+    const refreshQuotes = vi.fn(() => {
+      let resolve: (succeeded: boolean) => void = () => undefined;
+      const promise = new Promise<boolean>((done) => { resolve = done; });
+      quoteResults.push({ resolve, promise });
+      return promise;
+    });
+    const statuses: Array<{ status: 'syncing' | 'synced' | 'error'; text: string }> = [];
+    const dependencies = createDependencies({
+      getAccountSessionKey: () => sessionKey,
+      getSyncStatus: () => ({ status: statuses[statuses.length - 1]?.status || 'idle' }),
+      setSyncStatus: (next) => { statuses.push(next); },
+      refreshQuotes
+    });
+    const firstResolve = vi.fn();
+    const secondResolve = vi.fn();
+
+    unbind = bindPortfolioSyncRuntime(dependencies);
+    emitUiEvent('portfolio:sync-request', { resolve: firstResolve });
+    await vi.waitFor(() => expect(refreshQuotes).toHaveBeenCalledTimes(1));
+
+    sessionKey = 'admin:first:3';
+    emitUiEvent('portfolio:sync-request', { resolve: secondResolve });
+    await vi.waitFor(() => expect(refreshQuotes).toHaveBeenCalledTimes(2));
+
+    quoteResults[0].resolve(true);
+    await vi.waitFor(() => expect(firstResolve).toHaveBeenCalledTimes(1));
+    expect(statuses).toHaveLength(2);
+    expect(statuses[statuses.length - 1]).toMatchObject({ status: 'syncing' });
+    expect(dependencies.showToast).not.toHaveBeenCalled();
+
+    quoteResults[1].resolve(true);
+    await vi.waitFor(() => expect(secondResolve).toHaveBeenCalledTimes(1));
+    expect(statuses[statuses.length - 1]).toMatchObject({ status: 'synced' });
+    expect(dependencies.showToast).toHaveBeenCalledTimes(1);
   });
 
   it('keeps guest sync limited to the guest snapshot and quotes', async () => {

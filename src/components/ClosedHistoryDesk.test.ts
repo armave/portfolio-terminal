@@ -153,9 +153,19 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('createBrokerExecutionHistoryState(loadInitialBrokerExecutions(), [], true)');
   });
 
-  it('keeps the current snapshot available while a background refresh is running or fails', () => {
+  it('keeps cached mount catch-up quiet and reserves the header refresh state for explicit user requests', () => {
     const source = readSource();
-    expect(source).toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
+    const mountEffectStart = source.indexOf('    readCurrentTrades();');
+    const mountEffectEnd = source.indexOf('  }, []);', mountEffectStart);
+    const mountEffect = source.slice(mountEffectStart, mountEffectEnd);
+    const retryStart = source.indexOf('  const retryBrokerTrades =');
+    const retryEnd = source.indexOf('  useEffect(() => addBrokerEventListener', retryStart);
+    const explicitRefresh = source.slice(retryStart, retryEnd);
+
+    expect(mountEffect).toContain("emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });");
+    expect(mountEffect).not.toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
+    expect(explicitRefresh).toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
+    expect(explicitRefresh).toContain("emitBrokerEvent('broker:request-executed-trades-and-wait'");
     expect(source).toContain("dispatchBrokerExecutionHistory({ type: 'failure' });");
     expect(source).toContain("brokerExecutionHistory.status === 'refreshing'");
     expect(source).toContain("brokerExecutionHistory.status === 'stale'");
