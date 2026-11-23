@@ -220,17 +220,17 @@ export class ScenarioCalculator {
       columns: rows.map(r => dayLabel(r.days) + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
       rows: [
         { label: 'Projected Cash / Debt Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' },
-        { label: 'Gross Proceeds', values: rows.map(r => money(r.gross)), kind: 'fee' },
-        { label: 'Buy Commission', values: rows.map(() => money(buyCommission)), kind: 'fee' },
-        { label: 'Sell Commission', values: rows.map(r => money(r.sellFee)), kind: 'fee' },
-        { label: 'Estimated Margin Interest', values: rows.map(r => money(r.marginFee)), kind: 'fee' },
-        { label: 'Total Fee Friction', values: rows.map(r => money(r.totalFeeFriction)), kind: 'fee' },
         {
           label: 'Net P&L',
           values: rows.map(r => signed(r.net)),
           deltas: rows.map(r => r === best ? 'BEST' : signed(r.net - best.net)),
           kind: 'result'
-        }
+        },
+        { label: 'Gross Proceeds', values: rows.map(r => money(r.gross)), kind: 'fee' },
+        { label: 'Buy Commission', values: rows.map(() => money(buyCommission)), kind: 'fee' },
+        { label: 'Sell Commission', values: rows.map(r => money(r.sellFee)), kind: 'fee' },
+        { label: 'Estimated Margin Interest', values: rows.map(r => money(r.marginFee)), kind: 'fee' },
+        { label: 'Total Fee Friction', values: rows.map(r => money(r.totalFeeFriction)), kind: 'fee' }
       ],
       note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. This is an estimate only; no order is placed and portfolio data is not changed.'
     };
