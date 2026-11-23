@@ -112,3 +112,10 @@ No debt delta, interest amount, sign or accounting category is inferred. No PT-0
 The audit importer and PT-04 matcher no longer interpret a bare provider label containing `margin` as proof of interest. Only explicit interest/financing/borrow-fee wording or a `Margin Fee` label is classified as `margin.interest`. Margin-only labels such as `Margin Call` and `Margin Charge` remain in the source history and are surfaced as provisional unclassified cashflow evidence; the importer does not create a typed journal event for them.
 
 This rule preserves existing `Margin Fee` and `Margin Interest` behavior while avoiding false interest matches against maintenance calls, debt movements or other margin-account activities. No signed debt movement or interest amount is inferred. Cash/debt, fee allocations, PT-02 events, canonical positions and P&L are unchanged.
+
+
+## Cashflow matches require known currencies on both sides — 2026-11-23
+
+The transaction-level cashflow matcher previously allowed a candidate when either the broker or app currency was absent, as long as type, absolute amount and time were compatible. A missing currency is not evidence that two amounts share a denomination. All same-currency paths (exact match, direction discrepancy, type discrepancy and amount discrepancy) now require both currency codes to be present and equal after normalization. Known unequal currencies remain a currency-mismatch finding without FX conversion.
+
+Rows with a missing broker currency remain in the normalized source count but are excluded from pairing; app events with a missing currency are likewise unmatchable. The report is provisional and both directions of absence claims are suppressed for incomplete currency evidence. A focused warning and Russian translation make the broker-side limitation visible. This is read-only and does not change a cashflow amount, currency, balance, fee allocation or P&L.
