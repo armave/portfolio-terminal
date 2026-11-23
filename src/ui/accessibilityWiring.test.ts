@@ -119,6 +119,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).not.toContain('document.body.style.overflow');
     expect(exit).not.toContain('document.documentElement.style.overflow');
     expect(exit).toContain('formatUSDDisplayValue(value)');
+    expect(styles).toContain('.exit-comparison-dialog button,');
+    expect(styles).toContain('min-height: 44px;');
     expect(styles).toContain('.exit-comparison-backdrop {');
     expect(styles).toContain('z-index: 10000;');
     expect(styles).toContain('height: 100dvh;');

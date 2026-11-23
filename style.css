@@ -3567,6 +3567,13 @@ table tbody tr:hover {
   scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
 }
 
+/* Keep interactive controls at a true 44px target despite the global unlayered button reset. */
+.exit-comparison-dialog button,
+.exit-comparison-dialog input,
+.exit-comparison-dialog select {
+  min-height: 44px;
+}
+
 @media (max-width: 640px) {
   .exit-comparison-backdrop {
     align-items: center;
