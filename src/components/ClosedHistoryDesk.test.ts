@@ -109,7 +109,7 @@ describe('Trades cache-first rendering', () => {
     expect(app).toContain("syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('manual') : Promise.resolve(false)");
     expect(app).toContain("addBrokerEventListener('broker:request-closed-history-sync-and-wait'");
     expect(source).toContain("emitBrokerEvent('broker:request-closed-history-sync-and-wait'");
-    expect(source).toContain("requestClosedHistorySync('refresh', true)");
+    expect(source).toContain("requestClosedHistorySync('refresh')");
     expect(source).not.toContain('pullCloudHistory');
     expect(source).not.toContain('pushCloudHistory');
     expect(source).not.toContain('fetchCashflows');
