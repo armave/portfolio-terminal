@@ -130,6 +130,17 @@ describe('cloud sync progress presentation', () => {
     expect(guestRefresh).toContain("setCloudStatus('online', 'CONNECTED')");
   });
 
+  it('does not create a timestamp-only portfolio mutation for cloud checkpoints', () => {
+    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const start = source.indexOf('async function pushStateToCloud');
+    const end = source.indexOf('const pushStateToGist', start);
+    const checkpoint = source.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(checkpoint).toContain('state = portfolioStore.getState();');
+    expect(checkpoint).not.toContain('portfolioStore.setState({ lastUpdated: Date.now() })');
+  });
+
   it('keeps scheduled checkpoints quiet while explicit sync operations announce progress', () => {
     const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     expect(source).toContain('async function pushStateToCloud(forceImmediate = false, announceProgress = false)');

@@ -59,3 +59,10 @@ npm run ci:local
 ```
 
 The scheduler is a client-side concurrency and priority control, not a production measurement. Request counts, queue wait, and authenticated live TradeNet behavior still require a real-session comparison before claiming a measured performance improvement.
+
+
+## R06 — checkpoint and Trades fingerprint efficiency
+
+The cloud checkpoint path reads the latest state from `PortfolioStore` but does not write `lastUpdated` back as a standalone mutation. A checkpoint is synchronization work, not a financial or portfolio-state change. This avoids running full store normalization and notifying every portfolio subscriber solely because a timer fired. Actual durable state saves continue to own their existing timestamp behavior, and cloud writes retain their encrypted snapshot fingerprint, revision precondition, and retry contract.
+
+The Trades fee-allocation input fingerprint is memoized against the source references used by the deterministic allocator: cashflows, broker executions, closed trades, tranche types, and tranche mixes. When broker execution history is non-empty, open positions are not an allocator input, so position-only/quote-only updates are excluded from the memo dependencies. When there are no broker executions, canonical app positions remain a dependency because they are the fee allocator's exposure source. No allocation formula, input projection, financial event, or persisted record changes in this optimization.

@@ -712,7 +712,8 @@ async function pushStateToCloud(forceImmediate = false, announceProgress = false
 
   if (startupCloudWriteGate.deferWrite()) return false;
 
-  portfolioStore.setState({ lastUpdated: Date.now() });
+  // A cloud checkpoint reads the latest canonical snapshot; it must not commit a
+  // timestamp-only PortfolioStore mutation or notify every portfolio subscriber.
   state = portfolioStore.getState();
 
   const doPush = async (): Promise<boolean> => {

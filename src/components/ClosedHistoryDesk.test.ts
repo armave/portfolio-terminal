@@ -91,6 +91,22 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('setCashflowSyncReady(true)');
   });
 
+  it('memoizes fee-allocation input serialization and ignores position changes when broker executions are authoritative', () => {
+    const source = readSource();
+    const start = source.indexOf('const allocationInputKey = useMemo(');
+    const end = source.indexOf('\n\n  useEffect(() => {', start);
+    const memo = source.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(memo).toContain('createFreedomMarginFeeAllocationInputKey(');
+    expect(memo).toContain('state.cashflows,');
+    expect(memo).toContain('allocationBrokerExecutions,');
+    expect(memo).toContain('state.closedTrades,');
+    expect(memo).toContain('state.activeTrancheTypes,');
+    expect(memo).toContain('state.activeTrancheMixes,');
+    expect(memo).toContain('allocationBrokerExecutions.length > 0 ? null : state.positions');
+  });
+
   it('ignores fee-allocation completion after its effect is disposed', () => {
     const source = readSource();
     const allocationEffect = source.slice(
