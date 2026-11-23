@@ -337,8 +337,8 @@ describe('Market Tools Exit Comparison preview', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(2);
     expect(result.modal?.rows.map(row => row.label)).toEqual([
-      'Projected Cash / Debt Balance', 'Gross Proceeds', 'Buy Commission', 'Sell Commission',
-      'Estimated Margin Interest', 'Total Fee Friction', 'Net P&L'
+      'Projected Cash / Debt Balance', 'Net P&L', 'Gross Proceeds', 'Buy Commission',
+      'Sell Commission', 'Estimated Margin Interest', 'Total Fee Friction'
     ]);
     expect(sellStock).not.toHaveBeenCalled();
     expect(updateTargetPrice).not.toHaveBeenCalled();
