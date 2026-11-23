@@ -11,6 +11,23 @@ describe('Compare Exits reference-price provenance', () => {
     }, 'GOOGL')).toEqual({ price: 120, source: 'quote' });
   });
 
+  it('classifies manually entered and trade-entered prices separately from provider quotes', () => {
+    expect(getExitComparisonReference({
+      currentPrice: 120,
+      quoteSource: 'Manual',
+      shares: 5,
+      commBuy: 0,
+      tranches: [{ qty: 5, price: 100 }]
+    }, 'GOOGL')).toEqual({ price: 120, source: 'manual' });
+    expect(getExitComparisonReference({
+      currentPrice: 121,
+      quoteSource: 'Trade input',
+      shares: 5,
+      commBuy: 0,
+      tranches: [{ qty: 5, price: 100 }]
+    }, 'GOOGL')).toEqual({ price: 121, source: 'manual' });
+  });
+
   it('uses average entry only when the tracked lots cover every open share', () => {
     expect(getExitComparisonReference({
       shares: 5,

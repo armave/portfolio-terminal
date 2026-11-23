@@ -2,6 +2,7 @@ import { validateSaleCostBasisTranches } from '../../domain/saleCostBasis';
 
 export interface ExitComparisonReferencePosition {
   currentPrice?: unknown;
+  quoteSource?: unknown;
   shares?: unknown;
   commBuy?: unknown;
   tranches?: unknown;
@@ -9,7 +10,7 @@ export interface ExitComparisonReferencePosition {
 
 export interface ExitComparisonReference {
   price: number | null;
-  source: 'quote' | 'average-entry' | null;
+  source: 'quote' | 'manual' | 'average-entry' | null;
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -31,7 +32,10 @@ export function getExitComparisonReference(
   if (!position) return { price: null, source: null };
 
   const quote = finiteNumber(position.currentPrice);
-  if (quote !== null && quote > 0) return { price: quote, source: 'quote' };
+  if (quote !== null && quote > 0) {
+    const source = position.quoteSource === 'Manual' || position.quoteSource === 'Trade input' ? 'manual' : 'quote';
+    return { price: quote, source };
+  }
 
   const shares = finiteNumber(position.shares);
   if (shares === null || shares <= 0) return { price: null, source: null };

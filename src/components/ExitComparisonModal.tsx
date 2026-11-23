@@ -189,18 +189,20 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
         : quoteFreshness === 'unknown' ? 'Time unknown' : 'Not fetched';
   const quoteSource = position?.quoteSource || position?.quoteDetails?.provider || translateText('Quote source unknown', language);
   const quoteSourceTimestamp = Number(position?.quoteDetails?.sourceTimestamp);
-  const referenceInfo = reference.source === 'quote'
-    ? [
-        translateText(position?.quoteSource === 'Manual' || position?.quoteSource === 'Trade input' ? 'Manual / trade price' : 'Latest quote', language),
-        quoteSource,
-        translateText(quoteFreshnessLabel, language),
-        Number.isFinite(quoteSourceTimestamp) && quoteSourceTimestamp > 0
-          ? translateText('As of', language) + ' ' + formatSavedTime(quoteSourceTimestamp, language)
-          : translateText('Observation time unknown', language)
-      ].join(' · ')
-    : reference.source === 'average-entry'
-      ? translateText('Average entry', language) + ' · ' + translateText('Based on complete tracked lots', language)
-      : '';
+  const referenceInfo = reference.source === 'manual'
+    ? [translateText('Manual / trade price', language), quoteSource].join(' · ')
+    : reference.source === 'quote'
+      ? [
+          translateText('Latest quote', language),
+          quoteSource,
+          translateText(quoteFreshnessLabel, language),
+          Number.isFinite(quoteSourceTimestamp) && quoteSourceTimestamp > 0
+            ? translateText('As of', language) + ' ' + formatSavedTime(quoteSourceTimestamp, language)
+            : translateText('Observation time unknown', language)
+        ].join(' · ')
+      : reference.source === 'average-entry'
+        ? translateText('Average entry', language) + ' · ' + translateText('Based on complete tracked lots', language)
+        : '';
 
   const offsets = periods.map((period) => getExitDayOffset(period.date, today));
   const prices = periods.map((period) => Number(period.price));

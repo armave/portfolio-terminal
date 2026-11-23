@@ -35,7 +35,7 @@ The BEST NET P&L marker means the period with the higher modeled Net P&L after c
 
 ## Reference-price provenance
 
-The Use reference action prefers the position's current selected quote. The UI shows the quote source, the freshness classification, and the provider observation time when one exists. Client receipt time is not presented as market observation time. Missing observation time remains explicitly unknown; stale, delayed, indicative/unknown, and unavailable states are not promoted to fresh.
+The Use reference action prefers the position's current selected quote. Manually entered and trade-entered prices are identified as manual prices rather than provider quotes. For provider quotes, the UI shows the quote source, freshness classification, and provider observation time when one exists. Client receipt time is not presented as market observation time. Missing observation time remains explicitly unknown; stale, delayed, indicative/unknown, and unavailable states are not promoted to fresh.
 
 When no usable quote exists, average entry may be used only if the tracked acquisition lots pass the shared sale-cost-basis validator and their total quantity reconciles to every open share. Invalid, partial, excess, or otherwise unreconciled lot coverage leaves the reference price unavailable. No partial-lot average is inferred.
 
