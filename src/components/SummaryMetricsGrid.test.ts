@@ -481,19 +481,17 @@ describe('cross-device financial header hierarchy', () => {
     expect(healthColumn).not.toContain('market-tools-external');
   });
 
-  it('aligns the ticker Tranches control to the right and vertically with its label', () => {
+  it('aligns the ticker Tranches control and prevents narrow-column overflow', () => {
     const singleTickerView = source.slice(source.indexOf('// Single Ticker View'));
     expect(singleTickerView).toContain('id="boardTranches" class="portfolio-metric-value portfolio-tranches-value');
     expect(styles.replaceAll(' ', '').replaceAll(String.fromCharCode(10), '')).toContain('.portfolio-micro-basis>.portfolio-micro-row{');
     expect(styles).toContain('.portfolio-micro-basis .portfolio-tranches-value {');
     expect(styles).toContain('align-items: flex-end;');
     expect(styles).toContain('align-items: center;');
-    expect(styles).toMatch(/\.portfolio-micro-basis\s+\.portfolio-micro-row\s*>\s*\.portfolio-tranches-value\s*\{/);
-    expect(styles).toContain('box-sizing: border-box;');
-    expect(styles).toContain('justify-self: stretch;');
-    expect(styles).toMatch(/\.portfolio-micro-basis\s+#boardTranches\s*>\s*\.tranche-details-trigger\s*\{/);
-    expect(styles).toContain('width: max-content;');
-    expect(styles).toContain('justify-self: end;');
+    expect(styles).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>button\s*\{[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
+    expect(styles).toMatch(/\.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*>\s*\.tranche-details-trigger\s*\{[^}]*flex:\s*0\s+1\s+auto;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
+    expect(styles).toMatch(/\.portfolio-micro-basis\s*\.tranche-details-trigger\s*>\s*span:first-child\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(/\.portfolio-micro-basis\s*\.tranche-details-trigger\s*>\s*\.tranche-details-trigger-icon\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
   });
 
 
