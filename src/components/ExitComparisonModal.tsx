@@ -12,7 +12,9 @@ import {
   type ExitComparisonSavedResult
 } from '../features/scenarios/exitComparisonPreferences';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatUSDDisplayValue } from '../utils/formatters';
+import { getExitComparisonReference, type ExitComparisonReferencePosition } from '../features/scenarios/exitComparisonReference';
+import { formatExitComparisonDate, getProjectedCashDebtStatus, parseScenarioSignedMoney } from '../features/scenarios/exitComparisonPresentation';
+import { formatUSD, formatUSDDisplayValue, getQuoteFreshness } from '../utils/formatters';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { ModalFrame } from './ModalFrame';
@@ -25,40 +27,14 @@ interface ExitComparisonModalProps {
 
 const PERIOD_PRESETS = [0, 7, 14, 30, 60, 90, 180];
 
-interface ExitPositionReference {
-  currentPrice?: number;
-  shares?: number;
-  tranches?: Array<{ qty: number; price: number }>;
-}
-
-function getReferencePrice(position?: ExitPositionReference): number | null {
-  if (!position) return null;
-  const quote = Number(position.currentPrice);
-  if (Number.isFinite(quote) && quote > 0) return quote;
-  const shares = Number(position.shares);
-  const cost = (position.tranches || []).reduce((sum, tranche) => {
-    const quantity = Number(tranche.qty);
-    const price = Number(tranche.price);
-    return sum + (Number.isFinite(quantity) && quantity > 0 && Number.isFinite(price) && price > 0 ? quantity * price : 0);
-  }, 0);
-  return Number.isFinite(shares) && shares > 0 && cost > 0 ? cost / shares : null;
-}
-
-function makeDefaultPeriods(position?: ExitPositionReference, today = toLocalIsoDate()): [ExitComparisonPeriodInput, ExitComparisonPeriodInput] {
-  const reference = getReferencePrice(position);
-  const firstPrice = reference === null ? '' : reference.toFixed(2);
-  const secondPrice = reference === null ? '' : (reference * 1.03).toFixed(2);
+function makeDefaultPeriods(position?: ExitComparisonReferencePosition, today = toLocalIsoDate()): [ExitComparisonPeriodInput, ExitComparisonPeriodInput] {
+  const reference = getExitComparisonReference(position);
+  const firstPrice = reference.price === null ? '' : reference.price.toFixed(2);
+  const secondPrice = reference.price === null ? '' : (reference.price * 1.03).toFixed(2);
   return [
     { date: today, price: firstPrice },
     { date: addCalendarDays(today, 14), price: secondPrice }
   ];
-}
-
-function parseSignedMoney(value?: string): number | null {
-  if (!value) return null;
-  const cleaned = value.replace(/,/g, '').replace(/[^0-9.+-]/g, '');
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatSignedMoney(value: number): string {
@@ -119,17 +95,48 @@ function formatResultColumn(
   index: number,
   isFresh: boolean,
   offsets: Array<number | null>,
+  dates: string[],
   prices: number[],
   language: 'en' | 'ru'
 ): string {
-  const days = offsets[index];
-  if (isFresh && days !== null && Number.isFinite(prices[index]) && prices[index] > 0) {
-    return translatePeriodName(days, language) + ' · ' + formatUSD(prices[index]);
+  const date = dates[index];
+  if (isFresh && offsets[index] !== null && date && Number.isFinite(prices[index]) && prices[index] > 0) {
+    return formatExitComparisonDate(date, language) + ' · ' + formatUSD(prices[index]);
+  }
+  const savedDate = column.match(/^(\d{4}-\d{2}-\d{2})\s·\s(.+)$/);
+  if (savedDate) {
+    return formatExitComparisonDate(savedDate[1], language) + ' · ' + formatUSDDisplayValue(savedDate[2]);
   }
   return column
     .replace(/\s·\sBEST$/, '')
     .replace(/^Today(?=\s·)/, translateText('Today', language))
     .replace(/^(\d+) Days(?=\s·)/, (_match, value: string) => translatePeriodName(Number(value), language));
+}
+
+function formatSavedResultColumn(date: string, price: number, fallback: string): string {
+  return getExitDayOffset(date, date) === 0 && Number.isFinite(price) && price > 0
+    ? date + ' · ' + formatUSD(price)
+    : fallback;
+}
+
+function getScenarioValueClass(kind: string | undefined, value: string): string {
+  if (kind === 'result') return 'font-bold text-emerald-200';
+  if (kind === 'balance') {
+    const status = getProjectedCashDebtStatus(value);
+    if (status === 'debt') return 'font-bold text-rose-200';
+    if (status === 'cash') return 'font-semibold text-cyan-100';
+    return 'font-semibold text-slate-200';
+  }
+  if (kind === 'fee' && value !== '—') return 'text-slate-100';
+  return 'text-slate-300';
+}
+
+function getBalanceCaption(value: string, language: 'en' | 'ru'): string {
+  const status = getProjectedCashDebtStatus(value);
+  if (status === 'debt') return translateText('Remaining margin debt', language);
+  if (status === 'cash') return translateText('Available cash balance', language);
+  if (status === 'settled') return translateText('No remaining cash or margin debt', language);
+  return '';
 }
 
 function resultsMatch(left: ExitComparisonSavedResult | null, right: ExitComparisonSavedResult): boolean {
@@ -172,8 +179,30 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   const today = toLocalIsoDate();
   const maximumDate = addCalendarDays(today, 3650);
   const position = ticker ? state.positions[ticker] : undefined;
-  const referencePrice = getReferencePrice(position);
+  const reference = getExitComparisonReference(position, ticker);
+  const referencePrice = reference.price;
   const shares = Number(position?.shares) || 0;
+  const quoteFreshness = position && reference.source === 'quote' ? getQuoteFreshness(position) : null;
+  const quoteFreshnessLabel = quoteFreshness === 'fresh' ? 'Fresh'
+    : quoteFreshness === 'stale' ? 'Stale'
+      : quoteFreshness === 'delayed' ? 'Delayed'
+        : quoteFreshness === 'unknown' ? 'Time unknown' : 'Not fetched';
+  const quoteSource = position?.quoteSource || position?.quoteDetails?.provider || translateText('Quote source unknown', language);
+  const quoteSourceTimestamp = Number(position?.quoteDetails?.sourceTimestamp);
+  const referenceInfo = reference.source === 'manual'
+    ? [translateText('Manual / trade price', language), quoteSource].join(' · ')
+    : reference.source === 'quote'
+      ? [
+          translateText('Latest quote', language),
+          quoteSource,
+          translateText(quoteFreshnessLabel, language),
+          Number.isFinite(quoteSourceTimestamp) && quoteSourceTimestamp > 0
+            ? translateText('As of', language) + ' ' + formatSavedTime(quoteSourceTimestamp, language)
+            : translateText('Observation time unknown', language)
+        ].join(' · ')
+      : reference.source === 'average-entry'
+        ? translateText('Average entry', language) + ' · ' + translateText('Based on complete tracked lots', language)
+        : '';
 
   const offsets = periods.map((period) => getExitDayOffset(period.date, today));
   const prices = periods.map((period) => Number(period.price));
@@ -193,7 +222,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   const resultData = preview?.type === 'res' && preview.modal?.kind === 'exit-comparison' ? preview.modal : null;
   const displayedResult = resultData ?? (!inputsValid ? savedResult : null);
   const netRow = displayedResult?.rows.find((row) => row.label === 'Net P&L');
-  const netValues = netRow?.values.map(parseSignedMoney) ?? [];
+  const netValues = netRow?.values.map(parseScenarioSignedMoney) ?? [];
   const netDifference = netValues.length === 2 && netValues[0] !== null && netValues[1] !== null
     ? netValues[1] - netValues[0]
     : null;
@@ -207,7 +236,10 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
     if (!ticker) return;
     const nextResult: ExitComparisonSavedResult | null = resultData ? {
       savedAt: Date.now(),
-      columns: [resultData.columns[0], resultData.columns[1]],
+      columns: [
+        formatSavedResultColumn(periods[0].date, prices[0], resultData.columns[0]),
+        formatSavedResultColumn(periods[1].date, prices[1], resultData.columns[1])
+      ],
       rows: resultData.rows.map((row) => ({
         label: row.label,
         values: [row.values[0] ?? '—', row.values[1] ?? '—'],
@@ -272,8 +304,8 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   };
 
   const useReferencePrice = (index: 0 | 1, increase = 1) => {
-    if (referencePrice === null) return;
-    updatePeriod(index, { price: (referencePrice * increase).toFixed(2) });
+    if (reference.price === null) return;
+    updatePeriod(index, { price: (reference.price * increase).toFixed(2) });
   };
 
   const periodCards = ([0, 1] as const).map((index) => {
@@ -287,8 +319,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
           <div>
             <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-300">{label}</span>
             <h3 class="mt-1 text-sm font-semibold text-white">{periodName}</h3>
+            {offset !== null && <p class="mt-0.5 text-[10px] text-slate-400">{formatExitComparisonDate(period.date, language)}</p>}
           </div>
-          {bestIndex === index && <span class="rounded-full border border-emerald-700/60 bg-emerald-950/60 px-2 py-1 text-[10px] font-bold text-emerald-300">{translateText('BEST RESULT', language)}</span>}
+          {bestIndex === index && <span class="rounded-full border border-emerald-700/60 bg-emerald-950/60 px-2 py-1 text-[10px] font-bold text-emerald-300">{translateText('BEST NET P&L', language)}</span>}
         </div>
         <label class="mb-1 block text-[11px] font-medium text-slate-400" for={`exitDate${index}`}>{translateText('Exit date', language)}</label>
         <input
@@ -299,7 +332,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
           max={maximumDate}
           value={period.date}
           onInput={(event) => updatePeriod(index, { date: (event.currentTarget as HTMLInputElement).value })}
-          class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 [color-scheme:dark] focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+          class="min-h-[44px] w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 [color-scheme:dark] focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
         />
         <label class="mb-1 mt-3 block text-[11px] font-medium text-slate-400" for={`exitPrice${index}`}>{translateText('Expected exit price', language)}</label>
         <div class="flex gap-2">
@@ -315,15 +348,15 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               value={period.price}
               placeholder="0.00"
               onInput={(event) => updatePeriod(index, { price: (event.currentTarget as HTMLInputElement).value })}
-              class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-right font-mono text-sm text-slate-100 tabular-nums focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+              class="min-h-[44px] w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-right font-mono text-sm text-slate-100 tabular-nums focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
             />
           </div>
           <button
             type="button"
             disabled={referencePrice === null}
             onClick={() => useReferencePrice(index)}
-            class="min-h-11 shrink-0 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-            title={translateText('Use the latest available quote, or average entry if no quote is available', language)}
+            class="min-h-[44px] shrink-0 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            title={translateText('Use the latest available quote and show its freshness and observation time; only use average entry when tracked lots are complete', language)}
           >{translateText('Use reference', language)}</button>
         </div>
         <div class="mt-3 flex flex-wrap gap-1.5" aria-label={label + ' · ' + translateText('Exit date presets', language)}>
@@ -331,7 +364,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             key={days}
             type="button"
             onClick={() => setPeriodOffset(index, days)}
-            class={'min-h-11 rounded-lg border px-2.5 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ' +
+            class={'min-h-[44px] min-w-[44px] rounded-lg border px-2.5 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ' +
               (offset === days ? 'border-cyan-600 bg-cyan-950/60 text-cyan-100' : 'border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-500 hover:text-slate-200')}
           >{formatPresetPeriod(days, language)}</button>)}
         </div>
@@ -345,6 +378,9 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
   const positionSummary = position
     ? `${shares.toLocaleString()} ${translateText('shares', language)} · ${referencePrice === null ? translateText('Reference price unavailable', language) : translateText('Reference', language) + ' ' + formatUSD(referencePrice)}`
     : translateText('No open position selected', language);
+  const resultDates = periods.map((period) => period.date);
+  const hasFeeBreakdown = ['Buy Commission', 'Sell Commission', 'Estimated Margin Interest']
+    .every((label) => resultRows.some((row) => row.label === label));
 
   return createPortal(
     <ModalFrame
@@ -368,28 +404,29 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             type="button"
             onClick={requestClose}
             aria-label={translateText('Close exit comparison', language)}
-            class="min-h-11 shrink-0 rounded-lg border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            class="min-h-[44px] shrink-0 rounded-lg border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           >{translateText('Close · Esc', language)}</button>
         </header>
 
         <div class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4">
-          <div class="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/45 p-3">
-            <div class="min-w-0 flex-1 sm:max-w-xs">
+          <div class="exit-comparison-toolbar flex flex-col items-stretch gap-3 rounded-xl border border-slate-800 bg-slate-900/45 p-3 sm:flex-row sm:items-end sm:justify-between">
+            <div class="exit-comparison-position w-full min-w-0 flex-1 sm:max-w-xs">
               <label for="exitComparisonTicker" class="mb-1 block text-[11px] font-semibold text-slate-400">{translateText('Position', language)}</label>
               <select
                 id="exitComparisonTicker"
                 value={ticker}
                 disabled={tickers.length === 0}
                 onChange={(event) => changeTicker((event.currentTarget as HTMLSelectElement).value)}
-                class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-50"
+                class="min-h-[44px] w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-50"
               >
                 {tickers.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
               </select>
               <p class="mt-1 text-[10px] text-slate-500">{positionSummary}</p>
+              {referenceInfo && <p class="mt-1 max-w-xl text-[10px] leading-relaxed text-slate-400">{referenceInfo}</p>}
             </div>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" onClick={swapPeriods} class="min-h-11 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Swap periods', language)}</button>
-              <button type="button" onClick={resetPeriods} class="min-h-11 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Reset defaults', language)}</button>
+            <div class="exit-comparison-toolbar-actions flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+              <button type="button" onClick={swapPeriods} class="min-h-[44px] rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Swap periods', language)}</button>
+              <button type="button" onClick={resetPeriods} class="min-h-[44px] rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Reset defaults', language)}</button>
             </div>
           </div>
 
@@ -406,32 +443,70 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               <div>
                 <h3 class="text-sm font-bold text-white">{translateText('Comparison results', language)}</h3>
                 <p class="mt-0.5 text-[10px] text-slate-500">{translateText('All open shares · estimated after fees and financing', language)}</p>
+                <p class="mt-1 text-[10px] text-slate-400">{translateText('Best period is selected by the highest net P&L after modeled fees and financing.', language)}</p>
               </div>
               {netDifference !== null && <div class="text-right">
-                <span class="block text-[10px] uppercase tracking-wider text-slate-500">{translateText('Period B vs. Period A', language)}</span>
+                <span class="block text-[10px] uppercase tracking-wider text-slate-500">{translateText('Period B vs. Period A · net P&L', language)}</span>
                 <strong class={'font-mono text-sm tabular-nums ' + (netDifference > 0 ? 'text-emerald-300' : netDifference < 0 ? 'text-rose-300' : 'text-slate-200')}>{formatSignedMoney(netDifference)}</strong>
               </div>}
             </div>
 
             {displayedResult ? (
-              <div class="overflow-x-auto">
-                <table class="w-full min-w-[30rem] border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  <thead><tr class="border-b border-slate-800 text-slate-400">
-                    <th scope="col" class="px-3 py-2.5 text-left font-semibold">{translateText('Metric', language)}</th>
-                    {displayedResult.columns.map((column, index) => <th key={index} scope="col" class={'px-3 py-2.5 text-right font-semibold ' + (bestIndex === index ? 'text-emerald-300' : 'text-cyan-200')}>{index === 0 ? translateText('Period A', language) : translateText('Period B', language)}<span class="mt-1 block whitespace-normal text-[10px] font-normal text-slate-500">{formatResultColumn(column, index, hasLiveResult, offsets, prices, language)}</span></th>)}
-                  </tr></thead>
-                  <tbody>
-                    {resultRows.map((row, rowIndex) => <tr key={row.label + rowIndex} class={
-                      row.kind === 'result' ? 'border-b border-emerald-900/50 bg-emerald-950/20 font-semibold text-emerald-200' :
-                      row.kind === 'balance' ? 'border-b border-cyan-900/40 bg-cyan-950/20 text-cyan-100' :
-                      'border-b border-slate-800/70 text-slate-300'
-                    }>
-                      <th scope="row" class="px-3 py-3 text-left font-medium">{translateText(row.label, language)}</th>
-                      {row.values.slice(0, 2).map((value, index) => <td key={index} class={'px-3 py-3 text-right font-mono whitespace-nowrap ' + (row.kind === 'result' ? 'font-bold' : '')}>{formatUSDDisplayValue(value)}</td>)}
-                    </tr>)}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div class="grid grid-cols-1 gap-3 p-3 sm:hidden" aria-label={translateText('Exit comparison by period', language)}>
+                  {displayedResult.columns.map((column, index) => (
+                    <article key={index} class="overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70">
+                      <header class="flex items-start justify-between gap-2 border-b border-slate-800 px-3 py-3">
+                        <div class="min-w-0">
+                          <p class="text-[10px] font-bold uppercase tracking-wider text-cyan-300">{index === 0 ? translateText('Period A', language) : translateText('Period B', language)}</p>
+                          <h4 class="mt-1 text-sm font-semibold text-white">{formatResultColumn(column, index, hasLiveResult, offsets, resultDates, prices, language)}</h4>
+                        </div>
+                        {bestIndex === index && <span class="shrink-0 rounded-full border border-emerald-700/60 bg-emerald-950/60 px-2 py-1 text-[9px] font-bold text-emerald-300">{translateText('BEST NET P&L', language)}</span>}
+                      </header>
+                      <dl class="divide-y divide-slate-800/80 px-3">
+                        {resultRows.map((row, rowIndex) => {
+                          const value = row.values[index] ?? '—';
+                          return (
+                            <div key={row.label + rowIndex} class={'flex items-start justify-between gap-3 py-3 ' + (row.kind === 'result' ? 'bg-emerald-950/15' : row.label === 'Total Fee Friction' ? 'border-t border-amber-900/40' : '')}>
+                              <dt class="min-w-0 text-[11px] font-medium text-slate-400">{translateText(row.label, language)}</dt>
+                              <dd class="shrink-0 text-right">
+                                <span class={'block font-mono text-xs tabular-nums ' + getScenarioValueClass(row.kind, value)}>{formatUSDDisplayValue(value)}</span>
+                                {row.kind === 'balance' && getBalanceCaption(value, language) && <span class="mt-0.5 block text-[9px] text-slate-400">{getBalanceCaption(value, language)}</span>}
+                              </dd>
+                            </div>
+                          );
+                        })}
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+                <div class="hidden overflow-x-auto sm:block">
+                  <table class="w-full min-w-[42rem] border-collapse text-xs" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <thead><tr class="border-b border-slate-800 text-slate-400">
+                      <th scope="col" class="px-3 py-2.5 text-left font-semibold">{translateText('Metric', language)}</th>
+                      {displayedResult.columns.map((column, index) => <th key={index} scope="col" class={'px-3 py-2.5 text-right font-semibold ' + (bestIndex === index ? 'text-emerald-300' : 'text-cyan-200')}>
+                        {index === 0 ? translateText('Period A', language) : translateText('Period B', language)}
+                        <span class="mt-1 block whitespace-normal text-[10px] font-normal text-slate-500">{formatResultColumn(column, index, hasLiveResult, offsets, resultDates, prices, language)}</span>
+                        {bestIndex === index && <span class="mt-1 inline-block rounded-full border border-emerald-800/60 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300">{translateText('BEST NET P&L', language)}</span>}
+                      </th>)}
+                    </tr></thead>
+                    <tbody>
+                      {resultRows.map((row, rowIndex) => <tr key={row.label + rowIndex} class={
+                        row.kind === 'result' ? 'border-b border-emerald-900/50 bg-emerald-950/20 font-semibold text-emerald-200' :
+                        row.kind === 'balance' ? 'border-b border-cyan-900/40 bg-cyan-950/20 text-cyan-100' :
+                        row.label === 'Total Fee Friction' ? 'border-b border-amber-900/40 bg-amber-950/10 text-slate-100' :
+                        'border-b border-slate-800/70 text-slate-300'
+                      }>
+                        <th scope="row" class="px-3 py-3 text-left font-medium">{translateText(row.label, language)}</th>
+                        {row.values.slice(0, 2).map((value, index) => <td key={index} class="px-3 py-3 text-right font-mono whitespace-nowrap">
+                          <span class={'block tabular-nums ' + getScenarioValueClass(row.kind, value)}>{formatUSDDisplayValue(value)}</span>
+                          {row.kind === 'balance' && getBalanceCaption(value, language) && <span class="mt-0.5 block text-[9px] text-slate-400">{getBalanceCaption(value, language)}</span>}
+                        </td>)}
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : (
               <div class="p-4 text-sm text-slate-400">
                 {preview?.type === 'err'
@@ -440,6 +515,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               </div>
             )}
             {savedFallback && <p class="border-t border-amber-900/50 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200">{translateText('This is the last saved estimate. Current inputs or portfolio data do not support a fresh calculation.', language)}</p>}
+            {savedFallback && !hasFeeBreakdown && <p class="border-t border-amber-900/50 px-3 py-2 text-[10px] text-amber-200">{translateText('Fee breakdown is unavailable for this older saved estimate. Recalculate to see the component costs.', language)}</p>}
           </section>
 
           <div class="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
@@ -447,6 +523,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             {lastSavedAt !== null && <p>{translateText('Last saved', language)} · {formatSavedTime(lastSavedAt, language)}</p>}
           </div>
           <p class="rounded-lg border border-slate-800 bg-slate-900/45 px-3 py-2.5 text-[10px] leading-relaxed text-slate-400">{translateText('Estimate only. The model uses your saved shares, cost basis, commission settings, account balance and estimated margin interest. Future prices are assumptions; nothing is changed and no broker order is submitted.', language)}</p>
+          <p class="rounded-lg border border-slate-800 bg-slate-900/45 px-3 py-2.5 text-[10px] leading-relaxed text-slate-400">{translateText('Projected cash/debt balance is not portfolio equity; negative values represent remaining margin debt.', language)}</p>
         </div>
       </ModalFrame>,
     document.body
