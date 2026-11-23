@@ -1793,7 +1793,13 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
 
 function getAdminClosedHistorySyncCoalesceKey(): string {
   const current = portfolioStore.getState();
-  const brokerExecutions = current.brokerExecutedTrades || [];
+  const storedExecutions = freedomBrokerAdapter.normalizeExecutions(
+    loadSavedHistory().brokerExecutedTrades,
+    { source: 'cache' }
+  ).data;
+  const brokerExecutions = current.brokerExecutedTrades?.length
+    ? current.brokerExecutedTrades
+    : storedExecutions;
   return createFreedomMarginFeeAllocationInputKey(
     current.cashflows || [],
     brokerExecutions,
