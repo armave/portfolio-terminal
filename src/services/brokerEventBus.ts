@@ -50,6 +50,10 @@ export interface BrokerEventPayloads {
     resolve: (success: boolean) => void;
     priority?: BrokerExecutionRequestPriority;
   };
+  'broker:request-closed-history-sync-and-wait': {
+    mode: 'refresh' | 'recalculate';
+    resolve: (success: boolean) => void;
+  };
   'broker:request-active-orders': undefined;
   'broker:request-active-orders-and-wait': { resolve: (success: boolean) => void };
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
