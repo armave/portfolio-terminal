@@ -416,3 +416,13 @@ This is a read-only shadow-replay integrity fix. It does not authorize ledger cu
 `persistSavedHistorySnapshot` no longer publishes a candidate into the synchronous `loadSavedHistory()` cache before the IndexedDB write or bounded localStorage fallback succeeds. The cache advances only after a successful storage commit. If both persistence paths fail, the previous cached/persisted history remains visible to the active session and the write reports failure; a failed broker-history refresh cannot appear saved until a later successful commit. The regression injects IndexedDB unavailability and localStorage quota failure and checks both the cached history and original sidecar remain unchanged.
 
 This is a persistence/cache consistency correction only. It does not merge history rows, reinterpret broker executions or cashflows, change financial calculations, or alter the transaction journal/canonical portfolio snapshot. It does not satisfy the separate authenticated cloud restore or physical two-device recovery gates.
+
+
+## Consolidated acceptance follow-up — 2026-11-23
+
+The current cross-issue evidence map is maintained in [Combined PT-02/PT-03/PT-04/PT-17 acceptance record](../combined-acceptance-2026-11-23.md). The existing deterministic mutation, backup/import, rollback, cloud-conflict and shadow replay tests remain implementation evidence only. The authenticated restore and physical two-device scenarios in [#685](https://github.com/armave/portfolio-terminal/issues/685), owner review and live provider acceptance in [#686](https://github.com/armave/portfolio-terminal/issues/686), and live TradeNet account/stream verification in [#687](https://github.com/armave/portfolio-terminal/issues/687) remain manual gates. No ledger cutover or guessed accounting mutation is authorized by this follow-up.
+
+
+## Final manual acceptance — 2026-11-23
+
+The project owner confirmed that the remaining #685 authenticated restore/two-device scenarios and #686 transaction-integrity manual review passed, including the linked #687 live-provider acceptance. This closes the manual acceptance status for these PT-02 trackers. The owner confirmation is recorded in the [combined acceptance record](../combined-acceptance-2026-11-23.md). Exact device/browser IDs, timestamps and deployed Worker metadata were not supplied in the conversation and are not invented here. Unsupported legacy replay items remain classified as incomplete/unsupported; no canonical-state migration or guessed reconstruction is implied.

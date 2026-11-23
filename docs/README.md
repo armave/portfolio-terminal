@@ -49,6 +49,7 @@ This directory contains maintained product and engineering references, current o
 - [Wave 2.5 transparency slice](wave-2.5/README.md) — investor-facing explanations of existing calculations and data quality.
 - [Wave 3 roadmap and implementation model](wave-3/README.md) — current ownership, transaction-trust, and integrated-intelligence workstreams.
 - [Wave 3 current-state audit](wave-3/current-state-audit.md) — code-informed baseline for the active Wave 3 work.
+- [Combined PT-02/PT-03/PT-04/PT-17 acceptance record](wave-3/combined-acceptance-2026-11-23.md) — implementation evidence and explicit external acceptance gates for issues #685–#689.
 - The [Wave 3 workstreams](wave-3/workstreams/) contain the detailed PT-02, PT-04, PT-05, PT-06, and PT-07 contracts and acceptance gates.
 
 ## Documentation maintenance

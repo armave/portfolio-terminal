@@ -133,8 +133,15 @@ This is distinct from date-only observations: a parseable provider date remains 
 The reconciliation headline counts now report the number of broker execution and cashflow rows supplied to the comparison, before normalization, classification, duplicate suppression or conflict exclusion. Unclassifiable and malformed rows therefore remain represented in the source counts while their provisional findings explain why they were not eligible for matching. Repeated rows with the same provider ID remain visible in the count and produce duplicate/conflicting-revision findings. The matched counts continue to count only usable records successfully paired by the deterministic matcher. No source row is converted to a financial value, and no portfolio state is changed.
 
 
-## Read-only discrepancy review suggestions — implementation slice
+## Read-only discrepancy review and resolution proposals — implementation slice
 
-Every supported broker activity finding now carries a localized `Suggested review` note in the discrepancy card. The suggestion identifies the source evidence to inspect for that finding type (for example, a provider ID/revision, order grouping, amount sign, currency, timestamp or journal coverage). It does not select a match, change a finding's confidence, resolve the discrepancy, or propose a financial value.
+Every supported broker activity finding carries a localized `Suggested review` note and a distinct `Resolution proposal (read-only)` in the discrepancy card. The proposal states the evidence gate and safe next step for duplicates, conflicting revisions, ambiguous matches, missing/unclassified source rows, execution quantity/price/fee/currency/timing differences, and cashflow identity/direction/amount/currency/type differences.
 
-The existing `Review item` control remains a separate audit-only note. Recording a review note is not a resolution, does not alter portfolio data and does not authorize writeback. No automatic correction or new PT-02 command is introduced. All suggestion text is covered in English/Russian localization tests.
+These are decision aids, not executable corrections. They never select a source record, alter confidence, create or modify a journal event, change a position/lot/balance/fee/cost basis/P&L, or call a financial store mutation. Missing or ambiguous evidence remains provisional. A human may proceed only through a separately supported, explicit PT-02 command after source identity, data completeness and operation semantics are verified; the proposal itself performs no writeback.
+
+The existing `Review item` control remains a separate audit-only note. Recording a review note does not resolve the finding and does not authorize writeback. English/Russian translation parity is tested for all supported activity finding types. Live provider verification and any future writeback contract remain separate acceptance gates.
+
+
+## Final manual acceptance — 2026-11-23
+
+The project owner confirmed that the #688 browser review of transaction-level discrepancies and the read-only resolution proposals passed against the manual provider-validation scenarios. This closes the manual acceptance status for #688 in conjunction with its exact-head deterministic tests and PR #699. The proposals remain guidance only: any future financial writeback still requires a separately supported explicit PT-02 command and auditable confirmation. The owner confirmation and evidence limitations are recorded in the [combined acceptance record](../combined-acceptance-2026-11-23.md).

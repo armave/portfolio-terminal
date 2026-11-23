@@ -290,6 +290,33 @@ const RU_COPY: Record<string, string> = {
   'A closed-trade replay item is missing required financial data.': 'Для воспроизведения закрытой сделки не хватает необходимых финансовых данных.',
   'Stable sale event has no linked canonical closed-trade record.': 'Для стабильного события продажи отсутствует связанная каноническая запись закрытой сделки.',
   'Suggested review': 'Рекомендуемая проверка',
+  'Resolution proposal (read-only)': 'Предложение по устранению (только чтение)',
+  'Proposal only. No portfolio data is changed and no writeback is performed.': 'Только предложение. Данные портфеля не изменяются и обратная запись не выполняется.',
+  'Resolution proposals are guidance for an explicit human decision; they do not select a source record or change financial state.': 'Предложения по устранению служат подсказкой для явного решения пользователя; они не выбирают исходную запись и не меняют финансовое состояние.',
+  "If the provider confirms identical source facts for this stable fill ID, treat the rows as one source execution and keep the duplicate provisional; do not create a second app trade.": "Если провайдер подтверждает одинаковые исходные данные для этого стабильного ID исполнения, считайте записи одной операцией и оставьте дубликат предварительным; не создавайте вторую сделку приложения.",
+  "Obtain the provider's authoritative revision or correction chain for this fill ID. Keep both versions unresolved until source ordering is proven; do not select the newest-looking row by array order.": "Получите подтверждённую цепочку версий или исправлений провайдера для этого ID. Оставьте версии нерешёнными, пока порядок не доказан; не выбирайте запись по порядку массива.",
+  "Keep the candidate set provisional. Resolve identity only after one provider fill or verified parent order uniquely identifies the app event; do not break ties using journal order.": "Оставьте набор кандидатов предварительным. Уточняйте идентичность только при наличии одного уникального исполнения или подтверждённого родительского ордера; не разрешайте равенство по порядку журнала.",
+  "Request the missing source fields from a complete provider record. Do not infer ticker, side, quantity, price, currency, fee or time from nearby rows.": "Запросите недостающие поля в полной записи провайдера. Не выводите тикер, сторону, количество, цену, валюту, комиссию или время из соседних записей.",
+  "Verify both source currency codes and the account/subaccount. Compare amounts only in the same known currency; do not apply an implicit FX conversion.": "Проверьте исходные коды валют и счёт/субсчёт. Сравнивайте суммы только в одной известной валюте; не выполняйте неявную конвертацию.",
+  "Obtain the provider's documented execution classification and a complete source row. Keep the row as evidence until its type is supported.": "Получите документированную классификацию исполнения и полную исходную запись провайдера. Сохраняйте строку как свидетельство, пока её тип не подтверждён.",
+  "First confirm complete broker coverage and account/date scope. Only a verified unmatched fill may be considered for an explicitly user-confirmed, supported app transaction; this proposal creates nothing.": "Сначала подтвердите полноту истории брокера, счёт и диапазон дат. Только проверенное несопоставленное исполнение можно рассматривать для явно подтверждённой пользователем поддерживаемой операции приложения; это предложение ничего не создаёт.",
+  "Confirm complete broker history and late-correction coverage before taking action. Preserve the app journal event; do not delete or reverse it from an absence finding.": "Подтвердите полноту истории брокера и учёт поздних исправлений. Сохраните событие журнала приложения; не удаляйте и не отменяйте его на основании отсутствия записи.",
+  "Compare the full provider fill set and verified parent-order grouping with the app quantity. Any correction requires a supported, explicit PT-02 command; this proposal changes no position or lot.": "Сравните полный набор исполнений провайдера и подтверждённую группу родительского ордера с количеством в приложении. Любое исправление требует поддерживаемой явной команды PT-02; позиции и лоты здесь не меняются.",
+  "Verify the provider execution price, instrument and currency against the app event. Do not replace acquisition cost basis or sale proceeds from quote data.": "Проверьте цену исполнения провайдера, инструмент и валюту по событию приложения. Не заменяйте себестоимость приобретения или выручку от продажи данными котировки.",
+  "Reconcile the provider fee components and their scope first. Change fee history only through a supported, explicit and audited correction; do not allocate the difference automatically.": "Сначала сверите состав и область комиссий провайдера. Изменяйте историю комиссий только через поддерживаемое явное аудируемое исправление; не распределяйте разницу автоматически.",
+  "Verify the fee currency on both source records. Keep the difference unresolved when either currency is missing or different; do not convert implicitly.": "Проверьте валюту комиссии в обеих исходных записях. Оставьте расхождение нерешённым, если валюта отсутствует или отличается; не выполняйте неявную конвертацию.",
+  "Verify provider observation time, receipt time, effective time and timezone/value-date basis. Do not use journal recordedAt as execution identity or reorder events from timestamps alone.": "Проверьте время наблюдения и получения данных провайдера, эффективное время и часовой пояс/дату валютирования. Не используйте recordedAt журнала как идентификатор исполнения и не переставляйте события только по времени.",
+  "If the provider confirms identical operation identity and facts, count it once as source evidence. Do not post a second cash movement.": "Если провайдер подтверждает одинаковую идентичность и данные операции, учитывайте её один раз как исходное свидетельство. Не записывайте второе движение денежных средств.",
+  "Obtain the authoritative provider correction chain and value-date semantics. Leave conflicting versions unresolved until the superseding record is explicit.": "Получите подтверждённую цепочку исправлений провайдера и семантику даты валютирования. Оставьте конфликтующие версии нерешёнными, пока замещающая запись явно не определена.",
+  "Obtain the provider's documented operation type and signed-value semantics. Keep it unclassified until source evidence supports a cash, fee or interest category.": "Получите документированный тип операции провайдера и семантику знака суммы. Оставьте её нераспознанной, пока исходные данные не подтвердят тип денежных средств, комиссии или процентов.",
+  "Confirm whether the provider reports a signed balance movement or a positive magnitude. Do not flip the sign or change cash/debt automatically.": "Уточните, передаёт ли провайдер знаковое движение баланса или положительную величину. Не меняйте знак и не корректируйте деньги/долг автоматически.",
+  "Keep all equally strong app candidates provisional. Resolve only after a stable provider reference or other source evidence identifies one unique event.": "Оставьте все одинаково подходящие события приложения предварительными. Разрешайте совпадение только после подтверждения уникального события стабильной ссылкой провайдера или другим исходным доказательством.",
+  "Confirm complete cashflow history, account, value date, currency and stable provider reference. A supported app adjustment may be considered only after explicit user confirmation; do not post from this finding alone.": "Подтвердите полноту истории денежных потоков, счёт, дату валютирования, валюту и стабильную ссылку провайдера. Поддерживаемую корректировку приложения можно рассматривать только после явного подтверждения пользователя; не записывайте её только по этому выводу.",
+  "Check history completeness, date overlap and provider correction windows. Preserve the app event and do not delete it based on incomplete broker absence.": "Проверьте полноту истории, перекрытие дат и окно исправлений провайдера. Сохраните событие приложения и не удаляйте его на основании неполного отсутствия данных брокера.",
+  "Compare signed amount, currency, fee components, operation details and value date. Any balance correction requires an explicit supported PT-02 command; no amount is applied here.": "Сравните знаковую сумму, валюту, состав комиссии, детали операции и дату валютирования. Корректировка баланса требует явной поддерживаемой команды PT-02; здесь сумма не применяется.",
+  "Verify the broker subaccount and both currency codes. Keep the comparison unresolved without known matching currencies or a separately sourced FX contract.": "Проверьте субсчёт брокера и оба кода валют. Оставьте сравнение нерешённым при неизвестной/различной валюте без отдельного источника курса FX.",
+  "Verify the provider's documented transaction category and app event semantics. Do not reclassify interest, fees, dividends or adjustments by amount or timing alone.": "Проверьте документированную категорию операции провайдера и семантику события приложения. Не меняйте категорию процентов, комиссий, дивидендов или корректировок только по сумме либо времени.",
+
   'Compare the repeated broker fill ID and source facts. Do not treat the duplicate as a second economic fill.': 'Сравните повторяющийся ID исполнения брокера и исходные данные. Не рассматривайте дубликат как второе экономическое исполнение.',
   'Refresh broker history and inspect the provider revision chain for this fill ID. No version is selected automatically.': 'Обновите историю брокера и проверьте цепочку версий для этого ID исполнения. Версия автоматически не выбирается.',
   'Review the listed fill IDs and parent order references. Group partial fills only when a shared broker order ID is verified.': 'Проверьте перечисленные ID исполнений и ссылки на родительские ордера. Объединяйте частичные исполнения только при подтверждённом общем ID ордера.',
@@ -515,6 +542,36 @@ const FINDING_REVIEW_SUGGESTIONS: Record<string, string> = {
 
 export function getBrokerReconciliationReviewSuggestion(findingType: string): string | undefined {
   return FINDING_REVIEW_SUGGESTIONS[findingType];
+}
+
+const FINDING_RESOLUTION_PROPOSALS: Record<string, string> = {
+  duplicate_broker_execution: "If the provider confirms identical source facts for this stable fill ID, treat the rows as one source execution and keep the duplicate provisional; do not create a second app trade.",
+  execution_revision_conflict: "Obtain the provider's authoritative revision or correction chain for this fill ID. Keep both versions unresolved until source ordering is proven; do not select the newest-looking row by array order.",
+  execution_match_ambiguous: "Keep the candidate set provisional. Resolve identity only after one provider fill or verified parent order uniquely identifies the app event; do not break ties using journal order.",
+  execution_data_incomplete: "Request the missing source fields from a complete provider record. Do not infer ticker, side, quantity, price, currency, fee or time from nearby rows.",
+  execution_currency_mismatch: "Verify both source currency codes and the account/subaccount. Compare amounts only in the same known currency; do not apply an implicit FX conversion.",
+  execution_unclassified: "Obtain the provider's documented execution classification and a complete source row. Keep the row as evidence until its type is supported.",
+  execution_missing_in_app: "First confirm complete broker coverage and account/date scope. Only a verified unmatched fill may be considered for an explicitly user-confirmed, supported app transaction; this proposal creates nothing.",
+  execution_missing_in_broker: "Confirm complete broker history and late-correction coverage before taking action. Preserve the app journal event; do not delete or reverse it from an absence finding.",
+  execution_quantity_mismatch: "Compare the full provider fill set and verified parent-order grouping with the app quantity. Any correction requires a supported, explicit PT-02 command; this proposal changes no position or lot.",
+  execution_price_mismatch: "Verify the provider execution price, instrument and currency against the app event. Do not replace acquisition cost basis or sale proceeds from quote data.",
+  execution_fee_mismatch: "Reconcile the provider fee components and their scope first. Change fee history only through a supported, explicit and audited correction; do not allocate the difference automatically.",
+  execution_fee_currency_mismatch: "Verify the fee currency on both source records. Keep the difference unresolved when either currency is missing or different; do not convert implicitly.",
+  execution_timing_difference: "Verify provider observation time, receipt time, effective time and timezone/value-date basis. Do not use journal recordedAt as execution identity or reorder events from timestamps alone.",
+  duplicate_broker_cashflow: "If the provider confirms identical operation identity and facts, count it once as source evidence. Do not post a second cash movement.",
+  cashflow_revision_conflict: "Obtain the authoritative provider correction chain and value-date semantics. Leave conflicting versions unresolved until the superseding record is explicit.",
+  cashflow_unclassified: "Obtain the provider's documented operation type and signed-value semantics. Keep it unclassified until source evidence supports a cash, fee or interest category.",
+  cashflow_direction_mismatch: "Confirm whether the provider reports a signed balance movement or a positive magnitude. Do not flip the sign or change cash/debt automatically.",
+  cashflow_match_ambiguous: "Keep all equally strong app candidates provisional. Resolve only after a stable provider reference or other source evidence identifies one unique event.",
+  cashflow_missing_in_app: "Confirm complete cashflow history, account, value date, currency and stable provider reference. A supported app adjustment may be considered only after explicit user confirmation; do not post from this finding alone.",
+  cashflow_missing_in_broker: "Check history completeness, date overlap and provider correction windows. Preserve the app event and do not delete it based on incomplete broker absence.",
+  cashflow_amount_mismatch: "Compare signed amount, currency, fee components, operation details and value date. Any balance correction requires an explicit supported PT-02 command; no amount is applied here.",
+  cashflow_currency_mismatch: "Verify the broker subaccount and both currency codes. Keep the comparison unresolved without known matching currencies or a separately sourced FX contract.",
+  cashflow_type_mismatch: "Verify the provider's documented transaction category and app event semantics. Do not reclassify interest, fees, dividends or adjustments by amount or timing alone.",
+};
+
+export function getBrokerReconciliationResolutionProposal(findingType: string): string | undefined {
+  return FINDING_RESOLUTION_PROPOSALS[findingType];
 }
 
 function formatValue(value: number | null, currency?: string): string {
@@ -766,6 +823,13 @@ export function BrokerTransactionReconciliation({
                   <strong class="text-slate-300">{translateBrokerReconciliationCopy('Suggested review')}:</strong>{' '}
                   {translateBrokerReconciliationCopy(getBrokerReconciliationReviewSuggestion(finding.type) || '')}
                 </p>
+              )}
+              {getBrokerReconciliationResolutionProposal(finding.type) && (
+                <div class="mt-2 space-y-1 rounded border border-cyan-900/40 bg-cyan-950/10 px-2.5 py-2">
+                  <strong class="text-cyan-200">{translateBrokerReconciliationCopy('Resolution proposal (read-only)')}</strong>
+                  <p class="text-slate-300">{translateBrokerReconciliationCopy(getBrokerReconciliationResolutionProposal(finding.type) || '')}</p>
+                  <p class="text-[10px] text-slate-500">{translateBrokerReconciliationCopy('Proposal only. No portfolio data is changed and no writeback is performed.')}</p>
+                </div>
               )}
               {finding.missingFields && finding.missingFields.length > 0 && (
                 <p class="mt-1 text-amber-300">

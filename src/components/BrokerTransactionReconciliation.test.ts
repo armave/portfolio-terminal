@@ -12,6 +12,7 @@ import {
   getBrokerReconciliationReviewIdempotencyKey,
   findBrokerReconciliationReview,
   getBrokerReconciliationReviewSuggestion,
+  getBrokerReconciliationResolutionProposal,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
 
@@ -211,12 +212,49 @@ describe('broker reconciliation read-only review suggestions', () => {
     expect(getBrokerReconciliationReviewSuggestion('future_finding_type')).toBeUndefined();
   });
 
-  it('renders suggestions as guidance beside the finding without adding a resolution action', () => {
+  it('provides a localized read-only resolution proposal for every supported activity finding', () => {
+    const findingTypes = [
+      'duplicate_broker_execution',
+      'execution_revision_conflict',
+      'execution_match_ambiguous',
+      'execution_data_incomplete',
+      'execution_currency_mismatch',
+      'execution_unclassified',
+      'execution_missing_in_app',
+      'execution_missing_in_broker',
+      'execution_quantity_mismatch',
+      'execution_price_mismatch',
+      'execution_fee_mismatch',
+      'execution_fee_currency_mismatch',
+      'execution_timing_difference',
+      'duplicate_broker_cashflow',
+      'cashflow_revision_conflict',
+      'cashflow_unclassified',
+      'cashflow_direction_mismatch',
+      'cashflow_match_ambiguous',
+      'cashflow_missing_in_app',
+      'cashflow_missing_in_broker',
+      'cashflow_amount_mismatch',
+      'cashflow_currency_mismatch',
+      'cashflow_type_mismatch',
+    ];
+    for (const findingType of findingTypes) {
+      const proposal = getBrokerReconciliationResolutionProposal(findingType);
+      expect(proposal, findingType).toBeTruthy();
+      expect(translateBrokerReconciliationCopy(proposal!, 'ru'), findingType).not.toBe(proposal);
+    }
+    expect(getBrokerReconciliationResolutionProposal('future_finding_type')).toBeUndefined();
+  });
+
+  it('renders resolution proposals as guidance only and adds no financial writeback action', () => {
     const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateBrokerReconciliationCopy('Resolution proposal (read-only)')");
+    expect(source).toContain('getBrokerReconciliationResolutionProposal(finding.type)');
+    expect(source).toContain('Proposal only. No portfolio data is changed and no writeback is performed.');
     expect(source).toContain("translateBrokerReconciliationCopy('Suggested review')");
-    expect(source).toContain('getBrokerReconciliationReviewSuggestion(finding.type)');
-    expect(source).toContain('renderReviewControl(\'activity\', finding.id, finding.type, finding.subject)');
-    expect(source).toContain('It does not resolve the finding or change portfolio data.');
+    expect(source).toContain('renderReviewControl(');
+    expect(source).not.toContain('applyBrokerResolution');
+    expect(source).not.toContain('commitBrokerResolution');
   });
 });
 
