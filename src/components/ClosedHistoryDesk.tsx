@@ -396,15 +396,27 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const allocationBrokerExecutions = state.brokerExecutedTrades?.length
     ? state.brokerExecutedTrades
     : brokerTrades;
-  const allocationInputKey = createFreedomMarginFeeAllocationInputKey(
-    state.cashflows || [],
-    allocationBrokerExecutions,
-    state.closedTrades || [],
-    {
-      trancheTypes: state.activeTrancheTypes || {},
-      trancheMixes: state.activeTrancheMixes || {},
-      openAppPositions: state.positions || {}
-    }
+  const allocationInputKey = useMemo(
+    () => createFreedomMarginFeeAllocationInputKey(
+      state.cashflows || [],
+      allocationBrokerExecutions,
+      state.closedTrades || [],
+      {
+        trancheTypes: state.activeTrancheTypes || {},
+        trancheMixes: state.activeTrancheMixes || {},
+        openAppPositions: state.positions || {}
+      }
+    ),
+    [
+      state.cashflows,
+      allocationBrokerExecutions,
+      state.closedTrades,
+      state.activeTrancheTypes,
+      state.activeTrancheMixes,
+      // Broker executions supersede open app positions as the fee allocator's
+      // exposure source. Ignore quote-only position replacement in that case.
+      allocationBrokerExecutions.length > 0 ? null : state.positions
+    ]
   );
 
   useEffect(() => {
