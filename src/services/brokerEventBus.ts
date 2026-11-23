@@ -55,6 +55,7 @@ export interface BrokerEventPayloads {
     forceRefresh?: boolean;
     resolve: (success: boolean) => void;
   };
+  'broker:closed-history-encryption-migration-failed': undefined;
   'broker:request-active-orders': undefined;
   'broker:request-active-orders-and-wait': { resolve: (success: boolean) => void };
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
