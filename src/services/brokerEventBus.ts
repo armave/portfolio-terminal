@@ -53,6 +53,7 @@ export interface BrokerEventPayloads {
   'broker:request-closed-history-sync-and-wait': {
     mode: 'refresh' | 'recalculate';
     forceRefresh?: boolean;
+    forceRefreshKey?: string;
     resolve: (success: boolean) => void;
   };
   'broker:closed-history-encryption-migration-failed': undefined;
