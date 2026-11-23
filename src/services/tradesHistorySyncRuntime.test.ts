@@ -33,11 +33,13 @@ describe('Trades history synchronization runtime', () => {
   it('queues a forced provider refresh behind a Trades cache-only refresh', async () => {
     const first = deferred<boolean>();
     const second = deferred<boolean>();
+    const secondStarted = deferred<void>();
     const calls: string[] = [];
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'admin-session-a',
       perform: async ({ mode, source }) => {
         calls.push(`${mode}:${source}`);
+        if (calls.length === 2) secondStarted.resolve();
         return calls.length === 1 ? first.promise : second.promise;
       }
     });
@@ -49,8 +51,7 @@ describe('Trades history synchronization runtime', () => {
     expect(runtime.getDiagnostics().queued).toBe(1);
 
     first.resolve(true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await secondStarted.promise;
     expect(calls).toEqual(['refresh:trades-desk', 'refresh:manual']);
     second.resolve(true);
     await expect(Promise.all([desk, manual])).resolves.toEqual([true, true]);
@@ -60,11 +61,13 @@ describe('Trades history synchronization runtime', () => {
   it('queues a new fill snapshot behind a refresh that captured the previous inputs', async () => {
     const first = deferred<boolean>();
     const second = deferred<boolean>();
+    const secondStarted = deferred<void>();
     const calls: string[] = [];
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'admin-session-a',
       perform: async ({ mode, source, coalesceKey }) => {
         calls.push(`${mode}:${source}:${coalesceKey}`);
+        if (calls.length === 2) secondStarted.resolve();
         return calls.length === 1 ? first.promise : second.promise;
       }
     });
@@ -80,8 +83,7 @@ describe('Trades history synchronization runtime', () => {
       coalesceKey: 'closed-trades-v2'
     });
     first.resolve(true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await secondStarted.promise;
     expect(calls).toEqual([
       'refresh:trades-desk:closed-trades-v1',
       'refresh:trades-desk:closed-trades-v2'
@@ -109,11 +111,13 @@ describe('Trades history synchronization runtime', () => {
   it('queues a recalculation when its fee-allocation inputs changed during a refresh', async () => {
     const first = deferred<boolean>();
     const second = deferred<boolean>();
+    const secondStarted = deferred<void>();
     const calls: string[] = [];
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'admin-session-a',
       perform: async ({ mode, source, coalesceKey }) => {
         calls.push(`${mode}:${source}:${coalesceKey}`);
+        if (calls.length === 2) secondStarted.resolve();
         return calls.length === 1 ? first.promise : second.promise;
       }
     });
@@ -133,8 +137,7 @@ describe('Trades history synchronization runtime', () => {
     expect(runtime.getDiagnostics().queued).toBe(1);
 
     first.resolve(true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await secondStarted.promise;
     expect(calls).toEqual(['refresh:scheduler:alloc-v1', 'recalculate:trades-desk:alloc-v2']);
     second.resolve(true);
     await expect(Promise.all([refresh, changedRecalculation])).resolves.toEqual([true, true]);
@@ -143,11 +146,13 @@ describe('Trades history synchronization runtime', () => {
   it('queues a checkpoint refresh requested while a local recalculation is running', async () => {
     const first = deferred<boolean>();
     const second = deferred<boolean>();
+    const secondStarted = deferred<void>();
     const calls: string[] = [];
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'admin-session-a',
       perform: async ({ mode, source }) => {
         calls.push(`${mode}:${source}`);
+        if (calls.length === 2) secondStarted.resolve();
         return calls.length === 1 ? first.promise : second.promise;
       }
     });
@@ -155,8 +160,7 @@ describe('Trades history synchronization runtime', () => {
     const recalculation = runtime.run({ mode: 'recalculate', source: 'trades-desk' });
     const refresh = runtime.run({ mode: 'refresh', source: 'trades-desk' });
     first.resolve(true);
-    await Promise.resolve();
-    await Promise.resolve();
+    await secondStarted.promise;
     expect(calls).toEqual(['recalculate:trades-desk', 'refresh:trades-desk']);
     second.resolve(true);
     await expect(Promise.all([recalculation, refresh])).resolves.toEqual([true, true]);
