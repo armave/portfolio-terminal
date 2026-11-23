@@ -118,7 +118,6 @@ export function createTradesHistorySyncRuntime(
     const forceRefresh = request.mode === 'refresh' && (request.forceRefresh === true || request.source !== 'trades-desk');
     const existing = activeBySession.get(sessionKey);
     if (existing) {
-      diagnostics.coalesced += 1;
       const sameInputSnapshot = request.coalesceKey === existing.coalesceKey;
       const compatibleRefresh = existing.mode === 'refresh' &&
         request.mode === 'refresh' &&
@@ -131,6 +130,7 @@ export function createTradesHistorySyncRuntime(
         request.mode === 'recalculate' &&
         sameInputSnapshot;
       if (compatibleRefresh || refreshSatisfiesRecalculation || compatibleRecalculation) {
+        diagnostics.coalesced += 1;
         return existing.promise;
       }
 
