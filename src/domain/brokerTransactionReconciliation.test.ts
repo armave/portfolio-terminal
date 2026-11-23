@@ -766,6 +766,39 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings).not.toContainEqual(expect.objectContaining({ type: 'cashflow_missing_in_broker' }));
     expect(report.warnings).toContain('Broker cashflow evidence is incomplete; absence-based findings are suppressed.');
   });
+  it('keeps a margin-call label unclassified instead of treating any margin wording as interest', () => {
+    const providerMarginCall = cashflow({
+      id: 'provider-margin-call',
+      type: 'Margin Call',
+      amount: -25,
+      description: 'Maintenance margin call'
+    });
+    const appInterest = createPortfolioTransactionEvent({
+      type: 'margin.interest', effectiveAt: at, currency: 'USD',
+      externalCashFlowAmount: -25, financingCost: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-margin-call-interest', recordedAt: at });
+    const report = reconcile([], [appInterest], { brokerCashflows: [providerMarginCall] });
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified', brokerReferences: ['provider-margin-call'], confidence: 'provisional'
+    }));
+    expect(report.findings.some(finding => finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker')).toBe(false);
+  });
+
+  it('matches an explicitly labelled margin fee as margin interest', () => {
+    const providerMarginFee = cashflow({ id: 'provider-margin-fee', type: 'Margin Fee', amount: -25 });
+    const appInterest = createPortfolioTransactionEvent({
+      type: 'margin.interest', effectiveAt: at, currency: 'USD',
+      externalCashFlowAmount: -25, financingCost: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-explicit-margin-fee', recordedAt: at });
+    const report = reconcile([], [appInterest], { brokerCashflows: [providerMarginFee] });
+
+    expect(report.status).toBe('matched');
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
   it('reports cashflow amount mismatches against a same-currency app event', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'fee-amount-1', date: new Date(at).toISOString(), type: 'Fee',

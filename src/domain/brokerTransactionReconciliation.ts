@@ -217,11 +217,13 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
   const description = `${text(row.type)} ${text(row.description)}`.toLowerCase();
   // Do not equate a margin-balance adjustment with an interest charge.
   const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(description);
+  const isExplicitMarginInterest = /\binterest\b|\bfinancing\b|\bborrow fee\b|\bmargin[\s-]+fee\b/.test(description);
+  const isAmbiguousMarginLabel = /\bmargin\b/.test(description) && !isExplicitMarginInterest;
   const type: PortfolioTransactionEvent['type'] | null = /dividend|distribution|coupon/.test(description)
     ? 'dividend'
-    : isAmbiguousMarginAdjustment
+    : isAmbiguousMarginAdjustment || isAmbiguousMarginLabel
       ? null
-      : /margin|interest|financing|borrow fee/.test(description)
+      : isExplicitMarginInterest
         ? 'margin.interest'
       : /fee|commission|charge|tax/.test(description)
         ? 'fee'
