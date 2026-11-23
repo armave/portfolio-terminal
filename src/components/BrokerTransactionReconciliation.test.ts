@@ -15,6 +15,13 @@ import {
 } from './BrokerTransactionReconciliation';
 
 describe('broker reconciliation localization', () => {
+  it('localizes missing-currency broker cashflow evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.',
+      'ru'
+    )).toContain('не указана проверяемая валюта');
+  });
+
   it('localizes absence-qualification warnings in Russian', () => {
     for (const warning of [
       'App transaction journal coverage is incomplete; absence-based findings are suppressed.',

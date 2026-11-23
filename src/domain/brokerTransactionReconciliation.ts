@@ -138,6 +138,12 @@ function text(value: unknown): string {
 function currency(value: unknown): string {
   return text(value).toUpperCase();
 }
+
+function hasSameKnownCurrency(left: unknown, right: unknown): boolean {
+  const leftCurrency = currency(left);
+  const rightCurrency = currency(right);
+  return Boolean(leftCurrency && rightCurrency && leftCurrency === rightCurrency);
+}
 function ticker(value: unknown): string {
   return text(value).toUpperCase().replace(/\.US$/i, '');
 }
@@ -1167,6 +1173,9 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         brokerCashflowAbsenceEvidenceComplete = false;
       }
+      if (!row.currency) {
+        warnings.push('One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.');
+      }
       return;
     }
     sourceDataIncomplete = true;
@@ -1314,7 +1323,7 @@ export function reconcileBrokerActivity(
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       hasExplicitSignedCashflowAmount(candidate.event) &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
@@ -1359,7 +1368,7 @@ export function reconcileBrokerActivity(
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
@@ -1384,7 +1393,7 @@ export function reconcileBrokerActivity(
       };
     }).filter(candidate =>
       candidate.event.type !== broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
@@ -1424,7 +1433,7 @@ export function reconcileBrokerActivity(
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) > amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
