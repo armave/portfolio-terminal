@@ -4,7 +4,7 @@ import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
-import { listUsers, pullCloudHistory, type AuthUser } from '../services/api';
+import { listUsers, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
@@ -263,7 +263,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
   const brokerRefreshSequence = useRef(0);
-  const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
     const requestId = `trades-refresh-${++brokerRefreshSequence.current}`;
     dispatchBrokerExecutionHistory({ type: 'refresh', requestId });
@@ -298,83 +297,23 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     });
     return () => { active = false; };
   }, []);
-  // Load cloud history once. An existing cloud history record is authoritative;
-  // local history is used only when no cloud record exists.
+  // The app-owned coordinator hydrates cloud history and persists its merge.
+  // This desk becomes ready only after the initial workspace pull has settled.
   useEffect(() => {
-    let active = true;
-    void pullCloudHistory(undefined, {
-      isCurrentSession: isSessionCurrent,
-      onEncryptionMigrationFailure: (error) => {
-        if (!active || !isSessionCurrent()) return;
-        setCloudHistoryWarning(translateText(
-          'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
-          getAppLanguage()
-        ));
-        logSafeDiagnostic('warn', 'closed-history', error);
-      }
-    }).then(async history => {
-      if (!active || !isSessionCurrent()) return;
-      const current = portfolioStore.getState();
-      const saved = loadSavedHistory();
-      const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
-      const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
-      const localCashflows = current.cashflows?.length ? current.cashflows : savedCashflows;
-      const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : savedExecutions;
-      // Current memory may have just hydrated raw broker executions before this
-      // cloud-history read completed. Enrich it from persisted calculated rows by
-      // execution ID before deciding which copy is safe to restore.
-      const localExecutions = mergeBrokerExecutionHistory(
-        [...savedExecutions, ...brokerTrades],
-        preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
-      );
-      const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
-      const cloudSourceExecutions = normalizeBrokerExecutions(cloud.brokerExecutedTrades);
-      const cloudCashflows = normalizeSavedFreedomCashflows(cloud.cashflows);
-      historyHydrated.current = true;
-      // Cloud history is the durable baseline, but the just-fetched broker page
-      // is fresher. Merge it instead of allowing a slow cloud pull to erase new
-      // executions that arrived while this component was mounting.
-      const cloudBaseline = mergeBrokerExecutionHistory(
-        localExecutions,
-        cloudSourceExecutions
-      );
-      const cloudExecutions = preservePersistedBrokerFeeAllocations(
-        mergeBrokerExecutionHistory(cloudBaseline, latestBrokerFetch.current || []),
-        [...saved.brokerExecutedTrades, ...localExecutions]
-      );
-      const resolved = history ? {
-        brokerExecutedTrades: cloudExecutions,
-        // Keep locally saved legacy rows when the cloud record exists but predates them.
-        // Broker rows update matching IDs; unmatched historical rows are retained.
-        cashflows: mergeFreedomCashflowRows(localCashflows, cloudCashflows)
-      } : {
-        brokerExecutedTrades: localExecutions,
-        cashflows: localCashflows
-      };
-      portfolioStore.setState(resolved);
-      // Hydration is read-only here; the app-owned synchronization runtime
-      // performs the merged local/cloud checkpoint after it settles.
-      if (active && isSessionCurrent()) setCashflowHistoryReady(true);
-    }).catch(error => {
-      if (!active || !isSessionCurrent()) return;
-      logSafeDiagnostic('error', 'closed-history', error);
-      if (active && isSessionCurrent()) {
-        const current = portfolioStore.getState();
-        const saved = loadSavedHistory();
-        const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
-        const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
-        portfolioStore.setState({
-          brokerExecutedTrades: mergeBrokerExecutionHistory(
-            savedExecutions,
-            current.brokerExecutedTrades || []
-          ),
-          cashflows: current.cashflows?.length ? current.cashflows : savedCashflows
-        });
-        setCashflowHistoryReady(true);
-      }
-    });
-    return () => { active = false; };
-  }, []);
+    if (!isWorkspaceSyncReady || !isSessionCurrent()) return;
+    historyHydrated.current = true;
+    setCashflowHistoryReady(true);
+  }, [isWorkspaceSyncReady]);
+
+  useEffect(() => addBrokerEventListener('broker:closed-history-encryption-migration-failed', () => {
+    if (!isSessionCurrent()) return;
+    setCloudHistoryWarning(translateText(
+      'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+      getAppLanguage()
+    ));
+    logSafeDiagnostic('warn', 'closed-history');
+  }), [accountId]);
+
   // The key projects the exact facts consumed by the fee allocator. Quote-only
   // position updates therefore do not invalidate an in-flight or completed pass.
   const allocationBrokerExecutions = state.brokerExecutedTrades?.length
@@ -489,20 +428,12 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     setCloudHistoryRetrying(true);
     setCloudHistoryWarning('');
     try {
-      await pullCloudHistory(undefined, {
-        isCurrentSession: isSessionCurrent,
-        onEncryptionMigrationFailure: (error) => {
-          if (!isSessionCurrent()) return;
-          setCloudHistoryWarning(translateText(
-            'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
-            getAppLanguage()
-          ));
-          logSafeDiagnostic('warn', 'closed-history', error);
-        }
-      });
-    } catch (error) {
-      if (isSessionCurrent()) {
-        setCloudHistoryWarning(error instanceof Error ? error.message : 'Could not verify the cloud history encryption upgrade.');
+      const succeeded = await requestClosedHistorySync('refresh', true);
+      if (!succeeded && isSessionCurrent()) {
+        setCloudHistoryWarning(translateText(
+          'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+          getAppLanguage()
+        ));
       }
     } finally {
       if (isSessionCurrent()) setCloudHistoryRetrying(false);
@@ -547,7 +478,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         normalizedRaw,
         [...savedFeeRows, ...stored]
       );
-      latestBrokerFetch.current = normalizedPage;
       // The API may return only the requested date range. Retain the complete
       // pre-refresh cache, including opening buys needed for FIFO matching.
       const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored, ...brokerTrades], normalizedPage);
