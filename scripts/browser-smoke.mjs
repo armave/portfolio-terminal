@@ -1451,10 +1451,24 @@ try {
   const previousSecondSyncWrites = worker.count('POST', '/api/state');
   const previousSecondSyncTrades = worker.countAction('freedom-trades');
   await syncButton.click();
+  // Do not use any cloud POST as the completion signal: the role-based cadence
+  // may issue a separate background checkpoint while this longer browser journey
+  // is running. The Settings control is busy for the complete explicit request.
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && button.getAttribute('aria-busy') === 'true';
+  }, null, { timeout: 5_000 });
   await waitForCondition(
-    () => worker.count('POST', '/api/state') > previousSecondSyncWrites,
-    'second manual sync cloud push'
+    () => worker.countAction('freedom-trades') > previousSecondSyncTrades,
+    'second manual sync executed-trade REST catch-up'
   );
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#settingsDesk button[aria-label="Sync portfolio"]');
+    return button instanceof HTMLButtonElement && button.getAttribute('aria-busy') === 'false';
+  }, null, { timeout: 30_000 });
+  if (worker.count('POST', '/api/state') <= previousSecondSyncWrites) {
+    throw new Error('Completed manual sync did not checkpoint the portfolio to cloud.');
+  }
   const snapshotRequestsAfterSecondSync = {
     portfolio: worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions'),
     orders: worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders'),
@@ -1462,9 +1476,6 @@ try {
   };
   if (JSON.stringify(snapshotRequestsAfterSecondSync) !== JSON.stringify(snapshotRequestsAfterInitialSync)) {
     throw new Error('Second manual sync reopened a one-shot WebSocket snapshot or its REST backup.');
-  }
-  if (worker.countAction('freedom-trades') <= previousSecondSyncTrades) {
-    throw new Error('Manual sync did not refresh canonical executed-trade history over REST.');
   }
 
   // Export the actual browser snapshot, reject malformed JSON, restore the valid

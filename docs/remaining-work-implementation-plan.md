@@ -1,8 +1,8 @@
 # Remaining work — implementation plan
 
 **Status:** Delivery plan for the active PT-02, PT-04, PT-05, PT-16 and PT-17 issues.  
-**Plan date:** 2026-11-17  
-**Planning baseline:** `main` and `dev` at `4089d2f7f79f2e66931ca939edcb762e40399257`.  
+**Plan date:** 2026-11-23  
+**Planning baseline:** `dev` at `f243e7a1f40710a9a53300919d9f6db1315c4b29`; production `main` remains independently governed.  
 **Completed issue:** [#553 — financial mutation inventory and replay disposition](https://github.com/armave/portfolio-terminal/issues/553) was closed after its caller-by-caller matrix and exact-head validation evidence were merged.
 
 This plan sequences the remaining work. It does not mark manual, security-reviewed, owner-approved or production-verification gates as complete merely because a design, mock, or CI test exists.
@@ -20,12 +20,12 @@ This plan sequences the remaining work. It does not mark manual, security-review
 
 | Area | Active issues | Delivery meaning |
 |---|---|---|
-| PT-02 transaction integrity | [#507](https://github.com/armave/portfolio-terminal/issues/507), [#554](https://github.com/armave/portfolio-terminal/issues/554), [#555](https://github.com/armave/portfolio-terminal/issues/555) | Complete replay/restore acceptance and authenticated provider/device rehearsals |
-| PT-03 / PT-17 live integration | [#562](https://github.com/armave/portfolio-terminal/issues/562) | Authenticated TradeNet account stream, Closed History and Market Depth lifecycle evidence |
-| PT-04 reconciliation | [#567](https://github.com/armave/portfolio-terminal/issues/567) | Deterministic transaction matching, discrepancy evidence and reviewed resolution proposals |
+| PT-02 transaction integrity | [#686](https://github.com/armave/portfolio-terminal/issues/686), restore/two-device rehearsal [#685](https://github.com/armave/portfolio-terminal/issues/685) | Complete replay, backup/cloud restore and multi-device recovery acceptance |
+| PT-03 live integration | [#687](https://github.com/armave/portfolio-terminal/issues/687) | Authenticated TradeNet account, executed-history and stream/Market Depth lifecycle evidence |
+| PT-04 reconciliation | [#688](https://github.com/armave/portfolio-terminal/issues/688) | Deterministic transaction matching, discrepancy evidence and reviewed resolution proposals |
 | PT-05 tenancy | [#539](https://github.com/armave/portfolio-terminal/issues/539), [#556](https://github.com/armave/portfolio-terminal/issues/556), [#557](https://github.com/armave/portfolio-terminal/issues/557), [#558](https://github.com/armave/portfolio-terminal/issues/558) | Canonical ownership/authorization, isolated data plane, then parity-checked migration |
 | PT-16 security/privacy | [#546](https://github.com/armave/portfolio-terminal/issues/546), [#548](https://github.com/armave/portfolio-terminal/issues/548), [#549](https://github.com/armave/portfolio-terminal/issues/549), [#550](https://github.com/armave/portfolio-terminal/issues/550), [#551](https://github.com/armave/portfolio-terminal/issues/551), [#552](https://github.com/armave/portfolio-terminal/issues/552) | Production digest smoke, approved key lifecycle, data lifecycle, browser security and security sign-off |
-| PT-17 reliability/release | [#547](https://github.com/armave/portfolio-terminal/issues/547), [#559](https://github.com/armave/portfolio-terminal/issues/559), [#560](https://github.com/armave/portfolio-terminal/issues/560), [#561](https://github.com/armave/portfolio-terminal/issues/561) | Performance fixture/baseline, approved telemetry, effective rulesets and release runbooks |
+| PT-17 reliability/release | [#547](https://github.com/armave/portfolio-terminal/issues/547), performance baseline [#689](https://github.com/armave/portfolio-terminal/issues/689), [#560](https://github.com/armave/portfolio-terminal/issues/560), [#561](https://github.com/armave/portfolio-terminal/issues/561) | Performance fixture/baseline, approved telemetry, effective rulesets and release runbooks |
 
 ## 3. Dependency-ordered implementation sequence
 
@@ -36,12 +36,11 @@ This plan sequences the remaining work. It does not mark manual, security-review
 - Activate a reviewed `dev` ruleset and require the actual CI/security checks on `main` and `dev`. Do not globally require the path-filtered Financial Integrity Regression check unless unrelated paths report a successful no-op.
 - Validate the settings after saving and retain screenshots/exported ruleset evidence. The currently available read-only repository ruleset snapshot is recorded in `docs/ci/github-settings-follow-up.md`; a documentation PR cannot itself enforce settings.
 
-**#559 — desktop/mobile performance**
-- Merge the environment metadata/reporting improvement, then manually dispatch Pull Request CI with 10 samples per viewport and retain the exact artifact and SHA.
-- Confirm runner/browser/viewport metadata and compare repeated samples on like-for-like runner configurations; treat the 10-sample nearest-rank p95 as descriptive, not a stable production percentile.
-- Reuse the existing authenticated synthetic benchmark in `scripts/browser-smoke-operations.mjs`: it already bootstraps an admin through the application flow, seeds local-only synthetic portfolio state, receives a deterministic mocked broker snapshot and captures three desktop plus three mobile samples. It is not a real account or broker test.
-- Extend that existing benchmark rather than building a duplicate harness: expand the seed beyond its current single AAPL position (5 shares, one tranche) to representative multi-position, multi-tranche, closed-history and transaction-journal tiers using the supported schema/import path; prove exact seed parity after startup and mocked broker reconciliation before timing.
-- Add environment metadata to the authenticated artifact, run at least 10 samples per viewport under a reproducible runner/browser profile, and measure authenticated startup, desk navigation, portfolio calculation/rendering, refresh/reconciliation and memory where available. Keep this artifact separate from the unauthenticated app-shell baseline.
+**#689 — desktop/mobile performance**
+- The current authenticated browser fixture generates 100 synthetic active positions, 200 stable open lots, 10 linked closed trades and 220 transaction-journal events. Its Vitest contract proves schema validity, snapshot quantity/balance replay, stable-lot FIFO parity and closed-history linkage before the browser journey. The fixture is local-only, deterministic and does not place orders.
+- Pull Request CI supports a manual 1–20 sample count (default 10) and passes the chosen count to both the app-shell and authenticated portfolio/Trades benchmark. The authenticated artifact includes per-stage timings, resource transfer, DOM, optional heap, environment metadata and distribution/outlier summaries; unsupported metrics remain null.
+- Repeated manual dispatches on the same candidate ref must not cancel one another. The CI concurrency group adds the unique workflow run ID only for `workflow_dispatch`, while normal PR/push cancellation stays unchanged.
+- Remaining acceptance: manually dispatch the exact candidate with 10 samples per viewport, retain the app-shell and authenticated artifacts, then compare at least 10 successful same-runner/browser workflow runs and document variance/outliers. Do not invent thresholds or claim live provider/device performance from mocked evidence.
 
 **#560 — privacy-approved telemetry**
 - First inventory all browser, Pages, Worker, Durable Object and third-party logging/telemetry sinks.
@@ -53,20 +52,20 @@ This plan sequences the remaining work. It does not mark manual, security-review
 
 ### Wave 1 — close remaining PT-02 and live provider gates
 
-**#555 and #562 — authenticated TradeNet validation**
+**#687 — authenticated TradeNet validation**
 - Use an authorized non-sensitive test account; record sanitized UTC timestamps and exact client/Worker SHAs without credentials, account identifiers or raw broker payloads.
 - Exercise session refresh/expiry/re-authentication, balances, positions, fills, cashflows, corporate actions, fees, incomplete responses, rate limits, reconnect/recovery and idempotency.
-- For #562, separately exercise account-stream startup/reconnect/teardown, Closed History and Market Depth stale, no-data, error, reconnect and unsubscribe states.
+- For #687, separately exercise account-stream startup/reconnect/teardown, Closed History and Market Depth stale, no-data, error, reconnect and unsubscribe states.
 - Keep deterministic mocked results distinct from live evidence. Do not infer missing provider amounts, currencies, prices, fees or timestamps.
 
-**#554 — cloud restore and multiple-device recovery**
+**#685 — cloud restore and multiple-device recovery**
 - Rehearse structured backup export/import, authenticated cloud restore, workspace/account switching, stale revision conflict, two-device disjoint preference changes and conflicting financial changes, network interruption and recovery.
 - Verify snapshot/journal/closed-history/FIFO/cash/debt parity and last-known-good preservation using sanitized checksums/revisions.
 - Do not proceed with destructive test data or real portfolio replacement; use an isolated test workspace and explicit replacement intent.
 
-**#507 — PT-02 parent**
+**#686 — PT-02 parent**
 - After the above, finish remaining supported-path replay and failure-injection gaps and update the PT-02 workstream record.
-- Keep unsupported legacy lots, unlinked fee rows, broker evidence and incomplete closed-history replay explicitly incomplete. The already-completed #553 mutation-path inventory is one child deliverable, not proof that #507 is complete.
+- Keep unsupported legacy lots, unlinked fee rows, broker evidence and incomplete closed-history replay explicitly incomplete. The already-completed #553 mutation-path inventory is one child deliverable, not proof that #686 is complete.
 
 ### Wave 2 — PT-16 design approval and security verification
 
@@ -119,8 +118,8 @@ This plan sequences the remaining work. It does not mark manual, security-review
 
 ### Wave 4 — PT-04 broker reconciliation
 
-**#567 — transaction-level reconciliation**
-- Begin after PT-02 event identity/correction semantics and #555/#562 live provider evidence are accepted.
+**#688 — transaction-level reconciliation**
+- Begin after PT-02 event identity/correction semantics and #687 live provider evidence are accepted.
 - PR A: deterministic execution matching, provider IDs/fallback keys, duplicate/reordered/partial/corrected classification and stable snapshot reproducibility.
 - PR B: typed cashflow, dividend, fee, currency, amount, price, freshness and timestamp discrepancy evidence.
 - PR C: accessible English/Russian discrepancy drill-down and explicit user-confirmed resolution proposals through audited PT-02 commands.
@@ -129,7 +128,7 @@ This plan sequences the remaining work. It does not mark manual, security-review
 ### Wave 5 — PT-17 closeout
 
 **#547 — reliability, performance and observability**
-- Close only after #559 representative baseline/fixture, #560 approved and enforced telemetry/redaction, #561 effective release rules and #562 live provider lifecycle evidence are complete.
+- Close only after #689 representative baseline/fixture, #560 approved and enforced telemetry/redaction, #561 effective release rules and #687 live provider lifecycle evidence are complete.
 - Add bounded operational dashboards/alerts and runbook ownership where the deployed platform supports them.
 - Link exact manual and automated evidence by SHA; do not treat mocked CI as production service-level evidence.
 
@@ -148,11 +147,18 @@ Every PR should state: linked issue(s), concrete scope, acceptance criteria comp
 
 | Input | Needed for |
 |---|---|
-| Authorized non-sensitive TradeNet test account and sanitized operator results | #555, #562 and downstream #567 |
-| Isolated test workspace plus two physical/authenticated devices | #554 |
+| Authorized non-sensitive TradeNet test account and sanitized operator results | #687 and downstream #688 |
+| Isolated test workspace plus two physical/authenticated devices | #685 |
 | Repository administrator confirmation of ruleset/environment settings | #561 |
 | Data-owner and privacy/security approval of telemetry and retention | #560, #551 |
 | Security approval and selected key-management provider/custody owner | #549, #550 and PT-05 tenant storage |
 | Explicit owner/security approval of migration and rollback | #558, #539 |
 
 Until these inputs exist, the affected issues remain open with implementation designs and test plans only; no production data, credentials, keys or financial state should be modified to simulate acceptance.
+
+
+## Owner-confirmed completion of #685–#689 — 2026-11-23
+
+The project owner confirmed that all manual validation scenarios for [#685](https://github.com/armave/portfolio-terminal/issues/685), [#686](https://github.com/armave/portfolio-terminal/issues/686), [#687](https://github.com/armave/portfolio-terminal/issues/687), [#688](https://github.com/armave/portfolio-terminal/issues/688) and [#689](https://github.com/armave/portfolio-terminal/issues/689) passed. Together with the exact-head implementation/CI evidence recorded in [the combined acceptance record](wave-3/combined-acceptance-2026-11-23.md), the owner has accepted these five trackers as complete.
+
+The project conversation did not include sanitized evidence URLs, device/browser identifiers, UTC execution timestamps or the deployed Worker SHA/version. Those fields are therefore recorded as owner-confirmed but not independently reproduced here; no values are inferred. This status applies only to #685–#689 and does not close the separate PT-05, PT-16 or repository-ruleset workstreams. Unsupported legacy lots/events remain unsupported/incomplete, and no ledger cutover or automatic financial correction is authorized.

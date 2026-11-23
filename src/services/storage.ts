@@ -659,11 +659,13 @@ async function persistSavedHistorySnapshot(
 
   const isActiveScope = scope === activePortfolioStorageScope;
   if (isActiveScope) {
-    cachedHistory = snapshot;
     if (!options.resetRecovery && lastPersistedHistory &&
       lastPersistedHistory.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       lastPersistedHistory.cashflows === snapshot.cashflows
-    ) return true;
+    ) {
+      cachedHistory = lastPersistedHistory;
+      return true;
+    }
     if (!options.resetRecovery && queuedHistorySnapshot &&
       queuedHistorySnapshot.brokerExecutedTrades === snapshot.brokerExecutedTrades &&
       queuedHistorySnapshot.cashflows === snapshot.cashflows
@@ -693,7 +695,13 @@ async function persistSavedHistorySnapshot(
   if (isActiveScope) historyWriteQueue = nextWrite;
 
   const saved = await nextWrite;
-  if (saved && scope === activePortfolioStorageScope) lastPersistedHistory = snapshot;
+  if (saved && scope === activePortfolioStorageScope) {
+    // Keep the synchronous cache aligned with durable history. In particular,
+    // a failed IndexedDB write and failed localStorage fallback must not expose
+    // an uncommitted snapshot as though it were saved.
+    cachedHistory = snapshot;
+    lastPersistedHistory = snapshot;
+  }
   if (scope === activePortfolioStorageScope && queuedHistorySnapshot === snapshot) queuedHistorySnapshot = null;
   return saved;
 }

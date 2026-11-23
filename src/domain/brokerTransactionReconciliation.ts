@@ -138,6 +138,12 @@ function text(value: unknown): string {
 function currency(value: unknown): string {
   return text(value).toUpperCase();
 }
+
+function hasSameKnownCurrency(left: unknown, right: unknown): boolean {
+  const leftCurrency = currency(left);
+  const rightCurrency = currency(right);
+  return Boolean(leftCurrency && rightCurrency && leftCurrency === rightCurrency);
+}
 function ticker(value: unknown): string {
   return text(value).toUpperCase().replace(/\.US$/i, '');
 }
@@ -215,10 +221,16 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
   const amount = number(row.amount);
   if (amount === null) return null;
   const description = `${text(row.type)} ${text(row.description)}`.toLowerCase();
+  // Do not equate a margin-balance adjustment with an interest charge.
+  const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(description);
+  const isExplicitMarginInterest = /\binterest\b|\bfinancing\b|\bborrow fee\b|\bmargin[\s-]+fee\b/.test(description);
+  const isAmbiguousMarginLabel = /\bmargin\b/.test(description) && !isExplicitMarginInterest;
   const type: PortfolioTransactionEvent['type'] | null = /dividend|distribution|coupon/.test(description)
     ? 'dividend'
-    : /margin|interest|financing|borrow fee/.test(description)
-      ? 'margin.interest'
+    : isAmbiguousMarginAdjustment || isAmbiguousMarginLabel
+      ? null
+      : isExplicitMarginInterest
+        ? 'margin.interest'
       : /fee|commission|charge|tax/.test(description)
         ? 'fee'
         : /transfer/.test(description)
@@ -245,6 +257,38 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
 function eventAmount(event: PortfolioTransactionEvent): number | null {
   return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
     (event.type === 'fee' ? event.fees : event.type === 'margin.interest' ? event.financingCost : undefined));
+}
+
+interface UnresolvedCashAdjustmentReversal {
+  original: PortfolioTransactionEvent;
+  corrections: PortfolioTransactionEvent[];
+}
+
+/**
+ * A PT-02 balance-adjustment reversal is an immutable correction linked to
+ * the original cash.adjustment. Without stable broker-side identity for both
+ * rows, keep the pair visible and fail closed instead of matching one side.
+ */
+function findUnresolvedCashAdjustmentReversals(
+  events: readonly PortfolioTransactionEvent[]
+): UnresolvedCashAdjustmentReversal[] {
+  const eventsById = new Map(events.map(event => [event.id, event]));
+  const correctionsByOriginalId = new Map<string, PortfolioTransactionEvent[]>();
+  for (const event of events) {
+    if (event.type !== 'correction' || event.actor.type === 'broker' ||
+      typeof event.relatedEventId !== 'string' || !event.relatedEventId.trim()) continue;
+    const original = eventsById.get(event.relatedEventId);
+    if (!original || original.type !== 'cash.adjustment' || original.actor.type === 'broker') continue;
+    const corrections = correctionsByOriginalId.get(original.id) || [];
+    corrections.push(event);
+    correctionsByOriginalId.set(original.id, corrections);
+  }
+  return [...correctionsByOriginalId.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([originalId, corrections]) => ({
+      original: eventsById.get(originalId)!,
+      corrections: [...corrections].sort((left, right) => left.id.localeCompare(right.id))
+    }));
 }
 function sameExecutionObservation(left: NormalizedExecution, right: NormalizedExecution): boolean {
   return left.orderId === right.orderId &&
@@ -1084,7 +1128,37 @@ export function reconcileBrokerActivity(
     }, confidence));
   }
 
-  const appCashflows = input.appEvents.filter(event => CASHFLOW_EVENT_TYPES.has(event.type) && event.actor.type !== 'broker');
+  const unresolvedCashAdjustmentReversals = findUnresolvedCashAdjustmentReversals(input.appEvents);
+  const unresolvedCashAdjustmentEventIds = new Set<string>();
+  let unresolvedCashAdjustmentEventCount = 0;
+  for (const reversal of unresolvedCashAdjustmentReversals) {
+    unresolvedCashAdjustmentEventIds.add(reversal.original.id);
+    unresolvedCashAdjustmentEventCount += 1;
+    for (const correction of reversal.corrections) {
+      unresolvedCashAdjustmentEventIds.add(correction.id);
+      unresolvedCashAdjustmentEventCount += 1;
+    }
+    sourceDataIncomplete = true;
+    appCashflowAbsenceEvidenceComplete = false;
+    confidence = 'provisional';
+    findings.push(makeFinding({
+      id: `cashflow-reversal-unresolved:${reversal.original.id}`,
+      type: 'cashflow_unclassified',
+      subject: 'Reversed cash adjustment',
+      currency: currency(reversal.original.currency) || undefined,
+      brokerValue: null,
+      appValue: null,
+      brokerReferences: [],
+      appEventIds: [reversal.original.id, ...reversal.corrections.map(event => event.id)].sort(),
+      appAt: reversal.original.effectiveAt,
+      explanation: 'The app journal contains a cash adjustment with one or more linked correction events. The original and correction are preserved, but their broker-side cashflow identity is not established; both are excluded from matching and cashflow absence claims are suppressed.'
+    }, 'provisional'));
+  }
+  const appCashflows = input.appEvents.filter(event =>
+    CASHFLOW_EVENT_TYPES.has(event.type) &&
+    event.actor.type !== 'broker' &&
+    !unresolvedCashAdjustmentEventIds.has(event.id)
+  );
   const normalizedCashflowRows: NormalizedCashflow[] = [];
   input.brokerCashflows.forEach((raw, index) => {
     const row = normalizeCashflow(raw);
@@ -1098,6 +1172,12 @@ export function reconcileBrokerActivity(
       if (!row.currency || row.at === null) {
         sourceDataIncomplete = true;
         brokerCashflowAbsenceEvidenceComplete = false;
+      }
+      if (row.at === null) {
+        warnings.push('One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.');
+      }
+      if (!row.currency) {
+        warnings.push('One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.');
       }
       return;
     }
@@ -1231,6 +1311,10 @@ export function reconcileBrokerActivity(
   for (let brokerIndex = 0; brokerIndex < brokerCashflows.length; brokerIndex += 1) {
     if (ambiguousCashflowBrokerIndices.has(brokerIndex)) continue;
     const broker = brokerCashflows[brokerIndex];
+    const brokerAt = broker.at;
+    // Without a provider timestamp, no temporal fallback candidate is safe.
+    // The source row remains counted and absence claims stay suppressed.
+    if (brokerAt === null) continue;
     // Keep earlier ambiguous candidates visible so a second broker row cannot
     // claim one of them as a unique match merely because another row was seen first.
     const availableAppIndices = [...unmatchedCashflowApp];
@@ -1242,11 +1326,11 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       hasExplicitSignedCashflowAmount(candidate.event) &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
@@ -1287,11 +1371,11 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
@@ -1312,11 +1396,11 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type !== broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
@@ -1352,11 +1436,11 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
-      (!broker.currency || !candidate.event.currency || currency(candidate.event.currency) === broker.currency) &&
+      hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) > amountTolerance &&
       candidate.timeDelta <= maxTimingDifference
@@ -1393,7 +1477,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
@@ -1466,10 +1550,12 @@ export function reconcileBrokerActivity(
   return {
     status: unavailable ? 'unavailable' : partial ? 'partial' : findings.length ? 'differences' : 'matched',
     comparedAt: now,
-    brokerExecutionCount: uniqueBrokerRows.length,
+    // Source counts describe the rows received, including malformed, unclassified and duplicate rows.
+    // Matching counts below remain limited to unique, usable records that were actually paired.
+    brokerExecutionCount: input.brokerExecutions.length,
     appExecutionCount: appExecutions.length,
-    brokerCashflowCount: brokerCashflows.length,
-    appCashflowCount: appCashflows.length,
+    brokerCashflowCount: input.brokerCashflows.length,
+    appCashflowCount: appCashflows.length + unresolvedCashAdjustmentEventCount,
     matchedExecutionCount: matchedPairs.length,
     legacyClosedSaleCount: legacyClosedSales.length,
     matchedLegacyClosedSaleCount,

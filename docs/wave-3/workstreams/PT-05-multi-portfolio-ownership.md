@@ -11,7 +11,7 @@ Move from one shared administrator workspace plus read-only guest projections to
 
 ## Hard prerequisite
 
-Issue #539 records that tenant-owned financial writes remain gated on PT-02's transaction/audit ownership and mutation contracts in issue #507, plus PT-16's encryption rollout and key-lifecycle review. Metadata-only directory operations do not enable financial data access.
+Issue #539 records that tenant-owned financial writes remain gated on PT-02's transaction/audit ownership and mutation contracts in issue #686, plus PT-16's encryption rollout and key-lifecycle review. Metadata-only directory operations do not enable financial data access.
 
 PT-05 may work in parallel on tenant directory schemas, scoped identity, server authorization for safe reads and isolated topology proof. It must **not enable independent tenant financial writes or live cutover** until PT-02 acceptance, PT-16 security/key review, adversarial isolation tests and migration/rollback gates pass.
 
@@ -70,4 +70,4 @@ worker.test.js adds corruption regressions for orphaned and cross-tenant relatio
 
 **Exact-main validation:** [Cloudflare Worker deployment #44688202036](https://github.com/armave/portfolio-terminal/actions/runs/44688202036) passed Worker/authentication tests, typecheck, dependency audits, Wrangler dry-run and deploy on the exact SHA above. [Financial Integrity Regression #44688202219](https://github.com/armave/portfolio-terminal/actions/runs/44688202219) also passed on that SHA.
 
-**Scope boundary:** this hardens the metadata directory only. It does not add tenant financial read/write routes, a tenant Durable Object binding, tenant key provisioning, migration, or cutover. financialDataEnabled remains false; the existing PortfolioStateDO remains the financial source of truth. PT-02 #507 and PT-16 #549/#550, plus security and owner approval, remain prerequisites before independent tenant financial writes.
+**Scope boundary:** this hardens the metadata directory only. It does not add tenant financial read/write routes, a tenant Durable Object binding, tenant key provisioning, migration, or cutover. financialDataEnabled remains false; the existing PortfolioStateDO remains the financial source of truth. PT-02 #686 and PT-16 #549/#550, plus security and owner approval, remain prerequisites before independent tenant financial writes.

@@ -1008,9 +1008,17 @@ describe('storage service', () => {
       }
     });
 
-    it('reports when IndexedDB and the bounded legacy history fallback are unavailable', async () => {
+    it('preserves the last-known-good cache when IndexedDB and the bounded local history fallback both fail', async () => {
+      const previous = {
+        brokerExecutedTrades: [{ id: 'saved-trade-before-failed-write' }],
+        cashflows: [{ id: 'saved-cashflow-before-failed-write' }]
+      };
+      const previousJson = JSON.stringify(previous);
+      storageMap.set('portfolio_closed_history_v1', previousJson);
       vi.stubGlobal('indexedDB', undefined);
       await initializeSavedHistoryStorage();
+      expect(loadSavedHistory()).toEqual(previous);
+
       localStorageMock.setItem.mockImplementation((key: string, value: string) => {
         if (key === 'portfolio_closed_history_v1') throw new Error('quota exceeded');
         storageMap.set(key, String(value));
@@ -1022,6 +1030,9 @@ describe('storage service', () => {
         })),
         cashflows: []
       })).toBe(false);
+
+      expect(loadSavedHistory()).toEqual(previous);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousJson);
     });
   });
 

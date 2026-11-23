@@ -11,10 +11,26 @@ import {
   translatePortfolioLotParityIssueReason,
   getBrokerReconciliationReviewIdempotencyKey,
   findBrokerReconciliationReview,
+  getBrokerReconciliationReviewSuggestion,
+  getBrokerReconciliationResolutionProposal,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
 
 describe('broker reconciliation localization', () => {
+  it('localizes missing-timestamp broker cashflow evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.',
+      'ru'
+    )).toContain('отсутствует проверяемая временная метка');
+  });
+
+  it('localizes missing-currency broker cashflow evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.',
+      'ru'
+    )).toContain('не указана проверяемая валюта');
+  });
+
   it('localizes absence-qualification warnings in Russian', () => {
     for (const warning of [
       'App transaction journal coverage is incomplete; absence-based findings are suppressed.',
@@ -98,6 +114,13 @@ describe('broker reconciliation localization', () => {
     )).toBe('Не удалось безопасно классифицировать денежный поток брокера или определить допустимую сумму; запись исключена из сверки.');
   });
 
+  it('localizes unresolved linked cash-adjustment reversals in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'The app journal contains a cash adjustment with one or more linked correction events. The original and correction are preserved, but their broker-side cashflow identity is not established; both are excluded from matching and cashflow absence claims are suppressed.',
+      'ru'
+    )).toContain('обе записи исключены из сверки');
+  });
+
   it('preserves English and unknown copy', () => {
     expect(translateBrokerReconciliationCopy('Matched', 'en')).toBe('Matched');
     expect(translateBrokerReconciliationCopy('A future copy key', 'ru')).toBe('A future copy key');
@@ -153,6 +176,87 @@ describe('broker quote reconciliation localization and status', () => {
   });
 });
 
+
+describe('broker reconciliation read-only review suggestions', () => {
+  it('provides localized, type-specific suggestions for every supported activity finding', () => {
+    const findingTypes = [
+      'duplicate_broker_execution',
+      'execution_revision_conflict',
+      'execution_match_ambiguous',
+      'execution_data_incomplete',
+      'execution_currency_mismatch',
+      'execution_unclassified',
+      'execution_missing_in_app',
+      'execution_missing_in_broker',
+      'execution_quantity_mismatch',
+      'execution_price_mismatch',
+      'execution_fee_mismatch',
+      'execution_fee_currency_mismatch',
+      'execution_timing_difference',
+      'duplicate_broker_cashflow',
+      'cashflow_revision_conflict',
+      'cashflow_unclassified',
+      'cashflow_direction_mismatch',
+      'cashflow_match_ambiguous',
+      'cashflow_missing_in_app',
+      'cashflow_missing_in_broker',
+      'cashflow_amount_mismatch',
+      'cashflow_currency_mismatch',
+      'cashflow_type_mismatch',
+    ];
+    for (const findingType of findingTypes) {
+      const suggestion = getBrokerReconciliationReviewSuggestion(findingType);
+      expect(suggestion, findingType).toBeTruthy();
+      expect(translateBrokerReconciliationCopy(suggestion!, 'ru'), findingType).not.toBe(suggestion);
+    }
+    expect(getBrokerReconciliationReviewSuggestion('future_finding_type')).toBeUndefined();
+  });
+
+  it('provides a localized read-only resolution proposal for every supported activity finding', () => {
+    const findingTypes = [
+      'duplicate_broker_execution',
+      'execution_revision_conflict',
+      'execution_match_ambiguous',
+      'execution_data_incomplete',
+      'execution_currency_mismatch',
+      'execution_unclassified',
+      'execution_missing_in_app',
+      'execution_missing_in_broker',
+      'execution_quantity_mismatch',
+      'execution_price_mismatch',
+      'execution_fee_mismatch',
+      'execution_fee_currency_mismatch',
+      'execution_timing_difference',
+      'duplicate_broker_cashflow',
+      'cashflow_revision_conflict',
+      'cashflow_unclassified',
+      'cashflow_direction_mismatch',
+      'cashflow_match_ambiguous',
+      'cashflow_missing_in_app',
+      'cashflow_missing_in_broker',
+      'cashflow_amount_mismatch',
+      'cashflow_currency_mismatch',
+      'cashflow_type_mismatch',
+    ];
+    for (const findingType of findingTypes) {
+      const proposal = getBrokerReconciliationResolutionProposal(findingType);
+      expect(proposal, findingType).toBeTruthy();
+      expect(translateBrokerReconciliationCopy(proposal!, 'ru'), findingType).not.toBe(proposal);
+    }
+    expect(getBrokerReconciliationResolutionProposal('future_finding_type')).toBeUndefined();
+  });
+
+  it('renders resolution proposals as guidance only and adds no financial writeback action', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateBrokerReconciliationCopy('Resolution proposal (read-only)')");
+    expect(source).toContain('getBrokerReconciliationResolutionProposal(finding.type)');
+    expect(source).toContain('Proposal only. No portfolio data is changed and no writeback is performed.');
+    expect(source).toContain("translateBrokerReconciliationCopy('Suggested review')");
+    expect(source).toContain('renderReviewControl(');
+    expect(source).not.toContain('applyBrokerResolution');
+    expect(source).not.toContain('commitBrokerResolution');
+  });
+});
 
 describe('broker reconciliation audit-only review markers', () => {
   it('derives distinct stable idempotency keys for activity and quote findings', () => {

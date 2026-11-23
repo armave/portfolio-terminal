@@ -4,6 +4,7 @@ import { getAppLanguage, translateText } from './src/services/i18n';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
+import { shouldApplyCloudSyncStatusOutcome } from './src/ui/cloudSyncStatus';
 import {
   calculatePostSaleBalanceFloorHorizon,
   resolveCommissionConfig,
@@ -712,7 +713,8 @@ async function pushStateToCloud(forceImmediate = false, announceProgress = false
 
   if (startupCloudWriteGate.deferWrite()) return false;
 
-  portfolioStore.setState({ lastUpdated: Date.now() });
+  // A cloud checkpoint reads the latest canonical snapshot; it must not commit a
+  // timestamp-only PortfolioStore mutation or notify every portfolio subscriber.
   state = portfolioStore.getState();
 
   const doPush = async (): Promise<boolean> => {
@@ -851,6 +853,13 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
       setCloudSyncStatus({ text: 'Cloud sync in progress', status: 'syncing' });
     },
     onStatusChange: (status) => {
+      // A quiet checkpoint can finish while an explicit Manual Sync owns the
+      // shared indicator. Do not let that background success clear its progress.
+      if (!shouldApplyCloudSyncStatusOutcome(
+        status,
+        getCloudSyncStatus().status,
+        pullOptions.announceProgress === true
+      )) return;
       const synced = status === 'synced';
       const conflict = status === 'conflict';
       setCloudStatus(synced ? 'synced' : 'error', synced ? 'READY' : conflict ? 'CONFLICT' : 'UNAVAILABLE');
