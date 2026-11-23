@@ -1723,19 +1723,22 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
         return false;
       }
     }
-    if (!isCurrentSession()) {
-      portfolioStore.restoreInMemorySnapshot(previousState);
-      state = portfolioStore.getState();
-      return false;
-    }
+    // A session change may already have switched the canonical store to a
+    // different account. Never restore this operation's prior account snapshot
+    // into the newly active session.
+    if (!isCurrentSession()) return false;
 
     // The full history is checkpointed to the separate encrypted cloud-history
     // record below. Do not duplicate the entire multi-megabyte history in
     // localStorage on every scheduled sync; retain the previous local cache.
     const persisted = savePortfolioStateSnapshot(portfolioStore.getState());
     if (!persisted) {
-      portfolioStore.restoreInMemorySnapshot(previousState);
-      state = portfolioStore.getState();
+      // Roll back only while the captured account generation still owns the
+      // canonical store; a late storage failure must not overwrite a new login.
+      if (isCurrentSession()) {
+        portfolioStore.restoreInMemorySnapshot(previousState);
+        state = portfolioStore.getState();
+      }
       logAppMessage('[Closed History Sync Error]: Could not persist the local portfolio snapshot; cloud history was not changed.');
       return false;
     }
