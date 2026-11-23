@@ -15,6 +15,13 @@ import {
 } from './BrokerTransactionReconciliation';
 
 describe('broker reconciliation localization', () => {
+  it('localizes missing-timestamp broker cashflow evidence in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.',
+      'ru'
+    )).toContain('отсутствует проверяемая временная метка');
+  });
+
   it('localizes missing-currency broker cashflow evidence in Russian', () => {
     expect(translateBrokerReconciliationCopy(
       'One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.',

@@ -119,3 +119,10 @@ This rule preserves existing `Margin Fee` and `Margin Interest` behavior while a
 The transaction-level cashflow matcher previously allowed a candidate when either the broker or app currency was absent, as long as type, absolute amount and time were compatible. A missing currency is not evidence that two amounts share a denomination. All same-currency paths (exact match, direction discrepancy, type discrepancy and amount discrepancy) now require both currency codes to be present and equal after normalization. Known unequal currencies remain a currency-mismatch finding without FX conversion.
 
 Rows with a missing broker currency remain in the normalized source count but are excluded from pairing; app events with a missing currency are likewise unmatchable. The report is provisional and both directions of absence claims are suppressed for incomplete currency evidence. A focused warning and Russian translation make the broker-side limitation visible. This is read-only and does not change a cashflow amount, currency, balance, fee allocation or P&L.
+
+
+## Cashflow matches require a verifiable broker timestamp — 2026-11-23
+
+A normalized broker cashflow without a usable date was previously assigned a zero time delta by substituting the app event's timestamp. That made a timestamp-free broker row eligible for exact, direction, classification, amount or currency pairing based on the app time. The matcher now excludes such broker rows from all candidate paths unless the broker timestamp is present. The row remains in the normalized source count, the report is provisional, and both directions of absence-based conclusions are suppressed. An explicit English/Russian warning explains why the row was not paired.
+
+This is distinct from date-only observations: a parseable provider date remains usable for the existing timing window. No date is synthesized, and no cashflow, balance or accounting value is changed.

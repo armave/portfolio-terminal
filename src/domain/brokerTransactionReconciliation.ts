@@ -1173,6 +1173,9 @@ export function reconcileBrokerActivity(
         sourceDataIncomplete = true;
         brokerCashflowAbsenceEvidenceComplete = false;
       }
+      if (row.at === null) {
+        warnings.push('One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.');
+      }
       if (!row.currency) {
         warnings.push('One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.');
       }
@@ -1308,6 +1311,10 @@ export function reconcileBrokerActivity(
   for (let brokerIndex = 0; brokerIndex < brokerCashflows.length; brokerIndex += 1) {
     if (ambiguousCashflowBrokerIndices.has(brokerIndex)) continue;
     const broker = brokerCashflows[brokerIndex];
+    const brokerAt = broker.at;
+    // Without a provider timestamp, no temporal fallback candidate is safe.
+    // The source row remains counted and absence claims stay suppressed.
+    if (brokerAt === null) continue;
     // Keep earlier ambiguous candidates visible so a second broker row cannot
     // claim one of them as a unique match merely because another row was seen first.
     const availableAppIndices = [...unmatchedCashflowApp];
@@ -1319,7 +1326,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
@@ -1364,7 +1371,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
@@ -1389,7 +1396,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type !== broker.type &&
@@ -1429,7 +1436,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
@@ -1470,7 +1477,7 @@ export function reconcileBrokerActivity(
         index,
         event,
         appAmount,
-        timeDelta: Math.abs(event.effectiveAt - (broker.at ?? event.effectiveAt))
+        timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&

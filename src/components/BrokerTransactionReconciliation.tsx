@@ -155,6 +155,7 @@ const RU_COPY: Record<string, string> = {
   'One or more broker execution IDs have conflicting revisions; affected records were excluded from matching.': 'Некоторые идентификаторы исполнений содержат конфликтующие версии; такие записи исключены из сверки.',
   'One or more broker cashflows lack a provider-stable cashflow ID; matching is provisional.': 'У некоторых денежных потоков отсутствует стабильный идентификатор брокера; сверка предварительная.',
   'One or more broker cashflows lack a verifiable currency; affected rows were excluded from matching.': 'У некоторых денежных потоков брокера не указана проверяемая валюта; такие записи исключены из сверки.',
+  'One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.': 'У некоторых денежных потоков брокера отсутствует проверяемая временная метка; такие записи исключены из сверки.',
   'One or more broker cashflow IDs have conflicting revisions; affected records were excluded from matching.': 'Некоторые идентификаторы денежных потоков содержат конфликтующие версии; такие записи исключены из сверки.',
   'No corresponding app-authored trade was found in the available transaction journal.': 'В доступном журнале транзакций не найдена соответствующая сделка приложения.',
   'No corresponding broker execution was found in the available provider history.': 'В доступной истории провайдера не найдено соответствующее исполнение брокера.',
