@@ -8,7 +8,6 @@ import { listUsers, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
 import { loadSavedHistory } from '../services/storage';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
