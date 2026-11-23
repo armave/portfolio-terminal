@@ -258,7 +258,7 @@ describe('Trades cache-first rendering', () => {
     const app = readRuntimeSource();
     expect(source).toContain('!cashflowHistoryReady');
     expect(source).toContain('brokerTradesRefreshing');
-    expect(source).toContain("requestClosedHistorySync('refresh', true)");
+    expect(source).toContain("requestClosedHistorySync('refresh')");
     expect(app).toContain('latestTradeCheckpoint !== previousTradeCheckpoint');
     expect(app).toContain('forceRefresh ||');
     expect(app).toContain('!hasCashflowBaseline');
