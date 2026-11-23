@@ -60,7 +60,7 @@ describe('exit comparison preferences', () => {
 
     const restored = loadExitComparisonPreferences('legacy-account', storage);
     expect(restored?.lastResult?.rows.map((row) => row.label)).toEqual([
-      'Resulting Account Balance', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L'
+      'Projected Cash / Debt Balance', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L'
     ]);
   });
 

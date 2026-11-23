@@ -120,8 +120,12 @@ function normalizeSavedResult(value: unknown): ExitComparisonSavedResult | null 
     });
   }
 
-  const visibleRows = rows.filter((row) => row.label !== 'Cost Basis');
-  const balanceRow = visibleRows.find((row) => row.label === 'Resulting Account Balance');
+  const visibleRows = rows
+    .filter((row) => row.label !== 'Cost Basis')
+    .map((row) => row.label === 'Resulting Account Balance'
+      ? { ...row, label: 'Projected Cash / Debt Balance' }
+      : row);
+  const balanceRow = visibleRows.find((row) => row.label === 'Projected Cash / Debt Balance');
   const orderedRows = balanceRow
     ? [balanceRow, ...visibleRows.filter((row) => row !== balanceRow)]
     : visibleRows;

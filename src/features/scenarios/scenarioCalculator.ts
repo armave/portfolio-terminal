@@ -219,8 +219,11 @@ export class ScenarioCalculator {
       subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
       columns: rows.map(r => dayLabel(r.days) + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
       rows: [
-        { label: 'Resulting Account Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' },
+        { label: 'Projected Cash / Debt Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' },
         { label: 'Gross Proceeds', values: rows.map(r => money(r.gross)), kind: 'fee' },
+        { label: 'Buy Commission', values: rows.map(() => money(buyCommission)), kind: 'fee' },
+        { label: 'Sell Commission', values: rows.map(r => money(r.sellFee)), kind: 'fee' },
+        { label: 'Estimated Margin Interest', values: rows.map(r => money(r.marginFee)), kind: 'fee' },
         { label: 'Total Fee Friction', values: rows.map(r => money(r.totalFeeFriction)), kind: 'fee' },
         {
           label: 'Net P&L',
