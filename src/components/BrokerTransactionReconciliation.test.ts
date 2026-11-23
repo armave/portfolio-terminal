@@ -98,6 +98,13 @@ describe('broker reconciliation localization', () => {
     )).toBe('Не удалось безопасно классифицировать денежный поток брокера или определить допустимую сумму; запись исключена из сверки.');
   });
 
+  it('localizes unresolved linked cash-adjustment reversals in Russian', () => {
+    expect(translateBrokerReconciliationCopy(
+      'The app journal contains a cash adjustment with one or more linked correction events. The original and correction are preserved, but their broker-side cashflow identity is not established; both are excluded from matching and cashflow absence claims are suppressed.',
+      'ru'
+    )).toContain('обе записи исключены из сверки');
+  });
+
   it('preserves English and unknown copy', () => {
     expect(translateBrokerReconciliationCopy('Matched', 'en')).toBe('Matched');
     expect(translateBrokerReconciliationCopy('A future copy key', 'ru')).toBe('A future copy key');

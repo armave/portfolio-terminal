@@ -246,6 +246,38 @@ function eventAmount(event: PortfolioTransactionEvent): number | null {
   return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
     (event.type === 'fee' ? event.fees : event.type === 'margin.interest' ? event.financingCost : undefined));
 }
+
+interface UnresolvedCashAdjustmentReversal {
+  original: PortfolioTransactionEvent;
+  corrections: PortfolioTransactionEvent[];
+}
+
+/**
+ * A PT-02 balance-adjustment reversal is an immutable correction linked to
+ * the original cash.adjustment. Without stable broker-side identity for both
+ * rows, keep the pair visible and fail closed instead of matching one side.
+ */
+function findUnresolvedCashAdjustmentReversals(
+  events: readonly PortfolioTransactionEvent[]
+): UnresolvedCashAdjustmentReversal[] {
+  const eventsById = new Map(events.map(event => [event.id, event]));
+  const correctionsByOriginalId = new Map<string, PortfolioTransactionEvent[]>();
+  for (const event of events) {
+    if (event.type !== 'correction' || event.actor.type === 'broker' ||
+      typeof event.relatedEventId !== 'string' || !event.relatedEventId.trim()) continue;
+    const original = eventsById.get(event.relatedEventId);
+    if (!original || original.type !== 'cash.adjustment' || original.actor.type === 'broker') continue;
+    const corrections = correctionsByOriginalId.get(original.id) || [];
+    corrections.push(event);
+    correctionsByOriginalId.set(original.id, corrections);
+  }
+  return [...correctionsByOriginalId.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([originalId, corrections]) => ({
+      original: eventsById.get(originalId)!,
+      corrections: [...corrections].sort((left, right) => left.id.localeCompare(right.id))
+    }));
+}
 function sameExecutionObservation(left: NormalizedExecution, right: NormalizedExecution): boolean {
   return left.orderId === right.orderId &&
     left.ticker === right.ticker &&
@@ -1084,7 +1116,37 @@ export function reconcileBrokerActivity(
     }, confidence));
   }
 
-  const appCashflows = input.appEvents.filter(event => CASHFLOW_EVENT_TYPES.has(event.type) && event.actor.type !== 'broker');
+  const unresolvedCashAdjustmentReversals = findUnresolvedCashAdjustmentReversals(input.appEvents);
+  const unresolvedCashAdjustmentEventIds = new Set<string>();
+  let unresolvedCashAdjustmentEventCount = 0;
+  for (const reversal of unresolvedCashAdjustmentReversals) {
+    unresolvedCashAdjustmentEventIds.add(reversal.original.id);
+    unresolvedCashAdjustmentEventCount += 1;
+    for (const correction of reversal.corrections) {
+      unresolvedCashAdjustmentEventIds.add(correction.id);
+      unresolvedCashAdjustmentEventCount += 1;
+    }
+    sourceDataIncomplete = true;
+    appCashflowAbsenceEvidenceComplete = false;
+    confidence = 'provisional';
+    findings.push(makeFinding({
+      id: `cashflow-reversal-unresolved:${reversal.original.id}`,
+      type: 'cashflow_unclassified',
+      subject: 'Reversed cash adjustment',
+      currency: currency(reversal.original.currency) || undefined,
+      brokerValue: null,
+      appValue: null,
+      brokerReferences: [],
+      appEventIds: [reversal.original.id, ...reversal.corrections.map(event => event.id)].sort(),
+      appAt: reversal.original.effectiveAt,
+      explanation: 'The app journal contains a cash adjustment with one or more linked correction events. The original and correction are preserved, but their broker-side cashflow identity is not established; both are excluded from matching and cashflow absence claims are suppressed.'
+    }, 'provisional'));
+  }
+  const appCashflows = input.appEvents.filter(event =>
+    CASHFLOW_EVENT_TYPES.has(event.type) &&
+    event.actor.type !== 'broker' &&
+    !unresolvedCashAdjustmentEventIds.has(event.id)
+  );
   const normalizedCashflowRows: NormalizedCashflow[] = [];
   input.brokerCashflows.forEach((raw, index) => {
     const row = normalizeCashflow(raw);
@@ -1469,7 +1531,7 @@ export function reconcileBrokerActivity(
     brokerExecutionCount: uniqueBrokerRows.length,
     appExecutionCount: appExecutions.length,
     brokerCashflowCount: brokerCashflows.length,
-    appCashflowCount: appCashflows.length,
+    appCashflowCount: appCashflows.length + unresolvedCashAdjustmentEventCount,
     matchedExecutionCount: matchedPairs.length,
     legacyClosedSaleCount: legacyClosedSales.length,
     matchedLegacyClosedSaleCount,
