@@ -134,9 +134,9 @@ export function createTradesHistorySyncRuntime(
         return existing.promise;
       }
 
-      // A stronger refresh, or a cache-check requested during recalculation,
-      // runs after the current operation. Multiple waiters coalesce when the
-      // queued call re-enters this coordinator.
+      // A stronger refresh or a different allocator input snapshot runs after
+      // the current operation. Recalculation after a changed snapshot is queued
+      // behind an active refresh so it cannot be satisfied by stale work.
       diagnostics.queued += 1;
       return existing.promise.then(() =>
         dependencies.getSessionKey() === sessionKey ? run(request) : false
