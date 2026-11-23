@@ -488,7 +488,7 @@ const FINDING_LABELS: Record<string, string> = {
 };
 
 const FINDING_REVIEW_SUGGESTIONS: Record<string, string> = {
-  'duplicate_broker_execution': 'Compare the repeated broker fill ID and source facts. Do not count or post the same fill twice.',
+  'duplicate_broker_execution': 'Compare the repeated broker fill ID and source facts. Do not treat the duplicate as a second economic fill.',
   'execution_revision_conflict': 'Refresh broker history and inspect the provider revision chain for this fill ID. No version is selected automatically.',
   'execution_match_ambiguous': 'Review the listed fill IDs and parent order references. Group partial fills only when a shared broker order ID is verified.',
   'execution_data_incomplete': 'Verify the listed missing fields against a complete source fill. Keep this comparison provisional until the evidence is available.',
@@ -501,7 +501,7 @@ const FINDING_REVIEW_SUGGESTIONS: Record<string, string> = {
   'execution_fee_mismatch': 'Compare the broker commission with the app fee field and confirm they represent the same fee components. Do not reallocate historical fees from this finding alone.',
   'execution_fee_currency_mismatch': 'Verify the commission currency on both records. No FX conversion is attempted.',
   'execution_timing_difference': 'Check the broker execution timestamp, app effective time and timezone basis before considering a date correction.',
-  'duplicate_broker_cashflow': 'Verify the repeated provider cashflow ID and source facts. Do not post the same cash movement twice.',
+  'duplicate_broker_cashflow': 'Verify the repeated provider cashflow ID and source facts. Treat the repeated ID as one source operation; do not post a second cash movement.',
   'cashflow_revision_conflict': 'Inspect the provider correction history for this stable cashflow ID. No revision is selected automatically.',
   'cashflow_unclassified': 'Review the provider operation category, description and stable reference. Do not infer an adjustment, interest or fee category.',
   'cashflow_direction_mismatch': 'Check whether the provider reports a signed movement or a positive magnitude. Do not reverse the recorded amount automatically.',
