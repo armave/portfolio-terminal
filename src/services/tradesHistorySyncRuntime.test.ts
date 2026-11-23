@@ -19,8 +19,8 @@ describe('Trades history synchronization runtime', () => {
       }
     });
 
-    const scheduled = runtime.run({ mode: 'refresh', source: 'scheduler' });
-    const manual = runtime.run({ mode: 'refresh', source: 'manual' });
+    const scheduled = runtime.run({ mode: 'refresh', source: 'scheduler', coalesceKey: 'same-allocation-inputs' });
+    const manual = runtime.run({ mode: 'refresh', source: 'manual', coalesceKey: 'same-allocation-inputs' });
     await Promise.resolve();
 
     expect(calls).toEqual(['scheduler']);
@@ -134,7 +134,7 @@ describe('Trades history synchronization runtime', () => {
     });
     await Promise.resolve();
     expect(calls).toEqual(['refresh:scheduler:alloc-v1']);
-    expect(runtime.getDiagnostics().queued).toBe(1);
+    expect(runtime.getDiagnostics()).toMatchObject({ queued: 1, coalesced: 0 });
 
     first.resolve(true);
     await secondStarted.promise;
