@@ -288,7 +288,31 @@ const RU_COPY: Record<string, string> = {
   'Trade or cash-holding lot quantity corrections are not supported by the current reversal contract.': 'Корректировки количества торговых или денежных лотов не поддерживаются текущим контрактом отмены.',
   'Closed-history correction has no linked lot-level correction projection.': 'Корректировка истории закрытых сделок не имеет связанного проецируемого изменения на уровне лотов.',
   'A closed-trade replay item is missing required financial data.': 'Для воспроизведения закрытой сделки не хватает необходимых финансовых данных.',
-  'Stable sale event has no linked canonical closed-trade record.': 'Для стабильного события продажи отсутствует связанная каноническая запись закрытой сделки.'
+  'Stable sale event has no linked canonical closed-trade record.': 'Для стабильного события продажи отсутствует связанная каноническая запись закрытой сделки.',
+  'Suggested review': 'Рекомендуемая проверка',
+  'Compare the repeated broker fill ID and source facts. Do not count or post the same fill twice.': 'Сравните повторяющийся ID исполнения брокера и исходные данные. Не учитывайте и не записывайте одно исполнение дважды.',
+  'Refresh broker history and inspect the provider revision chain for this fill ID. No version is selected automatically.': 'Обновите историю брокера и проверьте цепочку версий для этого ID исполнения. Версия автоматически не выбирается.',
+  'Review the listed fill IDs and parent order references. Group partial fills only when a shared broker order ID is verified.': 'Проверьте перечисленные ID исполнений и ссылки на родительские ордера. Объединяйте частичные исполнения только при подтверждённом общем ID ордера.',
+  'Verify the listed missing fields against a complete source fill. Keep this comparison provisional until the evidence is available.': 'Проверьте перечисленные отсутствующие поля по полной исходной записи исполнения. Сравнение остаётся предварительным, пока данные не получены.',
+  'Verify both execution currency codes against the broker fill details. No FX conversion or cross-currency price comparison is performed.': 'Сверьте валюты исполнения с деталями брокерской записи. Пересчёт валют и сравнение цен в разных валютах не выполняются.',
+  'Check the provider row for a usable ticker, supported side and positive quantity. Do not infer a trade from incomplete data.': 'Проверьте наличие допустимого тикера, направления и положительного количества. Не выводите сделку из неполных данных.',
+  'Compare the broker fill ID with the app journal and confirm the account and date scope. Do not create a trade from this absence finding alone.': 'Сравните ID исполнения брокера с журналом приложения и проверьте счёт и диапазон дат. Не создавайте сделку только на основании вывода об отсутствии.',
+  'Check broker history coverage, account and date range before treating the app event as unmatched. Do not delete the app event.': 'Проверьте полноту истории брокера, счёт и диапазон дат, прежде чем считать событие приложения несопоставленным. Не удаляйте событие приложения.',
+  'Review the fill quantity and any verified partial-fill group before considering a correction. Positions and lots are not changed here.': 'Проверьте количество исполнения и подтверждённую группу частичных исполнений. Позиции и лоты здесь не изменяются.',
+  'Compare the source fill price and quote currency. Do not replace the app execution price or cost basis from this review.': 'Сравните цену исходного исполнения и валюту котировки. Не заменяйте цену исполнения приложения или себестоимость на основании этой проверки.',
+  'Compare the broker commission with the app fee field and confirm they represent the same fee components. Do not reallocate historical fees from this finding alone.': 'Сравните комиссию брокера с полем комиссии приложения и убедитесь, что состав комиссий одинаков. Не перераспределяйте исторические комиссии только на основании этого расхождения.',
+  'Verify the commission currency on both records. No FX conversion is attempted.': 'Проверьте валюту комиссии в обеих записях. Пересчёт валют не выполняется.',
+  'Check the broker execution timestamp, app effective time and timezone basis before considering a date correction.': 'Перед корректировкой даты проверьте время исполнения брокера, эффективное время приложения и используемые часовые пояса.',
+  'Verify the repeated provider cashflow ID and source facts. Do not post the same cash movement twice.': 'Проверьте повторяющийся ID денежного потока брокера и исходные данные. Не записывайте одно движение денежных средств дважды.',
+  'Inspect the provider correction history for this stable cashflow ID. No revision is selected automatically.': 'Проверьте историю исправлений провайдера для этого стабильного ID денежного потока. Версия автоматически не выбирается.',
+  'Review the provider operation category, description and stable reference. Do not infer an adjustment, interest or fee category.': 'Проверьте категорию операции брокера, описание и стабильную ссылку. Не выводите категорию корректировки, процентов или комиссии предположительно.',
+  'Check whether the provider reports a signed movement or a positive magnitude. Do not reverse the recorded amount automatically.': 'Проверьте, указывает ли провайдер знаковое движение или положительную величину. Не меняйте знак записанной суммы автоматически.',
+  'Review the listed provider reference and app-event candidates. No candidate is selected automatically.': 'Проверьте ссылку провайдера и перечисленные события приложения. Кандидат автоматически не выбирается.',
+  'Check app journal coverage, account, value date and provider reference. Do not post a cash adjustment from an absence finding alone.': 'Проверьте полноту журнала приложения, счёт, дату валютирования и ссылку провайдера. Не записывайте корректировку денежных средств только на основании вывода об отсутствии.',
+  'Check broker history completeness and the date overlap for late corrections before treating the app event as missing. Do not remove the app event.': 'Проверьте полноту истории брокера и перекрытие дат для поздних исправлений, прежде чем считать событие приложения отсутствующим у брокера. Не удаляйте событие приложения.',
+  'Compare the source amount, currency, operation details and value date. Do not adjust a balance from the amount difference alone.': 'Сравните исходную сумму, валюту, детали операции и дату валютирования. Не корректируйте баланс только из-за разницы сумм.',
+  'Verify the broker subaccount and currency code against the app event. No FX conversion is attempted.': 'Сверьте субсчёт брокера и код валюты с событием приложения. Пересчёт валют не выполняется.',
+  'Compare the provider operation label and category with the app event type. Do not reclassify from amount or timing alone.': 'Сравните обозначение и категорию операции провайдера с типом события приложения. Не меняйте классификацию только по сумме или времени.',
 };
 
 const LOT_PARITY_DISCREPANCY_LABELS: Record<PortfolioLotParityResult['discrepancies'][number]['field'], string> = {
@@ -462,6 +486,36 @@ const FINDING_LABELS: Record<string, string> = {
   cashflow_currency_mismatch: 'Cashflow currency differs',
   cashflow_type_mismatch: 'Cashflow classification differs'
 };
+
+const FINDING_REVIEW_SUGGESTIONS: Record<string, string> = {
+  'duplicate_broker_execution': 'Compare the repeated broker fill ID and source facts. Do not count or post the same fill twice.',
+  'execution_revision_conflict': 'Refresh broker history and inspect the provider revision chain for this fill ID. No version is selected automatically.',
+  'execution_match_ambiguous': 'Review the listed fill IDs and parent order references. Group partial fills only when a shared broker order ID is verified.',
+  'execution_data_incomplete': 'Verify the listed missing fields against a complete source fill. Keep this comparison provisional until the evidence is available.',
+  'execution_currency_mismatch': 'Verify both execution currency codes against the broker fill details. No FX conversion or cross-currency price comparison is performed.',
+  'execution_unclassified': 'Check the provider row for a usable ticker, supported side and positive quantity. Do not infer a trade from incomplete data.',
+  'execution_missing_in_app': 'Compare the broker fill ID with the app journal and confirm the account and date scope. Do not create a trade from this absence finding alone.',
+  'execution_missing_in_broker': 'Check broker history coverage, account and date range before treating the app event as unmatched. Do not delete the app event.',
+  'execution_quantity_mismatch': 'Review the fill quantity and any verified partial-fill group before considering a correction. Positions and lots are not changed here.',
+  'execution_price_mismatch': 'Compare the source fill price and quote currency. Do not replace the app execution price or cost basis from this review.',
+  'execution_fee_mismatch': 'Compare the broker commission with the app fee field and confirm they represent the same fee components. Do not reallocate historical fees from this finding alone.',
+  'execution_fee_currency_mismatch': 'Verify the commission currency on both records. No FX conversion is attempted.',
+  'execution_timing_difference': 'Check the broker execution timestamp, app effective time and timezone basis before considering a date correction.',
+  'duplicate_broker_cashflow': 'Verify the repeated provider cashflow ID and source facts. Do not post the same cash movement twice.',
+  'cashflow_revision_conflict': 'Inspect the provider correction history for this stable cashflow ID. No revision is selected automatically.',
+  'cashflow_unclassified': 'Review the provider operation category, description and stable reference. Do not infer an adjustment, interest or fee category.',
+  'cashflow_direction_mismatch': 'Check whether the provider reports a signed movement or a positive magnitude. Do not reverse the recorded amount automatically.',
+  'cashflow_match_ambiguous': 'Review the listed provider reference and app-event candidates. No candidate is selected automatically.',
+  'cashflow_missing_in_app': 'Check app journal coverage, account, value date and provider reference. Do not post a cash adjustment from an absence finding alone.',
+  'cashflow_missing_in_broker': 'Check broker history completeness and the date overlap for late corrections before treating the app event as missing. Do not remove the app event.',
+  'cashflow_amount_mismatch': 'Compare the source amount, currency, operation details and value date. Do not adjust a balance from the amount difference alone.',
+  'cashflow_currency_mismatch': 'Verify the broker subaccount and currency code against the app event. No FX conversion is attempted.',
+  'cashflow_type_mismatch': 'Compare the provider operation label and category with the app event type. Do not reclassify from amount or timing alone.',
+};
+
+export function getBrokerReconciliationReviewSuggestion(findingType: string): string | undefined {
+  return FINDING_REVIEW_SUGGESTIONS[findingType];
+}
 
 function formatValue(value: number | null, currency?: string): string {
   if (value === null || !Number.isFinite(value)) return '—';
@@ -707,6 +761,12 @@ export function BrokerTransactionReconciliation({
                 </span>
               </div>
               <p class="mt-1 text-slate-400">{translateBrokerReconciliationCopy(finding.explanation)}</p>
+              {getBrokerReconciliationReviewSuggestion(finding.type) && (
+                <p class="mt-1 text-slate-400">
+                  <strong class="text-slate-300">{translateBrokerReconciliationCopy('Suggested review')}:</strong>{' '}
+                  {translateBrokerReconciliationCopy(getBrokerReconciliationReviewSuggestion(finding.type) || '')}
+                </p>
+              )}
               {finding.missingFields && finding.missingFields.length > 0 && (
                 <p class="mt-1 text-amber-300">
                   {translateBrokerReconciliationCopy('Missing execution evidence')}: {finding.missingFields.map(field => translateBrokerReconciliationCopy(field)).join(', ')}

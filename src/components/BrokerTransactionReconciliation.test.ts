@@ -11,6 +11,7 @@ import {
   translatePortfolioLotParityIssueReason,
   getBrokerReconciliationReviewIdempotencyKey,
   findBrokerReconciliationReview,
+  getBrokerReconciliationReviewSuggestion,
   translateBrokerReconciliationCopy
 } from './BrokerTransactionReconciliation';
 
@@ -174,6 +175,50 @@ describe('broker quote reconciliation localization and status', () => {
   });
 });
 
+
+describe('broker reconciliation read-only review suggestions', () => {
+  it('provides localized, type-specific suggestions for every supported activity finding', () => {
+    const findingTypes = [
+      'duplicate_broker_execution',
+      'execution_revision_conflict',
+      'execution_match_ambiguous',
+      'execution_data_incomplete',
+      'execution_currency_mismatch',
+      'execution_unclassified',
+      'execution_missing_in_app',
+      'execution_missing_in_broker',
+      'execution_quantity_mismatch',
+      'execution_price_mismatch',
+      'execution_fee_mismatch',
+      'execution_fee_currency_mismatch',
+      'execution_timing_difference',
+      'duplicate_broker_cashflow',
+      'cashflow_revision_conflict',
+      'cashflow_unclassified',
+      'cashflow_direction_mismatch',
+      'cashflow_match_ambiguous',
+      'cashflow_missing_in_app',
+      'cashflow_missing_in_broker',
+      'cashflow_amount_mismatch',
+      'cashflow_currency_mismatch',
+      'cashflow_type_mismatch',
+    ];
+    for (const findingType of findingTypes) {
+      const suggestion = getBrokerReconciliationReviewSuggestion(findingType);
+      expect(suggestion, findingType).toBeTruthy();
+      expect(translateBrokerReconciliationCopy(suggestion!, 'ru'), findingType).not.toBe(suggestion);
+    }
+    expect(getBrokerReconciliationReviewSuggestion('future_finding_type')).toBeUndefined();
+  });
+
+  it('renders suggestions as guidance beside the finding without adding a resolution action', () => {
+    const source = readFileSync(new URL('./BrokerTransactionReconciliation.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("translateBrokerReconciliationCopy('Suggested review')");
+    expect(source).toContain('getBrokerReconciliationReviewSuggestion(finding.type)');
+    expect(source).toContain('renderReviewControl(\'activity\', finding.id, finding.type, finding.subject)');
+    expect(source).toContain('It does not resolve the finding or change portfolio data.');
+  });
+});
 
 describe('broker reconciliation audit-only review markers', () => {
   it('derives distinct stable idempotency keys for activity and quote findings', () => {

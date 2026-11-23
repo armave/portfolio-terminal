@@ -131,3 +131,10 @@ This is distinct from date-only observations: a parseable provider date remains 
 ## Broker source-row count semantics — 2026-11-23
 
 The reconciliation headline counts now report the number of broker execution and cashflow rows supplied to the comparison, before normalization, classification, duplicate suppression or conflict exclusion. Unclassifiable and malformed rows therefore remain represented in the source counts while their provisional findings explain why they were not eligible for matching. Repeated rows with the same provider ID remain visible in the count and produce duplicate/conflicting-revision findings. The matched counts continue to count only usable records successfully paired by the deterministic matcher. No source row is converted to a financial value, and no portfolio state is changed.
+
+
+## Read-only discrepancy review suggestions — implementation slice
+
+Every supported broker activity finding now carries a localized `Suggested review` note in the discrepancy card. The suggestion identifies the source evidence to inspect for that finding type (for example, a provider ID/revision, order grouping, amount sign, currency, timestamp or journal coverage). It does not select a match, change a finding's confidence, resolve the discrepancy, or propose a financial value.
+
+The existing `Review item` control remains a separate audit-only note. Recording a review note is not a resolution, does not alter portfolio data and does not authorize writeback. No automatic correction or new PT-02 command is introduced. All suggestion text is covered in English/Russian localization tests.
