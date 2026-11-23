@@ -43,7 +43,7 @@ There were no open implementation PRs at the time of the audit. The current dev 
 
 The important tracking issues for Wave 3 are [#686](https://github.com/armave/portfolio-terminal/issues/686) (PT-02 continuation), [#685](https://github.com/armave/portfolio-terminal/issues/685) (restore/device rehearsal), [#687](https://github.com/armave/portfolio-terminal/issues/687) (TradeNet live evidence), [#688](https://github.com/armave/portfolio-terminal/issues/688) (PT-04 transaction-level reconciliation), [#539](https://github.com/armave/portfolio-terminal/issues/539) (PT-05 tenancy). PT-04 issue #537 remains the completed narrow unclassified-cashflow guard, not the parent reconciliation tracker. The legacy PT-06 and PT-07 issue references are under separate tracking repair. The broad PT-02 issue #330 and original tracker #507 were deleted; [#686](https://github.com/armave/portfolio-terminal/issues/686) now tracks the remaining transaction-integrity and replay acceptance. The merged foundation PRs and subsequent bounded implementation slices do not mean every broader workstream acceptance criterion is complete.
 
-See current-state-audit.md for code-level observations and limitations.
+See current-state-audit.md for code-level observations and limitations. The consolidated current acceptance matrix for [#685–#689](combined-acceptance-2026-11-23.md) distinguishes code/CI evidence from live TradeNet, physical two-device and repeated-run performance gates.
 
 ## 3. Five dedicated implementation streams
 

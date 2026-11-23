@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   buildPerformanceEnvironmentMetadata,
@@ -200,5 +201,23 @@ describe('extended baseline sample contract', () => {
     expect(summary.p95).toBe(109);
     expect(summarizePerformanceSamples(samples, 'largestContentfulPaintMs').sampleCount).toBe(0);
     expect(summarizePerformanceSamples(samples, 'cumulativeLayoutShift').median).toBeNull();
+  });
+});
+
+describe('repeatable same-candidate performance workflow dispatch', () => {
+  it('does not cancel earlier manual dispatches for the same candidate ref', () => {
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+    const concurrencyGroup = workflow.split('\n').find(line => line.trimStart().startsWith('group:'));
+    expect(concurrencyGroup).toContain('github.event_name');
+    expect(concurrencyGroup).toContain('workflow_dispatch');
+    expect(concurrencyGroup).toContain('github.run_id');
+    expect(workflow).toContain('cancel-in-progress: true');
+  });
+
+  it('keeps ten samples per viewport as the manual benchmark default', () => {
+    const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+    expect(workflow).toContain('default: 10');
+    expect(workflow).toContain('performance_baseline_runs: ${{ github.event_name');
+    expect(parsePerformanceSampleCount('10')).toBe(10);
   });
 });

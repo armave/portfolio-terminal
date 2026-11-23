@@ -1,8 +1,8 @@
 # Remaining work — implementation plan
 
 **Status:** Delivery plan for the active PT-02, PT-04, PT-05, PT-16 and PT-17 issues.  
-**Plan date:** 2026-11-17  
-**Planning baseline:** `main` and `dev` at `4089d2f7f79f2e66931ca939edcb762e40399257`.  
+**Plan date:** 2026-11-23  
+**Planning baseline:** `dev` at `f243e7a1f40710a9a53300919d9f6db1315c4b29`; production `main` remains independently governed.  
 **Completed issue:** [#553 — financial mutation inventory and replay disposition](https://github.com/armave/portfolio-terminal/issues/553) was closed after its caller-by-caller matrix and exact-head validation evidence were merged.
 
 This plan sequences the remaining work. It does not mark manual, security-reviewed, owner-approved or production-verification gates as complete merely because a design, mock, or CI test exists.
@@ -37,11 +37,10 @@ This plan sequences the remaining work. It does not mark manual, security-review
 - Validate the settings after saving and retain screenshots/exported ruleset evidence. The currently available read-only repository ruleset snapshot is recorded in `docs/ci/github-settings-follow-up.md`; a documentation PR cannot itself enforce settings.
 
 **#689 — desktop/mobile performance**
-- Merge the environment metadata/reporting improvement, then manually dispatch Pull Request CI with 10 samples per viewport and retain the exact artifact and SHA.
-- Confirm runner/browser/viewport metadata and compare repeated samples on like-for-like runner configurations; treat the 10-sample nearest-rank p95 as descriptive, not a stable production percentile.
-- Reuse the existing authenticated synthetic benchmark in `scripts/browser-smoke-operations.mjs`: it already bootstraps an admin through the application flow, seeds local-only synthetic portfolio state, receives a deterministic mocked broker snapshot and captures three desktop plus three mobile samples. It is not a real account or broker test.
-- Extend that existing benchmark rather than building a duplicate harness: expand the seed beyond its current single AAPL position (5 shares, one tranche) to representative multi-position, multi-tranche, closed-history and transaction-journal tiers using the supported schema/import path; prove exact seed parity after startup and mocked broker reconciliation before timing.
-- Add environment metadata to the authenticated artifact, run at least 10 samples per viewport under a reproducible runner/browser profile, and measure authenticated startup, desk navigation, portfolio calculation/rendering, refresh/reconciliation and memory where available. Keep this artifact separate from the unauthenticated app-shell baseline.
+- The current authenticated browser fixture generates 100 synthetic active positions, 200 stable open lots, 10 linked closed trades and 220 transaction-journal events. Its Vitest contract proves schema validity, snapshot quantity/balance replay, stable-lot FIFO parity and closed-history linkage before the browser journey. The fixture is local-only, deterministic and does not place orders.
+- Pull Request CI supports a manual 1–20 sample count (default 10) and passes the chosen count to both the app-shell and authenticated portfolio/Trades benchmark. The authenticated artifact includes per-stage timings, resource transfer, DOM, optional heap, environment metadata and distribution/outlier summaries; unsupported metrics remain null.
+- Repeated manual dispatches on the same candidate ref must not cancel one another. The CI concurrency group adds the unique workflow run ID only for `workflow_dispatch`, while normal PR/push cancellation stays unchanged.
+- Remaining acceptance: manually dispatch the exact candidate with 10 samples per viewport, retain the app-shell and authenticated artifacts, then compare at least 10 successful same-runner/browser workflow runs and document variance/outliers. Do not invent thresholds or claim live provider/device performance from mocked evidence.
 
 **#560 — privacy-approved telemetry**
 - First inventory all browser, Pages, Worker, Durable Object and third-party logging/telemetry sinks.
