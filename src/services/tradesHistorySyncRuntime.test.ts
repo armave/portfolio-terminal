@@ -48,7 +48,7 @@ describe('Trades history synchronization runtime', () => {
     const manual = runtime.run({ mode: 'refresh', source: 'manual' });
     await Promise.resolve();
     expect(calls).toEqual(['refresh:trades-desk']);
-    expect(runtime.getDiagnostics().queued).toBe(1);
+    expect(runtime.getDiagnostics()).toMatchObject({ queued: 1, coalesced: 0 });
 
     first.resolve(true);
     await secondStarted.promise;
