@@ -399,3 +399,12 @@ The command rows above distinguish public store methods from production wiring: 
 The import regression suite now pins the deterministic tie behavior when distinct journal events share a recordedAt millisecond. mergePortfolioTransactionEvents uses stable sorting: the already-committed local sequence is retained first, followed by same-time incoming events in their supplied order. Re-importing the same rows remains idempotent and produces the same replay.
 
 This is a deterministic merge rule, **not proof of real cross-device chronology**. recordedAt collisions do not contain enough information to establish which independent device committed first; the merge must not infer a missing order from event IDs or business effectiveAt. Any reconciliation decision that depends on the relative order of colliding events remains review-required until stronger source ordering evidence is available. Authenticated multi-device recovery remains a separate manual gate under [#554](https://github.com/armave/portfolio-terminal/issues/554).
+
+
+## Shadow lot replay rejection atomicity — 2026-11-23
+
+Complete stable-lot sale replay now validates the aggregate event price and gross proceeds before consuming any open-lot quantity, commission balance, or realized allocation in the shadow projection. The event schema permits a small per-allocation price tolerance; accumulated slice values can therefore pass schema validation while failing the stricter aggregate replay consistency check. Previously, that rejected sale was marked unsupported only after its allocations had already reduced replay lots. The replayer now rejects it before any lot mutation.
+
+A regression fixture deliberately constructs a schema-valid sale whose allocation prices differ from the event price within the per-slice tolerance but whose aggregate proceeds exceed the replay tolerance. The expected result is an unsupported finding, no closed-sale projection, and unchanged open lots. Mixed stable/legacy sale handling is unchanged: known stable slices may advance only when the complete event remains internally accepted, while the result stays explicitly incomplete and never synthesizes the unmapped cost basis. Canonical positions, financial formulas, event schema, persisted state and correction semantics are unchanged.
+
+This is a read-only shadow-replay integrity fix. It does not authorize ledger cutover, automatic repair, financial posting, or broker reconciliation.

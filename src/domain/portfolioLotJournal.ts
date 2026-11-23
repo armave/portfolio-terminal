@@ -260,6 +260,49 @@ export function replayPortfolioTransactionLots(
       }
       if (!validStableAllocations) continue;
 
+      // Validate every complete sale against its event-level proceeds before
+      // applying any allocation to the shadow lots. A schema-valid event can
+      // still exceed the stricter aggregate replay tolerance after per-slice
+      // tolerances are combined.
+      const hasCompleteAllocations =
+        legacyAllocations.length === 0 &&
+        stableAllocations.length === event.lotAllocations.length;
+      let completeSale: PortfolioLotReplaySale | null = null;
+      if (hasCompleteAllocations) {
+        const quantity = stableAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
+        const soldCostBasis = stableAllocations.reduce(
+          (sum, allocation) => sum + allocation.quantity * allocation.acquisitionPrice, 0
+        );
+        const grossProceeds = stableAllocations.reduce(
+          (sum, allocation) => sum + allocation.quantity * allocation.sellPrice, 0
+        );
+        const sellPrice = optionalNumber(event.unitPrice);
+        if (sellPrice === null || !closeEnough(sellPrice * quantity, grossProceeds, DEFAULT_TOLERANCE) ||
+          !closeEnough(optionalNumber(event.grossAmount) ?? Number.NaN, grossProceeds, DEFAULT_TOLERANCE)) {
+          addIssue(event, 'unsupported', 'Stable lot sale allocations do not agree with the sale event price and gross proceeds.');
+          continue;
+        }
+        const buyCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.buyCommissionAllocated, 0);
+        const sellCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.sellCommissionAllocated, 0);
+        const financingCost = stableAllocations.reduce((sum, allocation) => sum + allocation.financingCostAllocated, 0);
+        const realizedPnl = stableAllocations.reduce((sum, allocation) => sum + allocation.realizedPnl, 0);
+        completeSale = {
+          eventId: event.id,
+          ticker,
+          quantity,
+          sellPrice,
+          soldCostBasis: Number(soldCostBasis.toFixed(8)),
+          grossProceeds: Number(grossProceeds.toFixed(8)),
+          grossProfit: Number((grossProceeds - soldCostBasis).toFixed(2)),
+          buyCommissionAllocated: Number(buyCommissionAllocated.toFixed(2)),
+          sellCommissionAllocated: Number(sellCommissionAllocated.toFixed(2)),
+          commissions: Number((buyCommissionAllocated + sellCommissionAllocated).toFixed(2)),
+          financingCost: Number(financingCost.toFixed(2)),
+          realizedPnl: Number(realizedPnl.toFixed(2)),
+          allocations: stableAllocations.map((allocation) => ({ ...allocation }))
+        };
+      }
+
       for (const allocation of stableAllocations) {
         const lot = targetLots.get(allocation.lotId!)!;
         lot.openQuantity = Math.max(0, lot.openQuantity - allocation.quantity);
@@ -278,40 +321,7 @@ export function replayPortfolioTransactionLots(
 
       // A mixed stable/legacy sale can advance the known stable lots, but it is
       // not a complete closed-sale projection because part of the cost basis is unknown.
-      if (legacyAllocations.length || stableAllocations.length !== event.lotAllocations.length) continue;
-
-      const quantity = stableAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
-      const soldCostBasis = stableAllocations.reduce(
-        (sum, allocation) => sum + allocation.quantity * allocation.acquisitionPrice, 0
-      );
-      const grossProceeds = stableAllocations.reduce(
-        (sum, allocation) => sum + allocation.quantity * allocation.sellPrice, 0
-      );
-      const buyCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.buyCommissionAllocated, 0);
-      const sellCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.sellCommissionAllocated, 0);
-      const financingCost = stableAllocations.reduce((sum, allocation) => sum + allocation.financingCostAllocated, 0);
-      const realizedPnl = stableAllocations.reduce((sum, allocation) => sum + allocation.realizedPnl, 0);
-      const sellPrice = optionalNumber(event.unitPrice);
-      if (sellPrice === null || !closeEnough(sellPrice * quantity, grossProceeds, DEFAULT_TOLERANCE) ||
-        !closeEnough(optionalNumber(event.grossAmount) ?? Number.NaN, grossProceeds, DEFAULT_TOLERANCE)) {
-        addIssue(event, 'unsupported', 'Stable lot sale allocations do not agree with the sale event price and gross proceeds.');
-        continue;
-      }
-      saleCollection.push({
-        eventId: event.id,
-        ticker,
-        quantity,
-        sellPrice,
-        soldCostBasis: Number(soldCostBasis.toFixed(8)),
-        grossProceeds: Number(grossProceeds.toFixed(8)),
-        grossProfit: Number((grossProceeds - soldCostBasis).toFixed(2)),
-        buyCommissionAllocated: Number(buyCommissionAllocated.toFixed(2)),
-        sellCommissionAllocated: Number(sellCommissionAllocated.toFixed(2)),
-        commissions: Number((buyCommissionAllocated + sellCommissionAllocated).toFixed(2)),
-        financingCost: Number(financingCost.toFixed(2)),
-        realizedPnl: Number(realizedPnl.toFixed(2)),
-        allocations: stableAllocations.map((allocation) => ({ ...allocation }))
-      });
+      if (completeSale) saleCollection.push(completeSale);
     }
 
     if (event.type === 'corporate-action' && event.corporateActionLotAdjustments?.length) {
