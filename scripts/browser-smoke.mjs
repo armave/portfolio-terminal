@@ -543,7 +543,6 @@ async function captureExitComparisonModalReview(page) {
     if (outputDirectory) {
       await mkdir(outputDirectory, { recursive: true });
       const baseName = 'admin-exit-comparison-' + viewport.name + '-' + viewport.width + 'x' + viewport.height;
-      const content = element => dialog.locator(element).scrollIntoViewIfNeeded();
       await dialog.evaluate((element) => {
         const contentRegion = element.querySelector(':scope > div');
         if (contentRegion) contentRegion.scrollTop = 0;
@@ -557,8 +556,7 @@ async function captureExitComparisonModalReview(page) {
         animations: 'disabled',
         caret: 'hide'
       });
-      await content('h3');
-      await page.getByText('Comparison results', { exact: true }).scrollIntoViewIfNeeded();
+      await dialog.getByRole('heading', { name: 'Comparison results', exact: true }).scrollIntoViewIfNeeded();
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));

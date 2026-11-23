@@ -99,7 +99,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).toContain('initialFocusRef: closeButtonRef');
     expect(exit).toContain('type="date"');
     expect(exit).toContain('type="number"');
-    expect(exit).toContain('min-h-11');
+    expect(exit).toContain('min-h-12');
+    expect(exit).toContain('min-w-12');
     expect(exit).toContain('focus-visible:ring-2');
     expect(exit).toContain("translateText('Compare Exits', language)");
   });
