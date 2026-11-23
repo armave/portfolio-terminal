@@ -52,6 +52,7 @@ export interface BrokerEventPayloads {
   };
   'broker:request-closed-history-sync-and-wait': {
     mode: 'refresh' | 'recalculate';
+    forceRefresh?: boolean;
     resolve: (success: boolean) => void;
   };
   'broker:request-active-orders': undefined;
