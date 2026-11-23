@@ -39,3 +39,12 @@ This document separates implementation evidence from authenticated operator evid
 - Broker aggregates stay evidence-only. No automatic change to positions, FIFO lots, cash, debt, fee allocations, cost basis or realized P&L.
 - No Worker, Durable Object, authorization, encryption/key, persistence-schema or production deployment change is included in this client PR.
 - All external scenarios remain explicitly BLOCKED until their required authorized workspace, account, devices, Worker version and operator evidence are supplied and reviewed.
+
+
+## Owner-confirmed manual acceptance — 2026-11-23
+
+The project owner explicitly confirmed in the Portfolio Terminal project conversation that **manual validations for all five acceptance trackers passed**. This owner confirmation is the acceptance source for the authenticated/manual scenarios in #685, #686, #687, #688 and #689 and supersedes the earlier BLOCKED status in this implementation matrix.
+
+The confirmation covers the manual gates described by the linked issue criteria: authenticated backup/cloud recovery and two-device conflict/retry rehearsal; PT-02 mutation/replay owner review and financial-state preservation; live TradeNet account/history/stream/Market Depth lifecycle; human review of read-only reconciliation proposals against provider evidence; and the ten-sample desktop/mobile performance process with repeated comparable-run/variance review.
+
+The exact device/browser identifiers, UTC scenario timestamps, deployed Worker SHA/version and sanitized artifact URLs were not included in the conversation, so this record does not invent or claim to attach those details. The validations are marked **owner-confirmed PASS**, not independently reproduced by this code-review session. The automated evidence remains linked separately. Unsupported legacy history remains classified as unsupported/incomplete; passing acceptance does not authorize ledger cutover or guessed financial reconstruction.

@@ -140,3 +140,8 @@ Every supported broker activity finding carries a localized `Suggested review` n
 These are decision aids, not executable corrections. They never select a source record, alter confidence, create or modify a journal event, change a position/lot/balance/fee/cost basis/P&L, or call a financial store mutation. Missing or ambiguous evidence remains provisional. A human may proceed only through a separately supported, explicit PT-02 command after source identity, data completeness and operation semantics are verified; the proposal itself performs no writeback.
 
 The existing `Review item` control remains a separate audit-only note. Recording a review note does not resolve the finding and does not authorize writeback. English/Russian translation parity is tested for all supported activity finding types. Live provider verification and any future writeback contract remain separate acceptance gates.
+
+
+## Final manual acceptance — 2026-11-23
+
+The project owner confirmed that the #688 browser review of transaction-level discrepancies and the read-only resolution proposals passed against the manual provider-validation scenarios. This closes the manual acceptance status for #688 in conjunction with its exact-head deterministic tests and PR #699. The proposals remain guidance only: any future financial writeback still requires a separately supported explicit PT-02 command and auditable confirmation. The owner confirmation and evidence limitations are recorded in the [combined acceptance record](../combined-acceptance-2026-11-23.md).

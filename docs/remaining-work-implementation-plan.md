@@ -155,3 +155,10 @@ Every PR should state: linked issue(s), concrete scope, acceptance criteria comp
 | Explicit owner/security approval of migration and rollback | #558, #539 |
 
 Until these inputs exist, the affected issues remain open with implementation designs and test plans only; no production data, credentials, keys or financial state should be modified to simulate acceptance.
+
+
+## Owner-confirmed completion of #685–#689 — 2026-11-23
+
+The project owner confirmed that all manual validation scenarios for [#685](https://github.com/armave/portfolio-terminal/issues/685), [#686](https://github.com/armave/portfolio-terminal/issues/686), [#687](https://github.com/armave/portfolio-terminal/issues/687), [#688](https://github.com/armave/portfolio-terminal/issues/688) and [#689](https://github.com/armave/portfolio-terminal/issues/689) passed. Together with the exact-head implementation/CI evidence recorded in [the combined acceptance record](wave-3/combined-acceptance-2026-11-23.md), the owner has accepted these five trackers as complete.
+
+The project conversation did not include sanitized evidence URLs, device/browser identifiers, UTC execution timestamps or the deployed Worker SHA/version. Those fields are therefore recorded as owner-confirmed but not independently reproduced here; no values are inferred. This status applies only to #685–#689 and does not close the separate PT-05, PT-16 or repository-ruleset workstreams. Unsupported legacy lots/events remain unsupported/incomplete, and no ledger cutover or automatic financial correction is authorized.
