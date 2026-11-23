@@ -111,6 +111,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Cloud encryption upgrade could not be verified. Your local portfolio is safe; retry cloud sync.': 'Не удалось проверить переход на новое шифрование облака. Локальный портфель сохранён; повторите облачную синхронизацию.',
   'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.': 'Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.',
   'Closed History synchronization failed. Check the activity log and retry.': 'Не удалось синхронизировать историю закрытых сделок. Проверьте журнал событий и повторите попытку.',
+  'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.': 'Не удалось подтвердить обновление истории закрытых сделок. Сохранённая история доступна; проверьте журнал событий и повторите попытку.',
   'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.': 'Продажа заблокирована: данные о покупках отсутствуют или противоречат друг другу. Восстановите себестоимость позиции перед продажей.',
   'Balance refresh failed. Showing the last saved broker snapshot.': 'Не удалось обновить баланс. Показан последний сохранённый снимок брокера.',
   'Unable to load the broker balance. Please retry.': 'Не удалось загрузить баланс брокера. Повторите попытку.',
