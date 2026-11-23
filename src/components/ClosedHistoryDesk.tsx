@@ -403,9 +403,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     ]
   );
 
-  const requestClosedHistorySync = (mode: 'refresh' | 'recalculate'): Promise<boolean> =>
+  const requestClosedHistorySync = (mode: 'refresh' | 'recalculate', forceRefresh = false): Promise<boolean> =>
     new Promise((resolve) => {
-      emitBrokerEvent('broker:request-closed-history-sync-and-wait', { mode, resolve });
+      emitBrokerEvent('broker:request-closed-history-sync-and-wait', { mode, forceRefresh, resolve });
     });
 
   const applyLatestCanonicalExecutions = () => {
@@ -565,7 +565,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         // the load effect above so it doesn't race a second save against that pull.
         if (historyHydrated.current) {
           // Broker-history changes are checkpointed by the shared owner too.
-          void requestClosedHistorySync('recalculate').then((success) => {
+          void requestClosedHistorySync('refresh', true).then((success) => {
             if (!success && isSessionCurrent()) logSafeDiagnostic('warn', 'closed-history');
             applyLatestCanonicalExecutions();
           });
