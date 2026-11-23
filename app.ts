@@ -1801,12 +1801,12 @@ const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
 });
 
 /** All scheduled, manual and Trades-page history work joins this session-scoped owner. */
-function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false): Promise<boolean> {
-  return tradesHistorySyncRuntime.run({ mode, source, forceRefresh });
+function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false, forceRefreshKey?: string): Promise<boolean> {
+  return tradesHistorySyncRuntime.run({ mode, source, forceRefresh, forceRefreshKey });
 }
 
 addBrokerEventListener('broker:request-closed-history-sync-and-wait', (request) => {
-  void syncAdminClosedHistory('trades-desk', request.mode, request.forceRefresh).then(
+  void syncAdminClosedHistory('trades-desk', request.mode, request.forceRefresh, request.forceRefreshKey).then(
     request.resolve,
     () => request.resolve(false)
   );
