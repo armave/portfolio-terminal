@@ -726,7 +726,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "There are no open positions with shares available to compare.": "Нет открытых позиций с доступным количеством акций для сравнения.",
   "Comparison results": "Результаты сравнения",
   "Latest quote": "Последняя котировка",
-  "Average entry": "Средняя цена входа",
   "Manual / trade price": "Ручная цена / цена сделки",
   "Based on complete tracked lots": "По полным данным учтённых лотов",
   "Quote source unknown": "Источник котировки неизвестен",

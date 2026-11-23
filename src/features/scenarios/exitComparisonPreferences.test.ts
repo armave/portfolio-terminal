@@ -26,7 +26,7 @@ const sample: ExitComparisonPreferences = {
     savedAt: 1_794_321_000_000,
     columns: ['Today · $294.00', 'In 14 days · $303.00'],
     rows: [
-      { label: 'Resulting Account Balance', values: ['−$1,000.00', '−$1,400.00'], kind: 'balance' },
+      { label: 'Projected Cash / Debt Balance', values: ['−$1,000.00', '−$1,400.00'], kind: 'balance' },
       { label: 'Net P&L', values: ['−$2,000.00', '−$1,550.00'], kind: 'result', deltas: ['−$450.00', 'BEST'] }
     ],
     note: 'Estimate only.',
