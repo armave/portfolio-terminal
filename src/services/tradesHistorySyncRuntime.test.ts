@@ -57,24 +57,35 @@ describe('Trades history synchronization runtime', () => {
     expect(runtime.getDiagnostics()).toMatchObject({ started: 2, succeeded: 2, queued: 1 });
   });
 
-  it('queues an explicitly forced Trades refresh behind an unchanged-checkpoint desk pass', async () => {
+  it('queues a new fill snapshot behind a refresh that captured the previous inputs', async () => {
     const first = deferred<boolean>();
     const second = deferred<boolean>();
     const calls: string[] = [];
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'admin-session-a',
-      perform: async ({ mode, source, forceRefresh }) => {
-        calls.push(`${mode}:${source}:${Boolean(forceRefresh)}`);
+      perform: async ({ mode, source, coalesceKey }) => {
+        calls.push(`${mode}:${source}:${coalesceKey}`);
         return calls.length === 1 ? first.promise : second.promise;
       }
     });
 
-    const initial = runtime.run({ mode: 'refresh', source: 'trades-desk' });
-    const newFill = runtime.run({ mode: 'refresh', source: 'trades-desk', forceRefresh: true });
+    const initial = runtime.run({
+      mode: 'refresh',
+      source: 'trades-desk',
+      coalesceKey: 'closed-trades-v1'
+    });
+    const newFill = runtime.run({
+      mode: 'refresh',
+      source: 'trades-desk',
+      coalesceKey: 'closed-trades-v2'
+    });
     first.resolve(true);
     await Promise.resolve();
     await Promise.resolve();
-    expect(calls).toEqual(['refresh:trades-desk:false', 'refresh:trades-desk:true']);
+    expect(calls).toEqual([
+      'refresh:trades-desk:closed-trades-v1',
+      'refresh:trades-desk:closed-trades-v2'
+    ]);
     second.resolve(true);
     await expect(Promise.all([initial, newFill])).resolves.toEqual([true, true]);
   });
@@ -93,6 +104,40 @@ describe('Trades history synchronization runtime', () => {
     expect(calls).toBe(1);
     response.resolve(true);
     await expect(Promise.all([refresh, recalculate])).resolves.toEqual([true, true]);
+  });
+
+  it('queues a recalculation when its fee-allocation inputs changed during a refresh', async () => {
+    const first = deferred<boolean>();
+    const second = deferred<boolean>();
+    const calls: string[] = [];
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => 'admin-session-a',
+      perform: async ({ mode, source, coalesceKey }) => {
+        calls.push(`${mode}:${source}:${coalesceKey}`);
+        return calls.length === 1 ? first.promise : second.promise;
+      }
+    });
+
+    const refresh = runtime.run({
+      mode: 'refresh',
+      source: 'scheduler',
+      coalesceKey: 'alloc-v1'
+    });
+    const changedRecalculation = runtime.run({
+      mode: 'recalculate',
+      source: 'trades-desk',
+      coalesceKey: 'alloc-v2'
+    });
+    await Promise.resolve();
+    expect(calls).toEqual(['refresh:scheduler:alloc-v1']);
+    expect(runtime.getDiagnostics().queued).toBe(1);
+
+    first.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual(['refresh:scheduler:alloc-v1', 'recalculate:trades-desk:alloc-v2']);
+    second.resolve(true);
+    await expect(Promise.all([refresh, changedRecalculation])).resolves.toEqual([true, true]);
   });
 
   it('queues a checkpoint refresh requested while a local recalculation is running', async () => {
