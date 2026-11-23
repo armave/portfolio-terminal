@@ -260,10 +260,24 @@ export function replayPortfolioTransactionLots(
       }
       if (!validStableAllocations) continue;
 
-      // Validate every complete sale against its event-level proceeds before
-      // applying any allocation to the shadow lots. A schema-valid event can
-      // still exceed the stricter aggregate replay tolerance after per-slice
-      // tolerances are combined.
+      // Validate the full sale against event-level proceeds before applying
+      // any stable slice. This also protects mixed stable/legacy events: known
+      // lots must not advance when the sale envelope itself is inconsistent.
+      const eventQuantity = optionalNumber(event.quantity);
+      const eventSellPrice = optionalNumber(event.unitPrice);
+      const eventGrossProceeds = event.lotAllocations.reduce(
+        (sum, allocation) => sum + allocation.quantity * allocation.sellPrice,
+        0
+      );
+      if (eventQuantity === null || eventSellPrice === null ||
+        !closeEnough(eventSellPrice * eventQuantity, eventGrossProceeds, DEFAULT_TOLERANCE) ||
+        !closeEnough(optionalNumber(event.grossAmount) ?? Number.NaN, eventGrossProceeds, DEFAULT_TOLERANCE)) {
+        addIssue(event, 'unsupported', 'Sale allocations do not agree with the sale event price and gross proceeds.');
+        continue;
+      }
+
+      // A complete stable-lot sale can be projected to closed history only
+      // after the entire event has passed the envelope check above.
       const hasCompleteAllocations =
         legacyAllocations.length === 0 &&
         stableAllocations.length === event.lotAllocations.length;
@@ -276,12 +290,7 @@ export function replayPortfolioTransactionLots(
         const grossProceeds = stableAllocations.reduce(
           (sum, allocation) => sum + allocation.quantity * allocation.sellPrice, 0
         );
-        const sellPrice = optionalNumber(event.unitPrice);
-        if (sellPrice === null || !closeEnough(sellPrice * quantity, grossProceeds, DEFAULT_TOLERANCE) ||
-          !closeEnough(optionalNumber(event.grossAmount) ?? Number.NaN, grossProceeds, DEFAULT_TOLERANCE)) {
-          addIssue(event, 'unsupported', 'Stable lot sale allocations do not agree with the sale event price and gross proceeds.');
-          continue;
-        }
+        const sellPrice = eventSellPrice;
         const buyCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.buyCommissionAllocated, 0);
         const sellCommissionAllocated = stableAllocations.reduce((sum, allocation) => sum + allocation.sellCommissionAllocated, 0);
         const financingCost = stableAllocations.reduce((sum, allocation) => sum + allocation.financingCostAllocated, 0);
