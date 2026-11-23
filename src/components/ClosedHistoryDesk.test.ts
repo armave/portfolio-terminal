@@ -229,6 +229,22 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('legacyClosedTrades={state.closedTrades || []}');
   });
 
+  it('rolls back a failed portfolio snapshot before any cloud-history write', () => {
+    const app = readRuntimeSource();
+    const start = app.indexOf('async function performAdminClosedHistorySync');
+    const end = app.indexOf('const tradesHistorySyncRuntime', start);
+    const pipeline = app.slice(start, end);
+    const localSaveFailure = pipeline.indexOf('if (!persisted) {');
+    const cloudHistoryWrite = pipeline.indexOf('const pushed = await pushCloudHistory');
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(localSaveFailure).toBeGreaterThanOrEqual(0);
+    expect(cloudHistoryWrite).toBeGreaterThan(localSaveFailure);
+    expect(pipeline.slice(localSaveFailure, cloudHistoryWrite)).toContain('portfolioStore.restoreInMemorySnapshot(previousState)');
+    expect(pipeline).toContain('if (!pushed) {');
+    expect(pipeline).toContain('force: true');
+  });
+
   it('advances the cashflow checkpoint only to the trade set included in the fetch window', () => {
     const app = readRuntimeSource();
     expect(app).toContain('getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])');
