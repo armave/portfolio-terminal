@@ -85,7 +85,7 @@ The fixture now exercises 100-position/200-lot rendering, linked closed history 
 
 The regular PR browser job keeps a short three-sample-per-viewport run to limit feedback time. A manual `workflow_dispatch` run of Pull Request CI passes its selected sample count to the app-shell browser baseline (default 10 per viewport); the input may be set from 1 to 20. The same input also reaches the separate authenticated synthetic portfolio/Trades benchmark. The script records sample count and per-metric minimum, median, nearest-rank p95, maximum, mean, population variance, and standard deviation in the JSON artifact.
 
-A 10-sample p95 is descriptive (nearest-rank p95 is the maximum at this sample size), not a statistically stable production percentile. Compare the resulting artifact across at least 10 successful workflow runs on the same runner/browser profile before setting performance thresholds. These runs still measure the unauthenticated app shell with mocked Worker responses; they do not satisfy the authenticated large-portfolio fixture requirement in issue #559.
+A 10-sample p95 is descriptive (nearest-rank p95 is the maximum at this sample size), not a statistically stable production percentile. Compare the resulting artifact across at least 10 successful workflow runs on the same runner/browser profile before setting performance thresholds. These runs still measure the unauthenticated app shell with mocked Worker responses; they do not satisfy the authenticated large-portfolio fixture requirement in issue #689.
 
 ### Baseline protocol
 

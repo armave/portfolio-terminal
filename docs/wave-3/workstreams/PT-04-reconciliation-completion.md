@@ -1,6 +1,6 @@
 # Wave 3 PT-04 — Full broker reconciliation and reviewed discrepancy workflows
 
-**Tracking issue:** [#567 — Complete transaction-level broker reconciliation and discrepancy review](https://github.com/armave/portfolio-terminal/issues/567)  
+**Tracking issue:** [#688 — PT-04 transaction-level broker reconciliation and discrepancy review](https://github.com/armave/portfolio-terminal/issues/688) (replacement for deleted tracker #567).
 **Completed narrow prerequisite:** [#537 — Keep unclassified broker cashflows out of adjustment matching](https://github.com/armave/portfolio-terminal/issues/537) is closed and covers only unknown-category exclusion.  
 **Merged foundation:** PR #358  
 **Dedicated branch:** feat/wave3-pt04-reconciliation-completion  

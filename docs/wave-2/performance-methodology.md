@@ -136,7 +136,7 @@ This initial implementation is a pure domain calculation foundation. It does not
 These are intentional integration gates while the other Wave 2 streams run in parallel. Until those contracts land, the calculation APIs are exercised with typed observations and independent known-answer fixtures only. No production/live broker performance result is claimed.
 
 
-## 10. Authenticated desktop/mobile performance baseline (#559)
+## 10. Authenticated desktop/mobile performance baseline (#689)
 
 The authenticated browser journey is implemented in `scripts/browser-smoke-operations.mjs` and emits `artifacts/authenticated-portfolio-performance.json`. It remains separate from the unauthenticated app-shell baseline.
 
@@ -164,4 +164,4 @@ Do not set hard pass/fail performance thresholds from one 10-run sample. Record 
 
 ### Acceptance evidence still required
 
-A code change or successful synthetic CI job does not create the missing measurement record. Issue #559 remains open until an operator dispatches the workflow with at least 10 runs per viewport, reviews the artifact, records exact tested SHA/workflow URL, documents median/p95/variance and bundle size, and justifies any thresholds without concealing slower scenarios. No user identifiers or customer financial data may appear in the report.
+A code change or successful synthetic CI job does not create the missing measurement record. Issue #689 remains open until an operator dispatches the workflow with at least 10 runs per viewport, reviews the artifact, records exact tested SHA/workflow URL, documents median/p95/variance and bundle size, and justifies any thresholds without concealing slower scenarios. No user identifiers or customer financial data may appear in the report.
