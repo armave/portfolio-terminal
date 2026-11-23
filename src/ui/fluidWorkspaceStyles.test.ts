@@ -62,6 +62,7 @@ describe('fluid workspace styles', () => {
   });
 
   it('keeps the Tranches action inside narrow summary columns without compressing its icon', () => {
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value>button\s*\{[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
     expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*44%\)\s+minmax\(0,\s*1fr\)/s);
     expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*\{[^}]*min-width:\s*0;[^}]*justify-content:\s*flex-end;/s);
     expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*>\s*\.tranche-details-trigger\s*\{[^}]*flex:\s*0\s+1\s+auto;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
