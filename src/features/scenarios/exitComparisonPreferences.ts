@@ -126,9 +126,12 @@ function normalizeSavedResult(value: unknown): ExitComparisonSavedResult | null 
       ? { ...row, label: 'Projected Cash / Debt Balance' }
       : row);
   const balanceRow = visibleRows.find((row) => row.label === 'Projected Cash / Debt Balance');
-  const orderedRows = balanceRow
-    ? [balanceRow, ...visibleRows.filter((row) => row !== balanceRow)]
-    : visibleRows;
+  const netRow = visibleRows.find((row) => row.label === 'Net P&L');
+  const priorityRows = [balanceRow, netRow].filter((row): row is ExitComparisonSavedRow => Boolean(row));
+  const orderedRows = [
+    ...priorityRows,
+    ...visibleRows.filter((row) => row !== balanceRow && row !== netRow)
+  ];
 
   return {
     savedAt: Number(result.savedAt),
