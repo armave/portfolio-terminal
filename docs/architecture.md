@@ -35,6 +35,16 @@
 
 See [financial calculation contracts](financial-calculation-contracts.md) for detailed accounting and valuation semantics.
 
+## Trades history synchronization ownership
+
+The administrator Closed History pipeline is coordinated by `createTradesHistorySyncRuntime` in `src/services/tradesHistorySyncRuntime.ts`, instantiated by root `app.ts`. The same account/session-generation-scoped coordinator is used by the periodic history scheduler, Manual Sync, Trades-page hydration/recalculation requests, and follow-up refreshes after new broker fills. It coalesces overlapping work and queues a stronger provider refresh behind a weaker cache-only Trades pass.
+
+The coordinator delegates to the existing app-owned reconciliation operation. That operation hydrates and merges the separately revisioned cloud-history record with the local history sidecar and canonical portfolio store, fetches a full cashflow baseline or overlapping incremental cashflow window when required, runs the existing deterministic fee-allocation and audit helpers, commits through `PortfolioStore`, persists the portfolio snapshot and local history sidecar, and conditionally pushes the encrypted cloud-history revision. A failed portfolio snapshot save restores the prior in-memory state and stops before the cloud-history write. The history sidecar save remains a separately reported cache warning, consistent with its existing recovery contract.
+
+`ClosedHistoryDesk` is a presentation and user-intent surface: it hydrates from the canonical portfolio snapshot, requests the shared operation, displays the returned store state, and does not own a second cashflow fetch, fee-allocation, or cloud-history write path. The explicit broker-history refresh keeps request ownership so unrelated stream/background updates can refresh displayed rows without settling a different foreground refresh. Late work is rejected using the captured account identity and session generation.
+
+The coordinator keeps bounded in-memory operation counts and durations only. It does not send telemetry, store portfolio data, expose account/session keys, or add a new external logging sink. This does not satisfy PT-16 telemetry approval or PT-17 production observability gates.
+
 ## Identity and data boundaries
 
 The current product model is a shared administrator owner workspace plus server-filtered guest projections. Guest access is read-only and account-scoped; it is not an independent editable financial tenant. Worker authorization is the server boundary and must not rely only on client navigation or hidden controls.
