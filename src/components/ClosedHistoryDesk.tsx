@@ -259,7 +259,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
-  const historyHydrated = useRef(false);
+  const workspaceHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
   const brokerRefreshSequence = useRef(0);
   const retryBrokerTrades = () => {
@@ -300,7 +300,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   // This desk becomes ready only after the initial workspace pull has settled.
   useEffect(() => {
     if (!isWorkspaceSyncReady || !isSessionCurrent()) return;
-    historyHydrated.current = true;
+    workspaceHydrated.current = true;
     setCashflowHistoryReady(true);
   }, [isWorkspaceSyncReady]);
 
@@ -360,6 +360,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     if (!isSessionCurrent()) return;
     applyLatestCanonicalExecutions();
     if (success) {
+      lastRecalculationKey.current = allocationInputKey;
       setCashflowSyncMessage('');
     } else {
       cashflowSyncStarted.current = false;
@@ -430,7 +431,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       const succeeded = await requestClosedHistorySync('refresh', true);
       if (!succeeded && isSessionCurrent()) {
         setCloudHistoryWarning(translateText(
-          'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+          'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.',
           getAppLanguage()
         ));
       }
@@ -470,8 +471,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         };
       });
       // In-memory rows can contain explicit empty allocation objects from a
-      // pre-hydration broker response. Restore real saved allocations by ID before
-      // writing these rows into the canonical store or triggering cloud sync.
+      // pre-reconciliation broker response. Restore real saved allocations by ID
+      // before writing these rows into the canonical store.
       const savedFeeRows = normalizeBrokerExecutions(loadSavedHistory().brokerExecutedTrades);
       const normalizedPage = preservePersistedBrokerFeeAllocations(
         normalizedRaw,
@@ -489,10 +490,10 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       const fingerprint = (rows: FreedomExecutedTrade[]) => JSON.stringify(rows);
       if (fingerprint(current) !== fingerprint(normalized)) {
         portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
-        // Sync only when the authoritative broker history actually changes, and
-        // only after initial cloud hydration. Initial reconciliation is handled by
-        // the load effect above so it doesn't race a second save against that pull.
-        if (historyHydrated.current) {
+        // Sync only when the authoritative broker history actually changes and
+        // the authenticated workspace is ready. The shared owner pulls and merges
+        // cloud history before persisting this broker update.
+        if (workspaceHydrated.current) {
           // Broker-history changes are checkpointed by the shared owner too.
           void requestClosedHistorySync('refresh', true).then((success) => {
             if (!success && isSessionCurrent()) logSafeDiagnostic('warn', 'closed-history');
