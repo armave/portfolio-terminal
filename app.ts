@@ -1,7 +1,7 @@
 import { logSafeDiagnostic } from './src/services/safeDiagnostics';
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
-import { addBrokerEventListener } from './src/services/brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent } from './src/services/brokerEventBus';
 import { brokerAdapterRegistry } from './src/services/brokerAdapters/registry';
 import { setBreakevenText, setCloudStatusState, setCloudSyncStatus, getCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import { shouldApplyCloudSyncStatusOutcome } from './src/ui/cloudSyncStatus';
@@ -1816,7 +1816,7 @@ const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
 });
 
 /** All scheduled, manual and Trades-page history work joins this session-scoped owner. */
-function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false): Promise<boolean> {
+function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduler', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false): Promise<boolean> {
   return tradesHistorySyncRuntime.run({ mode, source, forceRefresh, coalesceKey: getAdminClosedHistorySyncCoalesceKey() });
 }
 
@@ -1834,7 +1834,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
   syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true, false) : undefined,
-  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduled') : undefined,
+  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduler') : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logAppMessage(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
