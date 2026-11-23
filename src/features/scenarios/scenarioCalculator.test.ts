@@ -337,7 +337,7 @@ describe('Market Tools Exit Comparison preview', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(2);
     expect(result.modal?.rows.map(row => row.label)).toEqual([
-      'Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance'
+      'Resulting Account Balance', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L'
     ]);
     expect(sellStock).not.toHaveBeenCalled();
     expect(updateTargetPrice).not.toHaveBeenCalled();
@@ -433,7 +433,7 @@ describe('Market Tools Exit Comparison preview', () => {
     const row = (label: string) => result.modal?.rows.find((candidate) => candidate.label === label)?.values;
 
     expect(result.type).toBe('res');
-    expect(row('Cost Basis')).toEqual(['$1000.00', '$1000.00']);
+    expect(row('Cost Basis')).toBeUndefined();
     expect(row('Gross Proceeds')).toEqual(['$1200.00', '$1250.00']);
     expect(row('Total Fee Friction')).toEqual(['$18.00', '$28.05']);
     expect(row('Net P&L')).toEqual(['+$182.00', '+$221.95']);

@@ -120,10 +120,16 @@ function normalizeSavedResult(value: unknown): ExitComparisonSavedResult | null 
     });
   }
 
+  const visibleRows = rows.filter((row) => row.label !== 'Cost Basis');
+  const balanceRow = visibleRows.find((row) => row.label === 'Resulting Account Balance');
+  const orderedRows = balanceRow
+    ? [balanceRow, ...visibleRows.filter((row) => row !== balanceRow)]
+    : visibleRows;
+
   return {
     savedAt: Number(result.savedAt),
     columns: [String(result.columns[0]).slice(0, 120), String(result.columns[1]).slice(0, 120)],
-    rows,
+    rows: orderedRows,
     note: result.note.slice(0, 500),
     summary: result.summary.slice(0, 2000)
   };

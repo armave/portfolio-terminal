@@ -26,8 +26,8 @@ const sample: ExitComparisonPreferences = {
     savedAt: 1_794_321_000_000,
     columns: ['Today · $294.00', 'In 14 days · $303.00'],
     rows: [
-      { label: 'Net P&L', values: ['−$2,000.00', '−$1,550.00'], kind: 'result', deltas: ['−$450.00', 'BEST'] },
-      { label: 'Resulting Account Balance', values: ['−$1,000.00', '−$1,400.00'], kind: 'balance' }
+      { label: 'Resulting Account Balance', values: ['−$1,000.00', '−$1,400.00'], kind: 'balance' },
+      { label: 'Net P&L', values: ['−$2,000.00', '−$1,550.00'], kind: 'result', deltas: ['−$450.00', 'BEST'] }
     ],
     note: 'Estimate only.',
     summary: 'Last deterministic comparison.'
@@ -39,6 +39,29 @@ describe('exit comparison preferences', () => {
     const storage = new MemoryStorage();
     expect(saveExitComparisonPreferences('account-a', sample, storage)).toBe(true);
     expect(loadExitComparisonPreferences('account-a', storage)).toEqual(sample);
+  });
+
+  it('normalizes legacy saved comparisons by removing cost basis and moving resulting balance first', () => {
+    const storage = new MemoryStorage();
+    const legacy = {
+      ...sample,
+      lastResult: {
+        ...sample.lastResult!,
+        rows: [
+          { label: 'Cost Basis', values: ['$1,000.00', '$1,000.00'], kind: 'fee' as const },
+          { label: 'Gross Proceeds', values: ['$1,200.00', '$1,250.00'], kind: 'fee' as const },
+          { label: 'Total Fee Friction', values: ['$18.00', '$28.05'], kind: 'fee' as const },
+          { label: 'Net P&L', values: ['+$182.00', '+$221.95'], kind: 'result' as const },
+          { label: 'Resulting Account Balance', values: ['$399.00', '$428.90'], kind: 'balance' as const }
+        ]
+      }
+    };
+    storage.setItem('legacy-account', JSON.stringify(legacy));
+
+    const restored = loadExitComparisonPreferences('legacy-account', storage);
+    expect(restored?.lastResult?.rows.map((row) => row.label)).toEqual([
+      'Resulting Account Balance', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L'
+    ]);
   });
 
   it('isolates saved preferences by storage key and tolerates missing/corrupt data', () => {
