@@ -105,7 +105,7 @@ describe('Trades cache-first rendering', () => {
     const coordinator = readFileSync(new URL('../services/tradesHistorySyncRuntime.ts', import.meta.url), 'utf8');
 
     expect(app).toContain('createTradesHistorySyncRuntime({');
-    expect(app).toContain("syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduled') : undefined");
+    expect(app).toContain("syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduler') : undefined");
     expect(app).toContain("syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('manual') : Promise.resolve(false)");
     expect(app).toContain("addBrokerEventListener('broker:request-closed-history-sync-and-wait'");
     expect(source).toContain("emitBrokerEvent('broker:request-closed-history-sync-and-wait'");
