@@ -43,6 +43,34 @@ describe('portfolio subscription adapters', () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
+  it('unsubscribes a portfolio listener when its initial snapshot replay throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('initial portfolio listener failed');
+    const listener = vi.fn(() => { throw error; });
+
+    expect(() => subscribeToPortfolioState(listener, store)).toThrow(error);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.setState({ balance: 125 });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes a selector listener when its initial replay throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('initial selector listener failed');
+    const listener = vi.fn(() => { throw error; });
+
+    expect(() => subscribeToPortfolioSelector(
+      (state) => state.balance,
+      listener,
+      store
+    )).toThrow(error);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.setState({ balance: 125 });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('notifies selectors only when the selected value changes', () => {
     const store = new PortfolioStore();
     const listener = vi.fn();
@@ -75,6 +103,18 @@ describe('portfolio subscription adapters', () => {
     expect(listener).toHaveBeenLastCalledWith(['AAPL']);
 
     unsubscribe();
+  });
+
+  it('unsubscribes an active-desk listener when its initial replay throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('initial active-desk listener failed');
+    const listener = vi.fn(() => { throw error; });
+
+    expect(() => subscribeToActiveView(listener, store)).toThrow(error);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.setActiveView('BALANCE');
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('replays and streams device-local active-desk changes independently', () => {

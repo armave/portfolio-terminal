@@ -23,7 +23,12 @@ export function subscribeToPortfolioState(
   store: PortfolioSubscriptionSource
 ): () => void {
   const unsubscribe = store.subscribe(listener);
-  listener(store.getState());
+  try {
+    listener(store.getState());
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
   return unsubscribe;
 }
 
@@ -47,8 +52,14 @@ export function subscribeToPortfolioSelector<T>(
   });
 
   // Subscribe before replaying so no update can be lost between the initial
-  // selection and effect installation.
-  listener(current);
+  // selection and effect installation. If the initial listener throws, release
+  // the subscription before propagating the caller's error.
+  try {
+    listener(current);
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
   return unsubscribe;
 }
 
@@ -94,7 +105,12 @@ export function subscribeToActiveView(
   store: ActiveViewSubscriptionSource
 ): () => void {
   const unsubscribe = store.subscribeActiveView(listener);
-  listener(store.getState().activeView);
+  try {
+    listener(store.getState().activeView);
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
   return unsubscribe;
 }
 

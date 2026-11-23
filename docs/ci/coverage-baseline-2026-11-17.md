@@ -46,3 +46,8 @@ The floor is intentionally below the measured value to allow small legitimate re
 - Re-run `npm run test:coverage` after each meaningful test addition and inspect both the aggregate thresholds and uncovered branches.
 
 Coverage is evidence about exercised code paths, not proof of financial correctness or live broker compatibility.
+
+
+## Follow-up — portfolio subscription initial replay cleanup — 2026-11-23
+
+The 2026-11-17 per-module figures above are a historical baseline, not a post-change measurement. A follow-up to `src/store/portfolioSubscriptions.ts` now removes the newly registered listener if the initial snapshot, selector, or active-desk replay callback throws. The original error is rethrown; later store updates do not continue invoking the failed listener. Focused Vitest regressions cover all three subscription adapters. The exact post-change module and aggregate coverage results must be read from the final PR-head Coverage workflow artifact rather than inferred from the test count.
