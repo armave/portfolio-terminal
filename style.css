@@ -5809,7 +5809,7 @@ table tbody tr:hover {
   }
 }
 
-/* Align the Tranches label with its right-edge control and match the row below. */
+/* Align portfolio micro rows while allowing the tranche action to shrink. */
 .portfolio-micro-basis>.portfolio-micro-row {
   align-items: center;
 }
@@ -5822,13 +5822,15 @@ table tbody tr:hover {
   justify-content: center;
   gap: 0.35rem;
   width: 100%;
+  min-width: 0;
   text-align: right;
 }
 
 .portfolio-micro-basis .portfolio-tranches-value>button {
   align-self: flex-end;
-  margin-left: auto;
-  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
 .portfolio-micro-basis .portfolio-tranches-value>#boardTranchesOverflow {
@@ -6359,63 +6361,56 @@ table tbody tr:hover {
   }
 }
 
-/* The Tranches action occupies the full value grid cell while its button hugs
-   the trailing edge; the label remains vertically centered by its row. */
-.portfolio-micro-basis .portfolio-micro-row>.portfolio-tranches-value {
-  box-sizing: border-box;
-  justify-self: stretch;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.portfolio-micro-basis #boardTranches>.tranche-details-trigger {
-  display: inline-flex;
-  width: max-content;
-  min-width: fit-content;
-  max-width: 100%;
-  align-self: flex-end;
-  justify-self: end;
-  margin-inline: auto 0;
-}
-
-
-
-/* Keep the ticker Tranches action aligned to the trailing edge of its value column. */
+/* Keep the Tranches action shrink-safe inside narrow summary value columns. */
 .portfolio-micro-basis .portfolio-micro-tranches-row {
   display: grid;
   grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
   align-items: center;
   gap: 0.65rem;
 }
+
 .portfolio-micro-basis .portfolio-micro-tranches-row > .portfolio-metric-label {
   width: auto;
   max-width: none;
   min-width: 0;
 }
+
 .portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches {
+  box-sizing: border-box;
   display: flex;
   width: 100%;
   min-width: 0;
-  align-items: flex-end;
-  justify-content: center;
+  align-items: center;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   text-align: right;
 }
+
 .portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches > .tranche-details-trigger {
+  box-sizing: border-box;
   display: inline-flex;
-  width: max-content;
-  max-width: 100%;
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
   align-self: flex-end;
-  justify-self: end;
   margin: 0;
+  white-space: normal;
+  text-align: center;
+}
+
+.portfolio-micro-basis .tranche-details-trigger > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-micro-basis .tranche-details-trigger > .tranche-details-trigger-icon {
+  flex: 0 0 auto;
+  line-height: 1;
 }
 
 /* Compact, accessible date-range shortcuts for the guest History filter. */
@@ -6923,7 +6918,7 @@ table tbody tr:hover {
 }
 
 
-/* Anchor the Tranches action to a dedicated value column so it aligns reliably at desktop widths. */
+/* Legacy final anchor retained with shrink-safe button sizing. */
 .portfolio-micro-basis .portfolio-micro-tranches-row {
   display: grid;
   grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
@@ -6939,18 +6934,28 @@ table tbody tr:hover {
   display: flex;
   width: 100%;
   min-width: 0;
-  align-items: flex-end;
-  justify-content: center;
+  align-items: center;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   text-align: right;
 }
 .portfolio-micro-basis .portfolio-micro-tranches-row > #boardTranches > .tranche-details-trigger {
+  box-sizing: border-box;
   display: inline-flex;
-  width: max-content;
+  flex: 0 1 auto;
+  width: auto;
   max-width: 100%;
   min-width: 0;
   align-self: flex-end;
   justify-self: end;
   margin: 0;
+  white-space: normal;
+}
+.portfolio-micro-basis .tranche-details-trigger > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.portfolio-micro-basis .tranche-details-trigger > .tranche-details-trigger-icon {
+  flex: 0 0 auto;
 }
