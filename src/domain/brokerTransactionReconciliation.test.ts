@@ -961,6 +961,40 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings.some(finding => finding.type === 'cashflow_currency_mismatch')).toBe(false);
   });
 
+  it('does not match broker cashflows when their timestamp is missing', () => {
+    const brokerCashflow = cashflow({
+      id: 'fee-missing-broker-date',
+      type: 'Fee',
+      amount: -5,
+      currency: 'USD',
+      date: ''
+    });
+    const appFee = createPortfolioTransactionEvent({
+      type: 'fee',
+      effectiveAt: at,
+      currency: 'USD',
+      externalCashFlowAmount: -5,
+      fees: 5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-fee-timestamped', recordedAt: at });
+
+    const report = reconcile([], [appFee], { brokerCashflows: [brokerCashflow] });
+
+    expect(report.status).toBe('partial');
+    expect(report.brokerCashflowCount).toBe(1);
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.warnings).toContain(
+      'One or more broker cashflows lack a verifiable timestamp; affected rows were excluded from matching.'
+    );
+    expect(report.findings.some(finding =>
+      finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker'
+    )).toBe(false);
+    expect(report.findings.some(finding =>
+      finding.type === 'cashflow_amount_mismatch' ||
+      finding.type === 'cashflow_type_mismatch' ||
+      finding.type === 'cashflow_currency_mismatch'
+    )).toBe(false);
+  });
+
   it('does not treat a missing app cashflow amount as zero during currency comparison', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'zero-fee-usd', date: new Date(at).toISOString(), type: 'Fee',
