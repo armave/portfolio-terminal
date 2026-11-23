@@ -646,7 +646,7 @@ describe('broker history audit events', () => {
       { id: 'fee-positive-magnitude', date: '2026-11-02', type: 'Commission fee', amount: 2, currency: 'USD' },
       { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
       { id: 'margin-positive-magnitude', date: '2026-11-03', type: 'Margin Fee', amount: 3, currency: 'USD' },
-      { id: 'margin-adjustment-unknown', date: '2026-11-03', type: 'Margin Adjustment', description: 'Margin adjustment', amount: -4, currency: 'USD' },
+      { id: 'margin-adjustment-unknown', date: '2026-11-03', type: 'Margin Debt Adjustment', description: 'Adjustment to margin balance', amount: -4, currency: 'USD' },
       { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
       { id: 'deposit-negative-magnitude', date: '2026-11-04', type: 'Deposit', amount: -500, currency: 'USD' },
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },

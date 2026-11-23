@@ -1223,7 +1223,7 @@ export function appendBrokerHistoryAuditEvents(
     const text = [raw.type, raw.description, raw.category].filter((v) => typeof v === 'string').join(' ').toLowerCase();
     const isCorporateAction = ['stock split', 'reverse split', 'merger', 'spin-off', 'spin off', 'reorganization', 'reorganisation', 'corporate action', 'symbol change', 'cash in lieu'].some((keyword) => text.includes(keyword));
     // A margin adjustment does not establish an interest charge or signed debt movement.
-    const isAmbiguousMarginAdjustment = /\bmargin[\s-]+adjustment\b|\badjustment[\s-]+(?:to[\s-]+)?margin\b/.test(text);
+    const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(text);
     const type: PortfolioTransactionEventType | null = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
       ? 'dividend'
       : isCorporateAction

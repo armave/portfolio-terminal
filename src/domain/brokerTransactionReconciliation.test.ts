@@ -764,6 +764,7 @@ describe('reconcileBrokerActivity', () => {
     expect(report.findings).not.toContainEqual(expect.objectContaining({ type: 'cashflow_amount_mismatch' }));
     expect(report.findings).not.toContainEqual(expect.objectContaining({ type: 'cashflow_missing_in_app' }));
     expect(report.findings).not.toContainEqual(expect.objectContaining({ type: 'cashflow_missing_in_broker' }));
+    expect(report.warnings).toContain('Broker cashflow evidence is incomplete; absence-based findings are suppressed.');
   });
   it('reports cashflow amount mismatches against a same-currency app event', () => {
     const brokerCashflow: BrokerCashflow = {
