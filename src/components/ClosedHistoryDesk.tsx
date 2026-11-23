@@ -495,7 +495,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         // cloud history before persisting this broker update.
         if (workspaceHydrated.current) {
           // Broker-history changes are checkpointed by the shared owner too.
-          void requestClosedHistorySync('refresh', true).then((success) => {
+          void requestClosedHistorySync('refresh').then((success) => {
             if (!success && isSessionCurrent()) logSafeDiagnostic('warn', 'closed-history');
             applyLatestCanonicalExecutions();
           });
