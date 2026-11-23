@@ -126,7 +126,7 @@ import {
   mergeFreedomCashflowRows,
   normalizeSavedFreedomCashflows
 } from './src/domain/freedomCashflows';
-import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
+import { calculateFreedomMarginFeeAllocations, createFreedomMarginFeeAllocationInputKey } from './src/domain/freedomMarginFees';
 import { buildClosedHistoryFeeAuditUpdate } from './src/domain/closedHistoryFeeAudit';
 import { getLatestClosedTradeDate, getLatestClosedTradeCheckpoint } from './src/domain/tradeHistorySync';
 import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
@@ -1791,6 +1791,21 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
   }
 }
 
+function getAdminClosedHistorySyncCoalesceKey(): string {
+  const current = portfolioStore.getState();
+  const brokerExecutions = current.brokerExecutedTrades || [];
+  return createFreedomMarginFeeAllocationInputKey(
+    current.cashflows || [],
+    brokerExecutions,
+    current.closedTrades || [],
+    {
+      trancheTypes: current.activeTrancheTypes || {},
+      trancheMixes: current.activeTrancheMixes || {},
+      openAppPositions: brokerExecutions.length > 0 ? {} : current.positions || {}
+    }
+  );
+}
+
 const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
   getSessionKey: () => {
     if (currentAccountRole !== 'admin') return null;
@@ -1801,12 +1816,12 @@ const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
 });
 
 /** All scheduled, manual and Trades-page history work joins this session-scoped owner. */
-function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false, forceRefreshKey?: string): Promise<boolean> {
-  return tradesHistorySyncRuntime.run({ mode, source, forceRefresh, forceRefreshKey });
+function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false): Promise<boolean> {
+  return tradesHistorySyncRuntime.run({ mode, source, forceRefresh, coalesceKey: getAdminClosedHistorySyncCoalesceKey() });
 }
 
 addBrokerEventListener('broker:request-closed-history-sync-and-wait', (request) => {
-  void syncAdminClosedHistory('trades-desk', request.mode, request.forceRefresh, request.forceRefreshKey).then(
+  void syncAdminClosedHistory('trades-desk', request.mode, request.forceRefresh).then(
     request.resolve,
     () => request.resolve(false)
   );
