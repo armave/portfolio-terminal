@@ -408,3 +408,10 @@ Every sale envelope, including mixed stable/legacy allocations, now validates it
 Regression fixtures construct schema-valid complete and mixed stable/legacy sales whose allocation prices differ from the event price within the per-slice tolerance but whose aggregate proceeds exceed the replay tolerance. Both must produce an unsupported finding and leave every open lot unchanged. For an internally consistent mixed stable/legacy sale, known stable slices may still advance, but the replay remains explicitly incomplete and never synthesizes unmapped cost basis. Canonical positions, financial formulas, event schema, persisted state and correction semantics are unchanged.
 
 This is a read-only shadow-replay integrity fix. It does not authorize ledger cutover, automatic repair, financial posting, or broker reconciliation.
+
+
+## Local history cache follows the last durable snapshot — 2026-11-23
+
+`persistSavedHistorySnapshot` no longer publishes a candidate into the synchronous `loadSavedHistory()` cache before the IndexedDB write or bounded localStorage fallback succeeds. The cache advances only after a successful storage commit. If both persistence paths fail, the previous cached/persisted history remains visible to the active session and the write reports failure; a failed broker-history refresh cannot appear saved until a later successful commit. The regression injects IndexedDB unavailability and localStorage quota failure and checks both the cached history and original sidecar remain unchanged.
+
+This is a persistence/cache consistency correction only. It does not merge history rows, reinterpret broker executions or cashflows, change financial calculations, or alter the transaction journal/canonical portfolio snapshot. It does not satisfy the separate authenticated cloud restore or physical two-device recovery gates.
