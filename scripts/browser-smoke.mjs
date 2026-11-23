@@ -465,6 +465,9 @@ async function captureExitComparisonModalReview(page) {
 
     const layout = await dialog.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
+      const resultsSection = Array.from(element.querySelectorAll('section'))
+        .find((section) => section.querySelector('h3')?.textContent?.trim() === 'Comparison results');
+      const resultsMessage = resultsSection?.innerText?.replace(/\\s+/g, ' ').trim() || '';
       const mobileCards = element.querySelector('[aria-label="Exit comparison by period"]');
       const desktopWrapper = element.querySelector('div.hidden.overflow-x-auto');
       const table = desktopWrapper?.querySelector('table');
@@ -499,6 +502,7 @@ async function captureExitComparisonModalReview(page) {
         hasNetPnl: element.innerText.includes('Net P&L'),
         hasBestNetPnl: element.innerText.includes('BEST NET P&L'),
         hasBalanceDisclosure: element.innerText.includes('not portfolio equity'),
+        resultsMessage,
         touchTargets
       };
     });
