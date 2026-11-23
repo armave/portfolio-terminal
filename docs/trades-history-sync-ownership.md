@@ -21,9 +21,9 @@ The runtime accepts two modes:
 - `refresh`: pull cloud history and merge local/current history, then refresh cashflows when required. Scheduled and manual calls keep their existing provider-refresh behavior. A Trades-page read can skip a cashflow provider request when a completed baseline already contains the same latest closed-trade checkpoint.
 - `recalculate`: reuse the accepted cashflow rows and rerun existing fee-allocation/audit calculations after relevant portfolio inputs change. It does not initiate another cashflow provider request.
 
-Requests are scoped by authenticated account identity plus session generation. Same-session callers join compatible active work. A stronger provider refresh waits behind a cache-only Trades pass; a refresh waits behind an active local recalculation. A provider refresh can satisfy an overlapping recalculation. A broker event that adds or changes execution history requests a forced follow-up refresh so a fill arriving during an earlier cashflow read is not missed.
+Requests are scoped by authenticated account identity plus session generation. Same-session callers join compatible active work only when the current fee-allocation input fingerprint also matches. The fingerprint covers cashflows, broker executions, app closed trades, tranche funding rules and mixes, and canonical open positions only when broker executions are absent; it excludes quote-only changes. A stronger provider refresh waits behind a cache-only Trades pass. A recalculation whose input fingerprint changes during an active refresh or recalculation is queued and runs against the latest canonical state. A provider refresh can satisfy a matching-input recalculation. A broker event that changes the canonical execution inputs requests a follow-up refresh; same-date fills are detected by the existing closed-trade checkpoint.
 
-The trade checkpoint is captured before the cashflow request and persisted only after the resulting local/cloud work succeeds. It is not recomputed from broker rows that arrived during that request: those later fills remain eligible for a follow-up pass. Cashflow baseline and trade checkpoint storage remain account-scoped and retain their prior compatibility semantics.
+The trade checkpoint is captured before the cashflow request and persisted only after the resulting local/cloud work succeeds. It is not recomputed from broker rows that arrived during that request: those later fills remain eligible for a follow-up pass. The coordinator's input fingerprint is computed when each request enters the app owner, so different inputs queue instead of joining an already-running pass. Cashflow baseline and trade checkpoint storage remain account-scoped and retain their prior compatibility semantics.
 
 ## Foreground progress ownership
 
@@ -45,7 +45,7 @@ The coordinator generates an operation ID and tracks status, start/completion ti
 
 ## Validation and remaining release evidence
 
-Vitest covers coordinator coalescing, queued/forced refresh priority, cache-only recalculation, account-generation changes, diagnostic redaction, and request-owned reducer settlement. Source-level Trades tests assert the application entry points share one owner, the desk has no independent history write path, and English/Russian copy remains paired.
+Vitest covers coordinator coalescing for identical inputs, queued refreshes for changed fill/allocation snapshots, cache-only recalculation, account-generation changes, diagnostic redaction, and request-owned reducer settlement. Source-level Trades tests assert the application entry points share one owner, the desk has no independent history write path, and English/Russian copy remains paired.
 
 The exact PR head must still pass the repository's GitHub Actions gates: typecheck, full Vitest, production build, dead-code/dependency/security checks, financial regression where path filters apply, production browser smoke, and Operations Browser Journey. A passing mocked browser journey is not live authenticated TradeNet proof. Live broker lifecycle/reconnect validation and the separate PT-17 authenticated performance/observability acceptance gates remain distinct.
 
