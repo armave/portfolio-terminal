@@ -5,6 +5,8 @@ export type TradesHistorySyncStatus = 'idle' | 'running' | 'succeeded' | 'stale'
 export interface TradesHistorySyncRequest {
   mode: TradesHistorySyncMode;
   source: TradesHistorySyncSource;
+  /** A newly observed broker fill may require a second pass after an active desk check. */
+  forceRefresh?: boolean;
 }
 
 export interface TradesHistorySyncContext extends TradesHistorySyncRequest {
@@ -110,7 +112,7 @@ export function createTradesHistorySyncRuntime(
     const sessionKey = dependencies.getSessionKey();
     if (!sessionKey) return Promise.resolve(false);
 
-    const forceRefresh = request.mode === 'refresh' && request.source !== 'trades-desk';
+    const forceRefresh = request.mode === 'refresh' && (request.forceRefresh === true || request.source !== 'trades-desk');
     const existing = activeBySession.get(sessionKey);
     if (existing) {
       diagnostics.coalesced += 1;
