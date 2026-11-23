@@ -1550,9 +1550,11 @@ export function reconcileBrokerActivity(
   return {
     status: unavailable ? 'unavailable' : partial ? 'partial' : findings.length ? 'differences' : 'matched',
     comparedAt: now,
-    brokerExecutionCount: uniqueBrokerRows.length,
+    // Source counts describe the rows received, including malformed, unclassified and duplicate rows.
+    // Matching counts below remain limited to unique, usable records that were actually paired.
+    brokerExecutionCount: input.brokerExecutions.length,
     appExecutionCount: appExecutions.length,
-    brokerCashflowCount: brokerCashflows.length,
+    brokerCashflowCount: input.brokerCashflows.length,
     appCashflowCount: appCashflows.length + unresolvedCashAdjustmentEventCount,
     matchedExecutionCount: matchedPairs.length,
     legacyClosedSaleCount: legacyClosedSales.length,
