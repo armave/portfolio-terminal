@@ -57,6 +57,28 @@ describe('Trades history synchronization runtime', () => {
     expect(runtime.getDiagnostics()).toMatchObject({ started: 2, succeeded: 2, queued: 1 });
   });
 
+  it('queues an explicitly forced Trades refresh behind an unchanged-checkpoint desk pass', async () => {
+    const first = deferred<boolean>();
+    const second = deferred<boolean>();
+    const calls: string[] = [];
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => 'admin-session-a',
+      perform: async ({ mode, source, forceRefresh }) => {
+        calls.push(`${mode}:${source}:${Boolean(forceRefresh)}`);
+        return calls.length === 1 ? first.promise : second.promise;
+      }
+    });
+
+    const initial = runtime.run({ mode: 'refresh', source: 'trades-desk' });
+    const newFill = runtime.run({ mode: 'refresh', source: 'trades-desk', forceRefresh: true });
+    first.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual(['refresh:trades-desk:false', 'refresh:trades-desk:true']);
+    second.resolve(true);
+    await expect(Promise.all([initial, newFill])).resolves.toEqual([true, true]);
+  });
+
   it('lets a provider refresh satisfy an overlapping cached recalculation', async () => {
     const response = deferred<boolean>();
     let calls = 0;
