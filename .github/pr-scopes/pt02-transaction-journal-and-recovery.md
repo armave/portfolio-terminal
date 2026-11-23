@@ -1,7 +1,7 @@
 # PT-02 — Transaction journal and recovery implementation
 
 **Status: implementation PR; acceptance remains gated.**
-**Issues:** [#507 — transaction journal coverage, parity and recovery](https://github.com/armave/portfolio-terminal/issues/507), [#554 — authenticated cloud restore and multi-device recovery](https://github.com/armave/portfolio-terminal/issues/554)
+**Issues:** [#686 — transaction integrity, replay and authenticated acceptance](https://github.com/armave/portfolio-terminal/issues/686), [#685 — authenticated cloud restore and multi-device recovery](https://github.com/armave/portfolio-terminal/issues/685)
 
 ## Scope delivered by this PR
 
@@ -17,7 +17,7 @@ This PR replaces the original scope-reservation charter with the implementation 
 
 ## Existing implementation already present on `dev`
 
-The following are **not new claims for this PR**; they are already implemented and recorded in the PT-02 workstream and issue #507:
+The following are **not new claims for this PR**; they are already implemented and recorded in the PT-02 workstream and issue #686:
 
 - Journal event schema, duplicate event/idempotency rejection and import validation.
 - Store-level atomic financial mutations and persistence-failure rollback.
@@ -28,7 +28,7 @@ The following are **not new claims for this PR**; they are already implemented a
 - Canonical snapshot quantity/balance reconciliation plus same-quantity accounting-detail observation.
 - Reset and balance-setter failure-injection coverage.
 
-See [PT-02 workstream record](../../docs/wave-3/workstreams/PT-02-transaction-integrity-completion.md) and [issue #507](https://github.com/armave/portfolio-terminal/issues/507) for prior slice SHAs and CI evidence.
+See [PT-02 workstream record](../../docs/wave-3/workstreams/PT-02-transaction-integrity-completion.md) and [issue #686](https://github.com/armave/portfolio-terminal/issues/686) for prior slice SHAs and CI evidence.
 
 ## Current PR implementation and test evidence
 
@@ -89,4 +89,4 @@ These checks are not marked complete until GitHub Actions reports results for th
 - [ ] Authenticated cloud restore manual evidence attached.
 - [ ] Physical two-device recovery evidence attached.
 - [ ] Owner review of remaining PT-02 unsupported/incomplete findings.
-- [ ] #507 and #554 remain open until their individual acceptance gates are complete.
+- [ ] #686 and #685 remain open until their individual acceptance gates are complete.

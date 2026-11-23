@@ -331,9 +331,9 @@ Each child task has a dedicated branch name and issue. Create the implementation
 | ID | Workstream | Tracking issue | Dedicated branch | Depends on |
 |---|---|---:|---|---|
 | PT-01 | Financial correctness baseline | [#329](https://github.com/armave/portfolio-terminal/issues/329) | `feat/pt-01-financial-baseline` | — |
-| PT-02 | Transaction integrity & audit history | [#507](https://github.com/armave/portfolio-terminal/issues/507) | `feat/pt-02-transaction-integrity` | PT-01 |
+| PT-02 | Transaction integrity & audit history | [#686](https://github.com/armave/portfolio-terminal/issues/686); restore/device rehearsal [#685](https://github.com/armave/portfolio-terminal/issues/685) | `feat/pt-02-transaction-integrity` | PT-01 |
 | PT-03 | Broker adapters & normalized contracts | [#331](https://github.com/armave/portfolio-terminal/issues/331) | `feat/pt-03-broker-adapters` | PT-01; PT-02 semantics |
-| PT-04 | Broker reconciliation & provenance | [#567](https://github.com/armave/portfolio-terminal/issues/567) | `feat/pt-04-broker-reconciliation` | PT-01, PT-02, PT-03 |
+| PT-04 | Broker reconciliation & provenance | [#688](https://github.com/armave/portfolio-terminal/issues/688) | `feat/pt-04-broker-reconciliation` | PT-01, PT-02, PT-03 |
 | PT-05 | Multi-portfolio tenancy & sharing | [#333](https://github.com/armave/portfolio-terminal/issues/333) | `feat/pt-05-portfolio-tenancy` | PT-01, PT-02 |
 | PT-06 | Performance & attribution | [#334](https://github.com/armave/portfolio-terminal/issues/334) | `feat/pt-06-performance-analytics` | PT-01, PT-02 |
 | PT-07 | Market/instrument data foundation | [#335](https://github.com/armave/portfolio-terminal/issues/335) | `feat/pt-07-market-data-foundation` | PT-01, PT-03 |
@@ -481,7 +481,7 @@ The roadmap PR is a planning and coordination artifact. Its merge records the pr
 
 Wave 1 implementation PRs #348–#352 are merged into `dev`. PT-03's identified P1 broker snapshot correctness gap was fixed in #354 and PT-03 issue #331 is closed. The remaining items below are not resolved by the five merged streams and must not be marked complete merely to close the release PR:
 
-- **PT-05 / #539:** architecture and topology foundation delivered by #348; the tenant directory remains metadata-only (`financialDataEnabled=false`). Tenant data runtime, signed authorization, per-tenant key lifecycle, migration/rollback, and adversarial isolation tests are still unimplemented. PT-02 #507 transaction/recovery acceptance and PT-16 per-tenant key-management/security acceptance remain prerequisites before independent financial writes. Keep #539 open.
+- **PT-05 / #539:** architecture and topology foundation delivered by #348; the tenant directory remains metadata-only (`financialDataEnabled=false`). Tenant data runtime, signed authorization, per-tenant key lifecycle, migration/rollback, and adversarial isolation tests are still unimplemented. PT-02 #686 transaction/replay acceptance plus authenticated restore rehearsal #685 and PT-16 per-tenant key-management/security acceptance remain prerequisites before independent financial writes. Keep #539 open.
 - **PT-16 / #344:** AES-GCM v2 digest envelopes, the administrator-only counts inventory, bounded compare-and-swap migration, and encrypted-only Worker enforcement are deployed to production (Worker commit `9ea56f6b0b702e8ba25ae0d70c549c34b820181d`). Public Worker-boundary regression coverage and post-deployment CI/security validation passed on `493c7dcc64e4a72ebc7fa0d17235ecc81836d789`; authenticated live protocol checks still require an administrator session. Per-tenant keys, key rotation/recovery, backup-key handling, retention/deletion, device revocation, AI-input and telemetry privacy, and broader lifecycle acceptance remain open. Keep #344 open.
 - **PT-17 / #345:** exact-head CI, browser journeys, shell performance sampling, and release-gate documentation delivered by #350. The 10-run baseline, authenticated portfolio performance fixture, privacy-approved production telemetry, live TradeNet/Market Depth verification, and required branch-protection enforcement remain open. Keep #345 open.
 - **PT-01 / #329:** completed and closed.

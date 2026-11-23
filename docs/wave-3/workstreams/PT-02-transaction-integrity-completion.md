@@ -1,6 +1,7 @@
 # Wave 3 PT-02 — Complete transaction integrity, journal parity and recovery
 
-**Tracking issue:** [#507 — remaining PT-02 transaction journal coverage, parity and recovery](https://github.com/armave/portfolio-terminal/issues/507) (replacement for deleted issue #330)  
+**Tracking issue:** [#686 — PT-02 transaction integrity, replay and authenticated acceptance](https://github.com/armave/portfolio-terminal/issues/686).
+**Separate manual gates:** authenticated restore/two-device rehearsal [#685](https://github.com/armave/portfolio-terminal/issues/685); live TradeNet evidence [#687](https://github.com/armave/portfolio-terminal/issues/687).
 **Merged foundation:** PR #357  
 **Dedicated branch:** feat/wave3-pt02-transaction-integrity-completion  
 **Target:** dev for client/domain; Worker/server-only work follows the direct-to-main deployment policy.
@@ -126,7 +127,7 @@ The Worker deployment workflow required a test-fixture isolation correction for 
 
 ### Remaining PT-02 acceptance scope after implementation slice 1
 
-At the time of slice 1, the lost-response retry gap was closed but the broader PT-02 acceptance remained open. Subsequent slices #402, #468, #486, #504 and #506 closed additional bounded parts of that scope. The remaining acceptance is now tracked in [issue #507](https://github.com/armave/portfolio-terminal/issues/507): complete the supported mutation inventory; prove or explicitly classify each path's atomicity and replay disposition; finish the applicable lifecycle, import/restore/reset and conflict regression matrix; define supported versus unsupported correction/reversal boundaries; and complete authenticated backup, TradeNet and real multi-device release rehearsals. The portfolio snapshot remains canonical; the journal is additive evidence/replay support and no ledger cutover is authorized.
+At the time of slice 1, the lost-response retry gap was closed but the broader PT-02 acceptance remained open. Subsequent slices #402, #468, #486, #504 and #506 closed additional bounded parts of that scope. The remaining acceptance is now tracked in [issue #686](https://github.com/armave/portfolio-terminal/issues/686): complete the supported mutation inventory; prove or explicitly classify each path's atomicity and replay disposition; finish the applicable lifecycle, import/restore/reset and conflict regression matrix; define supported versus unsupported correction/reversal boundaries; and complete authenticated backup/cloud restore and two-device rehearsals under [#685](https://github.com/armave/portfolio-terminal/issues/685), plus live TradeNet validation under [#687](https://github.com/armave/portfolio-terminal/issues/687). The portfolio snapshot remains canonical; the journal is additive evidence/replay support and no ledger cutover is authorized.
 
 
 ## Implementation slice 2 — auditable balance reversals and replay coverage
@@ -253,7 +254,7 @@ This slice does not model dividends, mergers, spin-offs, cash-in-lieu, short hol
 
 ## Current PT-02 status — 2026-11-16
 
-Merged client/domain slices now include linked Closed History fee corrections (#468), fee-correction restore integrity and scoped journal coverage (#504), verified app-owned cash-lot split/reverse-split conversion (#506), duplicate transaction-event identity rejection and import atomicity (#509–#510), audited Trades desk fee synchronization (#511), and the generic closed-history mutation guard (#512), alongside the earlier transaction, reversal, retry, lot-replay and cloud-conflict slices referenced above. The tracker for remaining acceptance is [#507](https://github.com/armave/portfolio-terminal/issues/507); the former broad issue #330 was deleted and is no longer a valid tracker.
+Merged client/domain slices now include linked Closed History fee corrections (#468), fee-correction restore integrity and scoped journal coverage (#504), verified app-owned cash-lot split/reverse-split conversion (#506), duplicate transaction-event identity rejection and import atomicity (#509–#510), audited Trades desk fee synchronization (#511), and the generic closed-history mutation guard (#512), alongside the earlier transaction, reversal, retry, lot-replay and cloud-conflict slices referenced above. The tracker for remaining transaction/replay acceptance is [#686](https://github.com/armave/portfolio-terminal/issues/686); authenticated recovery/device rehearsal is [#685](https://github.com/armave/portfolio-terminal/issues/685); live provider evidence is [#687](https://github.com/armave/portfolio-terminal/issues/687); the former broad issue #330 was deleted and is no longer a valid tracker.
 
 ### Exact-head evidence — 2026-11-16 follow-up slices
 
@@ -398,7 +399,7 @@ The command rows above distinguish public store methods from production wiring: 
 
 The import regression suite now pins the deterministic tie behavior when distinct journal events share a recordedAt millisecond. mergePortfolioTransactionEvents uses stable sorting: the already-committed local sequence is retained first, followed by same-time incoming events in their supplied order. Re-importing the same rows remains idempotent and produces the same replay.
 
-This is a deterministic merge rule, **not proof of real cross-device chronology**. recordedAt collisions do not contain enough information to establish which independent device committed first; the merge must not infer a missing order from event IDs or business effectiveAt. Any reconciliation decision that depends on the relative order of colliding events remains review-required until stronger source ordering evidence is available. Authenticated multi-device recovery remains a separate manual gate under [#554](https://github.com/armave/portfolio-terminal/issues/554).
+This is a deterministic merge rule, **not proof of real cross-device chronology**. recordedAt collisions do not contain enough information to establish which independent device committed first; the merge must not infer a missing order from event IDs or business effectiveAt. Any reconciliation decision that depends on the relative order of colliding events remains review-required until stronger source ordering evidence is available. Authenticated multi-device recovery remains a separate manual gate under [#685](https://github.com/armave/portfolio-terminal/issues/685).
 
 
 ## Shadow lot replay rejection atomicity — 2026-11-23
