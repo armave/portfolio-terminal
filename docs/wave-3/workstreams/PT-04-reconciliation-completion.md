@@ -96,3 +96,12 @@ PT-02 supports a narrow, immutable reversal for app-authored `cash.adjustment` e
 The matcher now detects non-broker-authored `correction` events linked to an app-authored `cash.adjustment`. It keeps the original and all linked corrections visible as one provisional `cashflow_unclassified` evidence item, excludes every event in that group from ordinary matching, and suppresses app/broker cashflow absence claims for the affected history. The app cashflow count includes the excluded original and correction records so source counts remain explicit. It does not infer that the broker has a corresponding row, calculate an effective net movement, validate an accounting write, or apply a correction.
 
 The behavior is deterministic under reversed app-event and broker-row input order. Regressions cover an inverse correction and a linked correction whose amount is inconsistent; both remain provisional and cannot generate a false missing-record conclusion. English/Russian UI copy is covered. This remains read-only; no PT-02 schema, canonical portfolio snapshot, cash/debt balance, fee, cost basis or P&L value is modified.
+
+
+## Ambiguous margin-adjustment labels remain unclassified — 2026-11-23
+
+Both the broker audit-event importer and PT-04 cashflow matcher previously used any label containing `margin` as evidence of `margin.interest`. A provider row explicitly labelled `Margin Adjustment` does not establish that the amount is an interest charge, nor does it specify a signed change to margin debt. Treating it as interest could create a false cashflow match and incorrect fee/interest attribution.
+
+The importer and reconciliation matcher now detect explicit margin-adjustment labels before the broad margin-interest rule and leave those rows unclassified. The importer creates no typed journal event for the row; the normalized source cashflow remains available in the history sidecar so PT-04 can show a provisional `cashflow_unclassified` finding and suppress absence-based conclusions. Ordinary `Margin Fee` and `Margin Interest` labels retain their current `margin.interest` handling.
+
+No debt delta, interest amount, sign or accounting category is inferred. No PT-02 event, canonical position, cash/debt balance, fee allocation or P&L value is changed.
