@@ -409,8 +409,8 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
         </header>
 
         <div class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4">
-          <div class="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/45 p-3">
-            <div class="min-w-0 flex-1 sm:max-w-xs">
+          <div class="exit-comparison-toolbar flex flex-col items-stretch gap-3 rounded-xl border border-slate-800 bg-slate-900/45 p-3 sm:flex-row sm:items-end sm:justify-between">
+            <div class="exit-comparison-position w-full min-w-0 flex-1 sm:max-w-xs">
               <label for="exitComparisonTicker" class="mb-1 block text-[11px] font-semibold text-slate-400">{translateText('Position', language)}</label>
               <select
                 id="exitComparisonTicker"
@@ -424,7 +424,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               <p class="mt-1 text-[10px] text-slate-500">{positionSummary}</p>
               {referenceInfo && <p class="mt-1 max-w-xl text-[10px] leading-relaxed text-slate-400">{referenceInfo}</p>}
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="exit-comparison-toolbar-actions flex w-full flex-wrap justify-end gap-2 sm:w-auto">
               <button type="button" onClick={swapPeriods} class="min-h-[44px] rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Swap periods', language)}</button>
               <button type="button" onClick={resetPeriods} class="min-h-[44px] rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Reset defaults', language)}</button>
             </div>

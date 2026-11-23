@@ -479,6 +479,9 @@ async function captureExitComparisonModalReview(page) {
         .map((list) => Array.from(list.querySelectorAll('dt')).map((item) => item.textContent?.trim() || ''));
       const periodDates = Array.from(element.querySelectorAll('input[type="date"]'))
         .map((input) => input.value);
+      const positionBounds = element.querySelector('.exit-comparison-position')?.getBoundingClientRect();
+      const actionBounds = element.querySelector('.exit-comparison-toolbar-actions')?.getBoundingClientRect();
+      const tickerSelectWidth = element.querySelector('#exitComparisonTicker')?.getBoundingClientRect().width || 0;
       const touchTargets = Array.from(element.querySelectorAll('button, input, select'))
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => {
@@ -499,6 +502,9 @@ async function captureExitComparisonModalReview(page) {
         desktopTableVisible: isVisible(desktopWrapper),
         desktopRows: rows,
         periodDates,
+        positionBounds: positionBounds ? { top: positionBounds.top, bottom: positionBounds.bottom, width: positionBounds.width } : null,
+        actionBounds: actionBounds ? { top: actionBounds.top, bottom: actionBounds.bottom, width: actionBounds.width } : null,
+        tickerSelectWidth,
         hasNetPnl: Boolean(resultsSection?.textContent?.includes('Net P&L')),
         hasBestNetPnl: Boolean(resultsSection?.textContent?.includes('BEST NET P&L')),
         hasBalanceDisclosure: element.textContent?.toLowerCase().includes('not portfolio equity') === true,
@@ -520,6 +526,16 @@ async function captureExitComparisonModalReview(page) {
     }
     if (isNewComparison && layout.touchTargets.some((target) => target.height < 43 || target.width < 43)) {
       throw new Error('Compare Exits has undersized touch targets at ' + viewport.width + 'px: ' + JSON.stringify(layout.touchTargets));
+    }
+    if (isNewComparison && viewport.width < 640 &&
+        (!layout.positionBounds || !layout.actionBounds ||
+          layout.tickerSelectWidth < layout.viewportWidth * 0.7 ||
+          layout.actionBounds.top < layout.positionBounds.bottom - 1)) {
+      throw new Error('Compare Exits position selector and quote provenance should have full width above the Swap/Reset actions on narrow screens: ' + JSON.stringify({
+        positionBounds: layout.positionBounds,
+        actionBounds: layout.actionBounds,
+        tickerSelectWidth: layout.tickerSelectWidth
+      }));
     }
 
     if (isNewComparison) {
@@ -556,7 +572,14 @@ async function captureExitComparisonModalReview(page) {
         animations: 'disabled',
         caret: 'hide'
       });
-      await dialog.getByRole('heading', { name: 'Comparison results', exact: true }).scrollIntoViewIfNeeded();
+      await dialog.evaluate((element) => {
+        const contentRegion = element.querySelector(':scope > div');
+        const resultsSection = Array.from(element.querySelectorAll('section'))
+          .find((section) => section.querySelector('h3')?.textContent?.trim() === 'Comparison results');
+        if (contentRegion && resultsSection) {
+          contentRegion.scrollTop = Math.max(0, resultsSection.offsetTop - 8);
+        }
+      });
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
         requestAnimationFrame(resolve)
       )));

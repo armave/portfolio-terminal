@@ -21,6 +21,12 @@ describe('Compare Exits modal presentation', () => {
     }
   });
 
+  it('stacks the position selector and actions on narrow screens without shrinking the ticker control', () => {
+    expect(source).toContain('exit-comparison-toolbar flex flex-col items-stretch');
+    expect(source).toContain('exit-comparison-position w-full min-w-0');
+    expect(source).toContain('exit-comparison-toolbar-actions flex w-full');
+  });
+
   it('renders mobile period cards and a semantic desktop comparison table', () => {
     expect(source).toContain('sm:hidden');
     expect(source).toContain('hidden overflow-x-auto sm:block');
