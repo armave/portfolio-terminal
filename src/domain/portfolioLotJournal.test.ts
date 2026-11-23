@@ -285,29 +285,6 @@ describe('lot-aware transaction journal replay', () => {
     expect(replay.issues).toHaveLength(2);
   });
 
-  it('does not consume shadow lots when event-level sale proceeds reject an otherwise schema-valid allocation', () => {
-    // Every allocation price is within the event schema's per-slice tolerance,
-    // but the aggregate proceeds differ beyond the stricter replay tolerance.
-    const inconsistentSale = { ...partialSale, unitPrice: 130.01 };
-    expect(isPortfolioTransactionEvent(inconsistentSale)).toBe(true);
-
-    const replay = replayPortfolioTransactionLots([buyOne, buyTwo, inconsistentSale]);
-
-    expect(replay.status).toBe('unsupported');
-    expect(replay.sales).toEqual([]);
-    expect(replay.openLots.map((lot) => [lot.lotId, lot.openQuantity])).toEqual([
-      ['lot-one', 2],
-      ['lot-two', 3]
-    ]);
-    expect(replay.issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        eventId: inconsistentSale.id,
-        disposition: 'unsupported',
-        reason: expect.stringContaining('sale event price and gross proceeds')
-      })
-    ]));
-  });
-
   it('does not consume stable lots when event-level proceeds reject schema-valid sale allocations', () => {
     const inconsistentSale = { ...partialSale, unitPrice: 130.01 };
     expect(isPortfolioTransactionEvent(inconsistentSale)).toBe(true);
