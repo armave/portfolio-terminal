@@ -1575,7 +1575,14 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
   try {
     // Pull the remote history first; never let an empty/new device overwrite a
     // populated Closed History record before local and broker data are merged.
-    const cloudHistory = await pullCloudHistory(undefined, { isCurrentSession });
+    const cloudHistory = await pullCloudHistory(undefined, {
+      isCurrentSession,
+      onEncryptionMigrationFailure: (error) => {
+        if (!isCurrentSession()) return;
+        logSafeDiagnostic('warn', 'closed-history', error);
+        emitBrokerEvent('broker:closed-history-encryption-migration-failed');
+      }
+    });
     if (!isCurrentSession()) return false;
     const savedAtStart = loadSavedHistory();
     const currentAtStart = portfolioStore.getState();
