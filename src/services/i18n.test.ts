@@ -1237,6 +1237,27 @@ describe('Settings refinements localization', () => {
 
 
 
+describe('Compare Exits localization parity', () => {
+  it('localizes financial cost breakdown, result hierarchy, and quote provenance in Russian', () => {
+    const copy = [
+      'Latest quote', 'Average entry', 'Manual / trade price', 'Based on complete tracked lots',
+      'Quote source unknown', 'Observation time unknown', 'As of',
+      'Use the latest available quote and show its freshness and observation time; only use average entry when tracked lots are complete',
+      'Projected Cash / Debt Balance', 'Remaining margin debt', 'Available cash balance',
+      'No remaining cash or margin debt', 'Buy Commission', 'Sell Commission', 'Estimated Margin Interest',
+      'Period B vs. Period A · net P&L', 'BEST NET P&L',
+      'Best period is selected by the highest net P&L after modeled fees and financing.',
+      'Exit comparison by period',
+      'Fee breakdown is unavailable for this older saved estimate. Recalculate to see the component costs.',
+      'Projected cash/debt balance is not portfolio equity; negative values represent remaining margin debt.'
+    ];
+    for (const english of copy) {
+      expect(RU_TRANSLATIONS[english], english).toBeTruthy();
+      expect(translateText(english, 'ru'), english).not.toBe(english);
+    }
+  });
+});
+
 describe('Trades UX localization parity', () => {
   it('localizes cloud status, provider freshness, sorting and financial quality explanations', () => {
     const copy = [

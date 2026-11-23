@@ -5,10 +5,10 @@ export function parseScenarioSignedMoney(value?: string | null): number | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
   const normalized = value.trim()
     .replace(/,/g, '')
-    .replace(/\\$/g, '')
+    .replace(/\$/g, '')
     .replace(/−/g, '-')
-    .replace(/\\s+/g, '');
-  if (!/^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(normalized)) return null;
+    .replace(/\s+/g, '');
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -23,7 +23,7 @@ export function getProjectedCashDebtStatus(value: string): ProjectedCashDebtStat
 
 /** Format an ISO calendar date as a locale-aware date without UTC day shifting. */
 export function formatExitComparisonDate(dateValue: string, language: 'en' | 'ru'): string {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(dateValue);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
   if (!match) return dateValue;
   const year = Number(match[1]);
   const month = Number(match[2]) - 1;

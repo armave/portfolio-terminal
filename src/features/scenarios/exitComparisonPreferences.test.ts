@@ -62,6 +62,7 @@ describe('exit comparison preferences', () => {
     expect(restored?.lastResult?.rows.map((row) => row.label)).toEqual([
       'Projected Cash / Debt Balance', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L'
     ]);
+    expect(restored?.lastResult?.rows.some((row) => row.label === 'Buy Commission')).toBe(false);
   });
 
   it('isolates saved preferences by storage key and tolerates missing/corrupt data', () => {
