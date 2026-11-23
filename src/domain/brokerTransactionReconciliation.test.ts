@@ -616,6 +616,82 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('keeps linked cash-adjustment reversals provisional instead of double-counting either side', () => {
+    const original = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: at,
+      currency: 'USD',
+      cashDelta: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-cash-adjustment-original', recordedAt: at });
+    const correction = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: at + 1_000,
+      currency: 'USD',
+      cashDelta: -25,
+      relatedEventId: original.id
+    }, { actor: { type: 'user' }, source: 'transaction-reversal', eventId: 'app-cash-adjustment-reversal', recordedAt: at + 1_000 });
+    const brokerCashflows = [
+      cashflow({ id: 'broker-adjustment-original', type: 'Cash Adjustment', amount: 25, description: 'Balance adjustment' }),
+      cashflow({ id: 'broker-adjustment-reversal', date: new Date(at + 1_000).toISOString(), type: 'Cash Adjustment', amount: -25, description: 'Balance adjustment reversal' })
+    ];
+    const reports = [
+      reconcile([], [original, correction], { brokerCashflows }),
+      reconcile([], [correction, original], { brokerCashflows: [...brokerCashflows].reverse() })
+    ];
+
+    for (const report of reports) {
+      expect(report.status).toBe('partial');
+      expect(report.appCashflowCount).toBe(2);
+      expect(report.brokerCashflowCount).toBe(2);
+      expect(report.matchedCashflowCount).toBe(0);
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        id: 'cashflow-reversal-unresolved:app-cash-adjustment-original',
+        type: 'cashflow_unclassified',
+        confidence: 'provisional',
+        brokerReferences: [],
+        appEventIds: ['app-cash-adjustment-original', 'app-cash-adjustment-reversal']
+      }));
+      expect(report.findings.some(finding =>
+        finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker'
+      )).toBe(false);
+      expect(report.warnings).toContain(
+        'App cashflow evidence is incomplete; absence-based findings are suppressed.'
+      );
+    }
+    expect(reports[0].findings).toEqual(reports[1].findings);
+  });
+
+  it('keeps malformed linked cash-adjustment reversals provisional instead of trusting the correction amount', () => {
+    const original = createPortfolioTransactionEvent({
+      type: 'cash.adjustment',
+      effectiveAt: at,
+      currency: 'USD',
+      cashDelta: 25
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-cash-adjustment-inconsistent', recordedAt: at });
+    const correction = createPortfolioTransactionEvent({
+      type: 'correction',
+      effectiveAt: at + 1_000,
+      currency: 'USD',
+      cashDelta: -24,
+      relatedEventId: original.id
+    }, { actor: { type: 'user' }, source: 'transaction-reversal', eventId: 'app-cash-adjustment-inconsistent-correction', recordedAt: at + 1_000 });
+
+    const report = reconcile([], [original, correction], {
+      brokerCashflows: [cashflow({ type: 'Cash Adjustment', amount: 25, description: 'Balance adjustment' })]
+    });
+
+    expect(report.status).toBe('partial');
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      appEventIds: ['app-cash-adjustment-inconsistent', 'app-cash-adjustment-inconsistent-correction'],
+      confidence: 'provisional'
+    }));
+    expect(report.findings.some(finding =>
+      finding.type === 'cashflow_missing_in_app' || finding.type === 'cashflow_missing_in_broker'
+    )).toBe(false);
+  });
+
   it('matches a broker cash adjustment only when the provider explicitly labels an adjustment', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'provider-cash-adjustment',

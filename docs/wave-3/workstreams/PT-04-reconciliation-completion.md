@@ -87,3 +87,12 @@ Transaction-level reconciliation now gates each absence conclusion against the h
 - The change is deterministic and read-only. It does not modify PT-02 events, canonical positions, FIFO lots, balances, fees, debt, cost basis or realized P&L.
 
 Vitest regressions cover all four directional gates, malformed broker rows, incomplete app evidence and preservation of observed provisional mismatches. This is CI-verifiable behavior; authenticated live-provider verification remains a separate manual gate.
+
+
+## Linked balance-adjustment reversals in cashflow reconciliation — 2026-11-23
+
+PT-02 supports a narrow, immutable reversal for app-authored `cash.adjustment` events: the correction event references the original event and records inverse cash/debt deltas. The transaction-level matcher previously considered the original adjustment as an ordinary app cashflow but ignored its linked `correction` event. When broker history exposed both the original and reversal—or only a netted representation—this could produce a false matched cashflow or an absence claim against one side.
+
+The matcher now detects non-broker-authored `correction` events linked to an app-authored `cash.adjustment`. It keeps the original and all linked corrections visible as one provisional `cashflow_unclassified` evidence item, excludes every event in that group from ordinary matching, and suppresses app/broker cashflow absence claims for the affected history. The app cashflow count includes the excluded original and correction records so source counts remain explicit. It does not infer that the broker has a corresponding row, calculate an effective net movement, validate an accounting write, or apply a correction.
+
+The behavior is deterministic under reversed app-event and broker-row input order. Regressions cover an inverse correction and a linked correction whose amount is inconsistent; both remain provisional and cannot generate a false missing-record conclusion. English/Russian UI copy is covered. This remains read-only; no PT-02 schema, canonical portfolio snapshot, cash/debt balance, fee, cost basis or P&L value is modified.
