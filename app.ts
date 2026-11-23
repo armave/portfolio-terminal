@@ -30,6 +30,7 @@ import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBro
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
 import { repairCurrentBrowserAppCache } from './src/services/browserProfileRepairRuntime';
 import { createPortfolioEquitySyncRuntime } from './src/services/portfolioEquitySyncRuntime';
+import { createTradesHistorySyncRuntime, type TradesHistorySyncMode, type TradesHistorySyncSource } from './src/services/tradesHistorySyncRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
 import { createStartupCloudWriteGate } from './src/services/startupCloudWriteGate';
@@ -88,6 +89,8 @@ import {
   initializeSavedHistoryStorage,
   hasFreedomCashflowHistoryBaseline,
   markFreedomCashflowHistoryBaseline,
+  getFreedomCashflowTradeCheckpoint,
+  markFreedomCashflowTradeCheckpoint,
   savePortfolioSnapshot,
   savePortfolioStateSnapshot,
   saveSavedHistory,
@@ -125,7 +128,7 @@ import {
 } from './src/domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
 import { buildClosedHistoryFeeAuditUpdate } from './src/domain/closedHistoryFeeAudit';
-import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
+import { getLatestClosedTradeDate, getLatestClosedTradeCheckpoint } from './src/domain/tradeHistorySync';
 import { applyActiveLimitSellTargets, canApplyFreedomBrokerBalance, classifyFreedomPortfolio, getActiveTrancheType, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -1559,7 +1562,7 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
  * before writing. A first sync on a new device must never replace a populated
  * cloud ledger with an empty local snapshot.
  */
-async function syncAdminClosedHistory(): Promise<boolean> {
+async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source: TradesHistorySyncSource): Promise<boolean> {
   const accountId = currentAccountId || '';
   const session = currentAccountSessionGuard.capture();
   const isCurrentSession = () =>
@@ -1592,18 +1595,35 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       ...normalizeSavedFreedomCashflows(savedAtStart.cashflows),
       ...normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
     ];
-    const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
+    const hasCashflowBaseline = hasFreedomCashflowHistoryBaseline(accountId);
+    const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(
+      executionsWithFees,
+      currentAtStart.closedTrades || []
+    ) || 'no-trades';
+    const previousTradeCheckpoint = getFreedomCashflowTradeCheckpoint(accountId);
+    const latestCashflowDate = hasCashflowBaseline
       ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
       getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
       : undefined;
 
-    // Bypass the brief quote-side cache: every 60-second checkpoint and manual
-    // sync must ask Freedom for the latest cashflow rows (full baseline once,
-    // then an overlapping incremental window).
-    clearFreedomCashflowCache();
-    const cashflowResponse = await freedomBrokerAdapter.fetchCashflows(latestCashflowDate);
-    if (!isCurrentSession()) return false;
-    const fetchedCashflows = freedomBrokerAdapter.normalizeCashflows(cashflowResponse).data;
+    // Scheduled and manual refreshes retain their 60-second/provider-refresh
+    // contract. Trades mount skips the provider call only when its complete
+    // baseline already includes the same latest closed-trade fingerprint.
+    // Local recalculation reuses the last accepted cashflow observations.
+    const shouldFetchCashflows = mode === 'refresh' && (
+      source !== 'trades-desk' ||
+      !hasCashflowBaseline ||
+      latestTradeCheckpoint !== previousTradeCheckpoint
+    );
+    let fetchedCashflows = priorCashflows;
+    if (shouldFetchCashflows) {
+      // Bypass the brief quote-side cache: refreshes use a full baseline once,
+      // then an overlapping incremental window.
+      clearFreedomCashflowCache();
+      const cashflowResponse = await freedomBrokerAdapter.fetchCashflows(latestCashflowDate);
+      if (!isCurrentSession()) return false;
+      fetchedCashflows = freedomBrokerAdapter.normalizeCashflows(cashflowResponse).data;
+    }
 
     // Broker executions may have completed while the cashflow request was in
     // flight. Re-read the canonical store and sidecar before calculating fees.
@@ -1677,7 +1697,7 @@ async function syncAdminClosedHistory(): Promise<boolean> {
     if (JSON.stringify(allocationState.cashflows || []) !== JSON.stringify(mergedCashflows)) {
       nextState.cashflows = mergedCashflows;
     }
-    const previousState = current;
+    const previousState = allocationState;
     const closedHistoryChanged = JSON.stringify(appClosedTrades) !== JSON.stringify(feeAuditUpdate.closedTrades);
     const journalChanged = feeAuditUpdate.transactionEvents.length !== (allocationState.transactionEvents || []).length;
     if (feeAuditUpdate.rejectedCount > 0) {
@@ -1741,10 +1761,19 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       }
     }
 
-    if (!hasFreedomCashflowHistoryBaseline(accountId) &&
-      !markFreedomCashflowHistoryBaseline(accountId)) {
-      logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
-      return false;
+    if (shouldFetchCashflows) {
+      if (!hasCashflowBaseline && !markFreedomCashflowHistoryBaseline(accountId)) {
+        logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
+        return false;
+      }
+      const completedTradeCheckpoint = getLatestClosedTradeCheckpoint(
+        mergedExecutions,
+        appClosedTrades
+      ) || 'no-trades';
+      if (!markFreedomCashflowTradeCheckpoint(accountId, completedTradeCheckpoint)) {
+        logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the latest trade checkpoint could not be recorded; the next refresh will retry.');
+        return false;
+      }
     }
     return true;
   } catch (error) {
@@ -1756,6 +1785,27 @@ async function syncAdminClosedHistory(): Promise<boolean> {
   }
 }
 
+const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
+  getSessionKey: () => {
+    if (currentAccountRole !== 'admin') return null;
+    const session = currentAccountSessionGuard.capture();
+    return session ? `${session.identity}:${session.generation}` : null;
+  },
+  perform: ({ mode, source }) => performAdminClosedHistorySync(mode, source)
+});
+
+/** All scheduled, manual and Trades-page history work joins this session-scoped owner. */
+function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh'): Promise<boolean> {
+  return tradesHistorySyncRuntime.run({ mode, source });
+}
+
+addBrokerEventListener('broker:request-closed-history-sync-and-wait', (request) => {
+  void syncAdminClosedHistory('trades-desk', request.mode).then(
+    request.resolve,
+    () => request.resolve(false)
+  );
+});
+
 const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   getRole: () => currentAccountRole,
   isVisible: () => !document.hidden,
@@ -1763,7 +1813,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
   syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true, false) : undefined,
-  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : undefined,
+  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduled') : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logAppMessage(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
@@ -2140,7 +2190,7 @@ function bindStartupActions() {
       state = portfolioStore.getState();
       return pushStateToCloud(true, true);
     },
-    syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : Promise.resolve(false),
+    syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('manual') : Promise.resolve(false),
     pullGuestSnapshot: refreshGuestPortfolioSnapshot,
     translateText,
     showToast,
