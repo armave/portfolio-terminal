@@ -436,6 +436,169 @@ async function captureUxReviewScreenshots(page, surface) {
 
 }
 
+async function captureExitComparisonModalReview(page) {
+  const outputDirectory = process.env.UX_SCREENSHOT_DIR;
+  const dialog = page.locator('#exitComparisonDialog');
+  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+  await assertVisibleControlsHaveNames(page, 'Compare Exits modal');
+  await assertResponsiveSurface(page, '#exitComparisonDialog', 'Compare Exits modal');
+
+  const isNewComparison = process.env.UX_EXPECT_NEW_HEADER !== 'false';
+  const expectedRows = [
+    'Projected Cash / Debt Balance',
+    'Gross Proceeds',
+    'Buy Commission',
+    'Sell Commission',
+    'Estimated Margin Interest',
+    'Total Fee Friction',
+    'Net P&L'
+  ];
+
+  for (const viewport of UX_SCREENSHOT_VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      ));
+    });
+
+    const layout = await dialog.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const resultsSection = Array.from(element.querySelectorAll('section'))
+        .find((section) => section.querySelector('h3')?.textContent?.trim() === 'Comparison results');
+      const resultsMessage = resultsSection?.textContent?.replace(/\\s+/g, ' ').trim() || '';
+      const mobileCards = element.querySelector('[aria-label="Exit comparison by period"]');
+      const desktopWrapper = element.querySelector('div.hidden.overflow-x-auto');
+      const table = desktopWrapper?.querySelector('table');
+      const isVisible = (node) => Boolean(node && node.getClientRects().length > 0 &&
+        getComputedStyle(node).display !== 'none' && getComputedStyle(node).visibility !== 'hidden');
+      const rows = Array.from(table?.querySelectorAll('tbody tr') || [])
+        .map((row) => row.querySelector('th[scope="row"]')?.textContent?.trim() || '');
+      const mobileRows = Array.from(mobileCards?.querySelectorAll('article dl') || [])
+        .map((list) => Array.from(list.querySelectorAll('dt')).map((item) => item.textContent?.trim() || ''));
+      const periodDates = Array.from(element.querySelectorAll('input[type="date"]'))
+        .map((input) => input.value);
+      const positionBounds = element.querySelector('.exit-comparison-position')?.getBoundingClientRect();
+      const actionBounds = element.querySelector('.exit-comparison-toolbar-actions')?.getBoundingClientRect();
+      const tickerSelectWidth = element.querySelector('#exitComparisonTicker')?.getBoundingClientRect().width || 0;
+      const touchTargets = Array.from(element.querySelectorAll('button, input, select'))
+        .filter((control) => control.getClientRects().length > 0)
+        .map((control) => {
+          const target = control.getBoundingClientRect();
+          return {
+            name: control.getAttribute('aria-label') || control.getAttribute('title') || control.textContent?.trim() || control.id,
+            width: target.width,
+            height: target.height
+          };
+        });
+      return {
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        dialogBounds: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
+        mobileCardsVisible: isVisible(mobileCards),
+        mobileCardCount: mobileCards?.querySelectorAll(':scope > article').length || 0,
+        mobileRows,
+        desktopTableVisible: isVisible(desktopWrapper),
+        desktopRows: rows,
+        periodDates,
+        positionBounds: positionBounds ? { top: positionBounds.top, bottom: positionBounds.bottom, width: positionBounds.width } : null,
+        actionBounds: actionBounds ? { top: actionBounds.top, bottom: actionBounds.bottom, width: actionBounds.width } : null,
+        tickerSelectWidth,
+        hasNetPnl: Boolean(resultsSection?.textContent?.includes('Net P&L')),
+        hasBestNetPnl: Boolean(resultsSection?.textContent?.includes('BEST NET P&L')),
+        hasBalanceDisclosure: element.textContent?.toLowerCase().includes('not portfolio equity') === true,
+        resultsMessage,
+        touchTargets
+      };
+    });
+
+    if (layout.documentWidth > layout.viewportWidth + 1 ||
+        layout.dialogBounds.left < -1 ||
+        layout.dialogBounds.right > layout.viewportWidth + 1 ||
+        layout.dialogBounds.top < -1 ||
+        layout.dialogBounds.bottom > viewport.height + 1) {
+      throw new Error('Compare Exits modal is clipped or causes page overflow at ' +
+        viewport.width + 'px: ' + JSON.stringify(layout));
+    }
+    if (!layout.hasNetPnl || layout.periodDates.length !== 2 || layout.periodDates.some((date) => !date)) {
+      throw new Error('Compare Exits did not render both dated periods and a Net P&L result: ' + JSON.stringify(layout));
+    }
+    if (isNewComparison && layout.touchTargets.some((target) => target.height < 43 || target.width < 43)) {
+      throw new Error('Compare Exits has undersized touch targets at ' + viewport.width + 'px: ' + JSON.stringify(layout.touchTargets));
+    }
+    if (isNewComparison && viewport.width < 640 &&
+        (!layout.positionBounds || !layout.actionBounds ||
+          layout.tickerSelectWidth < layout.viewportWidth * 0.7 ||
+          layout.actionBounds.top < layout.positionBounds.bottom - 1)) {
+      throw new Error('Compare Exits position selector and quote provenance should have full width above the Swap/Reset actions on narrow screens: ' + JSON.stringify({
+        positionBounds: layout.positionBounds,
+        actionBounds: layout.actionBounds,
+        tickerSelectWidth: layout.tickerSelectWidth
+      }));
+    }
+
+    if (isNewComparison) {
+      if (JSON.stringify(layout.desktopRows) !== JSON.stringify(expectedRows)) {
+        throw new Error('Compare Exits result hierarchy did not match the accepted financial breakdown: ' + JSON.stringify(layout.desktopRows));
+      }
+      if (!layout.hasBestNetPnl || !layout.hasBalanceDisclosure) {
+        throw new Error('Compare Exits is missing its Best Net P&L or cash/debt-vs-equity explanation.');
+      }
+      if (viewport.width < 640) {
+        if (!layout.mobileCardsVisible || layout.mobileCardCount !== 2 ||
+            layout.mobileRows.length !== 2 || layout.mobileRows.some((rows) => JSON.stringify(rows) !== JSON.stringify(expectedRows)) ||
+            layout.desktopTableVisible) {
+          throw new Error('Compare Exits must show equivalent two-period metric cards on narrow screens: ' + JSON.stringify(layout));
+        }
+      } else if (layout.mobileCardsVisible || !layout.desktopTableVisible) {
+        throw new Error('Compare Exits must show its semantic comparison table above the mobile breakpoint: ' + JSON.stringify(layout));
+      }
+    }
+
+    if (outputDirectory) {
+      await mkdir(outputDirectory, { recursive: true });
+      const baseName = 'admin-exit-comparison-' + viewport.name + '-' + viewport.width + 'x' + viewport.height;
+      await dialog.evaluate((element) => {
+        const contentRegion = element.querySelector(':scope > div');
+        if (contentRegion) contentRegion.scrollTop = 0;
+      });
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )));
+      await page.screenshot({
+        path: join(outputDirectory, baseName + '-inputs.png'),
+        fullPage: false,
+        animations: 'disabled',
+        caret: 'hide'
+      });
+      await dialog.evaluate((element) => {
+        const contentRegion = element.querySelector(':scope > div');
+        const resultsSection = Array.from(element.querySelectorAll('section'))
+          .find((section) => section.querySelector('h3')?.textContent?.trim() === 'Comparison results');
+        if (contentRegion && resultsSection) {
+          contentRegion.scrollTop = Math.max(0, resultsSection.offsetTop - 8);
+        }
+      });
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
+        requestAnimationFrame(resolve)
+      )));
+      await page.screenshot({
+        path: join(outputDirectory, baseName + '-results.png'),
+        fullPage: false,
+        animations: 'disabled',
+        caret: 'hide'
+      });
+    }
+  }
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await dialog.evaluate((element) => {
+    const contentRegion = element.querySelector(':scope > div');
+    if (contentRegion) contentRegion.scrollTop = 0;
+  });
+}
+
 async function assertResponsiveLayout(page, width) {
   await page.setViewportSize({ width, height: 900 });
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
@@ -1310,6 +1473,29 @@ try {
     await assertFinancialHeaderLayout(page, 'ticker');
   }
   await captureUxReviewScreenshots(page, 'admin-ticker');
+
+  // Review the actual read-only Compare Exits dialog at mobile, tablet and desktop widths.
+  const exitComparisonTrigger = page.getByRole('button', { name: 'Compare Exits', exact: true });
+  await exitComparisonTrigger.waitFor({ state: 'visible', timeout: 20_000 });
+  await exitComparisonTrigger.click();
+  const exitComparisonDialog = page.getByRole('dialog', { name: 'Compare Exits' });
+  await exitComparisonDialog.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByRole('row', { name: /Net P&L/ }).waitFor({ state: 'visible', timeout: 10_000 });
+  if (await page.locator('#exitComparisonTicker').inputValue() !== 'MSFT') {
+    throw new Error('Compare Exits did not open for the selected MSFT Margin position.');
+  }
+  const exitInitialFocus = await page.evaluate(() =>
+    document.activeElement?.getAttribute('aria-label') === 'Close exit comparison'
+  );
+  if (!exitInitialFocus) {
+    throw new Error('Opening Compare Exits did not focus its Close control.');
+  }
+  await captureExitComparisonModalReview(page);
+  await page.keyboard.press('Escape');
+  await exitComparisonDialog.waitFor({ state: 'hidden', timeout: 10_000 });
+  if (!(await exitComparisonTrigger.evaluate((element) => element === document.activeElement))) {
+    throw new Error('Closing Compare Exits with Escape did not restore focus to its trigger.');
+  }
   await waitForCondition(
     () => worker.calls.some((call) => call.action === 'news'),
     'Market Insights company news request'

@@ -337,7 +337,8 @@ describe('Market Tools Exit Comparison preview', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(2);
     expect(result.modal?.rows.map(row => row.label)).toEqual([
-      'Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance'
+      'Projected Cash / Debt Balance', 'Gross Proceeds', 'Buy Commission', 'Sell Commission',
+      'Estimated Margin Interest', 'Total Fee Friction', 'Net P&L'
     ]);
     expect(sellStock).not.toHaveBeenCalled();
     expect(updateTargetPrice).not.toHaveBeenCalled();
@@ -433,11 +434,14 @@ describe('Market Tools Exit Comparison preview', () => {
     const row = (label: string) => result.modal?.rows.find((candidate) => candidate.label === label)?.values;
 
     expect(result.type).toBe('res');
-    expect(row('Cost Basis')).toEqual(['$1000.00', '$1000.00']);
+    expect(row('Cost Basis')).toBeUndefined();
     expect(row('Gross Proceeds')).toEqual(['$1200.00', '$1250.00']);
     expect(row('Total Fee Friction')).toEqual(['$18.00', '$28.05']);
     expect(row('Net P&L')).toEqual(['+$182.00', '+$221.95']);
-    expect(row('Resulting Account Balance')).toEqual(['$399.00', '$428.90']);
+    expect(row('Projected Cash / Debt Balance')).toEqual(['$399.00', '$428.90']);
+    expect(row('Buy Commission')).toEqual(['$10.00', '$10.00']);
+    expect(row('Sell Commission')).toEqual(['$1.00', '$1.00']);
+    expect(row('Estimated Margin Interest')).toEqual(['$7.00', '$17.05']);
   });
 
   it('rejects invalid Market Tools exit preview inputs', () => {

@@ -99,7 +99,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).toContain('initialFocusRef: closeButtonRef');
     expect(exit).toContain('type="date"');
     expect(exit).toContain('type="number"');
-    expect(exit).toContain('min-h-11');
+    expect(exit).toContain('min-h-[44px]');
+    expect(exit).toContain('min-w-[44px]');
     expect(exit).toContain('focus-visible:ring-2');
     expect(exit).toContain("translateText('Compare Exits', language)");
   });
@@ -118,6 +119,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(exit).not.toContain('document.body.style.overflow');
     expect(exit).not.toContain('document.documentElement.style.overflow');
     expect(exit).toContain('formatUSDDisplayValue(value)');
+    expect(styles).toContain('.exit-comparison-dialog button,');
+    expect(styles).toContain('min-height: 44px;');
     expect(styles).toContain('.exit-comparison-backdrop {');
     expect(styles).toContain('z-index: 10000;');
     expect(styles).toContain('height: 100dvh;');
