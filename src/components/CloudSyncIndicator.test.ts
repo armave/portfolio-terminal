@@ -131,7 +131,7 @@ describe('cloud sync progress presentation', () => {
   });
 
   it('does not create a timestamp-only portfolio mutation for cloud checkpoints', () => {
-    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\\r\\n/g, '\\n');
+    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
     const start = source.indexOf('async function pushStateToCloud');
     const end = source.indexOf('const pushStateToGist', start);
     const checkpoint = source.slice(start, end);

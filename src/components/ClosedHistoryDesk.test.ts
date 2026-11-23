@@ -94,7 +94,7 @@ describe('Trades cache-first rendering', () => {
   it('memoizes fee-allocation input serialization and ignores position changes when broker executions are authoritative', () => {
     const source = readSource();
     const start = source.indexOf('const allocationInputKey = useMemo(');
-    const end = source.indexOf('\\n\\n  useEffect(() => {', start);
+    const end = source.indexOf('\n\n  useEffect(() => {', start);
     const memo = source.slice(start, end);
 
     expect(start).toBeGreaterThanOrEqual(0);
