@@ -7,12 +7,12 @@ Compare Exits is a read-only two-period scenario calculator. It estimates the re
 The comparison presents, in order:
 
 1. Projected Cash / Debt Balance.
-2. Gross Proceeds.
-3. Buy Commission.
-4. Sell Commission.
-5. Estimated Margin Interest.
-6. Total Fee Friction.
-7. Net P&L.
+2. Net P&L.
+3. Gross Proceeds.
+4. Buy Commission.
+5. Sell Commission.
+6. Estimated Margin Interest.
+7. Total Fee Friction.
 
 The total fee-friction value remains the same accounting aggregate used by the scenario engine. The displayed components expose its existing inputs: the allocated acquisition commission, the selected sale commission, and allocated accrued/projected margin interest. Do not recompute or replace the domain formula to build the display breakdown.
 
