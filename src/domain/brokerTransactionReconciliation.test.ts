@@ -1035,6 +1035,26 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+  it('counts all received broker execution rows before normalization and duplicate filtering', () => {
+    const report = reconcile([
+      execution({ id: 'valid-source-fill' }),
+      execution({ id: 'unclassified-source-fill', side: 'Unknown' }),
+      execution({ id: 'conflicting-source-fill', quantity: 2 }),
+      execution({ id: 'conflicting-source-fill', quantity: 3 })
+    ], []);
+
+    expect(report.brokerExecutionCount).toBe(4);
+    expect(report.matchedExecutionCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_unclassified',
+      brokerReferences: ['unclassified-source-fill']
+    }));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'execution_revision_conflict',
+      brokerReferences: ['conflicting-source-fill']
+    }));
+  });
+
   it('surfaces broker execution rows that cannot be normalized instead of silently dropping them', () => {
     const report = reconcile(
       [execution({ side: 'Unknown' })],
@@ -1078,6 +1098,30 @@ describe('reconcileBrokerActivity', () => {
     }
     expect(conflictReports[0].findings.map(finding => finding.id).sort())
       .toEqual(conflictReports[1].findings.map(finding => finding.id).sort());
+  });
+
+  it('counts all received broker cashflow rows before classification and duplicate filtering', () => {
+    const report = reconcile([], [], {
+      brokerCashflows: [
+        cashflow({ id: 'source-dividend', type: 'Dividend' }),
+        cashflow({ id: 'source-unknown', type: 'Other' }),
+        cashflow({ id: 'source-invalid-amount', type: 'Deposit', amount: Number.NaN }),
+        cashflow({ id: 'source-duplicate', type: 'Dividend' }),
+        cashflow({ id: 'source-duplicate', type: 'Dividend' })
+      ]
+    });
+
+    expect(report.brokerCashflowCount).toBe(5);
+    expect(report.matchedCashflowCount).toBe(0);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified', brokerReferences: ['source-unknown']
+    }));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified', brokerReferences: ['source-invalid-amount']
+    }));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'duplicate_broker_cashflow', brokerReferences: ['source-duplicate']
+    }));
   });
 
   it('surfaces broker cashflow rows with unusable amounts instead of silently dropping them', () => {

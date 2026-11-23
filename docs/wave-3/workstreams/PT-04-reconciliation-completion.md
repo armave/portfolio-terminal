@@ -126,3 +126,8 @@ Rows with a missing broker currency remain in the normalized source count but ar
 A normalized broker cashflow without a usable date was previously assigned a zero time delta by substituting the app event's timestamp. That made a timestamp-free broker row eligible for exact, direction, classification, amount or currency pairing based on the app time. The matcher now excludes such broker rows from all candidate paths unless the broker timestamp is present. The row remains in the normalized source count, the report is provisional, and both directions of absence-based conclusions are suppressed. An explicit English/Russian warning explains why the row was not paired.
 
 This is distinct from date-only observations: a parseable provider date remains usable for the existing timing window. No date is synthesized, and no cashflow, balance or accounting value is changed.
+
+
+## Broker source-row count semantics — 2026-11-23
+
+The reconciliation headline counts now report the number of broker execution and cashflow rows supplied to the comparison, before normalization, classification, duplicate suppression or conflict exclusion. Unclassifiable and malformed rows therefore remain represented in the source counts while their provisional findings explain why they were not eligible for matching. Repeated rows with the same provider ID remain visible in the count and produce duplicate/conflicting-revision findings. The matched counts continue to count only usable records successfully paired by the deterministic matcher. No source row is converted to a financial value, and no portfolio state is changed.
