@@ -13,6 +13,16 @@ The Trades desk presents cached records immediately while keeping broker freshne
 - The global cloud indicator represents encrypted cloud workspace synchronization, not broker freshness. Background checkpoint writes and scheduled guest-projection reads do not enter an animated pending state; explicit/manual operations own the aggregate progress state. Errors and revision conflicts remain visible. A successful quiet checkpoint also cannot clear an explicit Manual Sync that is still in progress; errors and revision conflicts continue to surface immediately.
 - Repeated Manual Sync requests within one authenticated session join the active request instead of launching duplicate provider calls. Requests from a different account session or a later authentication generation of the same account remain isolated, and late results from an old session cannot overwrite the current session's status.
 
+## Shared synchronization ownership
+
+Scheduled Closed History refresh, Manual Sync, Trades-page initialization/recalculation, and follow-up work after a new broker fill enter the same account/session-generation-scoped coordinator. Compatible same-session requests join one active operation; a stronger provider refresh queues behind a cache-only Trades pass. A late result from a previous account session cannot update the active session.
+
+The coordinator is the owner of the separately encrypted cloud-history pull/merge, cashflow baseline or overlapping incremental fetch, existing fee allocation/audit calculation, canonical store commit, local snapshot/sidecar persistence, and revision-aware cloud-history push. The Trades desk only renders canonical state and requests that operation. It no longer has a second cashflow API, allocation, or history persistence path. A forced follow-up is queued when new broker executions arrive, and the saved checkpoint reflects the trade set used to select the cashflow fetch window so a fill arriving during that fetch is not skipped.
+
+The explicit broker-history refresh carries a request ID. Incoming stream/background rows can update what the desk displays but cannot finish a different foreground refresh; only its matching completion may settle that loader. This is independent from the cloud workspace indicator and cashflow-reconciliation state.
+
+Operation diagnostics are bounded and in-memory only (counts, coalescing/queue counts and durations). They are not sent to telemetry services and do not satisfy PT-16 privacy/retention approval or PT-17 production observability acceptance.
+
 ## Sorting and filtering
 
 Filtering is applied before sorting and pagination. The summary remains scoped to the filtered rows. Sorting supports newest, oldest, exact highest/lowest net P&L, and largest position. Rows with unknown dates, missing P&L, upper-bound P&L, or missing share counts sort after known values; unknown financial values are never coerced to zero for ranking. Sort order and filters are presentation state and do not mutate portfolio records.
