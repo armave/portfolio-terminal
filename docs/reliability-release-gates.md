@@ -33,6 +33,8 @@ The PT-17 changes extend this baseline by:
 
 These automated journeys use deterministic mocked API responses. They do not prove authenticated production TradeNet behavior or live Market Depth behavior.
 
+The Trades history coordinator also records bounded in-memory operation counts, coalescing/queue counts and durations. These are local runtime diagnostics only; they are not exported to an external sink, do not contain financial/account data, and do not satisfy the PT-16 privacy approval, retention, or production observability gates.
+
 ## 2. Exact-head release evidence
 
 Every PR and release candidate should provide:

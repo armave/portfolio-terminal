@@ -24,6 +24,7 @@ This directory contains maintained product and engineering references, current o
 - [Request orchestration R03–R05](request-orchestration-r03-r05-2026-11-13.md) — shared request lifecycle and regression gates.
 - [Shared table pagination](table-pagination-pattern.md) — the supported reusable pagination pattern.
 - [Trades history UX](trades-history-ux.md) — broker freshness, refresh semantics, sorting, and financial data-quality presentation.
+- [Trades history synchronization ownership](trades-history-sync-ownership.md) — account/session-scoped reconciliation, coalescing, request-owned progress, checkpoint safety, and persistence boundaries.
 - [Compare Exits UX](exit-comparison-ux.md) — scenario cost breakdown, quote provenance, signed cash/debt interpretation, exact dates, and responsive results presentation.
 - [Combined Margin workspace UX](combined-workspace-ux.md) — KPI hierarchy, position comparison, risk data quality, research context and disclosures.
 

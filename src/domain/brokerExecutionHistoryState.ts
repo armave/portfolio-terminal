@@ -3,12 +3,14 @@ type BrokerExecutionHistoryStatus = 'loading' | 'ready' | 'refreshing' | 'stale'
 export interface BrokerExecutionHistoryState<T> {
   trades: T[];
   status: BrokerExecutionHistoryStatus;
+  /** Only the owning request may settle an explicit foreground refresh. */
+  activeRequestId?: string;
 }
 
 export type BrokerExecutionHistoryAction<T> =
-  | { type: 'refresh' }
-  | { type: 'success'; trades: readonly T[] }
-  | { type: 'failure' };
+  | { type: 'refresh'; requestId?: string }
+  | { type: 'success'; trades: readonly T[]; requestId?: string }
+  | { type: 'failure'; requestId?: string };
 
 /**
  * Prefer the current in-memory snapshot, then the separately persisted history.
@@ -34,19 +36,29 @@ export function brokerExecutionHistoryReducer<T>(
   action: BrokerExecutionHistoryAction<T>
 ): BrokerExecutionHistoryState<T> {
   switch (action.type) {
-    case 'refresh':
-      return {
+    case 'refresh': {
+      const next: BrokerExecutionHistoryState<T> = {
         ...state,
         status: state.trades.length > 0 ? 'refreshing' : 'loading'
       };
+      if (action.requestId) next.activeRequestId = action.requestId;
+      else delete next.activeRequestId;
+      return next;
+    }
     case 'success':
+      // Live-stream and background broker updates may improve the visible
+      // snapshot, but cannot finish a different user-requested refresh.
+      if (state.activeRequestId && action.requestId !== state.activeRequestId) {
+        return { ...state, trades: [...action.trades] };
+      }
       return {
         trades: [...action.trades],
         status: 'ready'
       };
     case 'failure':
+      if (state.activeRequestId && action.requestId !== state.activeRequestId) return state;
       return {
-        ...state,
+        trades: state.trades,
         status: state.trades.length > 0 ? 'stale' : 'error'
       };
   }
