@@ -72,4 +72,32 @@ describe('broker execution history view state', () => {
       status: 'ready'
     });
   });
+
+  it('does not let an unrelated live update settle an explicit refresh', () => {
+    const previous = [{ id: 'cached-sell' }];
+    const refreshing = brokerExecutionHistoryReducer(
+      createBrokerExecutionHistoryState(previous, [], true),
+      { type: 'refresh', requestId: 'manual-17' }
+    );
+    const liveUpdate = [{ id: 'new-live-sell' }];
+    const updated = brokerExecutionHistoryReducer(refreshing, {
+      type: 'success',
+      trades: liveUpdate
+    });
+
+    expect(updated).toMatchObject({
+      trades: liveUpdate,
+      status: 'refreshing',
+      activeRequestId: 'manual-17'
+    });
+    expect(brokerExecutionHistoryReducer(updated, {
+      type: 'failure',
+      requestId: 'older-request'
+    })).toBe(updated);
+    expect(brokerExecutionHistoryReducer(updated, {
+      type: 'success',
+      requestId: 'manual-17',
+      trades: liveUpdate
+    })).toEqual({ trades: liveUpdate, status: 'ready' });
+  });
 });

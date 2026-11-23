@@ -4,23 +4,14 @@ import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
-import { listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
+import { listUsers, type AuthUser } from '../services/api';
 import { brokerAdapterRegistry } from '../services/brokerAdapters/registry';
-import {
-  hasFreedomCashflowHistoryBaseline,
-  getFreedomCashflowTradeCheckpoint,
-  loadSavedHistory,
-  markFreedomCashflowHistoryBaseline,
-  markFreedomCashflowTradeCheckpoint,
-  savePortfolioSnapshot
-} from '../services/storage';
-import { aggregateOpenBrokerMarginFeeAllocationsByTicker, applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, applyCashflowAllocationsToMarginPositions, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { loadSavedHistory } from '../services/storage';
+import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
-import { calculateFreedomMarginFeeAllocations, createFreedomMarginFeeAllocationInputKey } from '../domain/freedomMarginFees';
-import { buildClosedHistoryFeeAuditUpdate } from '../domain/closedHistoryFeeAudit';
+import { createFreedomMarginFeeAllocationInputKey } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent, getLastExecutedTradesRefreshAt } from '../services/brokerEventBus';
@@ -28,7 +19,6 @@ import { TablePagination } from './TablePagination';
 import { DeskPageHeader } from './DeskPageHeader';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
-import { getLatestClosedTradeCheckpoint, getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import { getExecutionReconciliationFeedStatus } from '../domain/brokerTransactionReconciliation';
 import type { PortfolioState } from '../types/portfolio';
 import { buildClosedHistoryRows, filterClosedHistoryRows, sortClosedHistoryRows, summarizeClosedHistoryRows } from '../features/trades/closedHistoryRows';
@@ -262,12 +252,6 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
       .catch(() => setBrokerReconciliationOpen(false));
   };
-  // Seed the cursor from cached history for immediate rendering. Before a
-  // cashflow request, it is recalculated from the completed broker refresh so
-  // newly discovered sales are included in the incremental date range.
-  const cashflowSyncStartDate = useRef(
-    getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
-  );
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cloudHistoryWarning, setCloudHistoryWarning] = useState('');
   const [cloudHistoryRetrying, setCloudHistoryRetrying] = useState(false);
@@ -275,15 +259,26 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
-  const historyHydrated = useRef(false);
+  const workspaceHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
-  const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
+  const brokerRefreshSequence = useRef(0);
   const retryBrokerTrades = () => {
-    dispatchBrokerExecutionHistory({ type: 'refresh' });
+    const requestId = `trades-refresh-${++brokerRefreshSequence.current}`;
+    dispatchBrokerExecutionHistory({ type: 'refresh', requestId });
     emitBrokerEvent('broker:request-executed-trades-and-wait', {
       priority: 'interactive',
       resolve: (succeeded) => {
-        if (!succeeded && isSessionCurrent()) dispatchBrokerExecutionHistory({ type: 'failure' });
+        if (!isSessionCurrent()) return;
+        if (succeeded) {
+          const currentTrades = portfolioStore.getState().brokerExecutedTrades;
+          dispatchBrokerExecutionHistory({
+            type: 'success',
+            requestId,
+            trades: Array.isArray(currentTrades) ? currentTrades : brokerTrades
+          });
+        } else {
+          dispatchBrokerExecutionHistory({ type: 'failure', requestId });
+        }
       }
     });
   };
@@ -301,96 +296,23 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     });
     return () => { active = false; };
   }, []);
-  // Load cloud history once. An existing cloud history record is authoritative;
-  // local history is used only when no cloud record exists.
+  // The app-owned coordinator hydrates cloud history and persists its merge.
+  // This desk becomes ready only after the initial workspace pull has settled.
   useEffect(() => {
-    let active = true;
-    void pullCloudHistory(undefined, {
-      isCurrentSession: isSessionCurrent,
-      onEncryptionMigrationFailure: (error) => {
-        if (!active || !isSessionCurrent()) return;
-        setCloudHistoryWarning(translateText(
-          'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
-          getAppLanguage()
-        ));
-        logSafeDiagnostic('warn', 'closed-history', error);
-      }
-    }).then(async history => {
-      if (!active || !isSessionCurrent()) return;
-      const current = portfolioStore.getState();
-      const saved = loadSavedHistory();
-      const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
-      const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
-      const localCashflows = current.cashflows?.length ? current.cashflows : savedCashflows;
-      const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : savedExecutions;
-      // Current memory may have just hydrated raw broker executions before this
-      // cloud-history read completed. Enrich it from persisted calculated rows by
-      // execution ID before deciding which copy is safe to restore.
-      const localExecutions = mergeBrokerExecutionHistory(
-        [...savedExecutions, ...brokerTrades],
-        preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
-      );
-      const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
-      const cloudSourceExecutions = normalizeBrokerExecutions(cloud.brokerExecutedTrades);
-      const cloudCashflows = normalizeSavedFreedomCashflows(cloud.cashflows);
-      historyHydrated.current = true;
-      // Cloud history is the durable baseline, but the just-fetched broker page
-      // is fresher. Merge it instead of allowing a slow cloud pull to erase new
-      // executions that arrived while this component was mounting.
-      const cloudBaseline = mergeBrokerExecutionHistory(
-        localExecutions,
-        cloudSourceExecutions
-      );
-      const cloudExecutions = preservePersistedBrokerFeeAllocations(
-        mergeBrokerExecutionHistory(cloudBaseline, latestBrokerFetch.current || []),
-        [...saved.brokerExecutedTrades, ...localExecutions]
-      );
-      const resolved = history ? {
-        brokerExecutedTrades: cloudExecutions,
-        // Keep locally saved legacy rows when the cloud record exists but predates them.
-        // Broker rows update matching IDs; unmatched historical rows are retained.
-        cashflows: mergeFreedomCashflowRows(localCashflows, cloudCashflows)
-      } : {
-        brokerExecutedTrades: localExecutions,
-        cashflows: localCashflows
-      };
-      portfolioStore.setState(resolved);
-      // Calculate the next incremental cursor only after cloud history has been
-      // reconciled with the device snapshot, so a stale one-row local cache does
-      // not narrow the next cashflow request prematurely.
-      cashflowSyncStartDate.current = getLatestClosedTradeDate(
-        resolved.brokerExecutedTrades,
-        current.closedTrades || []
-      );
-      if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
-        if (!isSessionCurrent()) return;
-        try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession: isSessionCurrent }); }
-        catch (error) {
-          if (isSessionCurrent()) logSafeDiagnostic('error', 'closed-history', error);
-        }
-        if (!active || !isSessionCurrent()) return;
-      }
-      if (active && isSessionCurrent()) setCashflowHistoryReady(true);
-    }).catch(error => {
-      if (!active || !isSessionCurrent()) return;
-      logSafeDiagnostic('error', 'closed-history', error);
-      if (active && isSessionCurrent()) {
-        const current = portfolioStore.getState();
-        const saved = loadSavedHistory();
-        const savedExecutions = normalizeBrokerExecutions(saved.brokerExecutedTrades);
-        const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
-        portfolioStore.setState({
-          brokerExecutedTrades: mergeBrokerExecutionHistory(
-            savedExecutions,
-            current.brokerExecutedTrades || []
-          ),
-          cashflows: current.cashflows?.length ? current.cashflows : savedCashflows
-        });
-        setCashflowHistoryReady(true);
-      }
-    });
-    return () => { active = false; };
-  }, []);
+    if (!isWorkspaceSyncReady || !isSessionCurrent()) return;
+    workspaceHydrated.current = true;
+    setCashflowHistoryReady(true);
+  }, [isWorkspaceSyncReady]);
+
+  useEffect(() => addBrokerEventListener('broker:closed-history-encryption-migration-failed', () => {
+    if (!isSessionCurrent()) return;
+    setCloudHistoryWarning(translateText(
+      'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+      getAppLanguage()
+    ));
+    logSafeDiagnostic('warn', 'closed-history');
+  }), [accountId]);
+
   // The key projects the exact facts consumed by the fee allocator. Quote-only
   // position updates therefore do not invalidate an in-flight or completed pass.
   const allocationBrokerExecutions = state.brokerExecutedTrades?.length
@@ -419,218 +341,86 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     ]
   );
 
+  const requestClosedHistorySync = (mode: 'refresh' | 'recalculate', forceRefresh = false): Promise<boolean> =>
+    new Promise((resolve) => {
+      emitBrokerEvent('broker:request-closed-history-sync-and-wait', { mode, forceRefresh, resolve });
+    });
+
+  const applyLatestCanonicalExecutions = () => {
+    if (!isSessionCurrent()) return;
+    const currentTrades = portfolioStore.getState().brokerExecutedTrades;
+    if (Array.isArray(currentTrades)) {
+      // Reconciliation can improve visible data without settling another
+      // request's foreground status in the operation-owned reducer.
+      dispatchBrokerExecutionHistory({ type: 'success', trades: currentTrades });
+    }
+  };
+
+  const reportClosedHistorySync = (success: boolean) => {
+    if (!isSessionCurrent()) return;
+    applyLatestCanonicalExecutions();
+    if (success) {
+      lastRecalculationKey.current = allocationInputKey;
+      setCashflowSyncMessage('');
+    } else {
+      cashflowSyncStarted.current = false;
+      setCashflowSyncMessage(translateText(
+        'Closed History synchronization failed. Check the activity log and retry.',
+        getAppLanguage()
+      ));
+    }
+    setCashflowSyncReady(true);
+  };
+
+  // Initial Trades hydration calls the same service used by the scheduler
+  // and Manual Sync; no cashflow fetching or persistence remains in this desk.
   useEffect(() => {
-    const cashflows = state.cashflows || [];
+    if (
+      !isWorkspaceSyncReady ||
+      !isSessionCurrent() ||
+      !cashflowHistoryReady ||
+      brokerTradesLoading ||
+      brokerTradesRefreshing ||
+      cashflowSyncStarted.current
+    ) return;
+    cashflowSyncStarted.current = true;
+    let active = true;
+    setCashflowSyncReady(false);
+    void requestClosedHistorySync('refresh').then((success) => {
+      if (active && isSessionCurrent()) reportClosedHistorySync(success);
+    });
+    return () => { active = false; };
+  }, [isWorkspaceSyncReady, cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
+
+  // Allocation-input changes are recalculated by the same owner with cached
+  // source cashflows, preserving the single write/revision-conflict boundary.
+  useEffect(() => {
     if (!isWorkspaceSyncReady || !isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
     const key = allocationInputKey;
-    if (key === lastRecalculationKey.current) {
-      return;
-    }
+    if (key === lastRecalculationKey.current) return;
     let active = true;
-    const isEffectCurrent = () => active && isSessionCurrent();
-    void processCashflowRows(cashflows, false, isEffectCurrent).then((success) => {
-      if (!isEffectCurrent()) return;
-      if (success) lastRecalculationKey.current = key;
+    void requestClosedHistorySync('recalculate').then((success) => {
+      if (!active || !isSessionCurrent()) return;
+      applyLatestCanonicalExecutions();
+      if (success) {
+        lastRecalculationKey.current = key;
+      } else {
+        cashflowSyncStarted.current = false;
+        setCashflowSyncMessage(translateText(
+          'Closed History synchronization failed. Check the activity log and retry.',
+          getAppLanguage()
+        ));
+      }
     });
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [isWorkspaceSyncReady, cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);
-  const processCashflowRows = async (
-    cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
-    requireCloudSync = false,
-    isOperationActive: () => boolean = () => true
-  ): Promise<boolean> => {
-    const isOperationCurrent = () => isWorkspaceSyncReady && isSessionCurrent() && isOperationActive();
-    if (!isOperationCurrent()) return false;
-    try {
-      // An empty confirmed snapshot is still a calculation input: it must clear
-      // any stale allocations left by older imports or a previously saved broker row.
-
-      // Persist broker-normalized cashflow rows as the source of truth so fee
-      // allocations can be recalculated after refresh without another API read.
-      const currentPortfolio = portfolioStore.getState();
-      const storedBrokerExecutions = currentPortfolio.brokerExecutedTrades || [];
-      // The canonical store may be empty while the broker table has already
-      // hydrated. Use the same visible execution set for allocation and display.
-      const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)];
-      const appTrades = [...(currentPortfolio.closedTrades || state.closedTrades || [])];
-      const { brokerAllocations, brokerOpenAllocations, appAllocations, appOpenAllocations } = calculateFreedomMarginFeeAllocations(
-        cashflowRows,
-        brokerExecutions,
-        appTrades,
-        {
-          trancheTypes: currentPortfolio.activeTrancheTypes ?? state.activeTrancheTypes,
-          trancheMixes: currentPortfolio.activeTrancheMixes ?? state.activeTrancheMixes,
-          openAppPositions: currentPortfolio.positions || state.positions
-        }
-      );
-      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
-        brokerExecutions,
-        brokerAllocations,
-        brokerOpenAllocations
-      );
-      const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
-      const feeAuditUpdate = buildClosedHistoryFeeAuditUpdate(
-        currentPortfolio.transactionEvents || [],
-        appTrades,
-        updatedTrades,
-        cashflowRows
-      );
-      if (feeAuditUpdate.rejectedCount > 0) {
-        logSafeDiagnostic('warn', 'closed-history');
-      }
-      const auditedClosedTrades = feeAuditUpdate.closedTrades;
-      const openPositionFeeAllocations = brokerExecutions.length
-        ? aggregateOpenBrokerMarginFeeAllocationsByTicker(brokerExecutions, brokerOpenAllocations)
-        : appOpenAllocations;
-      const updatedMarginPositions = applyCashflowAllocationsToMarginPositions(
-        currentPortfolio.positions || state.positions || {},
-        openPositionFeeAllocations
-      );
-      const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
-      const changedAppRows = auditedClosedTrades.filter((trade, index) => trade !== appTrades[index]).length;
-      const changedMarginPositions = JSON.stringify(currentPortfolio.positions || {}) !== JSON.stringify(updatedMarginPositions);
-      const updatedTradeCount = changedBrokerRows + changedAppRows;
-      const currentCashflows = portfolioStore.getState().cashflows || [];
-      const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
-      // Persist the current broker cashflow snapshot even when no fee date
-      // overlaps a closed trade yet. Later recalculation can retry from storage.
-      const nextState: Pick<Partial<PortfolioState>, 'brokerExecutedTrades' | 'positions' | 'cashflows'> = {};
-      if (cashflowsChanged) nextState.cashflows = cashflowRows;
-      // Compare the complete recalculated records before writing. This prevents
-      // repeated post-load recalculation from causing redundant Worker syncs.
-      if (changedBrokerRows && JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
-        nextState.brokerExecutedTrades = updatedExecutions;
-      }
-      if (changedMarginPositions) nextState.positions = updatedMarginPositions;
-      if (!isOperationCurrent()) return false;
-      const previousPortfolioState = portfolioStore.getState();
-      if (Object.keys(nextState).length || changedAppRows || feeAuditUpdate.appendedCount > 0) {
-        const committed = portfolioStore.commitClosedHistoryFeeSync(
-          nextState,
-          auditedClosedTrades,
-          feeAuditUpdate.transactionEvents,
-          false
-        );
-        if (!committed) {
-          setCashflowSyncMessage('Closed-history fee changes could not be linked to the transaction journal; the prior snapshot was preserved.');
-          return false;
-        }
-      }
-      // Keep canonical portfolio fields and the independently stored history
-      // sidecar aligned. A failed write restores the prior in-memory snapshot
-      // and must never be followed by a cloud history write.
-      const historyPersisted = await savePortfolioSnapshot(portfolioStore.getState(), {
-        brokerExecutedTrades: brokerExecutions.length
-          ? updatedExecutions
-          : (portfolioStore.getState().brokerExecutedTrades || []),
-        cashflows: cashflowRows
-      });
-      if (!historyPersisted) {
-        portfolioStore.restoreInMemorySnapshot(previousPortfolioState);
-        const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
-        setCashflowSyncMessage(message);
-        logSafeDiagnostic('error', 'closed-history');
-        return false;
-      }
-      // The closed-history collection lives in its own cloud record; saving the
-      // portfolio snapshot alone does not upload updated fee allocations. Without
-      // this write, the next section mount reloads stale cloud executions over the
-      // freshly recalculated local rows.
-      const brokerExecutionsChanged = brokerExecutions.length > 0 &&
-        JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions);
-      // Sync the history record when source cashflows or calculated execution
-      // metadata changes so local and cloud history remain consistent.
-      if (cashflowsChanged || brokerExecutionsChanged) {
-        try {
-          const synced = await pushCloudHistory({
-            brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
-            cashflows: cashflowRows
-          }, undefined, undefined, { isCurrentSession: isOperationCurrent });
-          if (!isOperationCurrent()) return false;
-          if (!synced) throw new Error('Cloud history did not confirm the update.');
-        } catch (error) {
-          if (!isOperationCurrent()) return false;
-          logSafeDiagnostic('error', 'closed-history', error);
-          if (requireCloudSync) {
-            setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
-            return false;
-          }
-        }
-      }
-      if (updatedTradeCount > 0 && brokerExecutions.length) {
-        dispatchBrokerExecutionHistory({ type: 'success', trades: updatedExecutions });
-      }
-      return true;
-    } catch (error) {
-      if (!isOperationCurrent()) return false;
-      const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
-      logSafeDiagnostic('error', 'closed-history');
-      if (requireCloudSync) setCashflowSyncMessage(`Freedom cashflow processing failed: ${detail}`);
-      return false;
-    }
-  };
-
-  const syncCashflowsFromFreedom = async () => {
-    if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return;
-    cashflowSyncStarted.current = true;
-    let completed = false;
-    try {
-      const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
-      const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(brokerTrades, state.closedTrades || []) || 'no-trades';
-      const previousTradeCheckpoint = getFreedomCashflowTradeCheckpoint(accountId);
-
-      // A full initial cashflow baseline is still required once. After that,
-      // opening Trades is a read-only check unless a new latest-date execution
-      // (including another fill on the same date) has appeared.
-      if (hasCompleteBaseline && previousTradeCheckpoint === latestTradeCheckpoint) {
-        setCashflowSyncReady(true);
-        return;
-      }
-
-      // The trade history refresh completes before this function is called, so
-      // the incremental cashflow cursor includes the newest visible closed sale.
-      cashflowSyncStartDate.current = getLatestClosedTradeDate(brokerTrades, state.closedTrades || []);
-      const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
-      const response = await brokerAdapter.fetchCashflows(fromDate);
-      if (!isSessionCurrent()) return;
-      const fetchedRows = brokerAdapter.normalizeCashflows(response).data;
-      const existingRows = portfolioStore.getState().cashflows || [];
-      const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
-
-      // On the first upgraded session, backfill the complete ledger before
-      // switching to date-bounded requests. Process empty snapshots as well.
-      const saved = await processCashflowRows(mergedRows, true);
-      if (!saved || !isSessionCurrent()) return;
-      if (!hasCompleteBaseline && !markFreedomCashflowHistoryBaseline(accountId)) {
-        throw new Error('Cashflow history baseline could not be recorded; the next Trades visit will retry.');
-      }
-      if (!markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)) {
-        throw new Error('Latest trade checkpoint could not be saved; the next Trades visit will retry.');
-      }
-      completed = true;
-
-    } catch (error) {
-      if (!isSessionCurrent()) return;
-      const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
-      setCashflowSyncMessage(`Automatic Freedom cashflow sync failed: ${detail}`);
-      logSafeDiagnostic('warn', 'closed-history');
-    } finally {
-      if (isSessionCurrent()) {
-        // A failed request or local/cloud persistence failure must be retryable
-        // without leaving Trades or signing out and back in.
-        if (!completed) cashflowSyncStarted.current = false;
-        setCashflowSyncReady(true);
-      }
-    }
-  };
 
   const retryCashflowSync = () => {
     if (!isWorkspaceSyncReady || !isSessionCurrent() || cashflowSyncStarted.current) return;
+    cashflowSyncStarted.current = true;
     setCashflowSyncMessage('');
     setCashflowSyncReady(false);
-    void syncCashflowsFromFreedom();
+    void requestClosedHistorySync('refresh').then(reportClosedHistorySync);
   };
 
   const retryCloudHistoryMigration = async () => {
@@ -638,30 +428,17 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     setCloudHistoryRetrying(true);
     setCloudHistoryWarning('');
     try {
-      await pullCloudHistory(undefined, {
-        isCurrentSession: isSessionCurrent,
-        onEncryptionMigrationFailure: (error) => {
-          if (!isSessionCurrent()) return;
-          setCloudHistoryWarning(translateText(
-            'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
-            getAppLanguage()
-          ));
-          logSafeDiagnostic('warn', 'closed-history', error);
-        }
-      });
-    } catch (error) {
-      if (isSessionCurrent()) {
-        setCloudHistoryWarning(error instanceof Error ? error.message : 'Could not verify the cloud history encryption upgrade.');
+      const succeeded = await requestClosedHistorySync('refresh', true);
+      if (!succeeded && isSessionCurrent()) {
+        setCloudHistoryWarning(translateText(
+          'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.',
+          getAppLanguage()
+        ));
       }
     } finally {
       if (isSessionCurrent()) setCloudHistoryRetrying(false);
     }
   };
-
-  useEffect(() => {
-    if (!isWorkspaceSyncReady || !cashflowHistoryReady || brokerTradesLoading || brokerTradesRefreshing) return;
-    void syncCashflowsFromFreedom();
-  }, [isWorkspaceSyncReady, cashflowHistoryReady, brokerTradesLoading, brokerTradesRefreshing, brokerTrades]);
 
   useEffect(() => {
     const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {
@@ -694,14 +471,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         };
       });
       // In-memory rows can contain explicit empty allocation objects from a
-      // pre-hydration broker response. Restore real saved allocations by ID before
-      // writing these rows into the canonical store or triggering cloud sync.
+      // pre-reconciliation broker response. Restore real saved allocations by ID
+      // before writing these rows into the canonical store.
       const savedFeeRows = normalizeBrokerExecutions(loadSavedHistory().brokerExecutedTrades);
       const normalizedPage = preservePersistedBrokerFeeAllocations(
         normalizedRaw,
         [...savedFeeRows, ...stored]
       );
-      latestBrokerFetch.current = normalizedPage;
       // The API may return only the requested date range. Retain the complete
       // pre-refresh cache, including opening buys needed for FIFO matching.
       const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored, ...brokerTrades], normalizedPage);
@@ -714,15 +490,14 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
       const fingerprint = (rows: FreedomExecutedTrade[]) => JSON.stringify(rows);
       if (fingerprint(current) !== fingerprint(normalized)) {
         portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
-        // Sync only when the authoritative broker history actually changes, and
-        // only after initial cloud hydration. Initial reconciliation is handled by
-        // the load effect above so it doesn't race a second save against that pull.
-        if (historyHydrated.current) {
-          void pushCloudHistory({
-            brokerExecutedTrades: normalized,
-            cashflows: portfolioStore.getState().cashflows || []
-          }, undefined, undefined, { isCurrentSession: isSessionCurrent }).catch(error => {
-            if (isSessionCurrent()) logSafeDiagnostic('error', 'closed-history', error);
+        // Sync only when the authoritative broker history actually changes and
+        // the authenticated workspace is ready. The shared owner pulls and merges
+        // cloud history before persisting this broker update.
+        if (workspaceHydrated.current) {
+          // Broker-history changes are checkpointed by the shared owner too.
+          void requestClosedHistorySync('refresh').then((success) => {
+            if (!success && isSessionCurrent()) logSafeDiagnostic('warn', 'closed-history');
+            applyLatestCanonicalExecutions();
           });
         }
       }

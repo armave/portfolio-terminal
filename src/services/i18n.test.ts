@@ -1266,7 +1266,9 @@ describe('Trades UX localization parity', () => {
       'Lowest net P&L','Largest position','Cashflow reconciliation','Needs attention','Complete','Pending','Stale','Not loaded',
       'Unknown or incomplete trade results are excluded from the net P&L total and win rate.',
       'Known fees and commissions are a lower bound; missing commission inputs may increase actual costs.',
-      'Net P&L unavailable because required trade or cost-basis data is incomplete.'
+      'Net P&L unavailable because required trade or cost-basis data is incomplete.',
+      'Closed History synchronization failed. Check the activity log and retry.',
+      'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.'
     ];
     for (const english of copy) {
       expect(RU_TRANSLATIONS[english], english).toBeTruthy();
