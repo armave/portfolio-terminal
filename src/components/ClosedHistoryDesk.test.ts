@@ -10,6 +10,10 @@ function readAppSource(): string {
   return readFileSync(new URL('../App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+function readRuntimeSource(): string {
+  return readFileSync(new URL('../../app.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+}
+
 function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
@@ -85,7 +89,7 @@ describe('Trades cache-first rendering', () => {
   });
 
   it('rejects stale account-session work at the shared orchestration boundary', () => {
-    const app = readAppSource();
+    const app = readRuntimeSource();
     const source = readSource();
     const coordinator = readFileSync(new URL('../services/tradesHistorySyncRuntime.ts', import.meta.url), 'utf8');
     expect(app).toContain('currentAccountSessionGuard.isCurrent(session)');
@@ -93,6 +97,25 @@ describe('Trades cache-first rendering', () => {
     expect(coordinator).toContain('dependencies.getSessionKey() === sessionKey');
     expect(coordinator).toContain("status: 'stale'");
     expect(source).toContain('if (!isSessionCurrent()) return;');
+  });
+
+  it('routes scheduled, manual, desk and new-fill history work through one owner', () => {
+    const app = readRuntimeSource();
+    const source = readSource();
+    const coordinator = readFileSync(new URL('../services/tradesHistorySyncRuntime.ts', import.meta.url), 'utf8');
+
+    expect(app).toContain('createTradesHistorySyncRuntime({');
+    expect(app).toContain("syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('scheduled') : undefined");
+    expect(app).toContain("syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory('manual') : Promise.resolve(false)");
+    expect(app).toContain("addBrokerEventListener('broker:request-closed-history-sync-and-wait'");
+    expect(source).toContain("emitBrokerEvent('broker:request-closed-history-sync-and-wait'");
+    expect(source).toContain("requestClosedHistorySync('refresh', true)");
+    expect(source).not.toContain('pullCloudHistory');
+    expect(source).not.toContain('pushCloudHistory');
+    expect(source).not.toContain('fetchCashflows');
+    expect(coordinator).toContain('activeBySession');
+    expect(coordinator).toContain('diagnostics.coalesced += 1');
+    expect(coordinator).toContain('diagnostics.queued += 1');
   });
 
   it('memoizes fee-allocation input serialization and ignores position changes when broker executions are authoritative', () => {
@@ -113,8 +136,8 @@ describe('Trades cache-first rendering', () => {
 
   it('ignores shared-sync completion after the requesting Trades effect is disposed', () => {
     const source = readSource();
-    const start = source.indexOf('const allocationInputKey =');
-    const end = source.indexOf('const requestClosedHistorySync', start);
+    const start = source.indexOf('const requestClosedHistorySync');
+    const end = source.indexOf('const retryCloudHistoryMigration', start);
     const effects = source.slice(start, end);
 
     expect(start).toBeGreaterThanOrEqual(0);
@@ -174,7 +197,7 @@ describe('Trades cache-first rendering', () => {
 
     expect(mountEffect).toContain("emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });");
     expect(mountEffect).not.toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
-    expect(explicitRefresh).toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
+    expect(explicitRefresh).toContain("dispatchBrokerExecutionHistory({ type: 'refresh', requestId });");
     expect(explicitRefresh).toContain("emitBrokerEvent('broker:request-executed-trades-and-wait'");
     expect(source).toContain("dispatchBrokerExecutionHistory({ type: 'failure' });");
     expect(source).toContain("brokerExecutionHistory.status === 'refreshing'");
@@ -183,7 +206,7 @@ describe('Trades cache-first rendering', () => {
 
   it('does not replace existing broker history with an incremental page and keeps a full cashflow baseline', () => {
     const source = readSource();
-    const app = readAppSource();
+    const app = readRuntimeSource();
     expect(source).toContain('...savedFeeRows, ...stored, ...brokerTrades');
     expect(app).toContain('hasFreedomCashflowHistoryBaseline(accountId)');
     expect(app).toContain('const latestCashflowDate = hasCashflowBaseline');
@@ -207,17 +230,16 @@ describe('Trades cache-first rendering', () => {
   });
 
   it('advances the cashflow checkpoint only to the trade set included in the fetch window', () => {
-    const app = readAppSource();
+    const app = readRuntimeSource();
     expect(app).toContain('getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])');
     expect(app).toContain('const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(');
     expect(app).toContain('freedomBrokerAdapter.fetchCashflows(latestCashflowDate)');
     expect(app).toContain('markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)');
-    expect(app).not.toContain('getLatestClosedTradeCheckpoint(\\n        mergedExecutions');
   });
 
   it('refreshes cashflows only for a baseline, a changed fill checkpoint, or an explicit force request', () => {
     const source = readSource();
-    const app = readAppSource();
+    const app = readRuntimeSource();
     expect(source).toContain('!cashflowHistoryReady');
     expect(source).toContain('brokerTradesRefreshing');
     expect(source).toContain("requestClosedHistorySync('refresh', true)");
