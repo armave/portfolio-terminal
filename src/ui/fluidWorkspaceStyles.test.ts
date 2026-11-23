@@ -61,10 +61,12 @@ describe('fluid workspace styles', () => {
     expect(stylesheet).toMatch(/@media\s*\(max-width:\s*767px\)[\s\S]*?\.portfolio-risk-tools-row\s*>\s*\.portfolio-health-summary-column,[\s\S]*?height:\s*auto;/s);
   });
 
-  it('aligns the Tranches row label and action control', () => {
-    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*>\s*\.portfolio-micro-row\s*\{[^}]*align-items:\s*center;/s);
-    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*\{[^}]*align-items:\s*flex-end;[^}]*text-align:\s*right;/s);
-    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.portfolio-tranches-value\s*>\s*button\s*\{[^}]*align-self:\s*flex-end;/s);
+  it('keeps the Tranches action inside narrow summary columns without compressing its icon', () => {
+    expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*44%\)\s+minmax\(0,\s*1fr\)/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*\{[^}]*min-width:\s*0;[^}]*justify-content:\s*flex-end;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-tranches-row\s*>\s*#boardTranches\s*>\s*\.tranche-details-trigger\s*\{[^}]*flex:\s*0\s+1\s+auto;[^}]*max-width:\s*100%;[^}]*min-width:\s*0;[^}]*white-space:\s*normal;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.tranche-details-trigger\s*>\s*span:first-child\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(stylesheet).toMatch(/\.portfolio-micro-basis\s*\.tranche-details-trigger\s*>\s*\.tranche-details-trigger-icon\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
   });
 
   it('keeps market value and position basis inside one compact responsive panel', () => {
