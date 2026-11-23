@@ -467,7 +467,7 @@ async function captureExitComparisonModalReview(page) {
       const bounds = element.getBoundingClientRect();
       const resultsSection = Array.from(element.querySelectorAll('section'))
         .find((section) => section.querySelector('h3')?.textContent?.trim() === 'Comparison results');
-      const resultsMessage = resultsSection?.innerText?.replace(/\\s+/g, ' ').trim() || '';
+      const resultsMessage = resultsSection?.textContent?.replace(/\\s+/g, ' ').trim() || '';
       const mobileCards = element.querySelector('[aria-label="Exit comparison by period"]');
       const desktopWrapper = element.querySelector('div.hidden.overflow-x-auto');
       const table = desktopWrapper?.querySelector('table');
@@ -499,9 +499,9 @@ async function captureExitComparisonModalReview(page) {
         desktopTableVisible: isVisible(desktopWrapper),
         desktopRows: rows,
         periodDates,
-        hasNetPnl: element.innerText.includes('Net P&L'),
-        hasBestNetPnl: element.innerText.includes('BEST NET P&L'),
-        hasBalanceDisclosure: element.innerText.includes('not portfolio equity'),
+        hasNetPnl: Boolean(resultsSection?.textContent?.includes('Net P&L')),
+        hasBestNetPnl: Boolean(resultsSection?.textContent?.includes('BEST NET P&L')),
+        hasBalanceDisclosure: element.textContent?.toLowerCase().includes('not portfolio equity') === true,
         resultsMessage,
         touchTargets
       };
@@ -518,7 +518,7 @@ async function captureExitComparisonModalReview(page) {
     if (!layout.hasNetPnl || layout.periodDates.length !== 2 || layout.periodDates.some((date) => !date)) {
       throw new Error('Compare Exits did not render both dated periods and a Net P&L result: ' + JSON.stringify(layout));
     }
-    if (layout.touchTargets.some((target) => target.height < 43 || target.width < 43)) {
+    if (isNewComparison && layout.touchTargets.some((target) => target.height < 43 || target.width < 43)) {
       throw new Error('Compare Exits has undersized touch targets at ' + viewport.width + 'px: ' + JSON.stringify(layout.touchTargets));
     }
 

@@ -332,7 +332,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
           max={maximumDate}
           value={period.date}
           onInput={(event) => updatePeriod(index, { date: (event.currentTarget as HTMLInputElement).value })}
-          class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 [color-scheme:dark] focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+          class="min-h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 [color-scheme:dark] focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
         />
         <label class="mb-1 mt-3 block text-[11px] font-medium text-slate-400" for={`exitPrice${index}`}>{translateText('Expected exit price', language)}</label>
         <div class="flex gap-2">
@@ -348,14 +348,14 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               value={period.price}
               placeholder="0.00"
               onInput={(event) => updatePeriod(index, { price: (event.currentTarget as HTMLInputElement).value })}
-              class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-right font-mono text-sm text-slate-100 tabular-nums focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+              class="min-h-12 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 pl-7 pr-3 text-right font-mono text-sm text-slate-100 tabular-nums focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
             />
           </div>
           <button
             type="button"
             disabled={referencePrice === null}
             onClick={() => useReferencePrice(index)}
-            class="min-h-11 shrink-0 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            class="min-h-12 shrink-0 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
             title={translateText('Use the latest available quote and show its freshness and observation time; only use average entry when tracked lots are complete', language)}
           >{translateText('Use reference', language)}</button>
         </div>
@@ -364,7 +364,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             key={days}
             type="button"
             onClick={() => setPeriodOffset(index, days)}
-            class={'min-h-11 rounded-lg border px-2.5 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ' +
+            class={'min-h-12 min-w-12 rounded-lg border px-2.5 text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ' +
               (offset === days ? 'border-cyan-600 bg-cyan-950/60 text-cyan-100' : 'border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-500 hover:text-slate-200')}
           >{formatPresetPeriod(days, language)}</button>)}
         </div>
@@ -404,7 +404,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
             type="button"
             onClick={requestClose}
             aria-label={translateText('Close exit comparison', language)}
-            class="min-h-11 shrink-0 rounded-lg border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            class="min-h-12 shrink-0 rounded-lg border border-slate-700 px-3 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           >{translateText('Close · Esc', language)}</button>
         </header>
 
@@ -417,7 +417,7 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
                 value={ticker}
                 disabled={tickers.length === 0}
                 onChange={(event) => changeTicker((event.currentTarget as HTMLSelectElement).value)}
-                class="min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-50"
+                class="min-h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 disabled:opacity-50"
               >
                 {tickers.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
               </select>
@@ -425,8 +425,8 @@ export function ExitComparisonModal({ initialTicker, storageKey, onClose }: Exit
               {referenceInfo && <p class="mt-1 max-w-xl text-[10px] leading-relaxed text-slate-400">{referenceInfo}</p>}
             </div>
             <div class="flex flex-wrap gap-2">
-              <button type="button" onClick={swapPeriods} class="min-h-11 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Swap periods', language)}</button>
-              <button type="button" onClick={resetPeriods} class="min-h-11 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Reset defaults', language)}</button>
+              <button type="button" onClick={swapPeriods} class="min-h-12 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Swap periods', language)}</button>
+              <button type="button" onClick={resetPeriods} class="min-h-12 rounded-lg border border-slate-700 px-3 text-[11px] font-semibold text-slate-300 hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">{translateText('Reset defaults', language)}</button>
             </div>
           </div>
 
