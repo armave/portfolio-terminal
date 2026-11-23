@@ -1224,13 +1224,15 @@ export function appendBrokerHistoryAuditEvents(
     const isCorporateAction = ['stock split', 'reverse split', 'merger', 'spin-off', 'spin off', 'reorganization', 'reorganisation', 'corporate action', 'symbol change', 'cash in lieu'].some((keyword) => text.includes(keyword));
     // A margin adjustment does not establish an interest charge or signed debt movement.
     const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(text);
+    const isExplicitMarginInterest = /\binterest\b|\bfinancing\b|\bborrow fee\b|\bmargin[\s-]+fee\b/.test(text);
+    const isAmbiguousMarginLabel = /\bmargin\b/.test(text) && !isExplicitMarginInterest;
     const type: PortfolioTransactionEventType | null = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
       ? 'dividend'
       : isCorporateAction
         ? 'corporate-action'
-        : isAmbiguousMarginAdjustment
+        : isAmbiguousMarginAdjustment || isAmbiguousMarginLabel
           ? null
-          : text.includes('margin') || text.includes('interest') || text.includes('financing') || text.includes('borrow fee')
+          : isExplicitMarginInterest
             ? 'margin.interest'
           : text.includes('fee') || text.includes('commission') || text.includes('charge') || text.includes('tax')
             ? 'fee'

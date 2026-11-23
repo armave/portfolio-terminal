@@ -105,3 +105,10 @@ Both the broker audit-event importer and PT-04 cashflow matcher previously used 
 The importer and reconciliation matcher now detect explicit margin-adjustment labels before the broad margin-interest rule and leave those rows unclassified. The importer creates no typed journal event for the row; the normalized source cashflow remains available in the history sidecar so PT-04 can show a provisional `cashflow_unclassified` finding and suppress absence-based conclusions. Ordinary `Margin Fee` and `Margin Interest` labels retain their current `margin.interest` handling.
 
 No debt delta, interest amount, sign or accounting category is inferred. No PT-02 event, canonical position, cash/debt balance, fee allocation or P&L value is changed.
+
+
+## Margin-interest classification requires an explicit label — 2026-11-23
+
+The audit importer and PT-04 matcher no longer interpret a bare provider label containing `margin` as proof of interest. Only explicit interest/financing/borrow-fee wording or a `Margin Fee` label is classified as `margin.interest`. Margin-only labels such as `Margin Call` and `Margin Charge` remain in the source history and are surfaced as provisional unclassified cashflow evidence; the importer does not create a typed journal event for them.
+
+This rule preserves existing `Margin Fee` and `Margin Interest` behavior while avoiding false interest matches against maintenance calls, debt movements or other margin-account activities. No signed debt movement or interest amount is inferred. Cash/debt, fee allocations, PT-02 events, canonical positions and P&L are unchanged.

@@ -647,6 +647,8 @@ describe('broker history audit events', () => {
       { id: 'margin-1', date: '2026-11-03', type: 'Margin Fee', amount: -3, currency: 'USD' },
       { id: 'margin-positive-magnitude', date: '2026-11-03', type: 'Margin Fee', amount: 3, currency: 'USD' },
       { id: 'margin-adjustment-unknown', date: '2026-11-03', type: 'Margin Debt Adjustment', description: 'Adjustment to margin balance', amount: -4, currency: 'USD' },
+      { id: 'margin-call-unknown', date: '2026-11-03', type: 'Margin Call', description: 'Maintenance margin call', amount: -8, currency: 'USD' },
+      { id: 'margin-charge-unknown', date: '2026-11-03', type: 'Margin Charge', description: 'Account margin charge', amount: -6, currency: 'USD' },
       { id: 'deposit-1', date: '2026-11-04', type: 'Deposit', amount: 500, currency: 'USD' },
       { id: 'deposit-negative-magnitude', date: '2026-11-04', type: 'Deposit', amount: -500, currency: 'USD' },
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
@@ -668,6 +670,8 @@ describe('broker history audit events', () => {
     expect(events.find(event => event.externalReferenceId === 'deposit-1')?.externalCashFlowAmount).toBe(500);
     expect(events.find(event => event.externalReferenceId === 'margin-1')?.financingCost).toBe(3);
     expect(events.some(event => event.externalReferenceId === 'margin-adjustment-unknown')).toBe(false);
+    expect(events.some(event => event.externalReferenceId === 'margin-call-unknown')).toBe(false);
+    expect(events.some(event => event.externalReferenceId === 'margin-charge-unknown')).toBe(false);
     expect(events.find(event => event.externalReferenceId === 'split-1')?.type).toBe('corporate-action');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 
