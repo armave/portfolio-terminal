@@ -7,8 +7,8 @@ export interface TradesHistorySyncRequest {
   source: TradesHistorySyncSource;
   /** A newly observed broker fill may require a second pass after an active desk check. */
   forceRefresh?: boolean;
-  /** Latest closed-trade fingerprint for deduplicating fill-triggered follow-ups. */
-  forceRefreshKey?: string;
+  /** Fingerprint of the allocator inputs captured when the caller requested work. */
+  coalesceKey?: string;
 }
 
 export interface TradesHistorySyncContext extends TradesHistorySyncRequest {
@@ -55,7 +55,7 @@ export interface TradesHistorySyncRuntimeDependencies {
 interface ActiveOperation {
   mode: TradesHistorySyncMode;
   forceRefresh: boolean;
-  forceRefreshKey?: string;
+  coalesceKey?: string;
   promise: Promise<boolean>;
 }
 
@@ -119,12 +119,20 @@ export function createTradesHistorySyncRuntime(
     const existing = activeBySession.get(sessionKey);
     if (existing) {
       diagnostics.coalesced += 1;
-      const sameRefreshScope = request.forceRefreshKey === existing.forceRefreshKey;
-      const canJoinExisting = existing.mode === 'refresh' &&
+      const sameInputSnapshot = request.coalesceKey === existing.coalesceKey;
+      const compatibleRefresh = existing.mode === 'refresh' &&
         request.mode === 'refresh' &&
-        (!forceRefresh || (existing.forceRefresh && sameRefreshScope));
-      const sameCacheOnlyWork = existing.mode === 'recalculate' && request.mode === 'recalculate';
-      if (canJoinExisting || sameCacheOnlyWork) return existing.promise;
+        sameInputSnapshot &&
+        (!forceRefresh || existing.forceRefresh);
+      const refreshSatisfiesRecalculation = existing.mode === 'refresh' &&
+        request.mode === 'recalculate' &&
+        sameInputSnapshot;
+      const compatibleRecalculation = existing.mode === 'recalculate' &&
+        request.mode === 'recalculate' &&
+        sameInputSnapshot;
+      if (compatibleRefresh || refreshSatisfiesRecalculation || compatibleRecalculation) {
+        return existing.promise;
+      }
 
       // A stronger refresh, or a cache-check requested during recalculation,
       // runs after the current operation. Multiple waiters coalesce when the
@@ -220,7 +228,7 @@ export function createTradesHistorySyncRuntime(
     activeBySession.set(sessionKey, {
       mode: request.mode,
       forceRefresh,
-      forceRefreshKey: request.forceRefreshKey,
+      coalesceKey: request.coalesceKey,
       promise: operation
     });
     return operation;
