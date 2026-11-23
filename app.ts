@@ -1562,7 +1562,7 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
  * before writing. A first sync on a new device must never replace a populated
  * cloud ledger with an empty local snapshot.
  */
-async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source: TradesHistorySyncSource): Promise<boolean> {
+async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source: TradesHistorySyncSource, forceRefresh = false): Promise<boolean> {
   const accountId = currentAccountId || '';
   const session = currentAccountSessionGuard.capture();
   const isCurrentSession = () =>
@@ -1611,6 +1611,7 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
     // baseline already includes the same latest closed-trade fingerprint.
     // Local recalculation reuses the last accepted cashflow observations.
     const shouldFetchCashflows = mode === 'refresh' && (
+      forceRefresh ||
       source !== 'trades-desk' ||
       !hasCashflowBaseline ||
       latestTradeCheckpoint !== previousTradeCheckpoint
@@ -1766,11 +1767,9 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
         logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
         return false;
       }
-      const completedTradeCheckpoint = getLatestClosedTradeCheckpoint(
-        mergedExecutions,
-        appClosedTrades
-      ) || 'no-trades';
-      if (!markFreedomCashflowTradeCheckpoint(accountId, completedTradeCheckpoint)) {
+      // Advance only to the trade set whose date range was used for this fetch.
+      // A newer fill arriving during the request remains eligible for the next pass.
+      if (!markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)) {
         logAppMessage('[Closed History Sync Warning]: Cashflows are saved, but the latest trade checkpoint could not be recorded; the next refresh will retry.');
         return false;
       }
@@ -1791,16 +1790,16 @@ const tradesHistorySyncRuntime = createTradesHistorySyncRuntime({
     const session = currentAccountSessionGuard.capture();
     return session ? `${session.identity}:${session.generation}` : null;
   },
-  perform: ({ mode, source }) => performAdminClosedHistorySync(mode, source)
+  perform: ({ mode, source, forceRefresh }) => performAdminClosedHistorySync(mode, source, forceRefresh)
 });
 
 /** All scheduled, manual and Trades-page history work joins this session-scoped owner. */
-function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh'): Promise<boolean> {
-  return tradesHistorySyncRuntime.run({ mode, source });
+function syncAdminClosedHistory(source: TradesHistorySyncSource = 'scheduled', mode: TradesHistorySyncMode = 'refresh', forceRefresh = false): Promise<boolean> {
+  return tradesHistorySyncRuntime.run({ mode, source, forceRefresh });
 }
 
 addBrokerEventListener('broker:request-closed-history-sync-and-wait', (request) => {
-  void syncAdminClosedHistory('trades-desk', request.mode).then(
+  void syncAdminClosedHistory('trades-desk', request.mode, request.forceRefresh).then(
     request.resolve,
     () => request.resolve(false)
   );
