@@ -446,12 +446,12 @@ async function captureExitComparisonModalReview(page) {
   const isNewComparison = process.env.UX_EXPECT_NEW_HEADER !== 'false';
   const expectedRows = [
     'Projected Cash / Debt Balance',
+    'Net P&L',
     'Gross Proceeds',
     'Buy Commission',
     'Sell Commission',
     'Estimated Margin Interest',
-    'Total Fee Friction',
-    'Net P&L'
+    'Total Fee Friction'
   ];
 
   for (const viewport of UX_SCREENSHOT_VIEWPORTS) {
