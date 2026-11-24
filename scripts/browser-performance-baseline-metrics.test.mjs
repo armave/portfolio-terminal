@@ -212,6 +212,7 @@ describe('repeatable same-candidate performance workflow dispatch', () => {
     expect(concurrencyGroup).toContain('workflow_dispatch');
     expect(concurrencyGroup).toContain('github.run_id');
     const cancelPolicy = workflow.split('\n').find(line => line.trimStart().startsWith('cancel-in-progress:'));
+    expect(cancelPolicy).toContain("github.event_name == 'workflow_dispatch' && false");
     expect(cancelPolicy).toContain("github.ref != 'refs/heads/main'");
     expect(workflow).toContain('group: github-pages');
     expect(workflow).toContain('cancel-in-progress: false');
