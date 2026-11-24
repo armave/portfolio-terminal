@@ -98,6 +98,17 @@ async function mockWorkerApi(page) {
       curr_c: 'USD',
       commiss: '0.10',
       profit: '0'
+    }, {
+      trade_id: 'smoke-sell-aapl-1',
+      instr_nm: 'AAPL.US',
+      type: '2',
+      quantity: '5',
+      p: '11',
+      date: '2026-11-02T11:00:00.000Z',
+      v: '55',
+      curr_c: 'USD',
+      commiss: '0.10',
+      profit: '5'
     }] } }
   };
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
@@ -1632,8 +1643,13 @@ try {
   // Exercise the delayed Trades header indicator against a controllable provider.
   // A short explicit refresh must not flash; a slow one must appear and remain
   // visible for its minimum display interval; a failed refresh must retain rows.
+  await waitForCondition(() => {
+    const initial = worker.calls.filter((call) => call.action === 'freedom-trades').at(-1);
+    return initial?.responseStatus !== undefined;
+  }, 'initial cached Trades history refresh');
   const refreshHistoryButton = page.getByRole('button', { name: 'Refresh history' });
   const refreshIndicator = page.getByRole('status', { name: 'Refreshing TradeNet execution history…' });
+  await refreshIndicator.waitFor({ state: 'hidden', timeout: 5_000 });
   if (await refreshIndicator.isVisible()) {
     throw new Error('Cached Trades mount must not show the explicit provider-refresh indicator.');
   }
