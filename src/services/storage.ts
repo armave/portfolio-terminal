@@ -162,14 +162,6 @@ function readLegacySavedHistorySnapshot(
     try {
       const history = normalizeHistorySnapshot(JSON.parse(raw));
       if (!history) throw new Error('Saved closed history must contain history arrays.');
-      if (key === recoveryKey) {
-        try {
-          storage.setItem(sidecarKey, raw);
-          console.warn('Recovered closed history from a scoped local recovery copy.');
-        } catch (error) {
-          logSafeDiagnostic('warn', 'closed-history', error);
-        }
-      }
       return history;
     } catch (error) {
       logSafeDiagnostic('warn', 'closed-history', error);
@@ -444,7 +436,9 @@ function writeLocalHistoryRecoverySnapshot(
   try {
     const serialized = JSON.stringify(history);
     if (serialized.length > MAX_LOCAL_HISTORY_FALLBACK_CHARS) return false;
-    storage.setItem(scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope), serialized);
+    const recoveryKey = scopedStorageKey(STORAGE_KEY_CLOSED_HISTORY_RECOVERY, scope);
+    if (storage.getItem(recoveryKey) === serialized) return true;
+    storage.setItem(recoveryKey, serialized);
     return true;
   } catch (error) {
     logSafeDiagnostic('warn', 'closed-history', error);
@@ -476,17 +470,35 @@ export function initializeSavedHistoryStorage(
 
   historyStorageInitialization = (async () => {
     await (historyWriteQueuesByScope.get(scope) ?? Promise.resolve(true)).catch(() => false);
-    const legacyHistory = readLegacySavedHistorySnapshot(scope);
+
+    let indexedHistory: ClosedHistorySnapshot | null = null;
     try {
-      const indexedHistory = await readHistoryRecordFromIndexedDB(scope);
-      const history = indexedHistory ?? legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
+      indexedHistory = await readHistoryRecordFromIndexedDB(scope);
+    } catch (error) {
+      // IndexedDB can be unavailable or temporarily blocked. Read the scoped
+      // local fallback without copying it back over itself: recovery reads must
+      // never require another localStorage write to make the workspace usable.
+      cachedHistory = readLegacySavedHistorySnapshot(scope) ??
+        { brokerExecutedTrades: [], cashflows: [] };
+      lastPersistedHistory = null;
+      logSafeDiagnostic('warn', 'closed-history', error);
+      historyStorageInitialized = true;
+      return;
+    }
+
+    const legacyHistory = indexedHistory ? null : readLegacySavedHistorySnapshot(scope);
+    const history = indexedHistory ?? legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
+    try {
       if (!indexedHistory) await writeHistoryRecordToIndexedDB(history, scope);
+      // IndexedDB now contains the accepted snapshot. The bounded recovery copy
+      // remains available independently; the obsolete active sidecar can go.
+      removeLegacyHistorySidecar(scope);
       cachedHistory = history;
       lastPersistedHistory = history;
-      if (legacyHistory) removeLegacyHistorySidecar(scope);
     } catch (error) {
-      cachedHistory = legacyHistory ?? { brokerExecutedTrades: [], cashflows: [] };
-      lastPersistedHistory = null;
+      // Keep the local fallback available when its IndexedDB migration fails.
+      cachedHistory = history;
+      lastPersistedHistory = indexedHistory;
       logSafeDiagnostic('warn', 'closed-history', error);
     }
     historyStorageInitialized = true;

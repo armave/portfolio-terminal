@@ -159,6 +159,27 @@ describe('storage service', () => {
     }
   });
 
+  it('reads the scoped local recovery copy without rewriting it when IndexedDB is unavailable', async () => {
+    vi.stubGlobal('indexedDB', undefined);
+    const expectedHistory = {
+      brokerExecutedTrades: [{ id: 'recovered-trade' }],
+      cashflows: [{ id: 'recovered-cashflow' }]
+    };
+    const recoveryRaw = JSON.stringify(expectedHistory);
+    storageMap.set('portfolio_closed_history_v1_recovery_v1', recoveryRaw);
+    localStorageMock.setItem.mockClear();
+
+    await expect(initializeSavedHistoryStorage('legacy')).resolves.toBeUndefined();
+
+    expect(loadSavedHistory()).toEqual(expectedHistory);
+    expect(storageMap.get('portfolio_closed_history_v1_recovery_v1')).toBe(recoveryRaw);
+    expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalledWith(
+      'Recovered closed history from a scoped local recovery copy.'
+    );
+  });
+
   describe('saveState', () => {
     it('persists state to localStorage and updates lastUpdated', () => {
       const state = { activeView: 'AAPL', balance: 1200, lastUpdated: Date.now() };

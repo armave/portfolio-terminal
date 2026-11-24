@@ -111,7 +111,12 @@ export function createPortfolioAuthenticatedStartupRuntime(
     dependencies.beginWorkspaceActivation();
     // Resolve identity and activate its account-scoped storage before reading rules.
     // Offline history is initialized only after we know no account workspace applies.
-    if (secret) await dependencies.publishCurrentUser();
+    if (secret) {
+      const authenticatedUser = await dependencies.publishCurrentUser();
+      if (authenticatedUser == null) {
+        throw new Error('The authenticated account could not be activated. Please retry sign-in.');
+      }
+    }
     if (!secret) dependencies.clearAccountIdentity();
     if (!secret || dependencies.getAccountRole() === null) {
       await dependencies.initializeOfflineHistoryStorage();

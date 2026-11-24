@@ -25,9 +25,11 @@ Device-level preferences such as the selected desk and the administrator/guest q
 2. Update the account identity and temporarily disable cloud writes.
 3. Activate the role-specific storage namespace.
 4. On first administrator activation, copy the legacy snapshot, broker rules, and broker history into the owner namespace. The legacy source is retained for recovery.
-5. Load the new scope's snapshot and history and replace the in-memory workspace.
+5. Load the new scope's snapshot and history and replace the in-memory workspace without writing the unchanged snapshot back to localStorage.
 6. Enable administrator cloud writes only after the owner workspace has loaded; guests remain read-only to the shared cloud workspace.
 7. Publish the authenticated identity to the UI.
+
+A successfully validated /api/auth/me response is not enough to publish the session: account-scoped workspace activation must also complete. If activation fails, sign-in remains visible and startup fails closed; it must not continue as an offline administrator or publish an empty workspace. Startup hydration is read-only with respect to the compact portfolio snapshot. It must not require spare localStorage quota merely to re-save data that has just been read successfully. A subsequent actual portfolio mutation owns the next local checkpoint.
 
 A failed identity lookup invalidates the session, moves to the offline namespace when storage is available, and clears the in-memory workspace. The failed identity is never allowed to continue using the previous workspace.
 
@@ -79,7 +81,7 @@ Cloud revision conflicts continue to use the separate conservative three-way rec
 
 The active storage namespace keeps best-effort last-known-good copies of the compact portfolio snapshot and broker assumptions. A malformed or missing active record is repaired from a valid recovery copy in the same namespace; recovery never reads another account's records. Normal saves advance the recovery copy only from a parseable prior record.
 
-Closed trade and cashflow history remains an atomic snapshot, not a mergeable event list. The scoped IndexedDB store retains its previous valid row before replacing the active row. After a successful IndexedDB write, the current valid history is also mirrored to the scoped localStorage recovery key when it fits the existing 512 KiB fallback limit. If the IndexedDB database is unavailable or lost, initialization can restore from that bounded local copy. When a larger history cannot fit, recovery relies on the IndexedDB recovery row and the user's exported JSON backup.
+Closed trade and cashflow history remains an atomic snapshot, not a mergeable event list. The scoped IndexedDB store retains its previous valid row before replacing the active row. After a successful IndexedDB write, the current valid history is also mirrored to the scoped localStorage recovery key only when it fits the existing 512 KiB fallback limit; an identical mirror is not rewritten. Startup checks IndexedDB first and reads localStorage history only when IndexedDB has no usable snapshot or cannot be opened/read. A local recovery-copy read is non-destructive: it does not copy the recovery value back into the active sidecar on every startup. If IndexedDB is unavailable, the scoped local copy is used in memory without requiring a write. When a larger history cannot fit, recovery relies on the IndexedDB recovery row and the user's exported JSON backup.
 
 The encrypted device Gateway Secret is handled separately. Secure-key IndexedDB opens and transactions are bounded; restoring ciphertext never creates a new device key. Temporary key-store failures and decryption failures preserve the ciphertext for a later retry. If the original non-extractable device key is permanently lost, the saved session secret cannot be decrypted and the user must sign in again; local recovery does not bypass that device binding.
 
@@ -104,7 +106,8 @@ Automated coverage verifies:
 - workspace replacement clearing previous journals;
 - authenticated session transition ordering, concurrent authentication checks, and cloud-write gating;
 - fail-closed offline activation when localStorage is unavailable;
-- startup recovery when IndexedDB open requests or read transactions stall;
+- startup recovery when IndexedDB open requests or read transactions stall, including a quota-limited recovery-copy read that performs no sidecar rewrite;
+- authenticated workspace hydration without redundant local snapshot writes, and a fail-closed sign-in when identity activation cannot complete;
 - same-scope last-known-good recovery for corrupted/missing portfolio snapshots, broker assumptions, and closed-history storage;
 - explicit reset replacing recovery baselines so pre-reset financial records cannot reappear;
 - bounded secure device-key access and preservation of encrypted credentials when the original key is temporarily unavailable;
