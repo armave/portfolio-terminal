@@ -1418,7 +1418,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       }
 
       const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
-      const newest = selectNewestPortfolioStateSnapshots([parsed, cached]).current ?? parsed;
+      const newest = selectNewestPortfolioStateSnapshots([parsed, cached ?? null]).current ?? parsed;
       if (newest !== parsed && key === canonicalKey) {
         try {
           storage.setItem(canonicalKey, JSON.stringify(newest));
