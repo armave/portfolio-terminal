@@ -10,6 +10,9 @@ import {
   initializeSavedHistoryStorage,
   flushSavedHistoryPersistence,
   clearSavedHistoryPersistence,
+  initializePortfolioStateRecoveryStorage,
+  flushPortfolioStateRecoveryPersistence,
+  clearPortfolioStateRecoveryPersistence,
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
@@ -58,6 +61,7 @@ describe('storage service', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     await activatePortfolioStorageScope('legacy');
     storageMap.clear();
+    await clearPortfolioStateRecoveryPersistence('legacy');
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -466,19 +470,63 @@ describe('storage service', () => {
       warnSpy.mockRestore();
     });
 
-    it('repairs a corrupted local snapshot from the last-known-good scoped copy', () => {
-      const previous = JSON.stringify({ activeView: 'AAPL', balance: 125 });
-      storageMap.set('margin_portfolio_state_dynamic_v2', previous);
+    it('keeps the last committed full portfolio snapshot in IndexedDB instead of duplicating it in localStorage', async () => {
+      if (typeof indexedDB === 'undefined') return;
 
-      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(previous);
+      const current = { activeView: 'AAPL', balance: 125 };
+      const previous = { activeView: 'GOOGL', balance: 100 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(current));
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(previous));
 
-      storageMap.set('margin_portfolio_state_dynamic_v2', '{corrupted');
-      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
-        activeView: 'AAPL',
-        balance: 125
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(JSON.stringify(current));
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+
+      const next = { activeView: 'MSFT', balance: 250 };
+      expect(saveState(next)).toBe(true);
+      await flushPortfolioStateRecoveryPersistence();
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toContain('"activeView":"MSFT"');
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open portfolio recovery test database.'));
       });
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previous);
+      try {
+        const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+          const transaction = db.transaction('history', 'readonly');
+          const store = transaction.objectStore('history');
+          const currentRequest = store.get('portfolio-state-v1');
+          const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+          let currentRecord: unknown;
+          let recoveryRecord: unknown;
+          currentRequest.onsuccess = () => { currentRecord = currentRequest.result; };
+          recoveryRequest.onsuccess = () => { recoveryRecord = recoveryRequest.result; };
+          transaction.oncomplete = () => resolve({ current: currentRecord, recovery: recoveryRecord });
+          transaction.onerror = () => reject(transaction.error || new Error('Could not read portfolio recovery test records.'));
+          transaction.onabort = () => reject(transaction.error || new Error('Portfolio recovery test read was aborted.'));
+        });
+        expect(records.current).toMatchObject({ activeView: 'MSFT', balance: 250 });
+        expect(records.recovery).toMatchObject({ activeView: 'AAPL', balance: 125 });
+      } finally {
+        db.close();
+      }
+    });
+
+    it('retains the local recovery snapshot when IndexedDB is unavailable', async () => {
+      vi.stubGlobal('indexedDB', undefined);
+      const current = JSON.stringify({ activeView: 'MSFT', balance: 250 });
+      const previous = JSON.stringify({ activeView: 'AAPL', balance: 125 });
+      storageMap.set('margin_portfolio_state_dynamic_v2', current);
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', previous);
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(current);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(previous);
     });
 
     it('never reads another account scope recovery snapshot', async () => {
