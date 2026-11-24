@@ -37,8 +37,7 @@ function isKnownApplicationPath(path) {
     /\.(?:[cm]?[jt]sx?|css|html|jsonc?)$/i.test(path);
 }
 function isCodePath(path) {
-  return /^(?:src\/.*|scripts\/.*)\.(?:[cm]?[jt]sx?)$/i.test(path) ||
-    /^(?:app|worker|state-store)\.(?:[cm]?[jt]s)$/i.test(path);
+  return /\.(?:[cm]?[jt]sx?)$/i.test(path);
 }
 
 /** Unknown paths and incomplete change sets always request full validation. */

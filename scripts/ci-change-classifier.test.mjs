@@ -10,6 +10,12 @@ describe('CI changed-file classification', () => {
       runCodeql: false, runWorkflowSecurity: false
     });
   });
+  it('runs CodeQL for root-level Worker and authentication test files', () => {
+    expect(classifyChangedFiles(['worker.test.js'])).toMatchObject({
+      classification: 'application', runQuality: true, runBrowser: true,
+      runCodeql: true
+    });
+  });
   it('runs full application validation and CodeQL for financial-domain changes', () => {
     expect(classifyChangedFiles([
       'src/domain/portfolioTransactions.ts', 'src/domain/portfolioTransactions.test.ts'
