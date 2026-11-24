@@ -114,6 +114,7 @@ jobs:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Verify published site responds
+        id: verify_published_site
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
