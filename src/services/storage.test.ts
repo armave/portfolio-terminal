@@ -484,11 +484,31 @@ describe('storage service', () => {
       expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
 
       const next = { activeView: 'MSFT', balance: 250 };
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'margin_portfolio_state_dynamic_v2_recovery_v1') {
+          const error = new Error('Quota exceeded') as Error & { name: string };
+          error.name = 'QuotaExceededError';
+          throw error;
+        }
+        storageMap.set(key, String(value));
+      });
+
       expect(saveState(next)).toBe(true);
       await flushPortfolioStateRecoveryPersistence();
 
       expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toContain('"activeView":"MSFT"');
       expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+        'margin_portfolio_state_dynamic_v2_recovery_v1',
+        expect.any(String)
+      );
+
+      // A fresh workspace activation restores the active snapshot from the
+      // scoped IndexedDB record even if the local canonical copy is damaged.
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{damaged-after-page-reload');
+      await activatePortfolioStorageScope('legacy');
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject(next);
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(next);
 
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open('portfolio-terminal-history-cache', 1);

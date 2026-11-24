@@ -1342,7 +1342,8 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         raw = storage.getItem(key);
       } catch (err) {
         logSafeDiagnostic('warn', 'browser-storage', err);
-        return fallback;
+        const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+        return cached ? { ...fallback, ...cached } : fallback;
       }
       if (!raw || !raw.trim()) continue;
 
@@ -1629,7 +1630,8 @@ export function saveWorkspaceDisclosurePreferences(preferences: WorkspaceDisclos
 }
 
 /**
- * Purges active and legacy state payloads from localStorage.
+ * Purges active and legacy portfolio state from localStorage and its scoped
+ * IndexedDB recovery records.
  */
 export async function clearLocalData(): Promise<void> {
   const storage = getBrowserStorage();
