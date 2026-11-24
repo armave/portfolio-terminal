@@ -783,8 +783,53 @@ async function seedAuthenticatedPerformancePortfolio(page, fixture, worker) {
     state.startDate = seed.startDate;
     state.activeView = 'AAPL';
     state.lastUpdated = seed.generatedAt;
-    localStorage.setItem(key, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    localStorage.setItem(key, serialized);
     localStorage.setItem('portfolio_active_view', 'COMBINED');
+
+    // Portfolio recovery is now mirrored in the account-scoped IndexedDB
+    // database. Keep this deterministic browser fixture coherent across both
+    // durable sources; otherwise a prior startup snapshot can correctly outrank
+    // a localStorage-only test seed during authenticated workspace activation.
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-history-cache::owner', 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('history')) {
+          request.result.createObjectStore('history');
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('Could not open the owner portfolio fixture database.'));
+      request.onblocked = () => reject(new Error('The owner portfolio fixture database upgrade was blocked.'));
+      request.onsuccess = () => {
+        const database = request.result;
+        database.onversionchange = () => database.close();
+        let transaction;
+        try {
+          transaction = database.transaction('history', 'readwrite');
+          const store = transaction.objectStore('history');
+          store.put(state, 'portfolio-state-v1');
+          store.put(state, 'portfolio-state-v1:last-known-good');
+        } catch (error) {
+          database.close();
+          reject(error);
+          return;
+        }
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => {
+          const error = transaction.error || new Error('Could not seed owner portfolio fixture recovery.');
+          database.close();
+          reject(error);
+        };
+        transaction.onabort = () => {
+          const error = transaction.error || new Error('Owner portfolio fixture recovery was aborted.');
+          database.close();
+          reject(error);
+        };
+      };
+    });
   }, fixture);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
