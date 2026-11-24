@@ -1639,7 +1639,12 @@ export class PortfolioStore {
       source: 'manual-cash-activity',
       effectiveAt: input.effectiveAt
     }, (state) => {
-      const freeCash = state.cashCushion?.freeCash;
+      const rawFreeCash = state.cashCushion?.freeCash;
+      const freeCash = typeof rawFreeCash === 'number'
+        ? rawFreeCash
+        : typeof rawFreeCash === 'string' && rawFreeCash.trim() !== ''
+          ? Number(rawFreeCash)
+          : Number.NaN;
       const signedDebt = state.balance;
       const realizedMarginCharged = state.realizedMarginCharged;
       if (![freeCash, signedDebt, realizedMarginCharged].every(value =>

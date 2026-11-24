@@ -920,7 +920,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "No assignments match these filters.": "Нет назначений, соответствующих выбранным фильтрам.",
   "Assigned": "Назначено",
   "Date range": "Период",
-  "All time": "За всё время",
   "7 days": "7 дней",
   "30 days": "30 дней",
   "90 days": "90 дней",

@@ -3,7 +3,7 @@ import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
 import type { ManualCashActivityCategory } from '../store/portfolioStore';
 import type { PortfolioState } from '../types/portfolio';
 import type { CashflowCategory, PortfolioTransactionEvent } from '../types/portfolioTransaction';
-import { classifyCashflow, normalizeClassifiedCashflowAmount } from '../domain/cashflowClassification';
+import { classifyCashflow, hasKnownCashflowDirection, normalizeClassifiedCashflowAmount } from '../domain/cashflowClassification';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatUSD } from '../utils/formatters';
 

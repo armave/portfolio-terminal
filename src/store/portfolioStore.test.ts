@@ -3636,7 +3636,7 @@ describe('portfolio transaction journal integration', () => {
     expect(store.getState().cashCushion.holdings).toEqual([]);
     expect(store.getState().transactionEvents).toHaveLength(previousEvents.length + 1);
     expect(store.getState().transactionEvents?.slice(0, previousEvents.length)).toEqual(previousEvents);
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]).toMatchObject({
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
       type: 'portfolio.reset',
       effectiveAt: resetAt,
       actor: { type: 'user' }
@@ -3650,7 +3650,7 @@ describe('portfolio transaction journal integration', () => {
     expect(store.addCashHolding('NVDA', 2, 120)).not.toBeNull();
     expect(store.addCashHolding('NVDA', 1)).not.toBeNull();
 
-    const event = store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1];
+    const event = store.getState().transactionEvents?.at(-1);
     expect(event).toMatchObject({
       type: 'cash-holding.buy',
       ticker: 'NVDA',
@@ -3672,11 +3672,11 @@ describe('portfolio transaction journal integration', () => {
     expect(store.deleteClosedTrade(0)).toBe(true);
     expect(store.getState().closedTrades).toHaveLength(0);
     expect(store.getState().transactionEvents).toHaveLength(originalEventCount + 1);
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]).toMatchObject({
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
       type: 'history.correction',
       ticker: 'AAPL'
     });
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]?.note).toContain(String(closedTradeId));
+    expect(store.getState().transactionEvents?.at(-1)?.note).toContain(String(closedTradeId));
     expect(store.getState().transactionEvents?.some((event) => event.type === 'trade.sell')).toBe(true);
     expect(store.getState().positions.AAPL).toBeUndefined();
   });
@@ -4952,7 +4952,7 @@ describe('auditable balance adjustment reversals', () => {
   it('reverses a free-cash adjustment with one immutable linked correction event', () => {
     const store = new PortfolioStore();
     expect(store.setFreeCash(500)).toBe(true);
-    const original = store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1];
+    const original = store.getState().transactionEvents?.at(-1);
     expect(original).toMatchObject({ type: 'cash.adjustment', cashDelta: 500 });
     const originalCount = store.getState().transactionEvents?.length;
 
@@ -4986,11 +4986,11 @@ describe('auditable balance adjustment reversals', () => {
   it('reverses margin-debt adjustments and preserves the signed balance convention', () => {
     const store = new PortfolioStore();
     expect(store.setMarginDebt(75)).toBe(true);
-    const original = store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1];
+    const original = store.getState().transactionEvents?.at(-1);
 
     expect(store.reverseBalanceAdjustment(original!.id, 'Incorrect debt entry')).toBe(true);
     expect(store.getState().balance).toBe(0);
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]).toMatchObject({
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
       type: 'correction',
       relatedEventId: original!.id,
       marginDebtDelta: -75
@@ -5067,7 +5067,7 @@ describe('auditable balance adjustment reversals', () => {
   it('does not publish or append a reversal when the snapshot commit fails', () => {
     const store = new PortfolioStore();
     expect(store.setFreeCash(500)).toBe(true);
-    const original = store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1];
+    const original = store.getState().transactionEvents?.at(-1);
     const before = store.getState();
     const failingStorage = {
       getItem: (key: string) => sharedTestStorage.get(key) ?? null,
@@ -5091,7 +5091,7 @@ describe('auditable balance adjustment reversals', () => {
     expect(store.reverseBalanceAdjustment('missing-event', '   ')).toBe(false);
     expect(store.reverseBalanceAdjustment('missing-event', 'x'.repeat(501))).toBe(false);
     expect(store.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
-    const tradeId = store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]?.id;
+    const tradeId = store.getState().transactionEvents?.at(-1)?.id;
     expect(store.reverseBalanceAdjustment(tradeId!, 'Trade reversal is not supported')).toBe(false);
   });
 });
@@ -5243,7 +5243,7 @@ describe('manual cash activity posting', () => {
     expect(store.getState().cashCushion.freeCash).toBe(125);
     expect(store.getState().cashBalance).toBe(125);
     expect(store.getState().transactionEvents).toHaveLength(beforeEvents + 1);
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]).toMatchObject({
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
       type: 'cash.deposit', cashflowCategory: 'deposit', cashDelta: 25,
       currency: 'USD', actor: { type: 'user' }, source: 'manual-cash-activity'
     });
@@ -5273,7 +5273,7 @@ describe('manual cash activity posting', () => {
     expect(store.getState().cashCushion.freeCash).toBe(50);
     expect(store.getState().balance).toBe(-3.5);
     expect(store.getState().realizedMarginCharged).toBe(3.5);
-    expect(store.getState().transactionEvents?.[store.getState().transactionEvents.length - 1]).toMatchObject({
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
       type: 'margin.interest', cashflowCategory: 'margin_interest',
       cashDelta: 0, marginDebtDelta: 3.5, realizedMarginChargeDelta: 3.5
     });
