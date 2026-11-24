@@ -50,6 +50,9 @@ jobs:
         id: lint
         run: npm run lint
 
+      - name: Validate release security-gate script syntax
+        run: bash -n .github/scripts/require-main-push-security-success.sh
+
       - name: Run Vitest unit, Worker and V8 coverage suites
         id: tests
         run: npm run test:coverage
@@ -437,7 +440,7 @@ jobs:
       - operations-browser
       - coverage
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       actions: read
       contents: read
@@ -481,6 +484,13 @@ jobs:
           console.log('Validated production artifact for ' + provenance.commit + ' from CI run ' + provenance.runId + '.');
           NODE
 
+      - name: Require successful security validation for this exact main commit
+        id: require_security_success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: bash .github/scripts/require-main-push-security-success.sh
+
       - name: Upload the exact validated Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
@@ -510,6 +520,7 @@ jobs:
         env:
           DEPLOYED_COMMIT: ${{ github.sha }}
           DEPLOYED_RUN_ID: ${{ github.run_id }}
+          SECURITY_RUN_ID: ${{ steps.require_security_success.outputs.security_run_id || 'not-verified' }}
           DEPLOY_RESULT: ${{ steps.deployment.outcome || 'not-run' }}
           VERIFY_RESULT: ${{ steps.verify_published_site.outcome || 'not-run' }}
           DEPLOYED_URL: ${{ steps.deployment.outputs.page_url || 'not-published' }}
@@ -521,6 +532,7 @@ jobs:
             echo "|---|---|"
             echo "| Source commit | $DEPLOYED_COMMIT |"
             echo "| Source CI run | $DEPLOYED_RUN_ID |"
+            echo "| Same-commit security run | $SECURITY_RUN_ID |"
             echo "| Deployment | $DEPLOY_RESULT |"
             echo "| Published-site verification | $VERIFY_RESULT |"
             echo "| URL | $DEPLOYED_URL |"
