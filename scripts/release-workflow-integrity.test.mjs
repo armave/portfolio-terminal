@@ -27,10 +27,10 @@ describe('production deployment security gates', () => {
     const pagesJob = pages.slice(pages.indexOf('  pages-deploy:'));
     const pagesCheckout = pagesJob.indexOf('name: Check out exact source commit for release gates');
     const pagesDownload = pagesJob.indexOf('Download the production build artifact from this exact CI run');
-    const pagesGate = pagesJob.indexOf('Require successful security validation for this exact main commit');
+    const pagesSecurityGate = pagesJob.indexOf('Require successful security validation for this exact main commit');
     expect(pagesCheckout).toBeGreaterThan(-1);
     expect(pagesCheckout).toBeLessThan(pagesDownload);
-    expect(pagesDownload).toBeLessThan(pagesGate);
+    expect(pagesDownload).toBeLessThan(pagesSecurityGate);
     expect(pagesJob.slice(pagesCheckout, pagesDownload)).toContain('ref: ${{ github.sha }}');
 
     const worker = readRepoFile('.github/workflows/deploy-worker.yml');
