@@ -239,7 +239,7 @@ Automated mocks are necessary but not sufficient. Mark each gate **PASS**, **FAI
 - [ ] Keep the prior known-good deployment and backup/recovery procedure available.
 - [ ] Record a rollback decision/owner and verify the application remains usable if an external provider is unavailable.
 
-## 6. PR checklist
+## 7. PR checklist
 
 Use the repository PR template to record:
 - workstream and related issue;
@@ -251,7 +251,7 @@ Use the repository PR template to record:
 - browser and manual checks;
 - known limitations, skipped checks, and follow-up issues.
 
-## 7. Completion status for PT-17
+## 8. Completion status for PT-17
 
 - [x] Define reliability indicators and a baseline-collection protocol without inventing SLO thresholds.
 - [x] Add repeatable desktop/mobile unauthenticated-shell performance sampling with commit-attributed CI artifact output.
@@ -265,7 +265,7 @@ Use the repository PR template to record:
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
-## 8. CI security and pipeline hardening — 2026-11-15
+## 9. CI security and pipeline hardening — 2026-11-15
 
 ### PR validation layout
 
@@ -306,7 +306,7 @@ Vitest uses the version-matched V8 provider and uploads JSON/JSON-summary report
 Oxlint is integrated into PR CI and `npm run ci:local`. The initial enforced policy deliberately covers a small set of correctness defects (duplicate object keys, unreachable code, constant binary expressions and unsafe `finally` control flow). Test files are excluded because the repository's existing Vitest patterns use conditional assertions and flexible mock signatures that are validated by Vitest and TypeScript instead. Expand the lint rules in small, reviewed increments; do not enable broad style/pedantic presets without first auditing their impact.
 
 
-## 9. CI and configuration refinements — 2026-11-17
+## 10. CI and configuration refinements — 2026-11-17
 
 - `.nvmrc` is the shared Node.js 22 version source for GitHub Actions; `package.json` and the lockfile declare Node.js 22.x and npm 10.x as the supported runtime.
 - The path-filtered **Financial Integrity Regression** workflow gives transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication tests a dedicated status and exact-head evidence when relevant paths change. The standard PR workflow continues to run the complete Vitest suite on every PR.
@@ -325,7 +325,7 @@ Committed workflow files cannot configure GitHub branch rules or environment pro
 At the time this section was written, a coverage provider, measured baseline and lint framework were deferred. Those items have since been implemented and verified as described in section 10 below.
 
 
-## 10. Coverage, lint and repository protection follow-up — 2026-11-17
+## 11. Coverage, lint and repository protection follow-up — 2026-11-17
 
 The CI baseline is now measured and enforced. GitHub rulesets and environment-review configuration remain repository-administration settings, not file-level workflow configuration. Importable ruleset payload examples are stored in `docs/ci/github-rulesets/`; review the exact check contexts in GitHub's ruleset editor before saving.
 
